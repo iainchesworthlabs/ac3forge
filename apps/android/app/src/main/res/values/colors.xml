@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Duplicates Theme.kt's colorBackground - deliberately, and the only
+         value that is duplicated. Theme.kt is Kotlin, read at draw time by
+         views that do not exist yet when the window background is painted;
+         this is what the framework paints BEFORE the first frame. Keep the
+         two in step: Color.rgb(8, 9, 11). -->
+    <color name="demo_background">#FF08090B</color>
+</resources>

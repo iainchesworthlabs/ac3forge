@@ -5,14 +5,26 @@
 // no codec behaviour of its own; error handling exists only because Python has no
 // std::expected-shaped calling convention.
 //
-// GIL handling: argument conversion (numpy -> owned std::vector, bytes -> owned
-// std::vector<std::byte>) happens with the GIL held, since it touches Python objects; the actual
-// encode/decode call runs inside a py::gil_scoped_release block operating only on C++ locals, and
-// results are converted back to Python objects after that block ends (GIL reacquired by the
-// guard's destructor, including on the exception path - unwinding through the block still runs
-// it). This is deliberately explicit per call site rather than py::call_guard, which only wraps
-// the C++ invocation and not this file's chosen "own the buffer, don't hold a live view into a
-// Python object across the release" pattern.
+// GIL handling: argument conversion (bytes -> owned std::vector<std::byte>) happens with the GIL
+// held, since it touches Python objects; the actual encode/decode call runs inside a
+// py::gil_scoped_release block, and results are converted back to Python objects after that block
+// ends (GIL reacquired by the guard's destructor, including on the exception path - unwinding
+// through the block still runs it). This is deliberately explicit per call site rather than
+// py::call_guard, which only wraps the C++ invocation and not this file's own ordering.
+//
+// Channel PCM (roadmap AP6) is the one exception to "operating only on C++ locals": encode input
+// and the *_into decode forms hold live py::array/py::array_t handles (ChannelViews/
+// MutableChannelViews below) across the release block, with std::span pointing directly into
+// their buffers - genuinely zero-copy when the caller already passed a contiguous float32 array,
+// where the pre-AP6 version always copied into an owned std::vector<float> first. This is safe
+// without the GIL because nothing in the release block touches the Python C API - no refcounting,
+// no attribute access, just reads/writes through the raw pointers captured before the block
+// started; the handles keep the underlying buffers alive (refcount > 0) regardless of GIL state,
+// and are only destroyed after the block ends and the GIL is held again. It does NOT protect
+// against a caller mutating the same array from another Python thread while the call is in
+// flight - the same data-race contract any zero-copy buffer-protocol API has (encode: don't
+// mutate what you passed in; decode_*_into: don't touch `out` until the call returns). That
+// contract is documented on every call site it applies to.
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -43,6 +55,14 @@
 namespace py = pybind11;
 
 namespace {
+
+// decode_frame_into/decode_access_unit_into's own `out` sizing contract (roadmap AP6) - see
+// ac3::FrameDecoder::decode_frame_into and ac3::Eac3Decoder::decode_access_unit_into's doc
+// comments ("six covers every AC-3 layout" / "16 covers §E3.8.2's cap"). Exposed to Python as
+// ac3.MAX_AC3_CHANNELS/ac3.eac3.MAX_RENDER_CHANNELS below so a caller doesn't have to hardcode
+// them.
+constexpr std::size_t kMaxAc3Channels = 6;
+constexpr std::size_t kMaxEac3RenderChannels = 16;
 
 // --- kwargs-constructible plain config structs ------------------------------
 // Every EncoderConfig/AtmosConfig/DecoderConfig/Profile/HeavyConfig/Position/ObjectPlacement
@@ -123,6 +143,58 @@ std::vector<std::byte> to_bytes(const py::buffer& buf) {
     }
     return out;
 }
+
+//
+// Builds spans directly over each array's own buffer instead of copying into an intermediate
+// std::vector<float> the way the pre-AP6 extract_channels() did - genuinely zero-copy when the
+// caller already passed a contiguous float32 array or 2-D block; array::forcecast still copies
+// when dtype/layout force it, exactly as before, just once instead of twice. Owning py::array_t
+// handles (not the arrays' own data) so this stays valid across a gil_scoped_release block - see
+// this file's header comment.
+struct ChannelViews {
+    std::vector<py::array_t<float, py::array::c_style | py::array::forcecast>> owners;
+    std::vector<std::span<const float>> spans;
+};
+
+ChannelViews extract_channel_views(const py::object& channels, std::size_t expected_len) {
+    ChannelViews out;
+    if (py::isinstance<py::array>(channels) && py::cast<py::array>(channels).ndim() == 2) {
+        py::array_t<float, py::array::c_style | py::array::forcecast> arr(channels);
+        const auto n_channels = static_cast<std::size_t>(arr.shape(0));
+        const auto n_samples = static_cast<std::size_t>(arr.shape(1));
+        if (expected_len != 0 && n_samples != expected_len) {
+            throw py::value_error("expected " + std::to_string(expected_len) +
+                                  " samples per channel (ac3.SAMPLES_PER_FRAME), got " +
+                                  std::to_string(n_samples));
+        }
+        out.spans.reserve(n_channels);
+        for (std::size_t ch = 0; ch < n_channels; ++ch) {
+            out.spans.emplace_back(arr.data(static_cast<py::ssize_t>(ch), 0), n_samples);
+        }
+        out.owners.push_back(std::move(arr));
+        return out;
+    }
+
+    const auto seq = py::reinterpret_borrow<py::sequence>(channels);
+    const auto n = static_cast<std::size_t>(py::len(seq));
+    out.owners.reserve(n);
+    out.spans.reserve(n);
+    for (const auto& item : seq) {
+        py::array_t<float, py::array::c_style | py::array::forcecast> arr(item);
+        if (arr.ndim() != 1) {
+            throw py::value_error("each channel must be a 1-D array");
+        }
+        const auto len = static_cast<std::size_t>(arr.shape(0));
+        if (expected_len != 0 && len != expected_len) {
+            throw py::value_error("each channel must have exactly " + std::to_string(expected_len) +
+                                   " samples (ac3.SAMPLES_PER_FRAME)");
+        }
+        out.spans.emplace_back(arr.data(), len);
+        out.owners.push_back(std::move(arr));
+    }
+    return out;
+}
+
 
 // --- scan() plumbing ----------------------------------------------------------
 //
@@ -240,49 +312,114 @@ ac3::io::ScannedStream timing_view(const ScanResult& s) {
 // LFE last - see docs/library/index.md's own "Channel order" convention). expected_len == 0
 // skips the length check (used nowhere today, kept for the one call site that legitimately has
 // no fixed length).
-std::vector<std::vector<float>> extract_channels(const py::sequence& channels,
-                                                 std::size_t expected_len) {
-    std::vector<std::vector<float>> out;
-    out.reserve(static_cast<std::size_t>(py::len(channels)));
-    for (const auto& item : channels) {
-        py::array_t<float, py::array::c_style | py::array::forcecast> arr(item);
-        if (arr.ndim() != 1) {
-            throw py::value_error("each channel must be a 1-D array");
-        }
-        const auto n = static_cast<std::size_t>(arr.shape(0));
-        if (expected_len != 0 && n != expected_len) {
-            throw py::value_error("each channel must have exactly " + std::to_string(expected_len) +
-                                  " samples (ac3.SAMPLES_PER_FRAME)");
-        }
-        const float* data = arr.data();
-        out.emplace_back(data, data + n);
-    }
-    return out;
-}
-
-std::vector<std::span<const float>> as_spans(const std::vector<std::vector<float>>& owned) {
-    std::vector<std::span<const float>> spans;
-    spans.reserve(owned.size());
-    for (const auto& channel : owned) {
-        spans.emplace_back(channel);
-    }
-    return spans;
-}
-
-py::array_t<float> to_ndarray(const std::vector<float>& v) {
-    py::array_t<float> arr(static_cast<py::ssize_t>(v.size()));
-    if (!v.empty()) {
-        std::memcpy(arr.mutable_data(), v.data(), v.size() * sizeof(float));
-    }
+// --- decode-direction channel views (read-only, zero-copy) -------------------
+//
+// A view over memory owned by `base` (the DecodedFrame/DecodedSubstream/DecodedAccessUnit
+// Python instance itself) - no allocation, no memcpy; base's refcount keeps the memory alive for
+// as long as the returned array does (pybind11's array(shape, ptr, base) ctor calls
+// PyArray_SetBaseObject rather than copying, exactly because base is non-null - see
+// pybind11/numpy.h). Marked non-writeable: mutating a decoder's own internal buffer through what
+// looks like an ordinary returned array would be a surprising way to corrupt decoder state.
+// Called only from property getters, always under the GIL, so no release-block concerns here.
+py::array_t<float> float_view(const std::vector<float>& v, py::handle base) {
+    py::array_t<float> arr(static_cast<py::ssize_t>(v.size()), v.data(), base);
+    arr.attr("flags").attr("writeable") = false;
     return arr;
 }
 
-py::list channels_to_list(const std::vector<std::vector<float>>& channels) {
+py::list channel_views(const std::vector<std::vector<float>>& channels, py::handle base) {
     py::list out;
     for (const auto& channel : channels) {
-        out.append(to_ndarray(channel));
+        out.append(float_view(channel, base));
     }
     return out;
+}
+
+// --- decode-direction channel views (writable, for the *_into forms) ---------
+//
+// out: either a single 2-D (n_channels, n_samples) writable float32 array, or a sequence of at
+// least min_channels 1-D writable float32 arrays, each at least min_len samples long - the
+// caller-buffer contract ac3::FrameDecoder::decode_frame_into/Eac3Decoder::decode_access_unit_into
+// document ("six covers every AC-3 layout" / "16 covers Annex E's cap", both exposed as
+// ac3.MAX_AC3_CHANNELS/ac3.eac3.MAX_RENDER_CHANNELS below) - the real channel count for THIS
+// frame is only known after decoding it, so a caller sizes for the worst case up front.
+//
+// Deliberately never uses array_t's own converting constructor here (unlike
+// extract_channel_views above): even without array::forcecast, PyArray_FromAny will still copy
+// to satisfy c_style contiguity, silently handing the decoder a throwaway buffer instead of the
+// caller's own - which would defeat the entire point of an _into call. Every check here raises
+// instead of relying on the C++ side's assert() (compiled out in release wheels) - the same
+// "validate explicitly" policy PR #409 established for channel COUNTS on the encode side,
+// extended here to dtype/contiguity/writability too.
+struct MutableChannelViews {
+    std::vector<py::array> owners;
+    std::vector<std::span<float>> spans;
+};
+
+void check_writable_float32(const py::array& arr, const std::string& what) {
+    if (!arr.dtype().equal(py::dtype::of<float>())) {
+        throw py::type_error(what + " must be float32");
+    }
+    if ((arr.flags() & py::array::c_style) == 0) {
+        throw py::value_error(what + " must be C-contiguous");
+    }
+    if (!arr.writeable()) {
+        throw py::value_error(what + " must be writeable");
+    }
+}
+
+MutableChannelViews extract_out_views(const py::object& out, std::size_t min_channels,
+                                      std::size_t min_len) {
+    MutableChannelViews result;
+    if (py::isinstance<py::array>(out) && py::cast<py::array>(out).ndim() == 2) {
+        auto arr = py::cast<py::array>(out);
+        check_writable_float32(arr, "out");
+        const auto n_channels = static_cast<std::size_t>(arr.shape(0));
+        const auto n_samples = static_cast<std::size_t>(arr.shape(1));
+        if (n_channels < min_channels) {
+            throw py::value_error("out must provide at least " + std::to_string(min_channels) +
+                                  " channel buffers, got " + std::to_string(n_channels));
+        }
+        if (n_samples < min_len) {
+            throw py::value_error("out's channel buffers must each hold at least " +
+                                  std::to_string(min_len) + " samples, got " +
+                                  std::to_string(n_samples));
+        }
+        auto* base = static_cast<float*>(arr.mutable_data());
+        result.spans.reserve(n_channels);
+        for (std::size_t ch = 0; ch < n_channels; ++ch) {
+            result.spans.emplace_back(base + ch * n_samples, n_samples);
+        }
+        result.owners.push_back(std::move(arr));
+        return result;
+    }
+
+    const auto seq = py::reinterpret_borrow<py::sequence>(out);
+    const auto n = static_cast<std::size_t>(py::len(seq));
+    if (n < min_channels) {
+        throw py::value_error("out must provide at least " + std::to_string(min_channels) +
+                              " channel buffers, got " + std::to_string(n));
+    }
+    result.owners.reserve(n);
+    result.spans.reserve(n);
+    for (const auto& item : seq) {
+        if (!py::isinstance<py::array>(item)) {
+            throw py::type_error("each element of out must be a numpy array");
+        }
+        auto arr = py::cast<py::array>(item);
+        if (arr.ndim() != 1) {
+            throw py::value_error("each element of out must be a 1-D array");
+        }
+        check_writable_float32(arr, "each element of out");
+        const auto len = static_cast<std::size_t>(arr.shape(0));
+        if (len < min_len) {
+            throw py::value_error("each element of out must hold at least " +
+                                  std::to_string(min_len) + " samples, got " + std::to_string(len));
+        }
+        result.spans.emplace_back(static_cast<float*>(arr.mutable_data()), len);
+        result.owners.push_back(std::move(arr));
+    }
+    return result;
 }
 
 std::vector<std::uint8_t> to_vec(const std::array<std::uint8_t, ac3::kBlocksPerFrame>& a) {
@@ -380,6 +517,8 @@ PYBIND11_MODULE(_ac3forge, m) {
     m.attr("SAMPLES_PER_FRAME") = ac3::kSamplesPerFrame;
     m.attr("BLOCKS_PER_FRAME") = ac3::kBlocksPerFrame;
     m.attr("TRANSFORM_DELAY_SAMPLES") = ac3::kTransformDelaySamples;
+    // FrameDecoder.decode_frame_into's own `out` sizing floor - see extract_out_views above.
+    m.attr("MAX_AC3_CHANNELS") = kMaxAc3Channels;
 
     // --- exceptions ----------------------------------------------------------
     // Defined here (rather than pure-Python subclasses of RuntimeError) so the extension owns
@@ -879,19 +1018,17 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def(py::init<const ac3::EncoderConfig&>(), py::arg("config"))
         .def(
             "encode_frame",
-            [](ac3::FrameEncoder& self, const py::sequence& channels) {
-                auto owned =
-                    extract_channels(channels, static_cast<std::size_t>(ac3::kSamplesPerFrame));
-                if (owned.size() != static_cast<std::size_t>(self.channel_count())) {
+            [](ac3::FrameEncoder& self, const py::object& channels) {
+                auto views = extract_channel_views(channels, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                if (views.spans.size() != static_cast<std::size_t>(self.channel_count())) {
                     throw py::value_error("expected " + std::to_string(self.channel_count()) +
                                           " channels (self.channel_count), got " +
-                                          std::to_string(owned.size()));
+                                          std::to_string(views.spans.size()));
                 }
                 std::vector<std::byte> bytes;
                 {
                     py::gil_scoped_release release;
-                    auto spans = as_spans(owned);
-                    auto result = self.encode_frame(spans);
+                    auto result = self.encode_frame(views.spans);
                     if (!result) {
                         throw EncodeFailure(result.error());
                     }
@@ -900,8 +1037,11 @@ PYBIND11_MODULE(_ac3forge, m) {
                 return py::bytes(reinterpret_cast<const char*>(bytes.data()), bytes.size());
             },
             py::arg("channels"),
-            "channels: a sequence of 1-D float arrays, ac3.SAMPLES_PER_FRAME samples each, AC-3 "
-            "channel order (LFE last). Returns one syncframe as bytes.")
+            "channels: a 2-D (n_channels, ac3.SAMPLES_PER_FRAME) array, or a sequence of 1-D "
+            "float arrays of that length - AC-3 channel order (LFE last). Zero-copy when the "
+            "array(s) are already contiguous float32; don't mutate them from another thread "
+            "while this call is in flight (the GIL is released for the encode itself). Returns "
+            "one syncframe as bytes.")
         .def_property_readonly("config", &ac3::FrameEncoder::config)
         .def_property_readonly("channel_count", &ac3::FrameEncoder::channel_count)
         .def_property_readonly("latency", &ac3::FrameEncoder::latency)
@@ -1016,14 +1156,13 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_readonly("compr", &ac3::DecodedFrame::compr)
         .def_readonly("dialnorm2", &ac3::DecodedFrame::dialnorm2)
         .def_readonly("compr2", &ac3::DecodedFrame::compr2)
-        .def_property_readonly("dynrng",
-                               [](const ac3::DecodedFrame& f) { return to_vec(f.dynrng); })
-        .def_property_readonly("dynrng2",
-                               [](const ac3::DecodedFrame& f) { return to_vec(f.dynrng2); })
-        .def_property_readonly("blksw",
-                               [](const ac3::DecodedFrame& f) { return blksw_to_list(f.blksw); })
-        .def_property_readonly(
-            "channels", [](const ac3::DecodedFrame& f) { return channels_to_list(f.channels); })
+        .def_property_readonly("dynrng", [](const ac3::DecodedFrame& f) { return to_vec(f.dynrng); })
+        .def_property_readonly("dynrng2", [](const ac3::DecodedFrame& f) { return to_vec(f.dynrng2); })
+        .def_property_readonly("blksw", [](const ac3::DecodedFrame& f) { return blksw_to_list(f.blksw); })
+        .def_property_readonly("channels",
+                                [](py::object self) {
+                                    return channel_views(self.cast<const ac3::DecodedFrame&>().channels, self);
+                                })
         .def_property_readonly("channel_labels", [](const ac3::DecodedFrame& f) {
             return ac3_channel_labels(f.acmod, f.lfe);
         });
@@ -1042,17 +1181,19 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_readonly("chanmap", &ac3::DecodedSubstream::chanmap)
         .def_readonly("last_dependent", &ac3::DecodedSubstream::last_dependent)
         .def_readonly("object_metadata", &ac3::DecodedSubstream::object_metadata)
-        .def_property_readonly("dynrng",
-                               [](const ac3::DecodedSubstream& s) { return to_vec(s.dynrng); })
-        .def_property_readonly("dynrng2",
-                               [](const ac3::DecodedSubstream& s) { return to_vec(s.dynrng2); })
-        .def_property_readonly(
-            "blksw", [](const ac3::DecodedSubstream& s) { return blksw_to_list(s.blksw); })
-        .def_property_readonly(
-            "channels", [](const ac3::DecodedSubstream& s) { return channels_to_list(s.channels); })
+        .def_property_readonly("dynrng", [](const ac3::DecodedSubstream& s) { return to_vec(s.dynrng); })
+        .def_property_readonly("dynrng2", [](const ac3::DecodedSubstream& s) { return to_vec(s.dynrng2); })
+        .def_property_readonly("blksw",
+                                [](const ac3::DecodedSubstream& s) { return blksw_to_list(s.blksw); })
+        .def_property_readonly("channels",
+                                [](py::object self) {
+                                    return channel_views(self.cast<const ac3::DecodedSubstream&>().channels, self);
+                                })
         .def_property_readonly(
             "object_audio",
-            [](const ac3::DecodedSubstream& s) { return channels_to_list(s.object_audio); })
+            [](py::object self) {
+                return channel_views(self.cast<const ac3::DecodedSubstream&>().object_audio, self);
+            })
         .def_property_readonly("channel_labels", [](const ac3::DecodedSubstream& s) {
             return chanmap_labels(s.location_map());
         });
@@ -1069,10 +1210,13 @@ PYBIND11_MODULE(_ac3forge, m) {
                                [](const ac3::DecodedAccessUnit& u) { return to_vec(u.dynrng); })
         .def_property_readonly(
             "object_audio",
-            [](const ac3::DecodedAccessUnit& u) { return channels_to_list(u.object_audio); })
-        .def_property_readonly(
-            "channels",
-            [](const ac3::DecodedAccessUnit& u) { return channels_to_list(u.channels); })
+            [](py::object self) {
+                return channel_views(self.cast<const ac3::DecodedAccessUnit&>().object_audio, self);
+            })
+        .def_property_readonly("channels",
+                                [](py::object self) {
+                                    return channel_views(self.cast<const ac3::DecodedAccessUnit&>().channels, self);
+                                })
         .def_property_readonly("channel_labels", [](const ac3::DecodedAccessUnit& u) {
             // Dual mono has no Table E2.5 layout at all (DecodedAccessUnit::layout's own
             // comment) - fall back to the plain AC-3 acmod labels, same as
@@ -1106,6 +1250,29 @@ PYBIND11_MODULE(_ac3forge, m) {
                 return result;
             },
             py::arg("frame"), "Decode exactly one AC-3 syncframe")
+        .def(
+            "decode_frame_into",
+            [](ac3::FrameDecoder& self, const py::buffer& frame, const py::object& out) {
+                const auto bytes = to_bytes(frame);
+                auto views = extract_out_views(out, kMaxAc3Channels,
+                                               static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                ac3::DecodedFrame result;
+                {
+                    py::gil_scoped_release release;
+                    auto decoded = self.decode_frame_into(bytes, views.spans);
+                    if (!decoded) {
+                        throw DecodeFailure(decoded.error());
+                    }
+                    result = std::move(*decoded);
+                }
+                return result;
+            },
+            py::arg("frame"), py::arg("out"),
+            "As decode_frame, but PCM lands in `out` (a (n, SAMPLES_PER_FRAME) array, or a "
+            "sequence of at least ac3.MAX_AC3_CHANNELS 1-D float32 C-contiguous writeable arrays "
+            "of that length) instead of being freshly allocated - the returned DecodedFrame's "
+            "own .channels stays empty. Don't touch `out` from another thread until this call "
+            "returns.")
         .def_property_readonly(
             "latency_samples",
             [](const ac3::FrameDecoder&) { return ac3::FrameDecoder::latency_samples(); },
@@ -1150,6 +1317,31 @@ PYBIND11_MODULE(_ac3forge, m) {
             py::arg("unit"),
             "Decode one access unit (independent substream + dependents, as split_access_units "
             "delimits them). Same None convention as decode_substream, for the same reason.")
+        .def(
+            "decode_access_unit_into",
+            [](ac3::Eac3Decoder& self, const py::buffer& unit, const py::object& out) -> py::object {
+                const auto bytes = to_bytes(unit);
+                auto views = extract_out_views(out, kMaxEac3RenderChannels,
+                                               static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                std::optional<ac3::DecodedAccessUnit> result;
+                {
+                    py::gil_scoped_release release;
+                    auto decoded = self.decode_access_unit_into(bytes, views.spans);
+                    if (!decoded) {
+                        throw DecodeFailure(decoded.error());
+                    }
+                    result = std::move(*decoded);
+                }
+                return result ? py::cast(*result) : py::none();
+            },
+            py::arg("unit"), py::arg("out"),
+            "As decode_access_unit, but the rendered programme's PCM lands in `out` (a (n, "
+            "SAMPLES_PER_FRAME) array, or a sequence of at least eac3.MAX_RENDER_CHANNELS 1-D "
+            "float32 C-contiguous writeable arrays of that length) instead of being freshly "
+            "allocated - the returned DecodedAccessUnit's own .channels stays empty "
+            "(.object_audio, an Atmos bed's own separately-carried channels, stays by value). "
+            "Same None convention as decode_access_unit; on that outcome `out` is left "
+            "untouched. Don't touch `out` from another thread until this call returns.")
         .def("flush",
              [](ac3::Eac3Decoder& self) {
                  std::vector<ac3::DecodedSubstream> out;
@@ -1189,21 +1381,19 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def(py::init<const ac3::oba::AtmosConfig&, int>(), py::arg("config"), py::arg("objects"))
         .def(
             "encode_frame",
-            [](ac3::oba::AtmosEncoder& self, const py::sequence& objects,
+            [](ac3::oba::AtmosEncoder& self, const py::object& objects,
                std::vector<ac3::oba::ObjectPlacement> placement) {
-                auto owned =
-                    extract_channels(objects, static_cast<std::size_t>(ac3::kSamplesPerFrame));
-                if (owned.size() != static_cast<std::size_t>(self.dynamic_object_count())) {
-                    throw py::value_error("expected " +
-                                          std::to_string(self.dynamic_object_count()) +
+                auto views =
+                    extract_channel_views(objects, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                if (views.spans.size() != static_cast<std::size_t>(self.dynamic_object_count())) {
+                    throw py::value_error("expected " + std::to_string(self.dynamic_object_count()) +
                                           " objects (self.dynamic_object_count), got " +
-                                          std::to_string(owned.size()));
+                                          std::to_string(views.spans.size()));
                 }
                 std::vector<std::byte> bytes;
                 {
                     py::gil_scoped_release release;
-                    auto spans = as_spans(owned);
-                    auto result = self.encode_frame(spans, placement);
+                    auto result = self.encode_frame(views.spans, placement);
                     if (!result) {
                         throw EncodeFailure(result.error());
                     }
@@ -1212,11 +1402,10 @@ PYBIND11_MODULE(_ac3forge, m) {
                 return py::bytes(reinterpret_cast<const char*>(bytes.data()), bytes.size());
             },
             py::arg("objects"), py::arg("placement"),
-            "objects: one mono ac3.SAMPLES_PER_FRAME array per object, in construction order. "
-            "placement: one ac3.ObjectPlacement per object. Returns one E-AC-3 access unit as "
-            "bytes.")
-        .def_property_readonly("dynamic_object_count",
-                               &ac3::oba::AtmosEncoder::dynamic_object_count)
+            "objects: a 2-D (n_objects, ac3.SAMPLES_PER_FRAME) array, or a sequence of that many "
+            "mono 1-D arrays of that length, in construction order. placement: one "
+            "ac3.ObjectPlacement per object. Returns one E-AC-3 access unit as bytes.")
+        .def_property_readonly("dynamic_object_count", &ac3::oba::AtmosEncoder::dynamic_object_count)
         .def_property_readonly("program", &ac3::oba::AtmosEncoder::program)
         .def_property_readonly(
             "latency", &ac3::oba::AtmosEncoder::latency,
@@ -1238,6 +1427,9 @@ PYBIND11_MODULE(_ac3forge, m) {
         "eac3",
         "ac3::eac3::FrameEncoder/AccessUnitEncoder - E-AC-3 encoding, including wide "
         "layouts past 5.1 via dependent substreams.");
+
+    // Eac3Decoder.decode_access_unit_into's own `out` sizing floor - see extract_out_views above.
+    eac3.attr("MAX_RENDER_CHANNELS") = kMaxEac3RenderChannels;
 
     // ac3.StreamType (registered above, shared with DecodedSubstream.strmtyp) is reused here
     // rather than re-bound - pybind11 has one C++-type-to-Python-type mapping process-wide, and a
@@ -1350,22 +1542,21 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def(py::init<const ac3::eac3::FrameConfig&>(), py::arg("config"))
         .def(
             "encode_frame",
-            [](ac3::eac3::FrameEncoder& self, const py::sequence& channels,
+            [](ac3::eac3::FrameEncoder& self, const py::object& channels,
                std::optional<ac3::eac3::FrameMetadata> metadata, const py::buffer& aux) {
-                auto owned =
-                    extract_channels(channels, static_cast<std::size_t>(self.samples_per_frame()));
-                if (owned.size() != static_cast<std::size_t>(self.channel_count())) {
+                auto views =
+                    extract_channel_views(channels, static_cast<std::size_t>(self.samples_per_frame()));
+                if (views.spans.size() != static_cast<std::size_t>(self.channel_count())) {
                     throw py::value_error("expected " + std::to_string(self.channel_count()) +
                                           " channels (self.channel_count), got " +
-                                          std::to_string(owned.size()));
+                                          std::to_string(views.spans.size()));
                 }
                 const auto aux_bytes = to_bytes(aux);
                 std::vector<std::byte> bytes;
                 {
                     py::gil_scoped_release release;
-                    auto spans = as_spans(owned);
-                    auto result = metadata ? self.encode_frame(spans, *metadata, aux_bytes)
-                                           : self.encode_frame(spans, aux_bytes);
+                    auto result = metadata ? self.encode_frame(views.spans, *metadata, aux_bytes)
+                                            : self.encode_frame(views.spans, aux_bytes);
                     if (!result) {
                         throw EncodeFailure(result.error());
                     }
@@ -1374,11 +1565,11 @@ PYBIND11_MODULE(_ac3forge, m) {
                 return py::bytes(reinterpret_cast<const char*>(bytes.data()), bytes.size());
             },
             py::arg("channels"), py::arg("metadata") = py::none(), py::arg("aux") = py::bytes(),
-            "channels: a sequence of 1-D float arrays, self.samples_per_frame samples each, AC-3 "
-            "channel order (LFE last). metadata: explicit §7.7 words (FrameMetadata) in place of "
-            "measuring them from `channels` - AccessUnitEncoder needs this so every substream of "
-            "one programme agrees; None measures internally. aux: a pre-built EMDF container. "
-            "Returns one syncframe as bytes.")
+            "channels: a 2-D (n_channels, self.samples_per_frame) array, or a sequence of 1-D "
+            "float arrays of that length - AC-3 channel order (LFE last). metadata: explicit "
+            "§7.7 words (FrameMetadata) in place of measuring them from `channels` - "
+            "AccessUnitEncoder needs this so every substream of one programme agrees; None "
+            "measures internally. aux: a pre-built EMDF container. Returns one syncframe as bytes.")
         .def_property_readonly("config", &ac3::eac3::FrameEncoder::config)
         .def_property_readonly("channel_count", &ac3::eac3::FrameEncoder::channel_count)
         .def_property_readonly("samples_per_frame", &ac3::eac3::FrameEncoder::samples_per_frame)
@@ -1418,21 +1609,20 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def(py::init<const ac3::eac3::AccessUnitConfig&>(), py::arg("config"))
         .def(
             "encode_access_unit",
-            [](ac3::eac3::AccessUnitEncoder& self, const py::sequence& channels,
+            [](ac3::eac3::AccessUnitEncoder& self, const py::object& channels,
                const py::buffer& aux) {
-                auto owned =
-                    extract_channels(channels, static_cast<std::size_t>(ac3::kSamplesPerFrame));
-                if (owned.size() != static_cast<std::size_t>(self.channel_count())) {
+                auto views =
+                    extract_channel_views(channels, static_cast<std::size_t>(ac3::kSamplesPerFrame));
+                if (views.spans.size() != static_cast<std::size_t>(self.channel_count())) {
                     throw py::value_error("expected " + std::to_string(self.channel_count()) +
                                           " channels (self.channel_count), got " +
-                                          std::to_string(owned.size()));
+                                          std::to_string(views.spans.size()));
                 }
                 const auto aux_bytes = to_bytes(aux);
                 ac3::eac3::AccessUnit result;
                 {
                     py::gil_scoped_release release;
-                    auto spans = as_spans(owned);
-                    auto encoded = self.encode_access_unit(spans, aux_bytes);
+                    auto encoded = self.encode_access_unit(views.spans, aux_bytes);
                     if (!encoded) {
                         throw EncodeFailure(encoded.error());
                     }

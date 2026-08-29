@@ -105,23 +105,46 @@ jmethodID g_mid_open = nullptr;                 // boolean open(int, boolean)
 jmethodID g_mid_submit = nullptr;               // int submit(ByteBuffer, int)
 jmethodID g_mid_close = nullptr;                // void close()
 
-// Attaches the calling thread to the JVM if it is not already, returning the
-// JNIEnv and whether THIS call attached it (so the caller knows whether to
-// detach when done - only threads WE attached should ever be detached; the
-// thread JNI_OnLoad/registerBridge run on is already attached by the JVM).
-JNIEnv* attach_current_thread(bool& did_attach) {
-    did_attach = false;
+// Detaches a thread WE attached, when that thread exits.
+//
+// A thread that attached to the JVM must detach before it exits or the VM
+// aborts, which is what the previous attach-then-detach-per-call shape was
+// really guarding against. The cost of that shape landed on the worst
+// possible thread: submit() is called once per 32ms audio frame from the
+// encode loop's real-time worker, so a deadline thread registered itself with
+// ART, walked its thread list, and unregistered again, every single frame,
+// for the life of the stream.
+//
+// A thread_local with a destructor gets the same guarantee for free: it is
+// constructed on the call that actually attaches, and its destructor runs
+// when the thread exits, however it exits.
+struct JvmThreadAttachment {
+    bool attached = false;
+    ~JvmThreadAttachment() {
+        if (attached && g_vm != nullptr) {
+            g_vm->DetachCurrentThread();
+        }
+    }
+};
+
+// The JNIEnv for the calling thread, attaching it once if needed. Callers do
+// no detach bookkeeping - see JvmThreadAttachment.
+JNIEnv* jni_env() {
     if (g_vm == nullptr) {
         return nullptr;
     }
     JNIEnv* env = nullptr;
+    // Already attached: either a JVM-owned thread (the one JNI_OnLoad and
+    // registerBridge run on), or one this function attached earlier.
     if (g_vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_OK) {
         return env;
     }
+    // Constructed on this path only, which is exactly the path that attaches.
+    thread_local JvmThreadAttachment attachment;
     if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) {
         return nullptr;
     }
-    did_attach = true;
+    attachment.attached = true;
     return env;
 }
 
@@ -170,8 +193,7 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
                             "NativeBridge.registerPassthroughBridge run?");
         return std::unexpected(PassthroughError::kNoBackend);
     }
-    bool did_attach = false;
-    JNIEnv* env = attach_current_thread(did_attach);
+    JNIEnv* env = jni_env();
     if (env == nullptr) {
         return std::unexpected(PassthroughError::kComFailure);
     }
@@ -216,9 +238,6 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
         devices.push_back(android_audio::make_render_device_info(ac3_ok, eac3_ok, pcm_ok));
     }
 
-    if (did_attach) {
-        g_vm->DetachCurrentThread();
-    }
     return devices;
 }
 
@@ -235,6 +254,11 @@ struct PassthroughSink::Impl {
     std::vector<std::vector<std::byte>> native_storage{kPoolSize};
     jobject direct_buffers[kPoolSize] = {};
     int next_slot = 0;
+
+    // How many bytes of the burst currently being submitted the AudioTrack
+    // has already accepted across earlier, partial attempts. See submit().
+    std::size_t pending_offset = 0;
+    std::uint64_t partial_writes = 0;
 
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
@@ -273,8 +297,7 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
     if (!running() || burst.size() != impl_->burst_bytes || !bridge_ready()) {
         return false;
     }
-    bool did_attach = false;
-    JNIEnv* env = attach_current_thread(did_attach);
+    JNIEnv* env = jni_env();
     if (env == nullptr) {
         return false;
     }
@@ -282,34 +305,65 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
     bool ok = false;
     {
         std::lock_guard lock(g_bridge_mutex);
+        // A short (but non-negative) write means the AudioTrack accepted
+        // SOME bytes without accepting the whole burst. That is the
+        // documented behaviour of WRITE_NON_BLOCKING - it queues as much as
+        // fits and tells you how much - and it is reachable here whenever the
+        // track has room for part of a burst but not all of it.
+        //
+        // This used to be treated as a plain failure and the caller's retry
+        // loop resubmitted the WHOLE burst, splicing the already-accepted
+        // bytes into the stream a second time: a corrupt IEC 61937 burst, and
+        // a receiver that mutes or glitches rather than an error anyone could
+        // trace. (The comment that used to sit here excused it on the grounds
+        // that "that space is inspected by the Kotlin side before calling
+        // write" - PassthroughBridge.submit does no such inspection; it calls
+        // write directly.)
+        //
+        // So a partial write is now resumed from rather than restarted:
+        // pending_offset remembers how much of THIS burst is already queued,
+        // and only the remainder is staged and offered on the next attempt.
+        // The caller keeps passing the same full burst, which is what makes
+        // this safe to fix entirely on this side of the interface - no JNI
+        // signature change, no change to what a caller has to know.
+        const std::size_t offset = impl_->pending_offset;
+        const std::size_t remaining = burst.size() - offset;
+
         const int slot = impl_->next_slot;
         impl_->next_slot = (impl_->next_slot + 1) % Impl::kPoolSize;
         auto& storage = impl_->native_storage[static_cast<std::size_t>(slot)];
-        std::memcpy(storage.data(), burst.data(), burst.size());
+        std::memcpy(storage.data(), burst.data() + offset, remaining);
 
         const jint written = env->CallIntMethod(g_bridge, g_mid_submit,
                                                 impl_->direct_buffers[slot],
-                                                static_cast<jint>(burst.size()));
+                                                static_cast<jint>(remaining));
         if (env->ExceptionCheck() != 0) {
             env->ExceptionClear();
-        } else if (written == static_cast<jint>(burst.size())) {
+        } else if (written == static_cast<jint>(remaining)) {
             ok = true;
+            impl_->pending_offset = 0;
+        } else if (written > 0) {
+            // Partial: keep what was accepted and resume from there. Not an
+            // underrun - the track took data, it just could not take all of
+            // it this instant.
+            impl_->pending_offset = offset + static_cast<std::size_t>(written);
+            if (impl_->partial_writes++ == 0) {
+                __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                                    "AudioTrack accepted a partial burst (%d of %zu bytes) - "
+                                    "resuming from the offset rather than resubmitting",
+                                    static_cast<int>(written), remaining);
+            }
         } else if (written < 0) {
+            // A hard AudioTrack error. pending_offset is deliberately NOT
+            // reset: if the track recovers, resuming is still correct, and
+            // duplicating already-queued bytes is worse than a short burst.
             impl_->underruns.fetch_add(1, std::memory_order_relaxed);
         }
-        // A short (but non-negative) write means the AudioTrack accepted
-        // some bytes without accepting the whole burst - AudioTrack.write
-        // in non-blocking mode is documented not to do this for a track
-        // that is still open (it caps at the space actually available and
-        // that space is inspected by the Kotlin side before calling
-        // write), so this branch is deliberately treated the same as a
-        // hard failure rather than as a partial success to resume from -
-        // resubmitting the whole burst is simpler and correct either way.
+        // written == 0 is the ordinary "buffer full" case: nothing was
+        // accepted, so there is nothing to remember and the caller simply
+        // retries.
     }
 
-    if (did_attach) {
-        g_vm->DetachCurrentThread();
-    }
     if (ok) {
         impl_->submitted.fetch_add(1, std::memory_order_relaxed);
         impl_->rendered.fetch_add(1, std::memory_order_relaxed);
@@ -321,11 +375,13 @@ void PassthroughSink::stop() {
     if (!impl_->running.exchange(false, std::memory_order_acq_rel)) {
         return;
     }
+    // Whatever was half-queued dies with the track; a later start() must not
+    // resume into a burst nothing is waiting for.
+    impl_->pending_offset = 0;
     if (!bridge_ready()) {
         return;
     }
-    bool did_attach = false;
-    JNIEnv* env = attach_current_thread(did_attach);
+    JNIEnv* env = jni_env();
     if (env == nullptr) {
         return;
     }
@@ -342,9 +398,6 @@ void PassthroughSink::stop() {
             }
         }
     }
-    if (did_attach) {
-        g_vm->DetachCurrentThread();
-    }
 }
 
 std::expected<void, PassthroughError> PassthroughSink::start(const std::string& /*device_id*/,
@@ -360,13 +413,16 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (!bridge_ready()) {
         return std::unexpected(PassthroughError::kNoBackend);
     }
-    bool did_attach = false;
-    JNIEnv* env = attach_current_thread(did_attach);
+    JNIEnv* env = jni_env();
     if (env == nullptr) {
         return std::unexpected(PassthroughError::kComFailure);
     }
 
     impl_->burst_bytes = android_audio::burst_bytes_for(format);
+    // No burst is half-queued on a track that does not exist yet - see
+    // submit()'s partial-write handling for what this tracks.
+    impl_->pending_offset = 0;
+    impl_->partial_writes = 0;
     bool opened = false;
     {
         std::lock_guard lock(g_bridge_mutex);
@@ -382,9 +438,6 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
                 for (int j = 0; j < i; ++j) {
                     env->DeleteGlobalRef(impl_->direct_buffers[j]);
                     impl_->direct_buffers[j] = nullptr;
-                }
-                if (did_attach) {
-                    g_vm->DetachCurrentThread();
                 }
                 return std::unexpected(PassthroughError::kComFailure);
             }
@@ -406,9 +459,6 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         }
     }
 
-    if (did_attach) {
-        g_vm->DetachCurrentThread();
-    }
     if (!opened) {
         __android_log_print(ANDROID_LOG_WARN, kLogTag,
                             "start: PassthroughBridge.open(%u Hz carrier, eac3=%d) returned "
@@ -434,7 +484,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
 //
 // JNI_OnLoad is defined here, not in the app's own native code
 // (apps/android/app/src/main/cpp/), because capturing the JavaVM is
-// ac3::audio's own concern (attach_current_thread() above needs it) and a
+// ac3::audio's own concern (jni_env() above needs it) and a
 // process may load exactly one JNI_OnLoad per shared object - this is the
 // only translation unit in ac3forge_jni.so that needs it.
 

@@ -2,22 +2,25 @@
 #
 # Packaging manifest consistency guard.
 #
-# This does NOT check "does packaging/ point at the latest release tag" -
-# docs/releasing.md's post-release checklist documents the four packaging
-# bumps as their own follow-up step, done asynchronously after a release
-# goes out (sometimes days later, in a separate PR), not atomically with the
-# tag. A "must match the latest tag" gate would therefore fail by design in
-# the normal gap between tagging and getting around to the bump PRs - noise,
-# not signal.
+# Two things, at two different severities:
 #
-# What this DOES catch: internal inconsistency within a manifest, the kind a
-# manual copy-forward-and-edit bump (see docs/releasing.md's per-ecosystem
-# steps) can introduce - a version string updated in one file of a set but
-# not another, a hash of the wrong length, a URL that does not name the
-# version it is filed under.
+# 1. Internal inconsistency within a manifest (hard failure, exit 1): the kind a manual
+#    copy-forward-and-edit bump (see docs/releasing.md's per-ecosystem steps) can
+#    introduce - a version string updated in one file of a set but not another, a hash
+#    of the wrong length, a URL that does not name the version it is filed under.
+# 2. A latest-tag advisory (::warning::, never fails the check): does each manifest
+#    actually point at the latest release. This was deliberately left out entirely
+#    until roadmap DR2 (.github/workflows/manifest-bump.yml) automated the bump - before
+#    that, the four packaging bumps were a manual follow-up step done asynchronously
+#    after a release went out (sometimes days later, in a separate PR), not atomically
+#    with the tag, so a hard "must match the latest tag" gate would have failed by
+#    design in the normal gap between tagging and getting around to the bump - noise,
+#    not signal. Automating the bump's *start* does not close that gap outright (merging
+#    the PR manifest-bump.yml opens is still a separate, reviewed step), which is why
+#    this stays advisory rather than becoming the same hard gate.
 #
 # Usage:  ./tools/checks/check_packaging_versions.sh [-r <repo-root>]
-# Exit:   0 = clean, 1 = inconsistency found.
+# Exit:   0 = clean (an advisory warning does not affect this), 1 = inconsistency found.
 
 set -euo pipefail
 
@@ -138,6 +141,8 @@ fi
 # prebuilt .dmg) - see docs/releasing.md#homebrew-formula-and-cask. ---
 formula="$root/packaging/homebrew/Formula/ac3forge.rb"
 cask="$root/packaging/homebrew/Casks/ac3gui.rb"
+formula_version=""
+cask_version=""
 if [ -f "$formula" ] && [ -f "$cask" ]; then
     formula_version="$(grep -m1 -oE 'archive/refs/tags/v[0-9][^"'"'"']*' "$formula" | sed -E 's#archive/refs/tags/v##; s/\.tar\.gz$//')"
     cask_version="$(grep -m1 -oE '^\s*version\s+"[^"]+"' "$cask" | sed -E 's/^\s*version\s+"([^"]+)"/\1/')"
@@ -157,6 +162,120 @@ if [ -f "$portfile" ]; then
     fi
 else
     note "vcpkg portfile not found: $portfile"
+fi
+
+# --- licence identifier: vcpkg.json, conanfile.py, the Homebrew formula and pyproject.toml must
+# all agree on the SPDX identifier - a drift here is real legal-metadata inconsistency, not
+# cosmetic (roadmap AP7: pyproject.toml drifted to GPL-3.0-only while everything else already
+# said GPL-3.0-or-later, unnoticed until it was checked by hand). ---
+vcpkg_json="$root/packaging/vcpkg-port/ac3forge/vcpkg.json"
+conanfile="$root/packaging/conan/conanfile.py"
+pyproject="$root/python/pyproject.toml"
+if [ -f "$vcpkg_json" ] && [ -f "$conanfile" ] && [ -f "$formula" ] && [ -f "$pyproject" ]; then
+    vcpkg_license="$(grep -m1 '"license"' "$vcpkg_json" | sed -E 's/.*"license":[[:space:]]*"([^"]*)".*/\1/')"
+    conan_license="$(grep -m1 '^[[:space:]]*license = ' "$conanfile" | sed -E 's/^[[:space:]]*license = "([^"]*)".*/\1/')"
+    formula_license="$(grep -m1 '^[[:space:]]*license ' "$formula" | sed -E 's/^[[:space:]]*license[[:space:]]+"([^"]*)".*/\1/')"
+    pyproject_license="$(grep -m1 '^license = ' "$pyproject" | sed -E 's/^license = "([^"]*)".*/\1/')"
+
+    if [ -n "$vcpkg_license" ]; then
+        [ "$conan_license" = "$vcpkg_license" ] || note "licence drift: packaging/conan/conanfile.py says '$conan_license', vcpkg.json says '$vcpkg_license'"
+        [ "$formula_license" = "$vcpkg_license" ] || note "licence drift: packaging/homebrew/Formula/ac3forge.rb says '$formula_license', vcpkg.json says '$vcpkg_license'"
+        [ "$pyproject_license" = "$vcpkg_license" ] || note "licence drift: python/pyproject.toml says '$pyproject_license', vcpkg.json says '$vcpkg_license'"
+    else
+        note "licence check: could not extract vcpkg.json's \"license\" field"
+    fi
+else
+    note "licence check: one or more of vcpkg.json/conanfile.py/Formula/pyproject.toml not found"
+fi
+
+# --- vcpkg feature <-> portfile.cmake parity: every feature vcpkg.json declares must be wired
+# into portfile.cmake's vcpkg_check_features() call, and vice versa - the exact class of gap
+# roadmap AP7's "capi" feature closed (a CMake option existed, a vcpkg feature didn't). Catches
+# it for any future feature too, not just this one. ---
+if [ -f "$vcpkg_json" ] && [ -f "$portfile" ]; then
+    vcpkg_features="$(awk '/"features":/{found=1; next} found' "$vcpkg_json" \
+        | grep -oE '"[a-zA-Z0-9_-]+":[[:space:]]*\{' \
+        | sed -E 's/^"([^"]+)".*/\1/' | sort -u)"
+    portfile_features="$(awk '/FEATURES/{found=1; next} found && /\)/{exit} found' "$portfile" \
+        | awk '{print $1}' | sort -u)"
+
+    missing_in_portfile="$(comm -23 <(printf '%s\n' "$vcpkg_features") <(printf '%s\n' "$portfile_features") | grep -v '^$' || true)"
+    missing_in_vcpkg_json="$(comm -13 <(printf '%s\n' "$vcpkg_features") <(printf '%s\n' "$portfile_features") | grep -v '^$' || true)"
+    [ -z "$missing_in_portfile" ] || note "vcpkg.json feature(s) not wired into portfile.cmake's vcpkg_check_features(): $(echo "$missing_in_portfile" | tr '\n' ' ')"
+    [ -z "$missing_in_vcpkg_json" ] || note "portfile.cmake's vcpkg_check_features() names feature(s) missing from vcpkg.json's \"features\": $(echo "$missing_in_vcpkg_json" | tr '\n' ' ')"
+else
+    note "vcpkg feature-parity check: vcpkg.json or portfile.cmake not found"
+fi
+
+# --- Conan option <-> generate() parity: every AC3FORGE_BUILD_<NAME>-shaped Conan option
+# (excluding shared/fPIC, which aren't component switches) must actually be wired into
+# generate()'s tc.variables[...] - same gap class as the vcpkg check above. ---
+if [ -f "$conanfile" ]; then
+    conan_options="$(awk '/^[[:space:]]*options = \{/{found=1; next} found && /^[[:space:]]*\}/{exit} found' "$conanfile" \
+        | grep -oE '"[a-zA-Z0-9_]+"' | tr -d '"' | grep -vE '^(shared|fPIC)$' | sort -u)"
+    while IFS= read -r opt; do
+        [ -n "$opt" ] || continue
+        grep -q "self\.options\.$opt" "$conanfile" \
+            || note "conanfile.py: option '$opt' has no matching AC3FORGE_BUILD_<NAME> wiring (no self.options.$opt reference found)"
+    done <<< "$conan_options"
+else
+    note "conan option-parity check: conanfile.py not found"
+fi
+
+# --- pkg-config completeness: cmake/InstallLibrary.cmake's install(TARGETS ... EXPORT ...)
+# component blocks and its ac3forge_install_pkgconfig() calls must be in 1:1 count - a future
+# component that adds one but forgets the other (roadmap AP7's original gap: no pkg-config files
+# existed for any component) fails here immediately. ---
+install_lib="$root/cmake/InstallLibrary.cmake"
+if [ -f "$install_lib" ]; then
+    export_count="$(grep -cE '^[[:space:]]*EXPORT [A-Za-z0-9]+Targets$' "$install_lib" || true)"
+    pkgconfig_count="$(grep -cE '^[[:space:]]*ac3forge_install_pkgconfig\($' "$install_lib" || true)"
+    if [ "$export_count" -ne "$pkgconfig_count" ]; then
+        note "cmake/InstallLibrary.cmake: $export_count install(TARGETS ... EXPORT ...) component block(s) but $pkgconfig_count ac3forge_install_pkgconfig() call(s) - every installed/exported component needs a matching pkg-config file"
+    fi
+else
+    note "pkg-config completeness check: cmake/InstallLibrary.cmake not found"
+fi
+
+# --- latest-tag advisory: does each manifest actually point at the latest release?
+# Advisory only (::warning::, never sets fail=1) - even with manifest-bump.yml (roadmap
+# DR2) opening the bump PR automatically right after a release, merging it is still a
+# separate, reviewed step, so a real gap between "tagged" and "all four manifests
+# updated" is expected and not itself a defect. Before that workflow existed the bump
+# was manual with no automation to prompt it at all, which is why this was deliberately
+# left out entirely - see this file's own header. Skipped, not failed, when there is no
+# `v*` tag reachable from HEAD (a shallow clone with no tags fetched, or a checkout with
+# no releases yet). ---
+latest_tag="$(git -C "$root" describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+if [ -n "$latest_tag" ]; then
+    latest_version="${latest_tag#v}"
+    advise() { echo "::warning::$1"; echo "  (advisory) $1"; }
+
+    vcpkg_json="$root/packaging/vcpkg-port/ac3forge/vcpkg.json"
+    if [ -f "$vcpkg_json" ]; then
+        v="$(grep -m1 '"version-semver"' "$vcpkg_json" | sed -E 's/.*"version-semver":[[:space:]]*"([^"]+)".*/\1/')"
+        [ "$v" = "$latest_version" ] ||
+            advise "vcpkg port is at $v, latest release is $latest_version - packaging/vcpkg-port/ac3forge/ needs a bump (docs/releasing.md#vcpkg-port)"
+    fi
+
+    if [ -f "$formula" ]; then
+        [ "$formula_version" = "$latest_version" ] ||
+            advise "Homebrew formula is at $formula_version, latest release is $latest_version - packaging/homebrew/Formula/ac3forge.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
+    fi
+    if [ -f "$cask" ]; then
+        [ "$cask_version" = "$latest_version" ] ||
+            advise "Homebrew cask is at $cask_version, latest release is $latest_version - packaging/homebrew/Casks/ac3gui.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
+    fi
+
+    if [ -f "$conandata" ] && ! grep -q "\"$latest_version\":" "$conandata"; then
+        advise "conandata.yml has no entry for $latest_version - packaging/conan/conandata.yml needs a bump (docs/releasing.md#conan-recipe)"
+    fi
+
+    winget_dir="$root/packaging/winget/manifests/i/iainchesworthlabs/ac3forge/$latest_version"
+    [ -d "$winget_dir" ] ||
+        advise "no winget manifest directory for $latest_version - packaging/winget/manifests/ needs a new version directory (docs/releasing.md#winget-manifest)"
+else
+    echo "(latest-tag advisory skipped: no v* tag reachable from HEAD)"
 fi
 
 if [ "$fail" -ne 0 ]; then

@@ -34,6 +34,7 @@
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "../adm/atmos_adm.hpp"
+#include "../adm/atmos_iab.hpp"
 
 namespace ac3cli::commands {
 
@@ -914,6 +915,112 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
                    out_sink.frames(), bitrate, source->sample_rate, in_path, out_path);
     status_println(status,
                    "  {} bed speaker feed(s) + {} dynamic object(s) + the bed's LFE = {} objects, "
+                   "JOC over a 5.1 downmix",
+                   bed_count, count - bed_count, ac3::oba::object_count(encoder.program()));
+    print_channel_summary(meter, status);
+    return kExitOk;
+}
+
+int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
+                  const Options& meta) {
+    // Same refusal, same reason as run_atmos_adm's own: an IAB file's Bed/Object channels are an
+    // arbitrary mix, not one of ac3::io::ac3_layout_for's fixed layouts - see that function's own
+    // comment above.
+    if (meta.p.measure_dialnorm) {
+        fmt::println(stderr,
+                     "error: dialnorm=auto is not supported by atmos-iab - an IAB file's Bed/"
+                     "Object channels have no single fixed layout to measure loudness against the "
+                     "way atmos-encode's WAV input does; pass dialnorm=<1..31> explicitly");
+        return kExitUsage;
+    }
+
+    auto source = ac3cli::load_iab_atmos_source(in_path);
+    if (!source) {
+        fmt::println(stderr, "error: {}: {}", in_path, source.error());
+        return kExitInput;
+    }
+
+    const auto sr = wav_sample_rate(source->sample_rate, "E-AC-3", true);
+    if (!sr) {
+        return kExitInput;
+    }
+
+    const auto count = source->channel_count();
+    if (count < 1 || count > 15) {
+        fmt::println(stderr,
+                     "error: 1 to 15 Bed/Object channels (the bed's LFE is the 16th, and TS 103 "
+                     "420 §8.3.2.2 caps the total at 16); {} resolved {} channel(s)",
+                     in_path, count);
+        return kExitInput;
+    }
+
+    ac3::oba::AtmosEncoder encoder{
+        {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm,
+         .num_bands_idx = 4, .fast_mdct = meta.fast_mdct,
+         .joc_domain = meta.joc_domain},
+        static_cast<int>(count)};
+
+    // Metered the same way run_atmos_adm meters its own bed.
+    ac3::analysis::LevelMeter meter{ac3::Acmod::k3_2, true, source->sample_rate};
+    const std::size_t total = source->pcm.empty() ? 0 : source->pcm.front().size();
+    std::vector<std::vector<float>> block(count, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> views(count);
+    std::vector<std::span<const float>> metered(6);
+    EncodedStreamSink out_sink;
+    if (!out_sink.open(out_path, meta.keep_partial)) {
+        return kExitOutput;
+    }
+
+    Progress progress;
+    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
+    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+        const auto valid = std::min<std::size_t>(ac3::kSamplesPerFrame, total - start);
+        for (std::size_t ch = 0; ch < count; ++ch) {
+            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                const std::size_t at = start + static_cast<std::size_t>(i);
+                block[ch][static_cast<std::size_t>(i)] =
+                    at < source->pcm[ch].size() ? source->pcm[ch][at] : 0.0f;
+            }
+            views[ch] = block[ch];
+        }
+        // Evaluated at the frame's END time, the same convention every other Atmos-encode command
+        // uses.
+        const auto placement = ac3::oba::evaluate_placements(
+            source->paths, static_cast<double>(start + ac3::kSamplesPerFrame) /
+                                static_cast<double>(source->sample_rate));
+        auto unit = encoder.encode_frame(views, placement);
+        if (!unit) {
+            fmt::println(stderr,
+                         "error: cannot encode {} channels at {} kbps — the metadata and the "
+                         "mantissas share one frame, so try a higher bit rate",
+                         count, bitrate);
+            out_sink.abort();
+            return kExitUsage;
+        }
+        for (std::size_t ch = 0; ch < metered.size(); ++ch) {
+            metered[ch] = std::span{encoder.bed()[ch]}.first(valid);
+        }
+        meter.process(metered);
+        if (!out_sink.push(std::move(unit->bytes))) {
+            out_sink.abort();
+            return kExitOutput;
+        }
+        progress.tick(start / ac3::kSamplesPerFrame + 1);
+    }
+    progress.finish();
+    if (!out_sink.close()) {
+        return kExitOutput;
+    }
+
+    std::size_t bed_count = 0;
+    for (const bool is_bed : source->is_bed) {
+        bed_count += is_bed ? 1 : 0;
+    }
+    const auto status = status_stream(out_path);
+    status_println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) from {} to {}",
+                   out_sink.frames(), bitrate, source->sample_rate, in_path, out_path);
+    status_println(status,
+                   "  {} bed channel(s) + {} dynamic object(s) + the bed's LFE = {} objects, "
                    "JOC over a 5.1 downmix",
                    bed_count, count - bed_count, ac3::oba::object_count(encoder.program()));
     print_channel_summary(meter, status);

@@ -89,11 +89,11 @@ REPO = Path(__file__).resolve().parent.parent.parent
 FAILURES: list[str] = []
 
 # Commands this matrix cannot reasonably drive headlessly: real capture/
-# playback hardware (record, live, devices, outputs, play, monitor) or the
-# CLI's own meta-flag (--version). Anything else that writes a stream is
-# expected to appear in the matrix.
+# playback hardware (record, live, devices, outputs, play, monitor, spatial)
+# or the CLI's own meta-flag (--version). Anything else that writes a stream
+# is expected to appear in the matrix.
 EXCLUDED_COMMANDS = {
-    "--version", "record", "live", "devices", "outputs", "play", "monitor",
+    "--version", "record", "live", "devices", "outputs", "play", "monitor", "spatial",
 }
 
 # No CLI introspection exists for this one - see the module docstring.

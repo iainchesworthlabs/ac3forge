@@ -31,17 +31,30 @@
 #     to tolerate, just no oracle - see docs/verification.md's own note.
 #     Those streams skip the FFmpeg check too; the in-repo decoder round trip
 #     still covers them.
-#   - One whole COMMAND, not just one FFmpeg check, is conditional: `atmos-adm`
-#     (roadmap B1) only runs for real when this build was configured with
-#     -DAC3FORGE_BUILD_ADM=ON, which neither of this script's two CI callers'
-#     presets turn on - see that command's own block below for the detection
-#     and the reasoning.
+#   - Two whole COMMANDS, not just one FFmpeg check each, are conditional:
+#     `atmos-adm` (roadmap B1) and `atmos-iab` (roadmap IM1 phase 3) only run
+#     for real when this build was configured with -DAC3FORGE_BUILD_ADM=ON,
+#     which neither of this script's two CI callers' presets turn on - see
+#     each command's own block below for the detection and the reasoning.
 #
 # Usage: run_codec_matrix.sh <path-to-ac3cli> [workdir]
 # Exits non-zero on the first command that fails (a sanitizer violation exits
 # non-zero on its own via -fno-sanitize-recover=all; this also catches a
 # plain crash, a refused command that should have succeeded, or an FFmpeg
 # decode that should have succeeded but didn't).
+#
+# AC3FORGE_CROSS_TIER_CHECK=1 switches this script into a different mode: run
+# the entire matrix below TWICE from the SAME binary, once with
+# AC3FORGE_SIMD_TIER=sse2 and once with =avx2 (see
+# src/forge/src/internal/cpu/cpu_features.hpp), then byte-diff the two output
+# trees. This is the runtime-dispatch analogue of the -DAC3FORGE_SIMD=generic
+# cross-build check documented above: that one proves two different binaries
+# (SIMD tier baked in at compile time) agree bit-for-bit; this one proves the
+# SAME binary agrees with itself across the two runtime code paths
+# cpu::has_avx2() switches between. A host that cannot execute AVX2 skips the
+# second pass with an explicit message and still exits 0 - degrading to
+# exactly today's guarantee, never silently claiming a check that did not
+# run.
 set -euo pipefail
 
 CLI="${1:?usage: run_codec_matrix.sh <path-to-ac3cli> [workdir]}"
@@ -52,6 +65,51 @@ case "$CLI" in
     /*) ;;
     *) CLI="$PWD/$CLI" ;;
 esac
+
+if [ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]; then
+    # This script's own path, resolved the same way FIXTURES below resolves
+    # its own - so re-invoking it works regardless of where THIS invocation
+    # was launched from.
+    self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    sse2_dir="$(mktemp -d)"
+    avx2_dir="$(mktemp -d)"
+
+    echo "cross-tier: pass 1/2, AC3FORGE_SIMD_TIER=sse2"
+    AC3FORGE_SIMD_TIER=sse2 AC3FORGE_CROSS_TIER_CHECK=0 bash "$self" "$CLI" "$sse2_dir"
+
+    # ac3cli does not itself expose cpu::has_avx2() (Phase 2 wires the
+    # dispatch mechanism, not yet any real kernel - see the roadmap plan),
+    # so there is no CLI invocation whose exit code would tell us whether
+    # this host can run AVX2. /proc/cpuinfo is the direct answer instead;
+    # both of this script's CI callers only ever run this mode on Linux
+    # (grep this repo's workflows for AC3FORGE_CROSS_TIER_CHECK), so this
+    # does not need a portable fallback. Anywhere else - including a
+    # by-hand run on a platform without /proc/cpuinfo - this degrades to a
+    # skip, exactly like genuinely lacking AVX2 hardware would.
+    avx2_capable=0
+    if [ -r /proc/cpuinfo ] && grep -qw avx2 /proc/cpuinfo; then
+        avx2_capable=1
+    fi
+
+    if [ "$avx2_capable" != "1" ]; then
+        echo "cross-tier: this host does not report AVX2 in /proc/cpuinfo (or it cannot be read) - skipping the avx2 pass; the sse2 pass above still ran and passed"
+        rm -rf "$sse2_dir" "$avx2_dir"
+        exit 0
+    fi
+
+    echo "cross-tier: pass 2/2, AC3FORGE_SIMD_TIER=avx2"
+    AC3FORGE_SIMD_TIER=avx2 AC3FORGE_CROSS_TIER_CHECK=0 bash "$self" "$CLI" "$avx2_dir"
+
+    echo "cross-tier: diffing $sse2_dir against $avx2_dir"
+    if diff -rq "$sse2_dir" "$avx2_dir"; then
+        echo "cross-tier: byte-identical across sse2/avx2 tiers"
+        rm -rf "$sse2_dir" "$avx2_dir"
+        exit 0
+    fi
+    echo "cross-tier: OUTPUT DIVERGED between the sse2 and avx2 tiers - see the diff above" >&2
+    exit 1
+fi
+
 # The golden fixtures are read from the repo, but every path below is used
 # after the `cd "$WORKDIR"` on the next lines. Resolve them now, from this
 # script's own location rather than $PWD, so it does not matter where the
@@ -647,7 +705,12 @@ run_ffmpeg_check atmos_path.ec3
 # other command in this matrix is - not a synthetic shortcut. `run atmos-adm ...` appears in this
 # script's own text either way, which is what tools/checks/check_matrix_coverage.py's static presence
 # check actually looks for - see that script's own module docstring.
-ADM_FIXTURE_TOOL="$(dirname "$CLI")/examples/encode_adm"
+#
+# Same directory as $CLI itself, not an "examples/" subfolder under it: the root CMakeLists.txt
+# sets one project-wide CMAKE_RUNTIME_OUTPUT_DIRECTORY ("${CMAKE_BINARY_DIR}/bin"), so every
+# executable target - ac3cli, ac3tests, and every examples/ program alike - lands in that same
+# flat bin/ directory regardless of which source subdirectory built it.
+ADM_FIXTURE_TOOL="$(dirname "$CLI")/encode_adm"
 if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-adm[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
     echo "    [skip] atmos-adm: this ac3cli build has no -DAC3FORGE_BUILD_ADM=ON (apps/cli/adm/atmos_adm.hpp) - covered instead by the adm-validate CI job and tests/cli/test_cli_atmos_adm.cpp, which do build with it"
 elif [ ! -x "$ADM_FIXTURE_TOOL" ]; then
@@ -657,6 +720,26 @@ else
     run atmos-adm atmos_adm_fixture.wav atmos_adm.ec3 256
     run decode atmos_adm.ec3 atmos_adm.wav
     run_ffmpeg_check atmos_adm.ec3
+fi
+
+# atmos-iab (roadmap IM1 phase 3): the identical conditional-command shape atmos-adm above uses,
+# and for the same reason - it needs ac3::admbridge's own IAB mapping, gated by the same
+# AC3FORGE_BUILD_ADM flag (see apps/cli/adm/atmos_iab.hpp's own header comment: ac3iab::ac3iab
+# itself is on by default, but build_iab() only exists once admbridge is). Detected the same
+# "ask the real usage listing" way, not guessed from a preset name. examples/encode_iab's own
+# --write-fixture mode produces a real elementary IAB file on disk, so this is driven through a
+# real file the same way every other command in this matrix is. Same flat bin/ directory as $CLI
+# itself - see ADM_FIXTURE_TOOL's own comment above for why.
+IAB_FIXTURE_TOOL="$(dirname "$CLI")/encode_iab"
+if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-iab[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
+    echo "    [skip] atmos-iab: this ac3cli build has no -DAC3FORGE_BUILD_ADM=ON (apps/cli/adm/atmos_iab.hpp) - covered instead by tests/cli/test_cli_atmos_iab.cpp, which does build with it"
+elif [ ! -x "$IAB_FIXTURE_TOOL" ]; then
+    echo "    [skip] atmos-iab: examples/encode_iab was not built alongside this ac3cli (AC3FORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real IAB file"
+else
+    "$IAB_FIXTURE_TOOL" --write-fixture atmos_iab_fixture.iab
+    run atmos-iab atmos_iab_fixture.iab atmos_iab.ec3 256
+    run decode atmos_iab.ec3 atmos_iab.wav
+    run_ffmpeg_check atmos_iab.ec3
 fi
 
 # --- Stream tools (roadmap DC9): no re-encode except where one is the point -

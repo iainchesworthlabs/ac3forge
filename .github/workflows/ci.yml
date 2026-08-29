@@ -344,6 +344,13 @@ jobs:
   # violation is reported even while the porting legs are still red.
   platform-macros:
     name: Platform Macros
+    # Stays GitHub-hosted, deliberately: check_platform_macros.ps1 needs
+    # pwsh, which the hosted Ubuntu image ships and the fleet's Linux image
+    # does not - confirmed live ("pwsh: command not found" on
+    # tf-gh-linux-runner-08 when this was briefly routed, 2026-08-28). Route
+    # it only if/when ci-runners bakes PowerShell into the Linux template -
+    # same follow-the-toolchain rule as build-wasm/android/rust in
+    # _build.yml.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -353,9 +360,12 @@ jobs:
         shell: pwsh
         run: ./tools/checks/check_platform_macros.ps1 -Root $PWD
 
-  # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan) - NOT "is it
-  # current", see the script's own header for why that's the wrong check. Same shape as
-  # platform-macros above: cheap, fast, ungated.
+  # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan), plus a
+  # latest-tag advisory (roadmap DR2) - see the script's own header for the split
+  # between the two and why only the first one fails the job. fetch-depth: 0, unlike
+  # platform-macros above: the advisory half needs `git describe --tags` to see the
+  # repository's tags, which a shallow (depth-1) clone would hide, silently disabling
+  # it in CI while it kept working from a normal local checkout.
   packaging-consistency:
     name: Packaging Consistency
     needs: check-runner
@@ -363,6 +373,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Check packaging manifests are internally consistent
         shell: bash
@@ -726,9 +737,9 @@ jobs:
   # AC3FORGE_BUILD_GUI already defaults OFF on this preset.
   adm-validate:
     name: ADM Module (Linux, GCC)
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     steps:
       - name: Bootstrap container
@@ -1084,9 +1095,9 @@ jobs:
   #     repetitions are a rounding error next to the two builds.
   performance-compare:
     name: Performance vs merge base
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     continue-on-error: true
     env:
@@ -1133,18 +1144,12 @@ jobs:
           echo "short=$(git rev-parse --short "$merge_base")" >> "$GITHUB_OUTPUT"
           echo "Merge base: $merge_base"
 
-      - name: Build and run the benchmarks at this PR's head
+      - name: Build the benchmarks at this PR's head
         shell: bash
         run: |
           set -euo pipefail
           cmake --preset config-linux-gcc
           cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
-          mkdir -p perf-results/head
-          for i in $(seq 1 "$PERF_RUNS"); do
-            build/config-linux-gcc/bin/ac3bench --json-out "perf-results/head/bench$i.json"
-            build/config-linux-gcc/bin/ac3kernelbench \
-              --json-out "perf-results/head/kernels$i.json"
-          done
 
       # A worktree rather than `git checkout <sha>`: it leaves this checkout
       # (and its build tree, and tools/ci/compare_performance.py, which the
@@ -1152,23 +1157,50 @@ jobs:
       # base its own source dir - so CMakePresets.json's
       # ${sourceDir}/build/${presetName} puts the two builds in separate
       # directories with no cache to invalidate between them.
-      - name: Build and run the benchmarks at the merge base
+      - name: Build the benchmarks at the merge base
         shell: bash
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
         run: |
           set -euo pipefail
           git worktree add --detach ../base-perf "$BASE_SHA"
-          mkdir -p perf-results/base
           pushd ../base-perf >/dev/null
           cmake --preset config-linux-gcc
           cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
           popd >/dev/null
+
+      # BOTH builds finish before EITHER is timed, and the two are then
+      # INTERLEAVED rather than run one block each. That ordering IS the
+      # measurement, not a detail:
+      #
+      #   - Timed-right-after-built meant head was timed on a machine still
+      #     warm from compiling head, and base on one warm from compiling
+      #     base. Building both first puts each binary in the same state.
+      #   - A shared runner drifts (thermal, co-tenants, page cache). Run in
+      #     blocks, ALL of any drift between the blocks lands on the delta,
+      #     indistinguishable from the code change. Alternating spreads it
+      #     over both sides instead, where compare_performance.py's
+      #     minimum-of-N can reject it.
+      #   - The order within a round alternates too, so neither side is
+      #     permanently the one running first and paying for whatever the
+      #     other left in cache.
+      #
+      # Same shape as the manual A/B measurements docs/performance-trend.md
+      # describes, for the same reason.
+      - name: Run both benchmark sets, interleaved
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p perf-results/head perf-results/base
+          head_bin=build/config-linux-gcc/bin
+          base_bin=../base-perf/build/config-linux-gcc/bin
           for i in $(seq 1 "$PERF_RUNS"); do
-            ../base-perf/build/config-linux-gcc/bin/ac3bench \
-              --json-out "perf-results/base/bench$i.json"
-            ../base-perf/build/config-linux-gcc/bin/ac3kernelbench \
-              --json-out "perf-results/base/kernels$i.json"
+            if [ $((i % 2)) -eq 1 ]; then order="head base"; else order="base head"; fi
+            for side in $order; do
+              if [ "$side" = head ]; then bin="$head_bin"; else bin="$base_bin"; fi
+              "$bin/ac3bench" --json-out "perf-results/$side/bench$i.json"
+              "$bin/ac3kernelbench" --json-out "perf-results/$side/kernels$i.json"
+            done
           done
 
       - name: Compare and publish the job summary
@@ -1195,8 +1227,16 @@ jobs:
   #
   # Two independent checks, both against config-linux-llvm-shared (already
   # Debug - has DWARF - and BUILD_SHARED_LIBS=ON):
-  #   - abidiff: does this PR change anything abigail can see in the
-  #     public interface of a library that already existed at the last tag.
+  #   - abidiff: of the libraries that already existed at the last tag, does
+  #     this PR change anything abigail can prove BREAKS their binary
+  #     interface. Every visible difference lands in the step summary for
+  #     review, but only abidiff's incompatible-change exit bit (removed
+  #     symbols, changed signatures) fails the step: an additions-only diff
+  #     is backward compatible - exactly what a minor release is allowed to
+  #     ship - and failing on it would leave the promoted gate rejecting
+  #     every PR that adds API until the next tag is cut, which is the
+  #     opposite of what the freeze needs. See the step's own comment for
+  #     the exit-code bit field.
   #   - check_abi_symbols.py: does the actual dynamic-symbol export set
   #     (nm -D --defined-only - exactly what CXX_VISIBILITY_PRESET hidden
   #     leaves reachable) still match the checked-in allowlist, catching an
@@ -1204,9 +1244,9 @@ jobs:
   #     with no tag yet to abidiff against.
   abi-gate:
     name: ABI diff vs last release
-    needs: [changes, toolchain-versions]
+    needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     continue-on-error: true
     steps:
@@ -1277,6 +1317,16 @@ jobs:
           cmake --build build/config-linux-llvm-shared -- -k 0
           popd >/dev/null
 
+      # Both steps below discover libraries dynamically - `find .../src -name '*.so'` - rather
+      # than a hardcoded `for lib in ...` list: this project's own SHARED targets each produce a
+      # bare, unversioned libFOO.so symlink (alongside the real, version-suffixed libFOO.so.X.Y.Z)
+      # directly in the build tree under src/<component>/, with no install step needed to see it.
+      # Scoped to .../src specifically - not the whole build tree - so a FetchContent'd
+      # third-party dependency's own .so (e.g. a hypothetical libadm.so, if AC3FORGE_BUILD_ADM
+      # were ever turned on for this preset) is never picked up: those build under .../_deps/,
+      # a disjoint subtree, and this project never install()s them in their own right regardless.
+      # A hardcoded list is exactly what let libac3iab.so go uncovered by both steps below (and
+      # unrepresented in tools/ci/abi-allowlist/) from the day ac3iab landed until this fix.
       - name: abidiff each shared library against the last release
         if: steps.last_tag.outputs.skip == 'false'
         shell: bash
@@ -1288,19 +1338,43 @@ jobs:
             echo "## ABI diff vs $LAST_TAG (advisory pre-1.0)"
             echo
           } >> "$GITHUB_STEP_SUMMARY"
+          mapfile -t libs < <(
+            { find build/config-linux-llvm-shared/src -name '*.so' -exec basename {} \;
+              find ../abi-base/build/config-linux-llvm-shared/src -name '*.so' -exec basename {} \;
+            } 2>/dev/null | sort -u)
           status=0
-          for lib in libac3forge.so libac3forge_c.so libac3signing.so \
-                     libmatroska.so libmp4.so libmpegts.so; do
-            head_lib="$(find build/config-linux-llvm-shared -name "$lib" -print -quit)"
-            base_lib="$(find ../abi-base/build/config-linux-llvm-shared -name "$lib" -print -quit)"
+          for lib in "${libs[@]}"; do
+            head_lib="$(find build/config-linux-llvm-shared/src -name "$lib" -print -quit)"
+            base_lib="$(find ../abi-base/build/config-linux-llvm-shared/src -name "$lib" -print -quit)"
             echo "### $lib" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             if [ -z "$head_lib" ]; then
               echo "(not built at HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
             elif [ -z "$base_lib" ]; then
               echo "(not present at $LAST_TAG - new library)" | tee -a "$GITHUB_STEP_SUMMARY"
-            elif ! abidiff "$base_lib" "$head_lib" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"; then
-              status=1
+            else
+              rc=0
+              abidiff "$base_lib" "$head_lib" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
+              # abidiff's exit status is a bit field (abidiff(1), "Return
+              # values"): 1|2 are tool/usage errors, 4 ABIDIFF_ABI_CHANGE
+              # is any visible difference, 8 ABIDIFF_ABI_INCOMPATIBLE_CHANGE
+              # is a difference abidiff can prove breaks compatibility.
+              # Measured against v0.9.0-beta.1: removed symbols and changed
+              # signatures both raise bit 8 (exit 12); an additions-only
+              # library exits with just bit 4. Only bit 8 (or a tool error)
+              # fails the step - additions are backward compatible, so they
+              # pass, reported above for human review.
+              if (( rc & 3 )); then
+                echo "abidiff itself failed on $lib (exit $rc)" | tee -a "$GITHUB_STEP_SUMMARY"
+                status=1
+              elif (( rc & 8 )); then
+                echo "INCOMPATIBLE ABI change vs $LAST_TAG (abidiff exit $rc)" | tee -a "$GITHUB_STEP_SUMMARY"
+                status=1
+              elif (( rc & 4 )); then
+                echo "compatible ABI change vs $LAST_TAG (abidiff exit $rc - nothing abidiff can prove incompatible)" | tee -a "$GITHUB_STEP_SUMMARY"
+              else
+                echo "no ABI change vs $LAST_TAG" | tee -a "$GITHUB_STEP_SUMMARY"
+              fi
             fi
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           done
@@ -1308,20 +1382,21 @@ jobs:
 
       - name: Exported-symbol allowlist check
         # Independent of the abidiff step above (see this job's header
-        # comment) - must run even when abidiff already found a diff, which
-        # pre-1.0 it does on almost every PR. Without this, GitHub Actions'
-        # default success()-only condition means an abidiff failure silently
-        # skips the one check here that catches a real regression.
+        # comment) - must run even when abidiff already failed, which
+        # pre-1.0 it can do for a whole release cycle: with no compatibility
+        # promise yet, removals/renames (e.g. AP2's naming sweep) land on
+        # main freely and keep that step red until the next tag moves the
+        # comparison base past them. Without this, GitHub Actions' default
+        # success()-only condition means an abidiff failure silently skips
+        # the one check here that catches a real regression.
         if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail
           libs=()
-          for lib in libac3forge.so libac3forge_c.so libac3signing.so \
-                     libmatroska.so libmp4.so libmpegts.so; do
-            found="$(find build/config-linux-llvm-shared -name "$lib" -print -quit)"
-            [ -n "$found" ] && libs+=(--lib "$found")
-          done
+          while IFS= read -r found; do
+            libs+=(--lib "$found")
+          done < <(find build/config-linux-llvm-shared/src -name '*.so' | sort)
           python3 tools/ci/check_abi_symbols.py \
             --allowlist-dir tools/ci/abi-allowlist "${libs[@]}"
 

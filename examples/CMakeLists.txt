@@ -43,6 +43,21 @@ set(AC3FORGE_EXAMPLES
 # present the way it can for e.g. mux_mkv.
 if(AC3FORGE_BUILD_ADM)
     list(APPEND AC3FORGE_EXAMPLES read_adm encode_adm)
+    # encode_iab (roadmap IM1 phase 3) needs ac3::admbridge's own IAB mapping (build_iab), gated
+    # the same way encode_adm needs the ADM one - see src/admbridge/CMakeLists.txt's own header
+    # comment for why that whole module rides AC3FORGE_BUILD_ADM. Unlike encode_adm it does NOT
+    # need ac3adm::ac3adm directly (ac3iab::ac3iab, its own container reader, is always available -
+    # AC3FORGE_BUILD_IAB defaults ON).
+    list(APPEND AC3FORGE_EXAMPLES encode_iab)
+endif()
+
+# mux_iamf demonstrates roadmap IM3 phase 1's decode -> IAMF bridge: it encodes a synthetic
+# 7.1.4 E-AC-3 stream, decodes it back with ac3::Eac3Decoder, permutes the result into iamf::'s
+# own channel order and calls iamf::mux() - so, like encode_adm above, it needs BOTH ac3::forge
+# and the standalone writer module together, and only exists to build when AC3FORGE_BUILD_IAMF
+# (default ON, see the root CMakeLists.txt's own option()) turned iamf::iamf on.
+if(AC3FORGE_BUILD_IAMF)
+    list(APPEND AC3FORGE_EXAMPLES mux_iamf)
 endif()
 
 # read_iab demonstrates ac3iab::ac3iab (src/ac3iab), roadmap IM1 phases 1-2 - "standalone" meaning
@@ -65,10 +80,18 @@ foreach(example IN LISTS AC3FORGE_EXAMPLES)
         # (AtmosEncoder) and the ADM modules (parse/bridge) at the same time.
         target_link_libraries(${example} PRIVATE ac3::forge ac3adm::ac3adm ac3::admbridge
                                                   ac3::warnings ac3::fmt)
+    elseif(example STREQUAL "mux_iamf")
+        target_link_libraries(${example} PRIVATE ac3::forge iamf::iamf ac3::warnings ac3::fmt)
     elseif(example STREQUAL "read_iab")
         # No ac3::forge here either - src/ac3iab is deliberately independent of it (see
         # src/ac3iab/CMakeLists.txt's header comment), the same reason read_adm above needs none.
         target_link_libraries(${example} PRIVATE ac3iab::ac3iab ac3::warnings ac3::fmt)
+    elseif(example STREQUAL "encode_iab")
+        # The one example (and roadmap IM1's own phase-3 deliverable) needing ac3::forge
+        # (AtmosEncoder), ac3iab::ac3iab (its own container reader) and ac3::admbridge (build_iab)
+        # at the same time - the IAB mirror of encode_adm above.
+        target_link_libraries(${example} PRIVATE ac3::forge ac3iab::ac3iab ac3::admbridge
+                                                  ac3::warnings ac3::fmt)
     else()
         target_link_libraries(${example} PRIVATE ac3::forge ac3::warnings ac3::fmt)
     endif()

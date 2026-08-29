@@ -31,6 +31,9 @@ const AudioBackend& audio_backend() {
                               "has no microphone/loopback feature, so none was implemented"},
         .passthrough = {.available = true, .reason = {}},
         .monitor = {.available = true, .reason = {}},
+        .spatial = {.available = false,
+                   .reason = "this build has no spatial backend: "
+                             "ISpatialAudioObjectRenderStream is a Windows-only API"},
     };
     return kBackend;
 }

@@ -128,6 +128,53 @@ So the backend is genuinely split, unlike the other three:
   path to the sink's raw EDID would not add anything the existing probe does not already give —
   see [Linux](linux.md#reading-a-sinks-own-edidled-roadmap-ux9) for where that read is real.
 
+### Partial `AudioTrack` writes are resumed from, not restarted
+
+`PassthroughSink::submit` treated a short but non-negative `AudioTrack.write` as a plain failure,
+and the caller's retry loop resubmitted the **whole** burst — so the bytes the track had already
+accepted went out a second time, splicing a corrupt IEC 61937 burst into the stream. A receiver
+answers that with a mute or a glitch, not with anything traceable.
+
+The comment that used to excuse it claimed the short write could not happen because "that space is
+inspected by the Kotlin side before calling write". `PassthroughBridge.submit` does no such
+inspection — it calls `write` directly — and `WRITE_NON_BLOCKING` is documented to queue as
+much as fits and report how much. The sink now remembers how much of the current burst is already
+queued and offers only the remainder on the next attempt. Entirely inside the sink: no JNI signature
+change, and no change to what a caller has to know.
+
+## Lifecycle: the stream stops when the demo leaves the screen
+
+The encode loop used to stop only in `onDestroy`. Pressing HOME therefore left a cached process
+pushing E-AC-3 bursts into the receiver indefinitely — no UI, no notification, nothing to stop it
+short of force-stopping the app, and an AVR still locked to a bitstream nothing on screen accounted
+for. It now stops in `MainActivity.onStop`.
+
+**`onStop`, not `onPause`**, and the distinction is load-bearing: `AboutActivity` is a full-screen
+Activity of this same app, and pausing for it must not tear down the `AudioTrack` and force the
+receiver to re-lock — a visible dropout and a bounce back through the waiting interstitial —
+because someone read the About screen for four seconds. A `launchingOwnActivity` flag carries that
+intent across the stop, and `isChangingConfigurations` covers recreation for the same reason.
+
+Both `Choreographer` render loops (`RoomView`, `ChannelMeterView`) are gated on **window
+visibility**, not attachment. Attachment does not change when another Activity comes forward, so an
+`onAttachedToWindow`-only gate kept an invalidate-per-vsync loop — and the per-frame JNI calls in
+`onDraw` — running behind whatever was on screen. A `tickerRunning` flag keeps the two entry
+points from each posting their own self-reposting callback and doubling the frame rate.
+
+`FLAG_KEEP_SCREEN_ON` is set for the obvious reason: this app deliberately shows an attract prompt
+after 14s of no input, which is exactly the state a screen saver would otherwise interrupt. BACK
+asks for confirmation rather than ending the demo on one press — deliberately a confirmation and
+not a block, since a demo nobody can leave is worse than one that exits by accident.
+
+!!! note "A native load failure now degrades instead of crashing"
+    `NativeBridge` is a Kotlin `object` whose static initializer called `System.loadLibrary`. A
+    *throwing* initializer does not merely fail once — it marks the class **erroneous** for the
+    life of the process, and every later access raises `NoClassDefFoundError`, which none of the
+    `catch (e: UnsatisfiedLinkError)` handlers catch. `onCreate` touched the object again three
+    lines after the one handler that did fire, so the carefully-written
+    "(native link failed — see logcat)" fallback could never actually reach the screen. The load
+    is now caught into `NativeBridge.available`, and a real failure screen explains itself.
+
 ## Real-time performance: `RelWithDebInfo`, and a real MDCT bug it uncovered
 
 AGP's default for the `debug` build type is `CMAKE_BUILD_TYPE=Debug` (`-O0`). That is fine for
@@ -150,15 +197,20 @@ platform's Atmos encode path. With both fixes, the Shield holds an exact 32.0ms/
 zero underruns. See [Performance trend](../performance-trend.md) for the CI regression gate this
 bug prompted (`tests/performance/`'s hard real-time gate plus the `ac3bench` trend tracker).
 
-## Objects: one interactive lead, two ambient, all on pre-planned orbits
+## Objects: one interactive lead, two ambient, all on pre-planned paths
 
 `live_cursor.cpp` no longer holds a single object at a fixed point. Every object
-(`kInteractiveObjects` + `kAmbientObjects`, currently 1 + 2) follows its own closed-form orbit —
-`trajectory_position()`, a circle in the room's x/y plane centred on the room's *exact* middle
-(`(0.5, 0.5)`, per `oamd.hpp` — also where the JOC/VBAP render implicitly assumes the listener
-sits) with an independent, slower height bob — so every object's lap carries it both in front of
-and behind the listening position, not confined to the front half of the room. Rate/phase/radius
-differ per object (`kTrajectory`) so the three stay visually and audibly distinct.
+(`kInteractiveObjects` + `kAmbientObjects`, currently 1 + 2) follows its own closed-form path from
+the current [scene](#scenes-and-a-demo-that-runs-itself) — `trajectory_position()`, evaluated
+about the room's *exact* middle (`(0.5, 0.5)`, per `oamd.hpp`, which is also where the JOC/VBAP
+render implicitly assumes the listener sits). Rate/phase/radius differ per object so the three stay
+visually and audibly distinct.
+
+The default shape, and the one everything below describes, is the **Orbit** scene's circle in the
+room's x/y plane with an independent, slower height bob — so every object's lap carries it both
+in front of and behind the listening position rather than being confined to the front half of the
+room. The other four scenes replace that shape; the voices, falloff and limiter below are shared by
+all of them.
 
 The two ambient objects (a major third and a perfect fifth above the lead's A4, forming an A major
 triad rather than an arbitrary tone set — `kToneHz`/`kToneGain`) are **never touched by input** —
@@ -185,6 +237,205 @@ direction, but no sense of "coming toward me" versus "far away." An inverse-squa
 silent — fully silent would fight the pause/mute isolation feature's own point) is applied as an
 extra per-object, per-frame gain multiplier, computed from that frame's own placement.
 
+## Scenes, and a demo that runs itself
+
+The app used to have exactly one thing to show, forever: three objects on
+fixed sine orbits, from launch until you walked away. `kScenes` replaces that
+single trajectory table with five, each naming its own shape, its own
+per-object parameters, and one line of what to listen for:
+
+| Scene | What it is for |
+| --- | --- |
+| **Orbit** | What the demo has always done. Still the best one to hand someone a controller on, so it stays first. |
+| **Flyover** | Front to back and back again, rising to a peak as it crosses the listening position — it arrives low, passes over, leaves low. |
+| **Overhead** | All three in the ceiling plane. Sells the height channels precisely because nothing is left at ear level to compare against. |
+| **Elevator** | One voice straight up and down over the seat, everything else silent. The height axis on its own. |
+| **Front / back** | Hard alternation, no height. Deliberately unmusical — for checking speaker placement, not for listening to. |
+
+**The object count stays fixed at three for every scene, deliberately.**
+`AtmosEncoder` takes its object count at construction, so varying it means
+rebuilding the encoder mid-stream — per-object QMF filterbank allocation on
+a thread holding a 32ms deadline. A scene that wants fewer voices silences
+them with `gain_scale` and leaves them moving.
+
+Scene changes **blend**, position and gain together: a 32ms step from one side
+of the room to the other is an abrupt pan rather than a move, and a hard gain
+step between frames is a click. Changing again mid-blend restarts from the
+scene being left rather than compounding, so a fast double-press reads as one
+move rather than two overlapping ones.
+
+**The guided tour.** The idle timeout used to do one thing: show "press any
+button to take control" and wait. It now starts walking the scenes, announcing
+each with its name and its listen-for line, so a demo left alone between
+visitors runs itself rather than sitting still having already made its point.
+The first real input stops it and keeps whatever scene it reached — yanking
+someone back to the first scene the instant they touch a stick would be worse.
+
+## Record a path, and fly it back
+
+**R2** cycles idle → recording → looping → idle. What is captured is the lead
+object's *final placed position* each encode frame, deflection and clamps
+included, so what replays is where the object actually went rather than where
+its trajectory alone would have put it. A parametric orbit is something the
+demo does to you; a path flown by hand is something you did.
+
+A played-back path replaces the scene's trajectory for the lead but is still
+pushable and still springs back to itself, so it behaves like any other
+course. Stopping a recording goes straight to looping rather than back to
+idle — the gesture was performed to be watched. A recording under eight
+frames is discarded rather than looped as a twitch, and running out of buffer
+(two minutes) starts playing what was captured rather than silently recording
+nothing further. Controller-only: a basic remote has no free key that every
+remote actually has, and this is a presenter's control.
+
+## Rumble, on the crossings that need a second opinion
+
+Height is the hardest thing in this demo to be sure of by ear. Everything else
+has a second channel of evidence — you see the dot go left and you hear it
+go left — but elevation has only the sound, and a listener who is not
+certain what they are supposed to be hearing tends to conclude they are not
+hearing it. `Haptics` pulses the **controller** as the object crosses over the
+seat, and more lightly as it passes through the listening position.
+
+Event-driven, not continuous: a permanently buzzing pad stops meaning anything
+within about ten seconds and flattens its battery mid-demo. The vibrator is
+the input device's, not the system one — on a TV box the system vibrator is
+absent or meaningless, and the thing the user is holding is the controller.
+Positions come from `RoomView`, which already samples them every frame for the
+room panels, rather than costing a second JNI call per vsync. Needs the
+`VIBRATE` permission, without which `vibrate()` throws `SecurityException`.
+
+## Settings, and a phone as a second controller
+
+Every control in this app was an undocumented keypress. The hints bar lists
+them, but that is a reference for someone who already knows. **L2**, **Guide**
+or **Settings** opens a D-pad-navigable panel with scene, ambient tones,
+object layer, phone remote and guided tour, all read live so a row reflects
+state changed by the physical keys while the panel is open. It consumes every
+key it recognises, so the demo's own controls do not fire underneath it.
+
+Deliberately absent from it: bitrate, object count and the JOC domain. All
+three are fixed when `AtmosEncoder` is constructed, so a row for any of them
+means rebuilding the encoder mid-stream, and a setting that silently risks the
+frame budget is worse than no setting.
+
+**The phone remote** (`WebRemote`) serves one page with a touchpad, a height
+slider and scene buttons, so anyone in the room drives the object from their
+own phone with no pairing and no explaining.
+
+!!! warning "It is off by default, and that is not an oversight"
+    A demo app has no business opening a listening socket on somebody's
+    network because it happened to launch, so it starts only when switched on
+    in the settings panel, and stops in `onStop` alongside the encode loop.
+
+    It is deliberately tiny and deliberately narrow: five fixed paths, a
+    bounded request line, one page held as a constant, no filesystem access,
+    every incoming number clamped to [-1, 1] before it reaches the native
+    side, and a 404 for everything else. **There is no authentication** —
+    anyone who can reach the port can move the object. That is the honest
+    trade for a sideloaded personal demo on a home network, and it is exactly
+    why it does not start by itself.
+
+## The wire trace: a decoder reading back what went out
+
+A second thread parses back the **exact access units** this app hands to the burst packer —
+post-signing, post-strip, the bytes going out of HDMI — and reports what a decoder finds in them.
+The lower part of the elevation card becomes the lead object's height over the last few seconds:
+the intended line, and the line a decoder read back off the wire.
+
+**What it is honestly good for, and what it is not.** This is the part worth reading before
+believing anything the panel says.
+
+- **It is not a measurement of reconstruction quality, and deliberately computes none.** Both ends
+  run the same non-normative QMF prototype — `dsp/qmf.hpp` says outright that "The prototype is
+  NOT Dolby's. §7.1 fixes the filterbank's shape and does not publish its coefficients". A
+  per-object SNR here would hold constant precisely the variable most likely to explain a
+  disagreement with a real decoder, which is worse than useless: it would look like evidence.
+- **The decoded position is an algebraic identity, not a discovery.** `tests/oba/test_atmos.cpp`
+  asserts that the decoded position equals the encoder's own `quantize_xy`/`quantize_z` of the
+  intended one, exactly. It cannot surprise unless the bitstream is broken.
+- **So what is it showing?** The **quantiser**. Height is sent as a sign bit plus four bits of
+  magnitude — sixteen steps — and left/right as six bits over 62. Against a smooth intended
+  line the decoded height is a visible staircase. That is a fact about the format, not a claim about
+  this encoder, and it is the one thing on the dashboard that shows the wire format's own resolution
+  rather than the demo's intent.
+- **What is genuinely falsifiable:** that the container survives on the wire at all, and that
+  [OBJECTS OFF](#objects-off-taking-the-object-layer-away-live) really removes it. A decoder reading
+  the post-strip bytes and reporting zero objects is independent of the byte counter that claims the
+  removal. Frames with no object layer are drawn as a **gap** with a baseline marker, never as zero
+  — "the decoder found nothing here", not "the object dropped to the floor".
+
+**`skip_reconstruction` is what makes it safe, not merely cheap.** `DecoderConfig::skip_reconstruction`
+returns before the IMDCT, the overlap-add and JOC reconstruction, so no cross-frame state is carried
+and frames are mutually **independent**. The ring between the two threads may therefore drop under
+load without corrupting anything drawn. A full decode could not: its per-identity IMDCT delay lines
+and `joc::ReconstructionState` history mean one dropped frame silently poisons every frame after it,
+and there is no `reset()` on the public decoder surface to recover with. A monitor that can quietly
+start lying under exactly the load you built it to observe is not a monitor.
+
+**The plumbing.** A 64-slot single-producer/single-consumer ring of 2 KB slots (one access unit at
+448 kbit/s is 1792 bytes). The producer copies the unit **and the placement that produced it** —
+not optional: the lead moves about 0.0075 room units per frame against an x/y quantiser step of
+about 0.016, so even two frames of lag against a live position snapshot would manufacture most of a
+quantiser step of error, and the trace would be showing the ring's latency rather than the format's.
+The producer never blocks and never allocates; a full ring drops the frame and counts it.
+
+**It runs only when there is an object layer to find.** On a keyless build the encoder emits no
+container, so the monitor is never started, the trace stays empty, and the elevation panel keeps its
+whole area — exactly the behaviour that was there before. Like OBJECTS OFF, this feature is
+visible only on a key-bearing build.
+
+### Two measurements that came with it
+
+- **`frame X.X/32ms (enc Y.Y)`.** The status line used to show `encode` alone, which brackets
+  `encode_frame()` and nothing else — not the tone synthesis and limiter, the level and loudness
+  meters, signing, stripping, the burst packer, or the JNI submit. The frame slot's real occupancy
+  was never measured, so every headroom claim rested on a figure that excluded most of the frame.
+  Now both are shown, and `frame` is the one that matters.
+- **A decode cost on ARM.** The repo has no decode measurement on any ARM device. The trace panel's
+  header carries one.
+
+### Thread priorities
+
+Nothing in this app ever set one: the encode worker simply inherited whatever the Java thread that
+started it had, which gave the scheduler no reason to prefer the thread with a 32 ms deadline over
+anything else. The encode worker is now put in the audio nice band and the monitor in the background
+band, both explicitly, and a failure to do so is logged rather than silently accepted — the
+timing figures on screen should be read knowing whether the platform honoured the request.
+
+Relatedly, `PassthroughSink::submit` used to attach the calling thread to the JVM and detach it
+again **on every call**, which meant the real-time encode thread registered with ART, walked its
+thread list and unregistered, once every 32 ms for the life of the stream. It now attaches once per
+thread, with a `thread_local` destructor doing the detach at thread exit — the same guarantee
+without the per-frame cost.
+
+## OBJECTS OFF: taking the object layer away, live
+
+**X** on a controller, **MENU** on a remote, runs every access unit through
+`ac3::io::strip_objects()` before it is wrapped — live, with nothing else about the stream
+changing. The bed is the same coded bed either way, so what a licensed decoder sees is an object
+programme becoming a plain DD+ one and back again, on a keypress, with the object layer's per-frame
+byte cost (`StrippedStream::bytes_removed`) on screen next to it.
+
+This is the one claim the whole app exists to make, and before this it could only be asserted.
+
+Two details that are not arbitrary:
+
+- **Stripping happens after signing**, not before. The signature covers the container being removed,
+  so stripping first would leave a signature over bytes that are no longer there. Removing the whole
+  container outright is the safe direction — an unsigned-but-present container is the
+  hard-refusal case `AtmosConfig::emit_object_metadata`'s own comment warns about.
+- **A strip failure falls back to the unstripped unit**, rather than `break`ing the loop the way the
+  surrounding error paths do. This is a presentation toggle; the right answer to "could not strip"
+  is to keep playing the stream already in hand.
+
+!!! warning "Only does anything on a key-bearing build"
+    On a build with no signing key the encoder emits no object container at all (see
+    [Object signing](#object-signing)), so `strip_objects` returns byte-identical frames with
+    `frames_stripped == 0` and the toggle is a visible no-op. That is inherent to what the toggle
+    does, not a defect — but it does mean this feature cannot be demonstrated on any build that
+    is safe to distribute.
+
 ## Input: Shield Controller and basic remote, both
 
 `InputController.kt` supports both devices this app is meant to run under, detected at the event
@@ -196,10 +447,26 @@ the input and `LiveCursorState::advance()` decays that bias back toward zero eve
 so the object drifts back onto its planned course on its own rather than needing an explicit
 "input stopped" signal from Kotlin.
 
-- **Shield Controller** (`SOURCE_JOYSTICK`): both analog sticks, read in `onGenericMotionEvent`
-  with a 0.15 deadzone, driving continuous deflection scaled by elapsed time via a
-  `Choreographer.FrameCallback` ticker — held-stick input biases smoothly, not per-event-stepped.
-  `L1`/`R1` add continuous height deflection independent of the D-pad's axis mode below.
+- **Shield Controller** (`SOURCE_JOYSTICK`): both analog sticks, read in `onGenericMotionEvent`,
+  driving continuous deflection scaled by elapsed time via a `Choreographer.FrameCallback` ticker
+  — held-stick input biases smoothly, not per-event-stepped. `L1`/`R1` add continuous height
+  deflection independent of the D-pad's axis mode below.
+
+    The deadzone is **radial and rescaled**, and its threshold comes from the device's own declared
+    `MotionRange.getFlat()` (cached per device id, falling back to 0.15). The original flat per-axis
+    cut — `if (abs(v) < 0.15) 0 else v` — did two things wrong at once: per-axis, a diagonal
+    push registered on one axis while the other was still inside its own cut; and with no rescaling
+    the smallest value it could ever emit *was* the deadzone, so velocity jumped from nothing
+    straight to 15% of full travel. Against the 1.5s spring-back that settles at about a third of
+    the clamp box, the smallest deflection anyone could hold was a third of full travel — in a
+    demo whose entire point is placing an object precisely.
+
+    Right-stick **height** is resolved by asking the device which axis it actually declares
+    (`AXIS_RZ`, then `AXIS_RY`, then `AXIS_Z`), once per device id and logged. It was hardcoded to
+    `AXIS_Z`, which on the standard Android gamepad mapping is the right stick's *horizontal* half.
+    Resolved by probe rather than by a fallback chain on purpose: reading RZ and "falling back" to Z
+    on a device that has both would sum two axes of the same physical stick, and left/right would
+    change height too.
 - **D-pad** (present on both the Controller and the basic remote): now held-continuous rather than
   one-shot-per-press, unified into the same per-frame ticker as the analog sticks. Left/right
   always biases x; up/down biases **either** y (further into/out of the room) **or** z (height),
@@ -215,6 +482,14 @@ so the object drifts back onto its planned course on its own rather than needing
   selected object's deflection instead of waiting out the usual ~1.5s spring-back decay — a
   presenter's "and… reset" button. Replaced what used to be here (cycling the selected object, a
   no-op with only one interactive object).
+
+**A dropped key-up no longer pins the object at its clamp.** A controller or remote that
+disappears mid-press delivers the down and never the matching up, leaving that digital axis latched
+at +/-1 with nothing to release it; CEC and IR bridges do the same. Handled by listening for the
+device going away (`InputManager.InputDeviceListener.onInputDeviceRemoved`) and by clearing on
+window focus loss — deliberately **not** by timing out a held key, because Android's own key
+repeat does not cover shoulder buttons on every device and a timeout short enough to be useful would
+break held `L1`/`R1`, two of this app's documented continuous controls.
 
 Either way, input is coalesced to **at most one JNI call per animation frame**, never per raw input
 event — the native side (`live_cursor.cpp`'s `LiveCursorState`, mutex-protected) advances once per
@@ -255,12 +530,30 @@ three separately-tuned screens):
   panel's own plotted room stays a true square, centred inside whatever rectangle its card actually
   is — both axes share the same normalized `[0,1]` scale, so a non-square plot would stretch one
   axis relative to the other and turn the (genuinely circular) guide into a misleading ellipse.
+- **The soundfield arrow** (top-down panel, drawn from the listener marker) —
+  `ac3::analysis::energy_vector()` over the metered bed, a tapered triangle whose length and opacity
+  track the vector's magnitude. The room panels plot where the demo *asked* the object to go; this
+  shows where a 5.1 decoder's own speakers will actually put the energy. Watching the two agree is
+  what shows the panning is real rather than asserted, and it is computed from `AtmosEncoder::bed()`
+  — the literal encoded audio — not from the room-position maths that drew the dot.
+- **Measured loudness** (elevation panel header, previously empty) — a BS.1770
+  `ac3::meta::LoudnessMeter` over the same bed, reporting integrated LKFS and the dialnorm it
+  implies. Blank until the meter's first gated 400ms block has passed, which is the correct thing to
+  show for silence rather than a fabricated number. `loudness_range()` is never called on the encode
+  thread; it allocates and sorts on every call.
 - **Speaker activity (bed)** (bottom-left, alongside the control hints, not its own full-width row —
   kept deliberately compact, since it's "interesting, but doesn't need to be prominent") — a
   segmented, LED-style meter per real bed channel (`StreamStats::channel_levels`, sourced from
   `AtmosEncoder::bed()` — the literal audio a legacy 5.1 decoder hears, not a guess from the room-
   position math), with a bottom-to-top color ramp and a slowly-decaying peak-hold line, the same
   "catch the loudest recent moment" behavior a real hardware VU meter has.
+
+    The levels behind those bars come from `ac3::analysis::LevelMeter` — dB-scaled through
+    `meter_fraction`, with PPM ballistics and a peak hold — rather than the `rms * 4.0` clamp
+    that used to drive them, whose only justification was that the meter would otherwise barely
+    move. `rms_integration_ms` is dropped to 80ms from the 300ms default deliberately: 300ms is
+    about ten frames at 32ms, and the soundfield arrow computed from these same levels would visibly
+    trail a fast pan — the opposite of the cue it exists to give.
 
 Two transient overlays, sharing one `TextView` (mutually exclusive by construction) rather than
 competing for the same screen space:
@@ -288,6 +581,31 @@ renegotiated) and on a slow (2.5s) periodic fallback, since that broadcast isn't
 real AVR power-off (some receivers don't change their reported EDID/HPD state on standby). A
 persistent, full-screen "Waiting for receiver…" interstitial covers the dashboard until then, and
 disappears on its own once streaming actually starts — no restart, ever.
+
+**Readiness has three states, not two, and READY means audio is flowing.** The overlay used to clear
+on `isDirectPlaybackSupported` alone — "this route *could* accept E-AC-3" — which is a
+different claim from "audio is flowing". If `PassthroughSink::start()` then failed, the loop's
+thread exited immediately, the next reconcile still found the route capable, the ready flag
+short-circuited as no-change, and the user got a fully-drawn dashboard over permanent silence, with
+all three objects stacked at the origin because no encode frame had ever run to move them. A
+plausible-looking picture, not an obviously broken one.
+
+READY now means `nativeIsLiveCursorRunning()`, which becomes true only after the sink actually
+opened. **STARTING** covers the gap between asking and knowing, so a slow AVR handshake reads as
+progress rather than as either a lie or a stall. `nativeStartLiveCursor`'s return value is
+deliberately left alone: it is `JNI_TRUE` unconditionally by design, returning as soon as the worker
+is *spawned*, and making it wait for that worker's outcome is precisely the main-thread hang the
+grace period below exists to avoid.
+
+**The waiting screen says what the sink advertises.** `CapabilityProbe` reads the connected HDMI
+route through `AudioManager.getDevices` — encodings, channel counts, and specifically
+`ENCODING_E_AC3_JOC`, the one place the platform confirms an Atmos-capable sink — so the screen
+can tell "the AVR is off" apart from "the AVR is on and does not do E-AC-3", which the single bit
+`isDirectPlaybackSupported` returns never could. Run **off the main thread**: whether `getDevices`
+contends the same audio-policy lock `isDirectPlaybackSupported` deadlocks against is unproven, so it
+is treated as guilty until a real device says otherwise. An empty `getEncodings()` array is reported
+as "publishes no encoding list", never as "supports nothing" — the second would turn a working
+receiver into an on-screen accusation.
 
 ![Waiting-for-receiver interstitial, shown until the AVR is detected](screenshots/android-waiting-for-receiver.png)
 
@@ -475,6 +793,57 @@ every other required leg.
     check**: the emulator runs `-noaudio`, which makes `isDirectPlaybackSupported` deterministically
     false, so what these assert is that the JNI round trip and the `AudioTrack`/`AudioFormat`
     calls fail safely rather than throwing or hanging.
+
+!!! note "The app now asks for two permissions"
+    Both are new, both are normal permissions granted at install with no
+    runtime prompt, and both are listed here because an app that previously
+    asked for nothing now asks for something. `VIBRATE` drives the controller
+    rumble. `INTERNET` is needed only for the opt-in phone remote's listening
+    socket — the app makes no outbound requests of any kind. Worth noting
+    how the second one was found: lint does not check it, because socket
+    creation is kernel-enforced through the inet group rather than by a
+    permission annotation, so it would have failed on the device with the
+    build entirely green.
+
+!!! warning "Added but not yet run on the hardware"
+    Everything in this list is written, reviewed and building, and none of it has been through a
+    real Shield with a real receiver attached. It is listed separately from the confirmed work above
+    rather than folded into it:
+
+    - **OBJECTS OFF** — needs a key-bearing build and a licensed decoder to show anything at all.
+      The claim to check is that the receiver's front panel drops from Atmos to DD+ and back on the
+      keypress, with no dropout beyond the AVR's own re-lock.
+    - **The right-stick height axis.** The probe now prefers `AXIS_RZ` over the hardcoded `AXIS_Z`,
+      on the reasoning that the standard Android mapping puts vertical on RZ. Which axis a real
+      Shield Controller reports is exactly what has never been confirmed — the chosen axis is
+      logged at startup for that purpose. If height still does nothing, read that log line first.
+    - **`AudioManager.getDevices` on a live route.** It is called off the main thread precisely
+      because nobody has established whether it contends the same audio-policy lock that makes
+      `isDirectPlaybackSupported` hang. If the capability line is the thing that freezes, that is
+      the answer.
+    - **The soundfield arrow, the programme meter and the loudness readout** — arithmetic over
+      the encoded bed, so they are as right as the encoder is, but nobody has watched the arrow
+      track a real pan on a real screen.
+    - **Every scene except Orbit.** The shapes are arithmetic and the blend is
+      arithmetic, but nobody has heard a flyover pass overhead on real
+      speakers, which is the entire claim that scene makes.
+    - **Rumble.** Whether a Shield Controller reports a vibrator through
+      `InputDevice.getVibrator()` at all is unconfirmed; the resolved result is
+      logged at startup for exactly that reason.
+    - **The phone remote.** Never loaded from a real phone, and the Shield's
+      own network behaviour on the port is unverified.
+    - **The wire trace, and everything it measures.** The decode has never run on ARM at all, so
+      `dec` ms/frame is unknown; the whole feature rests on it being small next to what `frame`
+      ms/32ms turns out to be. Watch ring drops: a count that climbs steadily over twenty minutes
+      is DVFS sag under sustained two-core load, and would mean the monitor does not ship.
+    - **`frame` ms/32ms itself.** The 24.6 ms figure everyone has been quoting is `encode` alone.
+      Real slot occupancy has never been measured, and this is the first build that reports it.
+    - **The thread nice values.** An app is normally permitted to lower its own threads' priority,
+      but if the platform refuses, the warning is in logcat and the timing numbers should be read
+      with that in mind.
+    - **The partial-write fix.** The path it corrects is the one that had never been observed
+      firing; the change makes a short write resumable rather than duplicating bytes. Whether short
+      writes happen at all on this device is still unknown — the first one now logs.
 
 !!! warning "Not yet verified"
     The emulator tests above cover the device-free contract, not the passthrough path itself:

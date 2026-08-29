@@ -1,12 +1,13 @@
 # Conan (2.x) recipe for ac3forge - installs the library only (ac3::forge,
-# plus matroska::matroska, mp4::mp4 and mpegts::mpegts behind their own
-# default-on options), never the CLI, GUI, tests, examples or fuzz
-# harnesses. Same scope as the vcpkg port (packaging/vcpkg-port/ac3forge/) -
-# one Conan option <-> one AC3FORGE_BUILD_<NAME> CMake option, same pattern
-# that port's vcpkg_check_features() call already establishes. ac3adm::ac3adm
-# (the ADM/BW64 reader) is deliberately NOT an option here for the same
-# reason it has no vcpkg feature - it isn't part of the find_package(ac3forge)
-# package at all, so there's nothing for a Conan option to install.
+# matroska::matroska/mp4::mp4/mpegts::mpegts behind their own default-on options, and
+# ac3::forge_c behind its own default-off "capi" option), never the CLI, GUI, tests, examples or
+# fuzz harnesses. Same scope as the vcpkg port (packaging/vcpkg-port/ac3forge/) - one Conan
+# option <-> one AC3FORGE_BUILD_<NAME> CMake option, same pattern that port's
+# vcpkg_check_features() call already establishes. ac3adm::ac3adm/ac3::admbridge (the ADM/BW64
+# reader and its Atmos bridge) are deliberately NOT options here even though upstream now
+# installs/exports both (shared-only - see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM
+# block): ac3adm needs Boost, and out-of-scope-for-now applies here the same way it does for the
+# vcpkg port's own missing "adm" feature.
 #
 # This recipe wraps cmake/InstallLibrary.cmake's own install()/export()
 # rules rather than reimplementing them: package() just runs `cmake --install`
@@ -45,6 +46,7 @@ class Ac3forgeConan(ConanFile):
         "matroska": [True, False],
         "mp4": [True, False],
         "mpegts": [True, False],
+        "capi": [True, False],
     }
     default_options = {
         "shared": False,
@@ -54,6 +56,10 @@ class Ac3forgeConan(ConanFile):
         "matroska": True,
         "mp4": True,
         "mpegts": True,
+        # Off by default, same reasoning as the vcpkg port's own "capi" feature: this adds a
+        # whole new installed library/binary (ac3::forge_c), not just a behavior toggle on an
+        # already-installed one - opt in explicitly with -o "&:capi=True".
+        "capi": False,
     }
 
     def config_options(self):
@@ -99,6 +105,7 @@ class Ac3forgeConan(ConanFile):
         tc.variables["AC3FORGE_BUILD_MATROSKA"] = bool(self.options.matroska)
         tc.variables["AC3FORGE_BUILD_MP4"] = bool(self.options.mp4)
         tc.variables["AC3FORGE_BUILD_MPEGTS"] = bool(self.options.mpegts)
+        tc.variables["AC3FORGE_BUILD_CAPI"] = bool(self.options.capi)
         tc.variables["BUILD_SHARED_LIBS"] = bool(self.options.shared)
         tc.generate()
         # Generates fmtConfig.cmake (from the requirements() dependency above)

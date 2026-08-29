@@ -25,6 +25,7 @@
 #include "ac3/audio/monitor.hpp"
 #include "ac3/audio/passthrough.hpp"
 #include "ac3/audio/resampler.hpp"
+#include "ac3/audio/spatial.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
@@ -264,6 +265,190 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     sink.stop();
     status_println(status_stream(), "played {} {}, {} underruns", units_played,
                    eac3 ? "access units" : "frames", stats.underruns);
+    return kExitOk;
+}
+
+namespace {
+
+// WAVEFORMATEXTENSIBLE SPEAKER_LOW_FREQUENCY (ksmedia.h) - the one bed
+// channel run_spatial feeds the sink as a static object. Hardcoded for the
+// same reason ac3::audio's own Windows backend hardcodes its SPEAKER_* bits
+// rather than pulling in mmreg.h: the value is part of the public ABI and
+// has never changed.
+constexpr std::uint32_t kSpeakerLowFrequency = 0x8;
+
+// TS 103 420 §4.2.1's room-anchored cube (x,y in [0,1]; z in [-1,1] about ear
+// height - see ac3::oba::scene.hpp's Orientation comment and
+// bed_label_position's "front wall at y=0, ceiling at z=+1, sides at x=0 and
+// 1", and the GUI's ObjectInspectorDialog.qml plan/elevation views, which
+// draw the same cube the same way) to ISpatialAudioObject::SetPosition's
+// listener-relative, right-handed metres: +x right, +y up, +z BEHIND the
+// listener (Microsoft Learn, "Render spatial sound using spatial audio
+// objects").
+//
+// OAMD's cube carries no absolute size, so the metre scale below is a
+// plausible small-room half-extent, not a measured one - what is NOT a
+// guess is the axis correspondence, and the listener sits at the room's
+// centre facing the front (screen) wall, the same reference point
+// ac3::oba::Orientation::rotate already treats as "centred". Moving away
+// from centre still moves an object further away in the right direction;
+// only the absolute distance is approximate.
+struct SpatialXyz {
+    float x;
+    float y;
+    float z;
+};
+
+SpatialXyz to_windows_spatial(const ac3::oba::Position& p) {
+    constexpr float kHalfWidthM = 2.0F;  // left/right wall distance from centre
+    constexpr float kHalfDepthM = 2.0F;  // front/rear wall distance from centre
+    constexpr float kHeightM = 1.0F;     // ceiling/floor distance from ear height
+    return {.x = (static_cast<float>(p.x) - 0.5F) * kHalfWidthM,
+            .y = static_cast<float>(p.z) * kHeightM,
+            .z = (static_cast<float>(p.y) - 0.5F) * kHalfDepthM};
+}
+
+}  // namespace
+
+int run_spatial(std::string_view in_path, int device_index, const Options& meta) {
+    const auto stream = read_all(in_path);
+    if (stream.empty()) {
+        fmt::println(stderr, "error: cannot read {}", in_path);
+        return kExitInput;
+    }
+    if (!apply_object_verification(stream, meta)) {
+        return kExitInput;
+    }
+    const auto bsid = ac3::stream_bsid(stream);
+    if (!bsid) {
+        fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
+        return kExitInput;
+    }
+    if (*bsid <= 8) {
+        fmt::println(stderr,
+                     "error: spatial rendering needs the object layer, which only E-AC-3 "
+                     "carries - 'ac3cli monitor' plays a plain AC-3 bed");
+        return kExitInput;
+    }
+
+    std::string device_id;
+    std::string device_name = "default endpoint";
+    if (device_index >= 0) {
+        const auto devices = ac3::audio::enumerate_render_devices();
+        if (!devices) {
+            fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+            return kExitUnavailable;
+        }
+        if (static_cast<std::size_t>(device_index) >= devices->size()) {
+            fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
+                         device_index);
+            return kExitUsage;
+        }
+        const auto& chosen = (*devices)[static_cast<std::size_t>(device_index)];
+        device_id = chosen.id;
+        device_name = chosen.name;
+    }
+
+    // Refused up front, before any decoding: a spatial format has to be
+    // enabled on the chosen endpoint for this command to do anything this
+    // project cannot already do with 'monitor', and the roadmap calls for
+    // exactly this clean, named refusal rather than a generic failure.
+    const auto capability = ac3::audio::probe_spatial_capability(device_id);
+    if (!capability) {
+        fmt::println(stderr, "error: {}", ac3::audio::describe(capability.error()));
+        return kExitUnavailable;
+    }
+    if (capability->max_dynamic_objects == 0) {
+        fmt::println(stderr, "error: {}", capability->reason);
+        return kExitUnavailable;
+    }
+
+    const auto units = ac3::split_access_units(stream);
+    if (!units || units->empty()) {
+        fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
+        return kExitInput;
+    }
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(
+        ac3::DecoderConfig{.drc_scale = meta.drc_scale,
+                           .fast_imdct = meta.fast_imdct,
+                           .heavy_compression = meta.p.heavy.has_value(),
+                           .output = meta.output,
+                           .concealment = meta.concealment});
+
+    ac3::audio::SpatialObjectSink sink;
+    bool started = false;
+    std::uint64_t units_played = 0;
+    std::vector<ac3::audio::DynamicObjectUpdate> dynamic_updates;
+    std::vector<ac3::audio::StaticObjectUpdate> static_updates;
+
+    for (const auto& unit : *units) {
+        const auto decoded = decoder->decode_access_unit(unit);
+        if (!decoded) {
+            fmt::println(stderr, "error: decode failed (code {})",
+                         static_cast<int>(decoded.error()));
+            return kExitInput;
+        }
+        if (!decoded->has_value()) {
+            // §3.7: held back pending transient pre-noise processing - see
+            // run_monitor's identical handling above.
+            continue;
+        }
+        const auto& out = **decoded;
+
+        if (!started) {
+            const bool has_lfe =
+                out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program);
+            const auto started_result =
+                sink.start(device_id, sample_rate_hz(out.sample_rate),
+                          has_lfe ? kSpeakerLowFrequency : 0U,
+                          static_cast<std::uint32_t>(out.object_audio.size()));
+            if (!started_result) {
+                fmt::println(stderr, "error: {}", ac3::audio::describe(started_result.error()));
+                return kExitUnavailable;
+            }
+            started = true;
+            status_println(status_stream(), "spatial: {} dynamic object(s){} on \"{}\"…",
+                           out.object_audio.size(),
+                           has_lfe ? " + the bed's LFE (static)" : "", device_name);
+        }
+
+        dynamic_updates.clear();
+        if (out.object_metadata) {
+            const auto positions = ac3::oba::describe_objects(*out.object_metadata);
+            for (std::size_t i = 0; i < out.object_audio.size() && i < positions.size(); ++i) {
+                const auto xyz = to_windows_spatial(positions[i].position);
+                dynamic_updates.push_back(
+                    {.pcm = out.object_audio[i],
+                     .x = xyz.x,
+                     .y = xyz.y,
+                     .z = xyz.z,
+                     .gain = static_cast<float>(std::pow(10.0, positions[i].gain_db / 20.0))});
+            }
+        }
+        static_updates.clear();
+        if (out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program) &&
+            !out.channels.empty()) {
+            // Table 5.8's coded order puts the LFE last regardless of acmod
+            // (ac3::DecodedAccessUnit::channels' own doc comment) - never a
+            // JOC output (§6.3.2.2), so it only ever exists here.
+            static_updates.push_back(
+                {.pcm = out.channels.back(), .channel = kSpeakerLowFrequency});
+        }
+
+        while (!sink.submit(dynamic_updates, static_updates)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        }
+        ++units_played;
+    }
+
+    while (sink.stats().updates_rendered < sink.stats().updates_submitted) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    const auto stats = sink.stats();
+    sink.stop();
+    status_println(status_stream(),
+                   "played {} access units, {} active dynamic objects, {} underruns",
+                   units_played, stats.active_dynamic_objects, stats.underruns);
     return kExitOk;
 }
 

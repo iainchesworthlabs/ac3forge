@@ -75,6 +75,42 @@ ac3forge_status_t ac3forge_eac3_decoder_decode_access_unit(
     });
 }
 
+ac3forge_status_t ac3forge_eac3_decoder_decode_access_unit_into(
+    ac3forge_eac3_decoder_t* decoder, const uint8_t* unit, size_t unit_size,
+    float* const* channels, size_t channel_count, size_t samples_per_channel,
+    ac3forge_decoded_access_unit_t** out_unit) {
+    if (decoder == nullptr || unit == nullptr || channels == nullptr || out_unit == nullptr) {
+        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+    }
+    if (channel_count != AC3FORGE_EAC3_DECODER_MAX_CHANNELS ||
+        samples_per_channel != AC3FORGE_SAMPLES_PER_FRAME) {
+        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+    }
+    return guard([&]() -> ac3forge_status_t {
+        std::vector<std::span<float>> spans;
+        spans.reserve(channel_count);
+        for (size_t i = 0; i < channel_count; ++i) {
+            if (channels[i] == nullptr) {
+                return AC3FORGE_ERROR_INVALID_ARGUMENT;
+            }
+            spans.emplace_back(channels[i], samples_per_channel);
+        }
+        auto result = decoder->impl.decode_access_unit_into(
+            std::as_bytes(std::span<const uint8_t>(unit, unit_size)), spans);
+        if (!result) {
+            return ac3forge_c::from_cpp(result.error());
+        }
+        if (!result->has_value()) {
+            *out_unit = nullptr;
+            return AC3FORGE_OK;
+        }
+        auto owned = std::make_unique<ac3forge_decoded_access_unit>();
+        owned->data = std::move(**result);
+        *out_unit = owned.release();
+        return AC3FORGE_OK;
+    });
+}
+
 ac3forge_status_t ac3forge_eac3_decoder_flush(ac3forge_eac3_decoder_t* decoder,
                                                ac3forge_decoded_substream_t*** out_substreams,
                                                size_t* out_count) {

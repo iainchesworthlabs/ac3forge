@@ -67,6 +67,14 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: Theme.space4
 
+        // A Popup/Dialog is not itself an Item ("Accessible must be
+        // attached to an Item or an Action" at runtime otherwise) - its
+        // contentItem is. title is "" (a styled Text below draws the
+        // visible "Open stream" heading instead), so Dialog's own
+        // title-derived accessible name has nothing to read without this.
+        Accessible.role: Accessible.Dialog
+        Accessible.name: qsTr("Open stream")
+
         RowLayout {
             Layout.fillWidth: true
             Text {
@@ -116,6 +124,8 @@ Dialog {
                 running: StreamPlayerController.busy
                 implicitWidth: 24
                 implicitHeight: 24
+                Accessible.role: Accessible.Indicator
+                Accessible.name: qsTr("Decoding…")
             }
         }
 
@@ -195,6 +205,10 @@ Dialog {
                             StreamPlayerController.pause();
                             StreamPlayerController.seek(value);
                         }
+                        Accessible.name: qsTr("Position")
+                        Accessible.description: qsTr("%1 / %2 s")
+                            .arg(StreamPlayerController.positionSeconds.toFixed(1))
+                            .arg(StreamPlayerController.durationSeconds.toFixed(1))
                     }
                     Connections {
                         target: StreamPlayerController
@@ -239,6 +253,8 @@ Dialog {
                         running: StreamPlayerController.exporting
                         implicitWidth: 20
                         implicitHeight: 20
+                        Accessible.role: Accessible.Indicator
+                        Accessible.name: qsTr("Exporting…")
                     }
                     Item { Layout.fillWidth: true }
                 }

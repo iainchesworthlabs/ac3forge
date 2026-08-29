@@ -9,7 +9,9 @@
 #include "ac3/core/window.hpp"
 #include "ac3/internal/arch/simd.hpp"
 
+#include "cpu_features.hpp"
 #include "fft_kernel.hpp"
+#include "mdct_avx2.hpp"
 #include "reference_transform.hpp"
 
 namespace ac3 {
@@ -151,21 +153,24 @@ const FastMdctTables<NLen>& fast_mdct_tables() {
 // whose tables carry this DCT-IV's twiddles (M = NLen/2), so the long
 // transform runs it at M = 256 and both short transforms at M = 128.
 // The pre- and post-twiddle loops run two m/k at a time through the arch
-// seam (ROADMAP PF5). Both are complex multiplies whose ARITHMETIC is
-// contiguous even though their memory access is not: the pre-twiddle
-// gathers u at stride +2 and stride -2 and scatters its result to
-// `bitrev[m]` (the kernel wants its input already digit-reversed - see
+// seam (ROADMAP PF5), four at a time on AVX2-capable hardware
+// (ac3::internal::cpu::has_avx2(), ROADMAP PF5's dynamic-dispatch
+// follow-on - see mdct_avx2.hpp/.cpp). Both are complex multiplies whose
+// ARITHMETIC is contiguous even though their memory access is not: the
+// pre-twiddle gathers u at stride +2 and stride -2 and scatters its result
+// to `bitrev[m]` (the kernel wants its input already digit-reversed - see
 // fft_kernel.hpp - so the quarter-split that was already gathering
 // u[2m]/u[M-1-2m] scatters on the way out instead of the kernel spending a
 // pass permuting in place); the post-twiddle reads the kernel's natural-
-// order output at stride +1 and scatters out to stride +2/-2. The seam
-// carries no shuffle or scatter-store operation, so every gather and every
-// scatter stays scalar (f64x2::set to gather, lane0/lane1 to scatter) and
-// only the arithmetic between them goes two-wide - which is where the time
-// is. Every lane performs the identical operations on the identical values
-// the scalar form did, so the coefficients are bit-identical; see
-// fft_kernel.hpp's own header comment for the algorithm this feeds and
-// tests/core/test_simd_kernels.cpp for the bit-exactness check.
+// order output at stride +1 and scatters out to stride +2/-2. Neither seam
+// carries a shuffle or scatter-store operation, so every gather and every
+// scatter stays scalar (f64x2::set/f64x4::set to gather, lane0..lane1/
+// lane3 to scatter) and only the arithmetic between them goes wide - which
+// is where the time is. Every lane performs the identical operations on the
+// identical values the scalar form did, so the coefficients are
+// bit-identical regardless of width; see fft_kernel.hpp's own header
+// comment for the algorithm this feeds and tests/core/test_simd_kernels.cpp
+// for the bit-exactness check (both tiers).
 //
 // P is kM/2 - 128 for the long transform, 64 for the short pair - so it is
 // always even and neither loop needs a scalar tail.
@@ -176,22 +181,30 @@ void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
     constexpr std::size_t P = FastMdctTables<NLen>::kP;
     std::array<double, P> z_re{};
     std::array<double, P> z_im{};
-    for (std::size_t m = 0; m < P; m += 2) {
-        const auto a = internal::arch::f64x2::set(u[2 * m], u[2 * m + 2]);
-        const auto b = internal::arch::f64x2::set(u[M - 1 - 2 * m], u[M - 3 - 2 * m]);
-        const auto pre_re = internal::arch::f64x2::load(&t.pre_re[m]);
-        const auto pre_im = internal::arch::f64x2::load(&t.pre_im[m]);
-        const auto zr = a * pre_re - b * pre_im;
-        const auto zi = a * pre_im + b * pre_re;
-        const std::size_t d0 = t.fft.bitrev[m];
-        const std::size_t d1 = t.fft.bitrev[m + 1];
-        z_re[d0] = zr.lane0();
-        z_im[d0] = zi.lane0();
-        z_re[d1] = zr.lane1();
-        z_im[d1] = zi.lane1();
+    if (internal::cpu::has_avx2()) {
+        internal::avx2::dct4_pre_twiddle(u, t.pre_re, t.pre_im, t.fft.bitrev, z_re, z_im);
+    } else {
+        for (std::size_t m = 0; m < P; m += 2) {
+            const auto a = internal::arch::f64x2::set(u[2 * m], u[2 * m + 2]);
+            const auto b = internal::arch::f64x2::set(u[M - 1 - 2 * m], u[M - 3 - 2 * m]);
+            const auto pre_re = internal::arch::f64x2::load(&t.pre_re[m]);
+            const auto pre_im = internal::arch::f64x2::load(&t.pre_im[m]);
+            const auto zr = a * pre_re - b * pre_im;
+            const auto zi = a * pre_im + b * pre_re;
+            const std::size_t d0 = t.fft.bitrev[m];
+            const std::size_t d1 = t.fft.bitrev[m + 1];
+            z_re[d0] = zr.lane0();
+            z_im[d0] = zi.lane0();
+            z_re[d1] = zr.lane1();
+            z_im[d1] = zi.lane1();
+        }
     }
-    internal::fft_forward_bitrev<P>(t.fft, z_re, z_im);
+    internal::fft_forward_bitrev<P, double>(t.fft, z_re, z_im);
 
+    if (internal::cpu::has_avx2()) {
+        internal::avx2::dct4_post_twiddle(z_re, z_im, t.post_re, t.post_im, scale, out);
+        return;
+    }
     const auto scale_v = internal::arch::f64x2::broadcast(scale);
     for (std::size_t k = 0; k < P; k += 2) {
         const auto zr = internal::arch::f64x2::load(&z_re[k]);
@@ -231,12 +244,19 @@ void mdct_forward_fast_core(std::span<const double> windowed, std::span<double> 
 
 }  // namespace
 
-// Two samples per iteration through the arch seam (ROADMAP PF5). The
-// plainest kernel in the codec - 512 independent multiplies, unit stride on
-// all three arrays - and therefore the one where the vector form is most
-// obviously the same arithmetic as the scalar one it replaced. kN is 512, so
-// there is no tail.
+// Two (four under AVX2) samples per iteration through the arch seam (ROADMAP
+// PF5, widened in PF5's dynamic-dispatch follow-on - see
+// docs/building.md's "Runtime AVX2 dispatch"). The plainest kernel in the
+// codec - 512 independent multiplies, unit stride on all three arrays - and
+// therefore both the one where the vector form is most obviously the same
+// arithmetic as the scalar one it replaced, and the one Phase 1's own
+// measurement found the clearest real win for. kN is 512, so neither width
+// leaves a tail.
 void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512> windowed) {
+    if (internal::cpu::has_avx2()) {
+        internal::avx2::apply_analysis_window(x, windowed);
+        return;
+    }
     const double* const in = x.data();
     double* const out = windowed.data();
     for (std::size_t n = 0; n < static_cast<std::size_t>(kN); n += 2) {
@@ -329,36 +349,46 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     std::array<double, kQuarter> t_re{};
     std::array<double, kQuarter> t_im{};
     if (fast) {
-        // Two k at a time through the arch seam (ROADMAP PF5), the same
-        // gather-compute-scatter shape as dct4_scaled's pre-twiddle: the
-        // coefficient gather runs at stride -2/+2 and the scatter target is
-        // bitrev[k], so both ends stay scalar and only the six multiplies
-        // and two adds between them go two-wide. kQuarter is 128, so no
-        // tail. See dct4_scaled's own comment for the bit-exactness
-        // argument this shares.
+        // Two (four under AVX2) k at a time through the arch seam (ROADMAP
+        // PF5, ac3::internal::cpu::has_avx2()), the same gather-compute-
+        // scatter shape as dct4_scaled's pre-twiddle: the coefficient
+        // gather runs at stride -2/+2 and the scatter target is bitrev[k],
+        // so both ends stay scalar and only the six multiplies and two adds
+        // between them go wide. kQuarter is 128, a multiple of 4, so
+        // neither width leaves a tail. See dct4_scaled's own comment for
+        // the bit-exactness argument this shares.
         const auto& fft = fast_mdct_tables<512>().fft;
-        constexpr std::size_t kHalfN = static_cast<std::size_t>(kN) / 2;
-        for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); k += 2) {
-            const auto a = internal::arch::f64x2::set(coeffs[kHalfN - 2 * k - 1],
-                                                      coeffs[kHalfN - 2 * k - 3]);
-            const auto b = internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);
-            const auto c = internal::arch::f64x2::load(&tw.cos1[k]);
-            const auto sn = internal::arch::f64x2::load(&tw.sin1[k]);
-            const auto zr = a * c - b * sn;
-            const auto zi = -(b * c + a * sn);
-            const std::size_t d0 = fft.bitrev[k];
-            const std::size_t d1 = fft.bitrev[k + 1];
-            z_re[d0] = zr.lane0();
-            z_im[d0] = zi.lane0();
-            z_re[d1] = zr.lane1();
-            z_im[d1] = zi.lane1();
+        if (internal::cpu::has_avx2()) {
+            internal::avx2::imdct512_pre_twiddle(coeffs, tw.cos1, tw.sin1, fft.bitrev, z_re,
+                                                 z_im);
+        } else {
+            constexpr std::size_t kHalfN = static_cast<std::size_t>(kN) / 2;
+            for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); k += 2) {
+                const auto a = internal::arch::f64x2::set(coeffs[kHalfN - 2 * k - 1],
+                                                          coeffs[kHalfN - 2 * k - 3]);
+                const auto b = internal::arch::f64x2::set(coeffs[2 * k], coeffs[2 * k + 2]);
+                const auto c = internal::arch::f64x2::load(&tw.cos1[k]);
+                const auto sn = internal::arch::f64x2::load(&tw.sin1[k]);
+                const auto zr = a * c - b * sn;
+                const auto zi = -(b * c + a * sn);
+                const std::size_t d0 = fft.bitrev[k];
+                const std::size_t d1 = fft.bitrev[k + 1];
+                z_re[d0] = zr.lane0();
+                z_im[d0] = zi.lane0();
+                z_re[d1] = zr.lane1();
+                z_im[d1] = zi.lane1();
+            }
         }
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter)>(fft, z_re, z_im);
-        // Unit stride throughout, so this negation goes two-wide with
-        // nothing to gather or scatter.
-        for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
-            internal::arch::f64x2::load(&z_re[n]).store(&t_re[n]);
-            (-internal::arch::f64x2::load(&z_im[n])).store(&t_im[n]);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter), double>(fft, z_re, z_im);
+        // Unit stride throughout, so this negation goes wide with nothing
+        // to gather or scatter.
+        if (internal::cpu::has_avx2()) {
+            internal::avx2::imdct512_negate_copy(z_re, z_im, t_re, t_im);
+        } else {
+            for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
+                internal::arch::f64x2::load(&z_re[n]).store(&t_re[n]);
+                (-internal::arch::f64x2::load(&z_im[n])).store(&t_im[n]);
+            }
         }
     } else {
         for (int k = 0; k < kQuarter; ++k) {
@@ -374,16 +404,20 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
 
     // Step 4: post-transform complex multiply. y[n] = z[n] * (xcos1[n] + j*xsin1[n])
     // Unit stride on every one of the six arrays, so this one vectorises
-    // with nothing to gather or scatter (ROADMAP PF5).
+    // with nothing to gather or scatter (ROADMAP PF5, wide under AVX2).
     std::array<double, kQuarter> y_re{};
     std::array<double, kQuarter> y_im{};
-    for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
-        const auto c = internal::arch::f64x2::load(&tw.cos1[n]);
-        const auto sn = internal::arch::f64x2::load(&tw.sin1[n]);
-        const auto tr = internal::arch::f64x2::load(&t_re[n]);
-        const auto ti = internal::arch::f64x2::load(&t_im[n]);
-        (tr * c - ti * sn).store(&y_re[n]);
-        (ti * c + tr * sn).store(&y_im[n]);
+    if (internal::cpu::has_avx2()) {
+        internal::avx2::imdct512_post_twiddle(tw.cos1, tw.sin1, t_re, t_im, y_re, y_im);
+    } else {
+        for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
+            const auto c = internal::arch::f64x2::load(&tw.cos1[n]);
+            const auto sn = internal::arch::f64x2::load(&tw.sin1[n]);
+            const auto tr = internal::arch::f64x2::load(&t_re[n]);
+            const auto ti = internal::arch::f64x2::load(&t_im[n]);
+            (tr * c - ti * sn).store(&y_re[n]);
+            (ti * c + tr * sn).store(&y_im[n]);
+        }
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field.
@@ -407,6 +441,59 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
         x[static_cast<std::size_t>(3 * kN / 4 + 2 * n + 1)] =
             -yr(kQuarter - n - 1) * w[static_cast<std::size_t>(kQuarter - 2 * n - 2)];
     }
+}
+
+// ROADMAP PF5's batch-axis follow-on (docs/building.md's own section):
+// four independent imdct512_windowed(..., /*fast=*/true) calls, one object
+// per SIMD lane, instead of four separate ones - see mdct.hpp's own doc
+// comment for the shape and mdct_avx2.hpp's imdct512_windowed_batch4 for
+// the AVX2 body. tw/fft are exactly the tables imdct512_windowed's own
+// fast branch already looks up (twiddles(), fast_mdct_tables<512>().fft) -
+// this function is the one place outside that fast branch that needs
+// them, which is why the lookup is duplicated here rather than factored
+// out: the AVX2 body lives in a separate translation unit (mdct_avx2.cpp)
+// that cannot see this file's anonymous-namespace tables at all, so they
+// have to be resolved here and passed down as plain spans/a plain-old-data
+// reference, the same pattern every other AVX2 kernel call site in this
+// file already uses.
+void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
+                              std::span<const double, 256> coeffs1,
+                              std::span<const double, 256> coeffs2,
+                              std::span<const double, 256> coeffs3, std::span<double, 512> x0,
+                              std::span<double, 512> x1, std::span<double, 512> x2,
+                              std::span<double, 512> x3) {
+    if (internal::cpu::has_avx2()) {
+        const auto& tw = twiddles();
+        const auto& fft = fast_mdct_tables<512>().fft;
+        internal::avx2::imdct512_windowed_batch4(coeffs0, coeffs1, coeffs2, coeffs3, tw.cos1,
+                                                 tw.sin1, fft, x0, x1, x2, x3);
+        return;
+    }
+    imdct512_windowed(coeffs0, x0, /*fast=*/true);
+    imdct512_windowed(coeffs1, x1, /*fast=*/true);
+    imdct512_windowed(coeffs2, x2, /*fast=*/true);
+    imdct512_windowed(coeffs3, x3, /*fast=*/true);
+}
+
+void mdct512_forward_batch4(std::span<const double, 512> w0, std::span<const double, 512> w1,
+                            std::span<const double, 512> w2, std::span<const double, 512> w3,
+                            std::span<double, 256> c0, std::span<double, 256> c1,
+                            std::span<double, 256> c2, std::span<double, 256> c3) {
+    if (internal::cpu::has_avx2()) {
+        // Same table-resolution job imdct512_windowed_batch4 does above:
+        // FastMdctTables<512> lives in this file's anonymous namespace, so
+        // the AVX2 body cannot look it up and takes its four twiddle
+        // arrays, the FFT table and dct4_scaled's own -2/NLen scale as
+        // plain arguments instead.
+        const auto& t = fast_mdct_tables<512>();
+        internal::avx2::mdct512_forward_batch4(w0, w1, w2, w3, t.pre_re, t.pre_im, t.post_re,
+                                               t.post_im, t.fft, -2.0 / 512.0, c0, c1, c2, c3);
+        return;
+    }
+    mdct512_forward(w0, c0, /*fast=*/true);
+    mdct512_forward(w1, c1, /*fast=*/true);
+    mdct512_forward(w2, c2, /*fast=*/true);
+    mdct512_forward(w3, c3, /*fast=*/true);
 }
 
 void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<double, 512> x,
@@ -457,8 +544,8 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
             z2_re[d] = a2 * c - b2 * s;
             z2_im[d] = -(b2 * c + a2 * s);
         }
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth)>(fft, z1_re, z1_im);
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth)>(fft, z2_re, z2_im);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), double>(fft, z1_re, z1_im);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), double>(fft, z2_re, z2_im);
         for (int n = 0; n < kEighth; ++n) {
             t1_re[static_cast<std::size_t>(n)] = z1_re[static_cast<std::size_t>(n)];
             t1_im[static_cast<std::size_t>(n)] = -z1_im[static_cast<std::size_t>(n)];
@@ -486,22 +573,28 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
     }
 
     // Step 4: post-IFFT complex multiply. y1[n] = z1[n] * (xcos2[n] + j*xsin2[n]).
-    // Both half-block sets, two n at a time, all unit stride (ROADMAP PF5).
+    // Both half-block sets, two (four under AVX2) n at a time, all unit
+    // stride (ROADMAP PF5, ac3::internal::cpu::has_avx2()).
     std::array<double, kEighth> y1_re{};
     std::array<double, kEighth> y1_im{};
     std::array<double, kEighth> y2_re{};
     std::array<double, kEighth> y2_im{};
-    for (std::size_t n = 0; n < static_cast<std::size_t>(kEighth); n += 2) {
-        const auto c = internal::arch::f64x2::load(&tw.cos2[n]);
-        const auto sn = internal::arch::f64x2::load(&tw.sin2[n]);
-        const auto t1r = internal::arch::f64x2::load(&t1_re[n]);
-        const auto t1i = internal::arch::f64x2::load(&t1_im[n]);
-        const auto t2r = internal::arch::f64x2::load(&t2_re[n]);
-        const auto t2i = internal::arch::f64x2::load(&t2_im[n]);
-        (t1r * c - t1i * sn).store(&y1_re[n]);
-        (t1i * c + t1r * sn).store(&y1_im[n]);
-        (t2r * c - t2i * sn).store(&y2_re[n]);
-        (t2i * c + t2r * sn).store(&y2_im[n]);
+    if (internal::cpu::has_avx2()) {
+        internal::avx2::imdct256_post_twiddle(tw.cos2, tw.sin2, t1_re, t1_im, t2_re, t2_im, y1_re,
+                                              y1_im, y2_re, y2_im);
+    } else {
+        for (std::size_t n = 0; n < static_cast<std::size_t>(kEighth); n += 2) {
+            const auto c = internal::arch::f64x2::load(&tw.cos2[n]);
+            const auto sn = internal::arch::f64x2::load(&tw.sin2[n]);
+            const auto t1r = internal::arch::f64x2::load(&t1_re[n]);
+            const auto t1i = internal::arch::f64x2::load(&t1_im[n]);
+            const auto t2r = internal::arch::f64x2::load(&t2_re[n]);
+            const auto t2i = internal::arch::f64x2::load(&t2_im[n]);
+            (t1r * c - t1i * sn).store(&y1_re[n]);
+            (t1i * c + t1r * sn).store(&y1_im[n]);
+            (t2r * c - t2i * sn).store(&y2_re[n]);
+            (t2i * c + t2r * sn).store(&y2_im[n]);
+        }
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field.

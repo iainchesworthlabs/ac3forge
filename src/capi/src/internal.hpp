@@ -11,10 +11,14 @@
 #include <new>
 #include <vector>
 
+#include "ac3/analysis/levels.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/io/elementary.hpp"
 #include "ac3/latency.hpp"
+#include "ac3/meta/loudness.hpp"
+#include "ac3/meta/qc.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3forge_c/ac3forge.h"
 
@@ -68,6 +72,23 @@ static_assert(static_cast<int>(ac3::eac3::StreamType::kReserved) == AC3FORGE_STR
 static_assert(AC3FORGE_SAMPLES_PER_FRAME == ac3::kSamplesPerFrame);
 static_assert(AC3FORGE_BLOCKS_PER_FRAME == ac3::kBlocksPerFrame);
 static_assert(AC3FORGE_SAMPLES_PER_BLOCK == ac3::kSamplesPerBlock);
+
+static_assert(static_cast<int>(ac3::io::StreamKind::kAc3) == AC3FORGE_STREAM_KIND_AC3);
+static_assert(static_cast<int>(ac3::io::StreamKind::kEac3) == AC3FORGE_STREAM_KIND_EAC3);
+static_assert(static_cast<int>(ac3::io::StreamKind::kAc3CoreEac3Extension) ==
+              AC3FORGE_STREAM_KIND_AC3_CORE_EAC3_EXTENSION);
+
+static_assert(static_cast<int>(ac3::meta::QcLoudnessLimit::kBand) == AC3FORGE_QC_LOUDNESS_BAND);
+static_assert(static_cast<int>(ac3::meta::QcLoudnessLimit::kCeiling) ==
+              AC3FORGE_QC_LOUDNESS_CEILING);
+static_assert(static_cast<int>(ac3::meta::QcPresetId::kEbuR128S2) == AC3FORGE_QC_PRESET_EBU_R128_S2);
+static_assert(static_cast<int>(ac3::meta::QcPresetId::kAtscA85) == AC3FORGE_QC_PRESET_ATSC_A85);
+static_assert(static_cast<int>(ac3::meta::QcPresetId::kAtscA85Streaming) ==
+              AC3FORGE_QC_PRESET_ATSC_A85_STREAMING);
+static_assert(static_cast<int>(ac3::meta::QcPresetId::kNetflix) == AC3FORGE_QC_PRESET_NETFLIX);
+static_assert(static_cast<int>(ac3::meta::QcPresetId::kAppleMusicAtmos) ==
+              AC3FORGE_QC_PRESET_APPLE_MUSIC_ATMOS);
+static_assert(ac3::meta::kQcPresetIds.size() == 5);
 
 namespace ac3forge_c {
 
@@ -140,6 +161,19 @@ namespace ac3forge_c {
         case ac3::DecodeError::kReservedValue: return AC3FORGE_ERROR_DECODE_RESERVED_VALUE;
         case ac3::DecodeError::kUnsupported: return AC3FORGE_ERROR_DECODE_UNSUPPORTED;
         case ac3::DecodeError::kInvalidStream: return AC3FORGE_ERROR_DECODE_INVALID_STREAM;
+    }
+    return AC3FORGE_ERROR_INTERNAL;
+}
+
+[[nodiscard]] inline ac3forge_status_t from_cpp(ac3::io::ScanError error) {
+    switch (error) {
+        case ac3::io::ScanError::kEmpty: return AC3FORGE_ERROR_SCAN_EMPTY;
+        case ac3::io::ScanError::kLostSync: return AC3FORGE_ERROR_SCAN_LOST_SYNC;
+        case ac3::io::ScanError::kUnsupportedBsid: return AC3FORGE_ERROR_SCAN_UNSUPPORTED_BSID;
+        case ac3::io::ScanError::kReservedValue: return AC3FORGE_ERROR_SCAN_RESERVED_VALUE;
+        case ac3::io::ScanError::kTruncated: return AC3FORGE_ERROR_SCAN_TRUNCATED;
+        case ac3::io::ScanError::kUnsupportedStructure:
+            return AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE;
     }
     return AC3FORGE_ERROR_INTERNAL;
 }
@@ -226,4 +260,34 @@ struct ac3forge_eac3_access_unit {
 
 struct ac3forge_spans {
     std::vector<ac3forge_span_t> items;
+};
+
+struct ac3forge_scanned_stream {
+    ac3::io::ScannedStream data;
+    // ScannedStream::access_units/ScannedProgramme::access_units point into
+    // the caller's own buffer (std::span<const std::byte>), exactly as
+    // ac3::split_frames()'s result does - see ac3forge_spans above. Rather
+    // than expose that pointer directly (which would tie this handle to a
+    // std::byte* the header never otherwise names), ac3forge_scan() converts
+    // every one of them to an offset/length ac3forge_span_t once, at scan
+    // time, the same way split_into_spans() (eac3.cpp) already does for
+    // ac3forge_split_frames()/ac3forge_split_access_units(). Parallel to
+    // data.access_units and to each of data.programmes[i].access_units.
+    std::vector<ac3forge_span_t> access_units;
+    std::vector<std::vector<ac3forge_span_t>> programme_access_units;
+};
+
+struct ac3forge_loudness_meter {
+    // Neither ac3::meta::LoudnessMeter constructor is default-constructible
+    // (both need rate/acmod/lfe or rate/layout up front), so this holds one
+    // built at create() time rather than embedding it by value the way
+    // ac3forge_encoder/ac3forge_decoder do - matches ac3::io::WavStreamReader's
+    // own reason for the same shape (elementary.hpp).
+    std::unique_ptr<ac3::meta::LoudnessMeter> impl;
+};
+
+struct ac3forge_level_meter {
+    // Same reasoning as ac3forge_loudness_meter above - LevelMeter is not
+    // default-constructible either.
+    std::unique_ptr<ac3::analysis::LevelMeter> impl;
 };

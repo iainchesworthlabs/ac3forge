@@ -58,6 +58,47 @@ AC3FORGE_EXPORT void mdct512_forward(std::span<const double, 512> windowed,
 AC3FORGE_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
                                        std::span<double, 512> x, bool fast = false);
 
+// ROADMAP PF5's batch-axis follow-on: four INDEPENDENT calls to
+// imdct512_windowed(..., /*fast=*/true) run in lockstep, one object per
+// SIMD lane, instead of four separate scalar/SSE2 calls - the axis PF5's
+// own per-transform 2/4-lane seam cannot reach (there is no clean
+// within-one-transform grouping in the FFT core; see fft_kernel.hpp). Safe
+// to call unconditionally, the same as every other transform in this file:
+// internally checks ac3::internal::cpu::has_avx2() and, when it is false,
+// falls back to four ordinary imdct512_windowed(coeffsN, xN,
+// /*fast=*/true) calls - so a caller (joc.cpp's object loop) only ever
+// needs to decide "are four objects ready to batch", never "is AVX2
+// available too". Always takes the fast N/4-FFT fold, the only form worth
+// batching; produces bit-identical results to four separate
+// `imdct512_windowed(coeffsN, xN, /*fast=*/true)` calls with the same
+// inputs either way (tests/core/test_simd_kernels.cpp's `[avx2]` case
+// checks exactly that against the AVX2 path specifically).
+AC3FORGE_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
+                                              std::span<const double, 256> coeffs1,
+                                              std::span<const double, 256> coeffs2,
+                                              std::span<const double, 256> coeffs3,
+                                              std::span<double, 512> x0, std::span<double, 512> x1,
+                                              std::span<double, 512> x2, std::span<double, 512> x3);
+
+// The forward twin of imdct512_windowed_batch4 above (ROADMAP PF5's
+// batch-axis follow-on, phase 4c): four INDEPENDENT
+// mdct512_forward(..., /*fast=*/true) calls run in lockstep, one
+// transform per SIMD lane. The four windowed blocks need not belong to
+// the same signal - the encoders batch four BLOCKS of one channel, the
+// JOC bed loop four CHANNELS of one block; the transform neither knows
+// nor cares. Same contract throughout: safe to call unconditionally
+// (internally checks ac3::internal::cpu::has_avx2() and falls back to
+// four ordinary fast calls), always the fast fold, bit-identical to four
+// separate `mdct512_forward(wN, cN, /*fast=*/true)` calls with the same
+// inputs (tests/core/test_simd_kernels.cpp's `[avx2]` case checks that
+// against the AVX2 path specifically).
+AC3FORGE_EXPORT void mdct512_forward_batch4(std::span<const double, 512> w0,
+                                            std::span<const double, 512> w1,
+                                            std::span<const double, 512> w2,
+                                            std::span<const double, 512> w3,
+                                            std::span<double, 256> c0, std::span<double, 256> c1,
+                                            std::span<double, 256> c2, std::span<double, 256> c3);
+
 // The block-switched (short) transform pair (§7.9, blksw = 1): the usual
 // 512-sample windowed block split into two 256-sample halves, each
 // transformed separately with alpha = -1 (first) or +1 (second, §8.2.3.2).
