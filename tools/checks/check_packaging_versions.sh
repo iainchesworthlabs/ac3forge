@@ -2,22 +2,25 @@
 #
 # Packaging manifest consistency guard.
 #
-# This does NOT check "does packaging/ point at the latest release tag" -
-# docs/releasing.md's post-release checklist documents the four packaging
-# bumps as their own follow-up step, done asynchronously after a release
-# goes out (sometimes days later, in a separate PR), not atomically with the
-# tag. A "must match the latest tag" gate would therefore fail by design in
-# the normal gap between tagging and getting around to the bump PRs - noise,
-# not signal.
+# Two things, at two different severities:
 #
-# What this DOES catch: internal inconsistency within a manifest, the kind a
-# manual copy-forward-and-edit bump (see docs/releasing.md's per-ecosystem
-# steps) can introduce - a version string updated in one file of a set but
-# not another, a hash of the wrong length, a URL that does not name the
-# version it is filed under.
+# 1. Internal inconsistency within a manifest (hard failure, exit 1): the kind a manual
+#    copy-forward-and-edit bump (see docs/releasing.md's per-ecosystem steps) can
+#    introduce - a version string updated in one file of a set but not another, a hash
+#    of the wrong length, a URL that does not name the version it is filed under.
+# 2. A latest-tag advisory (::warning::, never fails the check): does each manifest
+#    actually point at the latest release. This was deliberately left out entirely
+#    until roadmap DR2 (.github/workflows/manifest-bump.yml) automated the bump - before
+#    that, the four packaging bumps were a manual follow-up step done asynchronously
+#    after a release went out (sometimes days later, in a separate PR), not atomically
+#    with the tag, so a hard "must match the latest tag" gate would have failed by
+#    design in the normal gap between tagging and getting around to the bump - noise,
+#    not signal. Automating the bump's *start* does not close that gap outright (merging
+#    the PR manifest-bump.yml opens is still a separate, reviewed step), which is why
+#    this stays advisory rather than becoming the same hard gate.
 #
 # Usage:  ./tools/checks/check_packaging_versions.sh [-r <repo-root>]
-# Exit:   0 = clean, 1 = inconsistency found.
+# Exit:   0 = clean (an advisory warning does not affect this), 1 = inconsistency found.
 
 set -euo pipefail
 
@@ -138,6 +141,8 @@ fi
 # prebuilt .dmg) - see docs/releasing.md#homebrew-formula-and-cask. ---
 formula="$root/packaging/homebrew/Formula/ac3forge.rb"
 cask="$root/packaging/homebrew/Casks/ac3gui.rb"
+formula_version=""
+cask_version=""
 if [ -f "$formula" ] && [ -f "$cask" ]; then
     formula_version="$(grep -m1 -oE 'archive/refs/tags/v[0-9][^"'"'"']*' "$formula" | sed -E 's#archive/refs/tags/v##; s/\.tar\.gz$//')"
     cask_version="$(grep -m1 -oE '^\s*version\s+"[^"]+"' "$cask" | sed -E 's/^\s*version\s+"([^"]+)"/\1/')"
@@ -157,6 +162,47 @@ if [ -f "$portfile" ]; then
     fi
 else
     note "vcpkg portfile not found: $portfile"
+fi
+
+# --- latest-tag advisory: does each manifest actually point at the latest release?
+# Advisory only (::warning::, never sets fail=1) - even with manifest-bump.yml (roadmap
+# DR2) opening the bump PR automatically right after a release, merging it is still a
+# separate, reviewed step, so a real gap between "tagged" and "all four manifests
+# updated" is expected and not itself a defect. Before that workflow existed the bump
+# was manual with no automation to prompt it at all, which is why this was deliberately
+# left out entirely - see this file's own header. Skipped, not failed, when there is no
+# `v*` tag reachable from HEAD (a shallow clone with no tags fetched, or a checkout with
+# no releases yet). ---
+latest_tag="$(git -C "$root" describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+if [ -n "$latest_tag" ]; then
+    latest_version="${latest_tag#v}"
+    advise() { echo "::warning::$1"; echo "  (advisory) $1"; }
+
+    vcpkg_json="$root/packaging/vcpkg-port/ac3forge/vcpkg.json"
+    if [ -f "$vcpkg_json" ]; then
+        v="$(grep -m1 '"version-semver"' "$vcpkg_json" | sed -E 's/.*"version-semver":[[:space:]]*"([^"]+)".*/\1/')"
+        [ "$v" = "$latest_version" ] ||
+            advise "vcpkg port is at $v, latest release is $latest_version - packaging/vcpkg-port/ac3forge/ needs a bump (docs/releasing.md#vcpkg-port)"
+    fi
+
+    if [ -f "$formula" ]; then
+        [ "$formula_version" = "$latest_version" ] ||
+            advise "Homebrew formula is at $formula_version, latest release is $latest_version - packaging/homebrew/Formula/ac3forge.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
+    fi
+    if [ -f "$cask" ]; then
+        [ "$cask_version" = "$latest_version" ] ||
+            advise "Homebrew cask is at $cask_version, latest release is $latest_version - packaging/homebrew/Casks/ac3gui.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
+    fi
+
+    if [ -f "$conandata" ] && ! grep -q "\"$latest_version\":" "$conandata"; then
+        advise "conandata.yml has no entry for $latest_version - packaging/conan/conandata.yml needs a bump (docs/releasing.md#conan-recipe)"
+    fi
+
+    winget_dir="$root/packaging/winget/manifests/i/iainchesworthlabs/ac3forge/$latest_version"
+    [ -d "$winget_dir" ] ||
+        advise "no winget manifest directory for $latest_version - packaging/winget/manifests/ needs a new version directory (docs/releasing.md#winget-manifest)"
+else
+    echo "(latest-tag advisory skipped: no v* tag reachable from HEAD)"
 fi
 
 if [ "$fail" -ne 0 ]; then

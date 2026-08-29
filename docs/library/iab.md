@@ -8,8 +8,9 @@ carry, and that Netflix's IMF pipeline (SMPTE ST 2067-201) delivers inside MXF t
 
 Roadmap item IM1: phase 1 is the bitstream reader (`ac3iab.hpp`); phase 2 is MXF Track File
 extraction (`mxf.hpp`), both covered here. Mapping the parsed bed/object graph onto
-`ac3::oba::AtmosEncoder` (phase 3, `ac3::admbridge`) is a separate module — see
-[ADM → Atmos bridging](adm-bridge.md).
+`ac3::oba::AtmosEncoder` (phase 3) is a separate module, `ac3::admbridge`'s `build_iab()` — see
+[ADM → Atmos bridging](adm-bridge.md#bridging-iab-roadmap-im1-phase-3) — driven end to end by
+`ac3cli atmos-iab` (see [Commands](../cli/commands.md)).
 
 ```cpp
 const auto frames = ac3iab::parse_iabitstream(path);   // a bare elementary .iab file
@@ -39,8 +40,10 @@ way the three container writers do:
 cmake --preset config-windows-msvc-debug   # AC3FORGE_BUILD_IAB=ON by default
 ```
 
-Nothing downstream consumes it yet inside this build (`ac3cli`, `ac3gui`, the other examples) —
-roadmap IM1 phase 3 (`atmos-iab`) is what will eventually give it one.
+`ac3cli atmos-iab` (roadmap IM1 phase 3, needs `-DAC3FORGE_BUILD_ADM=ON` — the same flag
+`ac3::admbridge` itself rides, since that is the module with a consumer for this graph) is this
+module's own real-world driver; nothing else in this build (`ac3gui`, the other examples) consumes
+it yet.
 
 ## What gets parsed
 
@@ -112,8 +115,20 @@ already-extracted `IAElement(IA_FRAME)`'s payload directly (no header of its own
 comment) — the lower-level entry point both `parse_iabitstream` and `parse_mxf_iab` use internally
 once they have stripped their own respective framing away.
 
+## Bridging to Atmos
+
+`ac3::admbridge`'s `build_iab()` maps this module's parsed graph onto `ac3::oba::AtmosEncoder`'s
+input shape — one `ac3::oba::ObjectPath` plus one mono PCM buffer per Bed channel or Object, ready
+to drive `encode_frame()` in a loop, the same destination shape `ac3::admbridge::build()` produces
+for ADM. See [ADM → Atmos bridging](adm-bridge.md#bridging-iab-roadmap-im1-phase-3) for what gets
+mapped (Table 19 → `ac3::oba::BedLabel`, position conversion, MetaID-based cross-frame identity)
+and what does not (spread, the 9-zone `ObjectZoneControl`).
+[`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp)
+is the full read → bridge → encode pipeline; `ac3cli atmos-iab` drives the identical pipeline from
+the command line.
+
 ---
 
-See also: [ADM → Atmos bridging](adm-bridge.md) — `ac3::admbridge`, which will map this graph onto
-`ac3::oba::AtmosEncoder` once roadmap IM1 phase 3 lands; [ADM / BW64 reading](adm.md) — the
-sibling codec-blind reader this module's shape and documentation follow.
+See also: [ADM → Atmos bridging](adm-bridge.md) — `ac3::admbridge`, which maps this graph onto
+`ac3::oba::AtmosEncoder`; [ADM / BW64 reading](adm.md) — the sibling codec-blind reader this
+module's shape and documentation follow.

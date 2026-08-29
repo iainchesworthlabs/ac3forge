@@ -65,6 +65,36 @@ ColumnLayout {
         return n;
     }
 
+    // A plan view is a picture, not a set of discrete controls - individual
+    // speaker dots would be a lot of Accessible objects for very little
+    // information (their position is exactly what the two caption Texts
+    // below already summarise in words). One Graphic with a text
+    // alternative, rebuilt from the same earSpeakers/ceilingSpeakers/
+    // lfeCount/soundfield state the drawing itself reads, is the standard
+    // shape for a live diagram - equivalent to alt text on a chart image.
+    Accessible.role: Accessible.Graphic
+    Accessible.name: qsTr("Soundfield plan")
+    Accessible.description: {
+        const ear = root.controller.atmosEnabled
+            ? qsTr("ear level: %1 speakers, objects panned in").arg(root.earSpeakers.length)
+            : qsTr("ear level: %1 speakers, %2").arg(root.earSpeakers.length)
+                .arg(root.fedCaption(root.earSpeakers));
+        if (root.ceilingSpeakers.length === 0 && root.lfeCount === 0) {
+            return ear;
+        }
+        let parts = [ear];
+        if (root.ceilingSpeakers.length > 0) {
+            parts.push(qsTr("ceiling: %1 height, %2").arg(root.ceilingSpeakers.length)
+                .arg(root.fedCaption(root.ceilingSpeakers)));
+        }
+        if (root.lfeCount > 0) {
+            parts.push(root.lfeCount > 1
+                ? qsTr("two independent low-frequency channels")
+                : qsTr("one low-frequency channel"));
+        }
+        return parts.join("; ");
+    }
+
     function fedCaption(list) {
         if (root.controller.atmosEnabled) {
             return qsTr("objects panned in");

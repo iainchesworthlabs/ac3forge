@@ -46,11 +46,21 @@ endif()
 # anywhere in this target's sources. See adm/atmos_adm.hpp's own top comment for the full
 # reasoning, including why this replaced an earlier #ifdef-based design once
 # tools/checks/check_platform_macros.ps1 was actually run against it.
+# 'atmos-iab' (roadmap IM1 phase 3) rides the exact same AC3FORGE_BUILD_ADM gate as 'atmos-adm'
+# above, for the reason adm/atmos_iab.hpp's own top comment gives: ac3iab::ac3iab by itself
+# (AC3FORGE_BUILD_IAB, default ON) has nothing that can drive AtmosEncoder - only
+# ac3::admbridge's own build_iab() does that, and admbridge only exists when AC3FORGE_BUILD_ADM
+# turned it on. adm/enabled/atmos_iab.cpp additionally needs ac3iab::ac3iab directly (to sniff and
+# parse the input container), already linked unconditionally elsewhere in this target - see the
+# root CMakeLists.txt's own AC3FORGE_BUILD_ADM-requires-AC3FORGE_BUILD_IAB guard for why that
+# combination cannot actually diverge.
 if(AC3FORGE_BUILD_ADM)
-    target_sources(ac3cli PRIVATE adm/enabled/atmos_adm.cpp adm/enabled/decode_adm.cpp)
+    target_sources(ac3cli PRIVATE adm/enabled/atmos_adm.cpp adm/enabled/decode_adm.cpp
+                                  adm/enabled/atmos_iab.cpp)
     target_link_libraries(ac3cli PRIVATE ac3adm::ac3adm ac3::admbridge)
 else()
-    target_sources(ac3cli PRIVATE adm/disabled/atmos_adm.cpp adm/disabled/decode_adm.cpp)
+    target_sources(ac3cli PRIVATE adm/disabled/atmos_adm.cpp adm/disabled/decode_adm.cpp
+                                  adm/disabled/atmos_iab.cpp)
 endif()
 
 # ac3::coverage (roadmap VX15) instruments this target's OWN sources. Linking
@@ -68,6 +78,7 @@ target_link_libraries(ac3cli
         matroska::matroska
         mp4::mp4
         mpegts::mpegts
+        ac4::ac4
         ac3::warnings
         ac3::fmt
         ac3::coverage)

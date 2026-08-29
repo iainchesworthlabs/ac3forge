@@ -45,6 +45,7 @@ if(NOT Catch2_FOUND)
 endif()
 
 add_executable(ac3tests
+    ac4/test_ac4.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
@@ -197,6 +198,12 @@ target_compile_definitions(ac3tests
 # same reasoning: a path, because ctest runs from the build tree.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_OBJECT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/object-fixture\"")
+
+# tests/ac4/test_ac4.cpp reads the real DEE-produced AC-4 fixtures under
+# here (tools/generators/gen_ac4_baseline.py) - same reasoning as the two
+# defines above.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
 
 # Where every test that writes a file writes it. Each such file's own scratch_dir()
 # helper appends its own leaf name under here, so the artefacts stay separated by
@@ -364,7 +371,8 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 # the same if(AC3FORGE_BUILD_ADM) block in the root CMakeLists.txt.
 if(AC3FORGE_BUILD_ADM)
     target_sources(ac3tests PRIVATE adm/test_adm.cpp admbridge/test_adm_bridge.cpp
-                                    admbridge/test_adm_bridge_write.cpp)
+                                    admbridge/test_adm_bridge_write.cpp
+                                    admbridge/test_iab_bridge.cpp)
     target_link_libraries(ac3tests PRIVATE ac3adm::ac3adm ac3::admbridge)
 endif()
 
@@ -378,7 +386,7 @@ endif()
 # (AC3CLI_EXE might not be defined at all, e.g. AC3FORGE_BUILD_CLI=OFF) is sufficient by itself -
 # both are checked together here, after both blocks above have already run.
 if(AC3FORGE_BUILD_ADM AND TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp)
+    target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp cli/test_cli_atmos_iab.cpp)
 endif()
 
 # ac3iab::ac3iab (roadmap IM1 phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB
@@ -391,6 +399,14 @@ endif()
 if(AC3FORGE_BUILD_IAB)
     target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp ac3iab/test_mxf_reader.cpp)
     target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
+endif()
+
+# iamf::iamf (roadmap IM3 phase 1, src/iamf) is gated by its own AC3FORGE_BUILD_IAMF (default ON,
+# see the root CMakeLists.txt's own option()), same conditional shape as the AC3FORGE_BUILD_IAB
+# block immediately above.
+if(AC3FORGE_BUILD_IAMF)
+    target_sources(ac3tests PRIVATE iamf/test_iamf.cpp)
+    target_link_libraries(ac3tests PRIVATE iamf::iamf)
 endif()
 
 # ac3::forge_c is an optional component (AC3FORGE_BUILD_CAPI, default ON - see the root
@@ -411,6 +427,7 @@ target_link_libraries(ac3tests
         matroska::matroska
         mp4::mp4
         mpegts::mpegts
+        ac4::ac4
         ac3::warnings
         ac3::coverage
         ac3::fmt

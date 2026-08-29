@@ -118,7 +118,7 @@ struct Args {
 // same way regardless: adm/atmos_adm.hpp's ac3cli::adm_capability(), backed by exactly one of
 // adm/enabled/atmos_adm.cpp or adm/disabled/atmos_adm.cpp (see run_atmos_adm's own comment for
 // why a CMake-selected file, not a preprocessor conditional, decides this).
-enum class Needs : std::uint8_t { kNothing, kCapture, kPassthrough, kMonitor, kAdm };
+enum class Needs : std::uint8_t { kNothing, kCapture, kPassthrough, kMonitor, kSpatial, kAdm };
 
 // The unmet requirement, or nullptr when this build/platform can satisfy it.
 //
@@ -138,6 +138,7 @@ const ac3::audio::Capability* unmet(Needs needs) {
         case Needs::kPassthrough:
             return backend.passthrough.available ? nullptr : &backend.passthrough;
         case Needs::kMonitor: return backend.monitor.available ? nullptr : &backend.monitor;
+        case Needs::kSpatial: return backend.spatial.available ? nullptr : &backend.spatial;
         case Needs::kAdm: {
             const auto& adm = ac3cli::adm_capability();
             return adm.available ? nullptr : &adm;
@@ -170,13 +171,13 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 39 commands, always - including atmos-adm, whether or not AC3FORGE_BUILD_ADM linked
-// ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above and
-// run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating it,
-// never sized out of the table entirely - the identical "listed, not hidden" treatment
+// 40 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
+// linked ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above
+// and run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating
+// it, never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 39> kCommands{{
+constexpr std::array<Command, 41> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
@@ -226,6 +227,15 @@ constexpr std::array<Command, 39> kCommands{{
      [](const Args& x) {
          return run_atmos_adm(x.str(1), x.str(2), x.u32(3, 448), x.meta, x.str(4));
      }},
+    {"atmos-iab", 3, "<in.iab|in.mxf> <out.ec3> [bitrate_kbps]",
+     "a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare "
+     "elementary .iab file or a real MXF Track File alike - roadmap IM1) straight to DD+ JOC "
+     "E-AC-3; every Bed channel/Object the file names becomes an AtmosEncoder object, driven by "
+     "the file's own authored panning - no scene file needed. Only in builds with "
+     "-DAC3FORGE_BUILD_ADM=ON",
+     topic::kAtmos | topic::kMeta | topic::kObjects,
+     Needs::kAdm,
+     [](const Args& x) { return run_atmos_iab(x.str(1), x.str(2), x.u32(3, 448), x.meta); }},
     {"strip-objects", 3, "<in.ec3> <out.ec3>",
      "remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed",
      topic::kStdio | topic::kMeta,
@@ -403,6 +413,12 @@ constexpr std::array<Command, 39> kCommands{{
      "decode and play on an ordinary (non-bitstreamed) output", topic::kDecode | topic::kObjects,
      Needs::kMonitor,
      [](const Args& x) { return run_monitor(x.str(1), x.i32(2, -1), x.meta); }},
+    {"spatial", 2, "<in.ec3> [device_index]",
+     "decode the object layer onto Windows Spatial Sound - dynamic objects at their OAMD "
+     "positions, the bed's LFE static (roadmap UX8)",
+     topic::kDecode | topic::kObjects,
+     Needs::kSpatial,
+     [](const Args& x) { return run_spatial(x.str(1), x.i32(2, -1), x.meta); }},
     {"help", 1, "[<command>|exit-codes]",
      "one command's own arguments and grammars, not the whole manual", topic::kNone,
      Needs::kNothing, run_help},

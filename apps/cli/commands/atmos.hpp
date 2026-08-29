@@ -55,4 +55,14 @@ int run_strip_objects(std::string_view in_path, std::string_view out_path,
 int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                   const ac3cli::Options& meta, std::string_view programme_id);
 
+// Roadmap IM1 phase 3 of 3 - a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2's Immersive
+// Audio Bitstream, a bare elementary .iab file or a real MXF Track File alike) straight to DD+ JOC
+// E-AC-3, the identical shape run_atmos_adm above has for ADM: every Bed channel/Object the file
+// names becomes an AtmosEncoder object, driven by the file's own authored panning, no scene file
+// needed. See adm/atmos_iab.hpp's own header comment for why this function is unconditional
+// (ac3iab::ac3iab/ac3::admbridge linked-or-not is a build-time FILE choice, never a preprocessor
+// conditional) and why it rides run_atmos_adm's own AC3FORGE_BUILD_ADM gate rather than a new one.
+int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
+                  const ac3cli::Options& meta);
+
 }  // namespace ac3cli::commands

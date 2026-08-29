@@ -7,6 +7,7 @@ docs/library/python-api.md in the ac3forge repository for the full surface and w
 
 from ._ac3forge import (
     BLOCKS_PER_FRAME,
+    MAX_AC3_CHANNELS,
     SAMPLES_PER_FRAME,
     TRANSFORM_DELAY_SAMPLES,
     Ac3DecodeError,
@@ -76,6 +77,7 @@ except PackageNotFoundError:  # pragma: no cover - an editable/unbuilt checkout
 
 __all__ = [
     "BLOCKS_PER_FRAME",
+    "MAX_AC3_CHANNELS",
     "SAMPLES_PER_FRAME",
     "TRANSFORM_DELAY_SAMPLES",
     "Ac3DecodeError",

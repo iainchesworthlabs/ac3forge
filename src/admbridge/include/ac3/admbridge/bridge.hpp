@@ -98,6 +98,15 @@ enum class BridgeError : std::uint8_t {
     kEmptyInput,            // write() only: WriteInput::channels was empty, or a dynamic-object
                             // channel's `updates` was empty (every channel needs at least one
                             // DynamicObject state to place it, even a static, never-moving one)
+    kEmptyIabStream,        // build_iab() only: the frame span passed to it was empty
+    kUnsupportedIabChannel, // build_iab() only: a BedDefinition used a Table 19 ChannelID with no
+                            // ac3::oba::BedLabel equivalent - see iab_bridge.cpp's own comment on
+                            // exactly which codes map and which are refused
+    kNoIabEssenceForChannel, // build_iab() only: a channel's non-zero AudioDataID (§10.3.6/Table 8's
+                            // own field) never resolved to an AudioDataPCM element in any frame it
+                            // was active in - missing, or only ever present as an (undecoded)
+                            // AudioDataDLC asset. AudioDataID == 0 is legitimate silence (§10.3.6)
+                            // and is not this error.
 };
 
 [[nodiscard]] AC3ADMBRIDGE_EXPORT std::string_view describe(BridgeError error);

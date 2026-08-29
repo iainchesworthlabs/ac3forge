@@ -47,6 +47,15 @@ struct AudioBackend {
     // same reason capture and passthrough are separate: a platform can gain
     // this without gaining bitstreamed passthrough, or vice versa.
     Capability monitor;
+    // Rendering decoded Atmos objects and bed through an OS object renderer
+    // (Windows' ISpatialAudioObjectRenderStream): ac3::audio::SpatialObjectSink,
+    // behind the CLI's 'spatial'. "Available" here means the same thing it
+    // does for the other three - this build has the code, not that any
+    // particular endpoint on this machine currently has a spatial sound
+    // format enabled. That per-endpoint question is start()'s own
+    // SpatialError::kNoSpatialFormat, exactly parallel to passthrough's
+    // per-device kFormatRejected split.
+    Capability spatial;
 };
 
 [[nodiscard]] const AudioBackend& audio_backend();

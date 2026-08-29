@@ -48,6 +48,15 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: Theme.space4
 
+        // A Popup/Dialog is not itself an Item ("Accessible must be
+        // attached to an Item or an Action" at runtime otherwise) - its
+        // contentItem is. title is deliberately "" (a styled Text below
+        // draws the visible heading instead), so Dialog's own default
+        // accessible-name derivation - which reads title - has nothing to
+        // find without this.
+        Accessible.role: Accessible.Dialog
+        Accessible.name: qsTr("QC a stream")
+
         RowLayout {
             Layout.fillWidth: true
             Text {
@@ -96,6 +105,8 @@ Dialog {
                 running: QcController.busy
                 implicitWidth: 24
                 implicitHeight: 24
+                Accessible.role: Accessible.Indicator
+                Accessible.name: qsTr("Measuring…")
             }
         }
 
@@ -128,6 +139,7 @@ Dialog {
             // this control uses), so the two cannot disagree again.
             SegmentedControl {
                 objectName: "qcPresetControl"
+                accessibleName: qsTr("DELIVERY PRESET")
                 model: QcController.presetNames.map((label, index) =>
                     ({ value: String(index), label: label }))
                 currentValue: String(QcController.presetIndex)
@@ -291,6 +303,21 @@ Dialog {
                                     objectName: "qcPresetRow-" + presetRow.modelData.id
                                     Layout.fillWidth: true
                                     spacing: Theme.space3
+
+                                    // One compound summary rather than four
+                                    // separate Accessible objects (name,
+                                    // loudness PASS/FAIL, true peak PASS/FAIL,
+                                    // the verdict chip) for the same row -
+                                    // built from the exact modelData fields
+                                    // the four Texts below already read, so
+                                    // it can never report a different verdict
+                                    // than what is drawn.
+                                    Accessible.role: Accessible.ListItem
+                                    Accessible.name: presetRow.modelData.name
+                                    Accessible.description: qsTr("loudness %1, true peak %2, overall %3")
+                                        .arg(presetRow.modelData.loudnessPass ? qsTr("pass") : qsTr("fail"))
+                                        .arg(presetRow.modelData.truePeakPass ? qsTr("pass") : qsTr("fail"))
+                                        .arg(presetRow.modelData.pass ? qsTr("pass") : qsTr("fail"))
 
                                     Text {
                                         Layout.preferredWidth: 140
