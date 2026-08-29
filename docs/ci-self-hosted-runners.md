@@ -10,26 +10,32 @@ degradation when most of the fleet is genuinely gone (one surviving runner takes
 the rest overflow to GitHub-hosted). macOS and the arm64 legs always stay on GitHub-hosted
 runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
 (Detect changes, Static Analysis, FFmpeg Validate, ADM Module, ABI diff, Performance vs
-merge base, Platform Macros, and the cheap gate jobs) route the same way through its
+merge base, and the cheap gate jobs) route the same way through its
 `check-runner` job, `codeql.yml`'s Analyze matrix routes through its own `check-runner`,
-and `_build.yml`'s standalone containerised build-footprint job rides the matrix fan-out as
-leg 5. Three jobs stay on GitHub-hosted deliberately: Coverage (see its own comment in
-`ci.yml` for the undiagnosed shutdown-signal failure), and build-wasm / build-android /
-build-rust (they run bare and lean on toolchains the hosted image pre-bakes - emsdk,
-Android SDK/NDK, rustup - that the fleet image does not; route them only if/when
-`ci-runners` bakes those in). MSVC Code Analysis (PREfast) also stays on `windows-latest`
-for now: it is a ~35-minute job, and the 7-runner Windows fleet is the capacity pinch -
-two build legs per queue entry already keep it busy.
+MSVC Code Analysis (PREfast) and the Windows wheel leg route through deciders of their own
+in `msvc-analysis.yml`/`wheels.yml`, and `_build.yml`'s standalone containerised
+build-footprint job rides the matrix fan-out as leg 5 - so one queue entry can now put up
+to four Windows consumers (two build legs, PREfast, the wheel leg) onto the 7-runner
+Windows fleet at once. Several jobs stay on GitHub-hosted deliberately: Coverage (see its
+own comment in `ci.yml` for the undiagnosed shutdown-signal failure); build-wasm /
+build-android / build-rust (they run bare and lean on toolchains the hosted image
+pre-bakes - emsdk, Android SDK/NDK, rustup - that the fleet image does not; route them
+only if/when `ci-runners` bakes those in); Platform Macros (`check_platform_macros.ps1`
+needs pwsh, which the fleet's Linux image does not ship - see the job's own comment in
+`ci.yml`); and the wheels workflow's Linux and macOS legs (the fleet's Python has no pip,
+which `cibuildwheel` needs before it can do anything - see `wheels.yml`'s own comment).
 
-Control-plane jobs - the `check-runner`/`check-runners` deciders themselves,
-`_toolchain-versions.yml`'s `resolve`, and the `CI Status` aggregator - route separately,
-via the repository variable `CONTROL_RUNNER_JSON` (a runner-label JSON array, e.g.
-`["self-hosted","Linux","X64"]`; unset means `ubuntu-latest`). These are seconds-long jobs
-that everything else waits on, and leaving them on the shared hosted pool meant that under
-saturation a 9-second decider queued for hours behind 25-minute build legs before the run
-could even choose runners (observed 2026-08-28). Deleting the variable is the kill switch
-that returns them all to GitHub-hosted - it is evaluated fresh on every run, so a dead
-self-hosted fleet can never lock the escape hatch shut. Fork PRs are pinned to
+Control-plane jobs - the `check-runner`/`check-runners` deciders in `ci.yml`, `_build.yml`
+and `codeql.yml`, `_toolchain-versions.yml`'s `resolve`, and the `CI Status` aggregator -
+route separately, via the repository variable `CONTROL_RUNNER_JSON` (a runner-label JSON
+array, e.g. `["self-hosted","Linux","X64"]`; unset means `ubuntu-latest`). These are
+seconds-long jobs that everything else waits on, and leaving them on the shared hosted pool
+meant that under saturation a 9-second decider queued for hours behind 25-minute build legs
+before the run could even choose runners (observed 2026-08-28). Deleting the variable is
+the kill switch that returns them all to GitHub-hosted - it is evaluated fresh on every
+run, so a dead self-hosted fleet can never lock the escape hatch shut.
+(`msvc-analysis.yml`'s and `wheels.yml`'s own deciders are pinned to `ubuntu-latest`
+instead and don't read the variable.) Fork PRs are pinned to
 GitHub-hosted unconditionally here too: `check-runner` executes `decide-runner` from a
 checkout of the fork's merge ref, which is fork-controlled code.
 
@@ -43,8 +49,9 @@ this one.
 ## How the decision gets made
 
 A `check-runners` job runs before the `build` matrix on every push/PR/release, decides a
-runner-label set for each of the four Linux legs and each of the two Windows legs
-individually, and the matrix picks those up via `runs-on: ${{ fromJSON(matrix.runner) }}`.
+runner-label set for each of the five Linux legs (the four matrix legs plus
+build-footprint's leg 5) and each of the two Windows legs individually, and the matrix
+picks those up via `runs-on: ${{ fromJSON(matrix.runner) }}`.
 Per OS, in order:
 
 1. **Fork PRs always get GitHub-hosted**, no exceptions and no live check, for every leg.
@@ -116,10 +123,14 @@ for anything the heuristic gets wrong.
 ## Measuring whether it's actually worth it
 
 The whole point of this is to find out whether self-hosted is meaningfully faster than
-GitHub-hosted for ac3forge's build - not to assume it. Nothing here pre-bakes toolchains onto
-the self-hosted image or skips any install step; every leg installs GCC/LLVM/Qt/ffmpeg/Ninja
-and warms vcpkg's cache identically regardless of which runner it landed on, so a timing
-comparison between the two is measuring the runner, not a shortcut. Pre-baking is a
+GitHub-hosted for ac3forge's build - not to assume it. With one exception, every leg
+installs GCC/LLVM/Qt/ffmpeg/Ninja and warms vcpkg's cache identically regardless of which
+runner it landed on, so a timing comparison between the two is measuring the runner, not a
+shortcut. The exception is the Windows LLVM leg: its install step checks
+`clang-cl --version` first and skips the ~10-minute download/install when the host already
+carries the exact pinned version - which the fleet's own Packer template now bakes in (see
+`ci-runners`' `scripts/windows/03-llvm-toolchain.ps1`), so that leg's self-hosted timings
+do include a pre-bake shortcut and should be read accordingly. Wider pre-baking is a
 reasonable follow-up once there's real data to justify it - not built in advance of that data.
 
 ## Toolchain version pins
@@ -134,8 +145,12 @@ below for what differs and why).
 
 1. **One manifest, several sources.**
    [`.github/toolchain-versions.json`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/toolchain-versions.json)
-   holds only the two pins that have no other canonical home in this repo: the MSVC toolset
-   prefix (`msvc_toolset`) and the Qt version (`qt`). Everything else this repo already pins
+   holds only the three pins that have no other canonical home in this repo: the MSVC
+   toolset prefix (`msvc_toolset`), the Qt version (`qt`), and the exact LLVM point release
+   `_build.yml`'s Windows leg downloads as a win64 installer (`llvm_windows_version` -
+   Windows has no versioned package to pin against the way apt does, and
+   `_toolchain-versions.yml` asserts its major matches `llvm_version` so the two can't
+   silently drift apart). Everything else this repo already pins
    somewhere is read from that real location instead of being duplicated into the manifest
    too: GCC/LLVM majors come from `.github/toolchain/02-gcc-toolchain.sh` and
    `03-llvm-toolchain.sh` (the scripts that actually install them - copied verbatim from
@@ -145,8 +160,9 @@ below for what differs and why).
    `builtin-baseline`.
    [`_toolchain-versions.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_toolchain-versions.yml)
    is a small reusable `workflow_call` (same shape as the `check-runners` job above) that
-   reads the manifest plus those four other files once and exposes `gcc_version` / `llvm_version` / `msvc_toolset`
-   / `qt_version` / `cmake_min` / `vcpkg_commit` as outputs. Every workflow that used to
+   reads the manifest plus those four other files once and exposes `gcc_version` / `llvm_version`
+   / `llvm_windows_version` / `msvc_toolset` / `qt_version` / `cmake_min` / `vcpkg_commit`
+   as outputs. Every workflow that used to
    hardcode a `vcpkg-commit: "eaca4a5..."` or `version: "6.8.3"` literal - `_build.yml`,
    `ci.yml`, `msvc-analysis.yml`, `fuzz.yml`, `codeql.yml`, `interop.yml` - instead calls it as
    its own `toolchain-versions` job and reads `needs.toolchain-versions.outputs.*`. Before this,
@@ -179,10 +195,12 @@ GCC/LLVM/Qt/ffmpeg/Ninja are installed fresh into that container on *every* run,
 or GitHub-hosted alike - the host image's own toolchain, pre-baked or not, is never reachable
 from inside it. There is no self-hosted-only drift path for those tools to warn about; a
 mismatch there can only mean this repo's own install step is broken, on both runner types
-equally, which is exactly what should fail the build immediately. The one leg that does
-depend on whatever the host actually has - Windows MSVC, which this workflow never installs,
-only asserts - already fails on both runner paths today, which is the stricter, appropriate
-choice for a leg whose bit-exact gold-reference output can depend on the exact toolset. So the
+equally, which is exactly what should fail the build immediately. Two legs do depend on
+whatever the host actually has: Windows MSVC, which this workflow never installs, only
+asserts - and it already fails on both runner paths today, which is the stricter,
+appropriate choice for a leg whose bit-exact gold-reference output can depend on the exact
+toolset - and Windows LLVM, whose install step skips itself only when the host copy already
+matches the exact pin, so what it accepts is by construction what it would have installed. So the
 manifest above is ported in full; the separate warn-only self-hosted action is deliberately
 not, because there is no scenario in this repo where softening the check for self-hosted
 specifically would be correct. If toolchain pre-baking is ever added per the note above, this

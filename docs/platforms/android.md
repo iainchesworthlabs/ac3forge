@@ -126,7 +126,7 @@ So the backend is genuinely split, unlike the other three:
   this format" question this app needs, and there is exactly one addressable output route on
   this hardware (`android_support.hpp`'s `make_render_device_info()`), so a second, lower-level
   path to the sink's raw EDID would not add anything the existing probe does not already give —
-  see [Linux](linux.md#reading-a-sinks-own-edidled-roadmap-ux9) for where that read is real.
+  see [Linux](linux.md#reading-a-sinks-own-edideld-roadmap-ux9) for where that read is real.
 
 ### Partial `AudioTrack` writes are resumed from, not restarted
 
@@ -522,7 +522,7 @@ three separately-tuned screens):
 - **Top-down (X/Y)** and **elevation (X/Z)** (right, side by side, not stacked — each gets the full
   panel height this way instead of half of it) — the selected (lead) object ringed, a white diamond
   marking the listener at the room's exact centre (both panels' (0.5, 0.5) — see
-  [Objects](#objects-one-interactive-lead-two-ambient-all-on-pre-planned-orbits) above), and, on the
+  [Objects](#objects-one-interactive-lead-two-ambient-all-on-pre-planned-paths) above), and, on the
   top-down panel, a faint dashed guide circle showing the lead's planned orbit so a viewer can see it
   pushed off course and springing back rather than just a dot moving with no reference
   (`kTrajectoryGuideRadius`, duplicated from `live_cursor.cpp`'s `kTrajectory[0].radius` — kept in

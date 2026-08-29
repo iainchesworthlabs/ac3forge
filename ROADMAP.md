@@ -1357,7 +1357,7 @@ directory; there is still no threading anywhere in the codec core.
   signing, a context manager that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written
   `.pyi`; manylinux aarch64 and macOS x86_64/universal wheels — Raspberry Pi is a documented
   platform with no wheel.
-- [ ] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
+- [x] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
   `admbridge` are `add_subdirectory`-only although `docs/releasing.md` prescribes the three-step
   recipe for a new component; a `capi` feature for the vcpkg port and Conan recipe (the portfile
   pins `AC3FORGE_BUILD_CAPI=OFF`); and the licence identifier drift (`pyproject.toml` says
@@ -1501,7 +1501,7 @@ directory; there is still no threading anywhere in the codec core.
   microphone-capture encoder is a plumbing problem, not a CPU one. QC needed no new DSP:
   `ac3::meta::LoudnessMeter`/`evaluate_qc_gate` are `ac3cli qc`'s own functions, bound directly.
   **Landed so far**: the encode module (full binding surface, including Atmos/JOC even though no
-  page uses it yet) and the drop-a-WAV page (`apps/wasm/encode/`) — coding-mode/rate/bitrate
+  page uses it yet) and the drop-a-WAV page (`apps/wasm/encode/`) — format/sample-rate/bitrate
   controls, the five-preset QC verdict table, and a round-trip preview through the existing decode
   module — plus `apps/wasm/tests/encode.spec.js` extending VX18(a)'s Playwright harness (asserts a
   known tone's encoded byte count, QC verdict and true peak, and a successful round-trip decode).

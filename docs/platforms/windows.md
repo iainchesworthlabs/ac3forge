@@ -90,7 +90,7 @@ is deliberately explicit about the difference.
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
     see [CLI → Following the sink](../cli/commands.md#following-the-sink) — and that read
     (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
-    [Linux](linux.md#reading-a-sinks-own-edidled-roadmap-ux9)). WASAPI answers "will this
+    [Linux](linux.md#reading-a-sinks-own-edideld-roadmap-ux9)). WASAPI answers "will this
     endpoint accept this format" (`IsFormatSupported`, what `enumerate_render_devices()` already
     uses) but does not re-expose the sink's own raw EDID-carried Short Audio Descriptors to
     user-mode code — the driver consumes them internally to decide what to offer and no

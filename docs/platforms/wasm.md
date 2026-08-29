@@ -24,8 +24,8 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
 - **Binary size.** A module binding the AC-3 encoder (`ac3::FrameEncoder`), the E-AC-3 encoder
   (`ac3::eac3::FrameEncoder`), the Atmos/JOC bed encoder (`ac3::oba::AtmosEncoder`) and the QC
   loudness meter (`ac3::meta::LoudnessMeter`/`evaluate_qc_gate`) together — everything
-  `encoder_bindings.cpp` binds, not a cut-down subset — compiles to **390 KB raw / 149 KB gzip**,
-  against the decode module's own **372 KB raw / 130 KB gzip**. Comparable order of magnitude, not
+  `encoder_bindings.cpp` binds, not a cut-down subset — compiles to **390 KB raw / 153 KB gzip**,
+  against the decode module's own **372 KB raw / 133 KB gzip**. Comparable order of magnitude, not
   the multi-megabyte blow-up "much larger undertaking" implied; a third module split (e.g. Atmos
   bound separately) was not worth pursuing.
 - **Real-time factor.** Timed under Node/V8 (a reasonable proxy for Chrome's own engine),
@@ -45,7 +45,7 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
 
 `apps/wasm/encoder_bindings.cpp` binds the full surface above (including Atmos/JOC) even though
 `apps/wasm/encode/`'s page only exposes AC-3/E-AC-3 bed encoding today — an object-authoring UI on
-top of `WasmAtmosBedEncoder` is page-only work for a later PR, not a module change.
+top of the bound `AtmosBedEncoder` is page-only work for a later PR, not a module change.
 
 ## Build and run
 
@@ -56,7 +56,7 @@ An [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) 
 cmake --preset config-wasm-emscripten
 cmake --build build/config-wasm-emscripten
 cd build/config-wasm-emscripten/bin/wasm_decode_demo   # or .../wasm_encode_demo
-python3 -m http.server 8000   # ES modules and fetch() need http(s), not file://
+python3 -m http.server 8000   # fetch()/WASM streaming need http(s), not file://
 ```
 
 Open `http://localhost:8000/`. Each demo directory is independently servable — `wasm_encode_demo/`
@@ -66,7 +66,7 @@ decode demo's directory is a sibling.
 ## What's reused, what's new
 
 `ac3::forge` (`src/forge/`) — the codec, `FrameDecoder`/`Eac3Decoder`, elementary-stream scanning — is
-fully platform-independent and is linked into the demo **unmodified**, the same way `apps/wasm/CMakeLists.txt`
+fully platform-independent and is linked into both demos **unmodified**, the same way `apps/wasm/CMakeLists.txt`
 links it as any other consumer would: `add_executable` + `target_link_libraries(... ac3::forge ...)`,
 no fork, no `#ifdef`. Unlike `apps/android/`, this doesn't need a separate build system reached
 from the other direction — WASM is a plain CMake cross-compile, so `apps/wasm/` is a normal
@@ -74,8 +74,9 @@ from the other direction — WASM is a plain CMake cross-compile, so `apps/wasm/
 `cmake/toolchains/wasm.emscripten.toolchain.cmake`) rather than an `AC3FORGE_BUILD_*` option.
 `ac3::audio` (`src/audio/`) gains **no** WASM backend — there is no live-capture/passthrough
 equivalent to add; a browser gets audio playback from the Web Audio API in JavaScript instead, and
-`src/audio` is skipped from the configure entirely under `EMSCRIPTEN` (it hard-fails otherwise, for
-having no browser platform directory — see `src/audio/CMakeLists.txt`).
+`src/audio` is skipped from the configure entirely under `EMSCRIPTEN` (the skip lives in the root
+`CMakeLists.txt`'s `add_subdirectory` gate; `src/audio/CMakeLists.txt` itself hard-fails otherwise,
+for having no browser platform directory).
 
 Everything else — `decoder_bindings.cpp` (the Embind wrapper), `index.html`/`demo.js` (the page, Web
 Audio playback, the Canvas visualizations ported from `apps/gui/qml/SoundfieldView.qml` and Main.qml's
@@ -91,19 +92,21 @@ independent Embind wrapper (its own `add_executable`, its own `EMSCRIPTEN_BINDIN
 **unmodified** the same way the decode target does — no fork, no `#ifdef`, confirming the "encoders
 are already proven platform-free" premise this depended on (the same `ac3::forge` target already
 links unmodified into `apps/android`'s NDK build and `python/`'s pybind11 module). `apps/wasm/encode/`
-(`index.html`/`app.js`) is the page: a drop zone, coding-mode/rate/bitrate controls, the QC verdict
+(`index.html`/`app.js`) is the page: a drop zone and file picker, format (AC-3/E-AC-3)/sample-rate/
+bitrate controls (the channel layout is derived from the dropped WAV itself), the QC verdict
 table, and the round-trip preview. It reorders a dropped WAV's WAVEFORMATEXTENSIBLE channel order
 into AC-3's Table 5.8 order before encoding — see `app.js`'s own comment on the exact mapping — and
 resamples via the browser's own `AudioContext`, rather than writing a sample-rate converter.
 
-What counts as "an object" there is every JOC output, which `ac3::oba::describe_objects()` spells
+What counts as "an object" in the decode demo's room view is every JOC output, which `ac3::oba::describe_objects()` spells
 out: a dynamic object supplies its own position, size and gain, and a bed channel — what
 channel-based-immersive third-party content carries — is drawn at the nominal room position of the
 speaker its label names, with that label on its solo button. Each object's per-frame record also
 carries TS 103 420 §5.6.1.2's extent, so a sized object draws bigger than a point source.
 
-One wrinkle worth knowing when previewing locally: `docs/assets/wasm-decode-demo/` holds a
-*committed* `ac3forge_decode.wasm` that only the docs deploy job rebuilds, so a local `mkdocs
+One wrinkle worth knowing when previewing locally: `docs/assets/wasm-decode-demo/` and
+`docs/assets/wasm-encode-demo/` hold *committed* `.wasm` modules (the encode fallback carries its
+own copy of the decode module too) that only the docs deploy job rebuilds, so a local `mkdocs
 serve` can be running an older module than the checked-in `demo.js`. `demo.js` therefore feature-
 detects the newer bindings and derives its per-object record stride from the data rather than
 hard-coding it.
@@ -130,28 +133,30 @@ Like `build-android`, it's its own job rather than a `build` matrix entry: this 
 suite, no cpack package and no gold-reference gate, so folding it into that matrix would mean
 threading new `if:` exclusions through most of that job's steps for no benefit.
 
-**The published demo is rebuilt fresh, not shipped from a committed copy.** `docs/assets/wasm-decode-demo/`
-is committed to the repo as a working fallback (so a plain local `mkdocs build` — or this repo's own
-PR-time docs check — still has something to embed without anyone needing Emscripten installed just
-to preview docs), but `.github/workflows/docs.yml`'s `deploy` job (push to `main` only) installs
-Emscripten, rebuilds `apps/wasm/` from source, and overwrites that directory *before* `mkdocs
-gh-deploy` runs — so what actually reaches the live site always reflects current source, never a
-possibly-stale commit. Both jobs share one Emscripten install step,
+**The published demos are rebuilt fresh, not shipped from committed copies.** `docs/assets/wasm-decode-demo/`
+and `docs/assets/wasm-encode-demo/` are committed to the repo as working fallbacks (so a plain local
+`mkdocs build` — or this repo's own PR-time docs check — still has something to embed without anyone
+needing Emscripten installed just to preview docs), but `.github/workflows/docs.yml`'s `deploy` job
+(push to `main` only) installs Emscripten, rebuilds `apps/wasm/` from source, and overwrites both
+directories *before* `mkdocs gh-deploy` runs — so what actually reaches the live site always
+reflects current source, never a possibly-stale commit. Both jobs share one Emscripten install step,
 `.github/actions/setup-emscripten` (pinned to the same version this page's Toolchain section names),
 so the two never drift onto different SDK versions.
 
-The committed fallback is not immune to going stale, though: nothing rewrites it except a human
+The committed fallbacks are not immune to going stale, though: nothing rewrites them except a human
 manually re-copying `apps/wasm/`'s output, and `docs.yml`'s own `deploy` job overwrites its
 working copy in a throwaway CI workspace rather than committing the refresh back. `docs.yml`'s
-`build` job (the one every PR runs, `mkdocs build --strict`) therefore also byte-compares
+`build` job (run for any PR that touches the docs or the WASM sources — see the trigger `paths:`
+list below — `mkdocs build --strict`) therefore also byte-compares
 `index.html`, `demo.js`, the two favicon files and `assets/demo.ec3` against their `apps/wasm/`
-originals, and does the same for the encode demo's `encode/index.html`/`encode/app.js` against
-`docs/assets/wasm-encode-demo/` — the plain copies, not Emscripten output, so the check needs no
-toolchain. The `.js`/`.wasm` build artifacts (both modules) have no source-tree counterpart and are
+originals, and does the same for the encode demo's `encode/index.html`/`encode/app.js` and its
+own favicon copies against `docs/assets/wasm-encode-demo/` — the plain copies, not Emscripten
+output, so the check needs no toolchain. The `.js`/`.wasm` build artifacts (both modules) have no source-tree counterpart and are
 outside this check's scope; they only get refreshed by an actual Emscripten rebuild.
 
 `docs.yml`'s trigger `paths:` list includes `apps/wasm/**`, `CMakeLists.txt`,
-`CMakePresets.json` and the WASM toolchain file specifically — without them, a source change there
+`CMakePresets.json`, `.github/actions/setup-emscripten/**` and the WASM toolchain file
+specifically — without them, a source change there
 would never trigger a redeploy at all, and the live demo would silently drift from what's in
 `apps/wasm/`.
 
@@ -178,7 +183,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
 
 !!! note "Encode module, verified in a real browser"
     A dropped multi-second WAV (a known tone at a known level) genuinely encodes through
-    `WasmEncoder`/`QcMeter` in a real Chromium tab: the produced byte count is real (not a canned
+    the bound `Encoder`/`QcMeter` in a real Chromium tab: the produced byte count is real (not a canned
     number), the QC verdict table's measured LUFS/true-peak values land where the known signal's
     level predicts, and every delivery preset genuinely fails against a tone far louder than any
     of their targets — proving the gate discriminates rather than always reading "pass". The
@@ -188,11 +193,11 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
 !!! note "Automated in CI (roadmap VX18a)"
     `apps/wasm/tests/` is a Playwright harness `build-wasm` now runs on every push, right after the
     demo artifact uploads: two projects, one per demo, each serving its own just-built directory.
-    `decode.spec.js` loads `index.html` in a real headless Chromium and drives the `WasmDecoder`
+    `decode.spec.js` loads `index.html` in a real headless Chromium and drives the bound `Decoder`
     Embind API directly (the same calls `demo.js` makes) to decode the bundled fixture and assert
-    on real values — `E-AC-3, 48000 Hz, 6 channels, 3 Atmos objects, 8.0s`, and that the same
+    on real values — `48000 Hz, 6 channels, 3 Atmos objects, 8.0s`, and that the same
     object's decoded position genuinely differs between its first and last frame. `encode.spec.js`
-    does the same for the encode module: encodes a real 997 Hz tone through `WasmEncoder`, measures
+    does the same for the encode module: encodes a real 997 Hz tone through the bound `Encoder`, measures
     it with `QcMeter`, asserts the true peak and every preset verdict land where that known signal
     predicts, and round-trips the result through the decode module. A regression in any of those
     numbers now fails CI rather than waiting for the next manual pass.
