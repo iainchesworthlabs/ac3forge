@@ -1206,8 +1206,16 @@ jobs:
   #
   # Two independent checks, both against config-linux-llvm-shared (already
   # Debug - has DWARF - and BUILD_SHARED_LIBS=ON):
-  #   - abidiff: does this PR change anything abigail can see in the
-  #     public interface of a library that already existed at the last tag.
+  #   - abidiff: of the libraries that already existed at the last tag, does
+  #     this PR change anything abigail can prove BREAKS their binary
+  #     interface. Every visible difference lands in the step summary for
+  #     review, but only abidiff's incompatible-change exit bit (removed
+  #     symbols, changed signatures) fails the step: an additions-only diff
+  #     is backward compatible - exactly what a minor release is allowed to
+  #     ship - and failing on it would leave the promoted gate rejecting
+  #     every PR that adds API until the next tag is cut, which is the
+  #     opposite of what the freeze needs. See the step's own comment for
+  #     the exit-code bit field.
   #   - check_abi_symbols.py: does the actual dynamic-symbol export set
   #     (nm -D --defined-only - exactly what CXX_VISIBILITY_PRESET hidden
   #     leaves reachable) still match the checked-in allowlist, catching an
@@ -1310,8 +1318,29 @@ jobs:
               echo "(not built at HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
             elif [ -z "$base_lib" ]; then
               echo "(not present at $LAST_TAG - new library)" | tee -a "$GITHUB_STEP_SUMMARY"
-            elif ! abidiff "$base_lib" "$head_lib" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"; then
-              status=1
+            else
+              rc=0
+              abidiff "$base_lib" "$head_lib" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
+              # abidiff's exit status is a bit field (abidiff(1), "Return
+              # values"): 1|2 are tool/usage errors, 4 ABIDIFF_ABI_CHANGE
+              # is any visible difference, 8 ABIDIFF_ABI_INCOMPATIBLE_CHANGE
+              # is a difference abidiff can prove breaks compatibility.
+              # Measured against v0.9.0-beta.1: removed symbols and changed
+              # signatures both raise bit 8 (exit 12); an additions-only
+              # library exits with just bit 4. Only bit 8 (or a tool error)
+              # fails the step - additions are backward compatible, so they
+              # pass, reported above for human review.
+              if (( rc & 3 )); then
+                echo "abidiff itself failed on $lib (exit $rc)" | tee -a "$GITHUB_STEP_SUMMARY"
+                status=1
+              elif (( rc & 8 )); then
+                echo "INCOMPATIBLE ABI change vs $LAST_TAG (abidiff exit $rc)" | tee -a "$GITHUB_STEP_SUMMARY"
+                status=1
+              elif (( rc & 4 )); then
+                echo "compatible ABI change vs $LAST_TAG (abidiff exit $rc - nothing abidiff can prove incompatible)" | tee -a "$GITHUB_STEP_SUMMARY"
+              else
+                echo "no ABI change vs $LAST_TAG" | tee -a "$GITHUB_STEP_SUMMARY"
+              fi
             fi
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           done
@@ -1319,10 +1348,13 @@ jobs:
 
       - name: Exported-symbol allowlist check
         # Independent of the abidiff step above (see this job's header
-        # comment) - must run even when abidiff already found a diff, which
-        # pre-1.0 it does on almost every PR. Without this, GitHub Actions'
-        # default success()-only condition means an abidiff failure silently
-        # skips the one check here that catches a real regression.
+        # comment) - must run even when abidiff already failed, which
+        # pre-1.0 it can do for a whole release cycle: with no compatibility
+        # promise yet, removals/renames (e.g. AP2's naming sweep) land on
+        # main freely and keep that step red until the next tag moves the
+        # comparison base past them. Without this, GitHub Actions' default
+        # success()-only condition means an abidiff failure silently skips
+        # the one check here that catches a real regression.
         if: ${{ !cancelled() }}
         shell: bash
         run: |
