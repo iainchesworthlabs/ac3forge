@@ -368,6 +368,13 @@ if(AC3FORGE_BUILD_IAMF)
     install(FILES "${CMAKE_BINARY_DIR}/src/iamf/generated/iamf/export.hpp"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/iamf"
         COMPONENT library)
+
+    ac3forge_pkgconfig_libname(_ac3forge_iamf_pc_libname iamf_shared iamf iamf_static
+        "${_ac3forge_iamf_install_targets}")
+    ac3forge_install_pkgconfig(
+        NAME iamf
+        DESCRIPTION "IAMF v1.1.0 OBU / ISO-BMFF writer"
+        LIBNAME "${_ac3forge_iamf_pc_libname}")
 endif()
 
 # ac3::forge_c is an optional component (AC3FORGE_BUILD_CAPI, see the root CMakeLists.txt) - same
