@@ -11,7 +11,7 @@ focused week), **XL** (several PRs).
 
 ## Where this starts from
 
-Rebuilt at v0.9.0-beta.1 (2026-08-22). Of the 2026-08-15 roadmap's 32 items, 25 are merged (see
+Rebuilt at v0.9.0-beta.1 (2026-08-22). Of the 2026-08-15 roadmap's 29 items, 22 are merged (see
 the ledger at the end). What remains of the other seven is carried into the themes below under
 new IDs: `B2` → the not-on-the-list section and IM1, `B3` → IM3, `D1` → IM5/IM6, `D4` → IM4,
 `E3` → DR9, `F4` → DR1–DR5, `F5` → AP1.
@@ -1304,7 +1304,8 @@ directory; there is still no threading anywhere in the codec core.
 - [x] **AP4 (M)** — An ABI gate. Done: `abi-gate` in `ci.yml` builds `config-linux-llvm-shared`
   at HEAD and at a comparison point (a `git worktree`, mirroring `performance-compare`) — the
   PR's own merge base on a pull request, the last `v*` tag on a push or tag — and runs `abidiff`
-  across all six shared libraries under `tools/ci/abi-suppressions.ini`, plus
+  across every shared library the preset builds (discovered from the build tree rather than a
+  fixed list) under `tools/ci/abi-suppressions.ini`, plus
   `tools/ci/check_abi_symbols.py` — a checked-in `nm -D --defined-only` allowlist per library
   under `tools/ci/abi-allowlist/` — advisory (`ABI_ENFORCE: 'false'`) until `AP1`'s freeze,
   at which point flipping that one value is the whole promotion. `examples/capi_encode_decode.c`
