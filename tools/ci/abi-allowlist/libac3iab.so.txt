@@ -1,33 +1,6 @@
-_ZSt12construct_atISt6vectorIdSaIdEEJS2_EQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S3_pispclsr3stdE7declvalIT0_EEEEEPS3_S6_DpOS5_
-_ZSt12construct_atIdJRKdEQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S2_pispclsr3stdE7declvalIT0_EEEEEPS2_S5_DpOS4_
-_ZSt12construct_atIfJfEQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S0_pispclsr3stdE7declvalIT0_EEEEEPS0_S3_DpOS2_
-_ZSt12construct_atIjJjEQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S0_pispclsr3stdE7declvalIT0_EEEEEPS0_S3_DpOS2_
 ac3iab::describe(ac3iab::IabError)
 ac3iab::parse_iabitstream(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
-ac3iab::parse_iabitstream(std::istream&)
+ac3iab::parse_iabitstream(std::basic_istream<char, std::char_traits<char> >&)
 ac3iab::parse_iaframe(std::span<std::byte const, 18446744073709551615ul>)
-double* std::__relocate_a<double*, double*, std::allocator<double> >(double*, double*, double*, std::allocator<double>&)
-float* std::__relocate_a<float*, float*, std::allocator<float> >(float*, float*, float*, std::allocator<float>&)
-std::__size_to_integer(unsigned long)
-std::enable_if<std::__is_bitwise_relocatable<double>::value, double*>::type std::__relocate_a_1<double, double>(double*, double*, double*, std::allocator<double>&)
-std::enable_if<std::__is_bitwise_relocatable<float>::value, float*>::type std::__relocate_a_1<float, float>(float*, float*, float*, std::allocator<float>&)
-std::enable_if<std::__is_bitwise_relocatable<unsigned int>::value, unsigned int*>::type std::__relocate_a_1<unsigned int, unsigned int>(unsigned int*, unsigned int*, unsigned int*, std::allocator<unsigned int>&)
-std::in_place
-std::nullopt
-std::ranges::_Cpo::data
-std::ranges::_Cpo::size
-std::vector<double, std::allocator<double> >* std::__relocate_a<std::vector<double, std::allocator<double> >*, std::vector<double, std::allocator<double> >*, std::allocator<std::vector<double, std::allocator<double> > > >(std::vector<double, std::allocator<double> >*, std::vector<double, std::allocator<double> >*, std::vector<double, std::allocator<double> >*, std::allocator<std::vector<double, std::allocator<double> > >&)
-std::vector<double, std::allocator<double> >* std::__relocate_a_1<std::vector<double, std::allocator<double> >*, std::vector<double, std::allocator<double> >*, std::allocator<std::vector<double, std::allocator<double> > > >(std::vector<double, std::allocator<double> >*, std::vector<double, std::allocator<double> >*, std::vector<double, std::allocator<double> >*, std::allocator<std::vector<double, std::allocator<double> > >&)
-unsigned int* std::__relocate_a<unsigned int*, unsigned int*, std::allocator<unsigned int> >(unsigned int*, unsigned int*, unsigned int*, std::allocator<unsigned int>&)
-unsigned long const& std::max<unsigned long>(unsigned long const&, unsigned long const&)
-unsigned long const& std::min<unsigned long>(unsigned long const&, unsigned long const&)
-void std::_Construct<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >*, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&)
-void std::_Construct<std::array<double, 9ul>, std::array<double, 9ul>&>(std::array<double, 9ul>*, std::array<double, 9ul>&)
-void std::_Destroy<double*>(double*, double*)
-void std::_Destroy<float*>(float*, float*)
-void std::_Destroy<std::vector<double, std::allocator<double> > >(std::vector<double, std::allocator<double> >*)
-void std::_Destroy<std::vector<double, std::allocator<double> >*>(std::vector<double, std::allocator<double> >*, std::vector<double, std::allocator<double> >*)
-void std::_Destroy<unsigned int*>(unsigned int*, unsigned int*)
-void std::__relocate_object_a<std::vector<double, std::allocator<double> >, std::vector<double, std::allocator<double> >, std::allocator<std::vector<double, std::allocator<double> > > >(std::vector<double, std::allocator<double> >*, std::vector<double, std::allocator<double> >*, std::allocator<std::vector<double, std::allocator<double> > >&)
-void std::destroy_at<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >*)
-void std::destroy_at<std::vector<double, std::allocator<double> > >(std::vector<double, std::allocator<double> >*)
+ac3iab::parse_mxf_iab(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+ac3iab::parse_mxf_iab(std::basic_istream<char, std::char_traits<char> >&)

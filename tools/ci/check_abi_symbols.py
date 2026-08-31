@@ -43,7 +43,29 @@ from pathlib import Path
 # chars); `_ZN11__cxxabiv1` covers the C++ ABI runtime (RTTI/exception
 # internals another shared library using polymorphism can just as easily
 # leak).
-_STDLIB_MANGLED_PREFIXES = ("_ZSt", "_ZNSt", "_ZN9__gnu_cxx", "_ZN11__cxxabiv1")
+#
+# The `K` forms matter as much as the plain ones: Itanium mangles a CONST
+# member function as `_ZNK<name>`, not `_ZN<name>`, so `std::_Hashtable<...
+# >::find(...) const` arrives as `_ZNKSt10_Hashtable...` and slips past a
+# `_ZNSt` check entirely. That is not hypothetical - it is how
+# `std::_Hashtable<int, std::pair<int const, int>, ...>::find(int const&)
+# const` came to be reported as newly-exported project surface on libac4.so
+# (2026-08-31). `_ZTV`/`_ZTI`/`_ZTS` are the vtable, typeinfo and
+# typeinfo-name of a std:: type, which are emitted into whichever library
+# instantiates the type and shift for exactly the same reasons; they carry
+# the `St`/`N9__gnu_cxx` substitution one or two characters further in, so
+# they need their own entries rather than a longer prefix on the existing
+# ones. tools/ci/abi-suppressions.ini encodes the same set for abidiff -
+# keep the two in step.
+_STDLIB_MANGLED_PREFIXES = (
+    "_ZSt", "_ZNSt", "_ZNKSt",
+    "_ZN9__gnu_cxx", "_ZNK9__gnu_cxx",
+    "_ZN11__cxxabiv1", "_ZNK11__cxxabiv1",
+    "_ZTVSt", "_ZTISt", "_ZTSSt",
+    "_ZTVNSt", "_ZTINSt", "_ZTSNSt",
+    "_ZTVN9__gnu_cxx", "_ZTIN9__gnu_cxx", "_ZTSN9__gnu_cxx",
+    "_ZTVN11__cxxabiv1", "_ZTIN11__cxxabiv1", "_ZTSN11__cxxabiv1",
+)
 
 
 def exported_symbols(library: Path) -> list[str]:

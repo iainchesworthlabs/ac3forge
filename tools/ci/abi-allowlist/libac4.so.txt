@@ -1,0 +1,3 @@
+ac4::describe(ac4::Error)
+ac4::parse_raw_frame(std::span<std::byte const, 18446744073709551615ul>)
+ac4::scan(std::span<std::byte const, 18446744073709551615ul>)
