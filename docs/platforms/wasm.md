@@ -104,9 +104,8 @@ channel-based-immersive third-party content carries — is drawn at the nominal 
 speaker its label names, with that label on its solo button. Each object's per-frame record also
 carries TS 103 420 §5.6.1.2's extent, so a sized object draws bigger than a point source.
 
-One wrinkle worth knowing when previewing locally: `docs/assets/wasm-decode-demo/` and
-`docs/assets/wasm-encode-demo/` hold *committed* `.wasm` modules (the encode fallback carries its
-own copy of the decode module too) that only the docs deploy job rebuilds, so a local `mkdocs
+One wrinkle worth knowing when previewing locally: `docs/assets/wasm-decode-demo/` holds a
+*committed* `ac3forge_decode.wasm` that only the docs deploy job rebuilds, so a local `mkdocs
 serve` can be running an older module than the checked-in `demo.js`. `demo.js` therefore feature-
 detects the newer bindings and derives its per-object record stride from the data rather than
 hard-coding it.
@@ -183,7 +182,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
 
 !!! note "Encode module, verified in a real browser"
     A dropped multi-second WAV (a known tone at a known level) genuinely encodes through
-    the bound `Encoder`/`QcMeter` in a real Chromium tab: the produced byte count is real (not a canned
+    `WasmEncoder`/`QcMeter` in a real Chromium tab: the produced byte count is real (not a canned
     number), the QC verdict table's measured LUFS/true-peak values land where the known signal's
     level predicts, and every delivery preset genuinely fails against a tone far louder than any
     of their targets — proving the gate discriminates rather than always reading "pass". The
@@ -193,11 +192,11 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
 !!! note "Automated in CI (roadmap VX18a)"
     `apps/wasm/tests/` is a Playwright harness `build-wasm` now runs on every push, right after the
     demo artifact uploads: two projects, one per demo, each serving its own just-built directory.
-    `decode.spec.js` loads `index.html` in a real headless Chromium and drives the bound `Decoder`
+    `decode.spec.js` loads `index.html` in a real headless Chromium and drives the `WasmDecoder`
     Embind API directly (the same calls `demo.js` makes) to decode the bundled fixture and assert
-    on real values — `48000 Hz, 6 channels, 3 Atmos objects, 8.0s`, and that the same
+    on real values — `E-AC-3, 48000 Hz, 6 channels, 3 Atmos objects, 8.0s`, and that the same
     object's decoded position genuinely differs between its first and last frame. `encode.spec.js`
-    does the same for the encode module: encodes a real 997 Hz tone through the bound `Encoder`, measures
+    does the same for the encode module: encodes a real 997 Hz tone through `WasmEncoder`, measures
     it with `QcMeter`, asserts the true peak and every preset verdict land where that known signal
     predicts, and round-trips the result through the decode module. A regression in any of those
     numbers now fails CI rather than waiting for the next manual pass.

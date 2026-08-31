@@ -156,11 +156,11 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
   policy, and what's decided versus still deliberately deferred (roadmap `AP1`).
 - [C API](c-api.md) — `ac3::forge_c`, a stable, minimal C-callable surface over encode/decode for
   bindings and embedding (roadmap item F1).
+- [Rust bindings](rust-api.md) — `ac3forge-sys` (raw, `bindgen`-generated) plus the safe
+  `ac3forge` crate, both over the C API.
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over
   `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder` and
   `eac3::FrameEncoder`/`AccessUnitEncoder`.
-- [Rust bindings](rust-api.md) — `ac3forge-sys` (raw, `bindgen`-generated) plus the safe
-  `ac3forge` crate, both over the C API.
 
 ## Conventions
 
