@@ -762,12 +762,31 @@ jobs:
         with:
           vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
+      # Retried, unlike the other Configure steps (so far): this is the job
+      # that rebuilds the whole 43-port boost set whenever the shared vcpkg
+      # archives cache is cold (the adm manifest feature is the only thing
+      # that pulls boost in), and codeload.github.com intermittently answers
+      # 400 under parallel-download bursts - which vcpkg treats as
+      # non-transient and fatal. One bad download out of ~43 kills the
+      # attempt, but every port already built stays in ~/.cache/vcpkg/
+      # archives, so an in-job retry resumes from where the last attempt
+      # died instead of coin-flipping from zero. Three attempts covered the
+      # worst observed run (2026-08-31: attempt 1 died at 31/43 on main).
       - name: Configure
         shell: bash
-        run: >
-          cmake --preset config-linux-gcc
-          -DVCPKG_MANIFEST_FEATURES=adm
-          -DAC3FORGE_BUILD_ADM=ON
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            if cmake --preset config-linux-gcc \
+                 -DVCPKG_MANIFEST_FEATURES=adm \
+                 -DAC3FORGE_BUILD_ADM=ON; then
+              exit 0
+            fi
+            echo "::warning::Configure attempt $attempt failed (vcpkg download flake?) - retrying with the locally-built archives kept so far"
+            rm -rf build/config-linux-gcc/CMakeCache.txt
+          done
+          echo "::error::Configure failed after 3 attempts"
+          exit 1
 
       - name: Build
         shell: bash
