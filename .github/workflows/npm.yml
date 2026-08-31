@@ -76,7 +76,14 @@ jobs:
   publish:
     name: Publish to npm
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Publishing is deliberately NOT armed on tag push yet. ac3forge-wasm-decoder
+    # has never been published to npm, and trusted publishing is not configured
+    # for it, so a v* tag would create a brand-new PUBLIC package as a side effect
+    # of cutting a release - effectively irreversible, since npm's unpublish window
+    # is narrow and the name stays reserved either way. Restricted to an explicit
+    # manual dispatch until that setup is done and verified; then drop the
+    # event_name clause to restore publish-on-tag.
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: npm
     permissions:
