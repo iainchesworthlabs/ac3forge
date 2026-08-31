@@ -1,16 +1,19 @@
-// ac3forge WASM decode demo - glue between the Embind module (ac3forge_decode.js/.wasm,
-// built from decoder_bindings.cpp) and the page (index.html).
+// ac3forge WASM decode demo - a consumer of the published ac3forge-wasm-decoder
+// package (js/), not a parallel implementation of it. This file owns the page
+// (Web Audio playback of already-decoded PCM, the Canvas visualizations ported
+// from apps/gui/qml/SoundfieldView.qml and Main.qml's Objects tab, scrub/solo
+// controls) - decoding, the §7.8 fold and the realtime AudioWorklet pipeline
+// all come from the package.
 //
-// Everything on this page is real. A fetched .ec3/.ac3 file is handed
-// straight to the WASM module's Decoder.decode() - the actual ac3::forge
-// decoder, compiled to WASM - and every number shown (sample rate, channel
-// labels, per-channel energy, the audio you hear) comes out of that real
-// decode, not a canned animation. That now includes Atmos objects: real
-// decoded OAMD positions (ac3::forge PR #168) drive the room-plan/elevation
-// dots below, and real JOC-reconstructed per-object audio (PR #169) is what
-// "Solo object N" actually plays - not that object's panned slice of the
-// bed, its own isolated waveform. A plain (non-Atmos) stream simply has zero
-// objects and only shows the speaker-ring/bed panel.
+// `./package/` is this package's own `js/dist/` copied in alongside the
+// Emscripten build output (see apps/wasm/CMakeLists.txt's build docs in
+// docs/platforms/wasm.md) - a self-contained servable directory needs both.
+// `ac3forge_decode.js` (loaded as a plain classic <script> in index.html,
+// exactly as before) supplies the `createAc3ForgeModule` factory the package
+// itself takes as a parameter rather than embedding a compiled binary of its
+// own - see js/README.md's "Loading the WASM module" section.
+
+import { decodeFile, DownmixTarget, Ac3ForgeDecoderNode, scanStream } from './package/index.js';
 
 // Ear-level ring: ac3::spatial's kSpeakerAzimuthDeg
 // (src/forge/include/ac3/spatial/spatial.hpp), ITU-R BS.775, degrees CCW from
@@ -36,7 +39,7 @@ let playStartCtxTime = 0;
 let playStartOffset = 0;
 let playing = false;
 
-let decoded = null; // { streamKind, sampleRate, channelCount, labels, pcm[], energy[], energyBlockSize, durationSeconds }
+let decoded = null; // DecodedProgram, see js/src/decode-file.ts
 
 const el = (id) => document.getElementById(id);
 
@@ -52,128 +55,17 @@ async function loadModule() {
     return await createAc3ForgeModule();
 }
 
-function copyOut(float32View) {
-    // The view Decoder.channelPcm()/channelEnergy() return points straight
-    // into the WASM heap and is only valid until the next call into the
-    // module (ALLOW_MEMORY_GROWTH can move it under us on the very next
-    // allocation) - copy it out immediately rather than holding the view.
-    return Float32Array.from(float32View);
-}
-
-async function decodeBytes(bytes, moduleInstance) {
-    const decoder = new moduleInstance.Decoder();
-    const ok = decoder.decode(bytes);
-    if (!ok) {
-        const message = decoder.error();
-        decoder.delete();
-        throw new Error(message || 'decode failed');
-    }
-
-    const channelCount = decoder.channelCount();
-    const labelsVal = decoder.channelLabels();
-    const labels = [];
-    for (let i = 0; i < channelCount; i++) labels.push(labelsVal[i]);
-
-    const pcm = [];
-    const energy = [];
-    for (let ch = 0; ch < channelCount; ch++) {
-        pcm.push(copyOut(decoder.channelPcm(ch)));
-        energy.push(copyOut(decoder.channelEnergy(ch)));
-    }
-
-    const objectCount = decoder.objectCount();
-    // per object: Float32Array of [x, y, z, gain_db, width, depth, height] * frames
-    const objectPositions = [];
-    const objectAudio = [];     // per object: Float32Array, real isolated reconstructed audio
-    // A bed programme's objects are its speaker channels, so each carries the
-    // label of the speaker it is; a dynamic object has an index and no name.
-    const objectLabels = [];
-    for (let obj = 0; obj < objectCount; obj++) {
-        objectPositions.push(copyOut(decoder.objectPositions(obj)));
-        objectAudio.push(copyOut(decoder.objectAudioPcm(obj)));
-        // Guarded because docs/assets/wasm-decode-demo/ carries a committed
-        // ac3forge_decode.wasm that only the docs deploy job rebuilds, so a
-        // local preview can be running an older module than this file.
-        objectLabels.push(typeof decoder.objectLabel === 'function' ? decoder.objectLabel(obj) : '');
-    }
-
-    // The §7.8 stereo fold the library itself produced (ac3::OutputStage,
-    // the same code 'ac3cli decode channels=2' runs), not a fold invented
-    // here: the stream's own cmixlev/surmixlev or mixmdate levels drive it,
-    // §7.8.1's normalisation keeps it from overloading, and dialnorm is
-    // applied so a quietly authored programme still plays at the reference
-    // level. Null only for a stream that decoded to nothing.
-    const stereo = [];
-    for (let ch = 0; ch < 2; ch++) {
-        const view = decoder.stereoPcm(ch);
-        stereo.push(view ? copyOut(view) : new Float32Array(0));
-    }
-
-    const result = {
-        stereo,
-        streamKind: decoder.streamKind(),
-        sampleRate: decoder.sampleRate(),
-        channelCount,
-        labels,
-        pcm,
-        energy,
-        energyBlockSize: decoder.energyBlockSize(),
-        durationSeconds: channelCount > 0 ? pcm[0].length / decoder.sampleRate() : 0,
-        objectCount,
-        objectPositions,
-        objectAudio,
-        objectLabels,
-        objectFrameSize: decoder.objectFrameSize(),
-        objectFrameCount: decoder.objectFrameCount(),
-        objectStartSeconds: decoder.objectStartSeconds(),
-    };
-    decoder.delete();
-    return result;
-}
-
-// Fields per object per frame in objectPositions. Derived from the data
-// rather than hard-coded against decoder_bindings.cpp's kPositionStride, so
-// that a local preview running the committed (older) ac3forge_decode.wasm
-// still reads its own arrays correctly - see objectLabels above.
-function objectStride(result) {
-    if (result.objectCount === 0 || result.objectFrameCount === 0) {
-        return 7;
-    }
-    return result.objectPositions[0].length / result.objectFrameCount;
-}
-
-// Looks up object `obj`'s state at playback time `t`, clamped to the decoded
-// range - real decoded OAMD data, one entry per real decoded frame, not
-// interpolated/fabricated between frames. width/depth/height are TS 103 420
-// 5.6.1.2's extent, 0/0/0 for a point source.
-function objectStateAt(result, obj, t) {
-    const positions = result.objectPositions[obj];
-    const frameDuration = result.objectFrameSize / result.sampleRate;
-    const relative = t - result.objectStartSeconds;
-    const frame = Math.max(0, Math.min(result.objectFrameCount - 1, Math.floor(relative / frameDuration)));
-    const stride = objectStride(result);
-    const base = frame * stride;
-    return {
-        x: positions[base], y: positions[base + 1], z: positions[base + 2],
-        gainDb: positions[base + 3],
-        width: stride > 4 ? positions[base + 4] : 0,
-        depth: stride > 5 ? positions[base + 5] : 0,
-        height: stride > 6 ? positions[base + 6] : 0,
-    };
-}
-
 // The §7.8 Lo/Ro fold the decoder produced, ready to play. The matrix, the
 // levels and the normalisation are all the library's (ac3::OutputStage) -
-// this page no longer has a downmix of its own, which is the point: what a
-// visitor hears here is what 'ac3cli decode channels=2' writes.
+// this page has no downmix of its own, which is the point: what a visitor
+// hears here is what 'ac3cli decode channels=2' writes.
 //
 // No soft clip: §7.8.1 normalises the coefficients so that the sum feeding
 // any one output never exceeds 1, which means the fold cannot be louder than
-// the loudest coded sample. The tanh() this used to need was covering for a
-// matrix that had no such guarantee.
+// the loudest coded sample.
 function downmixToStereo(result) {
-    const n = result.stereo[0].length;
-    return { left: result.stereo[0], right: result.stereo[1].length === n ? result.stereo[1] : result.stereo[0] };
+    const n = result.fold[0].length;
+    return { left: result.fold[0], right: result.fold[1] && result.fold[1].length === n ? result.fold[1] : result.fold[0] };
 }
 
 // Builds the buffer actually played: either the bed downmix (default) or,
@@ -310,7 +202,7 @@ function draw() {
     const blockDuration = decoded.energyBlockSize / decoded.sampleRate;
     let vecX = 0, vecY = 0, lfeLevel = 0;
 
-    decoded.labels.forEach((label, ch) => {
+    decoded.channelLabels.forEach((label, ch) => {
         const energyTrace = decoded.energy[ch];
         const blockIndex = Math.max(0, Math.min(energyTrace.length - 1, Math.floor(t / blockDuration)));
         const rms = energyTrace.length > 0 ? energyTrace[blockIndex] : 0;
@@ -353,10 +245,10 @@ function draw() {
 }
 
 // Real per-object level at playback time t: a short RMS window over that
-// object's own real reconstructed audio (JOC, PR #169) - the same "pulse
-// with real energy" language the speaker-ring panel already uses, just
-// windowed in JS instead of precomputed in C++ since only a handful of
-// objects ever need it, each over a small window, once per animation frame.
+// object's own real reconstructed audio (JOC) - the same "pulse with real
+// energy" language the speaker-ring panel already uses, just windowed in JS
+// instead of precomputed in C++ since only a handful of objects ever need
+// it, each over a small window, once per animation frame.
 function objectAudioLevelAt(result, obj, t) {
     const audio = result.objectAudio[obj];
     if (!audio || audio.length === 0) return 0;
@@ -368,6 +260,26 @@ function objectAudioLevelAt(result, obj, t) {
     let sumSq = 0;
     for (let i = start; i < end; i++) sumSq += audio[i] * audio[i];
     return Math.max(0, Math.min(1, Math.sqrt(sumSq / (end - start)) / 0.35));
+}
+
+// Looks up object `obj`'s state at playback time `t`, clamped to the decoded
+// range - real decoded OAMD data, one entry per real decoded frame, not
+// interpolated/fabricated between frames. width/depth/height are TS 103 420
+// 5.6.1.2's extent, 0/0/0 for a point source.
+function objectStateAt(result, obj, t) {
+    const positions = result.objectPositions[obj];
+    const frameDuration = result.objectFrameSize / result.sampleRate;
+    const relative = t - result.objectStartSeconds;
+    const frame = Math.max(0, Math.min(result.objectFrameCount - 1, Math.floor(relative / frameDuration)));
+    const stride = 7;
+    const base = frame * stride;
+    return {
+        x: positions[base], y: positions[base + 1], z: positions[base + 2],
+        gainDb: positions[base + 3],
+        width: positions[base + 4] ?? 0,
+        depth: positions[base + 5] ?? 0,
+        height: positions[base + 6] ?? 0,
+    };
 }
 
 function drawRoomBox(ctx, x, y, w, h, label) {
@@ -399,8 +311,8 @@ function drawObjectDot(ctx, x, y, radius, color, label, highlighted) {
 // panels, side by side - see docs/platforms/android.md's own description of
 // the same layout in the Shield app). Unlike that GUI's own version, which
 // previews positions about to be ENCODED, this one is driven entirely by
-// real decoded OAMD positions (ac3::forge PR #168) read back out of the
-// bitstream - what a real object actually did, not what it was told to do.
+// real decoded OAMD positions read back out of the bitstream - what a real
+// object actually did, not what it was told to do.
 function drawObjects() {
     const canvas = el('objects');
     if (canvas) {
@@ -508,7 +420,14 @@ async function handleDecoded(bytes, label) {
     setStatus(`Decoding ${label}...`, false);
     try {
         const moduleInstance = await loadModule();
-        const result = await decodeBytes(bytes, moduleInstance);
+        // The real §7.8 Lo/Ro fold (ac3::OutputStage/DC1) - never a hand-rolled
+        // one - plus dialnorm normalisation, exactly what the old bespoke
+        // whole-file decode did, now produced by the package's decodeFile()
+        // built on the same push-frame primitive the realtime section below
+        // uses.
+        const result = decodeFile(moduleInstance, bytes, {
+            fold: { target: DownmixTarget.LoRo, applyDialnorm: true },
+        });
         decoded = result;
         playStartOffset = 0;
         soloObject = -1;
@@ -516,7 +435,7 @@ async function handleDecoded(bytes, label) {
         const objectNote = result.objectCount > 0 ? `, ${result.objectCount} Atmos object(s)` : '';
         el('streamInfo').textContent =
             `${result.streamKind}, ${result.sampleRate} Hz, ${result.channelCount} ch ` +
-            `(${result.labels.join(', ')})${objectNote}, ${result.durationSeconds.toFixed(1)}s`;
+            `(${result.channelLabels.join(', ')})${objectNote}, ${result.durationSeconds.toFixed(1)}s`;
         el('playPause').disabled = false;
         el('seek').disabled = false;
         el('seek').value = '0';
@@ -530,10 +449,13 @@ async function handleDecoded(bytes, label) {
     }
 }
 
+let bundledDemoBytes = null;
+
 async function loadBundledDemo() {
     const response = await fetch('assets/demo.ec3');
     const buffer = await response.arrayBuffer();
-    await handleDecoded(new Uint8Array(buffer), 'the bundled demo stream (assets/demo.ec3)');
+    bundledDemoBytes = new Uint8Array(buffer);
+    await handleDecoded(bundledDemoBytes, 'the bundled demo stream (assets/demo.ec3)');
 }
 
 // The demo materialises the decoded programme in the WASM heap and again in
@@ -553,6 +475,112 @@ function loadFile(file) {
     const reader = new FileReader();
     reader.onload = () => handleDecoded(new Uint8Array(reader.result), file.name);
     reader.readAsArrayBuffer(file);
+}
+
+// --- Realtime push-decode demo (AudioWorklet) ------------------------------
+// Proves the OTHER real capability this package adds: the same bundled
+// stream, fed one access unit at a time (as a live source would) through
+// PushDecoder's own Embind class, decoded in a Worker, and played through a
+// real AudioWorkletNode - not the whole-file decodeFile() path above. Needs
+// cross-origin isolation for SharedArrayBuffer (see js/README.md); the
+// button stays disabled and says why when that's not available (a plain
+// `python3 -m http.server` does not send the required headers - see
+// docs/platforms/wasm.md).
+
+let realtimeNode = null;
+let realtimeAudioCtx = null;
+let realtimePushTimer = null;
+
+function setRealtimeStatus(text) {
+    el('realtimeStatus').textContent = text;
+}
+
+async function startRealtime() {
+    el('realtimeStart').disabled = true;
+    setRealtimeStatus('Loading module and fetching the bundled stream...');
+    try {
+        const moduleInstance = await loadModule();
+        const bytes = bundledDemoBytes ?? new Uint8Array(await (await fetch('assets/demo.ec3')).arrayBuffer());
+        const scanned = scanStream(moduleInstance, bytes);
+        if (!scanned.ok) throw new Error(scanned.error);
+
+        realtimeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        realtimeNode = await Ac3ForgeDecoderNode.create(realtimeAudioCtx, {
+            workletProcessorUrl: new URL('./package/worklet-processor.js', location.href),
+            workerUrl: new URL('./package/decoder-worker.js', location.href),
+            wasmGlueUrl: new URL('./ac3forge_decode.js', location.href),
+            fold: { target: DownmixTarget.LoRo, applyDialnorm: true },
+        });
+        realtimeNode.addEventListener('streaminfo', (event) => {
+            setRealtimeStatus(
+                `Streaming: ${event.detail.sampleRate} Hz, ${event.detail.channelCount} coded channel(s), ` +
+                `folded to ${event.detail.foldChannelCount}.`);
+        });
+        realtimeNode.addEventListener('underrun', (event) => {
+            setRealtimeStatus(`Buffer underrun: ${event.detail} frames short.`);
+        });
+        realtimeNode.addEventListener('error', (event) => setRealtimeStatus(`Error: ${event.detail}`));
+
+        // A real AudioContext starts consuming the instant the worklet node
+        // is connected - unlike OfflineAudioContext, there is no "wait until
+        // primed" concept in Web Audio. So this pre-buffers a couple of
+        // seconds (a real streaming client does the same before hitting
+        // play) by pushing that much up front, in a tight loop rather than
+        // paced, and only connects the node once decode has caught up with
+        // it - avoiding the cold-start underrun a from-zero connect would
+        // hit while the first few units are still decoding.
+        let index = 0;
+        const unitsPerSecond = Math.ceil(scanned.sampleRate / 1536);
+        const prebufferCount = Math.min(scanned.accessUnits.length, unitsPerSecond * 2);
+        for (; index < prebufferCount; index++) {
+            const unit = scanned.accessUnits[index];
+            realtimeNode.pushAccessUnit(bytes.slice(unit.offset, unit.offset + unit.length));
+        }
+        await realtimeNode.whenIdle();
+        realtimeNode.node.connect(realtimeAudioCtx.destination);
+
+        // Paces the rest to roughly real time by each access unit's own
+        // coded duration, so this behaves like a live feed rather than
+        // dumping the whole file into the ring buffer at once. This is a
+        // demo simplification, not something a real integration should
+        // copy: a browser throttles setTimeout heavily in a backgrounded
+        // tab, which can starve this loop while the (unthrottled) audio
+        // graph keeps consuming - a real client instead pushes units as its
+        // own transport delivers them (see the hls.js bridge, js/src/
+        // hls-bridge.ts), which isn't driven by a synthetic per-frame timer
+        // at all.
+        const pushNext = () => {
+            if (index >= scanned.accessUnits.length) {
+                realtimeNode.flush();
+                setRealtimeStatus('Bundled stream finished - stop and start again to replay.');
+                return;
+            }
+            const unit = scanned.accessUnits[index++];
+            realtimeNode.pushAccessUnit(bytes.slice(unit.offset, unit.offset + unit.length));
+            // 1536/48000s per access unit is this fixture's own frame size;
+            // a real feed would instead push as units arrive from its own
+            // transport.
+            realtimePushTimer = setTimeout(pushNext, (1536 / scanned.sampleRate) * 1000);
+        };
+        pushNext();
+
+        el('realtimeStop').disabled = false;
+    } catch (err) {
+        setRealtimeStatus(`Failed to start: ${err.message}`);
+        el('realtimeStart').disabled = false;
+    }
+}
+
+function stopRealtime() {
+    if (realtimePushTimer) clearTimeout(realtimePushTimer);
+    realtimePushTimer = null;
+    realtimeNode?.close();
+    realtimeNode = null;
+    realtimeAudioCtx?.close();
+    realtimeAudioCtx = null;
+    el('realtimeStart').disabled = false;
+    el('realtimeStop').disabled = true;
+    setRealtimeStatus('Stopped.');
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -576,6 +604,17 @@ window.addEventListener('DOMContentLoaded', () => {
         seekDragging = false;
         seekTo(Number(seek.value) / 1000);
     });
+
+    if (window.crossOriginIsolated) {
+        el('realtimeStart').disabled = false;
+    } else {
+        setRealtimeStatus(
+            'Disabled: this page is not cross-origin isolated (needs COOP: same-origin / ' +
+            'COEP: require-corp response headers for SharedArrayBuffer).');
+    }
+    el('realtimeStart').addEventListener('click', startRealtime);
+    el('realtimeStop').addEventListener('click', stopRealtime);
+
     requestAnimationFrame(draw);
     requestAnimationFrame(drawObjects);
 });
