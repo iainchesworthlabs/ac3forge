@@ -91,7 +91,7 @@ actual digital output, and no receiver has been asked to lock onto its output.
 actually accepts before committing to a format (see
 [CLI → Following the sink](../cli/commands.md#following-the-sink)), and that read
 (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
-[Linux](linux.md#reading-a-sinks-own-edidled-roadmap-ux9)). CoreAudio's device properties and
+[Linux](linux.md#reading-a-sinks-own-edideld-roadmap-ux9)). CoreAudio's device properties and
 IOKit's `IODisplayEDID` are both real APIs, but neither is documented to expose the CEA-861
 Short Audio Descriptor block for an HDMI *audio* endpoint specifically, and a pure optical
 output has no display EDID to read in the first place. `play` falls back to the live

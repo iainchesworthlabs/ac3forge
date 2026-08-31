@@ -97,7 +97,7 @@ second one, so a Conan consumer's CMakeLists.txt looks identical to a vcpkg or p
 
 **pkg-config.** Every installed component above also gets its own `.pc` file
 (`${libdir}/pkgconfig/<name>.pc` — `ac3forge`, `ac3signing`, `matroska`, `mp4`, `mpegts`,
-`ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`), for a non-CMake consumer:
+`iamf`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`), for a non-CMake consumer:
 
 ```bash
 pkg-config --cflags --libs ac3forge
@@ -145,6 +145,9 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
   parser (opt-in, `-DAC3FORGE_BUILD_ADM=ON`).
 - [ADM → Atmos bridging](adm-bridge.md) — `ac3::admbridge`, mapping the parsed ADM graph onto
   `ac3::oba::AtmosEncoder` (same opt-in flag).
+- [IAMF writing](iamf.md) — `iamf::iamf`, a standalone writer re-wrapping a decoded 7.1.4
+  programme as a channel-based IAMF Audio Element in IAMF's own ISO-BMFF encapsulation (on by
+  default).
 - [Measuring quality](quality.md) — `ac3::quality`, the decoded-domain distortion measure and the
   tonality/masking model the encoder's decision search is judged on.
 - [Object signing](signing.md) — `ac3::signing`, the EMDF protection tag.
@@ -153,6 +156,8 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
   policy, and what's decided versus still deliberately deferred (roadmap `AP1`).
 - [C API](c-api.md) — `ac3::forge_c`, a stable, minimal C-callable surface over encode/decode for
   bindings and embedding (roadmap item F1).
+- [Rust bindings](rust-api.md) — `ac3forge-sys` (raw, `bindgen`-generated) plus the safe
+  `ac3forge` crate, both over the C API.
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over
   `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder` and
   `eac3::FrameEncoder`/`AccessUnitEncoder`.

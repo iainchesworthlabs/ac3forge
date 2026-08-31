@@ -18,7 +18,10 @@ test('decodes the bundled Atmos-in-DD+ fixture with real, moving object position
     const pageErrors = [];
     page.on('pageerror', (error) => pageErrors.push(String(error)));
 
-    await page.goto('/index.html');
+    // Relative on purpose: baseURL includes the demo's subdirectory (see
+    // playwright.config.js), and a leading "/" would resolve back to the
+    // server root.
+    await page.goto('index.html');
 
     const result = await page.evaluate(async () => {
         // @ts-ignore - ./package/ is js/dist/, copied in alongside the

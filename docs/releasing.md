@@ -158,8 +158,9 @@ Most of what used to be a manual post-release checklist here is now automated (r
    be exercised except by shipping a real release.
 
    **`HOMEBREW_TAP_TOKEN`** (optional): a fine-grained GitHub PAT scoped to `Contents: Read and
-   write` on `iainchesworthlabs/homebrew-ac3forge` only. Without it, the tap push step warns and
-   skips cleanly - the in-tree PR still opens - and the PR body says so. Add it the same way as
+   write` on `iainchesworthlabs/homebrew-ac3forge` only. Without it, the tap push step is
+   skipped (its `if:` gate simply doesn't fire, with nothing logged) - the in-tree PR still
+   opens - and the PR body says so. Add it the same way as
    any other repo secret (Settings > Secrets and variables > Actions); nobody but a human with
    access to GitHub's secret store should ever generate or handle it. The in-tree PR itself needs
    no new secret - it opens with the same built-in `GITHUB_TOKEN` every other job here already
@@ -182,8 +183,10 @@ way. It installs the library only (`ac3::forge`, plus `matroska::matroska`/`mp4:
 `cmake/InstallLibrary.cmake`'s `AC3FORGE_BUILD_MATROSKA`/`AC3FORGE_BUILD_MP4`/
 `AC3FORGE_BUILD_MPEGTS`/`AC3FORGE_INSTALL_BOTH_LINKAGES` options), never the
 CLI/GUI/tests/examples/fuzzers, and never `ac3::forge_c` (`AC3FORGE_BUILD_CAPI` - see the note
-below). `ac3adm::ac3adm` (the ADM/BW64 reader) has no vcpkg feature and never will while it
-stays outside `find_package(ac3forge)` entirely - see [docs/library/index.md](library/index.md).
+below). `ac3adm::ac3adm` (the ADM/BW64 reader) and `ac3::admbridge` have no vcpkg feature
+either - they do install/export via `find_package(ac3forge)` now (shared-only), but embed
+third-party libbw64/libadm and so deliberately carry no vcpkg/Conan feature of their own for
+now - see the recipe note further down and [docs/library/index.md](library/index.md).
 
 None of the three container-writer features are on by default: a curated-registry port's
 `default-features` may only cover behaviors, not additional public APIs/targets/binaries (see
@@ -427,10 +430,13 @@ later fix made possible. Never rewrite an already-published version directory to
 installer that release never produced.
 
 **Every release tag** needs a new version directory, since winget-pkgs versions each release
-independently rather than tracking a moving tag the way vcpkg's `version-semver` does. Steps 1-2
-are now done by [`manifest-bump.yml`'s PR](#post-release) (roadmap DR2), which renders all three
-files fresh from a template rather than copying the previous version directory - step 3, local
-`winget validate`, still needs a human with the `winget` CLI:
+independently rather than tracking a moving tag the way vcpkg's `version-semver` does. Step 1
+is now done by [`manifest-bump.yml`'s PR](#post-release) (roadmap DR2), which renders all three
+files fresh from a template rather than copying the previous version directory - but it renders
+the pre-DR7 shape (`InstallerType: zip` with `NestedInstallerType: portable`, digested against
+the release's `win64.zip`; `tools/release/bump_manifests.py` never downloads the `win64.exe` at
+all), so step 2's nullsoft conversion, step 3's local `winget validate`, and step 4's fork PR
+all still need a human with the `winget` CLI:
 
 1. Copy `packaging/winget/manifests/i/iainchesworthlabs/ac3forge/<prev-version>/` to a new
    `<new-version>/` directory, updating `PackageVersion` in all three files to match.
