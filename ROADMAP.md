@@ -11,7 +11,7 @@ focused week), **XL** (several PRs).
 
 ## Where this starts from
 
-Rebuilt at v0.9.0-beta.1 (2026-08-22). Of the 2026-08-15 roadmap's 32 items, 25 are merged (see
+Rebuilt at v0.9.0-beta.1 (2026-08-22). Of the 2026-08-15 roadmap's 29 items, 22 are merged (see
 the ledger at the end). What remains of the other seven is carried into the themes below under
 new IDs: `B2` → the not-on-the-list section and IM1, `B3` → IM3, `D1` → IM5/IM6, `D4` → IM4,
 `E3` → DR9, `F4` → DR1–DR5, `F5` → AP1.
@@ -1304,7 +1304,8 @@ directory; there is still no threading anywhere in the codec core.
 - [x] **AP4 (M)** — An ABI gate. Done: `abi-gate` in `ci.yml` builds `config-linux-llvm-shared`
   at HEAD and at a comparison point (a `git worktree`, mirroring `performance-compare`) — the
   PR's own merge base on a pull request, the last `v*` tag on a push or tag — and runs `abidiff`
-  across all six shared libraries under `tools/ci/abi-suppressions.ini`, plus
+  across every shared library the preset builds (discovered from the build tree rather than a
+  fixed list) under `tools/ci/abi-suppressions.ini`, plus
   `tools/ci/check_abi_symbols.py` — a checked-in `nm -D --defined-only` allowlist per library
   under `tools/ci/abi-allowlist/` — advisory (`ABI_ENFORCE: 'false'`) until `AP1`'s freeze,
   at which point flipping that one value is the whole promotion. `examples/capi_encode_decode.c`
@@ -1358,7 +1359,7 @@ directory; there is still no threading anywhere in the codec core.
   signing, a context manager that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written
   `.pyi`; manylinux aarch64 and macOS x86_64/universal wheels — Raspberry Pi is a documented
   platform with no wheel.
-- [ ] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
+- [x] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
   `admbridge` are `add_subdirectory`-only although `docs/releasing.md` prescribes the three-step
   recipe for a new component; a `capi` feature for the vcpkg port and Conan recipe (the portfile
   pins `AC3FORGE_BUILD_CAPI=OFF`); and the licence identifier drift (`pyproject.toml` says
@@ -1502,7 +1503,7 @@ directory; there is still no threading anywhere in the codec core.
   microphone-capture encoder is a plumbing problem, not a CPU one. QC needed no new DSP:
   `ac3::meta::LoudnessMeter`/`evaluate_qc_gate` are `ac3cli qc`'s own functions, bound directly.
   **Landed so far**: the encode module (full binding surface, including Atmos/JOC even though no
-  page uses it yet) and the drop-a-WAV page (`apps/wasm/encode/`) — coding-mode/rate/bitrate
+  page uses it yet) and the drop-a-WAV page (`apps/wasm/encode/`) — format/sample-rate/bitrate
   controls, the five-preset QC verdict table, and a round-trip preview through the existing decode
   module — plus `apps/wasm/tests/encode.spec.js` extending VX18(a)'s Playwright harness (asserts a
   known tone's encoded byte count, QC verdict and true peak, and a successful round-trip decode).

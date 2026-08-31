@@ -187,6 +187,31 @@ a concrete API-freeze plan for v1.0 now exists.
   the produced stream through the existing decode module to prove it's real. Headless-browser CI
   coverage (Playwright) now spans both demos, not just decode.
 
+**Shield Atmos Demo (Android)**
+
+- **New: the wire trace.** A second thread parses back the exact access units going out over HDMI
+  and draws what a decoder finds in them — the lead object's intended height against the height read
+  back off the wire, which is a visible staircase because height is sent in sixteen steps. It
+  deliberately computes no reconstruction-quality figure: both ends share the same non-normative QMF
+  prototype, so such a number would be unfalsifiable by construction. What it does prove is that the
+  object container survives on the wire, and that OBJECTS OFF genuinely removes it.
+- **New: five demo scenes and a guided tour.** The app had exactly one thing to show — three
+  objects on fixed orbits — from launch until you walked away. It now has Orbit, Flyover, Overhead,
+  Elevator and Front/back, each with its own line of what to listen for, blended rather than jumped
+  between; and once left idle it walks them itself rather than just inviting the next person.
+- **New: record a path and loop it.** Fly the object by hand, press again, and it flies your own
+  gesture forever — still pushable, still springing back to itself.
+- **New: controller rumble** on the two crossings the ear is least sure of: passing overhead, and
+  passing through the listening position.
+- **New: a settings panel and a phone remote.** Every control was previously an undocumented
+  keypress. The panel is D-pad navigable; the phone remote serves one page so anyone in the room can
+  drive the object from their own phone. The remote is **off by default** and has no authentication
+  — it starts only when switched on, and stops when the demo leaves the screen.
+- **New: OBJECTS OFF** strips the object layer out of the live stream on a keypress, so a licensed
+  decoder can be watched dropping from Atmos to DD+ and back with the object layer's byte cost on
+  screen. Plus a real BS.1770 loudness readout, a programme meter with PPM ballistics replacing a
+  fixed display gain, and a soundfield-energy arrow computed from the encoded bed.
+
 **Library, C API, Python and Rust**
 
 - **A pimpl sweep across the exported surface**, so a private-state change is no longer an ABI
@@ -221,7 +246,8 @@ a concrete API-freeze plan for v1.0 now exists.
   embedder or tight batch loop that wants to reuse them. See [Python API](docs/library/python-api.md)'s
   "Zero-copy numpy and buffer reuse".
 - **pkg-config files** for every installed component (`ac3forge`, `ac3signing`, `matroska`,
-  `mp4`, `mpegts`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`), for a non-CMake consumer.
+  `mp4`, `mpegts`, `iamf`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`), for a non-CMake
+  consumer.
   **`ac3adm`/`ac3::admbridge` (the ADM/BW64 reader and its Atmos bridge) are now installable via
   `find_package(ac3forge)`**, shared-only, without re-exporting the third-party libbw64/libadm
   they embed. **A `capi` feature** for the vcpkg port and Conan recipe reaches `ac3::forge_c`
@@ -477,36 +503,14 @@ a concrete API-freeze plan for v1.0 now exists.
   smallest deflection anyone could hold was about a third of full travel. Now radial and rescaled,
   seeded from the device's own declared flat range. Right-stick height is resolved by probing which
   axis the device declares rather than assuming.
-- **New: the wire trace.** A second thread parses back the exact access units going out over HDMI
-  and draws what a decoder finds in them — the lead object's intended height against the height read
-  back off the wire, which is a visible staircase because height is sent in sixteen steps. It
-  deliberately computes no reconstruction-quality figure: both ends share the same non-normative QMF
-  prototype, so such a number would be unfalsifiable by construction. What it does prove is that the
-  object container survives on the wire, and that OBJECTS OFF genuinely removes it.
 - **The status line now reports whole-frame occupancy**, not just `encode_frame()`. The previously
   quoted figure excluded synthesis, the limiter, both meters, signing, stripping, the packer and the
   JNI submit — most of the frame.
 - **The real-time encode thread no longer attaches to and detaches from the JVM once per frame**, and
   both worker threads now have explicit priorities instead of inheriting whatever started them.
-- **New: five demo scenes and a guided tour.** The app had exactly one thing to show — three
-  objects on fixed orbits — from launch until you walked away. It now has Orbit, Flyover, Overhead,
-  Elevator and Front/back, each with its own line of what to listen for, blended rather than jumped
-  between; and once left idle it walks them itself rather than just inviting the next person.
-- **New: record a path and loop it.** Fly the object by hand, press again, and it flies your own
-  gesture forever — still pushable, still springing back to itself.
-- **New: controller rumble** on the two crossings the ear is least sure of: passing overhead, and
-  passing through the listening position.
-- **New: a settings panel and a phone remote.** Every control was previously an undocumented
-  keypress. The panel is D-pad navigable; the phone remote serves one page so anyone in the room can
-  drive the object from their own phone. The remote is **off by default** and has no authentication
-  — it starts only when switched on, and stops when the demo leaves the screen.
 - **`isDirectPlaybackSupported` was called unguarded on a minSdk-26 app**, so on any API 26–28
   device — a 2015/2017 Shield on Android 9, for instance — the app's most load-bearing platform
   query threw `NoSuchMethodError` rather than degrading. Guarded.
-- **New: OBJECTS OFF** strips the object layer out of the live stream on a keypress, so a licensed
-  decoder can be watched dropping from Atmos to DD+ and back with the object layer's byte cost on
-  screen. Plus a real BS.1770 loudness readout, a programme meter with PPM ballistics replacing a
-  fixed display gain, and a soundfield-energy arrow computed from the encoded bed.
 
 ### Security
 
