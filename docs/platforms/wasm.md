@@ -166,7 +166,10 @@ One wrinkle worth knowing when previewing locally: `docs/assets/wasm-decode-demo
 docs deploy job rebuilds, so a local `mkdocs serve` can be running an older module/package pair
 than the checked-in `demo.js`. Both sides of that pairing are rebuilt and committed together by
 whoever last refreshed this directory, precisely so they stay a matched pair rather than drifting
-independently.
+independently. `docs/assets/wasm-encode-demo/` carries the same hazard: it holds committed
+modules of its own — its copy of the decode module included — and nothing keeps the committed
+copies across the two directories in step with each other except a human refreshing them all at
+once.
 
 ## Toolchain
 
@@ -255,7 +258,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
 
 !!! note "Encode module, verified in a real browser"
     A dropped multi-second WAV (a known tone at a known level) genuinely encodes through
-    `WasmEncoder`/`QcMeter` in a real Chromium tab: the produced byte count is real (not a canned
+    the bound `Encoder`/`QcMeter` in a real Chromium tab: the produced byte count is real (not a canned
     number), the QC verdict table's measured LUFS/true-peak values land where the known signal's
     level predicts, and every delivery preset genuinely fails against a tone far louder than any
     of their targets — proving the gate discriminates rather than always reading "pass". The
@@ -267,13 +270,13 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     demo artifact uploads: two projects, one per demo, each serving its own just-built directory.
     `decode.spec.js` loads `index.html` in a real headless Chromium and drives the real published
     package (`js/`'s `decodeFile()` and `Ac3ForgeDecoderNode` — the same calls `demo.js` itself
-    makes) to decode the bundled fixture and assert on real values — `E-AC-3, 48000 Hz, 6 channels,
+    makes) to decode the bundled fixture and assert on real values — `48000 Hz, 6 channels,
     3 Atmos objects, 8.0s`, that the same object's decoded position genuinely differs between its
     first and last frame, and — new for roadmap UX5 — that the AudioWorklet pipeline (a real Worker
     doing the WASM decode, a real `SharedArrayBuffer` ring buffer, a real `AudioWorkletNode`)
     produces genuinely non-silent decoded audio out an `OfflineAudioContext`, not just "the worker
     didn't throw". `encode.spec.js` does the same for the encode module: encodes a real 997 Hz tone
-    through `WasmEncoder`, measures it with `QcMeter`, asserts the true peak and every preset
+    through the bound `Encoder`, measures it with `QcMeter`, asserts the true peak and every preset
     verdict land where that known signal predicts, and round-trips the result through the decode
     module. A regression in any of those numbers now fails CI rather than waiting for the next
     manual pass.
