@@ -16,6 +16,24 @@ regenerates them from the libraries passed on the command line instead of
 checking; run it once to seed a new library or after a deliberate, reviewed
 export-set change.
 
+Two things to know before reading a regeneration diff:
+
+The stored text is c++filt-version sensitive. The same mangled symbol can
+demangle to different text under different binutils - libac3iab.so.txt was
+seeded by an older c++filt that printed `std::istream` where the current one
+prints `std::basic_istream<char, std::char_traits<char> >`. That shows up in
+a diff as one line removed and one added, and reads exactly like a signature
+change, but the ELF symbol is identical and nothing about the ABI moved.
+Before treating such a pair as a real change, check whether the two lines are
+the same function under two renderings.
+
+Regenerate against a build whose toolchain matches CI's (the pinned LLVM in
+.github/workflows/_toolchain-versions.yml). The cheap way to prove it does,
+before trusting `--update`: run this script in CHECK mode against the fresh
+build first and confirm it reproduces the mismatch set CI itself reports.
+Libraries that then regenerate byte-identical are the corroboration - if the
+local demangler disagreed with the committed files, those would churn too.
+
 Unlike tools/ci/compare_performance.py, this script DOES exit non-zero on a
 real mismatch - the advisory/non-blocking behaviour AP4 wants pre-1.0 comes
 from the calling CI job's own ABI_ENFORCE switch, not from this script staying
