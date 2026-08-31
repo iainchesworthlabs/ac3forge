@@ -449,6 +449,15 @@ a concrete API-freeze plan for v1.0 now exists.
   place, since GitHub still reports a continue-on-error job's own check run as `failure`. The
   exported-symbol allowlist, six symbols behind `main`, is back in sync.
 
+**Browser (WASM)**
+
+- **The encode demo's round-trip preview 404'd on the published docs site.** The page loaded its
+  decode module as `../ac3forge_decode.js` even though the build copies that module in next to the
+  page precisely so the directory is servable from anywhere; the parent-relative path only worked
+  when the demo directory was the server root, and broke under the docs site's subdirectory embed.
+  The Playwright harness now serves both demos from a subdirectory for every run, so the layout
+  that failed is the layout that gets tested.
+
 **Shield Atmos Demo (Android)**
 
 - **The encode loop kept streaming to the receiver after the demo left the screen.** It stopped only

@@ -16,7 +16,10 @@ test('encodes a known stereo tone, QC verdict matches it, and it round-trip deco
     const pageErrors = [];
     page.on('pageerror', (error) => pageErrors.push(String(error)));
 
-    await page.goto('/index.html');
+    // Relative on purpose: baseURL includes the demo's subdirectory (see
+    // playwright.config.js), and a leading "/" would resolve back to the
+    // server root.
+    await page.goto('index.html');
 
     const result = await page.evaluate(async () => {
         // @ts-ignore - both createAc3ForgeEncodeModule and createAc3ForgeModule
