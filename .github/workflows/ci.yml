@@ -761,6 +761,12 @@ jobs:
       - uses: ./.github/actions/setup-vcpkg
         with:
           vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+          # Distinct archives-cache key: this is the only job that enables
+          # the adm manifest feature and so the only one whose install set
+          # includes the 43-port boost tree - see the input's own
+          # description in setup-vcpkg/action.yml for why sharing the
+          # default key locks boost out of the cache permanently.
+          cache-key-suffix: adm
 
       # Retried, unlike the other Configure steps (so far): this is the job
       # that rebuilds the whole 43-port boost set whenever the shared vcpkg
