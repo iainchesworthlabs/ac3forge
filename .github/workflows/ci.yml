@@ -761,13 +761,51 @@ jobs:
       - uses: ./.github/actions/setup-vcpkg
         with:
           vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+          # Distinct archives-cache key: this is the only job that enables
+          # the adm manifest feature and so the only one whose install set
+          # includes the 43-port boost tree - see the input's own
+          # description in setup-vcpkg/action.yml for why sharing the
+          # default key locks boost out of the cache permanently.
+          cache-key-suffix: adm
 
+      # Retried, unlike the other Configure steps (so far): this is the job
+      # that rebuilds the whole 43-port boost set whenever the shared vcpkg
+      # archives cache is cold (the adm manifest feature is the only thing
+      # that pulls boost in), and codeload.github.com intermittently answers
+      # 400 under parallel-download bursts - which vcpkg treats as
+      # non-transient and fatal. One bad download out of ~43 kills the
+      # attempt, but every port already built stays in ~/.cache/vcpkg/
+      # archives, so an in-job retry resumes from where the last attempt
+      # died instead of coin-flipping from zero. Three attempts covered the
+      # worst observed run (2026-08-31: attempt 1 died at 31/43 on main).
       - name: Configure
         shell: bash
-        run: >
-          cmake --preset config-linux-gcc
-          -DVCPKG_MANIFEST_FEATURES=adm
-          -DAC3FORGE_BUILD_ADM=ON
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            if cmake --preset config-linux-gcc \
+                 -DVCPKG_MANIFEST_FEATURES=adm \
+                 -DAC3FORGE_BUILD_ADM=ON; then
+              exit 0
+            fi
+            rm -rf build/config-linux-gcc/CMakeCache.txt
+            if [ "$attempt" -lt 3 ]; then
+              # Real backoff, not an immediate loop: the 400s are codeload
+              # throttling the runner's egress under download bursts (the
+              # same tarball URLs answer 200 from an unthrottled client), so
+              # a retry two seconds later lands inside the same throttle
+              # window and three immediate attempts are effectively one -
+              # observed on this PR's own first CI cycle, three failures
+              # 2.1s apart on the same tarball. A warm retry costs seconds
+              # once the archives hold the already-built ports, so a
+              # generous wait is far cheaper than one cold rebuild.
+              delay=$(( attempt == 1 ? 30 : 120 ))
+              echo "::warning::Configure attempt $attempt failed (codeload throttling?) - waiting ${delay}s, then resuming from the locally-built archives"
+              sleep "$delay"
+            fi
+          done
+          echo "::error::Configure failed after 3 attempts"
+          exit 1
 
       - name: Build
         shell: bash
