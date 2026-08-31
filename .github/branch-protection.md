@@ -24,16 +24,23 @@ on the repo. Configure a protection rule (or ruleset) for `main` with:
   every required status check below to pass, still dismisses stale approvals
   if a second maintainer ever does leave one) while letting a green PR merge
   through the normal button instead of only through an admin override.
-- **Require status checks to pass before merging** (enable "Require branches
-  to be up to date" too), selecting:
+- **Require status checks to pass before merging**, selecting:
   - `Branch Name` (from `ci.yml`)
-  - `No Quarantine On Main` (from `ci.yml`)
   - `CI Status` (from `ci.yml` - aggregates every required CI job; add or
     rename a matrix leg without ever touching this rule)
-  - `Analyze (C++)` (from `codeql.yml`)
   - `Scan dependency diff` (from `dependency-review.yml`) - fails on a
     moderate-or-worse known vulnerability newly introduced by the PR
     (`vcpkg.json` or a GitHub Actions dependency)
+
+  `No Quarantine On Main` is not selected in its own right - it sits in
+  `CI Status`'s `needs` list, so it still gates every merge through that one
+  aggregate check. `Analyze (C++)` was removed 2026-08-31: `codeql.yml`
+  `paths-ignore`s `docs/**`/`**/*.md`, so on a docs-only PR the required
+  context never reported and the PR sat green-but-BLOCKED forever (the
+  code-scanning ruleset section below records the fuller version of the same
+  trap). "Require branches to be up to date" is off: the merge queue below
+  makes each entry up to date server-side, without the rebase treadmill that
+  setting used to cause.
 - **Require conversation resolution before merging**
 - **Do not allow bypassing the above settings** (applies rules to admins too)
 - **Restrict who can push to matching branches** - only allow merges via PR;
@@ -62,7 +69,9 @@ ruleset edit, and the list above is deliberately unchanged:
   chosen for that reason, since a rename would leave the required check above
   pending forever. The two new legs report as `Analyze (Python)` and
   `Analyze (JavaScript)`; adding them as required checks is optional, and
-  matches how the existing CodeQL leg is treated.
+  matches how the existing CodeQL leg is treated. (Historical since
+  2026-08-31 - no CodeQL leg is a required check any more, see above - but
+  the stable-`name:` practice is still worth keeping for `CI Status` itself.)
 - `Python coverage` (`wheels.yml`) is a new check on a workflow that has no
   required checks today; leaving it that way is consistent with `Build wheels`.
 
@@ -114,6 +123,26 @@ trigger never reports its check there and every queue entry sits until
 `dependency-review.yml` all carry it (see each workflow's own `merge_group`
 comment) - add it to anything else that later becomes a required check on
 `main`.
+
+## Code-scanning gate (ruleset, currently disabled)
+
+A repository ruleset `code-scanning-gate-main` (`target: branch`,
+`refs/heads/main`, one `code_scanning` rule: PREfast at
+`errors_and_warnings`, CodeQL at `errors` alerts / `high_or_higher` security
+alerts) was created 2026-08-24 to block merges on new scanner findings. It
+was **disabled** on 2026-08-31 - enforcement only; the rule configuration is
+intact for re-enabling. Why: a `code_scanning` rule waits for every analysis
+category the target branch has previously seen, and `main` carries four
+CodeQL categories - `cpp`, `python`, `javascript-typescript` and
+`java-kotlin` - of which the last is produced only by `_build.yml`'s
+`build-android` job, which `ci.yml` gates behind
+`changes.outputs.code == 'true'`; `codeql.yml` and `msvc-analysis.yml` also
+`paths-ignore` docs. A docs-only PR therefore could never satisfy the rule
+and sat un-mergeable forever: no docs-only PR merged between the ruleset's
+creation and its disabling. Re-enabling is one field
+(`enforcement: active`) - but only do it once every expected category is
+produced on every PR, `java-kotlin` included, or the same trap returns
+immediately.
 
 ## Other scanners (visible-only)
 
