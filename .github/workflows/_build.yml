@@ -701,7 +701,17 @@ jobs:
 
           $alreadyCurrent = $false
           if (Test-Path $clangCl) {
-            $verLine = & $clangCl --version 2>&1 | Select-Object -First 1
+            # Collect ALL of clang-cl's output before taking the first line.
+            # The previous form (`& $clangCl ... | Select-Object -First 1`)
+            # early-terminated the pipeline, which can kill clang-cl before
+            # it finishes writing - the killed process leaves a non-zero
+            # $LASTEXITCODE that GitHub's powershell wrapper propagates as
+            # the STEP's exit code at script end, failing the job with no
+            # error text. A race: only when the skip path runs (LLVM already
+            # current - i.e. only on the self-hosted fleet), and only when
+            # Select-Object wins it. Confirmed on PR #445's clang-cl leg.
+            $verOutput = & $clangCl --version 2>&1
+            $verLine = $verOutput | Select-Object -First 1
             if ($verLine -match 'version (\S+)' -and $matches[1] -eq $version) {
               $alreadyCurrent = $true
             }
@@ -737,10 +747,18 @@ jobs:
             $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
             Invoke-WebRequest -Uri $url -OutFile $exe
             # NSIS installer; /S is a silent install into the default location.
-            Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow
+            $installer = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow -PassThru
+            if ($installer.ExitCode -ne 0) {
+              throw "LLVM installer exited with code $($installer.ExitCode)"
+            }
           }
 
           "$llvmDir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          # Belt and braces for the $LASTEXITCODE propagation above: nothing
+          # after the probe re-runs a native command, so make the step's
+          # success explicit rather than inheriting whatever the last native
+          # invocation happened to leave behind.
+          exit 0
 
       # Homebrew's core "llvm" formula has no versioned sibling the way
       # apt.llvm.org or the official win64 installer do (there is no "llvm@21"

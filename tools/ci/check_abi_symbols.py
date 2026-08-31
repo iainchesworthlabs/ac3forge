@@ -18,9 +18,9 @@ export-set change.
 
 Unlike tools/ci/compare_performance.py, this script DOES exit non-zero on a
 real mismatch - the advisory/non-blocking behaviour AP4 wants pre-1.0 comes
-from the calling CI job's own `continue-on-error: true`, not from this script
-staying silent. That is deliberate: once AP1's freeze removes that one line,
-this script's behaviour does not need to change at all.
+from the calling CI job's own ABI_ENFORCE switch, not from this script staying
+silent. That is deliberate: once AP1's freeze flips that one value, this
+script's behaviour does not need to change at all.
 
 stdlib-only (argparse/pathlib/subprocess), matching every other script in
 this directory - the runner needs no provisioning beyond nm/c++filt, which

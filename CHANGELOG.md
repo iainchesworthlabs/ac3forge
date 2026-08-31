@@ -457,6 +457,17 @@ a concrete API-freeze plan for v1.0 now exists.
   packaging-consistency check also now catches a winget manifest whose `InstallerType` doesn't
   match its own installer URL or nested-installer fields — the same class of drift a manual
   copy-forward release bump can introduce.
+- **The ABI gate stopped failing on every pull request.** `abi-gate` compared HEAD against the
+  last release tag, so it reported the whole release cycle's accumulated drift — 806 commits'
+  worth by 2026-08-28 — on every PR, including ones that touched no source at all. It now
+  compares against the PR's own merge base; the last release tag is still the comparison point
+  on a push or a tag, where that view is the useful one. `abidiff` also runs under
+  `tools/ci/abi-suppressions.ini`, which drops the libstdc++ template instantiations that are
+  not part of any ABI this project controls — about 900 of the roughly 1050 entries the gate was
+  emitting. Advisory pre-1.0 now means green: the job reports through a single `ABI_ENFORCE`
+  switch rather than `continue-on-error: true`, which never made the check green in the first
+  place, since GitHub still reports a continue-on-error job's own check run as `failure`. The
+  exported-symbol allowlist, six symbols behind `main`, is back in sync.
 
 **Shield Atmos Demo (Android)**
 
