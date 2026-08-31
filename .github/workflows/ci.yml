@@ -788,8 +788,21 @@ jobs:
                  -DAC3FORGE_BUILD_ADM=ON; then
               exit 0
             fi
-            echo "::warning::Configure attempt $attempt failed (vcpkg download flake?) - retrying with the locally-built archives kept so far"
             rm -rf build/config-linux-gcc/CMakeCache.txt
+            if [ "$attempt" -lt 3 ]; then
+              # Real backoff, not an immediate loop: the 400s are codeload
+              # throttling the runner's egress under download bursts (the
+              # same tarball URLs answer 200 from an unthrottled client), so
+              # a retry two seconds later lands inside the same throttle
+              # window and three immediate attempts are effectively one -
+              # observed on this PR's own first CI cycle, three failures
+              # 2.1s apart on the same tarball. A warm retry costs seconds
+              # once the archives hold the already-built ports, so a
+              # generous wait is far cheaper than one cold rebuild.
+              delay=$(( attempt == 1 ? 30 : 120 ))
+              echo "::warning::Configure attempt $attempt failed (codeload throttling?) - waiting ${delay}s, then resuming from the locally-built archives"
+              sleep "$delay"
+            fi
           done
           echo "::error::Configure failed after 3 attempts"
           exit 1
