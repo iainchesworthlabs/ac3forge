@@ -122,6 +122,13 @@ nav:
       - Inspect objects: gui/inspect-objects.md
       - Open stream: gui/open-stream.md
       - Localisation: gui/localisation.md
+  - Performance & quality:
+      - Overview: performance-quality.md
+      - Performance trend: performance-trend.md
+      - Quality trend: quality-trend.md
+      - Tool comparison trend: tool-comparison-trend.md
+      - Object quality trend: object-quality-trend.md
+      - Landscape: landscape.md
   - Project:
       - Contributing: contributing.md
       - Releasing: releasing.md
@@ -129,9 +136,4 @@ nav:
       - Roadmap: roadmap.md
       - Live decode demo (WASM): wasm-demo.md
       - Live encode demo (WASM): wasm-encode-demo.md
-      - Quality trend: quality-trend.md
-      - Performance trend: performance-trend.md
-      - Tool comparison trend: tool-comparison-trend.md
-      - Object quality trend: object-quality-trend.md
-      - Landscape: landscape.md
       - Self-hosted CI runners: ci-self-hosted-runners.md
