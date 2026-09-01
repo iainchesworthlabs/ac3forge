@@ -326,13 +326,30 @@ def align(original, decoded, skip=RATE, probe_len=32768, window_extra=65536):
     2*skip + probe_len - the trimmed overlap below would come out empty or
     inverted - so callers scoring those pass smaller values explicitly
     rather than this function guessing a length-appropriate scale itself.
+
+    `skip` is trimmed from the front of the overlap once, not twice. The
+    previous form computed the overlap length `n` correctly and then sliced
+    `original[skip:skip + n - skip]`, discarding a further `skip` samples off
+    the end - a full second at the default, ~12.5% of a 10 s fixture, on every
+    comparison this file makes. Every score here averages over the overlap, so
+    that was lost precision rather than a wrong answer: measured on a 10 s
+    fixture the overlap goes from 335863 to 383863 samples with the recovered
+    lag and the alignment itself unchanged.
     """
     probe = original[skip:skip + probe_len, 0]
     window = decoded[: skip + window_extra, 0]
     corr = np.correlate(window, probe, mode="valid")
+    # Deliberately an unnormalised matched filter. Normalising by the decoded
+    # window's local energy was tried and reverted: the concern was that a loud
+    # region could out-score the true alignment, but an uncorrelated signal
+    # scores near zero however loud it is, and no case could be built where the
+    # two forms disagreed - including a quiet probe against a 60x louder decoy
+    # burst inside the search window. Normalisation is not free (an O(n) energy
+    # pass plus edge behaviour of its own), so it is not worth carrying for a
+    # benefit that could not be demonstrated.
     lag = int(np.argmax(np.abs(corr))) - skip
     n = min(len(original), len(decoded) - lag) - 2 * skip
-    o = original[skip:skip + n - skip]
+    o = original[skip:skip + n]
     d = decoded[skip + lag:skip + lag + len(o)]
     return o, d, lag
 
