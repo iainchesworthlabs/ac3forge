@@ -14,13 +14,34 @@ ac3kernelbench JSON from two directories - one built at the merge base, one at
 the PR head, on the same runner in the same job - and prints a markdown table
 of per-workload and per-kernel deltas.
 
-DELIBERATELY NON-BLOCKING. It always exits 0 on a successful comparison; a
-regression is reported as a ::warning:: annotation and a row in the summary
-table, never as a failed job. A shared CI runner's timings are noisy enough
-that a hard PR-blocking threshold would cost more in re-runs than it caught,
-and the two gates that DO block (ac3perf's absolute budget on every PR, the
-trend appender's hard tier on merge) are unchanged by this. What this adds is
-the number a reviewer needs in front of them at review time.
+SOFT TIER ADVISORY, HARD TIER BLOCKING. A soft regression (20%) is reported as
+a ::warning:: annotation and a row in the summary table and fails nothing - a
+shared runner's timings are noisy enough that blocking at that threshold would
+cost more in re-runs than it caught. A HARD regression (100% - the workload ran
+at least twice as slow) additionally reports `hard_regression=true` on
+$GITHUB_OUTPUT, which .github/workflows/ci.yml turns into a failing check.
+
+The hard tier did not block here originally, on the same noise argument as the
+soft tier. Two things stop that argument applying at 100%:
+
+  - The comparison is PAIRED. Base and head are built from the same checkout,
+    on the same runner, in the same job, and timed INTERLEAVED with the order
+    alternating - so drift lands on both sides rather than on the delta - and
+    each side is then reduced by minimum-of-N. Noise that survives all of that
+    and still reads as a doubling is not noise. Observed run-to-run spread on
+    these runners is single-digit percent; 100% is an order of magnitude
+    outside it.
+  - It already blocks anyway, just later and worse. The same 100% threshold
+    fails append_performance_history.py's hard tier on the push to main. So
+    the behaviour before this was never "a doubling does not fail CI" - it was
+    "a doubling fails CI on main, after it has merged, for whoever pushes
+    next". Failing the PR that caused it is strictly better, and it is the
+    same threshold either way.
+
+The escape hatch is a label, not an admin merge: a deliberate 2x slowdown (a
+correctness fix that costs real work, a slower-but-right algorithm) is a
+legitimate thing to merge, so `perf-regression-approved` on the PR turns the
+gate back into an annotation. See ci.yml's performance-gate job.
 
 The soft and hard tiers are imported from append_performance_history.py rather
 than restated, so a PR and its eventual merge cannot disagree about what counts
@@ -54,6 +75,31 @@ from append_performance_history import (  # the single definition of both tiers
 # tiny improvement/regression. Well below the soft tier and roughly the
 # run-to-run floor a hosted runner manages even on a quiet build.
 NOISE_FLOOR_FRACTION = 0.03
+
+
+def report_hard_regression(hard: bool) -> None:
+    """Publish the verdict on $GITHUB_OUTPUT for ci.yml's performance-gate job.
+
+    A step output rather than this script's own exit code, because the job that
+    runs it is `continue-on-error: true` and must STAY that way. That flag is
+    what keeps this job's INFRASTRUCTURE non-blocking - it builds twice, and a
+    vcpkg hiccup or a container bootstrap flake in a job nobody asked for
+    should not block a PR. But continue-on-error also swallows the exit code,
+    so a verdict carried that way would be silently discarded. Publishing it as
+    an output lets a separate one-step gate job - which builds nothing, and so
+    has nothing to flake on - fail the check instead.
+
+    Same shape as append_performance_history.py's own hard_regression output
+    and the "Fail on hard performance regression" step that consumes it.
+
+    A no-op outside Actions, so a local run prints its table and exits 0
+    exactly as it always has.
+    """
+    path = os.environ.get("GITHUB_OUTPUT")
+    if not path:
+        return
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write("hard_regression=%s\n" % ("true" if hard else "false"))
 
 
 def load_runs(directory: Path, filename_glob: str, entries_key: str, value_key: str):
@@ -161,12 +207,19 @@ def main() -> int:
         print("::warning title=Performance comparison skipped::no ac3bench results on one "
               f"side (base={len(base_bench)} workloads from {base_n} run(s), "
               f"head={len(head_bench)} from {head_n}).")
+        # Explicitly false, not merely absent: a skipped comparison has to read
+        # as "nothing to block on" rather than leave the gate job interpreting
+        # an unset output.
+        report_hard_regression(False)
         return 0
 
     out = [f"## Performance vs {args.base_ref}", "",
            f"Fastest of {base_n} run(s) at the base and {head_n} at the head, same runner, "
-           "same job. Lower is better. This table is informational - it never fails the "
-           "build; see tools/ci/compare_performance.py for why.", ""]
+           "same job, interleaved. Lower is better. A `regression` row is advisory. A "
+           "**HARD REGRESSION** row - at least "
+           f"{HARD_REGRESSION_SLOWDOWN_FRACTION * 100:.0f}% slower, i.e. twice the time - "
+           "fails the `Performance gate` check; label the PR `perf-regression-approved` if "
+           "the slowdown is intended. See tools/ci/compare_performance.py.", ""]
 
     annotations = []
     for base_runs, head_runs, unit, label in (
@@ -180,6 +233,10 @@ def main() -> int:
 
     for note in annotations:
         print(note)
+
+    # Counted across BOTH tables: a kernel that doubled is as much a hard
+    # regression as a whole-frame encode that doubled.
+    report_hard_regression(any("(hard tier)" in note for note in annotations))
 
     text = "\n".join(out) + "\n"
     destination = args.summary_out or (
