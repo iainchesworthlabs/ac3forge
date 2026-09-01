@@ -159,9 +159,23 @@ isolation, but the full integration has not had a real-stream soak test - treat 
 mechanism that needs hardening against real-world hls.js versions and stream shapes, not a
 finished, battle-tested integration.
 
+## Loading assets safely
+
+The worker `fetch`es the `glueUrl` you pass to `init` and evaluates the response as JavaScript -
+the Emscripten glue is `MODULARIZE`d, so it is re-exported through a Blob URL and `import`ed.
+Whatever that URL points at therefore runs with the worker's privileges, and `locateFile`
+resolves the `.wasm` relative to it.
+
+Point it at an asset you ship. Never derive it from user input, a query parameter, or a
+third-party origin. This is the ordinary WASM-loader contract - the caller says where its own
+assets live - but the consequence of getting it wrong here is code execution, not a broken
+image, so it is worth stating plainly.
+
 ## Versioning and publishing
 
-Published to npm as `ac3forge-wasm-decoder`. Its version tracks the main repository's own release
+**Not yet published to npm.** The package name `ac3forge-wasm-decoder` is not on the registry;
+consume it from source (`js/`) for now. When publishing is enabled its version will track the
+main repository's own release
 tags exactly the way the `ac3forge` PyPI package does (see
 [docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md)) -
 this package's `package.json` carries no version to keep in sync by hand; the release workflow
