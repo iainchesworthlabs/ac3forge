@@ -237,22 +237,41 @@ jobs:
             echo "a PR for $branch is already open - not opening a second one"
           fi
 
-      # Direct push, not a second PR: this tap has no build or review gate of its own
-      # (docs/releasing.md#homebrew-formula-and-cask - "not submitted to homebrew-core"),
-      # and this is the same "copy the file in and push" step a maintainer did by hand
-      # before this workflow existed. HOMEBREW_TAP_TOKEN needs to be a fine-grained PAT
-      # scoped to Contents: read and write on iainchesworthlabs/homebrew-ac3forge only -
-      # the built-in GITHUB_TOKEN this job otherwise uses cannot reach a different repo.
-      - name: Push the Formula/Cask to the live tap
+      # A PR, not a direct push. This used to `git push origin HEAD` straight at the
+      # tap's main, justified by "this tap has no build or review gate of its own".
+      # That stopped being true on 2026-08-19, when a `main protection` ruleset
+      # (deletion + non_fast_forward + pull_request) was added to
+      # iainchesworthlabs/homebrew-ac3forge - a week before this workflow landed, so
+      # the direct push never once succeeded. v0.10.0-beta.1 was the first release to
+      # run it and it failed with:
+      #
+      #   remote: error: GH013: Repository rule violations found for refs/heads/main
+      #
+      # The ruleset has NO bypass actors, so no token can push straight to main however
+      # it is scoped - opening a PR is the only route in, and is how both earlier bumps
+      # (tap #1 and #2) actually landed.
+      #
+      # HOMEBREW_TAP_TOKEN must be a fine-grained PAT on
+      # iainchesworthlabs/homebrew-ac3forge only, and now needs TWO permissions:
+      # Contents: read and write (to push the branch) AND Pull requests: read and write
+      # (to open the PR). Contents alone is what it needed for the old direct push and
+      # is no longer sufficient. The built-in GITHUB_TOKEN cannot reach another repo.
+      #
+      # The PR is left for a human to merge rather than auto-merged: a formula bump
+      # cannot be validated on this project's CI at all (no Homebrew on any runner -
+      # docs/releasing.md#homebrew-formula-and-cask), so `brew audit`/`brew test` on a
+      # real macOS machine is the only gate there is.
+      - name: Open the Formula/Cask bump PR on the live tap
         if: env.DRY_RUN != 'true' && env.HAVE_TAP_TOKEN == 'true'
         env:
           TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
+          tap=iainchesworthlabs/homebrew-ac3forge
           tapdir="$(mktemp -d)"
           git clone --quiet --depth 1 \
-            "https://x-access-token:${TAP_TOKEN}@github.com/iainchesworthlabs/homebrew-ac3forge.git" \
+            "https://x-access-token:${TAP_TOKEN}@github.com/${tap}.git" \
             "$tapdir"
 
           cp packaging/homebrew/Formula/ac3forge.rb "$tapdir/Formula/ac3forge.rb"
@@ -268,5 +287,22 @@ jobs:
             echo "tap already up to date for $VERSION_TAG"
             exit 0
           fi
-          git commit -m "ac3forge ${VERSION_TAG}"
-          git push origin HEAD
+
+          branch="bump-${VERSION_TAG}"
+          git checkout -q -b "$branch"
+          git commit -q -m "ac3forge ${VERSION_TAG}"
+          # --force so a re-run of a failed release replaces its own stale branch
+          # rather than dying on a non-fast-forward against the previous attempt.
+          git push --force origin "$branch"
+
+          export GH_TOKEN="$TAP_TOKEN"
+          if gh pr list --repo "$tap" --head "$branch" --state open \
+               --json number -q 'length' | grep -qv '^0$'; then
+            echo "a PR for $branch is already open on $tap - not opening a second one"
+            exit 0
+          fi
+          gh pr create --repo "$tap" --base main --head "$branch" \
+            --title "ac3forge + ac3gui: bump to ${VERSION_TAG}" \
+            --body "Automated bump for [\`${VERSION_TAG}\`](https://github.com/${REPO}/releases/tag/${VERSION_TAG}), copied from that release run's own staged manifests.
+
+          Needs a human: \`brew audit\`, \`brew install --build-from-source\` and \`brew test\` (plus the cask equivalents) from a real macOS machine. There is no Homebrew on any of this project's CI runners, so nothing here validates the formula."
