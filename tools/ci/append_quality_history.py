@@ -71,6 +71,86 @@ def load_leg_results(results_dir: Path):
             yield record
 
 
+# How many of the most recent COMMITS the sidecar window keeps.
+#
+# docs/quality-trend.md renders TABLE_ROWS (40) entries per series and computes
+# a REGRESSION_WINDOW (10) trailing baseline behind the oldest of them, so 50
+# commits is what the page actually needs. 80 is that with margin, and still
+# an order of magnitude smaller than the full history.
+RECENT_WINDOW_COMMITS = 80
+
+
+def write_recent_window(history_path: Path) -> None:
+    """Write a <branch>.recent.jsonl beside the full history.
+
+    The history files are append-only and unbounded - main.jsonl passed 1.7 MB
+    and develop.jsonl 1.8 MB by September 2026 - and docs/quality-trend.md
+    fetches BOTH in full on every page load to render forty rows per series.
+    That is 3.5 MB of history to display fifty commits' worth of it, and it
+    grows with every merge.
+
+    The obvious fix is an HTTP suffix Range request from the page, which does
+    not work and cannot be made to: raw.githubusercontent.com serves ranges
+    happily to curl, but `Range` is not a CORS-safelisted request header, so a
+    cross-origin fetch preflights - and that host answers OPTIONS with a 403.
+    Verified from the live docs origin: the plain fetch returns 1789155 bytes,
+    the ranged one fails outright. So the window has to be produced here, where
+    there is no CORS, rather than requested there.
+
+    The full file is still written and still authoritative - this is a derived
+    view, regenerated in full each run from the file that was just appended to,
+    so it cannot drift from it. A reader wanting the whole series (or a page
+    published before this file existed) reads the original.
+
+    Whole commits, not the last N lines: a commit writes one record per
+    (leg, codec, check), so a line-count window would cut the newest commit in
+    half and the page would render a partial column for it.
+    """
+    if not history_path.exists():
+        return
+    records = []
+    for raw in history_path.read_text().splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            records.append((json.loads(line)["commit"], line))
+        except (json.JSONDecodeError, KeyError):
+            # A malformed or schema-less line is kept out of the window rather
+            # than failing the trend job over it; the full file still has it.
+            continue
+
+    # Commit order as recorded, not sorted by date: this file is appended to in
+    # merge order, which is the order the page walks it in.
+    seen = []
+    for commit, _ in records:
+        if commit not in seen:
+            seen.append(commit)
+    recent_path = history_path.with_suffix(".recent.jsonl")
+
+    # Nothing to gain while the whole history still fits in the window, and
+    # a real cost to writing it anyway: the sidecar would be a byte-for-byte
+    # second copy, doubling this branch's size to save the reader nothing.
+    # The page falls back to the full file when this is absent, which is
+    # exactly the right behaviour in that case. As of September 2026 the
+    # quality history is 65 commits deep and 1.7 MB - big because each
+    # commit writes ~73 records, not because it is long - so this returns
+    # here today and starts producing a window once the history outgrows
+    # RECENT_WINDOW_COMMITS. A stale window left by an earlier run is
+    # removed rather than left to go out of date.
+    if len(seen) <= RECENT_WINDOW_COMMITS:
+        recent_path.unlink(missing_ok=True)
+        print(f"History is {len(seen)} commit(s), within the {RECENT_WINDOW_COMMITS}-commit "
+              f"window - no sidecar written; the page reads {history_path.name}.")
+        return
+
+    keep = set(seen[-RECENT_WINDOW_COMMITS:])
+    kept = [line for commit, line in records if commit in keep]
+    recent_path.write_text("\n".join(kept) + ("\n" if kept else ""))
+    print(f"Wrote {len(kept)} record(s) from the last {len(keep)} commit(s) "
+          f"to {recent_path}")
+
+
 def trailing_mean(history_path: Path, leg: str, codec: str, check: str, window: int):
     """Matches on (leg, codec, check), not just (leg, codec): see
     load_leg_results's docstring for why codec alone can conflate two
@@ -167,6 +247,7 @@ def main() -> int:
             f.write(line + "\n")
 
     print(f"Appended {len(lines)} record(s) to {history_path}")
+    write_recent_window(history_path)
     emit_github_output("hard_regression", "true" if hard_regression else "false")
     return 0
 
