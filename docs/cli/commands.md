@@ -32,7 +32,7 @@ Usage:
   ac3cli cat           <out.ac3|out.ec3> <in1> <in2> [in3...] (join streams end to end (output FIRST, since the input list is variadic); refuses inputs whose codec, rate, layout or substream shape differ)
   ac3cli levels        <in.wav|in.ac3|in.ec3|in.mkv|in.mp4|in.ts> (per-channel peak/RMS report)
   ac3cli loudness      <in.wav>                               (BS.1770-4 loudness -> dialnorm)
-  ac3cli qc            <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [preset=<name>|all] [layout=bed|rendered] [objects=<51|71|512|514|714>] (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate, optional BS.1770-5 Annex 4 object re-render)
+  ac3cli qc            <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [preset=<name>|all] [layout=bed|rendered] [objects=<71|512|514|714>] (bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional preset gate, optional BS.1770-5 Annex 4 object re-render)
   ac3cli spdif         <in.ac3> <out.wav>                     (IEC 61937 wrap as playable PCM16 WAV)
   ac3cli unspdif       <in.wav|in.raw|-> <out.ac3|out.ec3|->  (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
   ac3cli mkv           <in.ac3|in.ec3> <out.mkv>              (wrap as a playable Matroska file)

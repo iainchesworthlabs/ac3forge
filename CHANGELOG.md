@@ -14,8 +14,12 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0, both decoders gain a
 consumer output stage, all three containers become readable as well as writable, and the
-verification estate extends to E-AC-3. The repository also moved to trunk-based development, and
-a concrete API-freeze plan for v1.0 now exists.
+verification estate extends to E-AC-3. The immersive surface widens well past Atmos-in-DD+: an
+IAMF writer, an IAB/MXF reader bridged onto the Atmos encoder, and an AC-4 bitstream inspector.
+The browser gains in-page encoding and QC beside the existing decode demo, plus a reusable
+streaming decoder package. The Shield Atmos demo grows into a real application, and the library
+is now reachable from Rust as well as C and Python. The repository also moved to trunk-based
+development, and a concrete API-freeze plan for v1.0 now exists.
 
 ### Added
 
@@ -186,10 +190,14 @@ a concrete API-freeze plan for v1.0 now exists.
   presets `ac3cli qc` checks — computed on the same PCM, in the page. A round-trip preview decodes
   the produced stream through the existing decode module to prove it's real. Headless-browser CI
   coverage (Playwright) now spans both demos, not just decode.
-- **A published npm package**, [`ac3forge-wasm-decoder`](https://www.npmjs.com/package/ac3forge-wasm-decoder),
-  turning the WASM decode demo's underlying build into a reusable browser decoder — a real answer
-  to Chrome's continued inability to decode EC-3 natively
-  ([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297)).
+- **A reusable browser decoder package**, `ac3forge-wasm-decoder` (source in
+  [`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)), turning the WASM decode
+  demo's underlying build into a reusable browser decoder — a real answer to Chrome's continued
+  inability to decode EC-3 natively
+  ([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297)). It is
+  **not on the npm registry yet**: the publish job is deliberately held to a manual dispatch until
+  the one-time npmjs trusted-publisher setup in [docs/releasing.md](docs/releasing.md) is done, so
+  consume it from source for now.
 - **A push-frame decode API** over the caller-buffer `decode_access_unit_into` form, so decoding a
   live/streaming source allocates nothing on the hot path.
 - **A realtime AudioWorklet playback pipeline**: decoding runs in a Worker, off the main thread;
@@ -547,7 +555,11 @@ a concrete API-freeze plan for v1.0 now exists.
   key asset is now deleted after the debug smoke build and before any release step, and the staged
   release APK is asserted to contain no `signing.key` entry before it can be uploaded. The check
   reads the APK's actual entry list rather than trusting step ordering, so a reordering or a Gradle
-  asset-merge change fails the release instead of shipping the asset.
+  asset-merge change fails the release instead of shipping the asset. Worth knowing because it
+  changes the shipped artifact: a published release APK therefore carries no object-signing key,
+  so it emits the 5.1 bed rather than a signed object stream and a receiver's Atmos indicator will
+  not light where a previously published build lit it. Locally built debug APKs, which still have
+  the key, are unaffected.
 
 ## [0.9.0-beta.1] - 2026-08-22
 

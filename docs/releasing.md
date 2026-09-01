@@ -310,16 +310,18 @@ built wheels — the `build` job (and its artifact) runs on every push regardles
 
 Roadmap **UX5**: the browser decoder package (`js/`, see
 [docs/platforms/wasm.md](platforms/wasm.md)) as the
-[`ac3forge-wasm-decoder`](https://www.npmjs.com/package/ac3forge-wasm-decoder) npm package.
+`ac3forge-wasm-decoder` npm package.
 Versioning mirrors the PyPI package above rather than reinventing it: `js/package.json` carries a
 `0.0.0-dev` placeholder in the tree (the same untagged-build fallback CMake's own
-`GitVersionDerivation.cmake` uses), and `release.yml`'s `publish-npm` job stamps the real,
+`GitVersionDerivation.cmake` uses), and `npm.yml`'s `publish` job stamps the real,
 resolved version (`npm version <version> --no-git-tag-version`) immediately before `npm publish`
 — nothing to keep in sync by hand, and the tag is still the single source of truth.
 
-**Publishing to npm is gated on a not-yet-provisioned `npm` GitHub environment** — unlike PyPI
-above, this has not been set up yet. `publish-npm` is gated on both a `v*` tag push and the `npm`
-environment, and (like PyPI) uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers)
+**Publishing to npm is not enabled yet** — unlike PyPI above. `ac3forge-wasm-decoder` has never
+been published, and two separate things hold it: the one-time setup below has not been done, and
+`npm.yml`'s `publish` job is deliberately narrowed to `workflow_dispatch` so that a `v*` tag
+cannot create a brand-new public package as a side effect of cutting a release. It uses (like
+PyPI) [npm trusted publishing](https://docs.npmjs.com/trusted-publishers)
 (OIDC) rather than a stored token — there is no `NPM_TOKEN` secret to leak in the first place.
 **Nobody should ever generate a long-lived npm token and paste it into a chat with an agent or
 into a GitHub secret** — trusted publishing exists specifically so that never has to happen.
@@ -333,17 +335,22 @@ an agent should do, the same rule as PyPI's setup above):
    "pending publisher" pre-registration mechanism for a name that doesn't exist yet.
 2. On the package's npmjs.com settings page, add a trusted publisher: provider GitHub Actions,
    organization/user `iainchesworthlabs`, repository `ac3forge`, workflow filename
-   `release.yml`, environment `npm`.
+   **`npm.yml`** (the publish job lives there, not in `release.yml` — registering the wrong
+   filename is an OIDC authentication failure at publish time, not a warning), environment `npm`.
 3. In the GitHub repo, create an environment named `npm` (Settings → Environments) — no secrets
    need adding to it, the same reasoning as the `pypi` environment above. Optionally add required
    reviewers for a manual approval gate before a publish actually runs.
-4. Requires npm CLI ≥ 11.5.1 and Node ≥ 22.14.0 for OIDC support — `release.yml`'s job installs
+4. Requires npm CLI ≥ 11.5.1 and Node ≥ 22.14.0 for OIDC support — `npm.yml`'s job installs
    `npm@latest` explicitly rather than trusting whatever `actions/setup-node`'s chosen Node
    version happens to bundle.
+5. Finally, re-arm the trigger: drop the `github.event_name == 'workflow_dispatch'` clause from
+   the `publish` job's `if:` in `npm.yml`. Do this last, and only after a manual dispatch on a
+   tag has been seen to publish successfully — until then the job is intentionally inert.
 
-Pushing a `v*` tag triggers `publish-npm` for that tag, which requests an OIDC token against the
-`npm` environment and runs `npm publish` from `js/` — no `--provenance` flag needed, npm attaches
-provenance attestations automatically for a trusted-published package.
+Once all five steps are done, pushing a `v*` tag triggers `npm.yml`'s `publish` job for that tag,
+which requests an OIDC token against the `npm` environment and runs `npm publish` from `js/` — no
+`--provenance` flag needed, npm attaches provenance attestations automatically for a
+trusted-published package. Until step 5, a tag push builds and tests `js/` and stops there.
 
 ## Homebrew formula and cask
 

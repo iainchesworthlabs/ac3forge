@@ -626,7 +626,7 @@ void print_option_blocks(std::uint32_t mask) {
         fmt::println("                    dependent substream's height/wide/rear channels");
         fmt::println("                    included (BS.1770-5 Annex 3's extended algorithm)");
         fmt::println("  objects=<layout>  re-render dynamic objects by their own OAMD position");
-        fmt::println("                    onto <layout> (51|71|512|514|714) and meter that too");
+        fmt::println("                    onto <layout> (71|512|514|714) and meter that too");
         fmt::println("                    (BS.1770-5 Annex 4); dynamic-object-only programmes");
         fmt::println("                    only");
     }
