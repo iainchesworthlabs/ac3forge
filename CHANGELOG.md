@@ -447,13 +447,18 @@ a concrete API-freeze plan for v1.0 now exists.
 
 **Tooling and packaging**
 
-- **The committed WASM demo fallbacks had gone stale.** `docs/assets/wasm-decode-demo/`'s decode
-  module dated from the demo's first landing (2026-08-16, 225 KB against the 621 KB a current build
-  produces), and the encode demo's copies were a few days behind too — so a local `mkdocs serve`
-  (and the PR-time docs build) embedded a much older module than the checked-in pages expect. The
-  live site was never affected: the docs deploy job rebuilds both demos fresh on every publish.
-  Both directories are re-copied from a fresh build on the pinned Emscripten (6.0.6), verified
-  decoding the bundled fixture in a real browser.
+- **The committed WASM demo fallbacks had gone stale, and the two directories had drifted apart.**
+  Every module committed under `docs/assets/` predated the bindings it serves: the decode demo's
+  `ac3forge_decode.wasm` was 365 KB and the encode demo's own copy of that same module 372 KB —
+  already inconsistent with each other — against the 615 KB a current build produces, and the
+  encode module was 389 KB against 640 KB. So a local `mkdocs serve` (and the PR-time docs build)
+  embedded much older modules than the checked-in pages expect. The live site was never affected:
+  the docs deploy job rebuilds both demos fresh on every publish. All four copies are now taken
+  from a single fresh build on the pinned Emscripten (6.0.6), so the two directories agree, and
+  verified by running `apps/wasm/tests`' Playwright suite against the committed copies themselves
+  rather than the build tree: the decode demo decodes the bundled Atmos-in-DD+ fixture with real
+  moving object positions, and the encode demo encodes a known stereo tone, matches its QC verdict
+  and round-trip decodes it.
 - **Containers hardcoded 1536 samples per frame**, breaking timelines on short E-AC-3 syncframes;
   `atmos bed51` still advertised an object layer it deliberately did not encode.
 - **The minimum-footprint image ceiling was stale**, measured before the QMF work landed on the
