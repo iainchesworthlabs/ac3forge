@@ -883,7 +883,7 @@ jobs:
   # with no auth.
   persist-performance-trend:
     name: Publish performance trend
-    needs: [build-and-test, toolchain-versions]
+    needs: [build-and-test, toolchain-versions, performance-trend-arm64]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     container: ubuntu:26.04
@@ -949,21 +949,10 @@ jobs:
       # in the trend that nobody can distinguish from a code change. Recorded
       # only - nothing compares against it.
       - name: Capture the measurement environment
-        id: env
         shell: bash
-        run: |
-          set -euo pipefail
-          # The trailing-space squeeze is not cosmetic: /proc/cpuinfo pads the
-          # model name (e.g. "AMD Ryzen 9 5950X 16-Core Processor" with a dozen
-          # trailing spaces), and that padding would otherwise be baked into
-          # every record in the permanent history.
-          cpu="$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -1 |
-                 sed -e 's/[[:space:]]\{1,\}$//' -e 's/[[:space:]]\{2,\}/ /g' || true)"
-          [ -n "$cpu" ] || cpu="unknown"
-          image="${ImageOS:-unknown}/${ImageVersion:-unknown}"
-          echo "cpu_model=$cpu" >> "$GITHUB_OUTPUT"
-          echo "runner_image=$image" >> "$GITHUB_OUTPUT"
-          echo "measured on: $cpu ($image)"
+        env:
+          LEG_DIR: results/performance-linux-gcc
+        run: bash .github/scripts/capture-bench-environment.sh
 
       # A separate results tree from ac3bench's on purpose:
       # append_performance_history.py globs every *.json under its legs and
@@ -983,6 +972,23 @@ jobs:
           set -euo pipefail
           mkdir -p memory-results/memory-linux-gcc
           build/config-linux-gcc/bin/ac3membench --json-out memory-results/memory-linux-gcc/membench.json
+
+      # The arm64 leg's measurements, produced by the job below on hardware this
+      # one cannot execute. Unpacked as a SIBLING of this job's own
+      # results/performance-linux-gcc, because append_performance_history.py
+      # takes one leg per subdirectory (leg = the name with "performance-"
+      # stripped) - so two directories become two series with no schema change
+      # and no second commit to quality-history.
+      #
+      # `continue-on-error` on the download alone: a missing arm64 artifact
+      # must not cost the x86 series its record for that commit. The append
+      # step below simply sees one leg instead of two.
+      - name: Download the arm64 measurements
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: performance-linux-gcc-arm64
+          path: results/performance-linux-gcc-arm64
 
       # Same mechanic as quality-trend's own step in _build.yml (plain git
       # over an HTTPS remote carrying the token, not actions/checkout, which
@@ -1016,8 +1022,6 @@ jobs:
         env:
           BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
-          CPU_MODEL: ${{ steps.env.outputs.cpu_model }}
-          RUNNER_IMAGE: ${{ steps.env.outputs.runner_image }}
         run: |
           set -euo pipefail
           git config --global --add safe.directory '*'
@@ -1027,9 +1031,7 @@ jobs:
             --history-dir history \
             --branch "$BRANCH" \
             --commit "$COMMIT_SHA" \
-            --commit-date "$commit_date" \
-            --cpu-model "$CPU_MODEL" \
-            --runner-image "$RUNNER_IMAGE"
+            --commit-date "$commit_date"
 
       # Its own step (and script) rather than more legs in the one above:
       # the kernel series is deliberately non-gating - both regression tiers
@@ -1152,6 +1154,90 @@ jobs:
         run: |
           echo "::error::A workload's heap churn at least doubled against its trailing average (or it leaked past the absolute threshold) - see the job log above and docs/performance-trend.md's memory tables for the recorded numbers."
           exit 1
+
+  # A SECOND ac3bench series, on arm64 (roadmap VX17).
+  #
+  # ms/frame was measured on exactly one platform - x86-64, GCC, one hosted
+  # image - so the trend could only ever answer "did this get slower on that
+  # machine". This project hand-vectorises: fast-MDCT, the radix-4 FFT kernel,
+  # the QMF filterbank. A change tuned against AVX that pessimises NEON is
+  # invisible to a single-ISA series, and it is exactly the kind of change
+  # this repository makes.
+  #
+  # WHY ARM64 AND NOT WINDOWS. Windows is the more obvious second platform and
+  # is deliberately not it: those legs run on the self-hosted fleet, where
+  # docs/performance-trend.md's own guidance is to compare PAIRED ratios
+  # rather than absolute times because a co-tenant build can move a number by
+  # more than any regression this would catch. A trend series is absolute by
+  # construction, so it needs a runner whose timings mean something on their
+  # own. ubuntu-24.04-arm is GitHub-hosted, the same class of machine as the
+  # x86 series' ubuntu-latest, and differs in the one dimension worth adding.
+  #
+  # Mirrors _build.yml's linux-gcc-arm64 leg exactly - same runner label, same
+  # ubuntu:26.04 container, same GCC 16 script, same preset - so this measures
+  # a binary built the way that platform's binaries are actually built.
+  #
+  # Uploads rather than appends. Only ONE job may write to quality-history:
+  # two jobs committing to the same branch race, and this repository has hit
+  # that race before. persist-performance-trend downloads this artifact and
+  # records both legs in its single existing commit.
+  performance-trend-arm64:
+    name: Publish performance trend (arm64 measurements)
+    needs: [build-and-test, toolchain-versions]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    container: ubuntu:26.04
+    env:
+      BENCH_RUNS: "3"
+      LEG_DIR: results/performance-linux-gcc-arm64
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+
+      - name: Configure
+        run: cmake --preset config-linux-gcc-arm64
+
+      # ac3bench only. The x86 job also runs ac3kernelbench and ac3membench;
+      # neither is added here yet, because a kernel series and a heap series
+      # each want their own thresholds calibrated against this platform and
+      # that is a separate exercise from establishing the whole-frame one.
+      - name: Build ac3bench
+        run: cmake --build --preset build-linux-gcc-arm64 --target ac3bench -- -k 0
+
+      - name: Run ac3bench (repeated)
+        run: |
+          set -euo pipefail
+          mkdir -p "$LEG_DIR"
+          for i in $(seq 1 "$BENCH_RUNS"); do
+            build/config-linux-gcc-arm64/bin/ac3bench --json-out "$LEG_DIR/bench$i.json"
+          done
+
+      - name: Capture the measurement environment
+        shell: bash
+        run: bash .github/scripts/capture-bench-environment.sh
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: performance-linux-gcc-arm64
+          path: results/performance-linux-gcc-arm64
+          retention-days: 7
 
   # Encoder throughput, this PR against its own merge base, on one runner
   # (roadmap VX17).

@@ -97,7 +97,11 @@ def load_leg_results(results_dir: Path):
         # {config: [per-run record]}, in file order.
         by_config: dict[str, list[dict]] = {}
         budget = None
-        for json_file in sorted(leg_dir.glob("*.json")):
+        environment = {}
+        environment_path = leg_dir / "environment.json"
+        if environment_path.exists():
+            environment = json.loads(environment_path.read_text())
+        for json_file in sorted(leg_dir.glob("bench*.json")):
             payload = json.loads(json_file.read_text())
             budget = payload["real_time_budget_ms_per_frame"]
             for result in payload["results"]:
@@ -124,6 +128,14 @@ def load_leg_results(results_dir: Path):
                 "max_ms_per_frame": best.get("max_ms_per_frame"),
                 "runs": len(runs),
                 "spread": spread,
+                # Per LEG, not per invocation: with more than one leg the
+                # measurements come from different machines, so a single
+                # command-line value could not describe them both. Each leg's
+                # job drops an environment.json beside its bench JSON (see
+                # .github/scripts/capture-bench-environment.sh); a leg without
+                # one records empty strings.
+                "cpu_model": environment.get("cpu_model", ""),
+                "runner_image": environment.get("runner_image", ""),
                 "real_time_budget_ms_per_frame": budget,
             }
 
@@ -162,13 +174,6 @@ def main() -> int:
     parser.add_argument("--commit", required=True)
     parser.add_argument("--commit-date", required=True,
                          help="Committer date, ISO 8601 (from `git show -s --format=%%cI`).")
-    parser.add_argument("--cpu-model", default="",
-                         help="CPU this was measured on, for the record (e.g. from "
-                              "/proc/cpuinfo's 'model name'). Recorded, never compared "
-                              "against - see the entry's own comment.")
-    parser.add_argument("--runner-image", default="",
-                         help="Runner image identifier, for the record (e.g. "
-                              "\"$ImageOS/$ImageVersion\" on a GitHub-hosted runner).")
     args = parser.parse_args()
 
     history_path = args.history_dir / f"performance-{args.branch}.jsonl"
@@ -202,10 +207,10 @@ def main() -> int:
             # percentages rather than fixed deltas), so a hosted-image bump or
             # a differently-specced runner shows up as an unattributable step
             # in the series unless the environment is recorded beside it.
-            # Empty string when the caller did not supply one - an older
-            # workflow, or a local run.
-            "cpu_model": args.cpu_model,
-            "runner_image": args.runner_image,
+            # Empty string on a leg whose job wrote no environment.json - an
+            # older workflow, or a local run.
+            "cpu_model": rec["cpu_model"],
+            "runner_image": rec["runner_image"],
             "real_time_budget_ms_per_frame": rec["real_time_budget_ms_per_frame"],
         }
         lines.append(json.dumps(entry, sort_keys=True))
