@@ -9,7 +9,7 @@ view and solo its own real reconstructed audio (JOC) — and, as of roadmap UX6,
 drop a `.wav` file, get back a real AC-3/E-AC-3 elementary stream plus a real BS.1770
 loudness/true-peak QC verdict against five delivery presets, and a round-trip preview through the
 decode module. The third surface is **[`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)**,
-the [`ac3forge-wasm-decoder`](https://www.npmjs.com/package/ac3forge-wasm-decoder) npm package
+the `ac3forge-wasm-decoder` npm package
 (roadmap UX5) that turns the same decode path into a push-frame API, a realtime AudioWorklet
 pipeline, and an hls.js/MSE bridge — a reusable answer to the fact that **Chrome still cannot
 decode EC-3** ([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297)
@@ -189,14 +189,20 @@ pin against yet; whatever `$EMSDK` resolves to is what gets used.
 
 ## Publishing (roadmap UX5)
 
-`ac3forge-wasm-decoder` is published to the npm registry, versioned from the same release tag the
-`ac3forge` PyPI package uses (see [docs/releasing.md](../releasing.md#publishing-to-npm)) —
-`js/package.json` carries a `0.0.0-dev` placeholder in the tree, and the release workflow stamps
-the real version immediately before publishing, mirroring CMake's own untagged-build fallback.
-**Publishing is gated on a not-yet-provisioned `npm` GitHub environment** — the workflow job
-exists (`release.yml`'s `publish-npm`) but stays unrunnable until the one-time npmjs.com trusted-
-publisher setup `docs/releasing.md` describes is done by hand, the same way the `pypi` environment
-was provisioned for PyPI.
+`ac3forge-wasm-decoder` is **not on the npm registry yet.** The machinery is in place: when
+publishing is turned on the package versions from the same release tag the `ac3forge` PyPI package
+uses (see [docs/releasing.md](../releasing.md#publishing-to-npm)) — `js/package.json` carries a
+`0.0.0-dev` placeholder in the tree, and `npm.yml`'s `publish` job stamps the real version
+immediately before publishing, mirroring CMake's own untagged-build fallback.
+
+Two separate things hold it, and both must be cleared before a tag will publish anything. The
+one-time npmjs.com trusted-publisher setup `docs/releasing.md` describes has not been done by hand,
+the same way the `pypi` environment was provisioned for PyPI. And the publish job's own condition is
+deliberately narrowed to `workflow_dispatch`, so that pushing a `v*` tag cannot create a brand-new
+public package as a side effect of cutting a release — npm's unpublish window is narrow and the name
+stays reserved either way. Re-arming is one line (drop the `github.event_name == 'workflow_dispatch'`
+clause from that job's `if:`) and should happen only once the trusted publisher is configured and a
+manual dispatch has been seen to work.
 
 ## Release / CI
 

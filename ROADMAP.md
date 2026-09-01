@@ -1489,7 +1489,7 @@ directory; there is still no threading anywhere in the codec core.
   schemes, not a new token), but neither is implemented — the Shield app stays the only
   controller-driven path anywhere in the project until one is.
 - [x] **UX5 (L)** — WASM as a reusable streaming decoder. Shipped as
-  [`ac3forge-wasm-decoder`](https://www.npmjs.com/package/ac3forge-wasm-decoder) (`js/`): a
+  `ac3forge-wasm-decoder` (`js/`): a
   push-frame `PushDecoder` over `decode_access_unit_into`'s caller-buffer form (buffers allocated
   once, reused every call — the C++ hot path allocates nothing), an `Ac3ForgeDecoderNode`
   (decode in a Worker, a real `AudioWorkletNode` draining a `SharedArrayBuffer` ring buffer, so
@@ -1512,8 +1512,8 @@ directory; there is still no threading anywhere in the codec core.
 - [ ] **UX6 (XL)** — In-browser encoding. `docs/platforms/wasm.md` used to call it "a separate,
   much larger undertaking"; measured instead of assumed (WSL2/Emscripten 6.0.6, the same toolchain
   `build-wasm` uses), that turned out not to be true. A combined AC-3 + E-AC-3 + Atmos/JOC + QC
-  Embind module (`apps/wasm/encoder_bindings.cpp`) is 390 KB raw / 149 KB gzip, comparable to the
-  decode-only module's own 372 KB/130 KB — not worth a further module split. Timed under Node/V8,
+  Embind module (`apps/wasm/encoder_bindings.cpp`) is 390 KB raw / 153 KB gzip, comparable to the
+  decode-only module's own 372 KB/133 KB — not worth a further module split. Timed under Node/V8,
   single-threaded, no SIMD: AC-3 2.0 at 385x real-time, E-AC-3 3/2+LFE at 120x, 4-object Atmos/JOC
   at 82x — enough headroom that neither product needs `pthreads`/`SharedArrayBuffer`, and a future
   microphone-capture encoder is a plumbing problem, not a CPU one. QC needed no new DSP:
