@@ -181,6 +181,18 @@ jobs:
         with:
           vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
+      # CodeQL's TypeScript extraction shells out to `node` (first needed
+      # when js/'s .ts sources landed with UX5). The GitHub-hosted image
+      # ships Node; the self-hosted fleet image does not - and since #466
+      # this leg runs bare on whichever pool check-runner picks, so pin
+      # Node explicitly on the one leg that needs it rather than routing
+      # the leg away (the follow-the-toolchain rule from
+      # docs/ci-self-hosted-runners.md).
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.language == 'javascript-typescript'
+        with:
+          node-version: "24"
+
       - name: Initialize CodeQL
         # vars.PAUSE_NONESSENTIAL_CI: a temporary, reversible-by-variable
         # pause on the two non-required legs during PR/merge-queue
@@ -198,7 +210,7 @@ jobs:
           matrix.language == 'cpp' ||
           vars.PAUSE_NONESSENTIAL_CI != 'true' ||
           (github.event_name != 'pull_request' && github.event_name != 'merge_group')
-        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -237,6 +249,6 @@ jobs:
           matrix.language == 'cpp' ||
           vars.PAUSE_NONESSENTIAL_CI != 'true' ||
           (github.event_name != 'pull_request' && github.event_name != 'merge_group')
-        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           category: "/language:${{ matrix.language }}"

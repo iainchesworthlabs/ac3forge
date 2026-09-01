@@ -761,13 +761,51 @@ jobs:
       - uses: ./.github/actions/setup-vcpkg
         with:
           vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+          # Distinct archives-cache key: this is the only job that enables
+          # the adm manifest feature and so the only one whose install set
+          # includes the 43-port boost tree - see the input's own
+          # description in setup-vcpkg/action.yml for why sharing the
+          # default key locks boost out of the cache permanently.
+          cache-key-suffix: adm
 
+      # Retried, unlike the other Configure steps (so far): this is the job
+      # that rebuilds the whole 43-port boost set whenever the shared vcpkg
+      # archives cache is cold (the adm manifest feature is the only thing
+      # that pulls boost in), and codeload.github.com intermittently answers
+      # 400 under parallel-download bursts - which vcpkg treats as
+      # non-transient and fatal. One bad download out of ~43 kills the
+      # attempt, but every port already built stays in ~/.cache/vcpkg/
+      # archives, so an in-job retry resumes from where the last attempt
+      # died instead of coin-flipping from zero. Three attempts covered the
+      # worst observed run (2026-08-31: attempt 1 died at 31/43 on main).
       - name: Configure
         shell: bash
-        run: >
-          cmake --preset config-linux-gcc
-          -DVCPKG_MANIFEST_FEATURES=adm
-          -DAC3FORGE_BUILD_ADM=ON
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            if cmake --preset config-linux-gcc \
+                 -DVCPKG_MANIFEST_FEATURES=adm \
+                 -DAC3FORGE_BUILD_ADM=ON; then
+              exit 0
+            fi
+            rm -rf build/config-linux-gcc/CMakeCache.txt
+            if [ "$attempt" -lt 3 ]; then
+              # Real backoff, not an immediate loop: the 400s are codeload
+              # throttling the runner's egress under download bursts (the
+              # same tarball URLs answer 200 from an unthrottled client), so
+              # a retry two seconds later lands inside the same throttle
+              # window and three immediate attempts are effectively one -
+              # observed on this PR's own first CI cycle, three failures
+              # 2.1s apart on the same tarball. A warm retry costs seconds
+              # once the archives hold the already-built ports, so a
+              # generous wait is far cheaper than one cold rebuild.
+              delay=$(( attempt == 1 ? 30 : 120 ))
+              echo "::warning::Configure attempt $attempt failed (codeload throttling?) - waiting ${delay}s, then resuming from the locally-built archives"
+              sleep "$delay"
+            fi
+          done
+          echo "::error::Configure failed after 3 attempts"
+          exit 1
 
       - name: Build
         shell: bash
@@ -1214,41 +1252,64 @@ jobs:
             --head-dir perf-results/head \
             --base-ref "merge base $BASE_SHORT"
 
-  # Roadmap AP4: an ABI-diff gate for the shared libraries, over the
-  # linux-llvm-shared build against the last release tag. Advisory pre-1.0
-  # (continue-on-error: true - there is no ABI-compatibility promise yet to
-  # enforce; see docs/library/index.md's pimpl/config-growth note) and meant
-  # to become required once AP1's freeze ships - deleting that one line is
-  # the whole promotion, the same pattern _build.yml's own matrix.experimental
-  # flag already documents. Mirrors performance-compare's shape above: a
-  # comparison ref (here, the last tag rather than the PR's merge base) built
-  # in a git worktree alongside HEAD, in the same job, so nothing has to be
-  # published or downloaded from anywhere else.
-  #
-  # Two independent checks, both against config-linux-llvm-shared (already
-  # Debug - has DWARF - and BUILD_SHARED_LIBS=ON):
-  #   - abidiff: of the libraries that already existed at the last tag, does
-  #     this PR change anything abigail can prove BREAKS their binary
-  #     interface. Every visible difference lands in the step summary for
-  #     review, but only abidiff's incompatible-change exit bit (removed
-  #     symbols, changed signatures) fails the step: an additions-only diff
-  #     is backward compatible - exactly what a minor release is allowed to
-  #     ship - and failing on it would leave the promoted gate rejecting
-  #     every PR that adds API until the next tag is cut, which is the
-  #     opposite of what the freeze needs. See the step's own comment for
-  #     the exit-code bit field.
+  # Roadmap AP4: an ABI gate for the shared libraries, over the
+  # linux-llvm-shared build. Two independent checks, both against
+  # config-linux-llvm-shared (already Debug - has DWARF - and
+  # BUILD_SHARED_LIBS=ON):
+  #   - abidiff: does this change alter anything abigail can see in the
+  #     public interface of a library that already existed at the
+  #     comparison point.
   #   - check_abi_symbols.py: does the actual dynamic-symbol export set
   #     (nm -D --defined-only - exactly what CXX_VISIBILITY_PRESET hidden
   #     leaves reachable) still match the checked-in allowlist, catching an
   #     accidentally-exported internal symbol even on a brand first release
   #     with no tag yet to abidiff against.
+  #
+  # Comparison point. On a pull request this is the PR's own merge base,
+  # exactly like performance-compare above and exactly what this job's first
+  # bullet claims to answer - "what does this branch do to the ABI" is a
+  # question only a merge base can answer. It used to compare against the
+  # last release tag, which answers a different question (how far the ABI has
+  # moved this cycle) and so reported the whole cycle's accumulated drift on
+  # every PR: 806 commits' worth by 2026-08-28, which made the job fail on
+  # 100% of open pull requests - including #449, which touched only CI and
+  # docs and so could not have changed anything. That release-relative view
+  # is still worth having, just not per-PR, so on a push or a tag the
+  # comparison point stays the last release tag.
+  #
+  # Advisory vs enforcing. ABI_ENFORCE below is the single switch, and
+  # flipping it to 'true' is the whole of AP1's promotion - the same one-line
+  # pattern _build.yml's matrix.experimental flag already documents. Pre-1.0
+  # there is no ABI-compatibility promise to enforce (see
+  # docs/library/index.md's pimpl/config-growth note), so both checks report
+  # into the job summary and leave the job green.
+  #
+  # This replaces the job-level `continue-on-error: true` that used to serve
+  # that purpose, which did not actually do it: continue-on-error keeps a
+  # failing job from failing the *workflow run*, but GitHub still reports
+  # that job's own check run as `failure`, so the gate showed a red X on
+  # every pull request while blocking nothing - no signal, and an active
+  # incentive to stop reading CI. It also flattened two very different things
+  # into one ignored state: an expected pre-1.0 ABI change and a genuine
+  # infrastructure failure (a broken build, a library that did not link)
+  # looked identical. With it gone, anything unexpected in this job is red
+  # and a policy finding is not.
+  #
+  # When enforcing, abidiff fails only on ABIDIFF_ABI_INCOMPATIBLE_CHANGE
+  # (exit bit 8). A pure addition sets bit 4 alone and passes, which is the
+  # policy a library that expects to keep growing after 1.0 wants; bit 1 is
+  # abidiff itself erroring and always fails, enforcing or not, because that
+  # is a broken check rather than a finding about the code.
   abi-gate:
-    name: ABI diff vs last release
+    name: ABI gate
     needs: [changes, toolchain-versions, check-runner]
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
-    continue-on-error: true
+    env:
+      # AP1 promotion: flip to 'true' when the API freeze ships. Nothing
+      # else in this job needs to change.
+      ABI_ENFORCE: 'false'
     steps:
       - name: Bootstrap container
         run: |
@@ -1259,9 +1320,9 @@ jobs:
             abigail-tools build-essential ca-certificates cmake curl git gnupg lsb-release \
             ninja-build pkg-config python3 software-properties-common tar unzip wget zip
 
-      # fetch-depth: 0 so the last release tag (and its history, for the
-      # worktree below) is in the object store - the default shallow clone
-      # has neither.
+      # fetch-depth: 0 so the comparison point (a merge base on a PR, the
+      # last release tag otherwise) and its history are in the object store
+      # for the worktree below - the default shallow clone has neither.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -1277,20 +1338,42 @@ jobs:
         with:
           vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
-      - name: Resolve the last release tag
-        id: last_tag
+      - name: Resolve the comparison point
+        id: base
         shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           git config --global --add safe.directory '*'
-          tag="$(git tag -l 'v*' --sort=-v:refname | head -1)"
-          if [ -z "$tag" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "No v* tag found yet - nothing to diff against."
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # On a pull_request event the checked-out HEAD is the merge
+            # commit, so BASE_SHA is already an ancestor of it and this
+            # returns BASE_SHA itself. Asking git rather than trusting that
+            # keeps the answer right if GitHub ever hands over a base tip
+            # that has moved on - same reasoning as performance-compare.
+            ref="$(git merge-base "$BASE_SHA" HEAD)"
+            {
+              echo "skip=false"
+              echo "ref=$ref"
+              echo "label=merge base $(git rev-parse --short "$ref")"
+            } >> "$GITHUB_OUTPUT"
+            echo "Comparing HEAD against merge base $ref"
           else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "tag=$tag" >> "$GITHUB_OUTPUT"
-            echo "Comparing HEAD against $tag"
+            # Push, tag or manual run: the release-relative view.
+            tag="$(git tag -l 'v*' --sort=-v:refname | head -1)"
+            if [ -z "$tag" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "No v* tag found yet - nothing to diff against."
+            else
+              {
+                echo "skip=false"
+                echo "ref=$tag"
+                echo "label=$tag"
+              } >> "$GITHUB_OUTPUT"
+              echo "Comparing HEAD against $tag"
+            fi
           fi
 
       - name: Build HEAD (config-linux-llvm-shared)
@@ -1301,17 +1384,17 @@ jobs:
           cmake --build build/config-linux-llvm-shared -- -k 0
 
       # A worktree, exactly like performance-compare's own base build: leaves
-      # this checkout's build tree alone and gives the tag its own source
-      # dir, so config-linux-llvm-shared's ${sourceDir}/build/... path never
-      # collides between the two.
-      - name: Build the last release tag (config-linux-llvm-shared)
-        if: steps.last_tag.outputs.skip == 'false'
+      # this checkout's build tree alone and gives the comparison point its
+      # own source dir, so config-linux-llvm-shared's ${sourceDir}/build/...
+      # path never collides between the two.
+      - name: Build the comparison point (config-linux-llvm-shared)
+        if: steps.base.outputs.skip == 'false'
         shell: bash
         env:
-          LAST_TAG: ${{ steps.last_tag.outputs.tag }}
+          BASE_REF: ${{ steps.base.outputs.ref }}
         run: |
           set -euo pipefail
-          git worktree add --detach ../abi-base "$LAST_TAG"
+          git worktree add --detach ../abi-base "$BASE_REF"
           pushd ../abi-base >/dev/null
           cmake --preset config-linux-llvm-shared
           cmake --build build/config-linux-llvm-shared -- -k 0
@@ -1327,78 +1410,131 @@ jobs:
       # a disjoint subtree, and this project never install()s them in their own right regardless.
       # A hardcoded list is exactly what let libac3iab.so go uncovered by both steps below (and
       # unrepresented in tools/ci/abi-allowlist/) from the day ac3iab landed until this fix.
-      - name: abidiff each shared library against the last release
-        if: steps.last_tag.outputs.skip == 'false'
+      - name: abidiff each shared library against the comparison point
+        if: steps.base.outputs.skip == 'false'
         shell: bash
         env:
-          LAST_TAG: ${{ steps.last_tag.outputs.tag }}
+          BASE_LABEL: ${{ steps.base.outputs.label }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          fence='```'
           {
-            echo "## ABI diff vs $LAST_TAG (advisory pre-1.0)"
+            echo "## ABI diff vs $BASE_LABEL"
             echo
+            if [ "$ABI_ENFORCE" != "true" ]; then
+              echo "_Advisory: pre-1.0 there is no ABI-compatibility promise to"
+              echo "enforce. This reports; it does not fail the build._"
+              echo
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+          # tools/ci/abi-suppressions.ini drops the libstdc++/runtime
+          # template instantiations that are not part of any ABI this
+          # project controls - see that file's header for why they show up
+          # in the first place.
+          errors=0
+          incompatible=0
+          changed=0
           mapfile -t libs < <(
             { find build/config-linux-llvm-shared/src -name '*.so' -exec basename {} \;
               find ../abi-base/build/config-linux-llvm-shared/src -name '*.so' -exec basename {} \;
             } 2>/dev/null | sort -u)
-          status=0
           for lib in "${libs[@]}"; do
             head_lib="$(find build/config-linux-llvm-shared/src -name "$lib" -print -quit)"
             base_lib="$(find ../abi-base/build/config-linux-llvm-shared/src -name "$lib" -print -quit)"
-            echo "### $lib" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
             if [ -z "$head_lib" ]; then
-              echo "(not built at HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
-            elif [ -z "$base_lib" ]; then
-              echo "(not present at $LAST_TAG - new library)" | tee -a "$GITHUB_STEP_SUMMARY"
-            else
-              rc=0
-              abidiff "$base_lib" "$head_lib" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || rc=$?
-              # abidiff's exit status is a bit field (abidiff(1), "Return
-              # values"): 1|2 are tool/usage errors, 4 ABIDIFF_ABI_CHANGE
-              # is any visible difference, 8 ABIDIFF_ABI_INCOMPATIBLE_CHANGE
-              # is a difference abidiff can prove breaks compatibility.
-              # Measured against v0.9.0-beta.1: removed symbols and changed
-              # signatures both raise bit 8 (exit 12); an additions-only
-              # library exits with just bit 4. Only bit 8 (or a tool error)
-              # fails the step - additions are backward compatible, so they
-              # pass, reported above for human review.
-              if (( rc & 3 )); then
-                echo "abidiff itself failed on $lib (exit $rc)" | tee -a "$GITHUB_STEP_SUMMARY"
-                status=1
-              elif (( rc & 8 )); then
-                echo "INCOMPATIBLE ABI change vs $LAST_TAG (abidiff exit $rc)" | tee -a "$GITHUB_STEP_SUMMARY"
-                status=1
-              elif (( rc & 4 )); then
-                echo "compatible ABI change vs $LAST_TAG (abidiff exit $rc - nothing abidiff can prove incompatible)" | tee -a "$GITHUB_STEP_SUMMARY"
-              else
-                echo "no ABI change vs $LAST_TAG" | tee -a "$GITHUB_STEP_SUMMARY"
-              fi
+              echo "### $lib" >> "$GITHUB_STEP_SUMMARY"
+              echo "(not built at HEAD)" >> "$GITHUB_STEP_SUMMARY"
+              continue
             fi
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            if [ -z "$base_lib" ]; then
+              echo "### $lib" >> "$GITHUB_STEP_SUMMARY"
+              echo "(not present at $BASE_LABEL - new library)" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            out="$(abidiff --suppressions tools/ci/abi-suppressions.ini \
+                     "$base_lib" "$head_lib" 2>&1)" && rc=0 || rc=$?
+
+            # abidiff's exit status is a bitfield: 1 ABIDIFF_ERROR,
+            # 4 ABIDIFF_ABI_CHANGE, 8 ABIDIFF_ABI_INCOMPATIBLE_CHANGE.
+            if [ "$(( rc & 1 ))" -ne 0 ]; then
+              errors=1
+              verdict="abidiff errored"
+            elif [ "$(( rc & 8 ))" -ne 0 ]; then
+              incompatible=1
+              verdict="incompatible change"
+            elif [ "$(( rc & 4 ))" -ne 0 ]; then
+              changed=1
+              verdict="additive change"
+            else
+              verdict="no change"
+            fi
+
+            echo "$lib: $verdict"
+            echo "### $lib - $verdict" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$rc" -ne 0 ]; then
+              echo "$out"
+              {
+                echo "$fence"
+                echo "$out"
+                echo "$fence"
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
           done
-          exit "$status"
+
+          if [ "$errors" -ne 0 ]; then
+            echo "::error title=ABI gate::abidiff failed to run - that is a broken check, not a finding about the code."
+            exit 1
+          fi
+          if [ "$incompatible" -ne 0 ]; then
+            if [ "$ABI_ENFORCE" = "true" ]; then
+              echo "::error title=ABI gate::Incompatible ABI change vs $BASE_LABEL."
+              exit 1
+            fi
+            echo "::notice title=ABI gate::Incompatible ABI change vs $BASE_LABEL - advisory pre-1.0, would fail once ABI_ENFORCE is true."
+          elif [ "$changed" -ne 0 ]; then
+            echo "::notice title=ABI gate::Additive ABI change vs $BASE_LABEL - passes even when enforcing."
+          fi
+          exit 0
 
       - name: Exported-symbol allowlist check
         # Independent of the abidiff step above (see this job's header
-        # comment) - must run even when abidiff already failed, which
-        # pre-1.0 it can do for a whole release cycle: with no compatibility
-        # promise yet, removals/renames (e.g. AP2's naming sweep) land on
-        # main freely and keep that step red until the next tag moves the
-        # comparison base past them. Without this, GitHub Actions' default
-        # success()-only condition means an abidiff failure silently skips
-        # the one check here that catches a real regression.
+        # comment) - must run even when abidiff already reported a diff,
+        # which pre-1.0 it does on plenty of PRs. Without this, GitHub
+        # Actions' default success()-only condition means an abidiff failure
+        # silently skips the one check here that catches a real regression.
         if: ${{ !cancelled() }}
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          fence='```'
           libs=()
           while IFS= read -r found; do
             libs+=(--lib "$found")
           done < <(find build/config-linux-llvm-shared/src -name '*.so' | sort)
-          python3 tools/ci/check_abi_symbols.py \
-            --allowlist-dir tools/ci/abi-allowlist "${libs[@]}"
+          if [ "${#libs[@]}" -eq 0 ]; then
+            echo "::error title=ABI gate::No shared libraries were built - nothing to check."
+            exit 1
+          fi
+          out="$(python3 tools/ci/check_abi_symbols.py \
+                   --allowlist-dir tools/ci/abi-allowlist "${libs[@]}" 2>&1)" && rc=0 || rc=$?
+          echo "$out"
+          {
+            echo "## Exported-symbol allowlist"
+            echo
+            echo "$fence"
+            echo "$out"
+            echo "$fence"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -eq 0 ]; then
+            exit 0
+          fi
+          if [ "$ABI_ENFORCE" = "true" ]; then
+            echo "::error title=ABI gate::Exported symbols no longer match the allowlist."
+            exit 1
+          fi
+          echo "::notice title=ABI gate::Exported symbols no longer match the allowlist - advisory pre-1.0, would fail once ABI_ENFORCE is true. Regenerate with --update if the change is deliberate."
+          exit 0
 
   # FFmpeg as an independent oracle (CONTRIBUTING.md's "Oracles" list, #2),
   # automated - previously a manual/developer-only practice. Builds ac3cli

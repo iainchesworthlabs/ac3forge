@@ -94,12 +94,14 @@ nav:
       - Metadata: library/metadata.md
       - Muxing & sinks: library/muxing-and-sinks.md
       - File I/O: library/file-io.md
+      - IAB (SMPTE ST 2098-2) reading: library/iab.md
       - ADM / BW64 reading: library/adm.md
       - ADM → Atmos bridging: library/adm-bridge.md
       - IAMF writing: library/iamf.md
       - Measuring quality: library/quality.md
       - Object signing: library/signing.md
       - Header map: library/header-map.md
+      - API stability: library/api-stability.md
       - C API: library/c-api.md
       - Python bindings: library/python-api.md
       - Rust bindings: library/rust-api.md
@@ -119,6 +121,7 @@ nav:
       - QC a stream: gui/qc.md
       - Inspect objects: gui/inspect-objects.md
       - Open stream: gui/open-stream.md
+      - Localisation: gui/localisation.md
   - Project:
       - Contributing: contributing.md
       - Releasing: releasing.md

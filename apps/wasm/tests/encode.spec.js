@@ -16,7 +16,10 @@ test('encodes a known stereo tone, QC verdict matches it, and it round-trip deco
     const pageErrors = [];
     page.on('pageerror', (error) => pageErrors.push(String(error)));
 
-    await page.goto('/index.html');
+    // Relative on purpose: baseURL includes the demo's subdirectory (see
+    // playwright.config.js), and a leading "/" would resolve back to the
+    // server root.
+    await page.goto('index.html');
 
     const result = await page.evaluate(async () => {
         // @ts-ignore - both createAc3ForgeEncodeModule and createAc3ForgeModule
@@ -83,16 +86,31 @@ test('encodes a known stereo tone, QC verdict matches it, and it round-trip deco
         const integratedLkfs = qc.integratedLkfs();
         const truePeakDbtp = qc.truePeakDbtp();
 
-        const decoder = new decodeModule.Decoder();
-        const decodeOk = decoder.decode(streamBytes);
-        if (!decodeOk) {
-            const error = decoder.error();
-            decoder.delete();
-            return { ok: false, stage: 'round-trip decode', error };
+        // Ported to UX5's scanStream()+PushDecoder surface (the whole-file
+        // Decoder class no longer exists): push every scanned access unit
+        // and take the format from the last non-held-back frame.
+        const scanned = decodeModule.scanStream(streamBytes);
+        if (!scanned.ok) {
+            return { ok: false, stage: 'round-trip scan', error: scanned.error };
         }
-        const decodedSampleRate = decoder.sampleRate();
-        const decodedChannelCount = decoder.channelCount();
+        const decoder = new decodeModule.PushDecoder(0, false, false);
+        let decodedSampleRate = 0;
+        let decodedChannelCount = 0;
+        for (const unit of scanned.accessUnits) {
+            const result = decoder.pushAccessUnit(
+                streamBytes.slice(unit.offset, unit.offset + unit.length));
+            if (!result.ok) {
+                decoder.delete();
+                return { ok: false, stage: 'round-trip decode', error: result.error };
+            }
+            if (result.holdBack) continue;
+            decodedSampleRate = result.sampleRate;
+            decodedChannelCount = result.channelCount;
+        }
         decoder.delete();
+        if (decodedChannelCount === 0) {
+            return { ok: false, stage: 'round-trip decode', error: 'no decodable frames' };
+        }
 
         return {
             ok: true,

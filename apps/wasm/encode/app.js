@@ -184,26 +184,58 @@ async function previewRoundTrip() {
     if (!lastStreamBytes) return;
     setStatus('Decoding the encoded stream for preview...', false);
 
-    const decoder = new decodeModule.Decoder();
-    const ok = decoder.decode(lastStreamBytes);
-    if (!ok) {
-        const message = decoder.error();
-        decoder.delete();
-        setStatus(`round-trip decode failed: ${message}`, true);
+    // The old whole-file Decoder class was replaced by scanStream() +
+    // PushDecoder (UX5's push-frame rework of decoder_bindings.cpp): scan
+    // once for access-unit boundaries, then push each unit and collect that
+    // frame's PCM. holdBack frames (dependent-substream latency) carry no
+    // PCM yet; the flush() tail (at most one frame) is skipped - inaudible
+    // for a preview.
+    const scanned = decodeModule.scanStream(lastStreamBytes);
+    if (!scanned.ok) {
+        setStatus(`round-trip decode failed: ${scanned.error}`, true);
+        return;
+    }
+    const decoder = new decodeModule.PushDecoder(0, false, false);
+    let sampleRate = scanned.sampleRate;
+    let channelCount = 0;
+    const frames = [];
+    for (const unit of scanned.accessUnits) {
+        const result = decoder.pushAccessUnit(
+            lastStreamBytes.slice(unit.offset, unit.offset + unit.length));
+        if (!result.ok) {
+            decoder.delete();
+            setStatus(`round-trip decode failed: ${result.error}`, true);
+            return;
+        }
+        if (result.holdBack) continue;
+        sampleRate = result.sampleRate;
+        channelCount = result.channelCount;
+        const frame = [];
+        for (let ch = 0; ch < channelCount; ch++) {
+            // Copy out of the WASM heap view immediately, same contract as
+            // the encode-side view above.
+            frame.push(Float32Array.from(decoder.channelPcm(ch)));
+        }
+        frames.push(frame);
+    }
+    decoder.delete();
+    if (channelCount === 0 || frames.length === 0) {
+        setStatus('round-trip decode failed: no decodable frames', true);
         return;
     }
 
-    const sampleRate = decoder.sampleRate();
-    const channelCount = decoder.channelCount();
     const audioCtx = new AudioContext({ sampleRate });
-    const frameCount = decoder.channelPcm(0).length;
+    const frameCount = frames.reduce((n, f) => n + f[0].length, 0);
     const outBuffer = audioCtx.createBuffer(channelCount, frameCount, sampleRate);
     for (let ch = 0; ch < channelCount; ch++) {
-        // Copy out of the WASM heap view immediately, same contract as the
-        // encode-side view above.
-        outBuffer.copyToChannel(Float32Array.from(decoder.channelPcm(ch)), ch);
+        const merged = new Float32Array(frameCount);
+        let at = 0;
+        for (const frame of frames) {
+            merged.set(frame[ch], at);
+            at += frame[ch].length;
+        }
+        outBuffer.copyToChannel(merged, ch);
     }
-    decoder.delete();
 
     const source = audioCtx.createBufferSource();
     source.buffer = outBuffer;

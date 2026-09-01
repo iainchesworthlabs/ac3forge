@@ -23,6 +23,12 @@ apps/wasm/tests/node_modules/
 apps/wasm/tests/test-results/
 apps/wasm/tests/playwright-report/
 
+# The ac3forge-wasm-decoder package (roadmap UX5). Same package-lock.json
+# convention as apps/wasm/tests above; js/dist/ is also covered by the
+# blanket dist/ rule below but named here for the same reason python/dist/ is.
+js/node_modules/
+js/dist/
+
 # Python tooling for golden-vector generation, and the python/ bindings package (build/ above
 # already covers python/build/; __pycache__/ already covers every test/tool's bytecode cache)
 __pycache__/

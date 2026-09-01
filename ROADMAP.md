@@ -11,7 +11,7 @@ focused week), **XL** (several PRs).
 
 ## Where this starts from
 
-Rebuilt at v0.9.0-beta.1 (2026-08-22). Of the 2026-08-15 roadmap's 32 items, 25 are merged (see
+Rebuilt at v0.9.0-beta.1 (2026-08-22). Of the 2026-08-15 roadmap's 29 items, 22 are merged (see
 the ledger at the end). What remains of the other seven is carried into the themes below under
 new IDs: `B2` → the not-on-the-list section and IM1, `B3` → IM3, `D1` → IM5/IM6, `D4` → IM4,
 `E3` → DR9, `F4` → DR1–DR5, `F5` → AP1.
@@ -1302,11 +1302,13 @@ directory; there is still no threading anywhere in the codec core.
   "pimpl" convention note for the growth-after-1.0 decision and why `EncoderConfig`'s
   `verify::FrameTrace*` (and its siblings) are not part of that promise.
 - [x] **AP4 (M)** — An ABI gate. Done: `abi-gate` in `ci.yml` builds `config-linux-llvm-shared`
-  at HEAD and at the last `v*` tag (a `git worktree`, mirroring `performance-compare`'s own
-  merge-base pattern) and runs `abidiff` across all six shared libraries, plus
+  at HEAD and at a comparison point (a `git worktree`, mirroring `performance-compare`) — the
+  PR's own merge base on a pull request, the last `v*` tag on a push or tag — and runs `abidiff`
+  across every shared library the preset builds (discovered from the build tree rather than a
+  fixed list) under `tools/ci/abi-suppressions.ini`, plus
   `tools/ci/check_abi_symbols.py` — a checked-in `nm -D --defined-only` allowlist per library
-  under `tools/ci/abi-allowlist/` — advisory (`continue-on-error: true`) until `AP1`'s freeze,
-  at which point deleting that one line is the whole promotion. `examples/capi_encode_decode.c`
+  under `tools/ci/abi-allowlist/` — advisory (`ABI_ENFORCE: 'false'`) until `AP1`'s freeze,
+  at which point flipping that one value is the whole promotion. `examples/capi_encode_decode.c`
   and `capi_encode_eac3.c` now pin `C_STANDARD 11`/`C_STANDARD_REQUIRED ON`/`C_EXTENSIONS OFF`
   on top of the `-Wpedantic` they already got from `ac3::warnings`, so `ac3forge_c/ac3forge.h`
   is proven strict-C11-clean on every desktop leg that already builds them, not a new leg.
@@ -1357,7 +1359,7 @@ directory; there is still no threading anywhere in the codec core.
   signing, a context manager that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written
   `.pyi`; manylinux aarch64 and macOS x86_64/universal wheels — Raspberry Pi is a documented
   platform with no wheel.
-- [ ] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
+- [x] **AP7 (M)** — Install and export completeness: no pkg-config files exist; `ac3adm` and
   `admbridge` are `add_subdirectory`-only although `docs/releasing.md` prescribes the three-step
   recipe for a new component; a `capi` feature for the vcpkg port and Conan recipe (the portfile
   pins `AC3FORGE_BUILD_CAPI=OFF`); and the licence identifier drift (`pyproject.toml` says
@@ -1486,11 +1488,27 @@ directory; there is still no threading anywhere in the codec core.
   scheme-prefixed for exactly this (`positions=midi:...`, `positions=gamepad:...` land as new
   schemes, not a new token), but neither is implemented — the Shield app stays the only
   controller-driven path anywhere in the project until one is.
-- [ ] **UX5 (L)** — WASM as a reusable streaming decoder: a push-frame API over
-  `decode_access_unit_into`, an AudioWorklet, multichannel output or DC1's downmix, published as
-  a typed ES module package with an hls.js/MSE bridge. Chrome still cannot decode EC-3
+- [x] **UX5 (L)** — WASM as a reusable streaming decoder. Shipped as
+  [`ac3forge-wasm-decoder`](https://www.npmjs.com/package/ac3forge-wasm-decoder) (`js/`): a
+  push-frame `PushDecoder` over `decode_access_unit_into`'s caller-buffer form (buffers allocated
+  once, reused every call — the C++ hot path allocates nothing), an `Ac3ForgeDecoderNode`
+  (decode in a Worker, a real `AudioWorkletNode` draining a `SharedArrayBuffer` ring buffer, so
+  only the ring-buffer read runs on the audio thread), multichannel output or DC1's
+  `ac3::OutputStage` downmix applied over a reused copy (never a hand-rolled fold), and an
+  hls.js/MSE bridge (`js/src/fmp4.ts` + a `MediaSource`/`addSourceBuffer` shim — a passive
+  `BUFFER_APPENDING` listener alone doesn't work, since hls.js drops the audio track entirely the
+  moment `addSourceBuffer('audio/mp4;codecs="ec-3"')` throws). `apps/wasm/`'s demo is now a
+  consumer of the package, not a parallel implementation — its old bespoke whole-file Embind
+  `Decoder` class is gone; `js/src/decode-file.ts`'s `decodeFile()` is built on `PushDecoder`
+  instead. Published versioning tracks the same release tag the PyPI package uses; npm
+  publishing itself is gated on a not-yet-provisioned `npm` GitHub environment (see
+  `docs/releasing.md`). Chrome still cannot decode EC-3
   ([video.js http-streaming #1297](https://github.com/videojs/http-streaming/issues/1297) is
-  open); the docs demo becomes a consumer of the package.
+  open) — this is a real, if not yet live-stream-soak-tested, answer to that. See
+  `docs/platforms/wasm.md`'s verification notes for exactly what's been checked (a real local
+  Emscripten 6.0.6 build, both Playwright specs, `js/`'s own unit tests against a real
+  ffmpeg-remuxed fMP4 fixture) versus what hasn't (a live hls.js instance against a real HLS
+  server).
 - [ ] **UX6 (XL)** — In-browser encoding. `docs/platforms/wasm.md` used to call it "a separate,
   much larger undertaking"; measured instead of assumed (WSL2/Emscripten 6.0.6, the same toolchain
   `build-wasm` uses), that turned out not to be true. A combined AC-3 + E-AC-3 + Atmos/JOC + QC
@@ -1501,7 +1519,7 @@ directory; there is still no threading anywhere in the codec core.
   microphone-capture encoder is a plumbing problem, not a CPU one. QC needed no new DSP:
   `ac3::meta::LoudnessMeter`/`evaluate_qc_gate` are `ac3cli qc`'s own functions, bound directly.
   **Landed so far**: the encode module (full binding surface, including Atmos/JOC even though no
-  page uses it yet) and the drop-a-WAV page (`apps/wasm/encode/`) — coding-mode/rate/bitrate
+  page uses it yet) and the drop-a-WAV page (`apps/wasm/encode/`) — format/sample-rate/bitrate
   controls, the five-preset QC verdict table, and a round-trip preview through the existing decode
   module — plus `apps/wasm/tests/encode.spec.js` extending VX18(a)'s Playwright harness (asserts a
   known tone's encoded byte count, QC verdict and true peak, and a successful round-trip decode).

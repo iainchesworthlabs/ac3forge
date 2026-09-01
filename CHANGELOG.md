@@ -186,6 +186,48 @@ a concrete API-freeze plan for v1.0 now exists.
   presets `ac3cli qc` checks — computed on the same PCM, in the page. A round-trip preview decodes
   the produced stream through the existing decode module to prove it's real. Headless-browser CI
   coverage (Playwright) now spans both demos, not just decode.
+- **A published npm package**, [`ac3forge-wasm-decoder`](https://www.npmjs.com/package/ac3forge-wasm-decoder),
+  turning the WASM decode demo's underlying build into a reusable browser decoder — a real answer
+  to Chrome's continued inability to decode EC-3 natively
+  ([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297)).
+- **A push-frame decode API** over the caller-buffer `decode_access_unit_into` form, so decoding a
+  live/streaming source allocates nothing on the hot path.
+- **A realtime AudioWorklet playback pipeline**: decoding runs in a Worker, off the main thread;
+  only a lock-free `SharedArrayBuffer` ring-buffer drain runs on the audio-rendering thread.
+  Multichannel output or the library's own §7.8 downmix (never a hand-rolled fold) is selectable
+  per stream.
+- **An hls.js/MSE bridge** for playing EC-3 audio where the browser cannot decode it natively —
+  patches `MediaSource`'s codec-support/`SourceBuffer` surface (a passive event listener alone
+  doesn't work: hls.js drops an audio track outright the moment the real `addSourceBuffer` throws
+  for an unsupported codec) and extracts access units from the fMP4 segments hls.js's own remuxer
+  produces.
+- The docs site's WASM demo is now a consumer of the published package rather than its own
+  parallel implementation of the same decode/playback logic.
+
+**Shield Atmos Demo (Android)**
+
+- **New: the wire trace.** A second thread parses back the exact access units going out over HDMI
+  and draws what a decoder finds in them — the lead object's intended height against the height read
+  back off the wire, which is a visible staircase because height is sent in sixteen steps. It
+  deliberately computes no reconstruction-quality figure: both ends share the same non-normative QMF
+  prototype, so such a number would be unfalsifiable by construction. What it does prove is that the
+  object container survives on the wire, and that OBJECTS OFF genuinely removes it.
+- **New: five demo scenes and a guided tour.** The app had exactly one thing to show — three
+  objects on fixed orbits — from launch until you walked away. It now has Orbit, Flyover, Overhead,
+  Elevator and Front/back, each with its own line of what to listen for, blended rather than jumped
+  between; and once left idle it walks them itself rather than just inviting the next person.
+- **New: record a path and loop it.** Fly the object by hand, press again, and it flies your own
+  gesture forever — still pushable, still springing back to itself.
+- **New: controller rumble** on the two crossings the ear is least sure of: passing overhead, and
+  passing through the listening position.
+- **New: a settings panel and a phone remote.** Every control was previously an undocumented
+  keypress. The panel is D-pad navigable; the phone remote serves one page so anyone in the room can
+  drive the object from their own phone. The remote is **off by default** and has no authentication
+  — it starts only when switched on, and stops when the demo leaves the screen.
+- **New: OBJECTS OFF** strips the object layer out of the live stream on a keypress, so a licensed
+  decoder can be watched dropping from Atmos to DD+ and back with the object layer's byte cost on
+  screen. Plus a real BS.1770 loudness readout, a programme meter with PPM ballistics replacing a
+  fixed display gain, and a soundfield-energy arrow computed from the encoded bed.
 
 **Library, C API, Python and Rust**
 
@@ -221,7 +263,8 @@ a concrete API-freeze plan for v1.0 now exists.
   embedder or tight batch loop that wants to reuse them. See [Python API](docs/library/python-api.md)'s
   "Zero-copy numpy and buffer reuse".
 - **pkg-config files** for every installed component (`ac3forge`, `ac3signing`, `matroska`,
-  `mp4`, `mpegts`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`), for a non-CMake consumer.
+  `mp4`, `mpegts`, `iamf`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`), for a non-CMake
+  consumer.
   **`ac3adm`/`ac3::admbridge` (the ADM/BW64 reader and its Atmos bridge) are now installable via
   `find_package(ac3forge)`**, shared-only, without re-exporting the third-party libbw64/libadm
   they embed. **A `capi` feature** for the vcpkg port and Conan recipe reaches `ac3::forge_c`
@@ -444,6 +487,26 @@ a concrete API-freeze plan for v1.0 now exists.
   packaging-consistency check also now catches a winget manifest whose `InstallerType` doesn't
   match its own installer URL or nested-installer fields — the same class of drift a manual
   copy-forward release bump can introduce.
+- **The ABI gate stopped failing on every pull request.** `abi-gate` compared HEAD against the
+  last release tag, so it reported the whole release cycle's accumulated drift — 806 commits'
+  worth by 2026-08-28 — on every PR, including ones that touched no source at all. It now
+  compares against the PR's own merge base; the last release tag is still the comparison point
+  on a push or a tag, where that view is the useful one. `abidiff` also runs under
+  `tools/ci/abi-suppressions.ini`, which drops the libstdc++ template instantiations that are
+  not part of any ABI this project controls — about 900 of the roughly 1050 entries the gate was
+  emitting. Advisory pre-1.0 now means green: the job reports through a single `ABI_ENFORCE`
+  switch rather than `continue-on-error: true`, which never made the check green in the first
+  place, since GitHub still reports a continue-on-error job's own check run as `failure`. The
+  exported-symbol allowlist, six symbols behind `main`, is back in sync.
+
+**Browser (WASM)**
+
+- **The encode demo's round-trip preview 404'd on the published docs site.** The page loaded its
+  decode module as `../ac3forge_decode.js` even though the build copies that module in next to the
+  page precisely so the directory is servable from anywhere; the parent-relative path only worked
+  when the demo directory was the server root, and broke under the docs site's subdirectory embed.
+  The Playwright harness now serves both demos from a subdirectory for every run, so the layout
+  that failed is the layout that gets tested.
 
 **Shield Atmos Demo (Android)**
 
@@ -464,36 +527,14 @@ a concrete API-freeze plan for v1.0 now exists.
   smallest deflection anyone could hold was about a third of full travel. Now radial and rescaled,
   seeded from the device's own declared flat range. Right-stick height is resolved by probing which
   axis the device declares rather than assuming.
-- **New: the wire trace.** A second thread parses back the exact access units going out over HDMI
-  and draws what a decoder finds in them — the lead object's intended height against the height read
-  back off the wire, which is a visible staircase because height is sent in sixteen steps. It
-  deliberately computes no reconstruction-quality figure: both ends share the same non-normative QMF
-  prototype, so such a number would be unfalsifiable by construction. What it does prove is that the
-  object container survives on the wire, and that OBJECTS OFF genuinely removes it.
 - **The status line now reports whole-frame occupancy**, not just `encode_frame()`. The previously
   quoted figure excluded synthesis, the limiter, both meters, signing, stripping, the packer and the
   JNI submit — most of the frame.
 - **The real-time encode thread no longer attaches to and detaches from the JVM once per frame**, and
   both worker threads now have explicit priorities instead of inheriting whatever started them.
-- **New: five demo scenes and a guided tour.** The app had exactly one thing to show — three
-  objects on fixed orbits — from launch until you walked away. It now has Orbit, Flyover, Overhead,
-  Elevator and Front/back, each with its own line of what to listen for, blended rather than jumped
-  between; and once left idle it walks them itself rather than just inviting the next person.
-- **New: record a path and loop it.** Fly the object by hand, press again, and it flies your own
-  gesture forever — still pushable, still springing back to itself.
-- **New: controller rumble** on the two crossings the ear is least sure of: passing overhead, and
-  passing through the listening position.
-- **New: a settings panel and a phone remote.** Every control was previously an undocumented
-  keypress. The panel is D-pad navigable; the phone remote serves one page so anyone in the room can
-  drive the object from their own phone. The remote is **off by default** and has no authentication
-  — it starts only when switched on, and stops when the demo leaves the screen.
 - **`isDirectPlaybackSupported` was called unguarded on a minSdk-26 app**, so on any API 26–28
   device — a 2015/2017 Shield on Android 9, for instance — the app's most load-bearing platform
   query threw `NoSuchMethodError` rather than degrading. Guarded.
-- **New: OBJECTS OFF** strips the object layer out of the live stream on a keypress, so a licensed
-  decoder can be watched dropping from Atmos to DD+ and back with the object layer's byte cost on
-  screen. Plus a real BS.1770 loudness readout, a programme meter with PPM ballistics replacing a
-  fixed display gain, and a soundfield-energy arrow computed from the encoded bed.
 
 ### Security
 

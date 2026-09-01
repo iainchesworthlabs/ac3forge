@@ -103,17 +103,17 @@ pre-1.0, no ABI-compatibility promise holds across any two releases, so there is
 major component (`SOVERSION "${PROJECT_VERSION_MAJOR}"`) is the literal moment this project starts
 promising that a `libac3forge.so.1` built at `1.3.0` loads fine against a binary linked at
 `1.0.0` — that promise should ship *with* `v1.0.0`, once the ABI gate (`AP4`, already merged and
-running `abidiff` + `check_abi_symbols.py` advisory on every build) is promoted from
-`continue-on-error: true` to required. Flipping the version scheme first and promoting the gate
-later would let a real ABI break through in the gap between the two; the gate's own promotion
-line (delete one `continue-on-error: true`) is designed to be the last step specifically so this
+running `abidiff` + `check_abi_symbols.py` advisory on every build) is promoted from advisory to
+required. Flipping the version scheme first and promoting the gate later would let a real ABI
+break through in the gap between the two; the gate's own promotion switch (flip one
+`ABI_ENFORCE` from `'false'` to `'true'`) is designed to be the last step specifically so this
 can't happen. Until then, the sequencing is:
 
 1. This page and its Public/Internal/Diagnostic split land (this PR).
 2. The `v1.0.0` release candidate is cut against the Public tier only, mechanically checked by
    promoting `AP4`'s `abi-gate` to required.
-3. `SOVERSION` flips to major-only in the same PR that removes `abi-gate`'s
-   `continue-on-error: true`, so both changes are reviewed and tagged together.
+3. `SOVERSION` flips to major-only in the same PR that flips `abi-gate`'s `ABI_ENFORCE` to
+   `'true'`, so both changes are reviewed and tagged together.
 
 ## Inline namespace for future ABI tagging
 

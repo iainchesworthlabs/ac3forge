@@ -701,7 +701,17 @@ jobs:
 
           $alreadyCurrent = $false
           if (Test-Path $clangCl) {
-            $verLine = & $clangCl --version 2>&1 | Select-Object -First 1
+            # Collect ALL of clang-cl's output before taking the first line.
+            # The previous form (`& $clangCl ... | Select-Object -First 1`)
+            # early-terminated the pipeline, which can kill clang-cl before
+            # it finishes writing - the killed process leaves a non-zero
+            # $LASTEXITCODE that GitHub's powershell wrapper propagates as
+            # the STEP's exit code at script end, failing the job with no
+            # error text. A race: only when the skip path runs (LLVM already
+            # current - i.e. only on the self-hosted fleet), and only when
+            # Select-Object wins it. Confirmed on PR #445's clang-cl leg.
+            $verOutput = & $clangCl --version 2>&1
+            $verLine = $verOutput | Select-Object -First 1
             if ($verLine -match 'version (\S+)' -and $matches[1] -eq $version) {
               $alreadyCurrent = $true
             }
@@ -737,10 +747,18 @@ jobs:
             $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
             Invoke-WebRequest -Uri $url -OutFile $exe
             # NSIS installer; /S is a silent install into the default location.
-            Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow
+            $installer = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow -PassThru
+            if ($installer.ExitCode -ne 0) {
+              throw "LLVM installer exited with code $($installer.ExitCode)"
+            }
           }
 
           "$llvmDir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          # Belt and braces for the $LASTEXITCODE propagation above: nothing
+          # after the probe re-runs a native command, so make the step's
+          # success explicit rather than inheriting whatever the last native
+          # invocation happened to leave behind.
+          exit 0
 
       # Homebrew's core "llvm" formula has no versioned sibling the way
       # apt.llvm.org or the official win64 installer do (there is no "llvm@21"
@@ -2422,7 +2440,7 @@ jobs:
       # push - init before that build, analyze right after, is cheaper than a
       # second Android toolchain standing up its own leg in codeql.yml.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           languages: java-kotlin
           build-mode: manual
@@ -2438,7 +2456,7 @@ jobs:
           ./gradlew :app:assembleDebug --console=plain
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           category: "/language:java-kotlin"
 
@@ -2611,6 +2629,29 @@ jobs:
 
       - uses: ./.github/actions/setup-emscripten
 
+      # Moved ahead of the CMake build (unlike the setup-node this job used
+      # to do only for the Playwright harness below): roadmap UX5's
+      # ac3forge-wasm-decoder package (js/) has to be built before the
+      # "Assemble" step further down can copy its dist/ into the servable
+      # wasm_decode_demo/ directory - the demo is a consumer of the package
+      # (see docs/platforms/wasm.md), not a parallel implementation, so its
+      # build output has to exist first.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            js/package-lock.json
+            apps/wasm/tests/package-lock.json
+
+      - name: Build ac3forge-wasm-decoder package
+        working-directory: js
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          npm test
+
       - name: Configure
         run: cmake --preset config-wasm-emscripten
 
@@ -2621,6 +2662,18 @@ jobs:
       # keep in sync here as targets are added.
       - name: Build
         run: cmake --build build/config-wasm-emscripten
+
+      # apps/wasm/CMakeLists.txt only knows how to assemble ITS OWN static
+      # files (index.html/demo.js/favicons/the demo bitstream) plus whatever
+      # RUNTIME_OUTPUT_DIRECTORY put there (ac3forge_decode.js/.wasm) - it
+      # has no reason to learn about npm. This step is the same idea
+      # docs.yml's own deploy job already uses for its gh-pages assembly:
+      # plain shell, not a build-system feature.
+      - name: Assemble ac3forge-wasm-decoder into the demo directory
+        run: |
+          set -euo pipefail
+          mkdir -p build/config-wasm-emscripten/bin/wasm_decode_demo/package
+          cp -r js/dist/. build/config-wasm-emscripten/bin/wasm_decode_demo/package/
 
       # Not consumed by docs.yml (see this job's own header) - uploaded
       # purely so a failed/successful build's actual output is inspectable
@@ -2646,17 +2699,19 @@ jobs:
       # recorded decode/playback/render correctness as manual-only,
       # re-checked by eye every time either demo changed. apps/wasm/tests'
       # Playwright harness (two projects, one per demo - see
-      # playwright.config.js) drives each real Embind API directly and
-      # asserts real values: the decode side's channel count/sample rate/
-      # object count/duration/moving-object-position, and the encode side's
-      # real encoded byte count, QC verdict against a known signal, and
-      # round-trip decode.
+      # playwright.config.js) asserts real values on both sides: the decode
+      # project drives the real published package (js/) - the same calls
+      # apps/wasm/demo.js itself makes - checking channel count, sample
+      # rate, object count, duration, a moving object position, and the
+      # AudioWorklet pipeline's own non-silent decoded output; the encode
+      # project drives the Embind API directly, checking the real encoded
+      # byte count, QC verdict against a known signal, and round-trip
+      # decode.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: apps/wasm/tests/package-lock.json
-
       - name: Install Playwright harness
         working-directory: apps/wasm/tests
         run: |
