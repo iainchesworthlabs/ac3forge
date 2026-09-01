@@ -1275,6 +1275,119 @@ def gate(name, ok, detail):
     return ok
 
 
+# Roadmap EQ13's search=, exercised THROUGH THE CLI.
+#
+# The gap this closes is not that the search is untested - tests/quality's
+# test_search.cpp and test_eac3_search.cpp cover it well, including that it
+# lowers decoded error, that it is deterministic, that it changes the emitted
+# parameters, and that it stays inert under VBR. It is that every one of those
+# builds a FrameConfig in C++ and hands it straight to the encoder. None of
+# them goes through argv. So `search=distortion` could stop being parsed,
+# stop reaching plan::Tools, or be silently dropped for one of the two
+# commands, and the whole quality suite would still pass - the flag would just
+# quietly do nothing for every user who typed it.
+#
+# Hence the "differs" half below: it is the only check in the repository that
+# the CLI argument reaches the encoder at all.
+#
+# WHY THE FLOOR IS NOT THE ENCODER'S OWN 0.05 dB. eac3_frame.cpp and
+# encoder.cpp both switch candidates on kCodeSwitchMarginDb = 0.05, and the
+# unit tests assert `searched >= off - 0.05` against that. That margin is
+# right for the frame-level comparison those tests make, and WRONG here: the
+# search minimises its own per-frame reconstruction-error estimate, while this
+# gate measures delay-compensated SNR over a whole file after a real decode.
+# Related, not identical. Measured across every CI leg and every trend leg,
+# both scoring paths, the worst end-to-end delta is -0.150 dB (E-AC-3 stereo
+# `auto` at 192, FFmpeg-decoded) - three times the frame-level margin, on an
+# encoder that is behaving correctly. A gate at 0.05 would have failed on the
+# day it landed.
+#
+# -0.5 dB is that worst observed case with 3.3x of headroom. It is a tripwire
+# for "the search started making things worse", not a tightness contest: a
+# real regression here is multiple dB, which the same measurement run showed
+# directly - AC-3 5.1 at 448 with search=perceptual (a criterion that
+# deliberately trades SNR for masking) lands at -3.3 dB, twenty times the
+# noise this floor allows for and something this gate would catch instantly.
+CI_SEARCH_MIN_DELTA_DB = -0.5
+
+# Deliberately NOT a positive floor, though the measurement invites one: the
+# same run showed search=distortion earning +1.24 dB on AC-3 5.1 at 448 and
+# +0.48 dB on AC-3 stereo at 192, so "the search must still be worth
+# something" looks gateable. It is not a good gate. The delta shrinks when the
+# BASELINE improves, so a floor on it fails on exactly the changes worth
+# making. The benefit is printed on every run instead - visible to a reader,
+# never blocking - and the no-op case it would have caught is already covered
+# by the differs check, which does not care how large the win is.
+CI_SEARCH_LEGS = [
+    # (label, codec, rate, tools) - tools is E-AC-3's positional argument.
+    ("ac3-stereo", "ac3", CI_STEREO_KBPS, None),
+    ("ac3-51", "ac3", CI_AC3_51_KBPS, None),
+    ("eac3-stereo", "eac3", CI_STEREO_KBPS, "auto"),
+    ("eac3-51", "eac3", CI_51_KBPS, "auto"),
+]
+
+
+def _ci_search_legs(original, source, original_51, source_51):
+    """search=distortion against search off, one row per CI_SEARCH_LEGS entry.
+
+    Two questions per leg, both relative - there is no absolute floor here,
+    because the interesting property is how the searched encode compares with
+    the same encode without it, not where either one sits:
+
+      - Does the flag reach the encoder? (the encoded bytes must differ)
+      - Does it make things worse? (SNR must not drop by more than
+        CI_SEARCH_MIN_DELTA_DB - see its comment for why that is not 0.05)
+
+    Scored with decode_scores, the same FFmpeg-oracle path race_ci's own
+    EAC3_VARIANTS rows use, so a failure here cannot be blamed on this
+    project's decoder agreeing with its own encoder.
+    """
+    print()
+    print("=== search=distortion vs search off (CLI plumbing + non-regression) ===")
+    failures = []
+    for label, codec, kbps, tools in CI_SEARCH_LEGS:
+        is_51 = label.endswith("-51")
+        src = source_51 if is_51 else source
+        ref = original_51 if is_51 else original
+        ext = "ac3" if codec == "ac3" else "ec3"
+        command = "encode" if codec == "ac3" else "eac3-encode"
+
+        encoded = {}
+        scores = {}
+        for tag in ("off", "distortion"):
+            coded = BUILD / f"ci_search_{label}_{tag}_{kbps}.{ext}"
+            cmd = [CLI, command, src, coded, str(kbps)]
+            if tools:
+                cmd.append(tools)
+            if tag != "off":
+                cmd.append(f"search={tag}")
+            run(cmd)
+            encoded[tag] = coded.read_bytes()
+            snr, _, _, _ = decode_scores(ref, coded,
+                                         BUILD / f"ci_search_{label}_{tag}.wav")
+            scores[tag] = snr
+
+        delta = scores["distortion"] - scores["off"]
+
+        # Byte inequality, not an SNR difference: on material where the search
+        # happens to pick the default candidate every frame the two encodes
+        # would score identically while still proving nothing about argv. This
+        # compares what was actually written.
+        if not gate(f"search {label} @ {kbps}kbps reaches the encoder",
+                    encoded["distortion"] != encoded["off"],
+                    f"search=distortion produced {len(encoded['distortion'])} bytes, "
+                    f"search off {len(encoded['off'])} - identical" if
+                    encoded["distortion"] == encoded["off"] else "encodes differ"):
+            failures.append(f"search-{label}-inert")
+
+        if not gate(f"search {label} @ {kbps}kbps does not regress",
+                    delta >= CI_SEARCH_MIN_DELTA_DB,
+                    f"SNR {scores['distortion']:.2f} dB vs {scores['off']:.2f} off, "
+                    f"{delta:+.3f} dB (floor {CI_SEARCH_MIN_DELTA_DB:+.2f})"):
+            failures.append(f"search-{label}-regressed")
+    return failures
+
+
 def race_ci(original, source, original_51, source_51, original_tr, source_tr):
     failures = []
 
@@ -1333,6 +1446,8 @@ def race_ci(original, source, original_51, source_51, original_tr, source_tr):
                         f"SNR {snr:.2f} dB (floor {min_snr}), "
                         f"LSD {lsd:.2f} dB (ceiling {max_lsd})"):
                 failures.append(f"eac3-{label}-{variant}-self")
+
+    failures += _ci_search_legs(original, source, original_51, source_51)
 
     print()
     if failures:
