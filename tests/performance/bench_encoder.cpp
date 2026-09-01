@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -63,23 +64,73 @@ struct Result {
     int frames = 0;
     double total_ms = 0.0;
     double ms_per_frame = 0.0;
+    // The tail, not just the average. A real-time codec is bounded by its
+    // WORST frame, not its mean one: a block-switched frame on a transient
+    // costs more than a steady-state frame, and a change that doubles the
+    // tail while leaving the mean flat is invisible to a mean-only series -
+    // which is exactly the shape of regression the whole performance suite
+    // exists to catch. Both are per-frame milliseconds, same unit as
+    // ms_per_frame, so a reader can compare them directly against the
+    // real-time budget printed beside them.
+    double p95_ms_per_frame = 0.0;
+    double max_ms_per_frame = 0.0;
 };
 
-class Timer {
+// Times each frame individually rather than the loop as a whole, so the
+// distribution above can be computed. The extra cost is one steady_clock
+// read per frame against a frame that takes milliseconds - under 0.01% at
+// the fastest workload here, measured, and it buys the tail.
+class FrameTimer {
 public:
-    void start() { start_ = std::chrono::steady_clock::now(); }
+    explicit FrameTimer(int expected_frames) {
+        per_frame_ms_.reserve(static_cast<std::size_t>(expected_frames));
+    }
 
-    [[nodiscard]] Result stop(std::string name, int frames) const {
-        const auto elapsed_ms =
-            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start_)
-                .count();
-        return {.name = std::move(name), .frames = frames, .total_ms = elapsed_ms,
-                .ms_per_frame = elapsed_ms / frames};
+    template <typename Fn>
+    void time_frame(Fn&& fn) {
+        const auto start = std::chrono::steady_clock::now();
+        fn();
+        per_frame_ms_.push_back(
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start)
+                .count());
+    }
+
+    [[nodiscard]] Result result(std::string name) const {
+        const auto frames = static_cast<int>(per_frame_ms_.size());
+        double total = 0.0;
+        for (const double ms : per_frame_ms_) {
+            total += ms;
+        }
+        // Nearest-rank percentile on a sorted copy: with 200 frames p95 is
+        // the 190th slowest. Sorting a copy keeps the caller's insertion
+        // order intact, which nothing needs today but costs nothing to keep.
+        std::vector<double> sorted = per_frame_ms_;
+        std::ranges::sort(sorted);
+        const auto rank =
+            static_cast<std::size_t>(std::ceil(0.95 * static_cast<double>(frames)));
+        const auto p95_index = sorted.empty() ? 0 : std::min(sorted.size() - 1,
+                                                             rank == 0 ? 0 : rank - 1);
+        return {.name = std::move(name),
+                .frames = frames,
+                .total_ms = total,
+                .ms_per_frame = frames > 0 ? total / frames : 0.0,
+                .p95_ms_per_frame = sorted.empty() ? 0.0 : sorted[p95_index],
+                .max_ms_per_frame = sorted.empty() ? 0.0 : sorted.back()};
     }
 
 private:
-    std::chrono::steady_clock::time_point start_{};
+    std::vector<double> per_frame_ms_;
 };
+
+// Frames run before the clock starts, on a THROWAWAY encoder of the same
+// configuration. The point is to warm the caches, the branch predictors and
+// the allocator's free lists - not the encoder, which is why the timed run
+// below still constructs its own fresh instance and still starts at frame 0.
+// Without this the first workload in program order pays every cold-start cost
+// in the process and the rest do not, which is a bias between series rather
+// than noise within one: it does not average out over repetitions, and it
+// silently moves if the workload order ever changes.
+constexpr int kWarmupFrames = 8;
 
 [[noreturn]] void fail(const char* workload, const char* what) {
     std::fprintf(stderr, "%s: %s failed\n", workload, what);
@@ -122,33 +173,49 @@ std::vector<ac3::oba::ObjectPlacement> object_placement() {
 // workloads' streams come from the untimed setup pass instead.
 
 Result bench_ac3_51(perf::FrameSource& source, bool fast_mdct) {
-    auto encoder = make_ac3_51(fast_mdct);
     const char* name = fast_mdct ? "plain_51_fast_mdct" : "plain_51";
-
-    Timer timer;
-    timer.start();
-    for (int frame = 0; frame < kFrames; ++frame) {
-        const auto result = encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)));
-        if (!result) {
-            fail(name, "encode_frame");
+    {
+        auto warm = make_ac3_51(fast_mdct);
+        for (int frame = 0; frame < kWarmupFrames; ++frame) {
+            (void)warm.encode_frame(source.frame(static_cast<std::size_t>(frame)));
         }
     }
-    return timer.stop(name, kFrames);
+
+    auto encoder = make_ac3_51(fast_mdct);
+    FrameTimer timer{kFrames};
+    for (int frame = 0; frame < kFrames; ++frame) {
+        timer.time_frame([&] {
+            const auto result =
+                encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)));
+            if (!result) {
+                fail(name, "encode_frame");
+            }
+        });
+    }
+    return timer.result(name);
 }
 
 Result bench_eac3_auto(std::string name, perf::FrameSource& source, ac3::Acmod acmod, bool lfe,
                        std::uint32_t bitrate_kbps) {
-    auto encoder = make_eac3_auto(acmod, lfe, bitrate_kbps);
-
-    Timer timer;
-    timer.start();
-    for (int frame = 0; frame < kFrames; ++frame) {
-        const auto result = encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)));
-        if (!result) {
-            fail(name.c_str(), "encode_frame");
+    {
+        auto warm = make_eac3_auto(acmod, lfe, bitrate_kbps);
+        for (int frame = 0; frame < kWarmupFrames; ++frame) {
+            (void)warm.encode_frame(source.frame(static_cast<std::size_t>(frame)));
         }
     }
-    return timer.stop(std::move(name), kFrames);
+
+    auto encoder = make_eac3_auto(acmod, lfe, bitrate_kbps);
+    FrameTimer timer{kFrames};
+    for (int frame = 0; frame < kFrames; ++frame) {
+        timer.time_frame([&] {
+            const auto result =
+                encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)));
+            if (!result) {
+                fail(name.c_str(), "encode_frame");
+            }
+        });
+    }
+    return timer.result(std::move(name));
 }
 
 // `domain` is AtmosConfig::joc_domain - which §7.1 space the reconstruction
@@ -168,17 +235,25 @@ Result bench_atmos_4obj(perf::FrameSource& source, bool fast_mdct,
         name = "atmos_4obj_fast_mdct";
     }
     const auto placement = object_placement();
-
-    Timer timer;
-    timer.start();
-    for (int frame = 0; frame < kFrames; ++frame) {
-        const auto result =
-            encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)), placement);
-        if (!result) {
-            fail(name, "encode_frame");
+    {
+        ac3::oba::AtmosEncoder warm{
+            {.bitrate_kbps = 448, .fast_mdct = fast_mdct, .joc_domain = domain}, kObjects};
+        for (int frame = 0; frame < kWarmupFrames; ++frame) {
+            (void)warm.encode_frame(source.frame(static_cast<std::size_t>(frame)), placement);
         }
     }
-    return timer.stop(name, kFrames);
+
+    FrameTimer timer{kFrames};
+    for (int frame = 0; frame < kFrames; ++frame) {
+        timer.time_frame([&] {
+            const auto result =
+                encoder.encode_frame(source.frame(static_cast<std::size_t>(frame)), placement);
+            if (!result) {
+                fail(name, "encode_frame");
+            }
+        });
+    }
+    return timer.result(name);
 }
 
 // --- decode workload sources (untimed) -------------------------------------
@@ -238,17 +313,24 @@ Result bench_ac3_decode(std::span<const std::byte> stream) {
     if (!frames || frames->empty()) {
         fail("ac3_51_decode", "split_frames");
     }
-    ac3::FrameDecoder decoder{};
-
-    Timer timer;
-    timer.start();
-    for (const auto& frame : *frames) {
-        const auto result = decoder.decode_frame(frame);
-        if (!result) {
-            fail("ac3_51_decode", "decode_frame");
+    {
+        ac3::FrameDecoder warm{};
+        for (int i = 0; i < kWarmupFrames && i < static_cast<int>(frames->size()); ++i) {
+            (void)warm.decode_frame((*frames)[static_cast<std::size_t>(i)]);
         }
     }
-    return timer.stop("ac3_51_decode", static_cast<int>(frames->size()));
+
+    ac3::FrameDecoder decoder{};
+    FrameTimer timer{static_cast<int>(frames->size())};
+    for (const auto& frame : *frames) {
+        timer.time_frame([&] {
+            const auto result = decoder.decode_frame(frame);
+            if (!result) {
+                fail("ac3_51_decode", "decode_frame");
+            }
+        });
+    }
+    return timer.result("ac3_51_decode");
 }
 
 Result bench_eac3_decode(std::string name, std::span<const std::byte> stream) {
@@ -256,21 +338,29 @@ Result bench_eac3_decode(std::string name, std::span<const std::byte> stream) {
     if (!units || units->empty()) {
         fail(name.c_str(), "split_access_units");
     }
-    ac3::Eac3Decoder decoder{};
-
-    Timer timer;
-    timer.start();
-    for (const auto& unit : *units) {
-        const auto result = decoder.decode_access_unit(unit);
-        if (!result) {
-            fail(name.c_str(), "decode_access_unit");
+    {
+        ac3::Eac3Decoder warm{};
+        for (int i = 0; i < kWarmupFrames && i < static_cast<int>(units->size()); ++i) {
+            (void)warm.decode_access_unit((*units)[static_cast<std::size_t>(i)]);
         }
+        (void)warm.flush();
     }
-    // Drained inside the timed span: the last access unit's samples only
-    // leave the decoder here, so a flush left outside would hand the series
-    // one frame's work for free.
-    (void)decoder.flush();
-    return timer.stop(std::move(name), static_cast<int>(units->size()));
+
+    ac3::Eac3Decoder decoder{};
+    FrameTimer timer{static_cast<int>(units->size())};
+    for (const auto& unit : *units) {
+        timer.time_frame([&] {
+            const auto result = decoder.decode_access_unit(unit);
+            if (!result) {
+                fail(name.c_str(), "decode_access_unit");
+            }
+        });
+    }
+    // Drained inside the timed span, attributed to the last frame: the final
+    // access unit's samples only leave the decoder here, so a flush left
+    // outside would hand the series one frame's work for free.
+    timer.time_frame([&] { (void)decoder.flush(); });
+    return timer.result(std::move(name));
 }
 
 void write_json(const std::vector<Result>& results, const std::string& path) {
@@ -281,7 +371,9 @@ void write_json(const std::vector<Result>& results, const std::string& path) {
         const auto& r = results[i];
         out << "    {\"name\": \"" << r.name << "\", \"frames\": " << r.frames
             << ", \"total_ms\": " << r.total_ms << ", \"ms_per_frame\": " << r.ms_per_frame
-            << "}" << (i + 1 < results.size() ? "," : "") << "\n";
+            << ", \"p95_ms_per_frame\": " << r.p95_ms_per_frame
+            << ", \"max_ms_per_frame\": " << r.max_ms_per_frame << "}"
+            << (i + 1 < results.size() ? "," : "") << "\n";
     }
     out << "  ]\n}\n";
 }
@@ -380,8 +472,10 @@ int main(int argc, char** argv) {
     }
 
     for (const auto& r : results) {
-        fmt::printf("%-20s %5d frames  %9.3f ms total  %6.3f ms/frame  (budget %.3f ms/frame)\n",
-                    r.name.c_str(), r.frames, r.total_ms, r.ms_per_frame, real_time_budget_ms(1));
+        fmt::printf("%-20s %5d frames  %9.3f ms total  %6.3f ms/frame  "
+                    "(p95 %6.3f  max %6.3f)  (budget %.3f ms/frame)\n",
+                    r.name.c_str(), r.frames, r.total_ms, r.ms_per_frame, r.p95_ms_per_frame,
+                    r.max_ms_per_frame, real_time_budget_ms(1));
     }
 
     if (!json_out.empty()) {

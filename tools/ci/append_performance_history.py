@@ -77,6 +77,14 @@ def load_leg_results(results_dir: Path):
                     "frames": result["frames"],
                     "total_ms": result["total_ms"],
                     "ms_per_frame": result["ms_per_frame"],
+                    # .get(), not [...]: ac3bench only started emitting the
+                    # per-frame distribution later than this script, so any
+                    # JSON produced by an older binary - a rebuilt merge base,
+                    # a re-run of an old artifact - simply has no tail to
+                    # record. None is written rather than a zero, so a reader
+                    # can tell "not measured" from "measured as fast".
+                    "p95_ms_per_frame": result.get("p95_ms_per_frame"),
+                    "max_ms_per_frame": result.get("max_ms_per_frame"),
                     "real_time_budget_ms_per_frame": payload["real_time_budget_ms_per_frame"],
                 }
 
@@ -138,6 +146,8 @@ def main() -> int:
             "frames": rec["frames"],
             "total_ms": rec["total_ms"],
             "ms_per_frame": rec["ms_per_frame"],
+            "p95_ms_per_frame": rec["p95_ms_per_frame"],
+            "max_ms_per_frame": rec["max_ms_per_frame"],
             "real_time_budget_ms_per_frame": rec["real_time_budget_ms_per_frame"],
         }
         lines.append(json.dumps(entry, sort_keys=True))
