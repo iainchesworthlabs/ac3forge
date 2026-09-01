@@ -210,3 +210,11 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: dist
+          # Make a re-run idempotent rather than fatal. The action defaults to
+          # skip-existing: false, so re-pushing a tag - to pick up a release-
+          # workflow fix, which is exactly what v0.10.0-beta.1 needed - fails here
+          # on "file already exists" even though the wheels published correctly
+          # the first time. Uploading is still the only way a version reaches
+          # PyPI; this only stops a second attempt at an already-published one
+          # from reporting a failure that is not one.
+          skip-existing: true

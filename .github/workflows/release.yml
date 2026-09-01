@@ -492,14 +492,25 @@ jobs:
       # what this deliberately does not try to reconstruct on top of that).
       - name: Render release notes from CHANGELOG.md
         env:
-          VERSION: ${{ needs.resolve-version.outputs.version }}
           VERSION_TAG: ${{ needs.resolve-version.outputs.version_tag }}
           REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
+          # The FULL version, suffix included - deliberately NOT
+          # resolve-version's `version` output. CHANGELOG.md headings carry the
+          # prerelease suffix ("## [0.10.0-beta.1]"): every section in that file
+          # does, docs/releasing.md says to write them that way, and
+          # render_release_notes.py's own docstring gives
+          # "## [0.9.0-beta.1] - 2026-08-22" as the shape it searches for. But
+          # `version` is bare_version ("${version%%-*}"), which the SBOM filename
+          # wants and this does not - passing it here made the renderer look for
+          # "## [0.10.0]", find nothing, and hard-fail the release after signing,
+          # SBOM and attestation had all succeeded. First hit on v0.10.0-beta.1;
+          # latent since the renderer landed in 75772e95, four days after the
+          # previous release, so no tag had exercised it before.
           python3 tools/release/render_release_notes.py \
-            --version "$VERSION" --tag "$VERSION_TAG" --repo "$REPO" --output notes.md
+            --version "${VERSION_TAG#v}" --tag "$VERSION_TAG" --repo "$REPO" --output notes.md
 
       - name: Create GitHub Release
         env:
