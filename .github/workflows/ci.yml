@@ -1032,6 +1032,26 @@ jobs:
             --commit "$COMMIT_SHA" \
             --commit-date "$commit_date"
 
+      # Renders the newest figures as shields.io endpoint JSON for the README's
+      # badge row. Runs HERE, in the job that already commits to
+      # quality-history, rather than as a job of its own: that branch has two
+      # writers already (_build.yml's quality-trend and this one) and a third
+      # would be a third chance to race on it.
+      #
+      # After the appends above, so the speed and memory badges describe the
+      # records this run just wrote. The accuracy badge reads whatever the
+      # quality-trend job last pushed, which can be one run behind on a commit
+      # whose quality leg finished after this one - acceptable for a summary,
+      # and the trend pages carry the exact number one click away.
+      - name: Render the measurement badges
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/write_measurement_badges.py \
+            --history-dir history \
+            --branch "$BRANCH"
+
       - name: Commit and push performance-history update
         shell: bash
         env:
