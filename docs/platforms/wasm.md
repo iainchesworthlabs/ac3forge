@@ -34,7 +34,11 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
   `encoder_bindings.cpp` binds, not a cut-down subset — compiles to **390 KB raw / 153 KB gzip**,
   against the decode module's own **372 KB raw / 133 KB gzip**. Comparable order of magnitude, not
   the multi-megabyte blow-up "much larger undertaking" implied; a third module split (e.g. Atmos
-  bound separately) was not worth pursuing.
+  bound separately) was not worth pursuing. Those are the UX6-era numbers the finding rests on and
+  are left as measured; both modules have grown since as bindings were added, and the fallbacks
+  committed under `docs/assets/` currently measure **640 KB raw / 247 KB gzip** (encode) and
+  **615 KB raw / 226 KB gzip** (decode). The conclusion is unchanged - still the same order of
+  magnitude, still no split warranted.
 - **Real-time factor.** Timed under Node/V8 (a reasonable proxy for Chrome's own engine),
   single-threaded, no WASM SIMD, `-O3`, real encoder code paths (not a timing loop around a stub):
   AC-3 2.0 encodes at **385x real-time**, E-AC-3 3/2+LFE at **120x**, a 4-object Atmos/JOC encode at
