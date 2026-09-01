@@ -12,14 +12,16 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
-The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0, both decoders gain a
-consumer output stage, all three containers become readable as well as writable, and the
-verification estate extends to E-AC-3. The immersive surface widens well past Atmos-in-DD+: an
-IAMF writer, an IAB/MXF reader bridged onto the Atmos encoder, and an AC-4 bitstream inspector.
-The browser gains in-page encoding and QC beside the existing decode demo, plus a reusable
-streaming decoder package. The Shield Atmos demo grows into a real application, and the library
-is now reachable from Rust as well as C and Python. The repository also moved to trunk-based
-development, and a concrete API-freeze plan for v1.0 now exists.
+## [0.10.0-beta.1] - 2026-09-01
+
+Tenth tagged release. The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0,
+both decoders gain a consumer output stage, all three containers become readable as well as
+writable, and the verification estate extends to E-AC-3. The immersive surface widens well past
+Atmos-in-DD+: an IAMF writer, an IAB/MXF reader bridged onto the Atmos encoder, and an AC-4
+bitstream inspector. The browser gains in-page encoding and QC beside the existing decode demo,
+plus a reusable streaming decoder package. The Shield Atmos demo grows into a real application,
+and the library is now reachable from Rust as well as C and Python. The repository also moved to
+trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
 
 ### Added
 
