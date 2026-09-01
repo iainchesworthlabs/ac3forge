@@ -920,11 +920,50 @@ jobs:
       - name: Build ac3bench, ac3kernelbench and ac3membench
         run: cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench ac3membench -- -k 0
 
-      - name: Run ac3bench
+      # Three repetitions, not one. append_performance_history.py reduces them
+      # to a single record per workload by taking the FASTEST run and recording
+      # the spread beside it (see its load_leg_results docstring for why the
+      # minimum rather than the mean). Until this, the number written into the
+      # permanent history was a single unrepeated sample - a weaker signal than
+      # the PR-time comparison feeding into the very same merge already used,
+      # which is min-of-3 interleaved. The trailing-mean regression tiers were
+      # being fed the noisier of the two numbers.
+      #
+      # Cheap: ac3bench is 200 frames per workload and takes seconds, against a
+      # job that has already paid for a container, a GCC install, a vcpkg setup
+      # and a full build.
+      - name: Run ac3bench (repeated)
+        env:
+          BENCH_RUNS: "3"
         run: |
           set -euo pipefail
           mkdir -p results/performance-linux-gcc
-          build/config-linux-gcc/bin/ac3bench --json-out results/performance-linux-gcc/bench.json
+          for i in $(seq 1 "$BENCH_RUNS"); do
+            build/config-linux-gcc/bin/ac3bench \
+              --json-out "results/performance-linux-gcc/bench$i.json"
+          done
+
+      # What the numbers were measured ON. ms/frame is hardware-relative in a
+      # way the quality series' dB is not, so a hosted-image bump or a
+      # differently-specced runner otherwise shows up as an unattributable step
+      # in the trend that nobody can distinguish from a code change. Recorded
+      # only - nothing compares against it.
+      - name: Capture the measurement environment
+        id: env
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The trailing-space squeeze is not cosmetic: /proc/cpuinfo pads the
+          # model name (e.g. "AMD Ryzen 9 5950X 16-Core Processor" with a dozen
+          # trailing spaces), and that padding would otherwise be baked into
+          # every record in the permanent history.
+          cpu="$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -1 |
+                 sed -e 's/[[:space:]]\{1,\}$//' -e 's/[[:space:]]\{2,\}/ /g' || true)"
+          [ -n "$cpu" ] || cpu="unknown"
+          image="${ImageOS:-unknown}/${ImageVersion:-unknown}"
+          echo "cpu_model=$cpu" >> "$GITHUB_OUTPUT"
+          echo "runner_image=$image" >> "$GITHUB_OUTPUT"
+          echo "measured on: $cpu ($image)"
 
       # A separate results tree from ac3bench's on purpose:
       # append_performance_history.py globs every *.json under its legs and
@@ -977,6 +1016,8 @@ jobs:
         env:
           BRANCH: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
+          CPU_MODEL: ${{ steps.env.outputs.cpu_model }}
+          RUNNER_IMAGE: ${{ steps.env.outputs.runner_image }}
         run: |
           set -euo pipefail
           git config --global --add safe.directory '*'
@@ -986,7 +1027,9 @@ jobs:
             --history-dir history \
             --branch "$BRANCH" \
             --commit "$COMMIT_SHA" \
-            --commit-date "$commit_date"
+            --commit-date "$commit_date" \
+            --cpu-model "$CPU_MODEL" \
+            --runner-image "$RUNNER_IMAGE"
 
       # Its own step (and script) rather than more legs in the one above:
       # the kernel series is deliberately non-gating - both regression tiers
