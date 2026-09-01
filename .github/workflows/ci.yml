@@ -1102,17 +1102,31 @@ jobs:
   # halved the encoder's speed would therefore go green everywhere and only
   # surface on the trend chart afterwards.
   #
-  # NON-BLOCKING, on purpose and in two independent ways: continue-on-error
-  # here, and tools/ci/compare_performance.py never exiting non-zero on a
-  # comparison it completed. It is also deliberately absent from ci-status's
-  # `needs` list. Timings on a shared hosted runner are noisy enough that a
-  # PR-blocking threshold would cost more in re-runs than it caught; the two
-  # checks that DO block are untouched (ac3perf's absolute budget on every PR,
-  # append_performance_history.py's hard tier on merge). What this adds is the
-  # number in front of the reviewer at review time, in the job summary, with
-  # the same soft/hard tiers the trend job applies - imported from that script
-  # rather than restated, so a PR and its own merge cannot disagree about what
-  # counts as a regression.
+  # Its INFRASTRUCTURE is non-blocking; its HARD VERDICT is not. The split
+  # matters, so it is worth being precise about which is which:
+  #
+  #   - continue-on-error stays. This job builds twice, and a container
+  #     bootstrap flake or a vcpkg hiccup in a job nobody asked for must not
+  #     block a PR. Everything mechanical here stays advisory.
+  #   - The hard tier (100% - the workload takes at least twice as long) now
+  #     fails a check, via the hard_regression output and the one-step
+  #     performance-gate job below. continue-on-error would swallow an exit
+  #     code, which is exactly why the verdict travels as an output instead.
+  #   - The soft tier (20%) is unchanged and still advisory. That is where the
+  #     runner-noise argument genuinely bites.
+  #
+  # Why the hard tier is safe to block on, when the soft tier is not: this
+  # comparison is PAIRED - same runner, same job, both sides built from the
+  # same checkout, timed interleaved with the order alternating, each side
+  # reduced by minimum-of-N. Measured run-to-run spread is single-digit
+  # percent. A doubling is an order of magnitude outside that.
+  #
+  # And it already blocked, just later and worse: the identical 100% threshold
+  # fails append_performance_history.py on the push to main. The old behaviour
+  # was not "a doubling does not fail CI", it was "a doubling fails CI on main
+  # after it has merged, for whoever pushes next".
+  #
+  # Escape hatch is a label, not an admin merge - see performance-gate.
   #
   # Runner budget. This is a new job rather than an addition to an existing
   # leg, and it builds twice, so it is kept as narrow as it can be and still
@@ -1138,6 +1152,10 @@ jobs:
     runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     continue-on-error: true
+    outputs:
+      # Read by performance-gate below. Empty when this job was skipped or died
+      # before the compare step, both of which that job treats as "no verdict".
+      hard_regression: ${{ steps.compare.outputs.hard_regression }}
     env:
       PERF_RUNS: 3
     steps:
@@ -1242,6 +1260,7 @@ jobs:
           done
 
       - name: Compare and publish the job summary
+        id: compare
         shell: bash
         env:
           BASE_SHORT: ${{ steps.base.outputs.short }}
@@ -1251,6 +1270,49 @@ jobs:
             --base-dir perf-results/base \
             --head-dir perf-results/head \
             --base-ref "merge base $BASE_SHORT"
+
+  # The blocking half of performance-compare, split out so that job can keep
+  # continue-on-error for its builds while its VERDICT still fails a check.
+  # Builds nothing, checks out nothing, runs one bash step - there is no
+  # infrastructure here to flake and produce a false red.
+  #
+  # `always()` so a verdict is still enforced when some unrelated job failed;
+  # the step itself is what decides, and it passes on anything that is not an
+  # explicit `true`. That covers a skipped performance-compare (docs-only PR),
+  # a cancelled one, and one that died before the compare step ran - a job
+  # that produced no measurement must not fail a PR on a measurement it does
+  # not have.
+  #
+  # The label escape hatch is checked HERE rather than in
+  # compare_performance.py so the summary table keeps saying what it measured
+  # either way: with the label the hard row is still rendered, still annotated
+  # and still visible to a reviewer, it just stops failing the check. Labels
+  # are also live - adding one and re-running this seconds-long job is the
+  # whole loop, with no rebuild and no new commit.
+  performance-gate:
+    name: Performance gate
+    needs: [performance-compare]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    steps:
+      - name: Gate on the hard-tier verdict
+        shell: bash
+        env:
+          VERDICT: ${{ needs.performance-compare.outputs.hard_regression }}
+          APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'perf-regression-approved') }}
+        run: |
+          set -euo pipefail
+          echo "hard_regression=${VERDICT:-<none>}  perf-regression-approved=$APPROVED"
+          if [ "${VERDICT:-}" != "true" ]; then
+            echo "No hard performance regression to gate on."
+            exit 0
+          fi
+          if [ "$APPROVED" = "true" ]; then
+            echo "::warning title=Hard performance regression (approved)::A workload takes at least twice as long as at the merge base. Allowed through by the 'perf-regression-approved' label - see the Performance vs merge base summary for which workload and by how much."
+            exit 0
+          fi
+          echo "::error title=Hard performance regression::A workload takes at least twice as long as at the merge base. See the 'Performance vs merge base' job summary for which one and by how much. This is the same 100% threshold that fails the trend job on main once merged. If the slowdown is deliberate, label this PR 'perf-regression-approved' and re-run this job."
+          exit 1
 
   # Roadmap AP4: an ABI gate for the shared libraries, over the
   # linux-llvm-shared build. Two independent checks, both against
@@ -2128,7 +2190,7 @@ jobs:
   ci-status:
     name: CI Status
     if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
+    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, performance-gate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
     # Control-plane job, same vars.CONTROL_RUNNER_JSON routing and kill
     # switch as check-runner above. This is the required check every PR
     # waits on LAST - when the hosted pool is saturated, a run whose every
@@ -2155,6 +2217,9 @@ jobs:
           R_ADM: ${{ needs.adm-validate.result }}
           R_BUILD: ${{ needs.build-and-test.result }}
           R_FFMPEG: ${{ needs.ffmpeg-validate.result }}
+          # 'skipped' on a push and on a docs-only PR (performance-compare
+          # itself is gated on `changes`), which is a pass.
+          R_PERF_GATE: ${{ needs.performance-gate.result }}
           # 'skipped' on every PR and every push off main (its own
           # `if`) - a pass, not a failure, same as R_TIDY/R_COVERAGE above.
           R_PERF_TREND: ${{ needs.persist-performance-trend.result }}
@@ -2171,6 +2236,7 @@ jobs:
                       "static-analysis:$R_TIDY" "coverage:$R_COVERAGE" \
                       "adm-validate:$R_ADM" \
                       "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \
+                      "performance-gate:$R_PERF_GATE" \
                       "persist-performance-trend:$R_PERF_TREND" \
                       "persist-external-comparison-trend:$R_EXT_TREND" \
                       "persist-object-quality-trend:$R_OBJ_TREND"; do
