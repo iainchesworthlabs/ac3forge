@@ -197,7 +197,12 @@ jobs:
             exit 0
           fi
 
-          branch="chore/bump-packaging-manifests-${VERSION_TAG}"
+          # bugfix/, not chore/: ci.yml's required "Branch Name" gate enforces
+          # ^(feature|bugfix)/[a-z0-9._-]+$ and rejects anything else, so the PR this
+          # job opens could never satisfy its own repository's CI. Same first-run
+          # blind spot as the tap push below - no release had exercised this until
+          # v0.10.0-beta.1, whose bump PR (#481) failed Branch Name outright.
+          branch="bugfix/bump-packaging-manifests-${VERSION_TAG}"
           if gh pr list --repo "$REPO" --head "$branch" --state open --json number \
                --jq 'length' | grep -qx 0; then
             git config user.name "github-actions[bot]"
