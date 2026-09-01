@@ -1168,28 +1168,56 @@ CI_EAC3_THRESHOLDS = {
         "cpl+spx": (9.0, 9.5),
         "all": (9.0, 10.5),
     },
-    # Transient material, measured 2026-08-23 against a real build (FFmpeg
-    # 8.0.1): none/auto/cpl/aht 5.37 dB SNR and 0.94-0.95 dB LSD, the three
-    # spectral-extension rows -0.42 to -0.43 dB SNR and 1.81-1.85 dB LSD.
+    # Transient material. The LSD ceilings were re-measured when align() above
+    # stopped discarding a second skip off the end of every overlap, because
+    # on THIS leg that was not a precision detail - it changed which material
+    # was being scored at all.
+    #
+    # make_material_transient() is four 2 s segments: (a) percussive hits,
+    # (b) block-rate gated noise, (c) sparse clicks over near-silence, and
+    # (d) a chord amplitude-modulated at 30 Hz, whose level "swings smoothly
+    # but fully inside every frame". decode_scores calls align() with the
+    # default skip of 1 s, so on 8 s of material the old asymmetric trim
+    # (1 s off the front, 2 s off the end) scored seconds 1-6 - all of (b) and
+    # (c), half of (a), and NONE of (d). Segment (d) begins exactly at second
+    # 6. The leg was calibrated, and passing, on material that omitted one of
+    # the four cases it was built out of - and the one whose whole point is a
+    # level swing inside a single frame, which is precisely what an exponent
+    # run plan has to cope with (roadmap EQ1).
+    #
+    # The corrected window scores seconds 1-7, so half of (d) now counts.
+    # SNR rises by a uniform +0.35 dB across every variant (more material,
+    # slightly better waveform match) and every existing SNR floor still holds
+    # with more headroom than before, so the floors are unchanged. LSD rises by
+    # 0.86-1.20 dB, because (d) is genuinely harder to code than the segments
+    # that were being scored in its place, and the ceilings do have to move.
+    #
+    # Measured on the corrected window (FFmpeg 8.0.1): none 2.060, auto 2.122,
+    # cpl 2.323, aht 2.031; spx and cpl+spx 2.656, all 2.620. Linux CI and a
+    # Windows local build agree to within 0.03 dB, so these are not a
+    # platform's numbers.
+    #
+    # The bars stay deliberately close to the measurement - +0.4 dB on the
+    # worst member of each group, matching the margin this table already
+    # carried before (0.34 dB on the old non-spx group). What this leg exists
+    # for is the exponent-run plan, and every regression it actually caught
+    # while it was being built cost 1 to 3 dB of SNR and 0.5 to 1.7 dB of LSD,
+    # not the many dB a collapse elsewhere would. A ceiling loose enough to
+    # ignore those would make the leg pointless. 0.4 dB is still thirteen
+    # times the observed cross-platform spread.
     #
     # The absolute numbers are not comparable to the stationary stereo row's
-    # and are not meant to be: a click train over near-silence at 192 kbit/s is
-    # a hard thing to code, and a waveform SNR near zero on parametric rows is
-    # what a synthesized high band scores by construction. What this row exists
-    # for is the exponent-run plan, so its bars sit closer to the measurement
-    # than the other rows' do - about 1.4 dB of SNR margin and 0.5 dB of LSD.
-    # That is deliberate: every regression this leg actually caught while it
-    # was being built cost 1 to 3 dB of SNR and 0.5 to 1.7 dB of LSD, not the
-    # many dB a collapse elsewhere would, and a floor loose enough to ignore
-    # them would have made the leg pointless.
+    # and are not meant to be: this material at 192 kbit/s is a hard thing to
+    # code, and a waveform SNR near zero on parametric rows is what a
+    # synthesized high band scores by construction.
     "transient": {
-        "none": (4.0, 1.5),
-        "auto": (4.0, 1.5),
-        "cpl": (4.0, 1.5),
-        "spx": (-2.0, 2.6),
-        "aht": (4.0, 1.5),
-        "cpl+spx": (-2.0, 2.6),
-        "all": (-2.0, 2.6),
+        "none": (4.0, 2.7),
+        "auto": (4.0, 2.7),
+        "cpl": (4.0, 2.7),
+        "spx": (-2.0, 3.1),
+        "aht": (4.0, 2.7),
+        "cpl+spx": (-2.0, 3.1),
+        "all": (-2.0, 3.1),
     },
 }
 
