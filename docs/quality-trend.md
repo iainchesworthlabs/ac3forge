@@ -134,14 +134,35 @@ that question — see [Landscape](landscape.md) and
     return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
   }
 
+  // The trailing window first, the full history only if it is not there.
+  //
+  // The history files on quality-history are append-only and unbounded -
+  // main.jsonl passed 1.7 MB and develop.jsonl 1.8 MB by September 2026 - and
+  // this page was fetching BOTH in full to render TABLE_ROWS entries per
+  // series. 3.5 MB of download to display fifty commits' worth of it, growing
+  // with every merge.
+  //
+  // The window is produced by tools/ci/append_quality_history.py rather than
+  // requested here, because requesting it does not work: an HTTP suffix Range
+  // is the natural fix and `Range` is not a CORS-safelisted request header, so
+  // a cross-origin fetch preflights and raw.githubusercontent.com answers
+  // OPTIONS with a 403. Verified from this very origin - the plain fetch
+  // returns 1789155 bytes, the ranged one fails outright.
+  //
+  // Falling back rather than assuming: a page served before that script first
+  // ran, or a branch whose window has not been generated, still renders from
+  // the full file exactly as it always did.
   async function fetchTrack(branch) {
-    try {
-      const resp = await fetch(rawUrl(HISTORY_BRANCH, `${branch}.jsonl`));
-      if (!resp.ok) return [];
-      return parseJsonl(await resp.text());
-    } catch (e) {
-      return [];
+    for (const file of [`${branch}.recent.jsonl`, `${branch}.jsonl`]) {
+      try {
+        const resp = await fetch(rawUrl(HISTORY_BRANCH, file));
+        if (!resp.ok) continue;
+        return parseJsonl(await resp.text());
+      } catch (e) {
+        // Try the next candidate; only a total failure of both yields [].
+      }
     }
+    return [];
   }
 
   // Maps a commit SHA to the release tagged at it, keyed off the GitHub
