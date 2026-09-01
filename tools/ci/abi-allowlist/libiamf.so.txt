@@ -1,0 +1,2 @@
+iamf::describe(iamf::MuxError)
+iamf::mux(iamf::AudioTrack const&, std::span<iamf::Frame const, 18446744073709551615ul>)

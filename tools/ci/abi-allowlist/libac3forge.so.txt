@@ -188,6 +188,7 @@ ac3::iec61937::wrap_frame(std::span<std::byte const, 18446744073709551615ul>)
 ac3::iec61937::wrap_stream(std::span<std::span<std::byte const, 18446744073709551615ul> const, 18446744073709551615ul>, bool)
 ac3::imdct256_pair_windowed(std::span<double const, 256ul>, std::span<double, 512ul>, bool)
 ac3::imdct512_windowed(std::span<double const, 256ul>, std::span<double, 512ul>, bool)
+ac3::imdct512_windowed_batch4(std::span<double const, 256ul>, std::span<double const, 256ul>, std::span<double const, 256ul>, std::span<double const, 256ul>, std::span<double, 512ul>, std::span<double, 512ul>, std::span<double, 512ul>, std::span<double, 512ul>)
 ac3::io::AccessUnitReader::AccessUnitReader(std::basic_istream<char, std::char_traits<char> >&)
 ac3::io::AccessUnitReader::byte_offset() const
 ac3::io::AccessUnitReader::next()
@@ -261,6 +262,7 @@ ac3::mantissa_bits_per_block(std::span<std::span<unsigned char const, 1844674407
 ac3::mdct256_forward_first(std::span<double const, 256ul>, std::span<double, 128ul>, bool)
 ac3::mdct256_forward_second(std::span<double const, 256ul>, std::span<double, 128ul>, bool)
 ac3::mdct512_forward(std::span<double const, 512ul>, std::span<double, 256ul>, bool)
+ac3::mdct512_forward_batch4(std::span<double const, 512ul>, std::span<double const, 512ul>, std::span<double const, 512ul>, std::span<double const, 512ul>, std::span<double, 256ul>, std::span<double, 256ul>, std::span<double, 256ul>, std::span<double, 256ul>)
 ac3::meta::HeavyCompressor::HeavyCompressor(ac3::meta::HeavyCompressor&&)
 ac3::meta::HeavyCompressor::HeavyCompressor(ac3::meta::HeavyConfig const&, ac3::SampleRate)
 ac3::meta::HeavyCompressor::gain_db() const
@@ -485,6 +487,3 @@ ac3::verify::report[abi:cxx11](std::span<ac3::verify::Mismatch const, 1844674407
 ac3::verify::trace_csv_header()
 ac3::version_details[abi:cxx11]()
 std::__throw_bad_variant_access(unsigned int)::__reasons
-typeinfo for std::bad_variant_access
-typeinfo name for std::bad_variant_access
-vtable for std::bad_variant_access

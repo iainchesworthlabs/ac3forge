@@ -16,6 +16,24 @@ regenerates them from the libraries passed on the command line instead of
 checking; run it once to seed a new library or after a deliberate, reviewed
 export-set change.
 
+Two things to know before reading a regeneration diff:
+
+The stored text is c++filt-version sensitive. The same mangled symbol can
+demangle to different text under different binutils - libac3iab.so.txt was
+seeded by an older c++filt that printed `std::istream` where the current one
+prints `std::basic_istream<char, std::char_traits<char> >`. That shows up in
+a diff as one line removed and one added, and reads exactly like a signature
+change, but the ELF symbol is identical and nothing about the ABI moved.
+Before treating such a pair as a real change, check whether the two lines are
+the same function under two renderings.
+
+Regenerate against a build whose toolchain matches CI's (the pinned LLVM in
+.github/workflows/_toolchain-versions.yml). The cheap way to prove it does,
+before trusting `--update`: run this script in CHECK mode against the fresh
+build first and confirm it reproduces the mismatch set CI itself reports.
+Libraries that then regenerate byte-identical are the corroboration - if the
+local demangler disagreed with the committed files, those would churn too.
+
 Unlike tools/ci/compare_performance.py, this script DOES exit non-zero on a
 real mismatch - the advisory/non-blocking behaviour AP4 wants pre-1.0 comes
 from the calling CI job's own ABI_ENFORCE switch, not from this script staying
@@ -43,7 +61,29 @@ from pathlib import Path
 # chars); `_ZN11__cxxabiv1` covers the C++ ABI runtime (RTTI/exception
 # internals another shared library using polymorphism can just as easily
 # leak).
-_STDLIB_MANGLED_PREFIXES = ("_ZSt", "_ZNSt", "_ZN9__gnu_cxx", "_ZN11__cxxabiv1")
+#
+# The `K` forms matter as much as the plain ones: Itanium mangles a CONST
+# member function as `_ZNK<name>`, not `_ZN<name>`, so `std::_Hashtable<...
+# >::find(...) const` arrives as `_ZNKSt10_Hashtable...` and slips past a
+# `_ZNSt` check entirely. That is not hypothetical - it is how
+# `std::_Hashtable<int, std::pair<int const, int>, ...>::find(int const&)
+# const` came to be reported as newly-exported project surface on libac4.so
+# (2026-08-31). `_ZTV`/`_ZTI`/`_ZTS` are the vtable, typeinfo and
+# typeinfo-name of a std:: type, which are emitted into whichever library
+# instantiates the type and shift for exactly the same reasons; they carry
+# the `St`/`N9__gnu_cxx` substitution one or two characters further in, so
+# they need their own entries rather than a longer prefix on the existing
+# ones. tools/ci/abi-suppressions.ini encodes the same set for abidiff -
+# keep the two in step.
+_STDLIB_MANGLED_PREFIXES = (
+    "_ZSt", "_ZNSt", "_ZNKSt",
+    "_ZN9__gnu_cxx", "_ZNK9__gnu_cxx",
+    "_ZN11__cxxabiv1", "_ZNK11__cxxabiv1",
+    "_ZTVSt", "_ZTISt", "_ZTSSt",
+    "_ZTVNSt", "_ZTINSt", "_ZTSNSt",
+    "_ZTVN9__gnu_cxx", "_ZTIN9__gnu_cxx", "_ZTSN9__gnu_cxx",
+    "_ZTVN11__cxxabiv1", "_ZTIN11__cxxabiv1", "_ZTSN11__cxxabiv1",
+)
 
 
 def exported_symbols(library: Path) -> list[str]:
