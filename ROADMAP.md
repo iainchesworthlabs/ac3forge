@@ -574,7 +574,7 @@ machine-readable output and a single failure exit code. Users arrive with contai
   it says to render the object-based (or combined) audio to a real loudspeaker configuration
   first and meter *that* through Annexes 1/3, and to report which configuration and rendering
   algorithm did the rendering, since two reasonable choices can legitimately disagree by several
-  LU (its own worked example, Table 6). *Done: `qc ... objects=<layout>` (`51`/`71`/`512`/`514`/
+  LU (its own worked example, Table 6). *Done: `qc ... objects=<layout>` (`71`/`512`/`514`/
   `714`) re-renders a dynamic-object-only programme's objects by their own OAMD position onto the
   named layout, via a new `ac3::spatial::pan_direction`/`direction_of`/`position_direction` (the
   height-aware two-ring azimuth/elevation panner `ac3::plan`'s own layout-to-layout channel

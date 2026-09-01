@@ -141,7 +141,7 @@ qc options (qc; any order, after the positional arguments):
                     dependent substream's height/wide/rear channels
                     included (BS.1770-5 Annex 3's extended algorithm)
   objects=<layout>  re-render dynamic objects by their own OAMD position
-                    onto <layout> (51|71|512|514|714) and meter that too
+                    onto <layout> (71|512|514|714) and meter that too
                     (BS.1770-5 Annex 4); dynamic-object-only programmes
                     only
 ```
@@ -862,7 +862,7 @@ qc options (qc; any order, after the positional arguments):
                     dependent substream's height/wide/rear channels
                     included (BS.1770-5 Annex 3's extended algorithm)
   objects=<layout>  re-render dynamic objects by their own OAMD position
-                    onto <layout> (51|71|512|514|714) and meter that too
+                    onto <layout> (71|512|514|714) and meter that too
                     (BS.1770-5 Annex 4); dynamic-object-only programmes
                     only
 ```

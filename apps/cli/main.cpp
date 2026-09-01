@@ -348,7 +348,7 @@ constexpr std::array<Command, 41> kCommands{{
      [](const Args& x) { return run_loudness(x.str(1)); }},
     {"qc", 2,
      "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [preset=<name>|all] [layout=bed|rendered] "
-     "[objects=<51|71|512|514|714>]",
+     "[objects=<71|512|514|714>]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
      "preset gate, optional BS.1770-5 Annex 4 object re-render",
      topic::kQc | topic::kProgramme,
