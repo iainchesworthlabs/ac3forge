@@ -33,14 +33,14 @@
 # alone. No `depends_on arch:` line any more for exactly that reason - the
 # same .dmg installs on both architectures.
 cask "ac3gui" do
-  version "0.9.0-beta.1"
+  version "0.10.0-beta.1"
   # Pinned from v0.9.0-beta.1's actual release asset (GitHub's own reported
   # digest for ac3forge-0.9.0-Darwin.dmg - the same CPACK_PACKAGE_CHECKSUM
   # SHA512 cmake/Packaging.cmake also computes and publishes alongside it,
   # just a different digest algorithm; Homebrew Casks pin sha256). If
   # `brew install` reports a mismatch, trust brew's reported hash over this
   # one and update it here.
-  sha256 "fa79d65a560d2c662698a73e0bb88f09bf91970cabfc937c406f783482f3a596"
+  sha256 "50c7ce9aa0b22c0a4473f4b6156d46d1fea3c94090f5515b83df7f17a463b3db"
 
   # CPack's dmg filename carries only MAJOR.MINOR.PATCH
   # (cmake/Packaging.cmake's CPACK_PACKAGE_FILE_NAME), dropping any

@@ -15,3 +15,6 @@ sources:
   "0.9.0-beta.1":
     url: "https://github.com/iainchesworthlabs/ac3forge/archive/refs/tags/v0.9.0-beta.1.tar.gz"
     sha256: "1f8269ea4ede4aee8f6e869f2cbeb47720c3e09c031529d9a8eada580b874439"
+  "0.10.0-beta.1":
+    url: "https://github.com/iainchesworthlabs/ac3forge/archive/refs/tags/v0.10.0-beta.1.tar.gz"
+    sha256: "e9a54c509f8af73d51d75ca465816d8579e3e33715fe2c02f19873a2f08f5cf5"

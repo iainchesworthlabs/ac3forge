@@ -17,12 +17,12 @@
 class Ac3forge < Formula
   desc "Clean-room AC-3/E-AC-3 encoder, decoder and Atmos object-layer CLI"
   homepage "https://github.com/iainchesworthlabs/ac3forge"
-  url "https://github.com/iainchesworthlabs/ac3forge/archive/refs/tags/v0.9.0-beta.1.tar.gz"
+  url "https://github.com/iainchesworthlabs/ac3forge/archive/refs/tags/v0.10.0-beta.1.tar.gz"
   # Computed directly (sha256sum) from the same release tarball the vcpkg
   # port's portfile.cmake pins by SHA512 - see that file's comment. If
   # `brew install` reports a mismatch, trust brew's reported hash over this
   # one and update it here.
-  sha256 "1f8269ea4ede4aee8f6e869f2cbeb47720c3e09c031529d9a8eada580b874439"
+  sha256 "e9a54c509f8af73d51d75ca465816d8579e3e33715fe2c02f19873a2f08f5cf5"
   license "GPL-3.0-or-later"
   head "https://github.com/iainchesworthlabs/ac3forge.git", branch: "main"
 
