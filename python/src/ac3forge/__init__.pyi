@@ -5,16 +5,84 @@ from typing import overload
 import numpy as np
 import numpy.typing as npt
 
+__all__ = [
+    "BLOCKS_PER_FRAME",
+    "MAX_AC3_CHANNELS",
+    "SAMPLES_PER_FRAME",
+    "TRANSFORM_DELAY_SAMPLES",
+    "Ac3DecodeError",
+    "Ac3EncodeError",
+    "Ac3Error",
+    "Ac3ScanError",
+    "AccessUnitTiming",
+    "Acmod",
+    "AtmosConfig",
+    "AtmosEncoder",
+    "CentreMixLevel",
+    "DecodeError",
+    "DecodedAccessUnit",
+    "DecodedFrame",
+    "DecodedProgram",
+    "DecodedSubstream",
+    "DecoderConfig",
+    "DynamicObject",
+    "Eac3Decoder",
+    "EncoderConfig",
+    "FrameDecoder",
+    "FrameEncoder",
+    "FrameError",
+    "FrameHeader",
+    "HeavyConfig",
+    "LatencyBudget",
+    "ObjectPlacement",
+    "Position",
+    "Profile",
+    "ProfileId",
+    "Program",
+    "SampleRate",
+    "ScanError",
+    "ScannedProgramme",
+    "ScannedStream",
+    "StreamKind",
+    "StreamType",
+    "SubstreamService",
+    "SurroundMixLevel",
+    "__version__",
+    "access_unit_at_sample",
+    "access_unit_at_seconds",
+    "access_unit_timing",
+    "build_codec_config_box",
+    "containers",
+    "describe",
+    "eac3",
+    "fullbw_channel_count",
+    "meta",
+    "profile_for",
+    "profile_name",
+    "read_frame_header",
+    "sample_rate_hz",
+    "scan",
+    "signing",
+    "split_access_units",
+    "split_frames",
+    "stream_bsid",
+    "stream_duration_samples",
+    "stream_duration_seconds",
+    "uniform_access_unit_samples",
+    "verify",
+]
+
 SAMPLES_PER_FRAME: int
 BLOCKS_PER_FRAME: int
 MAX_AC3_CHANNELS: int
+TRANSFORM_DELAY_SAMPLES: int
 __version__: str
 
-FloatArray = npt.NDArray[np.float32]
+_FloatArray = npt.NDArray[np.float32]
 # Every encode_frame/encode_access_unit `channels`/`objects` parameter (roadmap AP6): either a
 # single 2-D (n_channels, n_samples) array, or a sequence of 1-D per-channel arrays - both
 # zero-copy when already contiguous float32 (see python-api.md's "Zero-copy numpy" section).
-ChannelsIn = FloatArray | Sequence[FloatArray]
+_ChannelsIn = _FloatArray | Sequence[_FloatArray]
 
 class Ac3Error(RuntimeError): ...
 
@@ -123,43 +191,74 @@ def access_unit_at_seconds(stream: ScannedStream, seconds: float) -> int | None:
 def uniform_access_unit_samples(stream: ScannedStream) -> int | None: ...
 
 class SubstreamService:
-    present: bool
-    bsmod: int
-    bsmod_present: bool
-    acmod: Acmod
-    lfe: bool
-    mix_metadata: bool
+    @property
+    def present(self) -> bool: ...
+    @property
+    def bsmod(self) -> int: ...
+    @property
+    def bsmod_present(self) -> bool: ...
+    @property
+    def acmod(self) -> Acmod: ...
+    @property
+    def lfe(self) -> bool: ...
+    @property
+    def mix_metadata(self) -> bool: ...
 
 class FrameHeader:
-    kind: StreamKind
-    bytes: int
-    bsid: int
-    bsmod: int
-    bsmod_present: bool
-    dsurmod: int
-    sample_rate: SampleRate
-    acmod: Acmod
-    lfe: bool
-    dialnorm: int
-    compr: int | None
-    dialnorm2: int | None
-    compr2: int | None
-    strmtyp: StreamType
-    substreamid: int
-    numblkscod: int
-    reduced_rate: bool
-    chanmap: int | None
-    oba_complexity_index: int | None
-    mix_metadata: bool
-    bit_rate_code: int
-    bitrate_kbps: int
+    @property
+    def kind(self) -> StreamKind: ...
+    @property
+    def bytes(self) -> int: ...
+    @property
+    def bsid(self) -> int: ...
+    @property
+    def bsmod(self) -> int: ...
+    @property
+    def bsmod_present(self) -> bool: ...
+    @property
+    def dsurmod(self) -> int: ...
+    @property
+    def sample_rate(self) -> SampleRate: ...
+    @property
+    def acmod(self) -> Acmod: ...
+    @property
+    def lfe(self) -> bool: ...
+    @property
+    def dialnorm(self) -> int: ...
+    @property
+    def compr(self) -> int | None: ...
+    @property
+    def dialnorm2(self) -> int | None: ...
+    @property
+    def compr2(self) -> int | None: ...
+    @property
+    def strmtyp(self) -> StreamType: ...
+    @property
+    def substreamid(self) -> int: ...
+    @property
+    def numblkscod(self) -> int: ...
+    @property
+    def reduced_rate(self) -> bool: ...
+    @property
+    def chanmap(self) -> int | None: ...
+    @property
+    def oba_complexity_index(self) -> int | None: ...
+    @property
+    def mix_metadata(self) -> bool: ...
+    @property
+    def bit_rate_code(self) -> int: ...
+    @property
+    def bitrate_kbps(self) -> int: ...
     @property
     def coded_channels(self) -> int: ...
 
 class AccessUnitTiming:
-    start_sample: int
-    duration_samples: int
-    sample_rate: int
+    @property
+    def start_sample(self) -> int: ...
+    @property
+    def duration_samples(self) -> int: ...
+    @property
+    def sample_rate(self) -> int: ...
     @property
     def start_seconds(self) -> float: ...
     @property
@@ -168,42 +267,74 @@ class AccessUnitTiming:
     def duration_in_timescale(self, timescale: int) -> int: ...
 
 class ScannedProgramme:
-    substreamid: int
-    acmod: Acmod
-    lfe: bool
-    channels: int
-    bsid: int
-    bsmod: int
-    substreams_per_unit: int
-    oba_complexity_index: int | None
-    access_units: list[bytes]
+    @property
+    def substreamid(self) -> int: ...
+    @property
+    def acmod(self) -> Acmod: ...
+    @property
+    def lfe(self) -> bool: ...
+    @property
+    def channels(self) -> int: ...
+    @property
+    def bsid(self) -> int: ...
+    @property
+    def bsmod(self) -> int: ...
+    @property
+    def substreams_per_unit(self) -> int: ...
+    @property
+    def oba_complexity_index(self) -> int | None: ...
+    @property
+    def access_units(self) -> list[bytes]: ...
 
 class ScannedStream:
-    kind: StreamKind
-    sample_rate: SampleRate
-    acmod: Acmod
-    lfe: bool
-    channels: int
-    access_units: list[bytes]
-    access_unit_samples: list[int]
-    substreams_per_unit: int
-    programmes: list[ScannedProgramme]
-    bsid: int
-    bsmod: int
-    bit_rate_code: int
-    oba_complexity_index: int | None
-    bsmod_present: bool
-    dsurmod: int
-    mix_metadata: bool
-    independent_substreams: int
-    associated_substreams: list[SubstreamService]
-    channel_map: int
+    @property
+    def kind(self) -> StreamKind: ...
+    @property
+    def sample_rate(self) -> SampleRate: ...
+    @property
+    def acmod(self) -> Acmod: ...
+    @property
+    def lfe(self) -> bool: ...
+    @property
+    def channels(self) -> int: ...
+    @property
+    def access_units(self) -> list[bytes]: ...
+    @property
+    def access_unit_samples(self) -> list[int]: ...
+    @property
+    def substreams_per_unit(self) -> int: ...
+    @property
+    def programmes(self) -> list[ScannedProgramme]: ...
+    @property
+    def bsid(self) -> int: ...
+    @property
+    def bsmod(self) -> int: ...
+    @property
+    def bit_rate_code(self) -> int: ...
+    @property
+    def oba_complexity_index(self) -> int | None: ...
+    @property
+    def bsmod_present(self) -> bool: ...
+    @property
+    def dsurmod(self) -> int: ...
+    @property
+    def mix_metadata(self) -> bool: ...
+    @property
+    def independent_substreams(self) -> int: ...
+    @property
+    def associated_substreams(self) -> list[SubstreamService]: ...
+    @property
+    def channel_map(self) -> int: ...
 
 class LatencyBudget:
-    frame_samples: int
-    transform_samples: int
-    lookahead_samples: int
-    holdback_samples: int
+    @property
+    def frame_samples(self) -> int: ...
+    @property
+    def transform_samples(self) -> int: ...
+    @property
+    def lookahead_samples(self) -> int: ...
+    @property
+    def holdback_samples(self) -> int: ...
     @property
     def total_samples(self) -> int: ...
     def milliseconds(self, sample_rate: SampleRate) -> float: ...
@@ -239,18 +370,26 @@ class ObjectPlacement:
     def __init__(self, **kwargs: object) -> None: ...
 
 class DynamicObject:
-    position: Position
-    gain_db: float
+    @property
+    def position(self) -> Position: ...
+    @property
+    def gain_db(self) -> float: ...
 
 class Program:
-    dynamic_only: bool
-    lfe: bool
-    bed: int
-    dynamic_objects: int
+    @property
+    def dynamic_only(self) -> bool: ...
+    @property
+    def lfe(self) -> bool: ...
+    @property
+    def bed(self) -> int: ...
+    @property
+    def dynamic_objects(self) -> int: ...
 
 class DecodedProgram:
-    program: Program
-    objects: list[DynamicObject]
+    @property
+    def program(self) -> Program: ...
+    @property
+    def objects(self) -> list[DynamicObject]: ...
 
 class EncoderConfig:
     sample_rate: SampleRate
@@ -274,7 +413,7 @@ class EncoderConfig:
 
 class FrameEncoder:
     def __init__(self, config: EncoderConfig) -> None: ...
-    def encode_frame(self, channels: ChannelsIn) -> bytes: ...
+    def encode_frame(self, channels: _ChannelsIn) -> bytes: ...
     @property
     def config(self) -> EncoderConfig: ...
     @property
@@ -290,58 +429,101 @@ class DecoderConfig:
     def __init__(self, **kwargs: object) -> None: ...
 
 class DecodedFrame:
-    sample_rate: SampleRate
-    bitrate_kbps: int
-    acmod: Acmod
-    lfe: bool
-    dialnorm: int
-    compr: int | None
-    dialnorm2: int | None
-    compr2: int | None
-    dynrng: list[int]
-    dynrng2: list[int]
-    blksw: list[list[bool]]
-    channels: list[FloatArray]
-    channel_labels: list[str]
+    @property
+    def sample_rate(self) -> SampleRate: ...
+    @property
+    def bitrate_kbps(self) -> int: ...
+    @property
+    def acmod(self) -> Acmod: ...
+    @property
+    def lfe(self) -> bool: ...
+    @property
+    def dialnorm(self) -> int: ...
+    @property
+    def compr(self) -> int | None: ...
+    @property
+    def dialnorm2(self) -> int | None: ...
+    @property
+    def compr2(self) -> int | None: ...
+    @property
+    def dynrng(self) -> list[int]: ...
+    @property
+    def dynrng2(self) -> list[int]: ...
+    @property
+    def blksw(self) -> list[list[bool]]: ...
+    @property
+    def channels(self) -> list[_FloatArray]: ...
+    @property
+    def channel_labels(self) -> list[str]: ...
 
 class DecodedSubstream:
-    strmtyp: StreamType
-    substreamid: int
-    sample_rate: SampleRate
-    acmod: Acmod
-    lfe: bool
-    dialnorm: int
-    compr: int | None
-    dialnorm2: int | None
-    compr2: int | None
-    dynrng: list[int]
-    dynrng2: list[int]
-    numblkscod: int
-    chanmap: int | None
-    last_dependent: bool
-    blksw: list[list[bool]]
-    channels: list[FloatArray]
-    object_metadata: DecodedProgram | None
-    object_audio: list[FloatArray]
-    channel_labels: list[str]
+    @property
+    def strmtyp(self) -> StreamType: ...
+    @property
+    def substreamid(self) -> int: ...
+    @property
+    def sample_rate(self) -> SampleRate: ...
+    @property
+    def acmod(self) -> Acmod: ...
+    @property
+    def lfe(self) -> bool: ...
+    @property
+    def dialnorm(self) -> int: ...
+    @property
+    def compr(self) -> int | None: ...
+    @property
+    def dialnorm2(self) -> int | None: ...
+    @property
+    def compr2(self) -> int | None: ...
+    @property
+    def dynrng(self) -> list[int]: ...
+    @property
+    def dynrng2(self) -> list[int]: ...
+    @property
+    def numblkscod(self) -> int: ...
+    @property
+    def chanmap(self) -> int | None: ...
+    @property
+    def last_dependent(self) -> bool: ...
+    @property
+    def blksw(self) -> list[list[bool]]: ...
+    @property
+    def channels(self) -> list[_FloatArray]: ...
+    @property
+    def object_metadata(self) -> DecodedProgram | None: ...
+    @property
+    def object_audio(self) -> list[_FloatArray]: ...
+    @property
+    def channel_labels(self) -> list[str]: ...
 
 class DecodedAccessUnit:
-    sample_rate: SampleRate
-    acmod: Acmod
-    dialnorm: int
-    compr: int | None
-    dynrng: list[int]
-    numblkscod: int
-    object_metadata: DecodedProgram | None
-    object_audio: list[FloatArray]
-    substream_count: int
-    channels: list[FloatArray]
-    channel_labels: list[str]
+    @property
+    def sample_rate(self) -> SampleRate: ...
+    @property
+    def acmod(self) -> Acmod: ...
+    @property
+    def dialnorm(self) -> int: ...
+    @property
+    def compr(self) -> int | None: ...
+    @property
+    def dynrng(self) -> list[int]: ...
+    @property
+    def numblkscod(self) -> int: ...
+    @property
+    def object_metadata(self) -> DecodedProgram | None: ...
+    @property
+    def object_audio(self) -> list[_FloatArray]: ...
+    @property
+    def substream_count(self) -> int: ...
+    @property
+    def channels(self) -> list[_FloatArray]: ...
+    @property
+    def channel_labels(self) -> list[str]: ...
 
 class FrameDecoder:
     def __init__(self, config: DecoderConfig = ...) -> None: ...
     def decode_frame(self, frame: bytes) -> DecodedFrame: ...
-    def decode_frame_into(self, frame: bytes, out: ChannelsIn) -> DecodedFrame: ...
+    def decode_frame_into(self, frame: bytes, out: _ChannelsIn) -> DecodedFrame: ...
     @property
     def latency_samples(self) -> int: ...
 
@@ -349,7 +531,9 @@ class Eac3Decoder:
     def __init__(self, config: DecoderConfig = ...) -> None: ...
     def decode_substream(self, frame: bytes) -> DecodedSubstream | None: ...
     def decode_access_unit(self, unit: bytes) -> DecodedAccessUnit | None: ...
-    def decode_access_unit_into(self, unit: bytes, out: ChannelsIn) -> DecodedAccessUnit | None: ...
+    def decode_access_unit_into(
+        self, unit: bytes, out: _ChannelsIn
+    ) -> DecodedAccessUnit | None: ...
     def flush(self) -> list[DecodedSubstream]: ...
     def __enter__(self) -> Eac3Decoder: ...
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> bool: ...
@@ -390,7 +574,7 @@ class AtmosConfig:
 
 class AtmosEncoder:
     def __init__(self, config: AtmosConfig, objects: int) -> None: ...
-    def encode_frame(self, objects: ChannelsIn, placement: Sequence[ObjectPlacement]) -> bytes: ...
+    def encode_frame(self, objects: _ChannelsIn, placement: Sequence[ObjectPlacement]) -> bytes: ...
     @property
     def dynamic_object_count(self) -> int: ...
     @property
@@ -474,7 +658,7 @@ class eac3:
         def __init__(self, config: eac3.FrameConfig) -> None: ...
         def encode_frame(
             self,
-            channels: ChannelsIn,
+            channels: _ChannelsIn,
             metadata: eac3.FrameMetadata | None = ...,
             aux: bytes = ...,
         ) -> bytes: ...
@@ -491,7 +675,9 @@ class eac3:
 
     class AccessUnitEncoder:
         def __init__(self, config: eac3.AccessUnitConfig) -> None: ...
-        def encode_access_unit(self, channels: ChannelsIn, aux: bytes = ...) -> eac3.AccessUnit: ...
+        def encode_access_unit(
+            self, channels: _ChannelsIn, aux: bytes = ...
+        ) -> eac3.AccessUnit: ...
         @property
         def config(self) -> eac3.AccessUnitConfig: ...
         @property
@@ -517,7 +703,7 @@ def build_codec_config_box(stream: bytes) -> bytes: ...
 class meta:
     class LoudnessMeter:
         def __init__(self, sample_rate: SampleRate, acmod: Acmod, lfe: bool) -> None: ...
-        def push(self, channels: ChannelsIn) -> None: ...
+        def push(self, channels: _ChannelsIn) -> None: ...
         @property
         def integrated_lkfs(self) -> float | None: ...
         @property
