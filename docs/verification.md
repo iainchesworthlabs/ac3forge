@@ -174,10 +174,18 @@ two decodes compared — the measured agreement is:
 |---|---|---|---|---|---|
 | 57.5 dB | 63.8 dB | 58.1 dB | 82.2 dB | 22.8 dB | 22.7 dB |
 
-The surrounds are 35 dB below the front channels, and legitimately so: they carry
-the fewest bits, so they hold the most bap-0 bins, and §7.3.4 leaves the *values* a
-decoder substitutes there unspecified — "any reasonably random sequence". Two
-spec-correct decoders are required to disagree in exactly those bins.
+The surrounds are 35 dB below the front channels, and legitimately so — though the
+mechanism is not the obvious one. §7.3.4 leaves the *values* a decoder substitutes for
+zero-bit bins unspecified ("any reasonably random sequence"), so two spec-correct
+decoders are required to disagree in those bins; the question is where they fall.
+Measured with `ac3cli decode … bap-census=`, the surrounds' own basebands are almost
+fully coded on this fixture — **1.8–2.2%** zero-bit bins, against **80–90%** for the
+front channels. What is heavily zero-bit is the **coupling channel**, at **59.7%**, and
+§7.3.4 dither for coupled bins is applied per *receiving* channel after decoupling. So
+the same absolute dither lands in every coupled channel, and it dominates whichever ones
+are quietest: Ls and Rs sit at −33 and −29 dBFS where L and R sit at −13. The low
+surround agreement here is a signal-level effect on a shared error, not a sparser
+allocation — the reading this page carried before the census existed to check it.
 
 A single floor for this fixture therefore had to clear 22.7 dB, and it was set at 22.
 Which meant the centre channel was gated at 22 dB while measuring 58.1 — it could have

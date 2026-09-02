@@ -16,9 +16,8 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 - **The gold-reference quality gate now has one SNR floor per channel, not one per fixture.**
   A 5.1 fixture's surround channels sit 35 dB below its front channels for a legitimate
-  reason — they carry the fewest bits, so they hold the most zero-bit bins, and A/52 §7.3.4
-  leaves the values a decoder substitutes there unspecified, so two spec-correct decoders are
-  *required* to differ. A single floor had to clear the surrounds, which on
+  reason — A/52 §7.3.4 leaves the values a decoder substitutes for zero-bit bins unspecified,
+  so two spec-correct decoders are *required* to differ wherever those bins fall. A single floor had to clear the surrounds, which on
   `ac3-51-448/dee.ac3` meant gating the centre channel at 22 dB while it measured 58.1: it
   could have lost 36 dB, and the LFE 60 dB, without failing anything. Each channel now carries
   its own floor, derived as `floor(min_observed − 1.0)` from that channel's lowest value

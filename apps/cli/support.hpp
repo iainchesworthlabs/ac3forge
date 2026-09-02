@@ -107,6 +107,13 @@ struct PositionSourceSpec {
 struct Options {
     // Decoder side, for 'decode'.
     double drc_scale = 0.0;
+    // 'decode' only: when non-empty, write a bap census (ac3/verify/
+    // bap_census.hpp) to this path - how many bins each coded stream was given
+    // zero bits for, over the whole decode. Empty by default, and the trace
+    // that feeds it is only attached when it is set, so an ordinary decode
+    // pays one null pointer and no per-block work. See the header for why this
+    // has to exist before any masked comparison does.
+    std::string bap_census_path;
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
     // Every field defaults off, so a plain invocation still writes the coded
     // channels untouched - see channels=/downmix=/drcmode= in
