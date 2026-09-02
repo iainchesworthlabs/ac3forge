@@ -47,6 +47,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `AtmosBedEncoder`. All of it is Playwright-tested (`encode.spec.js`, `atmos.spec.js`),
   including the microphone path via Chromium's fake media device.
 
+- The Rust bindings now cover the whole codec surface (roadmap AP9's completeness pass): the
+  wide-layout access-unit encoder and rendered-programme decoder, the Atmos/JOC object encoder
+  with the OAMD/JOC decode accessors, the stream framing/scan helpers (whose spans come back as
+  borrow-checked slices into the caller's buffer), and the BS.1770 loudness meter — each with
+  real-signal round-trip tests. `build-rust` runs on all three desktop OSes now; the first
+  Windows build found and fixed a real portability bug (bindgen types C enums `i32` on MSVC,
+  `u32` elsewhere — `Error::Other` had baked the Linux answer in).
 ### Fixed
 
 - Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte budget, so a

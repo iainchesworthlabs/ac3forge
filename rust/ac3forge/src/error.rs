@@ -84,7 +84,11 @@ impl Error {
             s if s == ac3forge_status_AC3FORGE_ERROR_DECODE_INVALID_STREAM => {
                 Error::DecodeInvalidStream
             }
-            other => Error::Other(other),
+            // `as u32`, not a plain move: bindgen types C enums i32 on MSVC and u32 on the
+            // Unix targets, so the raw discriminant's own type is platform-dependent - found
+            // by this crate's first Windows build. The stored value is the same bit pattern
+            // either way.
+            other => Error::Other(other as u32),
         })
     }
 
@@ -122,7 +126,7 @@ impl Error {
             Error::DecodeReservedValue => ac3forge_status_AC3FORGE_ERROR_DECODE_RESERVED_VALUE,
             Error::DecodeUnsupported => ac3forge_status_AC3FORGE_ERROR_DECODE_UNSUPPORTED,
             Error::DecodeInvalidStream => ac3forge_status_AC3FORGE_ERROR_DECODE_INVALID_STREAM,
-            Error::Other(raw) => raw,
+            Error::Other(raw) => raw as _, // the platform's own enum repr - see from_status
         }
     }
 }

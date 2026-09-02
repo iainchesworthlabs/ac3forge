@@ -1,10 +1,7 @@
-//! E-AC-3 encode and decode (single substream) — `ac3::eac3::FrameEncoder`/`ac3::Eac3Decoder`
-//! via `ac3forge_eac3_encoder_t`/`ac3forge_eac3_decoder_t`.
-//!
-//! Deliberately not covered here (see `rust/README.md`'s "explicitly out of scope" section):
-//! `ac3forge_eac3_access_unit_encoder_t` (wide layouts built from several substreams),
-//! `ac3forge_atmos_encoder_t` (Atmos/JOC object encode) and the OAMD/JOC object-audio decode
-//! accessors on [`DecodedSubstream`].
+//! E-AC-3 encode and decode — `ac3::eac3::FrameEncoder`/`AccessUnitEncoder`/`ac3::Eac3Decoder`
+//! via their C mirrors: the single-substream pair, the wide-layout access-unit pair
+//! ([`AccessUnitEncoder`]/[`DecodedAccessUnit`]), and the OAMD/JOC object-audio accessors on
+//! both decoded types. The object ENCODER lives in [`crate::atmos`].
 
 use ac3forge_sys as sys;
 use std::ptr;
@@ -358,9 +355,6 @@ impl Drop for Eac3Decoder {
 }
 
 /// One decoded E-AC-3 substream — `ac3::DecodedSubstream` via `ac3forge_decoded_substream_t`.
-///
-/// OAMD/JOC object-audio accessors are not wrapped here yet — see this module's own header
-/// comment.
 pub struct DecodedSubstream {
     raw: ptr::NonNull<sys::ac3forge_decoded_substream_t>,
 }
@@ -437,5 +431,332 @@ impl DecodedSubstream {
 impl Drop for DecodedSubstream {
     fn drop(&mut self) {
         unsafe { sys::ac3forge_decoded_substream_destroy(self.raw.as_ptr()) };
+    }
+}
+
+/// One dynamic object's decoded OAMD state — position (§4.2.1's room-anchored, left-handed,
+/// normalized-to-the-room-cuboid system: `x`/`y` in `[0, 1]`, `z` in `[-1, 1]`) and §5.6.1.4's
+/// object gain.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct DynamicObject {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub gain_db: f64,
+}
+
+impl DecodedSubstream {
+    /// Whether an OAMD object-metadata payload rode alongside this substream's audio.
+    pub fn has_object_metadata(&self) -> bool {
+        unsafe { sys::ac3forge_decoded_substream_has_object_metadata(self.raw.as_ptr()) != 0 }
+    }
+
+    /// Table 12's bed-instance channel-assignment bits (`AC3FORGE_BED_*`), 0 for a
+    /// dynamic-object-only program.
+    pub fn program_bed(&self) -> u16 {
+        unsafe { sys::ac3forge_decoded_substream_program_bed(self.raw.as_ptr()) }
+    }
+
+    pub fn dynamic_object_count(&self) -> usize {
+        let count = unsafe {
+            sys::ac3forge_decoded_substream_program_dynamic_object_count(self.raw.as_ptr())
+        };
+        usize::try_from(count).unwrap_or(0)
+    }
+
+    /// `object_index` in `[0, dynamic_object_count())`. Panics if out of range — the C call's
+    /// own precondition, promoted to a check the same way `channel_samples` does it.
+    pub fn dynamic_object(&self, object_index: usize) -> DynamicObject {
+        assert!(
+            object_index < self.dynamic_object_count(),
+            "object index out of range"
+        );
+        let mut object = DynamicObject::default();
+        unsafe {
+            sys::ac3forge_decoded_substream_dynamic_object(
+                self.raw.as_ptr(),
+                object_index as i32,
+                &mut object.x,
+                &mut object.y,
+                &mut object.z,
+                &mut object.gain_db,
+            );
+        }
+        object
+    }
+
+    /// How many objects JOC reconstructed audio for — 0 when no JOC payload rode alongside the
+    /// OAMD one, and parallel to [`DecodedSubstream::dynamic_object`] otherwise (same index,
+    /// same object).
+    pub fn object_audio_count(&self) -> usize {
+        unsafe { sys::ac3forge_decoded_substream_object_audio_count(self.raw.as_ptr()) }
+    }
+
+    /// Object `object_index`'s reconstructed waveform, [`DecodedSubstream::samples_per_channel`]
+    /// samples. Panics if out of range. Lifetime-tied to `&self` exactly as `channel_samples`.
+    pub fn object_audio(&self, object_index: usize) -> &[f32] {
+        assert!(
+            object_index < self.object_audio_count(),
+            "object index out of range"
+        );
+        unsafe {
+            let ptr = sys::ac3forge_decoded_substream_object_audio(self.raw.as_ptr(), object_index);
+            std::slice::from_raw_parts(ptr, self.samples_per_channel())
+        }
+    }
+}
+
+/// One encoded access unit — `ac3::eac3::AccessUnit` via `ac3forge_eac3_access_unit_t`: the
+/// bytes plus per-substream boundaries, which a caller demuxing substreams individually (or
+/// re-deriving crc2) needs and a plain byte buffer cannot carry.
+pub struct AccessUnit {
+    raw: ptr::NonNull<sys::ac3forge_eac3_access_unit_t>,
+}
+
+unsafe impl Send for AccessUnit {}
+
+impl AccessUnit {
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe {
+            let data = sys::ac3forge_eac3_access_unit_data(self.raw.as_ptr());
+            let size = sys::ac3forge_eac3_access_unit_size(self.raw.as_ptr());
+            std::slice::from_raw_parts(data, size)
+        }
+    }
+
+    pub fn substream_count(&self) -> usize {
+        unsafe { sys::ac3forge_eac3_access_unit_substream_count(self.raw.as_ptr()) }
+    }
+
+    /// Byte length of substream `index` (independent first). The lengths sum to
+    /// `as_slice().len()`.
+    pub fn substream_bytes(&self, index: usize) -> u32 {
+        assert!(
+            index < self.substream_count(),
+            "substream index out of range"
+        );
+        unsafe { sys::ac3forge_eac3_access_unit_substream_bytes(self.raw.as_ptr(), index) }
+    }
+}
+
+impl std::ops::Deref for AccessUnit {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        self.as_slice()
+    }
+}
+
+impl Drop for AccessUnit {
+    fn drop(&mut self) {
+        unsafe { sys::ac3forge_eac3_access_unit_destroy(self.raw.as_ptr()) };
+    }
+}
+
+/// Wide layouts — `ac3::eac3::AccessUnitEncoder` via `ac3forge_eac3_access_unit_encoder_t`: one
+/// independent substream (the bed) plus up to eight dependents that widen it (7.1, 5.1.2,
+/// 5.1.4, 7.1.4...), encoded together into one access unit per frame.
+///
+/// `strmtyp`/`substreamid` on the configs are assigned by the constructor the way the C++ class
+/// does — whatever the caller set there is not read; only a dependent's `chanmap` matters
+/// (Table E2.5).
+pub struct AccessUnitEncoder {
+    raw: ptr::NonNull<sys::ac3forge_eac3_access_unit_encoder_t>,
+    channel_count: usize,
+}
+
+unsafe impl Send for AccessUnitEncoder {}
+
+impl AccessUnitEncoder {
+    pub fn new(
+        independent: &Eac3FrameConfig,
+        dependents: &[Eac3FrameConfig],
+    ) -> Result<Self, Error> {
+        let raw_independent = independent.to_raw();
+        let raw_dependents: Vec<sys::ac3forge_eac3_frame_config_t> =
+            dependents.iter().map(|d| d.to_raw()).collect();
+        let mut out: *mut sys::ac3forge_eac3_access_unit_encoder_t = ptr::null_mut();
+        let status = unsafe {
+            sys::ac3forge_eac3_access_unit_encoder_create(
+                &raw_independent,
+                if raw_dependents.is_empty() {
+                    ptr::null()
+                } else {
+                    raw_dependents.as_ptr()
+                },
+                raw_dependents.len(),
+                &mut out,
+            )
+        };
+        Error::check(status)?;
+        let raw = ptr::NonNull::new(out)
+            .expect("ac3forge_eac3_access_unit_encoder_create returned OK with a null encoder");
+        let channel_count =
+            unsafe { sys::ac3forge_eac3_access_unit_encoder_channel_count(raw.as_ptr()) };
+        Ok(AccessUnitEncoder { raw, channel_count })
+    }
+
+    /// Summed across every substream — the span count [`AccessUnitEncoder::encode`] expects.
+    /// 0 means the configs described something the constructor could not build substreams from;
+    /// `encode` then reports the real reason as an error.
+    pub fn channel_count(&self) -> usize {
+        self.channel_count
+    }
+
+    pub fn latency(&self) -> Latency {
+        // SAFETY: zero is a valid ac3forge_latency_t and the C call overwrites it.
+        let mut raw: sys::ac3forge_latency_t = unsafe { std::mem::zeroed() };
+        unsafe { sys::ac3forge_eac3_access_unit_encoder_latency(self.raw.as_ptr(), &mut raw) };
+        Latency::from_raw(raw)
+    }
+
+    pub fn latency_samples(&self) -> i32 {
+        unsafe { sys::ac3forge_eac3_access_unit_encoder_latency_samples(self.raw.as_ptr()) }
+    }
+
+    /// `channels`: every channel of the access unit grouped by substream in transmission order —
+    /// the independent's first (AC-3 order, LFE last), then each dependent's in its chanmap's
+    /// own order — [`AccessUnitEncoder::channel_count`] spans of
+    /// [`crate::SAMPLES_PER_FRAME`] samples each. `aux` rides the independent substream's aux
+    /// data, same as [`Eac3Encoder::encode_frame`].
+    pub fn encode(&mut self, channels: &[&[f32]], aux: Option<&[u8]>) -> Result<AccessUnit, Error> {
+        if channels.len() != self.channel_count
+            || channels.iter().any(|c| c.len() != crate::SAMPLES_PER_FRAME)
+        {
+            return Err(Error::InvalidArgument);
+        }
+        let pointers: Vec<*const f32> = channels.iter().map(|c| c.as_ptr()).collect();
+        let (aux_ptr, aux_len) = aux.map_or((ptr::null(), 0), |a| (a.as_ptr(), a.len()));
+        let mut out: *mut sys::ac3forge_eac3_access_unit_t = ptr::null_mut();
+        let status = unsafe {
+            sys::ac3forge_eac3_access_unit_encoder_encode(
+                self.raw.as_ptr(),
+                if pointers.is_empty() {
+                    ptr::null()
+                } else {
+                    pointers.as_ptr()
+                },
+                pointers.len(),
+                crate::SAMPLES_PER_FRAME,
+                aux_ptr,
+                aux_len,
+                &mut out,
+            )
+        };
+        Error::check(status)?;
+        let raw = ptr::NonNull::new(out)
+            .expect("ac3forge_eac3_access_unit_encoder_encode returned OK with a null unit");
+        Ok(AccessUnit { raw })
+    }
+}
+
+impl Drop for AccessUnitEncoder {
+    fn drop(&mut self) {
+        unsafe { sys::ac3forge_eac3_access_unit_encoder_destroy(self.raw.as_ptr()) };
+    }
+}
+
+/// One decoded, fully-rendered programme — `ac3::DecodedAccessUnit` via
+/// `ac3forge_decoded_access_unit_t`: the bed plus every dependent's channels rendered into one
+/// layout, which is what [`Eac3Decoder::decode_access_unit`] produces for a multi-substream
+/// unit and what a wide-layout round trip has to be checked against.
+pub struct DecodedAccessUnit {
+    raw: ptr::NonNull<sys::ac3forge_decoded_access_unit_t>,
+}
+
+unsafe impl Send for DecodedAccessUnit {}
+
+impl DecodedAccessUnit {
+    pub fn channel_count(&self) -> usize {
+        unsafe { sys::ac3forge_decoded_access_unit_channel_count(self.raw.as_ptr()) }
+    }
+
+    pub fn samples_per_channel(&self) -> usize {
+        unsafe { sys::ac3forge_decoded_access_unit_samples_per_channel(self.raw.as_ptr()) }
+    }
+
+    /// Rendered-layout slot order (coded order for dual mono). Panics if out of range;
+    /// lifetime-tied to `&self` exactly as [`DecodedSubstream::channel_samples`].
+    pub fn channel_samples(&self, channel_index: usize) -> &[f32] {
+        assert!(
+            channel_index < self.channel_count(),
+            "channel index out of range"
+        );
+        unsafe {
+            let ptr =
+                sys::ac3forge_decoded_access_unit_channel_samples(self.raw.as_ptr(), channel_index);
+            std::slice::from_raw_parts(ptr, self.samples_per_channel())
+        }
+    }
+
+    pub fn has_object_metadata(&self) -> bool {
+        unsafe { sys::ac3forge_decoded_access_unit_has_object_metadata(self.raw.as_ptr()) != 0 }
+    }
+
+    pub fn dynamic_object_count(&self) -> usize {
+        let count = unsafe {
+            sys::ac3forge_decoded_access_unit_program_dynamic_object_count(self.raw.as_ptr())
+        };
+        usize::try_from(count).unwrap_or(0)
+    }
+
+    pub fn dynamic_object(&self, object_index: usize) -> DynamicObject {
+        assert!(
+            object_index < self.dynamic_object_count(),
+            "object index out of range"
+        );
+        let mut object = DynamicObject::default();
+        unsafe {
+            sys::ac3forge_decoded_access_unit_dynamic_object(
+                self.raw.as_ptr(),
+                object_index as i32,
+                &mut object.x,
+                &mut object.y,
+                &mut object.z,
+                &mut object.gain_db,
+            );
+        }
+        object
+    }
+
+    pub fn object_audio_count(&self) -> usize {
+        unsafe { sys::ac3forge_decoded_access_unit_object_audio_count(self.raw.as_ptr()) }
+    }
+
+    pub fn object_audio(&self, object_index: usize) -> &[f32] {
+        assert!(
+            object_index < self.object_audio_count(),
+            "object index out of range"
+        );
+        unsafe {
+            let ptr =
+                sys::ac3forge_decoded_access_unit_object_audio(self.raw.as_ptr(), object_index);
+            std::slice::from_raw_parts(ptr, self.samples_per_channel())
+        }
+    }
+}
+
+impl Drop for DecodedAccessUnit {
+    fn drop(&mut self) {
+        unsafe { sys::ac3forge_decoded_access_unit_destroy(self.raw.as_ptr()) };
+    }
+}
+
+impl Eac3Decoder {
+    /// Decodes one whole access unit — the bed plus every dependent — into one rendered
+    /// programme. `unit` must be delimited exactly as [`crate::stream::split_access_units`]
+    /// would delimit it. Same `Ok(None)` hold-back convention as
+    /// [`Eac3Decoder::decode_substream`].
+    pub fn decode_access_unit(&mut self, unit: &[u8]) -> Result<Option<DecodedAccessUnit>, Error> {
+        let mut out: *mut sys::ac3forge_decoded_access_unit_t = ptr::null_mut();
+        let status = unsafe {
+            sys::ac3forge_eac3_decoder_decode_access_unit(
+                self.raw.as_ptr(),
+                unit.as_ptr(),
+                unit.len(),
+                &mut out,
+            )
+        };
+        Error::check(status)?;
+        Ok(ptr::NonNull::new(out).map(|raw| DecodedAccessUnit { raw }))
     }
 }

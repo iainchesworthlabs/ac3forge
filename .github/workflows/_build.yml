@@ -2734,10 +2734,11 @@ jobs:
   # gate) - rust/ac3forge-sys/build.rs drives its own trimmed CMake configure of just
   # ac3::forge_c_shared rather than reusing a desktop preset.
   #
-  # Linux-only for this first pass, matching build-wasm/build-footprint each being single-OS
-  # too: build.rs links libac3forge_c.so dynamically and copies it next to cargo's own build
-  # output (see rust/README.md's "how linking works") - a real CI run on the simplest platform
-  # first, before widening to the Windows/macOS legs that approach hasn't been proven on yet.
+  # All three desktop OSes, one job each (roadmap AP9's completeness pass): the
+  # dynamic-linking approach was proven on Linux first and then validated on Windows locally -
+  # where the FIRST MSVC build immediately found a real portability bug (bindgen types C enums
+  # i32 on MSVC and u32 elsewhere; Error::Other's payload had baked the Linux answer in) -
+  # which is exactly the class of finding a matrix exists to keep finding.
   #
   # No toolchain-selection step: rustup (preinstalled on this runner image) auto-detects and
   # installs rust/rust-toolchain.toml's pinned channel plus its clippy/rustfmt components the
@@ -2745,8 +2746,12 @@ jobs:
   # duplicated into this file too, the same "no second copy of a version string" reasoning
   # _toolchain-versions.yml's own header states for the C/C++ toolchains.
   build-rust:
-    name: Rust bindings (ac3forge-sys, ac3forge)
-    runs-on: ubuntu-latest
+    name: Rust bindings (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     permissions:
       contents: read
     steps:
