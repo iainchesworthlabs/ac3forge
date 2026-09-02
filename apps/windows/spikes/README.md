@@ -54,3 +54,38 @@ virtual endpoint present and idle.
   `enumerate_render_devices()` does. Before taking HDMI exclusively the app must confirm the
   default has moved to the null sink and the sessions have followed it.
 - Taps can be opened for a session the moment it appears in the session list, before it plays.
+
+## S4: encoder throughput (`s4_throughput`)
+
+Links the real `ac3::forge` (the spike CMake pulls the repo root in the way the Android app
+does) and runs, per frame, what the demo engine will run: fold 16 synthetic taps (15 stereo,
+one 7.1) into 10 positioned mono objects and a 5-slot speaker-pinned bed, move the positioned
+objects, `AtmosEncoder::encode_frame` with 15 objects, and wrap the access unit through
+`Eac3BurstPacker`. Wall time per frame, sorted, for 20 s of audio per mode.
+
+### Results, 2026-09-03
+
+Quiet machine (the full-repo build had just finished), RelWithDebInfo, MSVC 14.51.
+
+| Mode | Frame budget | p50 | p99 | max | p99 of budget | Stream |
+|---|---|---|---|---|---|---|
+| 6 blocks, 448 kb/s (the default) | 32.00 ms | 1.09 ms | 1.79 ms | 1.86 ms | 5.6 % | 448 kb/s |
+| 6 blocks, 640 kb/s | 32.00 ms | 1.54 ms | 1.90 ms | 1.98 ms | 5.9 % | 640 kb/s |
+| 3 blocks, 640 kb/s | 16.00 ms | 0.86 ms | 1.15 ms | 1.95 ms | 7.2 % | 640 kb/s |
+| 2 blocks, 1024 kb/s | 10.67 ms | 0.63 ms | 1.00 ms | 1.15 ms | 9.3 % | 1023 kb/s |
+| 1 block, 1536 kb/s | 5.33 ms | 0.44 ms | 0.72 ms | 0.90 ms | 13.5 % | 1536 kb/s |
+| 1 block, 2048 kb/s | 5.33 ms | 0.44 ms | 0.73 ms | 0.98 ms | 13.7 % | 2046 kb/s |
+| 1 block, 3072 kb/s | 5.33 ms | 0.43 ms | 0.70 ms | 0.79 ms | 13.1 % | 3072 kb/s |
+
+A 1-block frame at 640 kb/s was **refused at frame 0**: the per-frame EMDF/OAMD/JOC container
+for 15 objects does not fit a 256-sample frame at that rate. The floor lies somewhere between
+640 and 1536 kb/s and is Phase 5's to pin down when low-latency mode gets built.
+
+### What this means for the plan
+
+- Real-time is not in question on this class of machine: the whole per-frame job is well
+  under a tenth of the budget in normal mode, and the encoder is not the place to optimise.
+- Low-latency mode is feasible at the encoder, at the cost of bitrate: the 1-block frame
+  needs on the order of 1.5 Mb/s to carry 15 objects' metadata every 5.3 ms. Over HDMI that is
+  fine (E-AC-3 bursts carry up to 6.144 Mb/s); it is the receiver's decode latency and the
+  capture buffer, not the encoder, that will dominate what the user hears.

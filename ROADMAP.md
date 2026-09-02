@@ -2237,7 +2237,8 @@ canvas drag-by-pointer itself and real microphone hardware remain manual-only ch
 ### Considering
 
 **UX11 (XL)** — Desktop Atmos Demo for Windows: the PC's applications as Atmos objects. Planned;
-spike S1 done (process-loopback taps work, 16 at once). Design and phase plan in
+spikes S1 and S4 done (process-loopback taps work, 16 at once; 15-object encode is 6% of the
+frame budget). Design and phase plan in
 `docs/platforms/windows-demo.md`.
 <details markdown="1">
 <summary>Full record</summary>

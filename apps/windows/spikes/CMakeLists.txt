@@ -24,3 +24,17 @@ foreach(target tone_player s1_taps)
     # the propsys import; avrt is for the MMCSS registration on the capture threads.
     target_link_libraries(${target} PRIVATE mmdevapi ole32 oleaut32 propsys avrt)
 endforeach()
+
+# S4 needs the real encoder. Pull the repo root in the way the Android app does
+# (everything it does not need pre-seeded OFF, then add_subdirectory), so the
+# spike measures the same ac3::forge the demo will link.
+option(AC3FORGE_SPIKES_WITH_LIBRARY "Build the spikes that link ac3::forge (S4)" ON)
+if(AC3FORGE_SPIKES_WITH_LIBRARY)
+    foreach(opt CLI GUI TESTS EXAMPLES FUZZERS CAPI MATROSKA MP4 MPEGTS AC4 IAB IAMF ADM PYTHON)
+        set(AC3FORGE_BUILD_${opt} OFF CACHE BOOL "" FORCE)
+    endforeach()
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../.." ac3forge_build)
+    add_executable(s4_throughput s4_throughput/s4_throughput.cpp)
+    target_compile_options(s4_throughput PRIVATE /W4 /EHsc /permissive- /utf-8)
+    target_link_libraries(s4_throughput PRIVATE ac3::forge)
+endif()

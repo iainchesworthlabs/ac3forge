@@ -139,9 +139,17 @@ dynamic slots at start** and feeds silence to the idle ones, the same way the Sh
 three objects alive for every scene. An application being dragged out of the bed takes the
 lowest free slot; dragging it back frees the slot. Nothing is ever rebuilt mid-stream.
 
+**The bed is five of those slots.** `AtmosEncoder` has no bed input of its own: its 5.1 bed is
+rendered *from* the objects, and it knows nothing of OAMD's bed labels (those live in
+`SceneObject::bed` for authoring and reach the wire, but the encoder's `ObjectPlacement` has
+no such field). So the demo's bed is five objects pinned to the L, R, C, Ls and Rs speaker
+positions with `snap` set, plus `lfe_send` for the LFE, and the bed mixer sums bed applications
+into those five. That leaves **10 slots for positioned applications**, not 15. It is still
+more than a desk needs, and it is honest about what the encoder does.
+
 **Mono per application** is the default. Each tap's channels are folded to one signal
 (a plain L+R sum for a stereo render; the §7.8 fold for a surround render) before it goes into
-its slot. That gives up to 15 positioned applications, which is more than any desk needs.
+its slot. That gives up to 10 positioned applications alongside the five-slot bed.
 The stretch, as a per-application user choice, is **split**: a stereo render becomes two
 objects placed either side of the application's position, and a surround render becomes a
 cluster. Split costs slots, so the slot allocator refuses when the budget would be exceeded and
@@ -155,9 +163,10 @@ the UI says so.
 
 Bed applications are mixed by the app, not by Windows, because the taps are per process and
 there is no "everything except these" tap (the exclude mode takes one process tree, not a
-list). A stereo bed application goes to L and R; a 5.1 render maps one-to-one; a 7.1 render
-folds the side and rear pairs into Ls and Rs. Total bed contributors are unbounded; total taps
-are one per playing session, and Phase 0 measures how many the engine is happy to run at once.
+list). A stereo bed application goes to the L and R bed slots; a 5.1 render maps one-to-one
+onto the five plus the LFE send; a 7.1 render folds the side and rear pairs into Ls and Rs.
+Total bed contributors are unbounded; total taps are one per playing session, and S1 ran
+sixteen at once without strain.
 
 Positions use the library's room coordinates (`ac3::oba::Position`): `x` from 0 at the left
 wall to 1 at the right, `y` from 0 at the front wall to 1 at the back, `z` from -1 at the floor
@@ -210,11 +219,12 @@ user-selectable **low-latency mode** trades the following, all existing knobs:
 | E-AC-3 frame (`AtmosConfig::numblkscod`) | 6 blocks, 32 ms | 1 block, 5.3 ms |
 | Capture buffer | 20 ms | 10 ms or the engine minimum |
 | Sink pre-roll | two frames | one frame |
-| Bitrate | 448 kb/s | raised, because short frames pay more overhead per second |
+| Bitrate | 448 kb/s | about 1.5 Mb/s, because 15 objects' metadata has to fit every 5.3 ms (S4 found 640 kb/s refused at 1 block, 1536 kb/s fine) |
 
 The encoder's own object latency (832 samples in the QMF domain, about 17 ms) and the
-receiver's decode delay do not move. Phase 5 measures both chains end to end with a loopback
-capture and writes the numbers here.
+receiver's decode delay do not move. S4 showed the encoder itself is not the constraint in
+either mode. Phase 5 measures both chains end to end with a loopback capture and writes the
+numbers here.
 
 ## Object signing
 
@@ -229,6 +239,14 @@ same environment variables `ac3cli` reads (`AC3FORGE_SIGNING_KEY_FILE`, `AC3FORG
 never from a file next to the executable and never
 from an installer. Nothing about the build changes with or without a key. The release job's
 "no key in the package" assertion carries over from Android to whatever packages this app.
+
+The user supplies the key once and the app remembers it across runs. What the settings store
+persists is the **path** to the key file by default; optionally the key bytes themselves,
+protected with DPAPI so only the same Windows user on the same machine can read them back,
+for a user who would rather not keep a key file lying around. Plaintext key material never
+lands in a settings file, a log, or a crash dump, and the settings screen shows only whether a
+key is loaded and where it came from. Changing or clearing the key restarts the encoder,
+because objects-or-nothing is decided at construction.
 
 ## UI
 
@@ -323,7 +341,7 @@ leaving its answer in this page. None of it is reused as code.
 | **S1 taps** | Does process loopback work against N processes at once, what format arrives, does it keep delivering when the session is muted, when the app is routed to the FxSound endpoint, and when the default endpoint is held exclusively by us? | **Done 2026-09-03**, results in `apps/windows/spikes/README.md`: 16 taps separate exactly at 48 kHz float, mute kills a tap, the FxSound null-sink model works, exclusive on another endpoint is fine, exclusive on the apps' own endpoint is refused and destructive, the probe alone is harmless |
 | **S2 bitstream** | Does `PassthroughSink` in E-AC-3 and AC-3 exclusive mode lock on a real Atmos receiver from this workstation? This is DR9's Windows row. | the receiver's front panel reads DD+ Atmos, then DD, at zero underruns for a minute |
 | **S3 headphones** | With Windows Sonic enabled on the Realtek endpoint, does encode then decode then `SpatialObjectSink` produce audible height and rear movement by ear? | yes or no, and the measured round-trip latency |
-| **S4 throughput** | Does a 15-object `AtmosEncoder` plus 16 taps plus the bed mix hold 32 ms cadence on this machine with margin? | per-frame time at p50 and p99 |
+| **S4 throughput** | Does a 15-object `AtmosEncoder` plus 16 taps plus the bed mix hold 32 ms cadence on this machine with margin? | **Done 2026-09-03**, results in `apps/windows/spikes/README.md`: p99 1.8 ms of the 32 ms budget in normal mode; the 1-block frame p99 0.7 ms of 5.3 ms, but needs at least about 1.5 Mb/s to carry 15 objects' metadata (640 kb/s is refused) |
 
 Prerequisites: a long HDMI cable to the receiver (S2, the developer's to-do); Windows Sonic
 enabled on the headphone endpoint (S3). S3 and S4 do not wait for S2.
@@ -377,6 +395,11 @@ the last item, after which the driver can join the package.
     in exclusive mode without disturbing the taps. Two hazards confirmed: session mute silences
     the tap, and an exclusive open on an endpoint with live shared streams is refused *and*
     kills those streams. The full table is in `apps/windows/spikes/README.md`.
+
+!!! note "S4 verified on the development workstation, 2026-09-03"
+    Fifteen objects, sixteen taps folded and mixed, encode and burst-wrap: p99 1.8 ms of the
+    32 ms frame in normal mode, 0.7 ms of the 5.3 ms one-block frame. The one-block frame
+    refuses below roughly 1.5 Mb/s because the object metadata no longer fits. Same file.
 
 Everything else is still a plan. When S2 runs, the "Windows/WASAPI exclusive: unconfirmed"
 line in roadmap DR9 and the warning in [Windows](windows.md) are the first two things to change.
