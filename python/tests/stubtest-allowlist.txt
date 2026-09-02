@@ -1,0 +1,13 @@
+# mypy stubtest allowlist for the ac3forge wheel (wheels.yml's stubtest step).
+#
+# The stub represents each runtime submodule (m.def_submodule) as a class -
+# the convention every submodule's own .pyi comment states, and the shape
+# pybind11-stubgen emits too - so stubtest sees a class in the stub where the
+# runtime has a module. These entries allow exactly that shape difference;
+# the CONTENTS of each namespace are still checked member by member.
+ac3forge\.(eac3|meta|signing|containers|verify)
+ac3forge\._ac3forge.*
+# KwargBinder constructors take **kwargs at runtime; the stubs for the plain
+# config classes spell the fields instead. Same convention as the C++ side's
+# designated initializers.
+ac3forge\..*\.__init__

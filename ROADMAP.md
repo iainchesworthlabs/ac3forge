@@ -20,7 +20,7 @@ cut, just moved out of the way of a first read.
 | IM — Immersive and other formats | 4 | 2 | 1 |
 | VX — Verification and oracles | 19 | 2 | 1 |
 | PF — Performance and portability | 8 | 0 | 0 |
-| AP — Library surface, bindings and v1.0 | 7 | 3 | 2 |
+| AP — Library surface, bindings and v1.0 | 8 | 2 | 2 |
 | UX — Applications | 7 | 1 | 2 |
 | DR — Distribution, release engineering and hardware | 5 | 1 | 3 |
 
@@ -1874,6 +1874,46 @@ Python as `ac3.verify.trace_to_csv`/`trace_to_json_lines`, then
 support, not a second one grown here for one research-only export path.
 </details>
 
+**AP6 (L)** — Python completeness, complete: E-AC-3 encoder, `scan`, zero-copy numpy,
+containers, metering/QC, signing, the decoder context manager, `stubtest` in CI, and the two
+missing wheel platforms (manylinux aarch64, Intel macOS).
+<details markdown="1">
+<summary>Full record</summary>
+
+`ac3.eac3.FrameEncoder`/`AccessUnitEncoder` now wrap the E-AC-3 encoder directly
+(pybind11-direct, matching every other class here), with
+`ac3.eac3.access_unit_config_for_layout` as the named-layout convenience over
+`ac3::plan::channel_plan_for` — see `docs/library/python-api.md`'s "Encoding E-AC-3" section
+for what's mirrored and what's a real gap there (mixmdate/infomdat, VBR/ABR, `additional`
+programmes) rather than a decision. `ac3.scan()`/`ac3.read_frame_header()` wrap
+`ac3::io::scan`/`read_frame_header` directly (`ac3.ScannedStream`/`ScannedProgramme`/
+`FrameHeader`, plus `access_unit_timing` and its timing-arithmetic neighbours) — see
+`docs/library/python-api.md`'s "Scanning a stream" section. Zero-copy numpy: encode input
+(AC-3, E-AC-3 and `AtmosEncoder`) accepts either a 2-D `(n_channels, n_samples)` array or a
+sequence of 1-D arrays and is read directly out of whichever is passed when it's already
+contiguous float32; decoded `.channels`/`.object_audio` are read-only zero-copy views over the
+decoded instance's own memory instead of a fresh `memcpy`'d list every property access;
+`FrameDecoder.decode_frame_into`/`Eac3Decoder.decode_access_unit_into` write PCM into
+caller-supplied buffers (`ac3.MAX_AC3_CHANNELS`/`ac3.eac3.MAX_RENDER_CHANNELS` size them) —
+see `docs/library/python-api.md`'s "Zero-copy numpy and buffer reuse" section. No
+`decode_substream_into`: `ac3::Eac3Decoder` itself only exposes a caller-buffer form for the
+two calls that assemble a full programme, not the single-substream one. The completeness pass closed the rest: `ac3forge.containers`
+(the three muxers and the batch demuxers, bytes in/bytes out, with `build_codec_config_box()`
+producing the `dac3`/`dec3` payload straight off the bitstream the way `ac3cli mp4` does —
+`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are ON in `pyproject.toml` now, and conditional in
+`python/CMakeLists.txt` so a codec-only dev build still works); `ac3forge.meta`
+(`LoudnessMeter` with every gated measurement `None` until it means something, the cited
+`qc_preset()` table, `evaluate_qc_gate()`); `ac3forge.signing` (`SigningKey`,
+`sign_atmos_stream` returning a signed copy, `verify_atmos_stream` — the pytest round trip
+signs a real 2-object Atmos stream, verifies all four frames, and proves the wrong key
+mismatches all four); and `Eac3Decoder` as a context manager draining the §3.7 hold-back on
+exit. `stubtest` gates the hand-written `.pyi` against the compiled wheel in wheels.yml (mypy
+joined the hash-pinned pytest lock), and the wheel matrix gained `ubuntu-24.04-arm` (manylinux
+aarch64 — Raspberry Pi is a documented platform and finally has a wheel) and `macos-15-intel`.
+Still C++-only, recorded in `docs/library/python-api.md` as the boundary: the incremental
+container `Reader`/`Writer` classes and the fragmented-MP4/HLS/DASH surface.
+</details>
+
 ### In progress
 
 **AP1 (L)** — API freeze → v1.0.0. The tiering, SemVer policy, and release criteria are
@@ -1901,35 +1941,6 @@ for ABI tagging — both are sequenced together with `AP4`'s ABI gate going from
 required, so a real break can't slip through the gap between promising compatibility and
 actually checking for it. `AP5`/`AP6` completion is now one of the page's own release-gate
 criteria rather than a separate, unlinked concern.
-</details>
-
-**AP6 (L)** — Python completeness. E-AC-3 encoder, `scan`, and zero-copy numpy all landed;
-containers, metering, signing and several wheel targets are still missing.
-<details markdown="1">
-<summary>Full record</summary>
-
-`ac3.eac3.FrameEncoder`/`AccessUnitEncoder` now wrap the E-AC-3 encoder directly
-(pybind11-direct, matching every other class here), with
-`ac3.eac3.access_unit_config_for_layout` as the named-layout convenience over
-`ac3::plan::channel_plan_for` — see `docs/library/python-api.md`'s "Encoding E-AC-3" section
-for what's mirrored and what's a real gap there (mixmdate/infomdat, VBR/ABR, `additional`
-programmes) rather than a decision. `ac3.scan()`/`ac3.read_frame_header()` wrap
-`ac3::io::scan`/`read_frame_header` directly (`ac3.ScannedStream`/`ScannedProgramme`/
-`FrameHeader`, plus `access_unit_timing` and its timing-arithmetic neighbours) — see
-`docs/library/python-api.md`'s "Scanning a stream" section. Zero-copy numpy: encode input
-(AC-3, E-AC-3 and `AtmosEncoder`) accepts either a 2-D `(n_channels, n_samples)` array or a
-sequence of 1-D arrays and is read directly out of whichever is passed when it's already
-contiguous float32; decoded `.channels`/`.object_audio` are read-only zero-copy views over the
-decoded instance's own memory instead of a fresh `memcpy`'d list every property access;
-`FrameDecoder.decode_frame_into`/`Eac3Decoder.decode_access_unit_into` write PCM into
-caller-supplied buffers (`ac3.MAX_AC3_CHANNELS`/`ac3.eac3.MAX_RENDER_CHANNELS` size them) —
-see `docs/library/python-api.md`'s "Zero-copy numpy and buffer reuse" section. No
-`decode_substream_into`: `ac3::Eac3Decoder` itself only exposes a caller-buffer form for the
-two calls that assemble a full programme, not the single-substream one. Still missing: no
-containers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS` are off in `pyproject.toml`), no metering, no
-signing, a context manager that flushes `Eac3Decoder`; `stubtest` in CI for the hand-written
-`.pyi`; manylinux aarch64 and macOS x86_64/universal wheels — Raspberry Pi is a documented
-platform with no wheel.
 </details>
 
 **AP9 (L)** — A first non-Python binding over the C API (Rust) — a `bindgen`-generated `-sys`
