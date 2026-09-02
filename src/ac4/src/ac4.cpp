@@ -1185,4 +1185,148 @@ std::expected<RawFrame, Error> parse_raw_frame(std::span<const std::byte> raw_ac
     return result;
 }
 
+
+// --- Carriage (roadmap IM4's separable slice) -------------------------------
+
+namespace {
+
+// Annex E's DSI fields are written MSB-first into whole bytes, the same
+// bit-packing discipline the parser reads with - small enough here that a
+// local accumulator beats pulling a writer dependency into a module whose
+// whole identity is depending on nothing.
+class DsiWriter {
+   public:
+    void put(std::uint32_t value, int bits) {
+        for (int bit = bits - 1; bit >= 0; --bit) {
+            accumulator_ = static_cast<std::uint8_t>(
+                (static_cast<std::uint32_t>(accumulator_) << 1) | ((value >> bit) & 1u));
+            if (++filled_ == 8) {
+                bytes_.push_back(static_cast<std::byte>(accumulator_));
+                accumulator_ = 0;
+                filled_ = 0;
+            }
+        }
+    }
+    void byte_align() {
+        while (filled_ != 0) {
+            put(0, 1);
+        }
+    }
+    [[nodiscard]] std::vector<std::byte> take() {
+        byte_align();
+        return std::move(bytes_);
+    }
+
+   private:
+    std::vector<std::byte> bytes_;
+    std::uint8_t accumulator_ = 0;
+    int filled_ = 0;
+};
+
+// The two Toc presentation lists only ever have one populated (the struct's
+// own comment); this reads whichever it is.
+[[nodiscard]] int first_presentation_version(const Toc& toc) {
+    if (!toc.presentations_v1.empty()) {
+        return toc.presentations_v1.front().presentation_version;
+    }
+    if (!toc.presentations_v0.empty()) {
+        return toc.presentations_v0.front().presentation_version;
+    }
+    return 0;
+}
+
+[[nodiscard]] int first_md_compat(const Toc& toc) {
+    if (!toc.presentations_v1.empty()) {
+        return toc.presentations_v1.front().md_compat.value_or(0);
+    }
+    if (!toc.presentations_v0.empty()) {
+        return toc.presentations_v0.front().md_compat.value_or(0);
+    }
+    return 0;
+}
+
+}  // namespace
+
+std::vector<std::byte> build_dac4(const Toc& toc) {
+    DsiWriter w;
+    // ac4_dsi_v1 (Annex E.5).
+    w.put(1, 3);  // ac4_dsi_version
+    w.put(static_cast<std::uint32_t>(toc.bitstream_version), 7);
+    w.put(toc.sample_rate_hz == 48000 ? 1u : 0u, 1);  // fs_index (Table 82)
+    w.put(static_cast<std::uint32_t>(toc.frame_rate_index), 4);
+    w.put(static_cast<std::uint32_t>(toc.n_presentations), 9);
+    if (toc.bitstream_version > 1) {
+        // b_program_id: the TOC-level program identifier is not parsed into
+        // Toc (it rides ahead of the presentation list), so none is claimed.
+        w.put(0, 1);
+    }
+    // ac4_bitrate_dsi (Annex E.7): mode 0 with both fields 0xFFFFFFFF -
+    // "unknown", the honest value for a muxer handed frames rather than an
+    // encoder's rate plan.
+    w.put(0, 2);
+    w.put(0xFFFFFFFFu, 32);
+    w.put(0xFFFFFFFFu, 32);
+    w.byte_align();
+
+    // One entry per presentation: its version, and pres_bytes = 0 - see the
+    // header's own comment for why the per-presentation DSI body is this
+    // slice's stated boundary.
+    const auto version_of = [&](int index) {
+        if (!toc.presentations_v1.empty() &&
+            index < static_cast<int>(toc.presentations_v1.size())) {
+            return toc.presentations_v1[static_cast<std::size_t>(index)].presentation_version;
+        }
+        if (!toc.presentations_v0.empty() &&
+            index < static_cast<int>(toc.presentations_v0.size())) {
+            return toc.presentations_v0[static_cast<std::size_t>(index)].presentation_version;
+        }
+        return 0;
+    };
+    for (int p = 0; p < toc.n_presentations; ++p) {
+        w.put(static_cast<std::uint32_t>(version_of(p)), 8);
+        w.put(0, 8);  // pres_bytes
+    }
+    return w.take();
+}
+
+std::optional<std::uint32_t> samples_per_frame(const Toc& toc) {
+    // Table 83/84. At 44,1 kHz only the 2048-sample frame exists; at 48 kHz
+    // the 1000/1001-family entries with a NON-integer sample count per frame
+    // (29,97 / 59,94 / 119,88 fps - the frame length alternates) have no
+    // single answer and yield nullopt.
+    if (toc.sample_rate_hz == 44100) {
+        return toc.frame_rate_index == 13 ? std::optional<std::uint32_t>{2048} : std::nullopt;
+    }
+    switch (toc.frame_rate_index) {
+        case 0: return 2002;   // 23,976 fps
+        case 1: return 2000;   // 24
+        case 2: return 1920;   // 25
+        case 3: return std::nullopt;  // 29,97: 1601,6 - alternating
+        case 4: return 1600;   // 30
+        case 5: return 1001;   // 47,952
+        case 6: return 1000;   // 48
+        case 7: return 960;    // 50
+        case 8: return std::nullopt;  // 59,94: 800,8 - alternating
+        case 9: return 800;    // 60
+        case 10: return 480;   // 100
+        case 11: return std::nullopt;  // 119,88: 400,4 - alternating
+        case 12: return 400;   // 120
+        case 13: return 2048;  // the sample-rate-locked frame
+        default: return std::nullopt;
+    }
+}
+
+std::string rfc6381_codec_string(const Toc& toc) {
+    // Annex E.13: two lowercase hex digits per field.
+    constexpr std::string_view kHex = "0123456789abcdef";
+    const auto pair = [&](int value) {
+        std::string out;
+        out.push_back(kHex[static_cast<std::size_t>((value >> 4) & 0xF)]);
+        out.push_back(kHex[static_cast<std::size_t>(value & 0xF)]);
+        return out;
+    };
+    return "ac-4." + pair(toc.bitstream_version) + "." +
+           pair(first_presentation_version(toc)) + "." + pair(first_md_compat(toc));
+}
+
 }  // namespace ac4

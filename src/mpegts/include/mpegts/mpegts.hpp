@@ -76,6 +76,15 @@ namespace mpegts {
 enum class AudioCodec : std::uint8_t {
     kAc3,
     kEac3,
+    // AC-4 (ETSI TS 103 190). DVB only: EN 300 468 Annex D.7 signals it as
+    // stream_type 0x06 plus the AC-4_descriptor - an extension_descriptor
+    // (tag 0x7F) whose descriptor_tag_extension is 0x15. ATSC never
+    // registered AC-4 for MPEG-2 TS at all (A/342-2 carries it over ATSC
+    // 3.0's ROUTE/MMT transports, not 13818-1), so kAtsc plus kAc4 is
+    // kInvalidOptions rather than an invented stream_type. The AC-3-shaped
+    // ServiceOptions fields (bsid, mainid, components...) describe elements
+    // the AC-4 descriptor does not carry and are ignored for this codec.
+    kAc4,
 };
 
 // Which registry's stream_type and descriptor to write. See the header

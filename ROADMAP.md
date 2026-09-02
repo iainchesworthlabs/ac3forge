@@ -17,7 +17,7 @@ cut, just moved out of the way of a first read.
 | EQ — Encoder decision quality | 8 | 4 | 1 |
 | DC — Decoder and consumer output | 10 | 0 | 0 |
 | IO — Streams in and out | 12 | 0 | 0 |
-| IM — Immersive and other formats | 3 | 3 | 1 |
+| IM — Immersive and other formats | 4 | 2 | 1 |
 | VX — Verification and oracles | 19 | 2 | 1 |
 | PF — Performance and portability | 8 | 0 | 0 |
 | AP — Library surface, bindings and v1.0 | 7 | 3 | 2 |
@@ -886,6 +886,46 @@ still reads byte-identically, and `SceneCursor` is the live seam UX4 plugs into.
 per-frame encode loops still build `ObjectPath`s directly — a follow-up, not a gap in the type.
 </details>
 
+**IM4 (L)** — AC-4 parse-and-inspect, complete: TOC/presentation/substream-group parsing for
+both channel-coded and A-JOC/object paths, and the MP4/MPEG-TS/DASH carriage slice.
+<details markdown="1">
+<summary>Full record</summary>
+
+(was `D4`). The blocking question is resolved: nothing open encodes AC-4, but the Dolby
+Encoding Engine already licensed and used for the AC-3/E-AC-3 external-baseline tier includes
+`dee_ac4_encoder.exe`/`dee_ac4ajoc_encoder.exe`, and the Dolby Reference Player's
+`dlbac4parse` GStreamer element frames (though does not yet decode PCM from) real AC-4 output
+on this machine — see docs/verification.md's AC-4 section. TOC / presentation / channel-coded
+substream-group parsing landed: a standalone `ac4::` library (deliberately not under `ac3::` —
+it depends on nothing of `ac3::forge`, including `ac3::emdf`, whose classic Annex H
+sync+length+protection framing turned out not to be what AC-4's own `emdf_info()`/
+`emdf_payloads_substream()` actually use), an independent Python reference parser
+(`tools/references/ac4_parse.py`), real DEE fixtures (`tools/generators/gen_ac4_baseline.py`),
+and `ac3cli probe` support (table + `json=1`, both bitstream_version <= 1 legacy and >= 2
+extended TOC paths, 7.0.4 through 22.2 channel-based immersive). A-JOC/direct-coded-object/OAMD
+substream group parsing (TS 103 190-2 clause 6.3.2.8-6.3.2.12 — `ac4_substream_info_ajoc()`,
+`ac4_substream_info_obj()`, `bed_dyn_obj_assignment()`, `oamd_substream_info()`) landed as a
+follow-up: no real fixture reaches this path (`dee_ac4ajoc_encoder.exe` gates on Atmos
+mezzanine provenance this project's tooling cannot produce; `dee_ac4ims_encoder.exe` stays
+channel-coded despite its name), so it is verified against synthetic hand-built vectors instead
+— see docs/verification.md's AC-4 section. `oamd_common_data()` (§6.2.8.1) remains explicitly
+out of scope, refused cleanly (`Error::kOamdCommonDataPresent`) rather than misparsed. The
+carriage slice, done last: `ac4::build_dac4()` (Annex E.5's `ac4_dsi_v1` off the parsed TOC —
+stream-level fields in full, per-presentation entries as version + `pres_bytes` 0, the stated
+boundary rather than a reproduction of Annex E.10/E.11's twenty-odd conditional fields),
+`ac4::samples_per_frame()` (Table 84, refusing the alternating 1000/1001-family lengths) and
+`ac4::rfc6381_codec_string()` (Annex E.13); `mp4::kCodecAc4` → `ac-4`/`dac4` with
+`AudioTrack::rfc6381` feeding the HLS/DASH manifests, reader recognising both; `mpegts::`
+writing EN 300 468 Annex D.7's extension descriptor 0x7F/0x15 with an ISO 13818-1 §2.6.8
+registration descriptor (`AC-4`) beside it — the registration is what FFmpeg's TS demuxer
+actually keys on, verified — and the ATSC profile refusing AC-4 rather than inventing a
+stream_type; `ac3cli mp4`/`ts`/`demux` wired end to end. Verified against the real DEE
+fixture: ffprobe identifies both containers' output as `ac4`, the TS round trip is
+byte-identical, and the MP4 round trip re-frames with the no-CRC sync word (the container
+drops the wrapper and CRC by design) into a stream `ac4::scan` parses identically frame for
+frame.
+</details>
+
 ### In progress
 
 **IM3 (XL)** — IAMF / Eclipsa Audio interop. Phase 1 (a channel-based OBU/ISOBMFF writer)
@@ -920,34 +960,6 @@ build) — deliberately proven able to fail: a substream/channel-pairing swap wa
 and confirmed to break the PCM round-trip test before being reverted. No Parameter Block OBUs,
 no Temporal Delimiter OBU, no trimming, batch API only — see `iamf/iamf.hpp`'s own header for
 the full phase-1 boundary. Phases 2 and 3 are unstarted.
-</details>
-
-**IM4 (L)** — AC-4 parse-and-inspect. TOC/presentation/substream-group parsing landed for both
-channel-coded and A-JOC/object paths; the separable MP4/MPEG-TS/DASH carriage slice remains.
-<details markdown="1">
-<summary>Full record</summary>
-
-(was `D4`). The blocking question is resolved: nothing open encodes AC-4, but the Dolby
-Encoding Engine already licensed and used for the AC-3/E-AC-3 external-baseline tier includes
-`dee_ac4_encoder.exe`/`dee_ac4ajoc_encoder.exe`, and the Dolby Reference Player's
-`dlbac4parse` GStreamer element frames (though does not yet decode PCM from) real AC-4 output
-on this machine — see docs/verification.md's AC-4 section. TOC / presentation / channel-coded
-substream-group parsing landed: a standalone `ac4::` library (deliberately not under `ac3::` —
-it depends on nothing of `ac3::forge`, including `ac3::emdf`, whose classic Annex H
-sync+length+protection framing turned out not to be what AC-4's own `emdf_info()`/
-`emdf_payloads_substream()` actually use), an independent Python reference parser
-(`tools/references/ac4_parse.py`), real DEE fixtures (`tools/generators/gen_ac4_baseline.py`),
-and `ac3cli probe` support (table + `json=1`, both bitstream_version <= 1 legacy and >= 2
-extended TOC paths, 7.0.4 through 22.2 channel-based immersive). A-JOC/direct-coded-object/OAMD
-substream group parsing (TS 103 190-2 clause 6.3.2.8-6.3.2.12 — `ac4_substream_info_ajoc()`,
-`ac4_substream_info_obj()`, `bed_dyn_obj_assignment()`, `oamd_substream_info()`) landed as a
-follow-up: no real fixture reaches this path (`dee_ac4ajoc_encoder.exe` gates on Atmos
-mezzanine provenance this project's tooling cannot produce; `dee_ac4ims_encoder.exe` stays
-channel-coded despite its name), so it is verified against synthetic hand-built vectors instead
-— see docs/verification.md's AC-4 section. `oamd_common_data()` (§6.2.8.1) remains explicitly
-out of scope, refused cleanly (`Error::kOamdCommonDataPresent`) rather than misparsed. What
-remains: the separable carriage slice (`ac-4` sample entry and `dac4` box in `mp4::`, the AC-4
-descriptor in `mpegts::`, DASH-IF §5.3.4 signalling).
 </details>
 
 **IM5 (L)** — Land the TrueHD/MLP branch as an explicitly experimental module. A substantial

@@ -111,6 +111,20 @@ whatever `ac3::io::scan` read out of the bitstream, fscod/bsid/bsmod/acmod/lfeon
 stream carries Dolby Atmos objects, the `flag_ec3_extension_type_a`/`complexity_index_type_a`
 extension (TS 103 420 §8.3.1/§8.3.2.2) alike.
 
+The same codec-blind contract carries **AC-4** (roadmap IM4): `codec_id = mp4::kCodecAc4`
+selects TS 103 190-2 Annex E.4's `ac-4` sample entry with a `dac4` configuration box, whose
+payload comes from `ac4::build_dac4()` off the stream's own parsed TOC — the AC-4 twin of
+`build_codec_config_box`, in `ac4::` where the codec knowledge lives. An ISOBMFF `ac-4`
+*sample* is the `raw_ac4_frame` alone (no sync word, no CRC), `samples_per_frame` comes from
+`ac4::samples_per_frame()` (Table 84 — the 1000/1001-family rates whose frame length
+alternates are refused, having no single answer), and because AC-4's RFC 6381 string is not
+its fourcc, `AudioTrack::rfc6381` carries `ac4::rfc6381_codec_string()`'s dotted form
+(`ac-4.02.01.00`) for the HLS/DASH manifests. MPEG-TS carriage is DVB-only — EN 300 468
+Annex D.7's extension descriptor `0x7F/0x15`, with an ISO 13818-1 §2.6.8 registration
+descriptor (`AC-4`) beside it for interop — and `mpegts::AudioCodec::kAc4` under the ATSC
+profile is refused rather than given an invented stream_type (A/342-2 is ATSC 3.0's
+ROUTE/MMT, not 13818-1).
+
 ```cpp
 // One MP4 sample per access unit. For E-AC-3 an access unit is the
 // independent substream plus its dependents, which is exactly what scan

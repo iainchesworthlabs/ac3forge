@@ -18,7 +18,7 @@
 //
 // A container reader and nothing more, in the sense mp4/mp4.hpp's writer is a
 // container writer and nothing more: it walks ISOBMFF boxes, finds the
-// 'ac-3'/'ec-3' track, and hands each sample back as opaque bytes. It links
+// 'ac-3'/'ec-3'/'ac-4' track, and hands each sample back as opaque bytes. It links
 // nothing from ac3::forge. The one place MP4 forces a codec-shaped decision on
 // this module is the same place the writer already had one - the sample
 // entry's dac3/dec3 configuration box - and CodecConfig below is where that
@@ -59,7 +59,7 @@ enum class DemuxError : std::uint8_t {
     kNotIsobmff,       // no box structure worth calling ISOBMFF
     kTruncated,        // the input ends before the track or its samples
     kMalformed,        // a box, sample table or fragment layout that cannot be parsed
-    kNoAudioTrack,     // no 'ac-3'/'ec-3' track (see ReadOptions::track_id)
+    kNoAudioTrack,     // no 'ac-3'/'ec-3'/'ac-4' track (see ReadOptions::track_id)
     kLimitExceeded,    // a box size, sample count or nesting depth beyond ReadOptions
     kMoovAfterMdat,    // Reader only: the sample table follows the data it indexes
 };
@@ -78,6 +78,10 @@ enum class DemuxError : std::uint8_t {
 // to round-trip losslessly.
 struct CodecConfig {
     bool eac3 = false;  // dec3 (true) or dac3 (false)
+    // dac4 (TS 103 190-2 Annex E.5): the box shares no field with dac3/dec3,
+    // so when this is set only `payload` below is meaningful - the AC-3-shaped
+    // fields stay at their defaults and ac4::'s own parser is the authority.
+    bool ac4 = false;
     int fscod = 0;
     int bsid = 0;
     int bsmod = 0;
@@ -104,7 +108,7 @@ struct CodecConfig {
 // AudioTrack.
 struct ReadTrack {
     std::uint32_t track_id = 0;
-    std::string codec_id;  // kCodecAc3 or kCodecEac3
+    std::string codec_id;  // kCodecAc3, kCodecEac3 or kCodecAc4
     // The sample entry's own 16.16 samplerate field, integer part.
     std::uint32_t sample_rate = 0;
     int channels = 0;

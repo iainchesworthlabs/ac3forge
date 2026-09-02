@@ -77,9 +77,10 @@ enum class DemuxError : std::uint8_t {
 // PID, and a registration descriptor is a format identifier. A caller
 // remuxing back out wants to know which it was.
 enum class CodecSignalling : std::uint8_t {
-    kAtscStreamType,          // stream_type 0x81 / 0x87
-    kDvbDescriptor,           // stream_type 0x06 + AC3_descriptor / Enhanced_AC3_descriptor
-    kRegistrationDescriptor,  // format_identifier 'AC-3' / 'EAC3'
+    kAtscStreamType,           // stream_type 0x81 / 0x87
+    kDvbDescriptor,            // stream_type 0x06 + AC3_descriptor / Enhanced_AC3_descriptor
+    kRegistrationDescriptor,   // format_identifier 'AC-3' / 'EAC3'
+    kDvbExtensionDescriptor,   // stream_type 0x06 + extension descriptor 0x7F/0x15 (AC-4)
 };
 
 struct ReadStream {
@@ -88,6 +89,10 @@ struct ReadStream {
     std::uint16_t elementary_pid = 0;
     std::uint8_t stream_type = 0;
     bool eac3 = false;  // E-AC-3 rather than AC-3, per whichever signalling was found
+    // AC-4 (EN 300 468 Annex D.7's extension descriptor). When set, `eac3`
+    // is meaningless - the payload is TS 103 190 sync frames, not A/52 ones,
+    // and this module hands its PES bytes back without framing them.
+    bool ac4 = false;
     CodecSignalling signalling = CodecSignalling::kAtscStreamType;
     // The detected grid: 188 (TS), 192 (M2TS) or 204 (TS with RS parity).
     std::size_t packet_size = 188;

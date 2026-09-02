@@ -16,6 +16,7 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "mp4/hls.hpp"
 #include "mp4/mp4.hpp"
 
 // These tests read the muxer's output back with an independent ISOBMFF box
@@ -488,4 +489,42 @@ TEST_CASE("dec3 box signals Dolby Atmos objects", "[dec3]") {
     // reserved(7)=0, flag_ec3_extension_type_a=1 packs to 0x01.
     CHECK(byte_at(payload, 5) == 0x01);
     CHECK(byte_at(payload, 6) == static_cast<std::uint8_t>(kObjects + 1));
+}
+
+// --------------------------------------------------------------------------
+// AC-4 carriage (roadmap IM4): TS 103 190-2 Annex E.4's 'ac-4' sample entry
+// and 'dac4' configuration box, through the same box walk the A/52 entries
+// are proven with.
+
+TEST_CASE("MP4 carries an 'ac-4' sample entry with a 'dac4' box", "[mp4][ac4]") {
+    mp4::AudioTrack track;
+    track.codec_id = std::string{mp4::kCodecAc4};
+    track.sample_rate = 48000;
+    track.channels = 2;  // E.4.5: "should be set to 2"
+    track.samples_per_frame = 2048;
+    track.codec_config = {std::byte{0x2A}, std::byte{0x04}, std::byte{0x10}, std::byte{0x00}};
+    track.rfc6381 = "ac-4.02.01.00";
+
+    const std::vector<Bytes> frames{frame_of(320, 0x5A), frame_of(320, 0x5B)};
+    const auto file = mp4::mux(track, frames);
+    REQUIRE(file.has_value());
+
+    // The sample entry is stsd's child, which parse()'s flat walk does not
+    // descend into - read_sample_entry is this file's own way in, the same
+    // one the A/52 entry test uses.
+    const auto elements = parse(*file);
+    const auto* stsd = find(elements, "stsd");
+    REQUIRE(stsd != nullptr);
+    const auto entry = read_sample_entry(*file, *stsd);
+    CHECK(entry.codec_id == "ac-4");
+    CHECK(entry.config_type == "dac4");
+    CHECK(entry.channels == 2);
+    CHECK(entry.samplerate_fixed == (48000U << 16));
+    // The config box carries exactly the payload handed in.
+    CHECK(entry.config_payload == track.codec_config);
+
+    // The manifest string is the override, not the fourcc, for this codec.
+    CHECK(mp4::hls_codec_string(track) == "ac-4.02.01.00");
+    track.rfc6381.clear();
+    CHECK(mp4::hls_codec_string(track) == "ac-4");
 }

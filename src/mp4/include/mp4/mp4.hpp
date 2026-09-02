@@ -53,6 +53,12 @@ namespace mp4 {
 // sample-entry fourcc IS the codec string.
 inline constexpr std::string_view kCodecAc3 = "ac-3";
 inline constexpr std::string_view kCodecEac3 = "ec-3";
+// TS 103 190-2 Annex E.4's AC4SampleEntry ('ac-4', configuration box
+// 'dac4'). Unlike the two above, the bare fourcc is NOT the whole RFC 6381
+// codec string - Annex E.13 appends bitstream/presentation/mdcompat fields -
+// so an AC-4 AudioTrack that feeds HLS/DASH should also set
+// AudioTrack::rfc6381 (ac4::rfc6381_codec_string produces it).
+inline constexpr std::string_view kCodecAc4 = "ac-4";
 
 enum class MuxError : std::uint8_t {
     kNoFrames,
@@ -85,6 +91,12 @@ struct AudioTrack {
     // callers produce it, and examples/mux_mp4.cpp for the full round trip.
     std::vector<std::byte> codec_config;
     std::string language{"und"};
+    // RFC 6381 codec string override for hls_codec_string()/the DASH
+    // manifest, for the one codec here whose string is not its fourcc
+    // (kCodecAc4 - see its comment). Empty means "the codec_id IS the
+    // string", which stays true for AC-3/E-AC-3. Kept here rather than
+    // parsed out of codec_config so this module stays codec-blind.
+    std::string rfc6381{};
 };
 
 struct MuxOptions {

@@ -1577,3 +1577,31 @@ TEST_CASE("MP4 Reader surfaces a walk error directly from push()", "[mp4][reader
     REQUIRE_FALSE(pushed.has_value());
     CHECK(pushed.error() == mp4::DemuxError::kNotIsobmff);
 }
+
+TEST_CASE("MP4 demux round-trips an 'ac-4' track", "[mp4][reader][ac4]") {
+    mp4::AudioTrack track;
+    track.codec_id = std::string{mp4::kCodecAc4};
+    track.sample_rate = 48000;
+    track.channels = 2;
+    track.samples_per_frame = 2048;
+    track.codec_config = {std::byte{0x2A}, std::byte{0x04}, std::byte{0x10}, std::byte{0x00}};
+
+    const std::vector<Bytes> samples{frame_of(700, 0x6A), frame_of(512, 0x6B),
+                                     frame_of(280, 0x6C)};
+    const auto file = mp4::mux(track, samples);
+    REQUIRE(file.has_value());
+
+    const auto out = mp4::demux(*file);
+    REQUIRE(out.has_value());
+    CHECK(out->track.codec_id == mp4::kCodecAc4);
+    CHECK(out->track.codec_config.ac4);
+    CHECK_FALSE(out->track.codec_config.eac3);
+    // The dac4 payload is kept verbatim - remux-ready, never interpreted.
+    CHECK(out->track.codec_config.payload == track.codec_config);
+    REQUIRE(out->samples.size() == samples.size());
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        CAPTURE(i);
+        CHECK(std::equal(samples[i].begin(), samples[i].end(), out->samples[i].begin(),
+                         out->samples[i].end()));
+    }
+}
