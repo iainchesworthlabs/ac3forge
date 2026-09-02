@@ -24,6 +24,7 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/assignment.hpp"
+#include "ac3/encoder/eac3_frame.hpp"  // blocks_per_syncframe
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/object_strip.hpp"
 #include "ac3/io/wav.hpp"

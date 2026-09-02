@@ -515,13 +515,22 @@ run_ffmpeg_check eac3_mixdef_reserved.ec3
 # for "auto". numblkscod:0 also runs at 71 so a dependent substream (§E3.8.2's
 # overwrite, and the multi-substream access-unit assembly) is exercised at the
 # shortest frame too, not just the bed alone. ------------------------------
-for tools in "numblkscod:0" "numblkscod:1" "numblkscod:2" "cpl+numblkscod:1"; do
+# Rates scale with 6/blocks so every leg carries the same real bytes per
+# frame the six-block 192 kbit/s leg does. These used to say 192 across the
+# board and only encoded because of the EQ11-era sizing defect this branch
+# fixes (every short frame silently carried the full six-block byte budget):
+# at an HONEST budget, 192 kbit/s in a one-block frame is 128 bytes, which
+# 5.1's side information alone exceeds - the encoder now correctly refuses
+# it, so the legs ask for what they were actually getting all along.
+for spec in "numblkscod:0 1152" "numblkscod:1 576" "numblkscod:2 384" "cpl+numblkscod:1 576"; do
+    tools=${spec% *}
+    rate=${spec#* }
     safe=$(echo "$tools" | tr ':+' '__')
-    run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" 192 "$tools" 51
+    run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" "$rate" "$tools" 51
     run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"
     run_ffmpeg_check "eac3enc_${safe}.ec3"
 done
-run eac3-encode bootstrap_51.wav eac3_numblkscod0_71.ec3 256 "numblkscod:0" 71
+run eac3-encode bootstrap_51.wav eac3_numblkscod0_71.ec3 1536 "numblkscod:0" 71
 run decode eac3_numblkscod0_71.ec3 eac3_numblkscod0_71_decoded.wav
 run_ffmpeg_check eac3_numblkscod0_71.ec3
 
