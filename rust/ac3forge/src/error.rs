@@ -88,6 +88,9 @@ impl Error {
             // Unix targets, so the raw discriminant's own type is platform-dependent - found
             // by this crate's first Windows build. The stored value is the same bit pattern
             // either way.
+            // (and the allow is for the Unix targets, where u32 -> u32 trips
+            // clippy::unnecessary_cast - same annotation as to_raw() below.)
+            #[allow(clippy::unnecessary_cast)]
             other => Error::Other(other as u32),
         })
     }
