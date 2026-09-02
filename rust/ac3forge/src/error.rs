@@ -126,7 +126,9 @@ impl Error {
             Error::DecodeReservedValue => ac3forge_status_AC3FORGE_ERROR_DECODE_RESERVED_VALUE,
             Error::DecodeUnsupported => ac3forge_status_AC3FORGE_ERROR_DECODE_UNSUPPORTED,
             Error::DecodeInvalidStream => ac3forge_status_AC3FORGE_ERROR_DECODE_INVALID_STREAM,
-            Error::Other(raw) => raw as _, // the platform's own enum repr - see from_status
+            // The mirror of from_status's cast, same platform reasoning.
+            #[allow(clippy::unnecessary_cast)]
+            Error::Other(raw) => raw as _,
         }
     }
 }
