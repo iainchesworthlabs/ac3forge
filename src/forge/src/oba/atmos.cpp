@@ -16,6 +16,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/dsp/qmf.hpp"
 #include "ac3/emdf/emdf.hpp"
+#include "ac3/core/eac3_tables.hpp"  // blocks_per_syncframe
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/internal/profiling.hpp"
