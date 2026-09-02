@@ -1082,6 +1082,33 @@ without that hardware — a native package can carry different default codegen/t
 identical flags and the identical GCC version), or a genuine real-silicon floating-point behaviour
 `qemu-user`'s software emulation does not reproduce. Both need the real runners to test further.
 
+**FFmpeg's own architecture-specific kernels — tested directly, ruled out.** Every hypothesis
+above is about this project's side of the comparison, but the gold-reference gate measures
+*agreement between two decoders*, and the other one is FFmpeg — which ships hand-written SIMD for
+its AC-3 decoder and therefore runs different code on x86-64 (SSE/AVX) than on aarch64 (NEON). If
+FFmpeg's NEON decode differed from its SSE decode by a last bit, that alone would move the measured
+agreement and nothing in this project would be at fault.
+
+It does not. Decoding `tests/golden/external-baseline/ac3-51-448/dee.ac3` twice on the same x86-64
+host, once normally and once with `ffmpeg -cpuflags 0` forcing its plain-C reference path, gives
+two WAVs that are *not* byte-identical — FFmpeg's kernel choice does change its output — but the
+difference sits at **100–117 dB** per channel. That is 30 dB or more below the ~88 dB level at
+which this project's decode and FFmpeg's actually agree, so it is buried: `ac3cli`'s SNR against
+FFmpeg is identical to two decimal places (57.50 / 63.84 / 58.19 / 88.23 / 22.76 / 22.67 dB)
+whether FFmpeg decoded with SIMD or without. A difference that cannot move the number by 0.01 dB
+on one architecture cannot produce 6.02 dB across two. The reference side is exonerated; whatever
+is left is on this project's side of the comparison.
+
+**Where the gap appears is level-dependent, which constrains what it can be.** Sorting all 52
+(check, channel) pairs in the recorded history by their x86-64 SNR gives a step rather than a
+gradient: every pair below 67 dB shows an arm64 difference of 0.00–0.11 dB, every pair above it
+shows 5.85–6.05 dB, and nothing lands in between. So the gap is not a systematic codec error,
+which would be level-independent and shift every channel equally. It appears only where the two
+decoders agree closely enough that arithmetic is the only thing left to disagree about — which is
+also why the LFE is the only channel to split on the fixed third-party fixtures, at 88 dB the one
+channel there whose comparison is rounding-limited. See
+[Validation](verification.md#why-arm64-and-x86-64-disagree).
+
 The flag stays pinned regardless of either result, for an unrelated and unconditional reason: it is
 what makes the SIMD seam's bit-exactness argument hold. The seam maps every operation to one
 IEEE-754 add, subtract or multiply so a vectorised kernel is bit-identical to the scalar loop it
