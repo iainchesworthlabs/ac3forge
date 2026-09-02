@@ -24,6 +24,7 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/assignment.hpp"
+#include "ac3/core/eac3_tables.hpp"  // blocks_per_syncframe
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/object_strip.hpp"
 #include "ac3/io/wav.hpp"
@@ -148,12 +149,19 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
     }
     const bool emit_objects = mode != "bed51";
     const auto count = static_cast<std::size_t>(objects);
+    // One frame of input per encode_frame call - kSamplesPerFrame at the
+    // default numblkscod, 256/512/768 under a short syncframe. Derived
+    // once, next to the config that set it, so the feed loop below and
+    // the encoder can never disagree about a frame's length.
+    const std::size_t frame_samples = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * ac3::kSamplesPerBlock);
     ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = bitrate,
                                     .dialnorm = meta.p.dialnorm,
                                     .num_bands_idx = 4,
                                     .emit_object_metadata = emit_objects,
                                     .fast_mdct = meta.fast_mdct,
-                                    .joc_domain = meta.joc_domain},
+                                    .joc_domain = meta.joc_domain,
+                                    .numblkscod = meta.atmos_numblkscod},
                                    static_cast<int>(objects)};
 
     // Distinct tones so the objects are separable in the first place, and a
@@ -182,9 +190,10 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
             i == 0 ? 0.2 : 0.0));
     }
 
-    const std::uint64_t frames = (static_cast<std::uint64_t>(seconds) * 48000 + 1535) / 1536;
+    const std::uint64_t frames = (static_cast<std::uint64_t>(seconds) * 48000 + static_cast<std::uint64_t>(frame_samples) - 1) /
+                                 static_cast<std::uint64_t>(frame_samples);
     std::vector<std::vector<float>> essences(count,
-                                             std::vector<float>(ac3::kSamplesPerFrame));
+                                             std::vector<float>(frame_samples));
     std::vector<std::span<const float>> views(count);
     // Streamed out as encoded unless sign-objects defers them (the signing
     // pass below rewrites every frame after the loop). keep_partial is
@@ -201,17 +210,17 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
         // The placement is the object's position at the END of the frame,
         // because that is where both metadata layers interpolate to: OAMD's
         // ramp and the JOC matrix both finish there.
-        const double t = static_cast<double>(n0 + ac3::kSamplesPerFrame) / 48000.0;
+        const double t = static_cast<double>(n0 + frame_samples) / 48000.0;
         const auto placement = ac3::oba::evaluate_placements(paths, t);
         for (std::size_t i = 0; i < count; ++i) {
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            for (std::size_t n = 0; n < frame_samples; ++n) {
                 essences[i][static_cast<std::size_t>(n)] = static_cast<float>(
                     std::sin(2.0 * std::numbers::pi * tone_hz[i] *
                              static_cast<double>(n0 + static_cast<std::uint64_t>(n)) / 48000.0));
             }
             views[i] = essences[i];
         }
-        n0 += ac3::kSamplesPerFrame;
+        n0 += frame_samples;
 
         auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
@@ -291,10 +300,17 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
         return kExitInput;
     }
 
+    // One frame of input per encode_frame call - kSamplesPerFrame at the
+    // default numblkscod, 256/512/768 under a short syncframe. Derived
+    // once, next to the config that set it, so the feed loop below and
+    // the encoder can never disagree about a frame's length.
+    const std::size_t frame_samples = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * ac3::kSamplesPerBlock);
     ac3::oba::AtmosEncoder encoder{
         {.bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm, .num_bands_idx = 4,
          .fast_mdct = meta.fast_mdct,
-         .joc_domain = meta.joc_domain},
+         .joc_domain = meta.joc_domain,
+         .numblkscod = meta.atmos_numblkscod},
         static_cast<int>(objects)};
 
     // Distinct tones purely for audibility, same as 'atmos'.
@@ -303,9 +319,10 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
         tone_hz[i] = 220.0 * std::pow(2.0, static_cast<double>(i) * 0.45);
     }
 
-    const std::uint64_t frames = (static_cast<std::uint64_t>(seconds) * 48000 + 1535) / 1536;
+    const std::uint64_t frames = (static_cast<std::uint64_t>(seconds) * 48000 + static_cast<std::uint64_t>(frame_samples) - 1) /
+                                 static_cast<std::uint64_t>(frame_samples);
     std::vector<std::vector<float>> essences(objects,
-                                             std::vector<float>(ac3::kSamplesPerFrame));
+                                             std::vector<float>(frame_samples));
     std::vector<std::span<const float>> views(objects);
     // Same output arrangement as 'atmos' above, keep_partial hard-off for
     // the same synthetic-and-regenerable reason.
@@ -319,17 +336,17 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
     std::vector<ac3::oba::ObjectPlacement> placement(objects);
     std::uint64_t n0 = 0;
     for (std::uint64_t f = 0; f < frames; ++f) {
-        const double t = static_cast<double>(n0 + ac3::kSamplesPerFrame) / 48000.0;
+        const double t = static_cast<double>(n0 + frame_samples) / 48000.0;
         scene->evaluate_into(t, placement);
         for (std::size_t i = 0; i < objects; ++i) {
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            for (std::size_t n = 0; n < frame_samples; ++n) {
                 essences[i][static_cast<std::size_t>(n)] = static_cast<float>(
                     std::sin(2.0 * std::numbers::pi * tone_hz[i] *
                              static_cast<double>(n0 + static_cast<std::uint64_t>(n)) / 48000.0));
             }
             views[i] = essences[i];
         }
-        n0 += ac3::kSamplesPerFrame;
+        n0 += frame_samples;
 
         auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
@@ -439,9 +456,15 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
         return kExitUsage;
     }
 
+    // One frame of input per encode_frame call - kSamplesPerFrame at the
+    // default numblkscod, 256/512/768 under a short syncframe. Derived
+    // once, next to the config that set it, so the feed loop below and
+    // the encoder can never disagree about a frame's length.
+    const std::size_t frame_samples = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * ac3::kSamplesPerBlock);
     ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = dialnorm, .num_bands_idx = 4,
-         .fast_mdct = meta.fast_mdct},
+         .fast_mdct = meta.fast_mdct, .numblkscod = meta.atmos_numblkscod},
         static_cast<int>(count)};
 
     // Objects that reach the bed by the same route are exactly the ones JOC
@@ -495,8 +518,8 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
     ac3::analysis::LevelMeter meter{ac3::Acmod::k3_2, true, sources->sample_rate};
     const std::size_t total = sources->total_frames;
     std::vector<std::vector<float>> gathered(total_channels,
-                                             std::vector<float>(ac3::kSamplesPerFrame));
-    std::vector<std::vector<float>> block(count, std::vector<float>(ac3::kSamplesPerFrame));
+                                             std::vector<float>(frame_samples));
+    std::vector<std::vector<float>> block(count, std::vector<float>(frame_samples));
     std::vector<std::span<const float>> views(count);
     std::vector<std::span<const float>> metered(6);
     for (std::size_t i = 0; i < count; ++i) {
@@ -507,11 +530,11 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
         return kExitOutput;
     }
     Progress progress;
-    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
-    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
+    progress.start("encoding", (total + frame_samples - 1) / frame_samples);
+    for (std::size_t start = 0; start < total; start += frame_samples) {
         gather_frame(*sources, start, gathered);
         for (std::size_t i = 0; i < count; ++i) {
-            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            for (std::size_t n = 0; n < frame_samples; ++n) {
                 float sum = 0.0F;
                 for (const auto& [flat, gain] : slots[i].taps) {
                     if (flat < gathered.size()) {
@@ -524,7 +547,7 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
         }
         auto unit = scene ? encoder.encode_frame(
                                 views, scene->evaluate(
-                                           static_cast<double>(start + ac3::kSamplesPerFrame) /
+                                           static_cast<double>(start + frame_samples) /
                                            static_cast<double>(sources->sample_rate)))
                           : encoder.encode_frame(views, placement);
         if (!unit) {
@@ -543,7 +566,7 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
             out_sink.abort();
             return kExitOutput;
         }
-        progress.tick(start / ac3::kSamplesPerFrame + 1);
+        progress.tick(start / frame_samples + 1);
     }
     progress.finish();
     const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
@@ -634,10 +657,17 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
         dialnorm = *measured;
     }
 
+    // One frame of input per encode_frame call - kSamplesPerFrame at the
+    // default numblkscod, 256/512/768 under a short syncframe. Derived
+    // once, next to the config that set it, so the feed loop below and
+    // the encoder can never disagree about a frame's length.
+    const std::size_t frame_samples = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * ac3::kSamplesPerBlock);
     ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = dialnorm, .num_bands_idx = 4,
          .fast_mdct = meta.fast_mdct,
-         .joc_domain = meta.joc_domain},
+         .joc_domain = meta.joc_domain,
+         .numblkscod = meta.atmos_numblkscod},
         static_cast<int>(count)};
 
     // Objects that reach the bed by the same route are exactly the ones JOC
@@ -697,7 +727,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     ac3::analysis::LevelMeter meter{ac3::Acmod::k3_2, true, src_rate};
     const std::size_t total =
         streaming ? static_cast<std::size_t>(stream_in.frame_count()) : wav->frame_count();
-    std::vector<std::vector<float>> block(count, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(count, std::vector<float>(frame_samples));
     std::vector<std::span<const float>> views(count);
     std::vector<std::span<const float>> metered(6);
     // Streamed out as encoded - except under sign-objects, where the frames
@@ -710,13 +740,13 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     // Streaming reads every file channel (read_planar's contract), but only
     // the first `count` become objects - the extras land in one shared
     // discard buffer whose contents nothing reads.
-    std::vector<float> stream_discard(streaming ? ac3::kSamplesPerFrame : 0);
+    std::vector<float> stream_discard(streaming ? frame_samples : 0);
     std::vector<std::span<float>> stream_dst(streaming ? src_channels : 0);
 
     Progress progress;
-    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
-    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
-        const auto valid = std::min<std::size_t>(ac3::kSamplesPerFrame, total - start);
+    progress.start("encoding", (total + frame_samples - 1) / frame_samples);
+    for (std::size_t start = 0; start < total; start += frame_samples) {
+        const auto valid = std::min<std::size_t>(frame_samples, total - start);
         if (streaming) {
             for (std::size_t ch = 0; ch < src_channels; ++ch) {
                 stream_dst[ch] = ch < count ? std::span{block[ch]}.first(valid)
@@ -739,7 +769,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
             }
         } else {
             for (std::size_t ch = 0; ch < count; ++ch) {
-                for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                for (std::size_t i = 0; i < frame_samples; ++i) {
                     const std::size_t at = start + static_cast<std::size_t>(i);
                     block[ch][static_cast<std::size_t>(i)] =
                         at < total ? wav->channels[ch][at] : 0.0f;
@@ -754,7 +784,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
         // existed.
         auto unit = scene ? encoder.encode_frame(
                                 views, scene->evaluate(
-                                           static_cast<double>(start + ac3::kSamplesPerFrame) /
+                                           static_cast<double>(start + frame_samples) /
                                            static_cast<double>(src_rate)))
                           : encoder.encode_frame(views, placement);
         if (!unit) {
@@ -776,7 +806,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
             out_sink.abort();
             return kExitOutput;
         }
-        progress.tick(start / ac3::kSamplesPerFrame + 1);
+        progress.tick(start / frame_samples + 1);
     }
     progress.finish();
     // Optional object signing, same as 'atmos' - see the comments at its
@@ -841,17 +871,24 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
         return kExitInput;
     }
 
+    // One frame of input per encode_frame call - kSamplesPerFrame at the
+    // default numblkscod, 256/512/768 under a short syncframe. Derived
+    // once, next to the config that set it, so the feed loop below and
+    // the encoder can never disagree about a frame's length.
+    const std::size_t frame_samples = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * ac3::kSamplesPerBlock);
     ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm,
          .num_bands_idx = 4, .fast_mdct = meta.fast_mdct,
-         .joc_domain = meta.joc_domain},
+         .joc_domain = meta.joc_domain,
+         .numblkscod = meta.atmos_numblkscod},
         static_cast<int>(count)};
 
     // Metered the same way run_atmos_encode meters its own bed: 3/2 + LFE is AtmosEncoder's own
     // fixed bed layout regardless of how many dynamic objects/bed feeds fed it.
     ac3::analysis::LevelMeter meter{ac3::Acmod::k3_2, true, source->sample_rate};
     const std::size_t total = source->pcm.empty() ? 0 : source->pcm.front().size();
-    std::vector<std::vector<float>> block(count, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(count, std::vector<float>(frame_samples));
     std::vector<std::span<const float>> views(count);
     std::vector<std::span<const float>> metered(6);
     // Streamed out as encoded - no sign-objects on this command, so no
@@ -862,11 +899,11 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
     }
 
     Progress progress;
-    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
-    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
-        const auto valid = std::min<std::size_t>(ac3::kSamplesPerFrame, total - start);
+    progress.start("encoding", (total + frame_samples - 1) / frame_samples);
+    for (std::size_t start = 0; start < total; start += frame_samples) {
+        const auto valid = std::min<std::size_t>(frame_samples, total - start);
         for (std::size_t ch = 0; ch < count; ++ch) {
-            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            for (std::size_t i = 0; i < frame_samples; ++i) {
                 const std::size_t at = start + static_cast<std::size_t>(i);
                 block[ch][static_cast<std::size_t>(i)] =
                     at < source->pcm[ch].size() ? source->pcm[ch][at] : 0.0f;
@@ -876,7 +913,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
         // Evaluated at the frame's END time, the same convention run_atmos_path/run_atmos_encode
         // use.
         const auto placement = ac3::oba::evaluate_placements(
-            source->paths, static_cast<double>(start + ac3::kSamplesPerFrame) /
+            source->paths, static_cast<double>(start + frame_samples) /
                                 static_cast<double>(source->sample_rate));
         auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
@@ -897,7 +934,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
             out_sink.abort();
             return kExitOutput;
         }
-        progress.tick(start / ac3::kSamplesPerFrame + 1);
+        progress.tick(start / frame_samples + 1);
     }
     progress.finish();
     if (!out_sink.close()) {
@@ -954,16 +991,23 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
         return kExitInput;
     }
 
+    // One frame of input per encode_frame call - kSamplesPerFrame at the
+    // default numblkscod, 256/512/768 under a short syncframe. Derived
+    // once, next to the config that set it, so the feed loop below and
+    // the encoder can never disagree about a frame's length.
+    const std::size_t frame_samples = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * ac3::kSamplesPerBlock);
     ac3::oba::AtmosEncoder encoder{
         {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm,
          .num_bands_idx = 4, .fast_mdct = meta.fast_mdct,
-         .joc_domain = meta.joc_domain},
+         .joc_domain = meta.joc_domain,
+         .numblkscod = meta.atmos_numblkscod},
         static_cast<int>(count)};
 
     // Metered the same way run_atmos_adm meters its own bed.
     ac3::analysis::LevelMeter meter{ac3::Acmod::k3_2, true, source->sample_rate};
     const std::size_t total = source->pcm.empty() ? 0 : source->pcm.front().size();
-    std::vector<std::vector<float>> block(count, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> block(count, std::vector<float>(frame_samples));
     std::vector<std::span<const float>> views(count);
     std::vector<std::span<const float>> metered(6);
     EncodedStreamSink out_sink;
@@ -972,11 +1016,11 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
     }
 
     Progress progress;
-    progress.start("encoding", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
-    for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
-        const auto valid = std::min<std::size_t>(ac3::kSamplesPerFrame, total - start);
+    progress.start("encoding", (total + frame_samples - 1) / frame_samples);
+    for (std::size_t start = 0; start < total; start += frame_samples) {
+        const auto valid = std::min<std::size_t>(frame_samples, total - start);
         for (std::size_t ch = 0; ch < count; ++ch) {
-            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            for (std::size_t i = 0; i < frame_samples; ++i) {
                 const std::size_t at = start + static_cast<std::size_t>(i);
                 block[ch][static_cast<std::size_t>(i)] =
                     at < source->pcm[ch].size() ? source->pcm[ch][at] : 0.0f;
@@ -986,7 +1030,7 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
         // Evaluated at the frame's END time, the same convention every other Atmos-encode command
         // uses.
         const auto placement = ac3::oba::evaluate_placements(
-            source->paths, static_cast<double>(start + ac3::kSamplesPerFrame) /
+            source->paths, static_cast<double>(start + frame_samples) /
                                 static_cast<double>(source->sample_rate));
         auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
@@ -1005,7 +1049,7 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
             out_sink.abort();
             return kExitOutput;
         }
-        progress.tick(start / ac3::kSamplesPerFrame + 1);
+        progress.tick(start / frame_samples + 1);
     }
     progress.finish();
     if (!out_sink.close()) {

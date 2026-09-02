@@ -29,6 +29,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   either back out (byte-identical through TS; re-framed with the no-CRC sync word out of MP4,
   where the container drops the wrapper by design). Both readers recognise the new signalling;
   ffprobe identifies the output of both muxers as `ac4`.
+- The `atmos*` encode commands take `numblkscod=N` (0–3), carrying the object layer over
+  §E2.3.1.4 short syncframes: the OAMD update's ramp covers exactly one shortened frame, the
+  JOC matrix interpolates across the frame's own QMF timeslots (four per block), and both
+  reconstruction domains handle 1/2/3-block frames — completing roadmap EQ11's second half.
+  Measured worst-object SNR at every short code matches the six-block control on stationary
+  material.
+
+### Fixed
+
+- Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte budget, so a
+  short stream measured 6×/3×/2× its nominal bit rate — each shortened frame carried a
+  full-length frame's bytes. CBR frames now take `frame_words`' documented per-block scaling,
+  matching what `validate()` already checked. Six-block streams are byte-identical to before.
 
 ## [0.10.0-beta.1] - 2026-09-01
 
