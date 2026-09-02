@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -20,6 +21,7 @@
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/metadata_edit.hpp"  // restamp_crc, for the non-uniform-access-unit fixture
 #include "ac3/io/wav.hpp"
+#include "ac4/ac4.hpp"
 
 // apps/cli/commands/containers.cpp measured 0.0% line coverage when roadmap
 // VX15 first pointed the apps/cli coverage gate at apps/ (re-measured at
@@ -319,4 +321,79 @@ TEST_CASE("demux reports what each container told it, sample rate included or no
         CHECK(report.find("PES payloads") != std::string::npos);
         CHECK(report.find("Hz") == std::string::npos);
     }
+}
+
+// --------------------------------------------------------------------------
+// AC-4 carriage (roadmap IM4): the real DEE fixture through mp4 and ts, and
+// back out through demux.
+
+namespace {
+fs::path ac4_fixture() {
+    return fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-stereo-64" / "dee.ac4";
+}
+
+std::vector<std::byte> read_file(const fs::path& path) {
+    std::ifstream in{path, std::ios::binary};
+    REQUIRE(in.good());
+    std::vector<char> chars{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+    std::vector<std::byte> out(chars.size());
+    std::ranges::transform(chars, out.begin(), [](char c) { return static_cast<std::byte>(c); });
+    return out;
+}
+}  // namespace
+
+TEST_CASE("mp4 and ts carry a real AC-4 stream, and demux round-trips it",
+          "[cli][mp4][ts][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_carriage.log";
+    const auto mp4_out = dir / "dee.mp4";
+    const auto ts_out = dir / "dee.ts";
+
+    REQUIRE(run_cli("mp4 " + quoted(ac4_fixture()) + " " + quoted(mp4_out), log) == 0);
+    auto report = read_log(log);
+    CHECK(report.find("AC-4") != std::string::npos);
+    CHECK(report.find("2048 samples/frame") != std::string::npos);
+    CHECK(report.find("ac-4.02.01.00") != std::string::npos);  // Annex E.13's codecs string
+    CHECK(fs::file_size(mp4_out) > 0);
+
+    REQUIRE(run_cli("ts " + quoted(ac4_fixture()) + " " + quoted(ts_out), log) == 0);
+    report = read_log(log);
+    CHECK(report.find("AC-4 syncframes") != std::string::npos);
+    CHECK(report.find("DVB profile") != std::string::npos);
+
+    // A PES payload carries whole syncframes, so the TS direction is
+    // byte-identical to the source elementary stream.
+    const auto ts_rt = dir / "rt_ts.ac4";
+    REQUIRE(run_cli("demux " + quoted(ts_out) + " " + quoted(ts_rt), log) == 0);
+    const auto source_bytes = read_file(ac4_fixture());
+    CHECK(read_file(ts_rt) == source_bytes);
+
+    // An ISOBMFF sample is the raw_ac4_frame alone - the sync wrapper and
+    // the fixture's CRC words are container-dropped by design - so the MP4
+    // direction re-frames with the no-CRC sync word: same frame count, same
+    // payload bytes, two bytes per frame shorter, and ac4::scan parses it
+    // cleanly end to end.
+    const auto mp4_rt = dir / "rt_mp4.ac4";
+    REQUIRE(run_cli("demux " + quoted(mp4_out) + " " + quoted(mp4_rt), log) == 0);
+    const auto reframed = read_file(mp4_rt);
+    const auto scanned = ac4::scan(reframed);
+    const auto original = ac4::scan(source_bytes);
+    REQUIRE_FALSE(scanned.stopped_at.has_value());
+    REQUIRE(scanned.frames.size() == original.frames.size());
+    for (std::size_t i = 0; i < scanned.frames.size(); ++i) {
+        CAPTURE(i);
+        const auto& a = scanned.frames[i].raw_ac4_frame;
+        const auto& b = original.frames[i].raw_ac4_frame;
+        CHECK(std::equal(a.begin(), a.end(), b.begin(), b.end()));
+    }
+}
+
+TEST_CASE("ts refuses AC-4 under the atsc profile with a real reason", "[cli][ts][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_atsc.log";
+    const auto out = dir / "refused.ts";
+    CHECK(run_cli("ts " + quoted(ac4_fixture()) + " " + quoted(out) + " atsc", log) != 0);
+    const auto report = read_log(log);
+    CHECK(report.find("ATSC") != std::string::npos);
+    CHECK(report.find("dvb") != std::string::npos);
 }

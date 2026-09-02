@@ -12,6 +12,16 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- AC-4 container carriage (roadmap IM4's remaining slice): `ac3cli mp4`/`ts` accept an AC-4
+  elementary stream — TS 103 190-2 Annex E's `ac-4` sample entry and `dac4` box on the MP4
+  side (with the Annex E.13 `codecs` string for HLS/DASH), EN 300 468 Annex D.7's DVB
+  extension descriptor plus a registration descriptor on the TS side — and `demux` brings
+  either back out (byte-identical through TS; re-framed with the no-CRC sync word out of MP4,
+  where the container drops the wrapper by design). Both readers recognise the new signalling;
+  ffprobe identifies the output of both muxers as `ac4`.
+
 ## [0.10.0-beta.1] - 2026-09-01
 
 Tenth tagged release. The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0,

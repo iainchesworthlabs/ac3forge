@@ -254,6 +254,7 @@ void emit_pes(ReaderState& s, const Reader::PayloadFn& on_payload) {
         }
 
         bool eac3 = false;
+        bool ac4 = false;
         bool matched = false;
         CodecSignalling signalling = CodecSignalling::kAtscStreamType;
 
@@ -276,6 +277,17 @@ void emit_pes(ReaderState& s, const Reader::PayloadFn& on_payload) {
                 eac3 = tag == kTagEnhancedAc3Descriptor;
                 matched = true;
                 signalling = CodecSignalling::kDvbDescriptor;
+                break;
+            }
+            // EN 300 468 Annex D.7: AC-4 is the extension descriptor (0x7F)
+            // whose first payload byte - the descriptor_tag_extension - is
+            // 0x15. The flag byte after it is configuration this reader does
+            // not need; presence is the identification.
+            if (stream_type == kStreamTypePrivateData && tag == 0x7F && length >= 1 &&
+                byte_at(section, d + 2) == 0x15) {
+                ac4 = true;
+                matched = true;
+                signalling = CodecSignalling::kDvbExtensionDescriptor;
                 break;
             }
             if (tag == kTagRegistrationDescriptor && length >= 4) {
@@ -301,6 +313,7 @@ void emit_pes(ReaderState& s, const Reader::PayloadFn& on_payload) {
                                   .elementary_pid = pid,
                                   .stream_type = stream_type,
                                   .eac3 = eac3,
+                                  .ac4 = ac4,
                                   .signalling = signalling,
                                   .packet_size = s.grid.stride};
             s.stream_found = true;

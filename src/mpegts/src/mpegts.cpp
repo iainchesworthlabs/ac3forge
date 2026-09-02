@@ -140,6 +140,10 @@ constexpr std::uint8_t kPesStreamIdPrivateStream1 = 0xBD;
 constexpr std::uint8_t kTagDvbAc3Descriptor = 0x6A;
 // ETSI EN 300 468 Annex D.4, Table D.7.
 constexpr std::uint8_t kTagDvbEnhancedAc3Descriptor = 0x7A;
+// ETSI EN 300 468 §6.1: the extension descriptor, whose first payload byte
+// selects the actual descriptor. Annex D.7 registers AC-4 as extension 0x15.
+constexpr std::uint8_t kTagDvbExtensionDescriptor = 0x7F;
+constexpr std::uint8_t kExtensionTagAc4 = 0x15;
 // A/52:2018 Annex A §A4.3, Table A4.1: "The value for the AC-3
 // descriptor tag is 0x81."
 constexpr std::uint8_t kTagAtscAc3Descriptor = 0x81;
@@ -527,7 +531,42 @@ Bytes build_atsc_eac3_descriptor(const ServiceInfo& s) {
     return d;
 }
 
+// EN 300 468 Annex D.7's AC-4_descriptor, inside a §6.1 extension
+// descriptor. The body after the extension tag is one flag byte:
+// ac4_config_flag(1) toc_flag(1) reserved_zero_future_use(6), both flags
+// clear - the descriptor's job here is identification (the DVB pattern the
+// module header describes: stream_type 0x06 says nothing, the descriptor
+// IS the identification), and the configuration it could inline is exactly
+// what every frame's own TOC already carries. ServiceOptions' AC-3-shaped
+// fields describe elements this descriptor has no syntax for and are not
+// consulted.
+[[nodiscard]] Bytes build_dvb_ac4_descriptor() {
+    Bytes d;
+    // A registration_descriptor (ISO/IEC 13818-1 par. 2.6.8) with
+    // format_identifier 'AC-4' rides FIRST, beside the normative DVB
+    // signalling rather than instead of it: it is what FFmpeg's own MPEG-TS
+    // demuxer keys AC-4 on (verified - without it, ffprobe reports the PID
+    // as bin_data), the same belt-and-braces interop this module's READER
+    // already extends to 'AC-3'/'EAC3' registrations from other muxers.
+    put_descriptor_header(d, 0x05, 4);
+    d.push_back(std::byte{'A'});
+    d.push_back(std::byte{'C'});
+    d.push_back(std::byte{'-'});
+    d.push_back(std::byte{'4'});
+
+    Bytes body;
+    put_byte(body, kExtensionTagAc4);  // descriptor_tag_extension
+    put_byte(body, 0x00);              // ac4_config_flag=0, toc_flag=0, reserved
+    put_descriptor_header(d, kTagDvbExtensionDescriptor, body.size());
+    d.insert(d.end(), body.begin(), body.end());
+    return d;
+}
+
 [[nodiscard]] Bytes build_descriptor(const AudioTrack& track, BroadcastProfile profile) {
+    if (track.codec == AudioCodec::kAc4) {
+        // mux() has already refused kAtsc for this codec.
+        return build_dvb_ac4_descriptor();
+    }
     const bool eac3 = track.codec == AudioCodec::kEac3;
     if (profile == BroadcastProfile::kAtsc) {
         return eac3 ? build_atsc_eac3_descriptor(track.service)
@@ -539,6 +578,8 @@ Bytes build_atsc_eac3_descriptor(const ServiceInfo& s) {
 
 [[nodiscard]] std::uint8_t stream_type_for(const AudioTrack& track, BroadcastProfile profile) {
     if (profile != BroadcastProfile::kAtsc) {
+        // DVB: 0x06 for all three codecs - the descriptor is the
+        // identification (AC-4's included, EN 300 468 Annex D.7.1).
         return kStreamTypePrivateData;
     }
     return track.codec == AudioCodec::kEac3 ? kStreamTypeAtscEac3 : kStreamTypeAtscAc3;
@@ -801,6 +842,11 @@ std::expected<std::vector<std::byte>, MuxError> mux(
         options.audio_pid == kPatPid) {
         return std::unexpected(MuxError::kInvalidOptions);
     }
+    if (track.codec == AudioCodec::kAc4 && options.profile == BroadcastProfile::kAtsc) {
+        // ATSC never registered AC-4 for MPEG-2 TS (A/342-2 is ATSC 3.0's
+        // ROUTE/MMT, not 13818-1) - refusing beats inventing a stream_type.
+        return std::unexpected(MuxError::kInvalidOptions);
+    }
 
     const Bytes descriptor = build_descriptor(track, options.profile);
     const Bytes pat_section =
@@ -859,6 +905,11 @@ std::expected<Writer, MuxError> Writer::create(const AudioTrack& track,
     }
     if (options.pmt_pid == options.audio_pid || options.pmt_pid == kPatPid ||
         options.audio_pid == kPatPid) {
+        return std::unexpected(MuxError::kInvalidOptions);
+    }
+    if (track.codec == AudioCodec::kAc4 && options.profile == BroadcastProfile::kAtsc) {
+        // ATSC never registered AC-4 for MPEG-2 TS (A/342-2 is ATSC 3.0's
+        // ROUTE/MMT, not 13818-1) - refusing beats inventing a stream_type.
         return std::unexpected(MuxError::kInvalidOptions);
     }
     const Bytes descriptor = build_descriptor(track, options.profile);

@@ -932,3 +932,23 @@ TEST_CASE("MPEG-TS Reader surfaces a walk error directly from push()", "[mpegts]
     REQUIRE_FALSE(pushed.has_value());
     CHECK(pushed.error() == mpegts::DemuxError::kNotTransportStream);
 }
+
+TEST_CASE("MPEG-TS round-trips an AC-4 track", "[mpegts][reader][ac4]") {
+    const std::vector<Bytes> frames{frame_of(700, 0x1A), frame_of(512, 0x2B),
+                                    frame_of(280, 0x3C)};
+    const mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc4,
+                                   .sample_rate = 48000,
+                                   .channels = 2,
+                                   .samples_per_frame = 2048};
+    const auto file = mpegts::mux(track, views_of(frames));
+    REQUIRE(file.has_value());
+
+    const auto out = mpegts::demux(*file);
+    REQUIRE(out.has_value());
+    CHECK(out->stream.ac4);
+    CHECK_FALSE(out->stream.eac3);
+    CHECK(out->stream.stream_type == 0x06);
+    CHECK(out->stream.signalling == mpegts::CodecSignalling::kDvbExtensionDescriptor);
+    // The payload passes through untouched - the reader never frames it.
+    CHECK(concat(out->payloads) == concat(frames));
+}

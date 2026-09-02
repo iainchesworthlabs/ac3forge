@@ -53,8 +53,10 @@ constexpr std::uint32_t kTrun = fourcc("trun");
 constexpr std::uint32_t kMdat = fourcc("mdat");
 constexpr std::uint32_t kAc3Entry = fourcc("ac-3");
 constexpr std::uint32_t kEc3Entry = fourcc("ec-3");
+constexpr std::uint32_t kAc4Entry = fourcc("ac-4");  // TS 103 190-2 Annex E.4
 constexpr std::uint32_t kDac3 = fourcc("dac3");
 constexpr std::uint32_t kDec3 = fourcc("dec3");
+constexpr std::uint32_t kDac4 = fourcc("dac4");
 
 // Boxes that are pure containers: the walk descends into them rather than
 // buffering them whole, which is what keeps a moov of any size from being
@@ -117,6 +119,16 @@ CodecConfig parse_codec_config(std::uint32_t box_type, std::span<const std::byte
     CodecConfig out;
     out.eac3 = box_type == kDec3;
     out.payload.assign(payload.begin(), payload.end());
+    if (box_type == kDac4) {
+        // ac4_dsi_v1 (TS 103 190-2 Annex E.5) shares no field with the
+        // dac3/dec3 layout below, and this module has no business
+        // interpreting it - the bytes are kept verbatim (remux-ready, same
+        // contract as `payload` always had) and ac4::'s own parser is the
+        // one that understands the stream. The dac3/dec3-shaped fields stay
+        // at their defaults.
+        out.ac4 = true;
+        return out;
+    }
     BitCursor bits{payload};
 
     if (!out.eac3) {
@@ -291,7 +303,7 @@ std::string_view describe(DemuxError error) {
         case DemuxError::kMalformed:
             return "malformed box, sample table or fragment layout";
         case DemuxError::kNoAudioTrack:
-            return "no 'ac-3'/'ec-3' track (or the requested track id is absent)";
+            return "no 'ac-3'/'ec-3'/'ac-4' track (or the requested track id is absent)";
         case DemuxError::kLimitExceeded:
             return "box size, sample count or nesting depth beyond the reader's limits";
         case DemuxError::kMoovAfterMdat:
@@ -379,12 +391,15 @@ std::expected<void, DemuxError> close_finished(ReaderState& s, const ReadOptions
                 const bool wanted = options.track_id != 0
                                         ? s.pending.track_id == options.track_id
                                         : (s.pending.entry_type == kAc3Entry ||
-                                           s.pending.entry_type == kEc3Entry);
+                                           s.pending.entry_type == kEc3Entry ||
+                                           s.pending.entry_type == kAc4Entry);
                 if (wanted) {
                     s.track = ReadTrack{
                         .track_id = s.pending.track_id,
-                        .codec_id = std::string{s.pending.entry_type == kAc3Entry ? kCodecAc3
-                                                                                  : kCodecEac3},
+                        .codec_id =
+                            std::string{s.pending.entry_type == kAc3Entry    ? kCodecAc3
+                                        : s.pending.entry_type == kAc4Entry ? kCodecAc4
+                                                                            : kCodecEac3},
                         .sample_rate = s.pending.sample_rate,
                         .channels = s.pending.channels,
                         .timescale = s.pending.timescale,
@@ -460,7 +475,7 @@ std::expected<void, DemuxError> close_finished(ReaderState& s, const ReadOptions
         if (entry.size > body.size() - at) {
             return false;
         }
-        if (entry.type == kAc3Entry || entry.type == kEc3Entry) {
+        if (entry.type == kAc3Entry || entry.type == kEc3Entry || entry.type == kAc4Entry) {
             // §12.2.3's AudioSampleEntry, on top of §8.5.2's SampleEntry:
             // reserved(6) data_reference_index(2) reserved(8)
             // channelcount(2) samplesize(2) pre_defined(2) reserved(2)
@@ -486,7 +501,7 @@ std::expected<void, DemuxError> close_finished(ReaderState& s, const ReadOptions
                 if (config.size > entry_end - child) {
                     return false;
                 }
-                if (config.type == kDac3 || config.type == kDec3) {
+                if (config.type == kDac3 || config.type == kDec3 || config.type == kDac4) {
                     track.codec_config = parse_codec_config(
                         config.type, body.subspan(child + config.header_bytes,
                                                   static_cast<std::size_t>(config.size) -

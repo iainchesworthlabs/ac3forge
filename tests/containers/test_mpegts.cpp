@@ -203,6 +203,19 @@ Descriptor first_descriptor(const Bytes& pmt) {
 
 std::uint8_t stream_type_of(const Bytes& pmt) { return std::to_integer<std::uint8_t>(pmt[12]); }
 
+// The descriptor following `previous` in the same ES loop - for the one
+// codec (AC-4) whose signalling is a registration descriptor AND a DVB
+// extension descriptor side by side.
+Descriptor descriptor_after(const Bytes& pmt, const Descriptor& previous) {
+    const std::size_t at = 17 + 2 + previous.body.size();
+    const std::size_t length = std::to_integer<std::size_t>(pmt[at + 1]);
+    Descriptor d;
+    d.tag = std::to_integer<std::uint8_t>(pmt[at]);
+    d.body.assign(pmt.begin() + static_cast<std::ptrdiff_t>(at + 2),
+                  pmt.begin() + static_cast<std::ptrdiff_t>(at + 2 + length));
+    return d;
+}
+
 Bytes pmt_of(std::span<const std::byte> file) {
     const auto packets = parse_packets(file);
     return section_from_psi_packet(*packets_on_pid(packets, 0x1000).front());
@@ -802,4 +815,46 @@ TEST_CASE("mpegts::Writer refuses what mux() refuses", "[mpegts]") {
     const mpegts::AudioTrack ok{.sample_rate = 48000, .channels = 2, .samples_per_frame = 1536};
     CHECK(mpegts::Writer::create(ok, {.pmt_pid = 0x0031, .audio_pid = 0x0031}).error() ==
           mpegts::MuxError::kInvalidOptions);
+}
+
+// --------------------------------------------------------------------------
+// AC-4 (roadmap IM4): EN 300 468 Annex D.7's DVB signalling - stream_type
+// 0x06 plus the extension descriptor 0x7F/0x15 - with the ISO 13818-1 §2.6.8
+// registration descriptor ('AC-4') riding beside it for interop (it is what
+// FFmpeg's own TS demuxer keys AC-4 on, verified against ffprobe).
+
+TEST_CASE("MPEG-TS AC-4 writes DVB extension + registration descriptors", "[mpegts][ac4]") {
+    const std::vector<Bytes> frames{frame_of(320, 0x4A), frame_of(320, 0x4B)};
+    const auto file = mpegts::mux(
+        {.codec = mpegts::AudioCodec::kAc4, .channels = 2, .samples_per_frame = 2048}, frames);
+    REQUIRE(file.has_value());
+
+    const auto pmt = pmt_of(*file);
+    const auto first = first_descriptor(pmt);
+    // Registration first: tag 0x05, format_identifier 'AC-4'.
+    CHECK(first.tag == 0x05);
+    REQUIRE(first.body.size() == 4);
+    CHECK(first.body[0] == std::byte{'A'});
+    CHECK(first.body[1] == std::byte{'C'});
+    CHECK(first.body[2] == std::byte{'-'});
+    CHECK(first.body[3] == std::byte{'4'});
+
+    // Then the normative DVB extension descriptor: 0x7F, extension 0x15,
+    // one flag byte with ac4_config_flag and toc_flag both clear.
+    const auto second = descriptor_after(pmt, first);
+    CHECK(second.tag == 0x7F);
+    REQUIRE(second.body.size() == 2);
+    CHECK(second.body[0] == std::byte{0x15});
+    CHECK(second.body[1] == std::byte{0x00});
+}
+
+TEST_CASE("MPEG-TS refuses AC-4 under the ATSC profile", "[mpegts][ac4]") {
+    const std::vector<Bytes> frames{frame_of(64, 0x4C)};
+    const auto file = mpegts::mux(
+        {.codec = mpegts::AudioCodec::kAc4, .channels = 2, .samples_per_frame = 2048}, frames,
+        mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+    REQUIRE_FALSE(file.has_value());
+    // ATSC never registered AC-4 for 13818-1 transport (A/342-2 is ATSC
+    // 3.0's ROUTE/MMT) - refused, not given an invented stream_type.
+    CHECK(file.error() == mpegts::MuxError::kInvalidOptions);
 }

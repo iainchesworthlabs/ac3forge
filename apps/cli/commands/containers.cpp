@@ -23,6 +23,7 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/object_strip.hpp"
+#include "ac4/ac4.hpp"
 #include "container_input.hpp"
 #include "matroska/matroska.hpp"
 #include "matroska/reader.hpp"
@@ -121,6 +122,60 @@ bool write_text_to_path(const std::filesystem::path& path, std::string_view text
 }
 }  // namespace
 
+// AC-4 input for the mp4/ts commands (roadmap IM4's carriage slice). The
+// ac3::io::scan above rejects a TS 103 190 stream outright (different sync
+// word), so the commands that can carry AC-4 retry with ac4::scan and take
+// this path instead. Two framings come out of one scan because the two
+// containers disagree about what a "sample" is: an ISOBMFF 'ac-4' sample is
+// the raw_ac4_frame ALONE (Annex E.4 - no sync word, no frame_size, no
+// CRC), while a PES payload carries whole ac4_syncframe()s exactly as an
+// elementary stream does.
+struct Ac4Input {
+    ac4::Toc toc;                                        // the first frame's
+    std::vector<std::span<const std::byte>> mp4_samples; // raw_ac4_frame each
+    std::vector<std::span<const std::byte>> ts_units;    // whole syncframes
+    std::uint32_t samples_per_frame = 0;
+};
+
+std::optional<Ac4Input> try_ac4_input(std::span<const std::byte> raw) {
+    const auto scanned = ac4::scan(raw);
+    if (scanned.frames.empty()) {
+        return std::nullopt;
+    }
+    if (scanned.stopped_at) {
+        fmt::println(stderr, "error: AC-4 stream stops parsing at byte {}: {}",
+                     scanned.stopped_at_offset, ac4::describe(*scanned.stopped_at));
+        return std::nullopt;
+    }
+    auto first = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+    if (!first) {
+        fmt::println(stderr, "error: AC-4 TOC: {}", ac4::describe(first.error()));
+        return std::nullopt;
+    }
+    const auto samples = ac4::samples_per_frame(first->toc);
+    if (!samples) {
+        fmt::println(stderr,
+                     "error: AC-4 frame_rate_index {} has no whole-sample frame length "
+                     "(the 1000/1001-family rates alternate frame sizes) - this muxer "
+                     "cannot lay out its timing",
+                     first->toc.frame_rate_index);
+        return std::nullopt;
+    }
+    Ac4Input out;
+    out.toc = std::move(first->toc);
+    out.samples_per_frame = *samples;
+    out.mp4_samples.reserve(scanned.frames.size());
+    out.ts_units.reserve(scanned.frames.size());
+    for (std::size_t i = 0; i < scanned.frames.size(); ++i) {
+        const auto& frame = scanned.frames[i];
+        out.mp4_samples.push_back(frame.raw_ac4_frame);
+        const std::size_t end =
+            i + 1 < scanned.frames.size() ? scanned.frames[i + 1].offset : raw.size();
+        out.ts_units.push_back(raw.subspan(frame.offset, end - frame.offset));
+    }
+    return out;
+}
+
 int run_mkv(std::string_view in_path, std::string_view out_path) {
     // read_elementary_stream (roadmap IO2) also accepts an MP4 or MPEG-TS
     // input here, not just a raw .ac3/.ec3 - which is what makes this
@@ -208,6 +263,39 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
+        // Not A/52? It may be AC-4, which this command can also carry
+        // (roadmap IM4): TS 103 190-2 Annex E's 'ac-4' sample entry and
+        // 'dac4' box, timing from Table 84, RFC 6381 string for a
+        // downstream HLS/DASH packager.
+        if (const auto ac4_in = try_ac4_input(raw)) {
+            const mp4::AudioTrack track{
+                .codec_id = std::string{mp4::kCodecAc4},
+                .sample_rate = static_cast<std::uint32_t>(ac4_in->toc.sample_rate_hz),
+                // The TOC does not carry a channel count (presentations do,
+                // per experience; Annex E's sample entry says set 2) - see
+                // TS 103 190-2 E.4.5: channelcount "should be set to 2".
+                .channels = 2,
+                .samples_per_frame = ac4_in->samples_per_frame,
+                .codec_config = ac4::build_dac4(ac4_in->toc),
+                .rfc6381 = ac4::rfc6381_codec_string(ac4_in->toc)};
+            const auto ac4_file = mp4::mux(track, ac4_in->mp4_samples);
+            if (!ac4_file) {
+                fmt::println(stderr, "error: {}", mp4::describe(ac4_file.error()));
+                return kExitInput;
+            }
+            if (!write_bytes_to_path(std::filesystem::path{std::string{out_path}},
+                                     *ac4_file)) {
+                fmt::println(stderr, "error: cannot write {}", out_path);
+                return kExitOutput;
+            }
+            status_println(status_stream(),
+                           "wrote {} AC-4 frames ({} Hz, {} samples/frame, {} bytes, "
+                           "codecs {}) to {}",
+                           ac4_in->mp4_samples.size(), track.sample_rate,
+                           track.samples_per_frame, ac4_file->size(), track.rfc6381,
+                           out_path);
+            return kExitOk;
+        }
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
     }
@@ -551,6 +639,46 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned) {
+        if (const auto ac4_in = try_ac4_input(raw)) {
+            // EN 300 468 Annex D.7 is DVB signalling; ATSC never registered
+            // AC-4 for MPEG-2 TS (see mpegts::AudioCodec::kAc4). Said here,
+            // where the operator chose the profile, rather than surfaced as
+            // a bare kInvalidOptions from the muxer.
+            if (profile == mpegts::BroadcastProfile::kAtsc) {
+                fmt::println(stderr,
+                             "error: AC-4 has no ATSC MPEG-2 TS signalling (A/342-2 is "
+                             "ATSC 3.0's ROUTE/MMT) - use the dvb profile");
+                return kExitUsage;
+            }
+            const mpegts::AudioTrack ac4_track{
+                .codec = mpegts::AudioCodec::kAc4,
+                .sample_rate = static_cast<std::uint32_t>(ac4_in->toc.sample_rate_hz),
+                .channels = 2,  // presentation detail lives in the TOC, not the PMT
+                .samples_per_frame = ac4_in->samples_per_frame};
+            const auto ac4_file = mpegts::mux(ac4_track, ac4_in->ts_units,
+                                              mpegts::MuxOptions{.profile = profile});
+            if (!ac4_file) {
+                fmt::println(stderr, "error: {}", mpegts::describe(ac4_file.error()));
+                return kExitInput;
+            }
+            std::ofstream ac4_out{std::string{out_path}, std::ios::binary};
+            if (!ac4_out) {
+                fmt::println(stderr, "error: cannot write {}", out_path);
+                return kExitOutput;
+            }
+            ac4_out.write(reinterpret_cast<const char*>(ac4_file->data()),
+                          static_cast<std::streamsize>(ac4_file->size()));
+            if (!ac4_out) {
+                fmt::println(stderr, "error: write failed");
+                return kExitOutput;
+            }
+            status_println(status_stream(),
+                           "wrote {} AC-4 syncframes ({} Hz, {} samples/frame, {} bytes) "
+                           "to {} (DVB profile)",
+                           ac4_in->ts_units.size(), ac4_track.sample_rate,
+                           ac4_track.samples_per_frame, ac4_file->size(), out_path);
+            return kExitOk;
+        }
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
     }
@@ -681,10 +809,10 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
     std::uint32_t sample_rate = 0;
     int channels = 0;
     int status = 0;
-    const auto drive = [&]<typename Reader, typename Describe>(Reader& reader,
-                                                               Describe describe) {
+    const auto drive = [&]<typename Reader, typename Describe, typename Callback>(
+                           Reader& reader, Describe describe, const Callback& deliver) {
         for (auto bytes = first; !bytes.empty(); bytes = read_chunk()) {
-            const auto pushed = reader.push(bytes, on_frame);
+            const auto pushed = reader.push(bytes, deliver);
             if (!pushed) {
                 status = fail(describe(pushed.error()), kExitInput);
                 return;
@@ -699,8 +827,8 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
         // at end-of-input (the unbounded PES length form). The difference is
         // real, so it is dispatched on rather than papered over.
         const auto finished = [&] {
-            if constexpr (requires { reader.finish(on_frame); }) {
-                return reader.finish(on_frame);
+            if constexpr (requires { reader.finish(deliver); }) {
+                return reader.finish(deliver);
             } else {
                 return reader.finish();
             }
@@ -717,24 +845,53 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
 
     if (kind == ac3::apps::ContainerKind::kMatroska) {
         matroska::Reader reader{};
-        drive(reader, [](matroska::DemuxError e) { return matroska::describe(e); });
+        drive(reader, [](matroska::DemuxError e) { return matroska::describe(e); }, on_frame);
         codec_id = std::string{reader.track().codec_id};
         sample_rate = reader.track().sample_rate;
         channels = reader.track().channels;
     } else if (kind == ac3::apps::ContainerKind::kMp4) {
         mp4::Reader reader{};
-        drive(reader, [](mp4::DemuxError e) { return mp4::describe(e); });
+        // An 'ac-4' sample is the raw_ac4_frame alone (TS 103 190-2 Annex
+        // E.4); writing samples back to back would produce a stream nothing
+        // can re-sync on, so each is re-wrapped in Annex G.3.1's
+        // ac4_syncframe on the way out - the same re-framing
+        // apps/common/container_input.cpp applies for the decode/qc path,
+        // and byte-for-byte what 'ac3cli ts' produces for the same input.
+        // A/52 tracks pass through untouched, exactly as before.
+        const auto on_mp4_sample = [&](std::span<const std::byte> sample) {
+            if (reader.track().codec_id != mp4::kCodecAc4) {
+                on_frame(sample);
+                return;
+            }
+            std::vector<std::byte> framed;
+            framed.reserve(sample.size() + 7);
+            const auto put = [&framed](std::uint32_t v, int bytes) {
+                for (int b = bytes - 1; b >= 0; --b) {
+                    framed.push_back(static_cast<std::byte>((v >> (8 * b)) & 0xFFu));
+                }
+            };
+            put(0xAC40u, 2);
+            if (sample.size() >= 0xFFFF) {
+                put(0xFFFFu, 2);
+                put(static_cast<std::uint32_t>(sample.size()), 3);
+            } else {
+                put(static_cast<std::uint32_t>(sample.size()), 2);
+            }
+            framed.insert(framed.end(), sample.begin(), sample.end());
+            on_frame(framed);
+        };
+        drive(reader, [](mp4::DemuxError e) { return mp4::describe(e); }, on_mp4_sample);
         codec_id = reader.track().codec_id;
         sample_rate = reader.track().sample_rate;
         channels = reader.track().channels;
     } else {
         mpegts::Reader reader{};
-        drive(reader, [](mpegts::DemuxError e) { return mpegts::describe(e); });
+        drive(reader, [](mpegts::DemuxError e) { return mpegts::describe(e); }, on_frame);
         // A transport stream's PMT names the codec but carries no sample
         // rate or channel count - those live in the bitstream, which this
         // command deliberately never looks inside. Reported as absent
         // rather than guessed.
-        codec_id = reader.stream().eac3 ? "E-AC-3" : "AC-3";
+        codec_id = reader.stream().ac4 ? "AC-4" : reader.stream().eac3 ? "E-AC-3" : "AC-3";
     }
     if (status != kExitOk) {
         return status;

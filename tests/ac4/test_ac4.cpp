@@ -1,8 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <fstream>
 #include <functional>
 #include <utility>
@@ -571,4 +573,91 @@ TEST_CASE("describe returns a distinct, non-empty string for every Error", "[ac4
         CAPTURE(static_cast<int>(error));
         CHECK_FALSE(ac4::describe(error).empty());
     }
+}
+
+// --------------------------------------------------------------------------
+// Carriage helpers (roadmap IM4): the 'dac4' box, per-frame timing and the
+// RFC 6381 string, all against the real DEE fixture's own parsed TOC.
+
+TEST_CASE("build_dac4 carries the TOC's stream-level facts", "[ac4][carriage]") {
+    const auto data = read_file(fixture_path());
+    const auto scanned = ac4::scan(data);
+    REQUIRE_FALSE(scanned.frames.empty());
+    const auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+    REQUIRE(frame.has_value());
+
+    const auto dsi = ac4::build_dac4(frame->toc);
+    REQUIRE_FALSE(dsi.empty());
+
+    // Read the header back with an independent bit walk (this file's own
+    // pattern: neither the writer nor a shared reader validates itself).
+    std::size_t pos = 0;
+    const auto get = [&](int bits) {
+        std::uint32_t value = 0;
+        for (int i = 0; i < bits; ++i) {
+            const std::size_t byte_at = pos >> 3U;
+            REQUIRE(byte_at < dsi.size());
+            const auto bit = (std::to_integer<std::uint32_t>(dsi[byte_at]) >>
+                              (7U - (pos & 7U))) & 1U;
+            value = (value << 1U) | bit;
+            ++pos;
+        }
+        return value;
+    };
+
+    CHECK(get(3) == 1);  // ac4_dsi_version
+    CHECK(get(7) == static_cast<std::uint32_t>(frame->toc.bitstream_version));
+    CHECK(get(1) == (frame->toc.sample_rate_hz == 48000 ? 1U : 0U));  // fs_index
+    CHECK(get(4) == static_cast<std::uint32_t>(frame->toc.frame_rate_index));
+    CHECK(get(9) == static_cast<std::uint32_t>(frame->toc.n_presentations));
+    if (frame->toc.bitstream_version > 1) {
+        CHECK(get(1) == 0);  // b_program_id
+    }
+    CHECK(get(2) == 0);           // bit_rate_mode: unknown
+    CHECK(get(32) == 0xFFFFFFFF);  // bit_rate: unknown
+    CHECK(get(32) == 0xFFFFFFFF);  // bit_rate_precision: unknown
+    // byte_align, then one (version, pres_bytes=0) pair per presentation.
+    pos = (pos + 7U) & ~std::size_t{7};
+    for (int p = 0; p < frame->toc.n_presentations; ++p) {
+        (void)get(8);            // presentation_version - value checked for p=0 below
+        CHECK(get(8) == 0);      // pres_bytes: the slice's stated boundary
+    }
+    CHECK(pos == dsi.size() * 8);  // nothing after the last entry
+
+    // The DEE fixture is bitstream_version 2 with one presentation.
+    CHECK(frame->toc.bitstream_version == 2);
+    CHECK(frame->toc.n_presentations == 1);
+}
+
+TEST_CASE("samples_per_frame follows Table 84, refusing the alternating rates",
+          "[ac4][carriage]") {
+    ac4::Toc toc;
+    toc.sample_rate_hz = 48000;
+    const std::array<std::optional<std::uint32_t>, 14> expected{{
+        2002, 2000, 1920, std::nullopt, 1600, 1001, 1000, 960,
+        std::nullopt, 800, 480, std::nullopt, 400, 2048,
+    }};
+    for (int index = 0; index < static_cast<int>(expected.size()); ++index) {
+        toc.frame_rate_index = index;
+        CAPTURE(index);
+        CHECK(ac4::samples_per_frame(toc) == expected[static_cast<std::size_t>(index)]);
+    }
+    // 44,1 kHz: Table 83 defines only the sample-rate-locked 2048 frame.
+    toc.sample_rate_hz = 44100;
+    toc.frame_rate_index = 13;
+    CHECK(ac4::samples_per_frame(toc) == std::optional<std::uint32_t>{2048});
+    toc.frame_rate_index = 0;
+    CHECK_FALSE(ac4::samples_per_frame(toc).has_value());
+}
+
+TEST_CASE("rfc6381_codec_string renders Annex E.13's dotted hex fields", "[ac4][carriage]") {
+    const auto data = read_file(fixture_path());
+    const auto scanned = ac4::scan(data);
+    REQUIRE_FALSE(scanned.frames.empty());
+    const auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+    REQUIRE(frame.has_value());
+    // bitstream_version 2, presentation_version 1, md_compat 0 on this DEE
+    // encode - cross-checked against the probe table docs/verification.md
+    // records for the same fixture.
+    CHECK(ac4::rfc6381_codec_string(frame->toc) == "ac-4.02.01.00");
 }

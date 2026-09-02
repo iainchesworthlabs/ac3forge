@@ -264,7 +264,9 @@ inline Bytes build_sample_entry(const AudioTrack& track) {
     // overflows the field.
     put_u32(body, track.sample_rate << 16);
 
-    const std::string_view config_fourcc = track.codec_id == kCodecAc3 ? "dac3" : "dec3";
+    const std::string_view config_fourcc = track.codec_id == kCodecAc3    ? "dac3"
+                                           : track.codec_id == kCodecAc4 ? "dac4"
+                                                                         : "dec3";
     put_box(body, config_fourcc, track.codec_config);
 
     Bytes out;

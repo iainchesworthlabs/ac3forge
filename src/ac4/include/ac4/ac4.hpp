@@ -265,4 +265,45 @@ struct RawFrame {
 [[nodiscard]] AC4_EXPORT std::expected<RawFrame, Error> parse_raw_frame(
     std::span<const std::byte> raw_ac4_frame);
 
+// --- Carriage (roadmap IM4's separable slice) -------------------------------
+//
+// Everything below serves putting AC-4 INTO a container, not parsing it:
+// the 'dac4' box an ISO-BMFF 'ac-4' sample entry carries (TS 103 190-2
+// Annex E.5's ac4_dsi_v1), the per-frame sample count a container's timing
+// needs (Table 84), and RFC 6381's codec string for HLS/DASH signalling
+// (Annex E.13). All three read the already-parsed Toc rather than raw
+// bytes, so a caller pays for exactly one parse however many it needs.
+
+// The 'dac4' box payload - ac4_dsi_v1 (Annex E.5), box header excluded, the
+// same contract as mp4::AudioTrack::codec_config ("payload only").
+//
+// TOC-level fields are carried in full: ac4_dsi_version 1, the stream's own
+// bitstream_version / fs_index / frame_rate_index, n_presentations, and (for
+// bitstream_version > 1) b_program_id = 0. The bit-rate DSI (Annex E.7) is
+// written as mode 0 with both fields 0xFFFFFFFF - "unknown", the honest
+// value for a muxer that was handed frames rather than an encoder's rate
+// plan. Each presentation entry carries its presentation_version and
+// pres_bytes = 0 - a syntactically complete DSI whose per-presentation
+// detail (Annex E.10/E.11's ~twenty conditional fields) is deliberately not
+// reproduced from the TOC in this slice; a reader gets the stream-level
+// facts from the box and the presentation detail from the TOC every frame
+// still carries. Recorded here as the boundary rather than discovered.
+[[nodiscard]] AC4_EXPORT std::vector<std::byte> build_dac4(const Toc& toc);
+
+// Samples per AC-4 frame at the stream's own sample rate - what
+// mp4::AudioTrack::samples_per_frame and an MPEG-TS PTS cadence need.
+// Table 84: most frame rates divide the sample rate exactly; the
+// 1000/1001-family entries whose frame length alternates between two values
+// (29.97/59.94/119.88 fps) have no single answer and return nullopt - a
+// container that wants those needs per-frame durations this slice does not
+// model. At 44.1 kHz only frame_rate_index 13 (the 2048-sample frame) is
+// defined at all (Table 83).
+[[nodiscard]] AC4_EXPORT std::optional<std::uint32_t> samples_per_frame(const Toc& toc);
+
+// RFC 6381 codec string per Annex E.13: "ac-4.AA.BB.CC" with two lowercase
+// hex digits each of bitstream_version, presentation_version and mdcompat,
+// taken from the first presentation (the one a presentation-unaware player
+// selects). An absent md_compat reads as 0.
+[[nodiscard]] AC4_EXPORT std::string rfc6381_codec_string(const Toc& toc);
+
 }  // namespace ac4
