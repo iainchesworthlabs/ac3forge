@@ -1128,11 +1128,27 @@ bitstream-hash gate (`tools/checks/check_cross_platform_hash.py`, wired into
 [the gold-reference gate](#gold-reference-correctness-gate)) pins a SHA-256 of the actual encoded
 bytes per `(kernel, transform mode)` pair in `tests/golden/bitstream-hashes.json`, so this specific
 divergence — resolved or not — cannot silently change size without a CI failure pointing straight
-at it. `x86_64-sse2` and `generic` are pinned from the measurements above; `aarch64-neon` and the
-macOS kernel are deliberately left unpinned rather than pre-filled from the qemu measurement, since
-that measurement is exactly the evidence that an emulated cross-build is not equivalent to a real
-CI leg — the next person with those CI logs in front of them should pin what the real hardware
-actually produces.
+at it. `x86_64-sse2` and `generic` were pinned from the measurements above, and `aarch64-neon` is now
+pinned too — from the real arm64 CI legs rather than the qemu cross-build this file declined to
+pre-fill from (PR #503, CI run 33635430769: `linux-gcc-arm64`, `linux-llvm-arm64`,
+`windows-msvc-arm64`, `macos-llvm`).
+
+**All three streams came back byte-identical to `x86_64-sse2`.** That is a result, not a
+formality: this project's *encoder* is bit-exact across architectures, so the ~6.02 dB
+gold-reference gap the arm64 legs measure is entirely **decode-side** — the same bytes go in and
+different PCM comes out.
+
+It also resolves what looked like it needed two mechanisms. Only the LFE splits on the fixed
+third-party fixtures, but *every* channel splits on this project's own gold-reference streams,
+which invites the inference that the arm64 encoder must be producing different bytes. It is not.
+The gold-reference streams are encoded `dither=off` (`nodither` for E-AC-3), so nothing is
+dither-limited and every channel sits in the rounding-limited regime above 67 dB where the
+last-bit difference is all that is left; the third-party fixtures carry dither, which dominates
+every channel except the LFE. One mechanism, two fixture populations.
+
+With the encoder excluded by these hashes, FFmpeg's own kernels excluded by the `-cpuflags 0`
+test above, and contraction and libm excluded before that, what remains for VX11 is the decode
+path on real arm64 silicon — which is also the one thing no emulated run has reproduced.
 
 ## Gold-reference correctness gate
 

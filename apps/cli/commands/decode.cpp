@@ -10,6 +10,7 @@
 #include <fmt/base.h>
 #include <fmt/format.h>
 #include <fstream>
+#include <ios>
 #include <optional>
 #include <span>
 #include <string>
@@ -33,6 +34,8 @@
 #include "ac3/meta/mixing.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/verify/bap_census.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
+#include "ac3/verify/mirror.hpp"
 
 namespace ac3cli::commands {
 

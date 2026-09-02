@@ -43,6 +43,16 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   documented-but-wheelless Raspberry Pi) and Intel macOS, and a `stubtest` step holds the
   hand-written type stubs to the compiled module on every push.
 
+- **The cross-platform bitstream-hash gate now pins `aarch64-neon`, from real arm64 CI rather than
+  emulation — and it is byte-identical to `x86_64-sse2`.** That key had never been pinned: the
+  checker printed `[unpinned]` and passed, so every arm64 run had compared its encoder's output to
+  nothing. All three streams match exactly, which means this project's *encoder* is bit-exact
+  across architectures and the ~6.02 dB gold-reference gap the arm64 legs measure is entirely
+  decode-side. It also explains why only the LFE splits on the fixed third-party fixtures while
+  every channel splits on this project's own: the gold-reference streams are encoded `dither=off`,
+  so nothing is dither-limited and all six channels sit in the rounding-limited regime — one
+  mechanism, two fixture populations, no encoder divergence.
+
 - **Roadmap VX11 resolved: the ~6.02 dB cross-platform split is a last-bit arithmetic
   difference, not a systematic codec error.** It splits the legs strictly by architecture — `macos-llvm` (arm64) sits
   with the arm64 group and `macos-llvm-x64` with the x86-64 group, same OS and compiler on

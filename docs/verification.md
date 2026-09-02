@@ -250,11 +250,27 @@ side. The first version of these floors subtracted a further 6.02 dB on top of t
 counting the same margin twice and costing about 5 dB of sensitivity on every channel.
 Removing the double-count is what took the headroom to 1.0 dB.
 
-What is **not** yet answered is why arm64 is the *worse* of the two — it agrees with
-FFmpeg's decode less closely than x86-64 does, consistently, by exactly one bit. That is
-a separate question from VX11 (which asked what the split *is*), and it is worth pursuing:
-one bit of accuracy is recoverable if the cause is a contraction or ordering difference in
-this project's own transform rather than in FFmpeg's.
+**The encoder is bit-exact across architectures; the gap is entirely decode-side.** The
+cross-platform hash gate had never pinned `aarch64-neon` — it printed `[unpinned]` and passed,
+so every arm64 run had compared its encoder's output to nothing. Pinned now from the real arm64
+CI legs (PR #503, run 33635430769), and all three streams come back **byte-identical** to
+`x86_64-sse2`. So the same bitstream goes in on both architectures and different PCM comes out:
+whatever the last-bit difference is, it is in the decode path, not the encode path.
+
+That also settles a discrepancy that looked like it needed two mechanisms. On the fixed
+third-party fixtures only the LFE splits, but on this project's own gold-reference streams
+*every* channel does — which invited the inference that the arm64 encoder must produce a
+different bitstream. It does not. The gold-reference streams are encoded `dither=off`
+(`nodither` for E-AC-3), so no channel's comparison is dither-limited and **all** of them sit in
+the rounding-limited regime above 67 dB, where the last-bit difference is the whole remaining
+signal. The third-party fixtures carry dither, which dominates every channel except the LFE.
+One mechanism, two fixture populations.
+
+What is **not** yet answered is why arm64 is the *worse* of the two — it agrees with FFmpeg's
+decode less closely than x86-64 does, consistently, by one bit. The search space is now much
+smaller: the encoder is excluded by the hashes above, the reference side is excluded by the
+FFmpeg kernel test, and contraction and libm were excluded before that. What remains is the
+decode path on real arm64 silicon, which is also the one thing no emulated run has reproduced.
 
 The same reasoning now applies to the *trend* check as well as the gate:
 `tools/ci/append_quality_history.py` compares each channel against its own trailing

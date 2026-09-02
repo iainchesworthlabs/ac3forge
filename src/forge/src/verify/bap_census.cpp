@@ -3,8 +3,11 @@
 #include <fmt/format.h>
 
 #include <cstddef>
+#include <string>
 
-#include "ac3/core/tables.hpp"
+#include "ac3/core/exponents.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
+#include "ac3/verify/mirror.hpp"
 
 namespace ac3::verify {
 
