@@ -30,6 +30,21 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   where the container drops the wrapper by design). Both readers recognise the new signalling;
   ffprobe identifies the output of both muxers as `ac4`.
 
+### Fixed
+
+- **macOS cross-builds no longer compile the wrong architecture's SIMD kernels.** `AC3FORGE_SIMD`'s
+  `auto` and the `AC3FORGE_AVX2` tier both keyed on `CMAKE_SYSTEM_PROCESSOR`, which on Apple
+  platforms describes the *host*: a Mac configured with `-DCMAKE_OSX_ARCHITECTURES` for the other
+  architecture picked its own kernels and, building for arm64 from an Intel Mac, handed the ARM
+  compile `-mavx2` and failed outright. Both now follow the effective target architecture, and a
+  universal (multi-`-arch`) configure resolves `generic`, since no single compile-time choice can
+  serve both slices. Native builds on every platform are unaffected.
+- **The two new wheel runners built the wrong architecture.** `[tool.cibuildwheel]`'s hardcoded
+  per-platform `archs` meant `macos-15-intel` cross-built an arm64 wheel (the failure above) and
+  `ubuntu-24.04-arm` built x86_64 under emulation — so neither produced the wheel it was added for,
+  and both would have collided with an existing artifact at publish time. Both now build their own
+  native architecture, which is what the manylinux aarch64 and Intel macOS entries above describe.
+
 ## [0.10.0-beta.1] - 2026-09-01
 
 Tenth tagged release. The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0,

@@ -257,7 +257,7 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_ADM` | `OFF` | Build `ac3adm::ac3adm` (`src/ac3adm`), the standalone BW64/RF64 + ADM parser — see [ADM / BW64 reading](library/adm.md). Off by default, unlike every other library component: it vendors libbw64/libadm via `FetchContent`, and libadm needs several Boost header libraries, resolved separately via `-DVCPKG_MANIFEST_FEATURES=adm` (`vcpkg.json`'s `adm` feature) — turning this `ON` without also selecting that feature fails with a clear configure-time message rather than a bare "Boost not found". |
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
-| `AC3FORGE_SIMD` | `auto` | Which `src/forge/src/internal/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from `CMAKE_SYSTEM_PROCESSOR` and falls back to `generic` everywhere else, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
+| `AC3FORGE_SIMD` | `auto` | Which `src/forge/src/internal/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from the *effective target* architecture (`CMAKE_SYSTEM_PROCESSOR`, or `CMAKE_OSX_ARCHITECTURES` where a macOS cross-build sets one) and falls back to `generic` everywhere else, including a macOS universal binary, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
 | `AC3FORGE_AVX2` | `ON` | x86_64 only. Compiles an AVX2 SIMD tier alongside the baseline SSE2 one, selected at *runtime* rather than at configure time. See [Runtime AVX2 dispatch](#runtime-avx2-dispatch). `OFF` (or a non-x86_64 target) yields a provably AVX2-free binary. |
 | `AC3FORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_COVERAGE` | `OFF` | `--coverage` gcov instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. Off is a no-op; GCC/Clang only, other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` preset above rather than by hand. |
@@ -819,6 +819,24 @@ for first when two machines disagree. The resolved value is printed by the confi
 by `ac3cli --version`, which reads it from the compiled header rather than from a
 CMake-substituted string, so a binary cannot claim a directory it was not built with.
 
+**Cross-builds, and why `CMAKE_SYSTEM_PROCESSOR` is not the question `auto` asks.** On Apple
+platforms `CMAKE_OSX_ARCHITECTURES` overrides `CMAKE_SYSTEM_PROCESSOR` per compile line, so the two
+disagree whenever a Mac builds for the other architecture — and the compile line, not the host, is
+what the kernels have to be right for. `auto` therefore takes `-arch` as the truth wherever one is
+set: an Intel Mac configured with `-DCMAKE_OSX_ARCHITECTURES=arm64` (which is exactly what
+cibuildwheel does when it builds the arm64 wheel on the `macos-15-intel` runner — see
+`python/pyproject.toml`) resolves `aarch64` and not `x86_64`. Reading the host variable instead
+selects SSE2 intrinsics and an `-mavx2` flag for an ARM compile, which does not degrade quietly; it
+fails the build outright with `clang++: error: unsupported option '-mavx2' for target
+'x86_64-apple-darwin24.6.0'` — a diagnostic that names the host triple rather than the `-arch` the
+flag is actually invalid for, which is why the real cause is easy to misread from the log alone.
+
+A macOS *universal* binary — more than one `-arch` from a single configure, so every source is
+compiled once per slice — resolves `generic`, because no single compile-time architecture choice can
+be correct for both slices at once. That is a real, if conservative, cost: universal builds get the
+scalar kernels on both halves. Configure the two slices separately and `lipo` them together if you
+want SSE2 and NEON in one binary.
+
 **What is vectorised.** The kernels live once, in shared code, written against the two 128-bit
 types the header defines (`f64x2`, two doubles; `i32x4`, four 32-bit integers) — the directories
 carry the types, not a copy of each kernel:
@@ -920,7 +938,11 @@ Never `-mfma`: this project's code must not call an FMA intrinsic regardless of 
 otherwise permit — see [Floating-point contraction](#floating-point-contraction) — and not
 requesting it keeps the CPUID gate to the single AVX2 bit. `INTERPROCEDURAL_OPTIMIZATION` is forced
 `OFF` on this target specifically: LTO/LTCG is the one mechanism that could hoist AVX2-flagged
-codegen across a translation-unit boundary into a caller `has_avx2()` never approved for it.
+codegen across a translation-unit boundary into a caller `has_avx2()` never approved for it. The
+target exists only where `AC3FORGE_SIMD` resolved to `x86_64`, so it follows the effective target
+architecture through a [cross-build](#simd-kernels-and-the-architecture-tree) rather than the host:
+an arm64 or universal macOS build does not build it at all, rather than building it without the
+flag.
 
 **Testing — compile everywhere, execute only where capable.** `forge_simd_avx2` links into
 `ac3tests` on every x86_64 leg unconditionally, proving the AVX2 code is valid, compilable,

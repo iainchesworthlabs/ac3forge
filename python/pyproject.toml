@@ -96,11 +96,24 @@ test-command = "pytest {package}/tests"
 manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
 
+# `auto64` - the runner's own 64-bit architecture, and only that - rather than a hardcoded arch
+# name per platform, because wheels.yml's matrix now has TWO runners per OS family and the arch is
+# the whole difference between them: macos-latest is Apple silicon and macos-15-intel is not,
+# ubuntu-latest is x86_64 and ubuntu-24.04-arm is not. A hardcoded name is right for exactly one
+# runner of each pair and silently wrong for the other - it made the Intel Mac cross-build an arm64
+# wheel (which failed outright, since CMake then handed an ARM compile `-mavx2`; see
+# src/forge/CMakeLists.txt's target-architecture resolution) and made the arm64 Linux runner build
+# x86_64 under QEMU, hours slow and, once done, carrying the same wheel filename as ubuntu-latest's
+# - which the publish job's `merge-multiple` would have quietly collapsed to one. Neither runner
+# would ever have produced the wheel it was added for.
+#
+# `auto64` and not `auto`: on Windows `auto` means AMD64 *plus* 32-bit x86, and this project has
+# never shipped a 32-bit wheel. On Linux and macOS the two are already the same thing.
 [tool.cibuildwheel.linux]
-archs = ["x86_64"]
+archs = ["auto64"]
 
 [tool.cibuildwheel.macos]
-archs = ["arm64"]
+archs = ["auto64"]
 
 [tool.cibuildwheel.windows]
-archs = ["AMD64"]
+archs = ["auto64"]
