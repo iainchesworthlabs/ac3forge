@@ -22,6 +22,20 @@ pybind11_add_module(_ac3forge src/ac3forge_ext/bindings.cpp)
 # that kind of consumer, just an in-tree one.
 target_link_libraries(_ac3forge PRIVATE ac3::forge)
 
+# Roadmap AP6's completeness surface. Both groups are conditional on the same
+# configure that built (or skipped) the libraries, so a trimmed dev build -
+# codec only - still produces a working extension without them; the wheel
+# build (python/pyproject.toml) turns every one of these targets ON, so a
+# published wheel always carries the full surface.
+if(TARGET matroska::matroska AND TARGET mp4::mp4 AND TARGET mpegts::mpegts)
+    target_link_libraries(_ac3forge PRIVATE matroska::matroska mp4::mp4 mpegts::mpegts)
+    target_compile_definitions(_ac3forge PRIVATE AC3FORGE_PY_HAVE_CONTAINERS)
+endif()
+if(TARGET ac3::signing)
+    target_link_libraries(_ac3forge PRIVATE ac3::signing)
+    target_compile_definitions(_ac3forge PRIVATE AC3FORGE_PY_HAVE_SIGNING)
+endif()
+
 # scikit-build-core's wheel.install-dir (see python/pyproject.toml) is the
 # package root, so a relative DESTINATION here lands the compiled extension
 # next to python/src/ac3forge/__init__.py inside the wheel.

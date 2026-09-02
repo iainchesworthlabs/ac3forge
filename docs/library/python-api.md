@@ -300,12 +300,32 @@ documented as "a programming error, not a runtime one"). `decode_frame_into`/
 buffer that's too short, or one that isn't C-contiguous or writeable all raise `ValueError`; the
 wrong dtype raises `TypeError`. See [Zero-copy numpy](#zero-copy-numpy-and-buffer-reuse) above.
 
-## What isn't exposed
+## Containers, metering, QC and signing
 
-`ac3::io::dash_channel_configuration`/`build_codec_config_box` (`ac3/io/dec3.hpp`) — DASH/ISOBMFF
-codec-config-box helpers built on top of a `ScannedStream` — are not here; they belong with the
-container writers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS`), which this binding does not build at all
-yet (see ROADMAP.md's AP6 entry), rather than with `scan()` itself.
+Roadmap AP6's completeness pass added four submodules, each pybind11-direct over the same C++
+classes every other binding here wraps:
+
+- **`ac3forge.containers`** — the three container writers and the batch read side, bytes in /
+  bytes out: `mux_matroska`/`mux_mp4`/`mux_mpegts` over `MatroskaTrack`/`Mp4Track`/`TsTrack`
+  (kwargs constructors, the same convention every config class here uses), and
+  `demux_matroska`/`demux_mp4`/`demux_mpegts` bringing frames back out. `Mp4Track.codec_config`
+  takes the `dac3`/`dec3` payload `ac3forge.build_codec_config_box(stream)` produces — built
+  straight off the bitstream, never off whatever a source container declared, exactly like
+  `ac3cli mp4`. The incremental `Reader`/`Writer` classes and the fragmented-MP4/HLS/DASH
+  surface stay C++-only for now — a boundary, not a silent gap.
+- **`ac3forge.meta`** — `LoudnessMeter` (BS.1770; every gated measurement is `None` until it
+  can mean anything), the cited `qc_preset()` table, and `evaluate_qc_gate()` — `ac3cli qc`'s
+  own machinery, callable from a notebook.
+- **`ac3forge.signing`** — `SigningKey` (base64 or raw, the single decode every front end
+  shares), `sign_atmos_stream` (returns a signed copy — Python bytes are immutable),
+  `has_authenticity_tag` and `verify_atmos_stream`.
+- **`Eac3Decoder` is a context manager** — `with ac3forge.Eac3Decoder() as d:` drains the §3.7
+  hold-back on scope exit (discarding it; call `flush()` yourself to keep it).
+
+The hand-written stubs in `__init__.pyi` cover all of it, and wheels.yml's `stubtest` step
+holds them to the compiled module on every push.
+
+## What isn't exposed
 
 `FrameEncoder`/`AtmosEncoder`'s self-check `trace` hook (`ac3::verify::FrameTrace`) and
 `AtmosEncoder`'s `bed()`/`parameters()` introspection accessors are internal verification

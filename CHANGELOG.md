@@ -14,6 +14,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- Python completeness (roadmap AP6): new `ac3forge.containers` (Matroska/MP4/MPEG-TS mux and
+  demux, with `build_codec_config_box()` for the `dac3`/`dec3` payload), `ac3forge.meta`
+  (BS.1770 `LoudnessMeter`, the cited QC presets and `evaluate_qc_gate`) and
+  `ac3forge.signing` (EMDF object signing/verification); `Eac3Decoder` is a context manager
+  that drains the §3.7 hold-back on exit. Wheels now build for manylinux aarch64 (the
+  documented-but-wheelless Raspberry Pi) and Intel macOS, and a `stubtest` step holds the
+  hand-written type stubs to the compiled module on every push.
+
 - AC-4 container carriage (roadmap IM4's remaining slice): `ac3cli mp4`/`ts` accept an AC-4
   elementary stream — TS 103 190-2 Annex E's `ac-4` sample entry and `dac4` box on the MP4
   side (with the Annex E.13 `codecs` string for HLS/DASH), EN 300 468 Annex D.7's DVB
