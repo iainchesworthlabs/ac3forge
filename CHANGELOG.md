@@ -12,8 +12,34 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Changed
+
+- **The gold-reference quality gate now has one SNR floor per channel, not one per fixture.**
+  A 5.1 fixture's surround channels sit 35 dB below its front channels for a legitimate
+  reason — they carry the fewest bits, so they hold the most zero-bit bins, and A/52 §7.3.4
+  leaves the values a decoder substitutes there unspecified, so two spec-correct decoders are
+  *required* to differ. A single floor had to clear the surrounds, which on
+  `ac3-51-448/dee.ac3` meant gating the centre channel at 22 dB while it measured 58.1: it
+  could have lost 36 dB, and the LFE 60 dB, without failing anything. Each channel now carries
+  its own floor, derived as `floor(min_observed − 6.02)` from that channel's lowest value
+  across every CI leg and every recorded commit by the new
+  `tools/checks/derive_channel_floors.py` — so a floor move is reviewable against evidence
+  rather than asserted. Every check gained 14–66 dB of real gate on its front channels and
+  LFE; one pair of floors (this fixture's `Ls`/`Rs`) went *down*, from 22 to 16, because 22
+  was never derived for them. The trend check in `tools/ci/append_quality_history.py` follows
+  the same rule, comparing each channel against its own trailing average instead of watching
+  only the worst channel — which was the same dither-dominated surround on every run.
+  `compare_wav.py`'s `--json-out` gains `thresholds_db`, `headroom_db`, `channel_labels` and
+  `tightest_channel`; `threshold_db` keeps its old scalar meaning for existing consumers.
+  [Validation](docs/verification.md) carries the derivation and the two gaps that still limit
+  how sharply these gates can see.
+
 ### Added
 
+- The Python oracles under `tools/` now have unit tests of their own
+  (`tools/checks/test_compare_wav.py`, run by `ci.yml`'s Script Lint job). Lint could tell
+  whether a gate parsed; nothing told whether it still gated. The suite pins the
+  single-floor blind spot above with a test that fails if it is ever reintroduced.
 - AC-4 container carriage (roadmap IM4's remaining slice): `ac3cli mp4`/`ts` accept an AC-4
   elementary stream — TS 103 190-2 Annex E's `ac-4` sample entry and `dac4` box on the MP4
   side (with the Annex E.13 `codecs` string for HLS/DASH), EN 300 468 Annex D.7's DVB

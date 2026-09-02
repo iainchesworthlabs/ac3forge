@@ -161,6 +161,81 @@ five-object Atmos scene encoded and decoded by each build, one delay-compensated
 row per object per rate. It is a self-consistency series throughout — see "Where the oracles
 don't reach" below for why no other kind is available.
 
+### One floor per channel, not one per file
+
+Every SNR gate here is stated **per channel**. That is worth spelling out, because
+the alternative looks equivalent and is not.
+
+A 5.1 fixture's six channels do not sit anywhere near each other. On
+`ac3-51-448/dee.ac3` — Dolby's own encoder, decoded by this project and by FFmpeg and the
+two decodes compared — the measured agreement is:
+
+| L | R | C | LFE | Ls | Rs |
+|---|---|---|---|---|---|
+| 57.5 dB | 63.8 dB | 58.1 dB | 82.2 dB | 22.8 dB | 22.7 dB |
+
+The surrounds are 35 dB below the front channels, and legitimately so: they carry
+the fewest bits, so they hold the most bap-0 bins, and §7.3.4 leaves the *values* a
+decoder substitutes there unspecified — "any reasonably random sequence". Two
+spec-correct decoders are required to disagree in exactly those bins.
+
+A single floor for this fixture therefore had to clear 22.7 dB, and it was set at 22.
+Which meant the centre channel was gated at 22 dB while measuring 58.1 — it could have
+lost 36 dB, more than the entire dynamic range of the surround channels, without
+failing anything. The LFE had 60 dB of slack. That is not a gate; it is a gate on one
+channel and a rounding error on the other five, and it was blind to precisely the
+per-channel syntax defects the third-party fixtures were added to catch (one of the
+five found there, `firstcplcos[ch]`, is per channel by nature).
+
+Each channel now carries its own floor, derived as `floor(min_observed − 6.02)` from
+that channel's lowest value across every CI leg and every recorded commit —
+`tools/checks/derive_channel_floors.py` is the derivation, kept as a script so a floor
+move is reviewable against evidence rather than asserted. 6.02 dB is one AC-3 exponent
+step, the single unexplained cross-platform effect this project has measured (roadmap
+VX11); a tighter floor would risk a new platform tripping it for a reason that is not a
+defect.
+
+One pair of floors went *down* in the change: this fixture's Ls/Rs, from 22 to 16,
+because 22 was never derived for those channels — it was the one floor the whole
+fixture had to share. Its other four channels gained 29–54 dB of gate. The check went
+from catching only a total surround collapse to catching a 6 dB move in any channel,
+and `tools/checks/test_compare_wav.py` holds that property down with a test that fails
+if the single-floor form is ever restored.
+
+The same reasoning now applies to the *trend* check as well as the gate:
+`tools/ci/append_quality_history.py` compares each channel against its own trailing
+average, where it previously watched only the worst channel — which, on these fixtures,
+was the same dither-dominated surround every single run.
+
+### What would make these numbers excellent
+
+Two known gaps, in the order they are worth closing:
+
+1. **The 6.02 dB headroom is set by something unexplained.** Every arm64 and macOS leg
+   lands one exponent step below every x86 leg on some channels, and that has survived
+   ruling out FMA contraction and architecture-specific libm `sin`/`cos` by direct
+   measurement (roadmap VX11, and [Building](building.md)'s "Floating-point
+   contraction"). Until it is understood, every per-channel floor has to leave a full
+   step of room. Resolve it and the floors tighten from ~6 dB of headroom to ~1 dB,
+   which is roughly a sixfold gain in what these gates can detect — commit-to-commit
+   noise within a leg has stayed inside 0.02–0.08 dB, so there is a great deal of
+   sensitivity being left on the table.
+
+2. **Spec-permitted dither divergence is still inside the measurement.** The surrounds
+   score ~22 dB not because either decoder is wrong but because §7.3.4 lets them differ
+   in the zero-bit bins. A comparison that excluded those bins — masking on the `bap`
+   values the decoder already records in `ac3::verify::FrameTrace` (`DecoderConfig::trace`,
+   exported by `ac3/verify/trace_export.hpp`) — would measure only the bins that were
+   actually coded, and the surrounds would be expected to join the front channels in the
+   50–90 dB band. That needs the comparison moved into the MDCT domain, with block
+   alignment and the coupling-region indirection (a coupled channel's bap-0 decision
+   lives on the coupling stream, not its own) handled correctly; it is a real piece of
+   work, not a flag. It would also produce a new metric on a new scale, so it belongs
+   beside the current series rather than replacing it.
+
+Neither gap is a defect in the codec. Both are limits on how sharply the current
+instruments can see it, which is the more useful thing to be honest about.
+
 ## Performance and reference modes
 
 Both transform hot spots — the forward MDCT (§8.2.3.2) and the inverse transform's step-3
