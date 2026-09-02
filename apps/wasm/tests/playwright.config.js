@@ -60,7 +60,17 @@ module.exports = defineConfig({
     projects: [
         {
             name: 'decode',
-            testMatch: 'decode.spec.js',
+            // Both specs drive the decode demo directory, so both belong to
+            // this project - worklet.spec.js is the AudioWorklet/Worker/
+            // SharedArrayBuffer pipeline over the same package/ and the same
+            // bundled fixture, not a separate demo needing its own server.
+            // A list, not a glob: an unmatched spec file is silently *no
+            // tests*, not an error, and worklet.spec.js sat unrun from the
+            // day it was added because the single-filename form here was
+            // never extended. Naming each file keeps that failure mode loud
+            // - a new spec that nothing lists shows up as a missing test in
+            // the run summary the moment anyone looks.
+            testMatch: ['decode.spec.js', 'worklet.spec.js'],
             use: { baseURL: decodeBase },
         },
         {

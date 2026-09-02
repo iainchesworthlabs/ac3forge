@@ -22,6 +22,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   where the container drops the wrapper by design). Both readers recognise the new signalling;
   ffprobe identifies the output of both muxers as `ac4`.
 
+### Fixed
+
+**Browser (WASM)**
+
+- **The AudioWorklet pipeline's browser test never ran.** `apps/wasm/tests/worklet.spec.js` — the
+  one check that a real `AudioWorkletNode`, a real Worker and a real `SharedArrayBuffer` ring
+  buffer carry decoded audio end to end — was added in 0.10.0-beta.1 but matched no Playwright
+  project, so `npx playwright test` silently skipped it locally and in CI while the release notes
+  and `docs/platforms/wasm.md` both described that pipeline as covered. It now runs in the decode
+  project. Wiring it in also surfaced the spec's own bug: it navigated to `/index.html`, which
+  resolves to the server root rather than the demo subdirectory, and the resulting 404 page (which
+  carries no cross-origin-isolation headers) made the failure read as "COOP/COEP headers missing".
+
 ## [0.10.0-beta.1] - 2026-09-01
 
 Tenth tagged release. The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0,
