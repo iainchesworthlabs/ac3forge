@@ -90,9 +90,11 @@ process.
 
 **Silencing** is the problem the driver solves. If the app taps Chrome and re-emits it over
 HDMI, Chrome also still plays out of whatever the default device is. Muting the session in the
-mixer almost certainly mutes the tap as well, because the tap sits after session volume in the
-engine (Phase 0 confirms or refutes this). Holding the default endpoint in exclusive mode makes
-other applications' streams fail rather than go quiet, and probably stops the tap too. The clean
+mixer mutes the tap as well, because the tap sits after session volume in the engine (S1
+confirmed it: the tap went silent within a second of the mute). Opening the default endpoint
+in exclusive mode while other applications are rendering to it is worse than useless: S1 found
+the open is refused with `AUDCLNT_E_DEVICE_IN_USE` and the applications' streams are invalidated
+anyway, so they stop playing and the taps deliver silence from then on. The clean
 answer is the one FxSound arrived at: a **virtual render endpoint that discards what it is
 given**. Make it the system default and every application renders into a device nobody hears,
 while the per-process taps pick each one off individually. The driver has no smarts at all. It
@@ -115,8 +117,10 @@ is the highest-friction step and because CI will not have one. Driver-free mode 
 
 FxSound is installed on the development workstation. Its endpoint, "Speakers (FxSound Audio
 Enhancer)", is a production-signed virtual render device that goes nowhere when the FxSound
-application is not running. It is the development stand-in for our own driver until Phase 4,
-and Phase 0 uses it to answer the tap questions before any driver code exists.
+application is not running. It is the development stand-in for our own driver until Phase 4.
+S1 used it to prove the whole model: applications rendering to it were tapped identically to
+applications on the real default, and with them there the workstation's Realtek endpoint could
+be taken in exclusive mode (`S_OK`) without the taps noticing.
 
 ### Rerouting: explicit, like FxSound
 
@@ -183,6 +187,12 @@ underneath): a device arriving or leaving, or the default changing, re-runs the 
 the best mode changed, fades the current sink down over one frame, stops it, starts the next,
 and fades up. The encoder keeps running through the switch; only the sink changes. The user can
 pin a mode to stop the app changing its mind.
+
+One rule the output stage must hold, from S1: **the probe is safe, the open is not.**
+`IsFormatSupported` in exclusive mode can be asked of any endpoint at any time, live streams or
+not. `Initialize` in exclusive mode on an endpoint that other applications are rendering to is
+refused and still invalidates their streams. So the app takes HDMI exclusively only after the
+default has been moved to the null sink and the session list confirms nothing is left on HDMI.
 
 **The headphone and PCM paths decode what was encoded.** It would be less work and lower latency
 to hand the taps' PCM and positions straight to the spatial sink, but then those modes would
@@ -310,13 +320,13 @@ leaving its answer in this page. None of it is reused as code.
 
 | Spike | Question | Exit |
 |---|---|---|
-| **S1 taps** | Does process loopback work against N processes at once, what format arrives, does it keep delivering when the session is muted, when the app is routed to the FxSound endpoint, and when the default endpoint is held exclusively by us? | a table of yes/no per case, and the N at which it fell over |
+| **S1 taps** | Does process loopback work against N processes at once, what format arrives, does it keep delivering when the session is muted, when the app is routed to the FxSound endpoint, and when the default endpoint is held exclusively by us? | **Done 2026-09-03**, results in `apps/windows/spikes/README.md`: 16 taps separate exactly at 48 kHz float, mute kills a tap, the FxSound null-sink model works, exclusive on another endpoint is fine, exclusive on the apps' own endpoint is refused and destructive, the probe alone is harmless |
 | **S2 bitstream** | Does `PassthroughSink` in E-AC-3 and AC-3 exclusive mode lock on a real Atmos receiver from this workstation? This is DR9's Windows row. | the receiver's front panel reads DD+ Atmos, then DD, at zero underruns for a minute |
 | **S3 headphones** | With Windows Sonic enabled on the Realtek endpoint, does encode then decode then `SpatialObjectSink` produce audible height and rear movement by ear? | yes or no, and the measured round-trip latency |
 | **S4 throughput** | Does a 15-object `AtmosEncoder` plus 16 taps plus the bed mix hold 32 ms cadence on this machine with margin? | per-frame time at p50 and p99 |
 
 Prerequisites: a long HDMI cable to the receiver (S2, the developer's to-do); Windows Sonic
-enabled on the headphone endpoint (S3). S1, S3 and S4 do not wait for S2.
+enabled on the headphone endpoint (S3). S3 and S4 do not wait for S2.
 
 ### Phase 1: library additions
 
@@ -359,14 +369,23 @@ the last item, after which the driver can join the package.
 
 ## What has and has not been verified
 
-Nothing. This is a plan. When S2 runs, the "Windows/WASAPI exclusive: unconfirmed" line in
-roadmap DR9 and the warning in [Windows](windows.md) are the first two things to change.
+!!! note "S1 verified on the development workstation, 2026-09-03"
+    Process-loopback capture behaves as the plan needs: sixteen concurrent taps each read only
+    their own process, at 48 kHz float, first packet within 20 ms; a tap opened before the
+    process starts playing picks it up; applications rendering to the idle FxSound virtual
+    endpoint are tapped identically; and with them there, the Realtek endpoint could be taken
+    in exclusive mode without disturbing the taps. Two hazards confirmed: session mute silences
+    the tap, and an exclusive open on an endpoint with live shared streams is refused *and*
+    kills those streams. The full table is in `apps/windows/spikes/README.md`.
+
+Everything else is still a plan. When S2 runs, the "Windows/WASAPI exclusive: unconfirmed"
+line in roadmap DR9 and the warning in [Windows](windows.md) are the first two things to change.
 
 ## Open questions this plan does not settle
 
-- Whether the process-loopback tap survives session mute or an exclusively held default
-  endpoint. S1 decides how much the driver-free mode is worth.
-- How many concurrent process-loopback clients the engine tolerates. S1 measures it.
+- How the app confirms every session has left HDMI before it opens HDMI exclusively, given
+  that a premature open kills the streams still there. The session list per endpoint is the
+  obvious answer; whether it updates fast enough after a default-device switch is not yet known.
 - Whether the foreground full-screen check should use the shell's full-screen notification
   (`SHQueryUserNotificationState`) or a window-rect comparison. Either is app-level; the
   first is cheaper and the plan starts there.

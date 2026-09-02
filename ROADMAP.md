@@ -2237,7 +2237,8 @@ canvas drag-by-pointer itself and real microphone hardware remain manual-only ch
 ### Considering
 
 **UX11 (XL)** — Desktop Atmos Demo for Windows: the PC's applications as Atmos objects. Planned;
-nothing built. Design and phase plan in `docs/platforms/windows-demo.md`.
+spike S1 done (process-loopback taps work, 16 at once). Design and phase plan in
+`docs/platforms/windows-demo.md`.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2253,7 +2254,11 @@ with `kNoBackend` twins elsewhere; everything else is app-level. The driver is a
 licensed (MS-PL) SysVAD derivative, test-signed first, attestation-signed later. Phase 0 is four
 spikes, one of which is DR9's Windows row: exclusive-mode bitstream against a real receiver
 from the workstation, waiting on an HDMI cable. Headphone and PCM modes decode what was encoded
-rather than bypassing the codec, with a bypass switch so the difference can be shown.
+rather than bypassing the codec, with a bypass switch so the difference can be shown. S1 ran on
+2026-09-03 (`apps/windows/spikes/`): sixteen taps separate exactly at 48 kHz float, a tap
+opened before the process plays picks it up, applications on an idle virtual endpoint are
+tapped identically while another endpoint is held exclusively, session mute silences a tap, and
+an exclusive open on an endpoint with live shared streams is refused and kills them.
 </details>
 
 **UX7 (M)** — macOS loopback capture through Core Audio process/system taps. Blocked on a real
