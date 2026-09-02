@@ -2236,6 +2236,26 @@ canvas drag-by-pointer itself and real microphone hardware remain manual-only ch
 
 ### Considering
 
+**UX11 (XL)** — Desktop Atmos Demo for Windows: the PC's applications as Atmos objects. Planned;
+nothing built. Design and phase plan in `docs/platforms/windows-demo.md`.
+<details markdown="1">
+<summary>Full record</summary>
+
+A tray-resident Qt Quick app under `apps/windows/` that installs a virtual null-sink render
+device the way FxSound does, taps every playing application individually through Windows 11
+process loopback capture, lets the user drag each one to a room position, and streams the result
+live as E-AC-3 JOC over HDMI (`PassthroughSink`), falling back to AC-3 5.1 with the positions
+panned (`BedRenderer`), to decoded PCM surround (`MonitorSink`), or to decoded objects through
+Windows Spatial Sound on headphones (`SpatialObjectSink`), switching on device arrival and
+removal. Unpositioned and full-screen-foreground applications form the bed. Library additions
+are two Windows-backend files (a per-process loopback capture kind, a render-device watcher)
+with `kNoBackend` twins elsewhere; everything else is app-level. The driver is a separately
+licensed (MS-PL) SysVAD derivative, test-signed first, attestation-signed later. Phase 0 is four
+spikes, one of which is DR9's Windows row: exclusive-mode bitstream against a real receiver
+from the workstation, waiting on an HDMI cable. Headphone and PCM modes decode what was encoded
+rather than bypassing the codec, with a bypass switch so the difference can be shown.
+</details>
+
 **UX7 (M)** — macOS loopback capture through Core Audio process/system taps. Blocked on a real
 Mac and on DR6's code signing; only documentation and an OS-version gate landed without one.
 <details markdown="1">

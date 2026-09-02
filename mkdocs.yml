@@ -73,6 +73,7 @@ nav:
           - Raspberry Pi: platforms/raspberry-pi.md
           - macOS: platforms/macos.md
           - Android (NVIDIA Shield): platforms/android.md
+          - Windows (Desktop Atmos Demo, planned): platforms/windows-demo.md
           - WebAssembly (browser demos): platforms/wasm.md
   - Concepts:
       - Overview: concepts/index.md

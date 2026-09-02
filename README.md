@@ -196,6 +196,7 @@ generators in `tools/`.
 | [docs/building.md](docs/building.md) | Building from a clean clone, including the failures you will hit |
 | [docs/platforms/](docs/platforms/windows.md) | Windows / Linux / Raspberry Pi / macOS specifics: toolchains, audio backends, packaging |
 | [docs/platforms/android.md](docs/platforms/android.md) | Shield Atmos Demo: the Android TV app, HDMI passthrough, controller input, screenshots |
+| [docs/platforms/windows-demo.md](docs/platforms/windows-demo.md) | Desktop Atmos Demo (planned): the PC's applications as Atmos objects, design and phase plan |
 | [docs/concepts/](docs/concepts/index.md) | Beginner's guide to AC-3, E-AC-3, Atmos and JOC, with diagrams |
 | [docs/library/](docs/library/index.md) | The public API, with compiled examples |
 | [docs/library/examples.md](docs/library/examples.md) | Index of the example programs the library pages excerpt |
