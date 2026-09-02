@@ -94,7 +94,7 @@ def derive(records: list[dict]) -> tuple[list[float], list[int], int]:
     channels = len(records[-1]["channels_db"])
     usable = [r for r in records if len(r["channels_db"]) == channels]
     minima = [min(r["channels_db"][i] for r in usable) for i in range(channels)]
-    return minima, [int(math.floor(m - HEADROOM_DB)) for m in minima], channels
+    return minima, [math.floor(m - HEADROOM_DB) for m in minima], channels
 
 
 def main() -> int:

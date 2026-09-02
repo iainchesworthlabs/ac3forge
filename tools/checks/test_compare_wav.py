@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import compare_wav  # noqa: E402  (needs the sys.path line above)
+import compare_wav
 
 SCRIPT = Path(__file__).resolve().parent / "compare_wav.py"
 RATE = 48000
@@ -111,8 +111,8 @@ class EndToEnd(unittest.TestCase):
     argument wiring is covered too."""
 
     def run_compare(self, ref_channels, act_channels, *args):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
             ref, act, out = tmp / "ref.wav", tmp / "act.wav", tmp / "out.json"
             write_wav_f32(ref, ref_channels)
             write_wav_f32(act, act_channels)
