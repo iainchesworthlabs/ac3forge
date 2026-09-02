@@ -14,14 +14,28 @@ quality-history/main.jsonl -o main.jsonl
 Policy: floor = floor(min_observed - HEADROOM_DB), where min_observed is the
 channel's lowest value across every leg and every commit in the file.
 
-HEADROOM_DB is one AC-3 exponent step. That is not a round number picked for
-comfort: it is the single unexplained cross-platform effect this project has
-measured, where every arm64 and macOS leg lands ~6.02 dB below every x86 leg
-on some channels (roadmap VX11, and MIN_SNR_DB's own comment in
-verify_gold_reference.sh). A floor tighter than one step would risk a new
-platform tripping it for a reason that is not a defect. Once VX11 is
-understood, this is the constant to revisit - see docs/verification.md's
-"What would make these numbers excellent".
+HEADROOM_DB covers commit-to-commit noise and NOTHING ELSE, because
+min_observed has already absorbed everything else.
+
+That is the correction VX11 produced. The first version of this script used
+6.02 dB, on the reasoning that a floor tighter than the cross-platform split
+would risk a new platform tripping it. But min_observed is a minimum across
+EVERY leg, so for any channel where the split appears it is already the arm64
+value - the low side. Subtracting the size of the split from a number that is
+already the bottom of the split counts the same margin twice, and cost about
+5 dB of sensitivity on every channel.
+
+What is actually left to absorb is how much one leg's own number moves between
+commits, and the recorded answer is: almost nothing. Across 520
+(check, leg, channel) series the median spread over the full history is
+0.000 dB and 495 of them stay under 0.5 dB. The 25 that do not are one real
+step change on one check (eac3_cplbndstrce0, 2026-08-17, 25.42 -> 22.41, flat
+for the 63 commits since), not noise. 1.0 dB is over ten times the largest
+genuine commit-to-commit movement this project has documented (0.02-0.08 dB).
+
+A NEW leg landing below a floor is not a false alarm under this policy - it is
+a new platform behaviour that has never been reviewed, and stopping to look at
+it is the correct outcome rather than something to pre-authorise with margin.
 
 Regenerate after a deliberate, reviewed quality change. Never to make a red
 gate green: a floor that has to move to pass is a regression with extra steps,
@@ -38,7 +52,7 @@ import math
 import sys
 from pathlib import Path
 
-HEADROOM_DB = 6.02
+HEADROOM_DB = 1.0
 
 # Same list as compare_wav.py's CHANNEL_LABELS and docs/quality-trend.md's
 # CHANNEL_LABELS_51 - the golden reference's WAV channel order.

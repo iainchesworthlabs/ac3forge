@@ -187,20 +187,66 @@ channel and a rounding error on the other five, and it was blind to precisely th
 per-channel syntax defects the third-party fixtures were added to catch (one of the
 five found there, `firstcplcos[ch]`, is per channel by nature).
 
-Each channel now carries its own floor, derived as `floor(min_observed − 6.02)` from
+Each channel now carries its own floor, derived as `floor(min_observed − 1.0)` from
 that channel's lowest value across every CI leg and every recorded commit —
 `tools/checks/derive_channel_floors.py` is the derivation, kept as a script so a floor
-move is reviewable against evidence rather than asserted. 6.02 dB is one AC-3 exponent
-step, the single unexplained cross-platform effect this project has measured (roadmap
-VX11); a tighter floor would risk a new platform tripping it for a reason that is not a
-defect.
+move is reviewable against evidence rather than asserted.
 
-One pair of floors went *down* in the change: this fixture's Ls/Rs, from 22 to 16,
+The 1.0 dB covers commit-to-commit noise and nothing else, because `min_observed` has
+already absorbed everything else. Measured over 520 (check, leg, channel) series, one
+leg's own number moves by a median of **0.000 dB** across the whole recorded history,
+and 495 of them stay under 0.5 dB; the 25 that do not are a single real step change on
+one check, not noise. A new leg landing below a floor is not a false alarm under this
+policy — it is platform behaviour nobody has reviewed, and stopping to look at it is the
+right outcome rather than something to pre-authorise with margin.
+
+One pair of floors went *down* in the change: this fixture's Ls/Rs, from 22 to 21,
 because 22 was never derived for those channels — it was the one floor the whole
-fixture had to share. Its other four channels gained 29–54 dB of gate. The check went
-from catching only a total surround collapse to catching a 6 dB move in any channel,
+fixture had to share. Its other four channels gained 34–59 dB of gate. The check went
+from catching only a total surround collapse to catching a 1 dB move in any channel,
 and `tools/checks/test_compare_wav.py` holds that property down with a test that fails
 if the single-floor form is ever restored.
+
+### Why arm64 and x86-64 disagree
+
+The legs split into two groups on the high-SNR channels, ~6.02 dB apart, and this was
+carried for a long time as an unexplained effect attributed to "arm64 and macOS" legs
+(roadmap VX11). Two things are now settled.
+
+**It is architecture, not OS or compiler.** `macos-llvm` (arm64) sits with the arm64
+group; `macos-llvm-x64` sits with the x86-64 group. Same OS, same Homebrew LLVM, opposite
+sides. That rules out the "macOS libm" reading directly.
+
+**It is one bit of arithmetic, not a codec error.** 20·log₁₀2 is 6.02 dB whether the bit
+is an AC-3 exponent step or a floating-point rounding bit, so the number alone cannot
+tell them apart — but the prediction can. A systematic exponent error would be
+level-independent and shift every channel equally. Rounding is only visible where the
+measurement is already rounding-dominated. Sorting all 52 (check, channel) pairs by
+their x86-64 SNR gives a step, not a gradient:
+
+| x86-64 SNR of the channel | arm64 difference |
+|---|---|
+| 18.3 – 66.7 dB (32 pairs) | **0.00 – 0.11 dB** |
+| 67.8 – 88.3 dB (20 pairs) | **5.85 – 6.05 dB** |
+
+Nothing lands in between. Below ~67 dB the disagreement between the two decoders is
+dominated by real coding differences and by §7.3.4 dither, and one extra rounding bit is
+buried in it. Above ~67 dB the two decoders agree so closely that arithmetic is all
+that is left to disagree about, and the bit becomes the whole signal. That is also why
+the LFE is the only channel to split on the fixed third-party fixtures: at 88 dB it is
+the one channel there whose comparison is rounding-limited.
+
+The practical consequence is the floors above. `min_observed` is a minimum **across
+legs**, so wherever this split appears the minimum is already the arm64 value — the low
+side. The first version of these floors subtracted a further 6.02 dB on top of that,
+counting the same margin twice and costing about 5 dB of sensitivity on every channel.
+Removing the double-count is what took the headroom to 1.0 dB.
+
+What is **not** yet answered is why arm64 is the *worse* of the two — it agrees with
+FFmpeg's decode less closely than x86-64 does, consistently, by exactly one bit. That is
+a separate question from VX11 (which asked what the split *is*), and it is worth pursuing:
+one bit of accuracy is recoverable if the cause is a contraction or ordering difference in
+this project's own transform rather than in FFmpeg's.
 
 The same reasoning now applies to the *trend* check as well as the gate:
 `tools/ci/append_quality_history.py` compares each channel against its own trailing
@@ -209,17 +255,13 @@ was the same dither-dominated surround every single run.
 
 ### What would make these numbers excellent
 
-Two known gaps, in the order they are worth closing:
-
-1. **The 6.02 dB headroom is set by something unexplained.** Every arm64 and macOS leg
-   lands one exponent step below every x86 leg on some channels, and that has survived
-   ruling out FMA contraction and architecture-specific libm `sin`/`cos` by direct
-   measurement (roadmap VX11, and [Building](building.md)'s "Floating-point
-   contraction"). Until it is understood, every per-channel floor has to leave a full
-   step of room. Resolve it and the floors tighten from ~6 dB of headroom to ~1 dB,
-   which is roughly a sixfold gain in what these gates can detect — commit-to-commit
-   noise within a leg has stayed inside 0.02–0.08 dB, so there is a great deal of
-   sensitivity being left on the table.
+1. ~~**The 6.02 dB headroom is set by something unexplained.**~~ **Closed.** It was not
+   an exponent step and it was not unexplained once the split was sorted by level — see
+   "Why arm64 and x86-64 disagree" above. The headroom it was forcing turned out to be a
+   double-count on top of an already-cross-platform minimum, and the floors are now
+   derived at 1.0 dB, catching a 1 dB per-channel regression where they previously
+   needed 6. The follow-on question — why arm64 is the *less* accurate of the two —
+   remains open and is tracked separately.
 
 2. **Spec-permitted dither divergence is still inside the measurement.** The surrounds
    score ~22 dB not because either decoder is wrong but because §7.3.4 lets them differ

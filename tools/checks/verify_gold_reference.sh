@@ -37,13 +37,21 @@ COMPARE="$REPO_ROOT/tools/checks/compare_wav.py"
 # vary the way a lossy-vs-original comparison (see tools/ci/quality_race.py's
 # very different, much lower floors) legitimately does. Every real run
 # recorded in quality-history (docs/quality-trend.md) to date has landed
-# 61.8-67.9 dB, with the ~6 dB floor-to-floor spread being every arm64 and
-# macOS leg landing ~6.02 dB (one AC-3 exponent step) below every x86 leg -
-# NOT a libm-package difference (an earlier version of this comment blamed
-# "macOS-vs-Linux/Windows libm", which the glibc/GCC arm64 Linux legs added
-# later contradict outright), still unexplained after ruling out FMA
-# contraction and architecture-specific libm sin/cos by direct measurement -
-# see docs/building.md's "Floating-point contraction" and roadmap VX11. Not
+# 61.8-67.9 dB, with the ~6 dB floor-to-floor spread splitting the legs
+# strictly by ARCHITECTURE: every arm64 leg lands ~6.02 dB below every x86-64
+# leg. Not by OS and not by compiler - macos-llvm (arm64) sits with the arm64
+# group while macos-llvm-x64 sits with the x86 group, which is what rules out
+# the "macOS libm" and "arm64 and macOS" readings earlier versions of this
+# comment carried.
+#
+# Roadmap VX11 resolved what it is: one bit of arithmetic difference, visible
+# only where the comparison is ALREADY rounding-dominated. Sorting all 52
+# (check, channel) pairs by their x86 SNR shows a step, not a gradient -
+# every pair below 67 dB has an arm64 delta of 0.00-0.11 dB, every pair above
+# it has 5.85-6.05 dB. A systematic exponent error would be level-independent
+# and split every channel equally; this only appears once the two decoders
+# agree closely enough that arithmetic is all that is left to disagree about.
+# See docs/verification.md's "Why arm64 and x86-64 disagree". Not
 # commit-to-commit noise either way, which has stayed inside 0.02-0.08 dB.
 # 55 leaves the lowest-scoring legs' own ~61.8 dB floor about 7 dB of
 # headroom (comfortably above that noise) while catching a regression more
@@ -70,30 +78,44 @@ MIN_SNR_DB="${MIN_SNR_DB:-55}"
 # external-baseline block below was added to catch (see its own list: the
 # firstcplcos[ch] bug is per channel).
 #
-# Derivation, uniformly: floor = floor(min_observed - 6.02), where
-# min_observed is that channel's lowest value across EVERY leg and EVERY commit
-# recorded in the quality-history branch (9 legs, 57-74 commits, depending on
-# the check). 6.02 dB is one AC-3 exponent step - the single unexplained
-# cross-platform effect this project has measured, where every arm64 and macOS
-# leg lands ~6.02 dB below every x86 leg on some channels (see MIN_SNR_DB's own
-# comment and roadmap VX11). A floor tighter than one step risks a new platform
-# tripping it for a reason that is not a defect; a floor looser than one step
-# is the slack this change exists to remove.
+# Derivation, uniformly: floor = floor(min_observed - 1.0), where min_observed
+# is that channel's lowest value across EVERY leg and EVERY commit recorded in
+# the quality-history branch (9 legs, 57-74 commits, depending on the check).
 #
-# One channel's floor went DOWN: ext_ac3_51_448_dee's Ls/Rs, 22 -> 16, because
-# 22 was never derived for those channels - it was the single floor the whole
-# fixture had to share, and it happened to sit 0.7 dB under them. Its four
-# other channels gained 29-54 dB of gate in exchange, and the check as a whole
-# went from catching only a total surround collapse to catching a 6 dB
-# regression in any channel. That is the trade, stated out loud rather than
-# hidden in a table.
+# The 1.0 dB covers commit-to-commit noise and nothing else, because
+# min_observed has already absorbed everything else. That is the correction
+# roadmap VX11 produced, and it is worth stating because the first version of
+# these vectors got it wrong: they used 6.02 dB, reasoning that a floor tighter
+# than the arm64/x86 split would risk a new platform tripping it. But
+# min_observed is a MINIMUM ACROSS LEGS, so wherever that split appears it is
+# already the arm64 value - the low side of it. Subtracting the size of the
+# split from a number that is already the bottom of the split counted the same
+# margin twice and cost ~5 dB of sensitivity on every channel.
+#
+# What one leg's own number actually does between commits, measured over 520
+# (check, leg, channel) series: median spread 0.000 dB, 495 of them under
+# 0.5 dB. The 25 that are not are a single real step change on one check
+# (eac3_cplbndstrce0, 2026-08-17, 25.42 -> 22.41, flat for the 63 commits
+# since) rather than noise. 1.0 dB is more than ten times the largest genuine
+# commit-to-commit movement on record (0.02-0.08 dB).
+#
+# A new leg landing below one of these floors is not a false alarm under this
+# policy. It is platform behaviour nobody has reviewed, and stopping to look at
+# it is the right outcome rather than something to pre-authorise with margin.
+#
+# One pair of floors is LOWER than the single floor it replaced:
+# ext_ac3_51_448_dee's Ls/Rs, 22 -> 21. 22 was never derived for those channels
+# - it was the one floor the whole fixture had to share and it happened to land
+# 0.7 dB under them. Their four sibling channels gained 34-59 dB of gate in the
+# same change, and the check went from catching only a total surround collapse
+# to catching a 1 dB move in any channel.
 #
 # Regenerate after a deliberate, reviewed quality change - never to make a red
 # gate green:
 #   python3 tools/checks/derive_channel_floors.py --history <main.jsonl>
-AC3_GOLD_FLOORS="75,75,68,76,55,60"
-EAC3_GOLD_FLOORS="75,75,68,76,55,60"
-EAC3_CPL_GOLD_FLOORS="75,75,68,76,55,60"
+AC3_GOLD_FLOORS="80,80,73,81,60,65"
+EAC3_GOLD_FLOORS="80,80,73,81,60,65"
+EAC3_CPL_GOLD_FLOORS="80,80,73,81,60,65"
 
 # Optional: when set, check_one also asks compare_wav.py to write a
 # structured result to "$RESULTS_JSON_DIR/<label>.json" - consumed by CI's
@@ -364,7 +386,7 @@ check_one "eac3_cpl" "$WORKDIR/gold_cpl.ec3" "eac3" 256 "$MIN_SNR_DB" "$EAC3_CPL
 # and the corrupted geometry fails outright with kInvalidStream downstream,
 # rather than merely losing fidelity).
 CPLBNDSTRCE0_MIN_SNR_DB=15
-CPLBNDSTRCE0_FLOORS="45,60,51,76,16,16"
+CPLBNDSTRCE0_FLOORS="50,65,56,81,21,21"
 CPLBNDSTRCE0_EC3="$REPO_ROOT/tests/golden/audio/reference_51_eac3_448k_cplbndstrce0.ec3"
 if [ ! -f "$CPLBNDSTRCE0_EC3" ]; then
     echo "::error::fixture missing: $CPLBNDSTRCE0_EC3" >&2
@@ -437,22 +459,23 @@ fi
 # file for the derivation and for why one pair of floors went down:
 #
 #                              was            now (per channel)
-#   ac3-51-448/dee.ac3          22    51,57,52,76,16,16
-#   ac3-51-448/ffmpeg.ac3       14    45,60,51,76,16,17
-#   eac3-51-256/dee.ec3         10    37,42,44,76,12,12
-#   eac3-51-256/ffmpeg.ec3      25    39,45,48,76,29,30
-#   eac3-stereo-192/ffmpeg.ec3  25    30,31
+#   ac3-51-448/dee.ac3          22    56,62,57,81,21,21
+#   ac3-51-448/ffmpeg.ac3       14    50,65,56,81,21,22
+#   eac3-51-256/dee.ec3         10    42,47,49,81,17,17
+#   eac3-51-256/ffmpeg.ec3      25    44,50,53,81,34,35
+#   eac3-stereo-192/ffmpeg.ec3  25    35,36
 #
-# The LFE floor is 76 on every 5.1 fixture because that channel is a single
-# low-frequency band both decoders reproduce almost exactly (82-88 dB measured,
-# the ~6 dB spread being the exponent step). It was previously gated at 10-25
+# The LFE floor is 81 on every 5.1 fixture because that channel is a single
+# low-frequency band both decoders reproduce almost exactly - 82-88 dB
+# measured, and the ~6 dB of that range is the arm64/x86 arithmetic difference
+# VX11 explains, already inside min_observed. It was previously gated at 10-25
 # dB, i.e. not gated at all.
 for entry in \
-    "ext_ac3_51_448_dee:ac3-51-448/dee.ac3:ac3:448:22:51,57,52,76,16,16" \
-    "ext_ac3_51_448_ffmpeg:ac3-51-448/ffmpeg.ac3:ac3:448:14:45,60,51,76,16,17" \
-    "ext_eac3_51_256_dee:eac3-51-256/dee.ec3:eac3:256:10:37,42,44,76,12,12" \
-    "ext_eac3_51_256_ffmpeg:eac3-51-256/ffmpeg.ec3:eac3:256:25:39,45,48,76,29,30" \
-    "ext_eac3_stereo_192_ffmpeg:eac3-stereo-192/ffmpeg.ec3:eac3:192:25:30,31" \
+    "ext_ac3_51_448_dee:ac3-51-448/dee.ac3:ac3:448:22:56,62,57,81,21,21" \
+    "ext_ac3_51_448_ffmpeg:ac3-51-448/ffmpeg.ac3:ac3:448:14:50,65,56,81,21,22" \
+    "ext_eac3_51_256_dee:eac3-51-256/dee.ec3:eac3:256:10:42,47,49,81,17,17" \
+    "ext_eac3_51_256_ffmpeg:eac3-51-256/ffmpeg.ec3:eac3:256:25:44,50,53,81,34,35" \
+    "ext_eac3_stereo_192_ffmpeg:eac3-stereo-192/ffmpeg.ec3:eac3:192:25:35,36" \
     ; do
     IFS=: read -r ext_label ext_path ext_codec ext_kbps ext_floor ext_channel_floors <<EOF
 $entry
@@ -480,8 +503,8 @@ done
 # the same rate - two encoders' output landing within 0.6 dB of each other
 # through one decoder is what says this decode is right and FFmpeg's is not.
 # Floor 25 on the same measured-minus-8 basis as above, superseded in practice
-# by the per-channel vector 27,28 (L R) passed below - derived, like every
-# other vector here, as floor(min_observed - 6.02) from recorded history.
+# by the per-channel vector 32,33 (L R) passed below - derived, like every
+# other vector here, as floor(min_observed - 1.0) from recorded history.
 #
 # manifest.json's 33.32 dB for this leg says "decoded_with": "ffmpeg" and is
 # not in conflict with the 14.30 dB above: quality_race.py's score_fixed
@@ -497,7 +520,7 @@ for required in "$DEE_STEREO_EC3" "$STEREO_WAV"; do
     fi
 done
 check_against_source "ext_eac3_stereo_192_dee" "$DEE_STEREO_EC3" "$STEREO_WAV" "eac3" 192 \
-    25 "27,28"
+    25 "32,33"
 
 # --- Cross-platform bitstream-hash gate (roadmap VX11) ----------------------
 # Every check above compares two DECODES of the same bitstream, which cannot

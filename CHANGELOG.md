@@ -21,11 +21,11 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   *required* to differ. A single floor had to clear the surrounds, which on
   `ac3-51-448/dee.ac3` meant gating the centre channel at 22 dB while it measured 58.1: it
   could have lost 36 dB, and the LFE 60 dB, without failing anything. Each channel now carries
-  its own floor, derived as `floor(min_observed − 6.02)` from that channel's lowest value
+  its own floor, derived as `floor(min_observed − 1.0)` from that channel's lowest value
   across every CI leg and every recorded commit by the new
   `tools/checks/derive_channel_floors.py` — so a floor move is reviewable against evidence
-  rather than asserted. Every check gained 14–66 dB of real gate on its front channels and
-  LFE; one pair of floors (this fixture's `Ls`/`Rs`) went *down*, from 22 to 16, because 22
+  rather than asserted. Every check gained 19–71 dB of real gate on its front channels and
+  LFE; one pair of floors (this fixture's `Ls`/`Rs`) went *down*, from 22 to 21, because 22
   was never derived for them. The trend check in `tools/ci/append_quality_history.py` follows
   the same rule, comparing each channel against its own trailing average instead of watching
   only the worst channel — which was the same dither-dominated surround on every run.
@@ -35,6 +35,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   how sharply these gates can see.
 
 ### Added
+
+- **Roadmap VX11 resolved: the ~6.02 dB cross-platform split is one bit of arithmetic, not
+  an exponent step.** It splits the legs strictly by architecture — `macos-llvm` (arm64) sits
+  with the arm64 group and `macos-llvm-x64` with the x86-64 group, same OS and compiler on
+  both sides — which rules out the "macOS libm" and "arm64 and macOS" readings this was
+  carried under. Sorting all 52 (check, channel) pairs by SNR gives a step rather than a
+  gradient: every pair below 67 dB shows a 0.00–0.11 dB difference, every pair above it shows
+  5.85–6.05 dB, with nothing in between. A systematic exponent error would be level-independent;
+  rounding is visible only once the two decoders agree closely enough that arithmetic is all
+  that is left to disagree about. Consequently the per-channel floor headroom drops from 6.02 dB
+  to 1.0 dB — `min_observed` is a minimum *across legs*, so it had already absorbed the split,
+  and subtracting it again was a double-count costing ~5 dB of sensitivity on every channel.
+  The gates now catch a 1 dB per-channel regression where they previously needed 6.
 
 - The Python oracles under `tools/` now have unit tests of their own
   (`tools/checks/test_compare_wav.py`, run by `ci.yml`'s Script Lint job). Lint could tell
