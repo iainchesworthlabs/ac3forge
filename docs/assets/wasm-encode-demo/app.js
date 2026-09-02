@@ -20,6 +20,15 @@ const LAYOUTS = {
     1: { wasmLayout: 0, label: 'mono' },
     2: { wasmLayout: 1, label: 'stereo' },
     6: { wasmLayout: 2, label: '5.1' },
+    // The wide layouts (E-AC-3 only - a 5.1 bed plus dependent substreams)
+    // route through ac3::plan INSIDE the module: encodeFrame() takes these in
+    // plain WAV order and the binding owns the channel-order knowledge, so no
+    // JS-side reorder table exists for them. Ambiguous counts read the way
+    // ac3::plan::generic_wav_layout reads them: 8 as 7.1, 10 as 5.1.4, 12 as
+    // 7.1.4.
+    8: { wasmLayout: 3, label: '7.1', wide: true },
+    10: { wasmLayout: 4, label: '5.1.4', wide: true },
+    12: { wasmLayout: 5, label: '7.1.4', wide: true },
 };
 
 // A dropped WAV's channel order follows the WAVEFORMATEXTENSIBLE default
@@ -55,13 +64,22 @@ function reorderedChannels(audioBuffer) {
     const count = audioBuffer.numberOfChannels;
     const layout = LAYOUTS[count];
     if (!layout) {
-        throw new Error(`unsupported channel count ${count} - this demo supports mono, stereo or 5.1 WAV files`);
+        throw new Error(`unsupported channel count ${count} - this demo supports mono, stereo, 5.1, 7.1, 5.1.4 or 7.1.4 WAV files`);
     }
     const raw = [];
     for (let i = 0; i < count; i++) raw.push(audioBuffer.getChannelData(i));
     if (count !== 6) return { channels: raw, layout };
     const reordered = WAV_5_1_TO_AC3_ORDER.map((wavIndex) => raw[wavIndex]);
     return { channels: reordered, layout };
+}
+
+// §5.4.2.8 dialnorm from a measured integrated loudness: the value a real
+// decoder subtracts to bring the programme to -31 LKFS, clamped to the
+// field's 1..31 range. Unmeasurable input (everything below BS.1770's
+// absolute gate) keeps 31 - the attenuation-free maximum.
+function dialnormFor(integratedLkfs) {
+    if (integratedLkfs === null || integratedLkfs === undefined) return 31;
+    return Math.min(31, Math.max(1, Math.round(-integratedLkfs)));
 }
 
 function concatBytes(chunks, totalLength) {
@@ -118,19 +136,38 @@ async function encodeFile(file) {
     const { channels, layout } = reorderedChannels(audioBuffer);
     const totalSamples = channels[0].length;
 
-    setStatus(`Encoding ${layout.label} at ${bitrate} kbps...`, false);
-    const encoder = new encodeModule.Encoder(format, layout.wasmLayout, targetRate, bitrate);
+    if (layout.wide && format !== 1) {
+        throw new Error(`${layout.label} needs E-AC-3 (a 5.1 bed plus dependent substreams) - switch Format to E-AC-3`);
+    }
+
+    // Pass 1: measure. The QC meter now feeds the ENCODER too - dialnorm is
+    // derived from the measured integrated loudness - so the whole file is
+    // metered before the encoder is even constructed, and QC still sees the
+    // real, unpadded tail of the file. The meter's channel order for the
+    // wide layouts comes from the module itself (QcMeter.meterOrderForWav),
+    // not from a second JS-side table.
+    setStatus(`Measuring ${layout.label} loudness...`, false);
     const qc = new encodeModule.QcMeter(layout.wasmLayout, targetRate);
-    const spf = encoder.samplesPerFrame();
+    const meterOrder = layout.wide
+        ? encodeModule.QcMeter.meterOrderForWav(layout.wasmLayout)
+        : null;
+    const spf = 1536; // one AC-3 frame; any chunk size suits the meter
+    for (let start = 0; start < totalSamples; start += spf) {
+        const end = Math.min(start + spf, totalSamples);
+        const slice = channels.map((c) => c.subarray(start, end));
+        qc.push(meterOrder ? meterOrder.map((wavIndex) => slice[wavIndex]) : slice);
+    }
+    const dialnorm = dialnormFor(qc.integratedLkfs());
+
+    // Pass 2: encode, carrying the measured dialnorm in every frame's BSI.
+    setStatus(`Encoding ${layout.label} at ${bitrate} kbps, dialnorm ${dialnorm}...`, false);
+    const encoder = new encodeModule.Encoder(format, layout.wasmLayout, targetRate, bitrate, dialnorm);
 
     const chunks = [];
     let totalBytes = 0;
     for (let start = 0; start < totalSamples; start += spf) {
         const end = Math.min(start + spf, totalSamples);
         const slice = channels.map((c) => c.subarray(start, end));
-
-        // QC sees the real, unpadded tail of the file.
-        qc.push(slice);
 
         // The encoder needs exactly spf samples per call; the final frame is
         // silence-padded to that length rather than dropped, so the encoded
@@ -159,9 +196,207 @@ async function encodeFile(file) {
     lastSampleRate = targetRate;
 
     renderQcTable(qc.verdicts());
+    // On the wide path, say HOW the source landed on the layout: carried
+    // channel-for-channel, or rendered onto it by direction (the plan
+    // routing's own distinction) - "encoded 7.1.4" should never silently
+    // mean "panned around a 12-speaker room".
+    const routeNote = layout.wide
+        ? (encoder.sourceWasCarried()
+            ? ' Channels carried 1:1.'
+            : ' Source rendered onto the layout by direction.')
+        : '';
     setStatus(
         `Encoded ${(totalSamples / targetRate).toFixed(1)}s of ${layout.label} audio into ` +
-            `${lastStreamBytes.length.toLocaleString()} bytes.`,
+            `${lastStreamBytes.length.toLocaleString()} bytes, dialnorm ${dialnorm}.${routeNote}`,
+        false);
+    el('resultPanel').style.display = '';
+}
+
+// --- Live microphone capture ---------------------------------------------
+//
+// getUserMedia -> AudioWorklet -> 1536-sample frames -> the same Encoder /
+// QcMeter classes the file path uses. The worklet processor is inlined as a
+// Blob so the demo stays a flat directory of files with no extra fetch; it
+// posts each 128-frame render quantum's de-interleaved input to the main
+// thread, which re-blocks into encoder frames.
+//
+// dialnorm needs a measured loudness BEFORE the first frame is encoded, so
+// capture opens with a short measure-only pre-roll (~1.5s): audio is metered
+// and buffered but not yet encoded, then the encoder is created from the
+// pre-roll's reading and the buffered audio drains through it - nothing of
+// the take is lost. BS.1770's integrated measure may still be gated that
+// early, so the momentary reading is the fallback before the default 31.
+const CAPTURE_WORKLET = `
+class CaptureProcessor extends AudioWorkletProcessor {
+    process(inputs) {
+        const input = inputs[0];
+        if (input.length > 0) {
+            this.port.postMessage(input.map((c) => Float32Array.from(c)));
+        }
+        return true;
+    }
+}
+registerProcessor('ac3forge-capture', CaptureProcessor);
+`;
+
+let micState = null;
+
+function onMicChunk(state, channels) {
+    if (!state.layout) {
+        const count = Math.min(channels.length, 2);
+        state.layout = LAYOUTS[count];
+        state.qc = new encodeModule.QcMeter(state.layout.wasmLayout, state.targetRate);
+        state.pending = Array.from({ length: count }, () => []);
+    }
+    const count = state.pending.length;
+    const usable = [];
+    for (let i = 0; i < count; i++) usable.push(channels[i] || channels[0]);
+    state.qc.push(usable);
+    for (let i = 0; i < count; i++) state.pending[i].push(usable[i]);
+    state.pendingSamples += usable[0].length;
+
+    if (!state.encoder) {
+        if (state.pendingSamples < state.preRollSamples) return;
+        startMicEncoder(state);
+    }
+    drainMicFrames(state, false);
+}
+
+function startMicEncoder(state) {
+    const integrated = state.qc.integratedLkfs();
+    const momentary = state.qc.momentaryLkfs();
+    state.dialnorm = dialnormFor(
+        integrated === null || integrated === undefined ? momentary : integrated);
+    state.encoder = new encodeModule.Encoder(
+        state.format, state.layout.wasmLayout, state.targetRate, state.bitrate, state.dialnorm);
+}
+
+function drainMicFrames(state, flush) {
+    const spf = state.encoder.samplesPerFrame();
+    while (state.pendingSamples >= spf || (flush && state.pendingSamples > 0)) {
+        // Assemble one frame per channel from the queued worklet chunks; on
+        // flush the tail is silence-padded to a whole frame, same policy as
+        // the file path's final frame.
+        const frame = state.pending.map((queue) => {
+            const out = new Float32Array(spf);
+            let at = 0;
+            while (at < spf && queue.length > 0) {
+                const head = queue[0];
+                const take = Math.min(head.length, spf - at);
+                out.set(head.subarray(0, take), at);
+                if (take === head.length) queue.shift();
+                else queue[0] = head.subarray(take);
+                at += take;
+            }
+            return out;
+        });
+        state.pendingSamples = Math.max(0, state.pendingSamples - spf);
+        const bytes = state.encoder.encodeFrame(frame);
+        if (!bytes) throw new Error(`encode failed: ${state.encoder.error()}`);
+        const copy = Uint8Array.from(bytes);
+        state.chunks.push(copy);
+        state.totalBytes += copy.length;
+        state.encodedSamples += spf;
+    }
+}
+
+async function startMicCapture() {
+    const format = Number(el('format').value);
+    const targetRate = Number(el('sampleRate').value);
+    const bitrate = Number(el('bitrate').value);
+
+    el('resultPanel').style.display = 'none';
+    el('qcPanel').style.display = 'none';
+    lastStreamBytes = null;
+
+    // Processing (echo cancellation and friends) off: this is a capture
+    // tool, not a call - meter and encode what the microphone actually
+    // heard.
+    const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+            channelCount: { ideal: 2 },
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+        },
+    });
+    // The AudioContext's own rate makes the browser resample the microphone
+    // to the selected coding rate, same trick as decodeAudioData above.
+    const audioCtx = new AudioContext({ sampleRate: targetRate });
+    const workletUrl = URL.createObjectURL(
+        new Blob([CAPTURE_WORKLET], { type: 'text/javascript' }));
+    try {
+        await audioCtx.audioWorklet.addModule(workletUrl);
+    } finally {
+        URL.revokeObjectURL(workletUrl);
+    }
+    const source = audioCtx.createMediaStreamSource(stream);
+    const capture = new AudioWorkletNode(audioCtx, 'ac3forge-capture');
+    source.connect(capture);
+
+    const state = {
+        stream, audioCtx,
+        format, targetRate, bitrate,
+        layout: null, qc: null, encoder: null, dialnorm: null,
+        pending: [], pendingSamples: 0,
+        preRollSamples: Math.round(targetRate * 1.5),
+        chunks: [], totalBytes: 0, encodedSamples: 0,
+        ticker: null,
+    };
+    micState = state;
+
+    capture.port.onmessage = (event) => {
+        if (micState !== state) return;
+        try {
+            onMicChunk(state, event.data);
+        } catch (error) {
+            stopMicCapture().catch(() => {});
+            setStatus(String(error.message || error), true);
+        }
+    };
+
+    state.ticker = setInterval(() => {
+        if (micState !== state || !state.encoder) return;
+        const momentary = state.qc.momentaryLkfs();
+        const level = momentary === null || momentary === undefined
+            ? 'below gate'
+            : `${momentary.toFixed(1)} LKFS momentary`;
+        setStatus(
+            `Recording ${state.layout.label}: ${(state.encodedSamples / state.targetRate).toFixed(1)}s, ` +
+                `${state.totalBytes.toLocaleString()} bytes, dialnorm ${state.dialnorm}, ${level}.`,
+            false);
+    }, 500);
+
+    el('micBtn').textContent = 'Stop and finish';
+    setStatus('Measuring the microphone for dialnorm (about 1.5s)...', false);
+}
+
+async function stopMicCapture() {
+    const state = micState;
+    if (!state) return;
+    micState = null;
+    clearInterval(state.ticker);
+    for (const track of state.stream.getTracks()) track.stop();
+    await state.audioCtx.close().catch(() => {});
+    el('micBtn').textContent = 'Record from microphone';
+
+    if (!state.encoder && state.layout && state.pendingSamples > 0) {
+        // Stopped inside the pre-roll: the take still gets delivered, from
+        // whatever the meter managed to read.
+        startMicEncoder(state);
+    }
+    if (!state.encoder) {
+        setStatus('Capture stopped before any audio arrived.', true);
+        return;
+    }
+    drainMicFrames(state, true);
+    lastStreamBytes = concatBytes(state.chunks, state.totalBytes);
+    lastFormat = state.format;
+    lastSampleRate = state.targetRate;
+    renderQcTable(state.qc.verdicts());
+    setStatus(
+        `Captured ${(state.encodedSamples / state.targetRate).toFixed(1)}s of ${state.layout.label} ` +
+            `microphone audio into ${state.totalBytes.toLocaleString()} bytes, dialnorm ${state.dialnorm}.`,
         false);
     el('resultPanel').style.display = '';
 }
@@ -286,6 +521,17 @@ function wireUp() {
         }
     });
 
+    el('micBtn').addEventListener('click', () => {
+        if (micState) {
+            stopMicCapture().catch((error) => setStatus(String(error.message || error), true));
+        } else {
+            startMicCapture().catch((error) => {
+                micState = null;
+                el('micBtn').textContent = 'Record from microphone';
+                setStatus(String(error.message || error), true);
+            });
+        }
+    });
     el('downloadBtn').addEventListener('click', downloadStream);
     el('previewBtn').addEventListener('click', () => {
         previewRoundTrip().catch((error) => setStatus(String(error.message || error), true));

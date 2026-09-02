@@ -66,6 +66,26 @@ module.exports = defineConfig({
         {
             name: 'encode',
             testMatch: 'encode.spec.js',
+            use: {
+                baseURL: encodeBase,
+                // The microphone-capture test needs a microphone: Chromium's
+                // fake media stack supplies a synthetic device (a tone) and
+                // auto-grants the getUserMedia permission prompt, so the test
+                // exercises the real capture path headlessly.
+                launchOptions: {
+                    args: [
+                        '--use-fake-ui-for-media-stream',
+                        '--use-fake-device-for-media-stream',
+                    ],
+                },
+            },
+        },
+        {
+            // The Atmos authoring page ships as a subdirectory of the encode
+            // demo (see apps/wasm/CMakeLists.txt), so it is served by the
+            // same server under the same base URL.
+            name: 'atmos',
+            testMatch: 'atmos.spec.js',
             use: { baseURL: encodeBase },
         },
     ],

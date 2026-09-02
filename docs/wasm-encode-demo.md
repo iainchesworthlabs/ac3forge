@@ -19,7 +19,9 @@ makes.
   </iframe>
 </div>
 
-[Open the demo in its own tab](assets/wasm-encode-demo/index.html){ target="_blank" }
+[Open the demo in its own tab](assets/wasm-encode-demo/index.html){ target="_blank" } ·
+[Atmos object-authoring page](assets/wasm-encode-demo/atmos/index.html){ target="_blank" } — pan
+real audio objects around a room canvas and encode the result as E-AC-3 + JOC, live
 
 ## What's real
 
