@@ -21,7 +21,7 @@ cut, just moved out of the way of a first read.
 | VX — Verification and oracles | 19 | 2 | 1 |
 | PF — Performance and portability | 8 | 0 | 0 |
 | AP — Library surface, bindings and v1.0 | 8 | 2 | 2 |
-| UX — Applications | 7 | 1 | 2 |
+| UX — Applications | 8 | 0 | 2 |
 | DR — Distribution, release engineering and hardware | 5 | 1 | 3 |
 
 ## Where this starts from
@@ -2181,11 +2181,10 @@ refusal `play` always gave. Not verified against real EDID/ELD hardware this rou
 box in the loop) - see `docs/platforms/linux.md`.
 </details>
 
-### In progress
-
-**UX6 (XL)** — In-browser encoding. The encode module and a drop-a-WAV demo page shipped
-(385×/120×/82× real-time for AC-3/E-AC-3/4-object Atmos, no threads needed); mic capture and an
-object-authoring UI are still open.
+**UX6 (XL)** — In-browser encoding, shipped end to end: the encode module and drop-a-WAV page
+(385×/120×/82× real-time for AC-3/E-AC-3/4-object Atmos, no threads needed), the wide
+7.1/5.1.4/7.1.4 layouts, measured dialnorm, live microphone capture, and an Atmos
+object-authoring page.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2204,16 +2203,23 @@ controls, the five-preset QC verdict table, and a round-trip preview through the
 module — plus `apps/wasm/tests/encode.spec.js` extending VX18(a)'s Playwright harness (asserts a
 known tone's encoded byte count, QC verdict and true peak, and a successful round-trip decode).
 See [docs/platforms/wasm.md#encode-module](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/wasm.md#encode-module)
-for the full numbers. **Still open**: capture-a-mic (real-time capture/buffering plumbing —
-`getUserMedia`/`AudioWorklet` — the CPU budget is proven, this is UX work); an object-authoring
-UI on top of the already-bound `WasmAtmosBedEncoder`; wider channel layouts (7.1, height
-channels) than the mono/stereo/5.1 the drop-a-WAV page reorders today. Dialnorm is left at
-§5.4.2.8's unmeasured default (31) rather than derived from the QC pass's own measured
-loudness — the QC verdict itself measures the source PCM directly so this does not affect it,
-but a real decoder's dialnorm normalisation would under-attenuate loud content this page
-produces. VX18(a)'s browser-test coverage now spans both demos, but neither demo's visual/
-interactive surface (drag-and-drop, the QC table's rendering, the decode side's visualizations)
-is CI-tested — see `wasm.md`'s own "Not yet verified" note.
+for the full numbers. **Landed to finish (2026-09-02)**, closing every "still open" item that
+paragraph used to carry: the wide layouts (8/10/12-channel WAVs read as 7.1/5.1.4/7.1.4 and
+routed through `ac3::plan::route`/`render` *inside the module*, so the page hands them over in
+plain WAV order and the channel-order knowledge lives beside the plan code that defines it —
+`QcMeter.meterOrderForWav()` supplies the BS.1770-5 metering order the same way); dialnorm
+derived from the QC pass's own measured integrated loudness in a two-pass encode (the earlier
+record's own criticism of the unmeasured default 31); microphone capture (`getUserMedia` → an
+inline-Blob `AudioWorklet` → the same encoder, with a measure-only pre-roll so the first frame
+already carries a measured dialnorm and nothing of the take is lost); and the object-authoring
+page (`apps/wasm/atmos/`, a subdirectory of the encode demo sharing its modules via `../`) —
+drag objects on a room canvas while `WasmAtmosBedEncoder` encodes one placement set per frame,
+at real-time cadence, with the same round-trip preview. Playwright covers all of it
+(`encode.spec.js` grew dialnorm-in-the-bytes, 12-channel-7.1.4 and fake-microphone tests;
+`atmos.spec.js` asserts the authored pan is audible in the decoded output — the object panned
+hard right must out-carry the left channel — and drives a session through the page UI). The
+canvas drag-by-pointer itself and real microphone hardware remain manual-only checks — see
+`wasm.md`'s "Not yet verified" note.
 </details>
 
 ### Considering

@@ -6,9 +6,13 @@ page: a **decode** demo (roadmap F3) — load a real elementary stream, hear the
 through the Web Audio API, watch real per-channel energy on a speaker-ring visualization, and — for
 a stream carrying Atmos objects — watch each object's real decoded position (OAMD) move in a room
 view and solo its own real reconstructed audio (JOC) — and, as of roadmap UX6, an **encode** demo:
-drop a `.wav` file, get back a real AC-3/E-AC-3 elementary stream plus a real BS.1770
-loudness/true-peak QC verdict against five delivery presets, and a round-trip preview through the
-decode module. The third surface is **[`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)**,
+drop a `.wav` file — mono, stereo, 5.1, or the wide E-AC-3 layouts 7.1/5.1.4/7.1.4 — or record
+live from the microphone, and get back a real AC-3/E-AC-3 elementary stream carrying a *measured*
+dialnorm, plus a real BS.1770 loudness/true-peak QC verdict against five delivery presets, and a
+round-trip preview through the decode module; a subdirectory of the same demo
+(`apps/wasm/atmos/`) is an **Atmos object-authoring page** — drag audio objects around a room
+canvas while the page encodes, each drag becoming that frame's OAMD placement in a real
+E-AC-3 + JOC stream. The third surface is **[`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)**,
 the `ac3forge-wasm-decoder` npm package
 (roadmap UX5) that turns the same decode path into a push-frame API, a realtime AudioWorklet
 pipeline, and an hls.js/MSE bridge — a reusable answer to the fact that **Chrome still cannot
@@ -154,10 +158,26 @@ independent Embind wrapper (its own `add_executable`, its own `EMSCRIPTEN_BINDIN
 are already proven platform-free" premise this depended on (the same `ac3::forge` target already
 links unmodified into `apps/android`'s NDK build and `python/`'s pybind11 module). `apps/wasm/encode/`
 (`index.html`/`app.js`) is the page: a drop zone and file picker, format (AC-3/E-AC-3)/sample-rate/
-bitrate controls (the channel layout is derived from the dropped WAV itself), the QC verdict
-table, and the round-trip preview. It reorders a dropped WAV's WAVEFORMATEXTENSIBLE channel order
-into AC-3's Table 5.8 order before encoding — see `app.js`'s own comment on the exact mapping — and
-resamples via the browser's own `AudioContext`, rather than writing a sample-rate converter.
+bitrate controls (the channel layout is derived from the dropped WAV itself), a
+record-from-microphone card, the QC verdict table, and the round-trip preview. It reorders a
+dropped WAV's WAVEFORMATEXTENSIBLE channel order into AC-3's Table 5.8 order before encoding —
+see `app.js`'s own comment on the exact mapping — and resamples via the browser's own
+`AudioContext`, rather than writing a sample-rate converter. The wide layouts (8 channels read as
+7.1, 10 as 5.1.4, 12 as 7.1.4) take a different path: the module routes the source through
+`ac3::plan::route`/`render` — the same direction-based placement `ac3cli` uses — so `app.js`
+hands those over in plain WAV order and the channel-order knowledge stays in the plan code that
+defines it (`QcMeter.meterOrderForWav()` likewise hands the page the BS.1770-5 metering order
+instead of a second JS-side table). Encoding is two-pass: the whole programme is metered first
+and the stream's `dialnorm` (§5.4.2.8) is derived from the measured integrated loudness — the
+unmeasured default 31 would leave a real decoder's normalisation under-attenuating loud content
+this page produced. Microphone capture (`getUserMedia` → an inline-Blob `AudioWorklet` → the same
+encoder) opens with a measure-only pre-roll (~1.5 s) for the same reason: the pre-roll's reading
+sets dialnorm, then the buffered audio drains through the encoder so nothing of the take is
+lost. The authoring page (`apps/wasm/atmos/`, shipped as a subdirectory of the encode demo so it
+loads the very same modules via `../`) drives the already-bound `AtmosBedEncoder` with one
+`ObjectPlacement` set per 1536-sample frame, read live from its room canvas — synthesised tones
+as objects, encode cadence locked to real time so the room is *performed*, and the same
+scan/push round-trip preview so the pan drawn on the canvas is what plays back.
 
 What counts as "an object" in the decode demo's room view is every JOC output, which `ac3::oba::describe_objects()` spells
 out: a dynamic object supplies its own position, size and gain, and a bed channel — what
@@ -309,9 +329,12 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     every pixel of either page: the decode demo's real audio playback (`AudioContext.currentTime`
     advancing), speaker-ring/room-view visualizations, seek bar and "Solo object N" audio-isolation
     claim, and the encode demo's drag-and-drop zone and download button, are manual verification
-    only, not a repeatable check. Mono and 5.1 WAV inputs (as opposed to the stereo case CI checks)
-    are verified locally but not in CI. Real-time (microphone-capture) encoding, and any UI for
-    Atmos/object authoring, are not built at all yet — see roadmap UX6.
+    only, not a repeatable check. Mono and 5.1 WAV inputs (as opposed to the stereo and
+    12-channel 7.1.4 cases CI checks) are verified locally but not in CI. The
+    microphone-capture path is CI-tested against Chromium's *fake* media device
+    (`--use-fake-device-for-media-stream`), not against real microphone hardware; the Atmos
+    authoring page's encode session is CI-tested through its own UI via the deterministic orbit
+    animation, but dragging an object dot by pointer remains manual verification only.
 
     **The hls.js/MSE bridge** (`js/src/hls-bridge.ts`) has no live-HLS-server soak test behind
     it — its `MediaSource` shim mechanics and its fMP4 sample extraction are each unit-tested in

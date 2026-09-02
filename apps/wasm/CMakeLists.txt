@@ -133,3 +133,19 @@ add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
         "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/ac3forge_decode.wasm"
         "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo"
     COMMENT "Assembling the servable wasm_encode_demo/ directory")
+
+# The Atmos object-authoring page (apps/wasm/atmos/) ships as a SUBDIRECTORY
+# of the encode demo rather than a third top-level demo: it loads the very
+# same ac3forge_encode.js/.wasm via "../", so wasm_encode_demo/ stays the one
+# directory that is copied around (docs site, local serving) with the
+# authoring page inside it for free.
+add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/atmos"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/atmos/index.html"
+        "${CMAKE_CURRENT_SOURCE_DIR}/atmos/app.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
+        "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/atmos"
+    COMMENT "Assembling the wasm_encode_demo/atmos/ authoring page")

@@ -35,6 +35,17 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   reconstruction domains handle 1/2/3-block frames — completing roadmap EQ11's second half.
   Measured worst-object SNR at every short code matches the six-block control on stationary
   material.
+- Browser (WASM): the encode demo now covers the whole of roadmap UX6 — wide E-AC-3 layouts
+  (7.1 / 5.1.4 / 7.1.4, routed through `ac3::plan` inside the module so the page
+  never restates channel-order knowledge, with `QcMeter.meterOrderForWav()` supplying the
+  BS.1770-5 metering order the same way), `dialnorm` derived from the QC pass's measured
+  integrated loudness instead of shipping the unmeasured default 31, live microphone capture
+  (`getUserMedia` → `AudioWorklet` → the same encoder, with a measure-then-encode pre-roll so the
+  first frame already carries a measured dialnorm), and a new Atmos object-authoring page
+  (`apps/wasm/atmos/`, a subdirectory of the encode demo) that pans real audio objects on a room
+  canvas and encodes each drag as that frame's OAMD/JOC placement via the already-bound
+  `AtmosBedEncoder`. All of it is Playwright-tested (`encode.spec.js`, `atmos.spec.js`),
+  including the microphone path via Chromium's fake media device.
 
 ### Fixed
 
