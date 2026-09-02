@@ -20,7 +20,7 @@ cut, just moved out of the way of a first read.
 | IM — Immersive and other formats | 4 | 2 | 1 |
 | VX — Verification and oracles | 19 | 2 | 1 |
 | PF — Performance and portability | 8 | 0 | 0 |
-| AP — Library surface, bindings and v1.0 | 8 | 2 | 2 |
+| AP — Library surface, bindings and v1.0 | 9 | 1 | 2 |
 | UX — Applications | 8 | 0 | 2 |
 | DR — Distribution, release engineering and hardware | 5 | 1 | 3 |
 
@@ -1945,40 +1945,9 @@ joined the hash-pinned pytest lock), and the wheel matrix gained `ubuntu-24.04-a
 aarch64 — Raspberry Pi is a documented platform and finally has a wheel) and `macos-15-intel`.
 Still C++-only, recorded in `docs/library/python-api.md` as the boundary: the incremental
 container `Reader`/`Writer` classes and the fragmented-MP4/HLS/DASH surface.
-</details>
-
-### In progress
-
-**AP1 (L)** — API freeze → v1.0.0. The tiering, SemVer policy, and release criteria are
-written down; `SOVERSION`/ABI-tagging changes are deliberately deferred to the v1.0.0 cut
-itself, sequenced with AP4's ABI gate going required.
-<details markdown="1">
-<summary>Full record</summary>
-
-(was `F5`). Written down in `docs/library/api-stability.md`: every header under `ac3/` gets a
-Public/Internal/Diagnostic/Experimental tier (the `ac3/core/` bit-reader, bit-allocation,
-exponent, mantissa and FFT internals are Internal; `ac3iab` is Experimental until `IM1`
-finishes; the five `namespace detail` headers are unaffected by tier — nothing in `detail` is
-ever covered regardless); a SemVer and deprecation policy (`DEFINE_NO_DEPRECATED` stays until
-`v1.0.0`, then drops from all nine libraries' `generate_export_header()` calls); a C config
-struct growth policy (major bump or an additive `_v2` sibling, no size-sentinel scheme);
-release criteria against the standing Known gaps; and a cadence/governance statement answering
-the vcpkg reviewer's "all releases are prereleases" maturity note with a written criteria list
-instead of an implicit "not yet." Compile-time version macros landed for real:
-`AC3FORGE_C_VERSION_MAJOR`/`MINOR`/`PATCH`/`AC3FORGE_C_VERSION` in `ac3forge_c/ac3forge.h`
-(generated from a new `version.h.in`), tested against the runtime `ac3forge_version()` in
-`tests/capi/test_capi.cpp`. Still open, both deliberately deferred to the `v1.0.0` cut itself
-rather than done now (see the page's own reasoning): flipping `SOVERSION` from the full version
-to the major component across all nine `CMakeLists.txt`, and introducing `inline namespace v1`
-for ABI tagging — both are sequenced together with `AP4`'s ABI gate going from advisory to
-required, so a real break can't slip through the gap between promising compatibility and
-actually checking for it. `AP5`/`AP6` completion is now one of the page's own release-gate
-criteria rather than a separate, unlinked concern.
-</details>
-
-**AP9 (L)** — A first non-Python binding over the C API (Rust) — a `bindgen`-generated `-sys`
-crate plus a safe wrapper, with real round-trip tests; found and fixed a real header bug along
-the way. Wide layouts, Atmos, and non-Linux CI legs are not done.
+**AP9 (L)** — A first non-Python binding over the C API (Rust), complete: the `-sys` crate, a
+safe wrapper over the whole codec surface (wide layouts, Atmos objects, framing/scan, metering),
+CI on all three desktop OSes — and two real portability findings for the header's record.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2009,6 +1978,49 @@ and OAMD/JOC object-audio decode accessors, the stream-framing helpers
 silently missing, in the same README. AP5's still-open C API gap (`scan`, caller-buffer `_into`
 decode forms, metering) needs no design change here: `bindgen` picks up new declarations the
 moment they land.
+
+**The completeness pass** closed everything the paragraph above deferred: `AccessUnitEncoder`/
+`AccessUnit` and `decode_access_unit`/`DecodedAccessUnit` (round-tripped through a real 5.1.2
+encode and rendered decode), `atmos::AtmosEncoder` with the OAMD/JOC accessors on both decoded
+types (positions asserted through OAMD's own quantizers, reconstructed object audio asserted
+non-silent), `stream::split_frames`/`split_access_units`/`stream_bsid`/`scan` (spans returned
+as borrow-checked slices into the caller's buffer - the C header's lifetime clause stated in
+the type system), and `meter::LoudnessMeter` both ways plus `dialnorm_from_lkfs`. Still
+deliberately out, recorded in the README: the `_into` decode forms and the level meter.
+`build-rust` widened from Linux-only to ubuntu/windows/macos - and the FIRST Windows build
+immediately earned its keep: bindgen types C enums `i32` on MSVC and `u32` elsewhere, so
+`Error::Other(u32)` failed to compile - the crate had baked one platform's representation into
+its API. Fixed with representation-neutral casts and recorded as portability finding #3 in
+rust/README.md, exactly the class of cross-boundary fact AP9 exists to surface.
+</details>
+
+### In progress
+
+**AP1 (L)** — API freeze → v1.0.0. The tiering, SemVer policy, and release criteria are
+written down; `SOVERSION`/ABI-tagging changes are deliberately deferred to the v1.0.0 cut
+itself, sequenced with AP4's ABI gate going required.
+<details markdown="1">
+<summary>Full record</summary>
+
+(was `F5`). Written down in `docs/library/api-stability.md`: every header under `ac3/` gets a
+Public/Internal/Diagnostic/Experimental tier (the `ac3/core/` bit-reader, bit-allocation,
+exponent, mantissa and FFT internals are Internal; `ac3iab` is Experimental until `IM1`
+finishes; the five `namespace detail` headers are unaffected by tier — nothing in `detail` is
+ever covered regardless); a SemVer and deprecation policy (`DEFINE_NO_DEPRECATED` stays until
+`v1.0.0`, then drops from all nine libraries' `generate_export_header()` calls); a C config
+struct growth policy (major bump or an additive `_v2` sibling, no size-sentinel scheme);
+release criteria against the standing Known gaps; and a cadence/governance statement answering
+the vcpkg reviewer's "all releases are prereleases" maturity note with a written criteria list
+instead of an implicit "not yet." Compile-time version macros landed for real:
+`AC3FORGE_C_VERSION_MAJOR`/`MINOR`/`PATCH`/`AC3FORGE_C_VERSION` in `ac3forge_c/ac3forge.h`
+(generated from a new `version.h.in`), tested against the runtime `ac3forge_version()` in
+`tests/capi/test_capi.cpp`. Still open, both deliberately deferred to the `v1.0.0` cut itself
+rather than done now (see the page's own reasoning): flipping `SOVERSION` from the full version
+to the major component across all nine `CMakeLists.txt`, and introducing `inline namespace v1`
+for ABI tagging — both are sequenced together with `AP4`'s ABI gate going from advisory to
+required, so a real break can't slip through the gap between promising compatibility and
+actually checking for it. `AP5`/`AP6` completion is now one of the page's own release-gate
+criteria rather than a separate, unlinked concern.
 </details>
 
 ### Considering

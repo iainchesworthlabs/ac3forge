@@ -21,7 +21,6 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   that drains the §3.7 hold-back on exit. Wheels now build for manylinux aarch64 (the
   documented-but-wheelless Raspberry Pi) and Intel macOS, and a `stubtest` step holds the
   hand-written type stubs to the compiled module on every push.
-
 - AC-4 container carriage (roadmap IM4's remaining slice): `ac3cli mp4`/`ts` accept an AC-4
   elementary stream — TS 103 190-2 Annex E's `ac-4` sample entry and `dac4` box on the MP4
   side (with the Annex E.13 `codecs` string for HLS/DASH), EN 300 468 Annex D.7's DVB
@@ -46,6 +45,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   canvas and encodes each drag as that frame's OAMD/JOC placement via the already-bound
   `AtmosBedEncoder`. All of it is Playwright-tested (`encode.spec.js`, `atmos.spec.js`),
   including the microphone path via Chromium's fake media device.
+- The Rust bindings now cover the whole codec surface (roadmap AP9's completeness pass): the
+  wide-layout access-unit encoder and rendered-programme decoder, the Atmos/JOC object encoder
+  with the OAMD/JOC decode accessors, the stream framing/scan helpers (whose spans come back as
+  borrow-checked slices into the caller's buffer), and the BS.1770 loudness meter — each with
+  real-signal round-trip tests. `build-rust` runs on all three desktop OSes now; the first
+  Windows build found and fixed a real portability bug (bindgen types C enums `i32` on MSVC,
+  `u32` elsewhere — `Error::Other` had baked the Linux answer in).
 
 ### Fixed
 
@@ -53,11 +59,6 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   short stream measured 6×/3×/2× its nominal bit rate — each shortened frame carried a
   full-length frame's bytes. CBR frames now take `frame_words`' documented per-block scaling,
   matching what `validate()` already checked. Six-block streams are byte-identical to before.
-
-### Fixed
-
-**Browser (WASM)**
-
 - **The AudioWorklet pipeline's browser test never ran.** `apps/wasm/tests/worklet.spec.js` — the
   one check that a real `AudioWorkletNode`, a real Worker and a real `SharedArrayBuffer` ring
   buffer carry decoded audio end to end — was added in 0.10.0-beta.1 but matched no Playwright
