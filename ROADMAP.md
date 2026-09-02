@@ -14,10 +14,10 @@ cut, just moved out of the way of a first read.
 
 | Theme | Shipped | In progress | Considering |
 |---|---|---|---|
-| EQ — Encoder decision quality | 9 | 3 | 1 |
+| EQ — Encoder decision quality | 12 | 0 | 2 |
 | DC — Decoder and consumer output | 10 | 0 | 0 |
 | IO — Streams in and out | 12 | 0 | 0 |
-| IM — Immersive and other formats | 4 | 2 | 1 |
+| IM — Immersive and other formats | 5 | 1 | 1 |
 | VX — Verification and oracles | 19 | 2 | 1 |
 | PF — Performance and portability | 8 | 0 | 0 |
 | AP — Library surface, bindings and v1.0 | 8 | 2 | 2 |
@@ -248,13 +248,14 @@ six-block frame and are correctly refused at one block, where ~2 Mbit/s is the r
 floor. That envelope is now stated in `docs/cli/metadata-options.md` rather than discovered.
 </details>
 
-### In progress
-
-**EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. Partly addressed:
-both encoders now take the per-channel-rate curve as a ceiling and put the frame's own
-spectrum under it, band by band against Table 7.15's hearing threshold, up to 128 kbit/s per
-channel. `fgaincod` follows a measured line from 7 at 38 kbit/s per channel to 0 at 128,
-replacing §8.2.12's fixed 4, on AC-3 by default (`encoder.cpp`'s `fgaincod_for`).
+**EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`, complete. The
+coded-bandwidth ceiling shipped on both encoders (band by band against Table 7.15's hearing
+threshold, up to 128 kbit/s per channel); AC-3 carries the measured `fgaincod` curve by
+default (`encoder.cpp`'s `fgaincod_for`, 7 at 38 kbit/s per channel to 0 at 128, replacing
+§8.2.12's fixed 4); and the E-AC-3 half is closed as **measured-and-declined** — the curve
+loses on ViSQOL at every rate because SNR and MOS run *opposite* ways along this axis there,
+so the implied `0x4` default stands, with `eac3::FrameConfig::fgaincod` shipped for pinning
+and as EQ13's restricted search axis.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -315,10 +316,12 @@ legs are single-window on synthetic material, because no redistributable native 
 source exists.
 </details>
 
-**EQ8 (M)** — Close the E-AC-3 stereo/192 gap. The coded-bandwidth fix (EQ7) is worth 1.2–2.7
-dB SNR at that rate but does not move the *landscape* number; the remaining gap is
-bit-allocation efficiency (EQ2/EQ3's territory), not a tool or search problem — three separate
-searches ruled out as the lever.
+**EQ8 (M)** — Close the E-AC-3 stereo/192 gap — closed. The trend gate's own landscape leg
+now measures this encoder **+0.63 dB SNR ahead of FFmpeg** (the 0.79 dB deficit the entry was
+opened on is gone) with LSD 1.01 against FFmpeg's 0.83, from 1.97. What remains is a −0.20
+MOS-LQO delta to FFmpeg and DEE alike, and four findings place it in bit-allocation/
+exponent-strategy territory (EQ1's whole-frame exponent set under AHT) — not tools, not
+search, in any axis this project can move.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -350,12 +353,28 @@ and −0.001±0.000 on music — inert, and correctly so: the curve asks for 2 a
 refit rejects it, and the search reproduces the one-axis answer exactly. So the prerequisite
 this entry was waiting on has been supplied and spent, and the stereo/192 gap is *still* not a
 transmitted-bit-allocation-parameter problem in any axis this project can now search.
+
+**Close-out (2026-09-02).** The headline gap inverted since the findings above were written:
+on the live trend history (`quality-history` branch, `external-comparison-main.jsonl`, main @
+`b43aa092`), the `eac3-stereo-192` landscape leg measures SNR 33.44 dB — **vs FFmpeg
++0.63 dB** — LSD 1.01 against FFmpeg's 0.83 (this record's own 1.97 is gone), MOS-LQO 4.399.
+The SNR sign flipped between the 2026-08-22 and 2026-08-26 trend records, a window that landed
+EQ13's distortion search and #405's coupling-determinism fix among others; no single commit
+claims it. What remains is −0.20 MOS-LQO to FFmpeg *and* DEE, and the same run's per-variant
+rows say where it lives: `none` (4.476) and `ecpl` (4.608) out-score `auto`'s pick (4.399) on
+MOS while `auto` wins SNR — the AHT/narrowing SNR-vs-ViSQOL opposition already measured above
+(`auto` runs −2.6 dB high-band on the flat-to-Nyquist fixture, where there is nothing
+inaudible to drop). That is EQ1-exponent-set territory plus VX9's listening question, exactly
+where the four findings left it. The entry closes as characterized: the named gap is shut,
+and the residual is owned by entries that already exist.
 </details>
 
-**EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. A real win on
-AC-3 from 448 kbit/s up; on E-AC-3 the two-axis search is inert at 192 kbit/s and actively
-harmful at 96 (up to −0.396 MOS), now restricted to the codes where SNR and MOS agree. The
-perceptual criterion still loses at every rate tested and stays off by default.
+**EQ13 (XL)** — Distortion-measured parameter search and a perceptual model, shipped for
+the scope that wins: the distortion criterion is a real gain on AC-3 from 448 kbit/s up and on
+E-AC-3's restricted axis (+3.3 dB SNR at 640 stereo with MOS flat, +1.17 dB/+0.29 MOS at
+coupled 5.1/640), with the harmful half of the axis measured and fenced off. The perceptual
+criterion is validated in isolation but uncalibrated and stays off; it and the other open
+threads are EQ14's now.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -424,7 +443,10 @@ named), and the perceptual model needs further calibration before it is worth tu
   driven by a criterion that tracks perception — `kPerceptual`, still uncalibrated — rather
   than more axes under `kDistortion`.
 
-5.1 external-metric harness alignment: still open, not attempted this pass.
+**Close-out (2026-09-02).** This entry ships on the measured wins above; what its record
+leaves open — `kPerceptual` calibration, driving EQ2/EQ5/EQ7's knobs and delta segments from
+either criterion, and the 5.1 external-metric harness alignment never attempted here — moves
+to EQ14 rather than holding a shipped search hostage to an uncalibrated model.
 </details>
 
 ### Considering
@@ -456,6 +478,25 @@ differs. The decoder's own 0x2 path was brought into line with that transcriptio
 (it read no `cplfsnroffst` at all). What is left genuinely untried is the per-BLOCK dimension,
 which on E-AC-3 needs a bit allocation per block rather than per frame — six times the work in
 the rate search's innermost loop — and has its own measurement to justify that.
+</details>
+
+**EQ14 (L)** — The perceptual criterion, calibrated: EQ13's open threads. `kPerceptual`
+loses at every rate tested and needs calibration against real material before it is worth
+turning on anywhere; neither criterion drives EQ2/EQ5/EQ7's knobs or delta segments yet; and
+the 5.1 external-metric harness alignment EQ13 scoped out remains unattempted.
+<details markdown="1">
+<summary>Full record</summary>
+
+Read EQ13's record before starting: more axes under `kDistortion` is *measured* territory —
+per-frame searches over the transmitted bit-allocation parameters have little left to find
+(`dbpbcod` was settled by EQ3, `fgaincod`'s SNR-optimal direction is perceptually wrong on
+E-AC-3, and EQ8's gap moved for other reasons entirely). The genuinely open work is a
+criterion that tracks perception: `ac3::quality::PerceptualModel` is a cited/tested
+Johnston+MPEG-1-model-2 tonality/masking model that is validated in isolation yet loses to
+the fixed defaults on real material with rematrixing active, which means calibration work
+(and VX9's listening test to anchor it), not more plumbing. Wiring whichever criterion
+survives into EQ2/EQ5/EQ7's knobs and the delta segments — the fields the encoder's own
+dead-end comment named — comes after a criterion worth wiring exists.
 </details>
 
 ## DC. Decoder and consumer output
@@ -959,10 +1000,11 @@ drops the wrapper and CRC by design) into a stream `ac4::scan` parses identicall
 frame.
 </details>
 
-### In progress
-
-**IM3 (XL)** — IAMF / Eclipsa Audio interop. Phase 1 (a channel-based OBU/ISOBMFF writer)
-shipped; object elements (phase 2) and an OBU reader (phase 3) are unstarted.
+**IM3 (XL)** — IAMF / Eclipsa Audio interop. Phase 1 — the channel-based OBU/ISOBMFF writer —
+shipped, and it is the whole scope reachable today: phases 2–3 (object elements, an OBU
+reader) were gated on IAMF v2.0 being final, and it is not (re-verified 2026-09-02: the AOM
+spec still carries Working Group Draft boilerplate and `AOMediaCodec/iamf`'s latest release
+remains v1.1.0). They re-open as their own entry when v2.0 lands.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -992,8 +1034,19 @@ OBU/ISOBMFF walker built into `test_iamf.cpp` itself (no `libiamf` dependency ad
 build) — deliberately proven able to fail: a substream/channel-pairing swap was reintroduced
 and confirmed to break the PCM round-trip test before being reverted. No Parameter Block OBUs,
 no Temporal Delimiter OBU, no trimming, batch API only — see `iamf/iamf.hpp`'s own header for
-the full phase-1 boundary. Phases 2 and 3 are unstarted.
+the full phase-1 boundary.
+
+Phases 2 and 3 are unstarted, and stay that way on purpose (re-checked 2026-09-02): no v2.0.0
+tag exists — `AOMediaCodec/iamf`'s latest release is still v1.1.0 (2024-11-08) — and the spec
+page carries the "AOM Working Group Draft" boilerplate with its own "should not be referenced
+other than as a working draft" warning, so the 2026-07-27 working-group approval this record
+noted has not become a final deliverable. Writing object elements against a moving draft would
+be DAMF/TrueHD territory — implementing a wire format no shipped decoder reads — so phase 2
+waits on the standard, not on effort here, and phase 3's reader has the same dependency for
+its object half. The channel-based writer above is complete against v1.1.0, which *is* final.
 </details>
+
+### In progress
 
 **IM5 (L)** — Land the TrueHD/MLP branch as an explicitly experimental module. A substantial
 internal codec already exists on a long-lived branch; needs a rebase, its own build target, and
@@ -1001,8 +1054,9 @@ honest output labelling before it can merge.
 <details markdown="1">
 <summary>Full record</summary>
 
-(was `D1`). `feature/truehd-atmos-support` (pushed; 21 commits, +8,090 lines, 41 commits behind
-`develop`) is far past the old `D1` text: a complete internal lossless codec — stream
+(was `D1`). `feature/truehd-atmos-support` (pushed; 21 commits, +8,090 lines, ~1,140 commits
+behind `main` as of 2026-09-02 — the old "41 behind `develop`" figure predates the
+trunk-based switch) is far past the old `D1` text: a complete internal lossless codec — stream
 assembler, PMQ matrix cascade, Huffman tables from WO 96/37048, automatic predictor and matrix
 selection, FIFO timing, end-of-stream terminators, the `16ch_channel_meaning` +
 `EXTRA_DATA`/EMDF/OAMD Atmos layer — plus `truehd-encode`/`truehd-decode`/`truehd-atmos`
