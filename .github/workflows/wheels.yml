@@ -89,6 +89,17 @@ jobs:
             runner: '["macos-latest"]'
           - name: ubuntu-latest
             runner: '["ubuntu-latest"]'
+          # The two platforms AP6's record called out as documented-but-wheelless:
+          # manylinux aarch64 (Raspberry Pi is a documented platform - a Pi 4B
+          # runs the live-HDMI matrix in docs/platforms/raspberry-pi.md - and
+          # GitHub's hosted arm runner builds native wheels without QEMU), and
+          # Intel macOS (macos-latest went Apple-silicon-only; macos-15-intel
+          # still exists as a hosted image and x86_64 Macs still exist as
+          # hardware).
+          - name: ubuntu-24.04-arm
+            runner: '["ubuntu-24.04-arm"]'
+          - name: macos-15-intel
+            runner: '["macos-15-intel"]'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -186,6 +197,20 @@ jobs:
           set -euo pipefail
           .pyvenv/bin/python -m pytest python/tests \
             --cov=ac3forge --cov-report=term-missing --cov-fail-under=85
+
+      # The hand-written .pyi against the wheel's actual runtime surface
+      # (roadmap AP6): every function the stub promises must exist with a
+      # compatible signature, and additions to the module must not go
+      # unstubbed silently. mypy comes from the same hash-pinned lock as
+      # pytest. The allowlist names the submodule-as-class stubs (eac3/meta/
+      # signing/containers/verify are m.def_submodule at runtime, classes in
+      # the stub - the documented convention at each one's declaration) so
+      # stubtest checks their CONTENTS without objecting to the shape.
+      - name: stubtest the type stubs against the wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          .pyvenv/bin/python -m mypy.stubtest ac3forge             --allowlist python/tests/stubtest-allowlist.txt
 
   # Publishes via PyPI trusted publishing (OIDC) against the `pypi` GitHub environment - both are
   # provisioned; see docs/releasing.md's "Publishing to PyPI". Gated on a v* tag push, same as

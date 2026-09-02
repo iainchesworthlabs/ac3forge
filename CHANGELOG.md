@@ -35,15 +35,24 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
-- **Roadmap VX11 resolved: the ~6.02 dB cross-platform split is one bit of arithmetic, not
-  an exponent step.** It splits the legs strictly by architecture — `macos-llvm` (arm64) sits
+- Python completeness (roadmap AP6): new `ac3forge.containers` (Matroska/MP4/MPEG-TS mux and
+  demux, with `build_codec_config_box()` for the `dac3`/`dec3` payload), `ac3forge.meta`
+  (BS.1770 `LoudnessMeter`, the cited QC presets and `evaluate_qc_gate`) and
+  `ac3forge.signing` (EMDF object signing/verification); `Eac3Decoder` is a context manager
+  that drains the §3.7 hold-back on exit. Wheels now build for manylinux aarch64 (the
+  documented-but-wheelless Raspberry Pi) and Intel macOS, and a `stubtest` step holds the
+  hand-written type stubs to the compiled module on every push.
+
+- **Roadmap VX11 resolved: the ~6.02 dB cross-platform split is a last-bit arithmetic
+  difference, not a systematic codec error.** It splits the legs strictly by architecture — `macos-llvm` (arm64) sits
   with the arm64 group and `macos-llvm-x64` with the x86-64 group, same OS and compiler on
   both sides — which rules out the "macOS libm" and "arm64 and macOS" readings this was
   carried under. Sorting all 52 (check, channel) pairs by SNR gives a step rather than a
   gradient: every pair below 67 dB shows a 0.00–0.11 dB difference, every pair above it shows
-  5.85–6.05 dB, with nothing in between. A systematic exponent error would be level-independent;
-  rounding is visible only once the two decoders agree closely enough that arithmetic is all
-  that is left to disagree about. Consequently the per-channel floor headroom drops from 6.02 dB
+  5.85–6.05 dB, with nothing in between. A systematic codec error would be level-independent; a last-bit
+  one is visible only once the two decoders agree closely enough that arithmetic is all that is
+  left to disagree about. (6.02 dB is one exponent step because exponent extraction amplifies a
+  last-bit difference into one — the mechanism the aarch64 SIMD header already documents.) Consequently the per-channel floor headroom drops from 6.02 dB
   to 1.0 dB — `min_observed` is a minimum *across legs*, so it had already absorbed the split,
   and subtracting it again was a double-count costing ~5 dB of sensitivity on every channel.
   The gates now catch a 1 dB per-channel regression where they previously needed 6.
