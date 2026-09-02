@@ -350,20 +350,28 @@ namespace {
 // data points). `ts` is this object's own position in ITS frame's 24-
 // timeslot window - see each caller for how it maps its own loop variable
 // onto that window.
+// `slots` is the frame's own QMF-timeslot count - kQmfTimeslots (24) for an
+// ordinary six-block frame, 4/8/12 for a short syncframe (§E2.3.1.4, four
+// timeslots to a 256-sample block). §6.6.5's windows scale with it: a
+// one-data-point smooth ramp runs the whole frame, a two-point one splits it
+// in half, and a steep shape's offset_ts values (§6.3.4.4, coded in
+// timeslots) compare against ts unchanged - an offset at or past the frame's
+// end simply never arrives inside it, so `previous` (or dq[0]) holds to the
+// edge, which is the only reading a shortened window leaves.
 [[nodiscard]] double interpolate(const ObjectShape& shape, double previous,
-                                 std::span<const double, kMaxDataPoints> dq, int ts) {
+                                 std::span<const double, kMaxDataPoints> dq, int ts, int slots) {
     if (!shape.steep) {
         if (shape.data_points == 1) {
             return previous + static_cast<double>(ts + 1) * (dq[0] - previous) /
-                                  static_cast<double>(kQmfTimeslots);
+                                  static_cast<double>(slots);
         }
-        constexpr int kHalf = kQmfTimeslots / 2;
-        if (ts < kHalf) {
+        const int half = slots / 2;
+        if (ts < half) {
             return previous +
-                   static_cast<double>(ts + 1) * (dq[0] - previous) / static_cast<double>(kHalf);
+                   static_cast<double>(ts + 1) * (dq[0] - previous) / static_cast<double>(half);
         }
-        return dq[0] + static_cast<double>(ts - kHalf + 1) * (dq[1] - dq[0]) /
-                           static_cast<double>(kQmfTimeslots - kHalf);
+        return dq[0] + static_cast<double>(ts - half + 1) * (dq[1] - dq[0]) /
+                           static_cast<double>(slots - half);
     }
     if (ts < shape.offset_ts[0]) {
         return previous;
@@ -386,6 +394,14 @@ namespace {
     ReconstructionState& state, bool fast_mdct, bool fast_imdct) {
     const int objects = params.objects;
     const int channels = params.channels;
+    // The frame's own length, from the bed itself: an ordinary frame is six
+    // 256-sample blocks, a short syncframe (§E2.3.1.4) one, two or three.
+    // Everything below that used to count to kBlocksPerFrame/kSamplesPerFrame
+    // counts to these instead; at six blocks every value is identical to what
+    // the fixed constants produced, so the ordinary path is unchanged.
+    const int frame_samples = static_cast<int>(bed[0].size());
+    const int nblocks = frame_samples / kSamplesPerBlock;
+    const int slots = nblocks * (kQmfTimeslots / kBlocksPerFrame);
 
     // §6.3.3.3: no ramp on the first frame or right after a splice, and
     // equally none if the previous frame's matrix does not even have the
@@ -413,7 +429,7 @@ namespace {
 
     std::vector<std::vector<float>> out(
         static_cast<std::size_t>(objects),
-        std::vector<float>(static_cast<std::size_t>(kSamplesPerFrame)));
+        std::vector<float>(static_cast<std::size_t>(frame_samples)));
 
     auto& bed_mdct = state.bed_mdct_scratch;
     auto& time = state.time_scratch;
@@ -421,7 +437,7 @@ namespace {
     auto& object_mdct = state.object_mdct_scratch;
     auto& x = state.synth_scratch;
 
-    for (int block = 0; block < kBlocksPerFrame; ++block) {
+    for (int block = 0; block < nblocks; ++block) {
         // --- analyze this block of the downmix, one MDCT per bed channel ---
         // Only block 0 ever reads negative indices (into the previous
         // frame's tail); every later block's window sits entirely inside
@@ -469,9 +485,10 @@ namespace {
 
         // §6.6.5 counts in QMF timeslots, four to a 256-sample block. Taking
         // each block's LAST timeslot keeps the smooth single-data-point case
-        // exactly the (block + 1) / kBlocksPerFrame ramp this used to
-        // compute, and atmos.cpp's own bed ramp still agrees with it.
-        const int ts = (block + 1) * kQmfTimeslots / kBlocksPerFrame - 1;
+        // exactly the (block + 1) / nblocks ramp this used to compute, and
+        // atmos.cpp's own bed ramp still agrees with it - at any nblocks,
+        // since both sides scale off the same frame length.
+        const int ts = (block + 1) * slots / nblocks - 1;
 
         // §6.6.6 spectrum accumulation, unchanged, but into
         // object_mdct[object] rather than a single shared scratch: every
@@ -530,7 +547,7 @@ namespace {
                     const double previous =
                         has_ramp ? state.previous_matrix[previous_index] : dq[0];
                     m[static_cast<std::size_t>(ch)] =
-                        has_ramp ? interpolate(shape, previous, dq, ts)
+                        has_ramp ? interpolate(shape, previous, dq, ts, slots)
                                  : dq[static_cast<std::size_t>(shape.data_points - 1)];
                 }
                 for (int bin = subband * 4; bin < subband * 4 + 4; ++bin) {
@@ -596,7 +613,7 @@ namespace {
             state.bed_history[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
                 static_cast<double>(
                     bed[static_cast<std::size_t>(ch)]
-                       [static_cast<std::size_t>(kSamplesPerFrame - 256 + n)]);
+                       [static_cast<std::size_t>(frame_samples - 256 + n)]);
         }
     }
     // §6.6.5's own tail: joc_mix_mtx_prev takes the LAST data point, per
@@ -645,11 +662,173 @@ namespace {
 // count or data-point count is free to change frame to frame, and
 // subband-resolution storage never has to reinterpret what an old value
 // meant under a band layout that no longer applies.
+// Short syncframes (§E2.3.1.4). The 24-slot path below splits its emitted
+// timeslots into "this frame's" and "the previous frame's tail" around
+// kQmfDelaySlots - a split that stops describing anything once the frame's
+// own slot count (4, 8 or 12 here) no longer exceeds the delay: a one-block
+// frame's every emitted slot belongs to audio from TWO OR MORE frames back.
+// So this path makes the delay explicit instead of approximating around it:
+// each frame SCHEDULES its per-timeslot mixing coefficients - the same
+// §6.6.5 interpolation, over its own slot count - into a FIFO, and each
+// emitted timeslot applies the coefficients scheduled kQmfDelaySlots
+// earlier, so the matrix rides the same delay line as the audio it applies
+// to. Where the 24-slot path replays its delayed tail as a linear blend of
+// two stored snapshots (its own comment explains that approximation), here
+// the full schedule survives and nothing needs blending.
+//
+// Deliberately a separate function rather than the 24-slot path generalised:
+// that path's tail approximation is pinned byte-for-byte by golden decode
+// hashes, and rebuilding it on this FIFO - though cleaner - would move every
+// existing six-block stream's output. Short frames have no such pins.
+[[nodiscard]] std::vector<std::vector<float>> reconstruct_qmf_short(
+    std::span<const std::span<const float>> bed, const FrameParameters& params,
+    ReconstructionState& state, const int slots) {
+    const int objects = params.objects;
+
+    if (!state.qmf) {
+        state.qmf = std::make_unique<ReconstructionState::QmfState>();
+    }
+    auto& qmf = *state.qmf;
+    if (static_cast<int>(qmf.objects.size()) != objects) {
+        // A changed object count means index i no longer names the same
+        // object: neither a filterbank tail nor a scheduled coefficient set
+        // is worth keeping (see reconstruct_mdct_band's own reasoning).
+        qmf.objects.assign(static_cast<std::size_t>(objects), dsp::QmfSynthesis{});
+        qmf.pending.clear();
+    }
+
+    const std::size_t coeffs = static_cast<std::size_t>(objects) *
+                               static_cast<std::size_t>(kNumChannels5X) *
+                               static_cast<std::size_t>(kQmfSubbands);
+    const bool has_ramp = params.seq_count != 0 && state.previous_objects == objects &&
+                          state.previous_channels == kNumChannels5X &&
+                          state.previous_matrix.size() == coeffs;
+    if (state.previous_matrix.size() != coeffs) {
+        state.previous_matrix.assign(coeffs, 0.0);
+    }
+
+    // --- schedule this frame's per-timeslot coefficients --------------------
+    for (int ts = 0; ts < slots; ++ts) {
+        std::vector<double> mix(coeffs, 0.0);
+        for (int object = 0; object < objects; ++object) {
+            const auto shape = params.shape(object);
+            if (!shape.present) {
+                continue;  // silent contribution - the zeros stand
+            }
+            const auto view = params.object_view(object);
+            const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+            for (int ch = 0; ch < kNumChannels5X; ++ch) {
+                for (int subband = 0; subband < kQmfSubbands; ++subband) {
+                    const int band = mapping[static_cast<std::size_t>(subband)];
+                    const std::array<double, kMaxDataPoints> dq = {
+                        view.at(0, ch, band),
+                        shape.data_points > 1 ? view.at(1, ch, band) : view.at(0, ch, band)};
+                    const std::size_t index =
+                        (static_cast<std::size_t>(object) *
+                             static_cast<std::size_t>(kNumChannels5X) +
+                         static_cast<std::size_t>(ch)) *
+                            static_cast<std::size_t>(kQmfSubbands) +
+                        static_cast<std::size_t>(subband);
+                    const double previous = has_ramp ? state.previous_matrix[index] : dq[0];
+                    mix[index] = has_ramp
+                                     ? interpolate(shape, previous, dq, ts, slots)
+                                     : dq[static_cast<std::size_t>(shape.data_points - 1)];
+                }
+            }
+        }
+        qmf.pending.push_back(std::move(mix));
+    }
+    // First frame: nothing was scheduled kQmfDelaySlots ago, so the delay
+    // line primes with this frame's own first coefficients - "the first
+    // matrix applies from the start", which is what the 24-slot path's
+    // no-ramp first frame does too.
+    while (qmf.pending.size() < static_cast<std::size_t>(slots + dsp::kQmfDelaySlots)) {
+        qmf.pending.push_front(std::vector<double>(qmf.pending.front()));
+    }
+
+    // --- emit ---------------------------------------------------------------
+    std::vector<std::vector<float>> out(
+        static_cast<std::size_t>(objects),
+        std::vector<float>(static_cast<std::size_t>(slots) * dsp::kQmfHop));
+
+    for (int slot = 0; slot < slots; ++slot) {
+        for (int ch = 0; ch < kNumChannels5X; ++ch) {
+            const std::span<const float, dsp::kQmfHop> hop{
+                bed[static_cast<std::size_t>(ch)].data() + slot * dsp::kQmfHop,
+                static_cast<std::size_t>(dsp::kQmfHop)};
+            qmf.bed[static_cast<std::size_t>(ch)].push(hop,
+                                                       qmf.bed_real[static_cast<std::size_t>(ch)],
+                                                       qmf.bed_imag[static_cast<std::size_t>(ch)]);
+        }
+        const std::vector<double>& mix = qmf.pending.front();
+        for (int object = 0; object < objects; ++object) {
+            auto& synth = qmf.objects[static_cast<std::size_t>(object)];
+            for (int k = 0; k < kQmfSubbands; ++k) {
+                double real = 0.0;
+                double imag = 0.0;
+                for (int ch = 0; ch < kNumChannels5X; ++ch) {
+                    const std::size_t index =
+                        (static_cast<std::size_t>(object) *
+                             static_cast<std::size_t>(kNumChannels5X) +
+                         static_cast<std::size_t>(ch)) *
+                            static_cast<std::size_t>(kQmfSubbands) +
+                        static_cast<std::size_t>(k);
+                    const double m = mix[index];
+                    real += m * qmf.bed_real[static_cast<std::size_t>(ch)]
+                                            [static_cast<std::size_t>(k)];
+                    imag += m * qmf.bed_imag[static_cast<std::size_t>(ch)]
+                                            [static_cast<std::size_t>(k)];
+                }
+                qmf.object_real[static_cast<std::size_t>(k)] = real;
+                qmf.object_imag[static_cast<std::size_t>(k)] = imag;
+            }
+            const std::span<float, dsp::kQmfHop> emitted{
+                out[static_cast<std::size_t>(object)].data() + slot * dsp::kQmfHop,
+                static_cast<std::size_t>(dsp::kQmfHop)};
+            synth.pull(qmf.object_real, qmf.object_imag, emitted);
+        }
+        qmf.pending.pop_front();
+    }
+
+    // §6.6.5's own tail, same as both other paths: joc_mix_mtx_prev takes
+    // the LAST data point, per subband.
+    for (int object = 0; object < objects; ++object) {
+        const auto shape = params.shape(object);
+        const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+        const auto tail_view = params.object_view(object);
+        for (int ch = 0; ch < kNumChannels5X; ++ch) {
+            for (int subband = 0; subband < kQmfSubbands; ++subband) {
+                const std::size_t index =
+                    (static_cast<std::size_t>(object) * static_cast<std::size_t>(kNumChannels5X) +
+                     static_cast<std::size_t>(ch)) *
+                        static_cast<std::size_t>(kQmfSubbands) +
+                    static_cast<std::size_t>(subband);
+                state.previous_matrix[index] =
+                    shape.present ? tail_view.at(shape.data_points - 1, ch,
+                                                 mapping[static_cast<std::size_t>(subband)])
+                                  : 0.0;
+            }
+        }
+    }
+    state.previous_objects = objects;
+    state.previous_channels = kNumChannels5X;
+
+    return out;
+}
+
 [[nodiscard]] std::vector<std::vector<float>> reconstruct_qmf(
     std::span<const std::span<const float>> bed, const FrameParameters& params,
     ReconstructionState& state) {
     static_assert(dsp::kQmfSlotsPerFrame * dsp::kQmfHop == kSamplesPerFrame,
                   "the QMF hop has to divide the frame exactly");
+
+    // A short syncframe takes the explicit-delay path above; the ordinary
+    // six-block frame keeps this one, byte-identical to what it always
+    // produced.
+    if (const int slots = static_cast<int>(bed[0].size()) / dsp::kQmfHop;
+        slots != dsp::kQmfSlotsPerFrame) {
+        return reconstruct_qmf_short(bed, params, state, slots);
+    }
 
     const int objects = params.objects;
 

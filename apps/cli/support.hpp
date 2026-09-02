@@ -301,6 +301,15 @@ struct Options {
     // either - the default is already §6.6.6's own domain - so mode= stays
     // exactly the two transform switches it has always been.
     ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
+    // §E2.3.1.4 short syncframes for the atmos* encode commands
+    // (AtmosConfig::numblkscod): 3 (the default six-block frame) or 0/1/2
+    // for 1/2/3 blocks. A key=value here rather than eac3-encode's tools
+    // token because the atmos commands take no [tools] positional - their
+    // bed's coding tools are the encoder's own business - and this is the
+    // one frame-structure choice that changes the object layer's timing
+    // with it (the OAMD ramp and the JOC interpolation window both cover
+    // exactly one frame, whatever its length).
+    int atmos_numblkscod = 3;
     // The per-frame search over §7.2.2's transmitted bit allocation
     // parameters, judged on the reconstruction error the decoder will
     // produce (EncoderConfig::search, ac3/quality/distortion.hpp).

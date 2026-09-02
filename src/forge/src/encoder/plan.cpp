@@ -916,7 +916,8 @@ std::optional<PlanError> validate(const Plan& plan) {
             if (sub.vbr) {
                 return true;
             }
-            const auto words = eac3::frame_words(sub.sample_rate, sub.bitrate_kbps);
+            const auto words = eac3::frame_words(sub.sample_rate, sub.bitrate_kbps,
+                                                 eac3::blocks_per_syncframe(sub.numblkscod));
             return words >= 1 && words <= eac3::kMaxFrameWords;
         };
         const auto config = eac3_config(plan);

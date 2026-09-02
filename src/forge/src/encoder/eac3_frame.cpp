@@ -4492,7 +4492,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     bool fixed_budget_engaged = false;
     std::uint32_t fixed_budget = 0;
     if (!impl_->config_.vbr) {
-        words = frame_words(impl_->config_.sample_rate, impl_->config_.bitrate_kbps);
+        // With the blocks argument, not the six-block default: a short
+        // syncframe carries proportionally fewer words at the same bit rate
+        // (frame_words' own contract, and what validate() already checks).
+        // This call sizing every frame at six blocks regardless was EQ11's
+        // one latent defect - a numblkscod 0/1/2 stream measured 6x/3x/2x
+        // its nominal rate, because each shortened frame still carried the
+        // full-length frame's bytes.
+        words = frame_words(impl_->config_.sample_rate, impl_->config_.bitrate_kbps,
+                            blocks_per_syncframe(impl_->config_.numblkscod));
         if (side_bits + kTailBits > words * 16 && drop_delta_and_remeasure()) {
             // retried below with side_bits refreshed
         }
@@ -5489,7 +5497,8 @@ std::uint32_t access_unit_words(const AccessUnitConfig& config) {
     // count depends on content no caller of this function has offered it.
     const auto substream_words = [](const FrameConfig& sub) {
         assert(!sub.vbr);
-        return frame_words(sub.sample_rate, sub.bitrate_kbps);
+        return frame_words(sub.sample_rate, sub.bitrate_kbps,
+                           blocks_per_syncframe(sub.numblkscod));
     };
     std::uint32_t words = substream_words(config.independent);
     for (const auto& dep : config.dependents) {

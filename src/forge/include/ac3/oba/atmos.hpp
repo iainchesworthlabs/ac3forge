@@ -97,6 +97,16 @@ struct AtmosConfig {
     // SNR through a QMF reconstruction, for +0.26 ms/frame of encode
     // (0.55 -> 0.80 ms of a 32 ms budget, four objects).
     joc::Domain joc_domain = joc::Domain::kQmf;
+    // §E2.3.1.4 short syncframes, same field and same meaning as
+    // eac3::FrameConfig::numblkscod (default 3 = six blocks; 0/1/2 shorten
+    // the frame to 1/2/3 blocks - 256/512/768 samples). The object layer
+    // scales with it: encode_frame() takes that many samples per object, the
+    // OAMD update's ramp_duration covers exactly one (shortened) frame, and
+    // the JOC matrix interpolates across the frame's own QMF timeslots (four
+    // per block) rather than a fixed 24. AHT never conflicts here the way it
+    // does for a plain eac3-encode `auto` - this encoder's bed substream
+    // does not use AHT - so every code is expressible at every setting.
+    int numblkscod = 3;
 };
 
 // One object's placement for one frame. Positions are room-anchored per
@@ -148,8 +158,10 @@ class AC3FORGE_EXPORT AtmosEncoder {
     AtmosEncoder(AtmosEncoder&&) noexcept;
     AtmosEncoder& operator=(AtmosEncoder&&) noexcept;
 
-    // objects: one kSamplesPerFrame mono span per object, in the order the
-    // encoder was constructed with. Returns one E-AC-3 access unit: a single
+    // objects: one mono span per object, in the order the encoder was
+    // constructed with, each carrying one frame of samples -
+    // kSamplesPerFrame by default, or 256/512/768 under a short
+    // AtmosConfig::numblkscod. Returns one E-AC-3 access unit: a single
     // independent substream carrying the 5.1 bed, with the EMDF container in
     // its aux data.
     [[nodiscard]] std::expected<eac3::AccessUnit, FrameError> encode_frame(

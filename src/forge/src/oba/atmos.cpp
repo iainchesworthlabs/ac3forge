@@ -126,9 +126,13 @@ void band_energy(std::span<const float> signal, std::span<const std::uint8_t, 64
                  std::span<double> out, bool fast) {
     AC3_ZONE_SCOPED_N("band_energy");
     std::ranges::fill(out, 0.0);
-    // The frame's own six blocks, without the previous frame's overlap: this
-    // is an energy estimate, not a transform that has to reconstruct.
-    for (int block = 0; block < kBlocksPerFrame; ++block) {
+    // The frame's own blocks, without the previous frame's overlap: this is
+    // an energy estimate, not a transform that has to reconstruct. Counted
+    // from the signal itself, not kBlocksPerFrame - a short syncframe
+    // (§E2.3.1.4) hands this 1, 2 or 3 blocks, and walking six would read
+    // past its end.
+    const int blocks = static_cast<int>(signal.size()) / kSamplesPerBlock;
+    for (int block = 0; block < blocks; ++block) {
         std::array<double, 512> time{};
         for (int n = 0; n < 512; ++n) {
             const int index = block * 256 + n - 256;
@@ -154,7 +158,11 @@ void qmf_band_energy(std::span<const float> signal, std::span<const std::uint8_t
     std::ranges::fill(out, 0.0);
     std::array<double, dsp::kQmfSubbands> real{};
     std::array<double, dsp::kQmfSubbands> imag{};
-    for (int slot = 0; slot < dsp::kQmfSlotsPerFrame; ++slot) {
+    // The signal's own length, not a fixed kQmfSlotsPerFrame: a short
+    // syncframe (§E2.3.1.4) hands this 4, 8 or 12 hops instead of 24, and
+    // walking the full 24 would read past its end.
+    const int slots = static_cast<int>(signal.size()) / dsp::kQmfHop;
+    for (int slot = 0; slot < slots; ++slot) {
         const std::span<const float, dsp::kQmfHop> hop{
             signal.data() + slot * dsp::kQmfHop, static_cast<std::size_t>(dsp::kQmfHop)};
         analysis.push(hop, real, imag);
@@ -185,6 +193,10 @@ struct AtmosEncoder::Impl {
     std::vector<double> lfe_gains_;
     bool primed_ = false;
 
+    // 256 * blocks_per_syncframe(config_.numblkscod): every per-frame buffer
+    // and ramp below runs to this, not to kSamplesPerFrame. Declared before
+    // bed_ so the constructor's init list can size bed_ from it.
+    int frame_samples_ = kSamplesPerFrame;
     std::vector<std::vector<float>> bed_;
     // One analysis filterbank per object, for joc::Domain::kQmf's band
     // energies. Left empty - and so free - under kMdctBand.
@@ -200,6 +212,7 @@ struct AtmosEncoder::Impl {
                               .bitrate_kbps = config.bitrate_kbps,
                               .acmod = Acmod::k3_2,
                               .lfe = true,
+                              .numblkscod = config.numblkscod,
                               .dialnorm = config.dialnorm,
                               .fast_mdct = config.fast_mdct,
                               // §8.3.1's flag_ec3_extension_type_a plus §8.3.2.2's
@@ -219,7 +232,12 @@ struct AtmosEncoder::Impl {
                                       : std::nullopt}}),
           gains_(static_cast<std::size_t>(objects)),
           lfe_gains_(static_cast<std::size_t>(objects), 0.0),
-          bed_(6, std::vector<float>(kSamplesPerFrame)) {
+          // A short syncframe (AtmosConfig::numblkscod 0-2) shortens the
+          // whole object pipeline with it: the bed, the per-object input
+          // spans, the OAMD ramp and the JOC interpolation window all cover
+          // frame_samples_, not a fixed kSamplesPerFrame.
+          frame_samples_(eac3::blocks_per_syncframe(config.numblkscod) * kSamplesPerBlock),
+          bed_(6, std::vector<float>(static_cast<std::size_t>(frame_samples_))) {
         // §5.6.4.8 orders the program's objects bed-first, and the bed here is
         // the LFE alone - so program object 0 is the LFE and the dynamic
         // objects follow it. §6.3.2.2 bypasses the LFE rather than matrixing
@@ -310,9 +328,10 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     for (auto& channel : impl_->bed_) {
         std::ranges::fill(channel, 0.0f);
     }
+    const int frame_samples = impl_->frame_samples_;
     for (std::size_t object = 0; object < count; ++object) {
         const auto& source = objects[object];
-        assert(source.size() == kSamplesPerFrame);
+        assert(static_cast<int>(source.size()) == frame_samples);
         for (int channel = 0; channel < kChannels; ++channel) {
             const double from = impl_->gains_[object][static_cast<std::size_t>(channel)];
             const double to = target[object][static_cast<std::size_t>(channel)];
@@ -321,18 +340,18 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
             }
             auto& out = impl_->bed_[static_cast<std::size_t>(
                 kAc3FromJoc[static_cast<std::size_t>(channel)])];
-            for (int n = 0; n < kSamplesPerFrame; ++n) {
-                const double g = from + (to - from) * (n + 1) / kSamplesPerFrame;
+            for (int n = 0; n < frame_samples; ++n) {
+                const double g = from + (to - from) * (n + 1) / frame_samples;
                 out[static_cast<std::size_t>(n)] += static_cast<float>(
                     g * static_cast<double>(source[static_cast<std::size_t>(n)]));
             }
         }
         if (impl_->lfe_gains_[object] != 0.0 || target_lfe[object] != 0.0) {
             auto& lfe = impl_->bed_[5];
-            for (int n = 0; n < kSamplesPerFrame; ++n) {
+            for (int n = 0; n < frame_samples; ++n) {
                 const double g = impl_->lfe_gains_[object] +
                                  (target_lfe[object] - impl_->lfe_gains_[object]) *
-                                     (n + 1) / kSamplesPerFrame;
+                                     (n + 1) / frame_samples;
                 lfe[static_cast<std::size_t>(n)] += static_cast<float>(
                     g * static_cast<double>(source[static_cast<std::size_t>(n)]));
             }
@@ -457,7 +476,7 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     // container hands its skip-field bytes back to the mantissas.
     std::vector<std::byte> container;
     if (impl_->config_.emit_object_metadata) {
-        const auto oamd = build_payload(impl_->program_, described);
+        const auto oamd = build_payload(impl_->program_, described, impl_->frame_samples_);
         const auto joc_payload = joc::build_payload(impl_->params_);
         const std::array<emdf::Payload, 2> payloads{{
             {.id = emdf::kPayloadIdOamd, .bytes = oamd},

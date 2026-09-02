@@ -14,7 +14,7 @@ cut, just moved out of the way of a first read.
 
 | Theme | Shipped | In progress | Considering |
 |---|---|---|---|
-| EQ — Encoder decision quality | 8 | 4 | 1 |
+| EQ — Encoder decision quality | 9 | 3 | 1 |
 | DC — Decoder and consumer output | 10 | 0 | 0 |
 | IO — Streams in and out | 12 | 0 | 0 |
 | IM — Immersive and other formats | 4 | 2 | 1 |
@@ -194,6 +194,60 @@ by an integral controller, over a sliding-window bit reservoir that caps any win
 budget.
 </details>
 
+**EQ11 (M)** — E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync`, complete: shipped
+for `eac3-encode` first, and the object layer (`atmos*`) now scales with the frame too. Closing
+the second half also surfaced the first half's one latent defect — short frames were sized at
+the six-block byte budget, so a short stream measured 6×/3×/2× its nominal rate — fixed.
+<details markdown="1">
+<summary>Full record</summary>
+
+Done for `eac3-encode`: `FrameConfig::numblkscod` (default 3, the CLI's `numblkscod:N` tools
+token), `AccessUnitConfig` refuses substreams that disagree about it, AHT and the hoisted
+(Table E2.10) exponent form are unavailable below six blocks exactly as Table E1.3 requires,
+and `convsync` cycles across each group of `6 / blocks_per_syncframe` frames. The decoder's
+`numblkscod != 3` path — spec-derived, never before driven by a real stream — now is:
+round-trip tests decode a real access unit at every code, including one with a dependent
+substream, through `tools/ci/run_codec_matrix.sh`'s FFmpeg strict-decode leg as well as this
+project's own decoder. A CLI-reachable crash surfaced along the way: `auto` tools selection can
+choose AHT, which a short `numblkscod` forbids outright, and
+`run_eac3_encode`/`run_eac3_encode_multi` asserted on the resulting rejected config instead of
+reporting it — fixed to the same clean error every other unexpressable configuration already
+gets.
+
+**The `atmos*` half, done second.** `AtmosConfig::numblkscod` (the CLI's `numblkscod=N`
+key=value on every `atmos*` encode command — they have no `[tools]` positional), and the whole
+object pipeline scales with the frame rather than assuming six blocks: the bed render and its
+gain ramps cover the shortened frame; the OAMD update's `ramp_duration` covers exactly one
+frame (Table 24 spells 1536 and 512 directly, 256 via Table 25's ramp table, a three-block
+frame's 768 as the 11-bit literal — all four read back by the existing parser); the JOC matrix
+interpolates over the frame's own QMF timeslots (four per block) in both domains; and both
+reconstruction paths take the frame length from the bed itself. Two of the fixes were
+out-of-bounds reads, not parameterisation: `band_energy` and `qmf_band_energy` both walked a
+fixed six blocks/24 slots over what a short frame hands them. The QMF reconstruction needed
+real design rather than substitution — its filterbank delay (9 timeslots) meets or exceeds a
+short frame's own slot count (4/8/12), so the 24-slot path's two-snapshot tail blend cannot
+name which frame an emitted slot belongs to; short frames take a separate explicit-delay path
+(the per-timeslot mixing schedule rides a FIFO delayed by exactly the filterbank's own delay),
+while the six-block path is kept byte-identical because golden decode hashes pin it. Verified
+end to end at every code × both domains: encode → real decode → OAMD `ramp_duration` asserted
+per frame → JOC reconstruct, worst-object SNR 22.3 dB at every short code against 22.1 at the
+six-block control (QMF; the shortened frame costs nothing on stationary material because the
+matrix updates proportionally more often), plus a relative gate holding short codes within 3 dB
+of the control so a timing regression cannot hide under an absolute floor.
+
+**The latent defect the second half surfaced:** every short CBR syncframe was sized by
+`frame_words`' six-block default rather than its documented per-block scaling — `validate()`
+checked the scaled size, the encode path then budgeted the unscaled one — so a `numblkscod`
+0/1/2 stream carried 6×/3×/2× its nominal bit rate and every short frame had silently
+luxurious mantissa budgets. Fixed at all three call sites (encode budget, `access_unit_words`,
+`plan.cpp`'s framability check); six-block streams are byte-identical by construction
+(`blocks_per_syncframe(3)` is the old default), confirmed by the golden hashes. The honest
+consequence for objects: the OAMD+JOC container repeats per syncframe whatever its length, so
+its fixed cost is a six-times share of a one-block frame — four objects at 640 kbit/s fit a
+six-block frame and are correctly refused at one block, where ~2 Mbit/s is the realistic
+floor. That envelope is now stated in `docs/cli/metadata-options.md` rather than discovered.
+</details>
+
 ### In progress
 
 **EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. Partly addressed:
@@ -296,27 +350,6 @@ and −0.001±0.000 on music — inert, and correctly so: the curve asks for 2 a
 refit rejects it, and the search reproduces the one-axis answer exactly. So the prerequisite
 this entry was waiting on has been supplied and spent, and the stereo/192 gap is *still* not a
 transmitted-bit-allocation-parameter problem in any axis this project can now search.
-</details>
-
-**EQ11 (M)** — E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync`. Shipped for
-`eac3-encode`; `atmos-encode`'s object metadata over short frames is unstarted.
-<details markdown="1">
-<summary>Full record</summary>
-
-Done for `eac3-encode`: `FrameConfig::numblkscod` (default 3, the CLI's `numblkscod:N` tools
-token), `AccessUnitConfig` refuses substreams that disagree about it, AHT and the hoisted
-(Table E2.10) exponent form are unavailable below six blocks exactly as Table E1.3 requires,
-and `convsync` cycles across each group of `6 / blocks_per_syncframe` frames. The decoder's
-`numblkscod != 3` path — spec-derived, never before driven by a real stream — now is:
-round-trip tests decode a real access unit at every code, including one with a dependent
-substream, through `tools/ci/run_codec_matrix.sh`'s FFmpeg strict-decode leg as well as this
-project's own decoder. **Not done: `atmos-encode`.** OAMD/JOC's object metadata is timed and
-interpolated across a full six-block frame; extending that to a shorter one is unstarted, not
-merely unexposed — see `docs/cli/metadata-options.md`'s own note. A CLI-reachable crash
-surfaced along the way: `auto` tools selection can choose AHT, which a short `numblkscod`
-forbids outright, and `run_eac3_encode`/`run_eac3_encode_multi` asserted on the resulting
-rejected config instead of reporting it — fixed to the same clean error every other
-unexpressable configuration already gets.
 </details>
 
 **EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. A real win on
