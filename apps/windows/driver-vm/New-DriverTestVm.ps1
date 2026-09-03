@@ -75,6 +75,10 @@ $vmdk = Join-Path $VmDir "$Name.vmdk"
 # normal endpoint to compare against. The PCIe root ports (pciBridge4-7)
 # are what give e1000e, NVMe and xHCI their slots; without them vmware-vmx
 # logs "No PCIe slot available" and crashes at power-on.
+# No bios.bootOrder: that overrides the NVRAM boot entries, and Setup
+# registers one to carry on from the disk after its first reboot; the
+# firmware's own order tries the (empty) disk first and falls through to
+# the CD, which is exactly the sequence an unattended install wants.
 @"
 .encoding = "UTF-8"
 config.version = "8"
@@ -118,7 +122,6 @@ sata0:2.fileName = "driver.iso"
 sata0:3.present = "TRUE"
 sata0:3.deviceType = "cdrom-image"
 sata0:3.fileName = "$toolsIso"
-bios.bootOrder = "cdrom,hdd"
 ethernet0.present = "TRUE"
 ethernet0.connectionType = "nat"
 ethernet0.virtualDev = "e1000e"
