@@ -228,7 +228,19 @@ user-selectable **low-latency mode** trades the following, all existing knobs:
 The encoder's own object latency (832 samples in the QMF domain, about 17 ms) and the
 receiver's decode delay do not move. S4 showed the encoder itself is not the constraint in
 either mode. Phase 5 measures both chains end to end with a loopback capture and writes the
-numbers here.
+numbers here; what is measured so far is the engine's own cadence on the workstation
+(2026-09-03, stereo decoded mode on the Realtek endpoint, taps on two idle applications,
+fifteen seconds each):
+
+| | Normal | Low latency |
+|---|---|---|
+| Frames in 15 s | 464 (32.3 ms cadence) | 2792 (5.37 ms cadence) |
+| Worst frame | 86.9 ms, at start-up | 84.7 ms, at start-up |
+| Starved tap reads / sink underruns | 0 / 0 | 0 / 0 |
+
+The one-block frame holds its cadence with the same zero-underrun margin as the six-block
+one; the start-up worst case is the first frame's device opens. The end-to-end figure, tap
+to speaker, is still to be taken.
 
 ## Object signing
 
