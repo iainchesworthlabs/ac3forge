@@ -994,6 +994,18 @@ anything leaves the automatic choice standing and the reason says so, the same w
 infeasible pin does. The table's note column reads "you hear it here · your choice" or
 "· automatic", and the path's third station says which.
 
+The whole thing ran end to end in the driver-test VM on 2026-09-03: `Test-Driver.ps1` reverted
+the guest and installed the package ("Speakers (Desktop Atmos)" appeared, the service running,
+no bugcheck), then `Deploy-Desk.ps1` (new, beside it) pushed the window with its Qt runtime and
+the VC++ redistributable into the guest and started it on the desktop. The path read as it
+should: with the VMware HD Audio device as the default, the first station warned that
+applications were heard directly and offered the silent device; after the guest helper made
+"Speakers (Desktop Atmos)" the default, the warning cleared, the pill read "apps → stereo ·
+Speakers (High Definition Audio Device)", and the endpoint table listed the silent device as
+"never heard". One thing the guest's table showed to look into: the null sink's row reads no
+PCM channel count but a tick under spatial, which is the probe's answer for the driver's
+endpoint and may be the probe rather than the driver.
+
 ### Phase 6: docs, CI, release
 
 Five items. The first three, this page rewritten from plan to record, the roadmap record and
