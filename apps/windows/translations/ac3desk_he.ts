@@ -647,7 +647,72 @@
         <translation type="vanished">גרור יישום להזזתו · Shift לגובה · גרור ריק לסיבוב · גלגלת לזום</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="67"/>
+        <location filename="../ui/qml/Room3DView.qml" line="45"/>
+        <source>front left</source>
+        <translation>קדימה שמאל</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="46"/>
+        <source>front right</source>
+        <translation>קדימה ימין</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="47"/>
+        <source>centre</source>
+        <translation>מרכז</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="50"/>
+        <source>left surround</source>
+        <translation>סראונד שמאל</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="51"/>
+        <source>right surround</source>
+        <translation>סראונד ימין</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="54"/>
+        <source>side left</source>
+        <translation>צד שמאל</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="55"/>
+        <source>side right</source>
+        <translation>צד ימין</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="56"/>
+        <source>rear left</source>
+        <translation>אחורה שמאל</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="57"/>
+        <source>rear right</source>
+        <translation>אחורה ימין</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="62"/>
+        <source>top front left</source>
+        <translation>עליון קדמי שמאל</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="63"/>
+        <source>top front right</source>
+        <translation>עליון קדמי ימין</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="64"/>
+        <source>top rear left</source>
+        <translation>עליון אחורי שמאל</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="65"/>
+        <source>top rear right</source>
+        <translation>עליון אחורי ימין</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="78"/>
         <source>drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom</source>
         <translation>גרור יישום להזזתו · לחצן ימני או Shift לגובה · גרור ריק לסיבוב · גלגלת לזום</translation>
     </message>

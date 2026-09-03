@@ -155,8 +155,13 @@ Item {
                     id: room3d
                     objectName: "room3dLoader"
                     visible: page.threeD
+                    // Once shown, kept loaded while hidden so the camera a person set
+                    // survives a visit to the plan views. Set for the initial
+                    // visibility too: the change handler does not fire for it, and
+                    // a window that opened in 3D lost its view on the first switch.
                     property bool shown: false
                     onVisibleChanged: if (visible) shown = true
+                    Component.onCompleted: if (visible) shown = true
                     active: (page.threeD || shown) && DeskController.has3D
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: centre.sideBySide ? centre.viewSide * 2 + Theme.space6 : centre.viewSide

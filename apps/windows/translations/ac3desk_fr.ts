@@ -647,7 +647,72 @@
         <translation type="vanished">glissez une application pour la déplacer · Maj pour la hauteur · glissez le vide pour orbiter · molette pour zoomer</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="67"/>
+        <location filename="../ui/qml/Room3DView.qml" line="45"/>
+        <source>front left</source>
+        <translation>avant gauche</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="46"/>
+        <source>front right</source>
+        <translation>avant droite</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="47"/>
+        <source>centre</source>
+        <translation>centre</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="50"/>
+        <source>left surround</source>
+        <translation>surround gauche</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="51"/>
+        <source>right surround</source>
+        <translation>surround droit</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="54"/>
+        <source>side left</source>
+        <translation>latéral gauche</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="55"/>
+        <source>side right</source>
+        <translation>latéral droit</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="56"/>
+        <source>rear left</source>
+        <translation>arrière gauche</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="57"/>
+        <source>rear right</source>
+        <translation>arrière droite</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="62"/>
+        <source>top front left</source>
+        <translation>plafond avant gauche</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="63"/>
+        <source>top front right</source>
+        <translation>plafond avant droit</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="64"/>
+        <source>top rear left</source>
+        <translation>plafond arrière gauche</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="65"/>
+        <source>top rear right</source>
+        <translation>plafond arrière droit</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="78"/>
         <source>drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom</source>
         <translation>glissez une application pour la déplacer · clic droit ou Maj pour la hauteur · glissez le vide pour orbiter · molette pour zoomer</translation>
     </message>

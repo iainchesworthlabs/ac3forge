@@ -647,7 +647,72 @@
         <translation type="vanished">Anwendung ziehen, um sie zu bewegen · Umschalt für Höhe · Leere ziehen, um zu kreisen · Rad zum Zoomen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="67"/>
+        <location filename="../ui/qml/Room3DView.qml" line="45"/>
+        <source>front left</source>
+        <translation>vorn links</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="46"/>
+        <source>front right</source>
+        <translation>vorn rechts</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="47"/>
+        <source>centre</source>
+        <translation>Center</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="50"/>
+        <source>left surround</source>
+        <translation>Surround links</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="51"/>
+        <source>right surround</source>
+        <translation>Surround rechts</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="54"/>
+        <source>side left</source>
+        <translation>seitlich links</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="55"/>
+        <source>side right</source>
+        <translation>seitlich rechts</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="56"/>
+        <source>rear left</source>
+        <translation>hinten links</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="57"/>
+        <source>rear right</source>
+        <translation>hinten rechts</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="62"/>
+        <source>top front left</source>
+        <translation>oben vorne links</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="63"/>
+        <source>top front right</source>
+        <translation>oben vorne rechts</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="64"/>
+        <source>top rear left</source>
+        <translation>oben hinten links</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="65"/>
+        <source>top rear right</source>
+        <translation>oben hinten rechts</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="78"/>
         <source>drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom</source>
         <translation>Anwendung ziehen, um sie zu bewegen · Rechtsziehen oder Umschalt für Höhe · Leere ziehen, um zu kreisen · Rad zum Zoomen</translation>
     </message>
@@ -973,7 +1038,7 @@
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="460"/>
         <source>centre</source>
-        <translation>Mitte</translation>
+        <translation>Center</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="461"/>

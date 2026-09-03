@@ -930,6 +930,18 @@ accent. The height units were thin discs, invisible nearly level and in the dark
 low neutrals; they are surface-mounted cans below a faint ceiling outline, in mid-tones that
 read on both palettes. And the floor stayed dark after a switch to the light palette because
 its grid is a canvas painted once; it repaints when the palette's colours change.
+A speaker's full name ("top rear left") shows on its pill while the mouse is over the
+unit or the pill, through the same pick the drags use, against invisible plates that
+carry the name.
+
+Two first-time-only defects from the same sitting, both about the views' first showing.
+A marker in the plan views set off from the corner and glided to its place the first time
+they were shown: the views sit in a hidden layout while the 3D room shows, at no size until
+their first showing, and the glide meant for the engine's small steps animated the resize;
+a move across a good part of the field now jumps. And the camera a person had set in the 3D
+room reset on the first return from the plan views: the room is kept loaded while hidden
+once it has been shown, but the flag that says so was set only by a visibility change, which
+never fires for a window that opens in 3D, so the first switch away unloaded it.
 
 ### Phase 6: docs, CI, release
 

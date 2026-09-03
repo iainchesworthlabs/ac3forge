@@ -37,21 +37,32 @@ Item {
     // The reference layout: what Settings says, or by the stream's state.
     readonly property string layout: DeskController.roomLayout === "auto"
         ? (DeskController.objectsEnabled ? "7.1.4" : "5.1") : DeskController.roomLayout
+    // The speaker under the mouse (its short name), whose label shows the
+    // full name while it lasts.
+    property string hoverSpeaker: ""
     readonly property var speakers: {
         const base = [
-            { name: "L", x: 0.0, y: 0.0, z: 0.0 }, { name: "R", x: 1.0, y: 0.0, z: 0.0 }, { name: "C", x: 0.5, y: 0.0, z: 0.0 }];
+            { name: "L", full: qsTr("front left"), x: 0.0, y: 0.0, z: 0.0 },
+            { name: "R", full: qsTr("front right"), x: 1.0, y: 0.0, z: 0.0 },
+            { name: "C", full: qsTr("centre"), x: 0.5, y: 0.0, z: 0.0 }];
         if (layout === "5.1") {
-            return base.concat([{ name: "Ls", x: 0.0, y: 1.0, z: 0.0 }, { name: "Rs", x: 1.0, y: 1.0, z: 0.0 }]);
+            return base.concat([
+                { name: "Ls", full: qsTr("left surround"), x: 0.0, y: 1.0, z: 0.0 },
+                { name: "Rs", full: qsTr("right surround"), x: 1.0, y: 1.0, z: 0.0 }]);
         }
         const seven = base.concat([
-            { name: "Ls", x: 0.0, y: 0.55, z: 0.0 }, { name: "Rs", x: 1.0, y: 0.55, z: 0.0 },
-            { name: "Lrs", x: 0.0, y: 1.0, z: 0.0 }, { name: "Rrs", x: 1.0, y: 1.0, z: 0.0 }]);
+            { name: "Ls", full: qsTr("side left"), x: 0.0, y: 0.55, z: 0.0 },
+            { name: "Rs", full: qsTr("side right"), x: 1.0, y: 0.55, z: 0.0 },
+            { name: "Lrs", full: qsTr("rear left"), x: 0.0, y: 1.0, z: 0.0 },
+            { name: "Rrs", full: qsTr("rear right"), x: 1.0, y: 1.0, z: 0.0 }]);
         if (layout === "7.1") {
             return seven;
         }
         return seven.concat([
-            { name: "Ltf", x: 0.2, y: 0.25, z: 1.0 }, { name: "Rtf", x: 0.8, y: 0.25, z: 1.0 },
-            { name: "Ltr", x: 0.2, y: 0.75, z: 1.0 }, { name: "Rtr", x: 0.8, y: 0.75, z: 1.0 }]);
+            { name: "Ltf", full: qsTr("top front left"), x: 0.2, y: 0.25, z: 1.0 },
+            { name: "Rtf", full: qsTr("top front right"), x: 0.8, y: 0.25, z: 1.0 },
+            { name: "Ltr", full: qsTr("top rear left"), x: 0.2, y: 0.75, z: 1.0 },
+            { name: "Rtr", full: qsTr("top rear right"), x: 0.8, y: 0.75, z: 1.0 }]);
     }
 
     Text {
@@ -279,6 +290,14 @@ Item {
                             Component { id: cabinet; CabinetSpeaker {} }
                             Component { id: ceiling; CeilingSpeaker {} }
                         }
+                        Model {  // the hover target around the unit
+                            source: "#Cube"
+                            scale: Qt.vector3d(0.24, 0.28, 0.22)
+                            pickable: true
+                            castsShadows: false
+                            property string speaker: modelData.name
+                            materials: PrincipledMaterial { lighting: PrincipledMaterial.NoLighting; alphaMode: PrincipledMaterial.Blend; opacity: 0 }
+                        }
                     }
                     // The name on a pill that always faces the camera (the
                     // orbit's rotation is the camera's): a label turned with
@@ -291,18 +310,29 @@ Item {
                         readonly property real distance: Qt.vector3d(sx, root.sceneY(modelData.z), sz).minus(camera.scenePosition).length()
                         readonly property real k: Math.max(0.5, Math.min(2.0, distance / 560))
                         scale: Qt.vector3d(k, k, k)
+                        id: labelNode
+                        readonly property bool hovered: root.hoverSpeaker === modelData.name
+                        Model {  // the hover target behind the pill
+                            source: "#Rectangle"
+                            scale: Qt.vector3d(pill.width / 100, pill.height / 100, 1)
+                            pickable: true
+                            castsShadows: false
+                            property string speaker: modelData.name
+                            materials: PrincipledMaterial { lighting: PrincipledMaterial.NoLighting; alphaMode: PrincipledMaterial.Blend; opacity: 0 }
+                        }
                         Rectangle {
+                            id: pill
                             anchors.centerIn: parent
                             width: label.implicitWidth + 12
                             height: label.implicitHeight + 4
                             radius: height / 2
                             color: modelData.z > 0 ? Theme.accent100 : Theme.surface
-                            border.color: modelData.z > 0 ? Theme.accent400 : Theme.divider
+                            border.color: labelNode.hovered ? Theme.accent : (modelData.z > 0 ? Theme.accent400 : Theme.divider)
                             border.width: 1
                             Text {
                                 id: label
                                 anchors.centerIn: parent
-                                text: modelData.name
+                                text: labelNode.hovered ? modelData.name + " · " + modelData.full : modelData.name
                                 color: modelData.z > 0 ? Theme.accent700 : Theme.text
                                 font.family: Theme.monoFamily
                                 font.pixelSize: 18
@@ -455,6 +485,8 @@ Item {
             cursorShape: dragApp ? (dragHeight ? Qt.SizeVerCursor : Qt.SizeAllCursor) : Qt.ArrowCursor
             preventStealing: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
+            hoverEnabled: true
+            onExited: root.hoverSpeaker = ""
 
             // A point in the scene where the ray through (px, py) meets the
             // horizontal plane at height `planeY`, or null when the ray runs
@@ -514,7 +546,12 @@ Item {
                 }
             }
             onPositionChanged: function(event) {
-                if (!(event.buttons & (Qt.LeftButton | Qt.RightButton))) return;
+                if (!(event.buttons & (Qt.LeftButton | Qt.RightButton))) {
+                    // Hover: name the speaker under the pointer in full.
+                    const hit = view.pick(event.x, event.y);
+                    root.hoverSpeaker = (hit.objectHit && hit.objectHit.speaker !== undefined) ? hit.objectHit.speaker : "";
+                    return;
+                }
                 if (dragApp) {
                     if (dragHeight) {
                         const p = verticalHit(event.x, event.y, root.sceneX(dragApp.x), root.sceneZ(dragApp.y));

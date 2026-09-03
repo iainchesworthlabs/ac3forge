@@ -647,7 +647,72 @@
         <translation type="vanished">שלעפּט אַן אַפּליקאַציע זי צו רירן · Shift פֿאַר הייך · שלעפּט ליידיק צו קרייזן · רעדל צו זומען</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="67"/>
+        <location filename="../ui/qml/Room3DView.qml" line="45"/>
+        <source>front left</source>
+        <translation>פֿאָרנט לינקס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="46"/>
+        <source>front right</source>
+        <translation>פֿאָרנט רעכטס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="47"/>
+        <source>centre</source>
+        <translation>צענטער</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="50"/>
+        <source>left surround</source>
+        <translation>סעראַונד לינקס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="51"/>
+        <source>right surround</source>
+        <translation>סעראַונד רעכטס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="54"/>
+        <source>side left</source>
+        <translation>זײַט לינקס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="55"/>
+        <source>side right</source>
+        <translation>זײַט רעכטס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="56"/>
+        <source>rear left</source>
+        <translation>הינטן לינקס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="57"/>
+        <source>rear right</source>
+        <translation>הינטן רעכטס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="62"/>
+        <source>top front left</source>
+        <translation>אויבן פֿאָרנט לינקס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="63"/>
+        <source>top front right</source>
+        <translation>אויבן פֿאָרנט רעכטס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="64"/>
+        <source>top rear left</source>
+        <translation>אויבן הינטן לינקס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="65"/>
+        <source>top rear right</source>
+        <translation>אויבן הינטן רעכטס</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="78"/>
         <source>drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom</source>
         <translation>שלעפּט אַן אַפּליקאַציע זי צו רירן · רעכטער קנעפּל אָדער Shift פֿאַר הייך · שלעפּט ליידיק צו קרייזן · רעדל צו זומען</translation>
     </message>

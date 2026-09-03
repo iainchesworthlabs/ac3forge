@@ -117,8 +117,22 @@ Item {
                     x: dragging || settling ? dragX : (sideDragging >= 0 ? (sideDragX + otherX) / 2 : engineX)
                     y: dragging || settling ? dragY : (sideDragging >= 0 ? (sideDragY + otherY) / 2 : engineY)
                     z: selected ? 2 : 1
-                    Behavior on x { enabled: !marker.dragging && marker.sideDragging < 0; NumberAnimation { duration: 90 } }
-                    Behavior on y { enabled: !marker.dragging && marker.sideDragging < 0; NumberAnimation { duration: 90 } }
+                    // The glide is for the engine's steps, which are small.
+                    // A move across a good part of the field is the field
+                    // itself being sized (the views sit in a hidden layout
+                    // while the 3D room shows, at no size until they are
+                    // first shown), so the marker jumps rather than sets
+                    // off from the corner.
+                    Behavior on x {
+                        id: glideX
+                        enabled: !marker.dragging && marker.sideDragging < 0
+                        NumberAnimation { duration: Math.abs(glideX.targetValue - marker.x) > field.width * 0.35 ? 0 : 90 }
+                    }
+                    Behavior on y {
+                        id: glideY
+                        enabled: !marker.dragging && marker.sideDragging < 0
+                        NumberAnimation { duration: Math.abs(glideY.targetValue - marker.y) > field.height * 0.35 ? 0 : 90 }
+                    }
 
                     // Elevation: a stem down to ear level.
                     Rectangle {
@@ -158,8 +172,16 @@ Item {
                             x: (dragging || settling ? dragX : fieldX + nudge) - marker.x
                             y: (dragging || settling ? dragY : fieldY) - marker.y
                             z: 3
-                            Behavior on x { enabled: !satellite.dragging; NumberAnimation { duration: 90 } }
-                            Behavior on y { enabled: !satellite.dragging; NumberAnimation { duration: 90 } }
+                            Behavior on x {
+                                id: sideGlideX
+                                enabled: !satellite.dragging
+                                NumberAnimation { duration: Math.abs(sideGlideX.targetValue - satellite.x) > field.width * 0.35 ? 0 : 90 }
+                            }
+                            Behavior on y {
+                                id: sideGlideY
+                                enabled: !satellite.dragging
+                                NumberAnimation { duration: Math.abs(sideGlideY.targetValue - satellite.y) > field.height * 0.35 ? 0 : 90 }
+                            }
                             Rectangle {
                                 x: -5; y: -5
                                 width: 10; height: 10; radius: 5
