@@ -120,7 +120,7 @@ Item {
                 castsShadow: true
                 shadowFactor: 55
                 shadowMapQuality: Light.ShadowMapQualityHigh
-                shadowBias: 12
+                shadowBias: 24
                 pcfFactor: 6
             }
             DirectionalLight {
@@ -143,11 +143,19 @@ Item {
                         sourceItem: Canvas {
                             width: 512
                             height: 512
+                            // Painted once per palette: a canvas does not
+                            // repaint when a colour it read changes, so
+                            // the floor kept the dark palette after a
+                            // switch to light.
+                            property color fill: Theme.neutral300
+                            property color line: Theme.neutral400
+                            onFillChanged: requestPaint()
+                            onLineChanged: requestPaint()
                             onPaint: {
                                 const c = getContext("2d");
-                                c.fillStyle = Theme.neutral300;
+                                c.fillStyle = fill;
                                 c.fillRect(0, 0, width, height);
-                                c.strokeStyle = Theme.neutral400;
+                                c.strokeStyle = line;
                                 c.lineWidth = 1.5;
                                 for (let i = 0; i <= 8; ++i) {
                                     const v = i * width / 8;
@@ -160,19 +168,33 @@ Item {
                 }
                 pickable: false
             }
+            // The walls as an outline at ear level, and the ceiling as a
+            // fainter one at the height layer, so the top speakers hang from
+            // something rather than float.
             Repeater3D {
                 model: [
-                    { x: 0, z: -root.roomDepth / 2, sx: root.roomWidth / 100, sz: 0.02 },
-                    { x: 0, z: root.roomDepth / 2, sx: root.roomWidth / 100, sz: 0.02 },
-                    { x: -root.roomWidth / 2, z: 0, sx: 0.02, sz: root.roomDepth / 100 },
-                    { x: root.roomWidth / 2, z: 0, sx: 0.02, sz: root.roomDepth / 100 }
+                    { x: 0, y: 0, z: -root.roomDepth / 2, sx: root.roomWidth / 100, sz: 0.02, top: false },
+                    { x: 0, y: 0, z: root.roomDepth / 2, sx: root.roomWidth / 100, sz: 0.02, top: false },
+                    { x: -root.roomWidth / 2, y: 0, z: 0, sx: 0.02, sz: root.roomDepth / 100, top: false },
+                    { x: root.roomWidth / 2, y: 0, z: 0, sx: 0.02, sz: root.roomDepth / 100, top: false },
+                    { x: 0, y: root.roomHeight / 2, z: -root.roomDepth / 2, sx: root.roomWidth / 100, sz: 0.02, top: true },
+                    { x: 0, y: root.roomHeight / 2, z: root.roomDepth / 2, sx: root.roomWidth / 100, sz: 0.02, top: true },
+                    { x: -root.roomWidth / 2, y: root.roomHeight / 2, z: 0, sx: 0.02, sz: root.roomDepth / 100, top: true },
+                    { x: root.roomWidth / 2, y: root.roomHeight / 2, z: 0, sx: 0.02, sz: root.roomDepth / 100, top: true }
                 ]
                 delegate: Model {
                     required property var modelData
                     source: "#Cube"
-                    position: Qt.vector3d(modelData.x, 0, modelData.z)
+                    visible: !modelData.top || root.layout === "7.1.4"
+                    position: Qt.vector3d(modelData.x, modelData.y, modelData.z)
                     scale: Qt.vector3d(modelData.sx, 0.02, modelData.sz)
-                    materials: PrincipledMaterial { baseColor: Theme.divider; lighting: PrincipledMaterial.NoLighting }
+                    castsShadows: false
+                    receivesShadows: false
+                    materials: PrincipledMaterial {
+                        baseColor: Theme.divider
+                        lighting: PrincipledMaterial.NoLighting
+                        opacity: modelData.top ? 0.45 : 1.0
+                    }
                 }
             }
             // The listener.
@@ -214,23 +236,30 @@ Item {
                     materials: PrincipledMaterial { baseColor: Theme.neutral400; roughness: 0.6; metalness: 0.2 }
                 }
             }
+            // The height units are surface-mounted cans below the ceiling
+            // plane rather than flush discs: seen nearly level from behind
+            // the room a disc is a line, and in mid-tones that read on both
+            // palettes (the dark palette's low neutrals vanished into the
+            // background).
             component CeilingSpeaker: Node {
-                Model {  // the trim ring, flush with the ceiling plane
+                Model {  // the can, hanging from the ceiling plane
                     source: "#Cylinder"
-                    scale: Qt.vector3d(0.16, 0.012, 0.16)
-                    materials: PrincipledMaterial { baseColor: Theme.neutral400; roughness: 0.6 }
+                    position: Qt.vector3d(0, -5, 0)
+                    scale: Qt.vector3d(0.2, 0.1, 0.2)
+                    castsShadows: true
+                    materials: PrincipledMaterial { baseColor: Theme.neutral600; roughness: 0.7; metalness: 0.05 }
                 }
-                Model {  // the grille, a shade darker, facing down
+                Model {  // the trim ring at the can's mouth
                     source: "#Cylinder"
-                    position: Qt.vector3d(0, -0.8, 0)
-                    scale: Qt.vector3d(0.13, 0.006, 0.13)
-                    materials: PrincipledMaterial { baseColor: Theme.neutral600; roughness: 0.95 }
+                    position: Qt.vector3d(0, -10.2, 0)
+                    scale: Qt.vector3d(0.23, 0.014, 0.23)
+                    materials: PrincipledMaterial { baseColor: Theme.neutral700; roughness: 0.5; metalness: 0.15 }
                 }
-                Model {  // the driver behind the grille
-                    source: "#Sphere"
-                    position: Qt.vector3d(0, 0.5, 0)
-                    scale: Qt.vector3d(0.05, 0.02, 0.05)
-                    materials: PrincipledMaterial { baseColor: Theme.neutral500; roughness: 0.5 }
+                Model {  // the grille, facing down
+                    source: "#Cylinder"
+                    position: Qt.vector3d(0, -11.2, 0)
+                    scale: Qt.vector3d(0.17, 0.006, 0.17)
+                    materials: PrincipledMaterial { baseColor: Theme.neutral400; roughness: 0.95 }
                 }
             }
             Repeater3D {
@@ -240,21 +269,44 @@ Item {
                     readonly property real sx: root.sceneX(modelData.x)
                     readonly property real sz: root.sceneZ(modelData.y)
                     position: Qt.vector3d(sx, root.sceneY(modelData.z), sz)
-                    // Face the listener at the origin.
-                    eulerRotation.y: Math.atan2(-sx, -sz) * 180 / Math.PI
-                    Loader3D {
-                        sourceComponent: modelData.z > 0 ? ceiling : cabinet
-                        Component { id: cabinet; CabinetSpeaker {} }
-                        Component { id: ceiling; CeilingSpeaker {} }
-                    }
+                    // The unit, turned to face the listener at the origin.
+                    // The label sits beside it, not inside it, so the
+                    // turn does not carry into the label's own rotation.
                     Node {
-                        y: modelData.z > 0 ? -14 : 22
-                        Text {
+                        eulerRotation.y: Math.atan2(-sx, -sz) * 180 / Math.PI
+                        Loader3D {
+                            sourceComponent: modelData.z > 0 ? ceiling : cabinet
+                            Component { id: cabinet; CabinetSpeaker {} }
+                            Component { id: ceiling; CeilingSpeaker {} }
+                        }
+                    }
+                    // The name on a pill that always faces the camera (the
+                    // orbit's rotation is the camera's): a label turned with
+                    // its speaker read mirrored from behind and edge-on from
+                    // the side. Height labels carry the accent so the layer
+                    // reads at a glance.
+                    Node {
+                        y: modelData.z > 0 ? (modelData.y < 0.5 ? -28 : 18) : 24
+                        rotation: orbit.rotation
+                        readonly property real distance: Qt.vector3d(sx, root.sceneY(modelData.z), sz).minus(camera.scenePosition).length()
+                        readonly property real k: Math.max(0.5, Math.min(2.0, distance / 560))
+                        scale: Qt.vector3d(k, k, k)
+                        Rectangle {
                             anchors.centerIn: parent
-                            text: modelData.name
-                            color: Theme.textMuted
-                            font.family: Theme.monoFamily
-                            font.pixelSize: 24
+                            width: label.implicitWidth + 12
+                            height: label.implicitHeight + 4
+                            radius: height / 2
+                            color: modelData.z > 0 ? Theme.accent100 : Theme.surface
+                            border.color: modelData.z > 0 ? Theme.accent400 : Theme.divider
+                            border.width: 1
+                            Text {
+                                id: label
+                                anchors.centerIn: parent
+                                text: modelData.name
+                                color: modelData.z > 0 ? Theme.accent700 : Theme.text
+                                font.family: Theme.monoFamily
+                                font.pixelSize: 18
+                            }
                         }
                     }
                 }

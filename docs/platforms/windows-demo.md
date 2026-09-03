@@ -922,6 +922,15 @@ Qt Quick's threaded render loop paints on its own thread while Windows' move loo
 event thread; the window now uses the basic render loop (unless `QSG_RENDER_LOOP` says
 otherwise), which renders in step with that loop.
 
+The 3D room, on a third look: the speaker names read backwards. Each label was turned with
+its speaker to face the listener, so from the default view behind the room every label on
+the near side was mirrored and the side ones were edge-on. The names are now pills that
+face the camera at one size on screen whatever their distance, the height layer's in the
+accent. The height units were thin discs, invisible nearly level and in the dark palette's
+low neutrals; they are surface-mounted cans below a faint ceiling outline, in mid-tones that
+read on both palettes. And the floor stayed dark after a switch to the light palette because
+its grid is a canvas painted once; it repaints when the palette's colours change.
+
 ### Phase 6: docs, CI, release
 
 Five items. The first three, this page rewritten from plan to record, the roadmap record and
