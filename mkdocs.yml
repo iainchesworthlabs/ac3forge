@@ -74,6 +74,7 @@ nav:
           - macOS: platforms/macos.md
           - Android (NVIDIA Shield): platforms/android.md
           - Windows (Desktop Atmos Demo): platforms/windows-demo.md
+          - Windows null-sink driver on ACX (plan): platforms/windows-driver-acx.md
           - WebAssembly (browser demos): platforms/wasm.md
   - Concepts:
       - Overview: concepts/index.md

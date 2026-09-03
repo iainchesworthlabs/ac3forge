@@ -2237,8 +2237,11 @@ canvas drag-by-pointer itself and real microphone hardware remain manual-only ch
 **UX11 (XL)** — Desktop Atmos Demo for Windows: the PC's applications as Atmos objects. Landed
 2026-09-03 through Phase 5: `ac3windemo` and `ac3desk` (six languages), the `Ac3ForgeNullSink`
 driver verified in a guest under Driver Verifier and KASAN, split per application, the 3D room
-and object size. Phase 6's CI and attestation signing remain, and the bitstream modes still
-wait on DR9's receiver. Design and phase record in `docs/platforms/windows-demo.md`.
+and object size. Phase 6's CI landed 2026-09-04 (both Windows legs build and test the demo, the
+MSVC leg packages it as `ac3forge-desktop-atmos-*-win64.zip`); before attestation signing the
+driver moves from PortCls to ACX, planned in `docs/platforms/windows-driver-acx.md`. The
+bitstream modes still wait on DR9's receiver. Design and phase record in
+`docs/platforms/windows-demo.md`.
 <details markdown="1">
 <summary>Full record</summary>
 

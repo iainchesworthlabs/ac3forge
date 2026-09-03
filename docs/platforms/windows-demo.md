@@ -1054,6 +1054,21 @@ its driver cannot load on a normal machine.
 One item remains: the EV certificate and attestation step, after which the driver joins the
 package, the installer installs both, and the demo's Settings page loses its install buttons.
 
+Before that step is paid for, the driver changes framework. A review on 2026-09-04 of whether
+the null sink was the right thing, and the right kind of thing, concluded: a driver, yes
+(Windows has no user-mode way to make an endpoint, and the spikes closed every alternative);
+PortCls, no. Microsoft names PortCls "the current legacy model" and recommends ACX 1.1 for
+all new audio drivers; ACX runs from Windows 10 2004, below the floor the demo already has;
+an ACX driver is a pure KMDF driver, so the DDI compliance checking that cannot run against
+the PortCls miniport applies in full; and the current driver carries 9,700 lines of sample
+code for a job of a few hundred. The review also found three things in the current driver
+worth fixing whichever framework it is on: sample leftovers in the INF (`DRMLevel`,
+`PETrust`, the legacy `wdmaud` mappings), an install path that shells out to the WDK's
+`devcon` where `SwDeviceCreate` is the documented API, and HVCI compliance that is assumed
+rather than demonstrated because the verification guest runs with memory integrity off. The
+port, what it keeps, its steps and the findings from Phase 4 that carry into it are planned
+on [their own page](windows-driver-acx.md). Signing waits for it, so it is paid once.
+
 On how the driver reaches a machine once it is signed: with the installer, not from inside
 the window. The package installs the driver (`pnputil /add-driver /install` on the attested
 package, the device created with devcon or SwDevice as `install.ps1` does now) and removes it
