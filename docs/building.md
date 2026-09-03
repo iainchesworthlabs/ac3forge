@@ -1110,6 +1110,33 @@ without that hardware — a native package can carry different default codegen/t
 identical flags and the identical GCC version), or a genuine real-silicon floating-point behaviour
 `qemu-user`'s software emulation does not reproduce. Both need the real runners to test further.
 
+**FFmpeg's own architecture-specific kernels — tested directly, ruled out.** Every hypothesis
+above is about this project's side of the comparison, but the gold-reference gate measures
+*agreement between two decoders*, and the other one is FFmpeg — which ships hand-written SIMD for
+its AC-3 decoder and therefore runs different code on x86-64 (SSE/AVX) than on aarch64 (NEON). If
+FFmpeg's NEON decode differed from its SSE decode by a last bit, that alone would move the measured
+agreement and nothing in this project would be at fault.
+
+It does not. Decoding `tests/golden/external-baseline/ac3-51-448/dee.ac3` twice on the same x86-64
+host, once normally and once with `ffmpeg -cpuflags 0` forcing its plain-C reference path, gives
+two WAVs that are *not* byte-identical — FFmpeg's kernel choice does change its output — but the
+difference sits at **100–117 dB** per channel. That is 30 dB or more below the ~88 dB level at
+which this project's decode and FFmpeg's actually agree, so it is buried: `ac3cli`'s SNR against
+FFmpeg is identical to two decimal places (57.50 / 63.84 / 58.19 / 88.23 / 22.76 / 22.67 dB)
+whether FFmpeg decoded with SIMD or without. A difference that cannot move the number by 0.01 dB
+on one architecture cannot produce 6.02 dB across two. The reference side is exonerated; whatever
+is left is on this project's side of the comparison.
+
+**Where the gap appears is level-dependent, which constrains what it can be.** Sorting all 52
+(check, channel) pairs in the recorded history by their x86-64 SNR gives a step rather than a
+gradient: every pair below 67 dB shows an arm64 difference of 0.00–0.11 dB, every pair above it
+shows 5.85–6.05 dB, and nothing lands in between. So the gap is not a systematic codec error,
+which would be level-independent and shift every channel equally. It appears only where the two
+decoders agree closely enough that arithmetic is the only thing left to disagree about — which is
+also why the LFE is the only channel to split on the fixed third-party fixtures, at 88 dB the one
+channel there whose comparison is rounding-limited. See
+[Validation](verification.md#why-arm64-and-x86-64-disagree).
+
 The flag stays pinned regardless of either result, for an unrelated and unconditional reason: it is
 what makes the SIMD seam's bit-exactness argument hold. The seam maps every operation to one
 IEEE-754 add, subtract or multiply so a vectorised kernel is bit-identical to the scalar loop it
@@ -1129,11 +1156,27 @@ bitstream-hash gate (`tools/checks/check_cross_platform_hash.py`, wired into
 [the gold-reference gate](#gold-reference-correctness-gate)) pins a SHA-256 of the actual encoded
 bytes per `(kernel, transform mode)` pair in `tests/golden/bitstream-hashes.json`, so this specific
 divergence — resolved or not — cannot silently change size without a CI failure pointing straight
-at it. `x86_64-sse2` and `generic` are pinned from the measurements above; `aarch64-neon` and the
-macOS kernel are deliberately left unpinned rather than pre-filled from the qemu measurement, since
-that measurement is exactly the evidence that an emulated cross-build is not equivalent to a real
-CI leg — the next person with those CI logs in front of them should pin what the real hardware
-actually produces.
+at it. `x86_64-sse2` and `generic` were pinned from the measurements above, and `aarch64-neon` is now
+pinned too — from the real arm64 CI legs rather than the qemu cross-build this file declined to
+pre-fill from (PR #503, CI run 33635430769: `linux-gcc-arm64`, `linux-llvm-arm64`,
+`windows-msvc-arm64`, `macos-llvm`).
+
+**All three streams came back byte-identical to `x86_64-sse2`.** That is a result, not a
+formality: this project's *encoder* is bit-exact across architectures, so the ~6.02 dB
+gold-reference gap the arm64 legs measure is entirely **decode-side** — the same bytes go in and
+different PCM comes out.
+
+It also resolves what looked like it needed two mechanisms. Only the LFE splits on the fixed
+third-party fixtures, but *every* channel splits on this project's own gold-reference streams,
+which invites the inference that the arm64 encoder must be producing different bytes. It is not.
+The gold-reference streams are encoded `dither=off` (`nodither` for E-AC-3), so nothing is
+dither-limited and every channel sits in the rounding-limited regime above 67 dB where the
+last-bit difference is all that is left; the third-party fixtures carry dither, which dominates
+every channel except the LFE. One mechanism, two fixture populations.
+
+With the encoder excluded by these hashes, FFmpeg's own kernels excluded by the `-cpuflags 0`
+test above, and contraction and libm excluded before that, what remains for VX11 is the decode
+path on real arm64 silicon — which is also the one thing no emulated run has reproduced.
 
 ## Gold-reference correctness gate
 

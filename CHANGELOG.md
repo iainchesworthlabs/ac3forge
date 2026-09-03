@@ -12,6 +12,27 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Changed
+
+- **The gold-reference quality gate now has one SNR floor per channel, not one per fixture.**
+  A 5.1 fixture's surround channels sit 35 dB below its front channels for a legitimate
+  reason — A/52 §7.3.4 leaves the values a decoder substitutes for zero-bit bins unspecified,
+  so two spec-correct decoders are *required* to differ wherever those bins fall. A single floor had to clear the surrounds, which on
+  `ac3-51-448/dee.ac3` meant gating the centre channel at 22 dB while it measured 58.1: it
+  could have lost 36 dB, and the LFE 60 dB, without failing anything. Each channel now carries
+  its own floor, derived as `floor(min_observed − 1.0)` from that channel's lowest value
+  across every CI leg and every recorded commit by the new
+  `tools/checks/derive_channel_floors.py` — so a floor move is reviewable against evidence
+  rather than asserted. Every check gained 19–71 dB of real gate on its front channels and
+  LFE; one pair of floors (this fixture's `Ls`/`Rs`) went *down*, from 22 to 21, because 22
+  was never derived for them. The trend check in `tools/ci/append_quality_history.py` follows
+  the same rule, comparing each channel against its own trailing average instead of watching
+  only the worst channel — which was the same dither-dominated surround on every run.
+  `compare_wav.py`'s `--json-out` gains `thresholds_db`, `headroom_db`, `channel_labels` and
+  `tightest_channel`; `threshold_db` keeps its old scalar meaning for existing consumers.
+  [Validation](docs/verification.md) carries the derivation and the two gaps that still limit
+  how sharply these gates can see.
+
 ### Added
 
 - Python completeness (roadmap AP6): new `ac3forge.containers` (Matroska/MP4/MPEG-TS mux and
@@ -21,6 +42,35 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   that drains the §3.7 hold-back on exit. Wheels now build for manylinux aarch64 (the
   documented-but-wheelless Raspberry Pi) and Intel macOS, and a `stubtest` step holds the
   hand-written type stubs to the compiled module on every push.
+
+- **The cross-platform bitstream-hash gate now pins `aarch64-neon`, from real arm64 CI rather than
+  emulation — and it is byte-identical to `x86_64-sse2`.** That key had never been pinned: the
+  checker printed `[unpinned]` and passed, so every arm64 run had compared its encoder's output to
+  nothing. All three streams match exactly, which means this project's *encoder* is bit-exact
+  across architectures and the ~6.02 dB gold-reference gap the arm64 legs measure is entirely
+  decode-side. It also explains why only the LFE splits on the fixed third-party fixtures while
+  every channel splits on this project's own: the gold-reference streams are encoded `dither=off`,
+  so nothing is dither-limited and all six channels sit in the rounding-limited regime — one
+  mechanism, two fixture populations, no encoder divergence.
+
+- **Roadmap VX11 resolved: the ~6.02 dB cross-platform split is a last-bit arithmetic
+  difference, not a systematic codec error.** It splits the legs strictly by architecture — `macos-llvm` (arm64) sits
+  with the arm64 group and `macos-llvm-x64` with the x86-64 group, same OS and compiler on
+  both sides — which rules out the "macOS libm" and "arm64 and macOS" readings this was
+  carried under. Sorting all 52 (check, channel) pairs by SNR gives a step rather than a
+  gradient: every pair below 67 dB shows a 0.00–0.11 dB difference, every pair above it shows
+  5.85–6.05 dB, with nothing in between. A systematic codec error would be level-independent; a last-bit
+  one is visible only once the two decoders agree closely enough that arithmetic is all that is
+  left to disagree about. (6.02 dB is one exponent step because exponent extraction amplifies a
+  last-bit difference into one — the mechanism the aarch64 SIMD header already documents.) Consequently the per-channel floor headroom drops from 6.02 dB
+  to 1.0 dB — `min_observed` is a minimum *across legs*, so it had already absorbed the split,
+  and subtracting it again was a double-count costing ~5 dB of sensitivity on every channel.
+  The gates now catch a 1 dB per-channel regression where they previously needed 6.
+
+- The Python oracles under `tools/` now have unit tests of their own
+  (`tools/checks/test_compare_wav.py`, run by `ci.yml`'s Script Lint job). Lint could tell
+  whether a gate parsed; nothing told whether it still gated. The suite pins the
+  single-floor blind spot above with a test that fails if it is ever reintroduced.
 - AC-4 container carriage (roadmap IM4's remaining slice): `ac3cli mp4`/`ts` accept an AC-4
   elementary stream — TS 103 190-2 Annex E's `ac-4` sample entry and `dac4` box on the MP4
   side (with the Annex E.13 `codecs` string for HLS/DASH), EN 300 468 Annex D.7's DVB

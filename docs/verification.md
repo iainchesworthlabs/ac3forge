@@ -161,6 +161,147 @@ five-object Atmos scene encoded and decoded by each build, one delay-compensated
 row per object per rate. It is a self-consistency series throughout — see "Where the oracles
 don't reach" below for why no other kind is available.
 
+### One floor per channel, not one per file
+
+Every SNR gate here is stated **per channel**. That is worth spelling out, because
+the alternative looks equivalent and is not.
+
+A 5.1 fixture's six channels do not sit anywhere near each other. On
+`ac3-51-448/dee.ac3` — Dolby's own encoder, decoded by this project and by FFmpeg and the
+two decodes compared — the measured agreement is:
+
+| L | R | C | LFE | Ls | Rs |
+|---|---|---|---|---|---|
+| 57.5 dB | 63.8 dB | 58.1 dB | 82.2 dB | 22.8 dB | 22.7 dB |
+
+The surrounds are 35 dB below the front channels, and legitimately so — though the
+mechanism is not the obvious one. §7.3.4 leaves the *values* a decoder substitutes for
+zero-bit bins unspecified ("any reasonably random sequence"), so two spec-correct
+decoders are required to disagree in those bins; the question is where they fall.
+Measured with `ac3cli decode … bap-census=`, the surrounds' own basebands are almost
+fully coded on this fixture — **1.8–2.2%** zero-bit bins, against **80–90%** for the
+front channels. What is heavily zero-bit is the **coupling channel**, at **59.7%**, and
+§7.3.4 dither for coupled bins is applied per *receiving* channel after decoupling. So
+the same absolute dither lands in every coupled channel, and it dominates whichever ones
+are quietest: Ls and Rs sit at −33 and −29 dBFS where L and R sit at −13. The low
+surround agreement here is a signal-level effect on a shared error, not a sparser
+allocation — the reading this page carried before the census existed to check it.
+
+A single floor for this fixture therefore had to clear 22.7 dB, and it was set at 22.
+Which meant the centre channel was gated at 22 dB while measuring 58.1 — it could have
+lost 36 dB, more than the entire dynamic range of the surround channels, without
+failing anything. The LFE had 60 dB of slack. That is not a gate; it is a gate on one
+channel and a rounding error on the other five, and it was blind to precisely the
+per-channel syntax defects the third-party fixtures were added to catch (one of the
+five found there, `firstcplcos[ch]`, is per channel by nature).
+
+Each channel now carries its own floor, derived as `floor(min_observed − 1.0)` from
+that channel's lowest value across every CI leg and every recorded commit —
+`tools/checks/derive_channel_floors.py` is the derivation, kept as a script so a floor
+move is reviewable against evidence rather than asserted.
+
+The 1.0 dB covers commit-to-commit noise and nothing else, because `min_observed` has
+already absorbed everything else. Measured over 520 (check, leg, channel) series, one
+leg's own number moves by a median of **0.000 dB** across the whole recorded history,
+and 495 of them stay under 0.5 dB; the 25 that do not are a single real step change on
+one check, not noise. A new leg landing below a floor is not a false alarm under this
+policy — it is platform behaviour nobody has reviewed, and stopping to look at it is the
+right outcome rather than something to pre-authorise with margin.
+
+One pair of floors went *down* in the change: this fixture's Ls/Rs, from 22 to 21,
+because 22 was never derived for those channels — it was the one floor the whole
+fixture had to share. Its other four channels gained 34–59 dB of gate. The check went
+from catching only a total surround collapse to catching a 1 dB move in any channel,
+and `tools/checks/test_compare_wav.py` holds that property down with a test that fails
+if the single-floor form is ever restored.
+
+### Why arm64 and x86-64 disagree
+
+The legs split into two groups on the high-SNR channels, ~6.02 dB apart, and this was
+carried for a long time as an unexplained effect attributed to "arm64 and macOS" legs
+(roadmap VX11). Two things are now settled.
+
+**It is architecture, not OS or compiler.** `macos-llvm` (arm64) sits with the arm64
+group; `macos-llvm-x64` sits with the x86-64 group. Same OS, same Homebrew LLVM, opposite
+sides. That rules out the "macOS libm" reading directly.
+
+**It is one bit of arithmetic, not a codec error.** 20·log₁₀2 is 6.02 dB whether the bit
+is an AC-3 exponent step or a floating-point rounding bit, so the number alone cannot
+tell them apart — but the prediction can. A systematic exponent error would be
+level-independent and shift every channel equally. Rounding is only visible where the
+measurement is already rounding-dominated. Sorting all 52 (check, channel) pairs by
+their x86-64 SNR gives a step, not a gradient:
+
+| x86-64 SNR of the channel | arm64 difference |
+|---|---|
+| 18.3 – 66.7 dB (32 pairs) | **0.00 – 0.11 dB** |
+| 67.8 – 88.3 dB (20 pairs) | **5.85 – 6.05 dB** |
+
+Nothing lands in between. Below ~67 dB the disagreement between the two decoders is
+dominated by real coding differences and by §7.3.4 dither, and one extra rounding bit is
+buried in it. Above ~67 dB the two decoders agree so closely that arithmetic is all
+that is left to disagree about, and the bit becomes the whole signal. That is also why
+the LFE is the only channel to split on the fixed third-party fixtures: at 88 dB it is
+the one channel there whose comparison is rounding-limited.
+
+The practical consequence is the floors above. `min_observed` is a minimum **across
+legs**, so wherever this split appears the minimum is already the arm64 value — the low
+side. The first version of these floors subtracted a further 6.02 dB on top of that,
+counting the same margin twice and costing about 5 dB of sensitivity on every channel.
+Removing the double-count is what took the headroom to 1.0 dB.
+
+**The encoder is bit-exact across architectures; the gap is entirely decode-side.** The
+cross-platform hash gate had never pinned `aarch64-neon` — it printed `[unpinned]` and passed,
+so every arm64 run had compared its encoder's output to nothing. Pinned now from the real arm64
+CI legs (PR #503, run 33635430769), and all three streams come back **byte-identical** to
+`x86_64-sse2`. So the same bitstream goes in on both architectures and different PCM comes out:
+whatever the last-bit difference is, it is in the decode path, not the encode path.
+
+That also settles a discrepancy that looked like it needed two mechanisms. On the fixed
+third-party fixtures only the LFE splits, but on this project's own gold-reference streams
+*every* channel does — which invited the inference that the arm64 encoder must produce a
+different bitstream. It does not. The gold-reference streams are encoded `dither=off`
+(`nodither` for E-AC-3), so no channel's comparison is dither-limited and **all** of them sit in
+the rounding-limited regime above 67 dB, where the last-bit difference is the whole remaining
+signal. The third-party fixtures carry dither, which dominates every channel except the LFE.
+One mechanism, two fixture populations.
+
+What is **not** yet answered is why arm64 is the *worse* of the two — it agrees with FFmpeg's
+decode less closely than x86-64 does, consistently, by one bit. The search space is now much
+smaller: the encoder is excluded by the hashes above, the reference side is excluded by the
+FFmpeg kernel test, and contraction and libm were excluded before that. What remains is the
+decode path on real arm64 silicon, which is also the one thing no emulated run has reproduced.
+
+The same reasoning now applies to the *trend* check as well as the gate:
+`tools/ci/append_quality_history.py` compares each channel against its own trailing
+average, where it previously watched only the worst channel — which, on these fixtures,
+was the same dither-dominated surround every single run.
+
+### What would make these numbers excellent
+
+1. ~~**The 6.02 dB headroom is set by something unexplained.**~~ **Closed.** It was not
+   an exponent step and it was not unexplained once the split was sorted by level — see
+   "Why arm64 and x86-64 disagree" above. The headroom it was forcing turned out to be a
+   double-count on top of an already-cross-platform minimum, and the floors are now
+   derived at 1.0 dB, catching a 1 dB per-channel regression where they previously
+   needed 6. The follow-on question — why arm64 is the *less* accurate of the two —
+   remains open and is tracked separately.
+
+2. **Spec-permitted dither divergence is still inside the measurement.** The surrounds
+   score ~22 dB not because either decoder is wrong but because §7.3.4 lets them differ
+   in the zero-bit bins. A comparison that excluded those bins — masking on the `bap`
+   values the decoder already records in `ac3::verify::FrameTrace` (`DecoderConfig::trace`,
+   exported by `ac3/verify/trace_export.hpp`) — would measure only the bins that were
+   actually coded, and the surrounds would be expected to join the front channels in the
+   50–90 dB band. That needs the comparison moved into the MDCT domain, with block
+   alignment and the coupling-region indirection (a coupled channel's bap-0 decision
+   lives on the coupling stream, not its own) handled correctly; it is a real piece of
+   work, not a flag. It would also produce a new metric on a new scale, so it belongs
+   beside the current series rather than replacing it.
+
+Neither gap is a defect in the codec. Both are limits on how sharply the current
+instruments can see it, which is the more useful thing to be honest about.
+
 ## Performance and reference modes
 
 Both transform hot spots — the forward MDCT (§8.2.3.2) and the inverse transform's step-3

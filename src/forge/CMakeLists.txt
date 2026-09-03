@@ -202,6 +202,7 @@ target_sources(forge_objects
         src/quality/distortion.cpp
         src/quality/perceptual.cpp
         src/spatial/spatial.cpp
+        src/verify/bap_census.cpp
         src/verify/eac3_mirror.cpp
         src/verify/eac3_selfcheck.cpp
         src/verify/mirror.cpp

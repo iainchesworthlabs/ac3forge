@@ -727,6 +727,17 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
+        if (key == "bap-census") {
+            // A path, not a flag: the census is a file a checker reads, and
+            // making the caller name it keeps this out of stdout where the
+            // decode's own status lines live.
+            if (value.empty()) {
+                fmt::println(stderr, "error: bap-census needs an output path");
+                return false;
+            }
+            out.bap_census_path = std::string{value};
+            continue;
+        }
         if (key == "conceal") {
             // §7.10. Off by default: a decode that hits a damaged frame says
             // so and stops, which is what a verification tool should do.

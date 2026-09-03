@@ -10,8 +10,14 @@ trended quality signal — the gate itself has run on every commit since it
 landed; what's below is what makes the *numbers*, not just the pass/fail,
 outlive the run that produced them.
 
-The gate's own threshold (currently 55 dB, see `MIN_SNR_DB` in
-`verify_gold_reference.sh`) is a fixed floor that always fails CI outright.
+The gate's own thresholds are fixed floors that always fail CI outright, and
+there is now one **per channel** rather than one per fixture — each derived
+from that channel's own lowest measurement across every leg and every recorded
+commit (`tools/checks/derive_channel_floors.py`). `MIN_SNR_DB` in
+`verify_gold_reference.sh` remains the scalar fallback for any check with no
+derived vector. [Validation](verification.md#one-floor-per-channel-not-one-per-file)
+carries the derivation and the reason: one floor across six channels turned out
+to be one gate on the worst channel and 30-70 dB of dead slack on the rest.
 On top of that, the append step applies two trailing-baseline checks against
 each run's own leg/codec history: a soft one (0.5 dB below the trailing
 10-run mean) that only annotates a row below, never fails anything, and a
@@ -224,6 +230,47 @@ that question — see [Landscape](landscape.md) and
     return r.channels_db.map((v, i) => `${channelLabel(i, r.channels_db.length)} ${v.toFixed(2)} dB`).join(" · ");
   }
 
+  // --- Per-channel floors ---------------------------------------------------
+  // Each channel is gated against its own floor, so the channel closest to
+  // FAILING is not generally the channel with the lowest number - on these
+  // 5.1 fixtures the surrounds are always lowest and are also, by design, the
+  // furthest above their own (much lower) floors. A table that shows only the
+  // worst dB therefore shows the same two channels forever and never the one
+  // actually at risk.
+  //
+  // Records written before per-channel floors carry no thresholds_db. They
+  // render "-" rather than a computed-from-a-scalar number: the old rows were
+  // genuinely gated on one floor for all channels, and inventing a per-channel
+  // margin for them would make history look like it had a gate it did not.
+  function hasPerChannelFloors(r) {
+    return Array.isArray(r.thresholds_db) && r.thresholds_db.length === r.channels_db.length;
+  }
+
+  function tightestIndex(r) {
+    if (typeof r.tightest_channel === "number") return r.tightest_channel;
+    let best = 0;
+    for (let i = 1; i < r.channels_db.length; i++) {
+      if (r.channels_db[i] - r.thresholds_db[i] < r.channels_db[best] - r.thresholds_db[best]) best = i;
+    }
+    return best;
+  }
+
+  function tightestMarginText(r) {
+    if (!hasPerChannelFloors(r)) return "—";
+    const i = tightestIndex(r);
+    const margin = r.channels_db[i] - r.thresholds_db[i];
+    return `${channelLabel(i, r.channels_db.length)} +${margin.toFixed(2)} dB`;
+  }
+
+  function marginBreakdownText(r) {
+    if (!hasPerChannelFloors(r)) {
+      return "Gated on a single floor for every channel - this row predates per-channel floors.";
+    }
+    return r.channels_db.map((v, i) =>
+      `${channelLabel(i, r.channels_db.length)} ${(v - r.thresholds_db[i]).toFixed(2)} dB over ${r.thresholds_db[i]}`
+    ).join(" · ");
+  }
+
   // The records currently in scope given the historical toggle - both the
   // chart and the table are built from this, not from the raw fetch, so
   // they always agree with what the control says should be visible. main is
@@ -403,6 +450,7 @@ that question — see [Landscape](landscape.md) and
           <td>${r.codec} @ ${r.bitrate_kbps} kbps</td>
           <td>${check}</td>
           <td title="${channelBreakdownText(r)}">${worstChannelLabel(r)} ${r.worst_db.toFixed(2)} dB</td>
+          <td title="${marginBreakdownText(r)}">${tightestMarginText(r)}</td>
           <td>${releaseBadge}</td>
           <td>${flag}</td>
         </tr>`;
@@ -412,7 +460,7 @@ that question — see [Landscape](landscape.md) and
       return '<p class="quality-trend-status">No rows in the current view - try a different branch/codec combination.</p>';
     }
     return `<div class="quality-trend-table-wrap"><table>
-      <thead><tr><th>Date</th><th>Branch</th><th>Commit</th><th>Leg</th><th>Codec</th><th>Check</th><th>Worst channel</th><th>Release</th><th></th></tr></thead>
+      <thead><tr><th>Date</th><th>Branch</th><th>Commit</th><th>Leg</th><th>Codec</th><th>Check</th><th>Worst channel</th><th>Tightest margin</th><th>Release</th><th></th></tr></thead>
       <tbody>${trs}</tbody>
     </table></div>`;
   }
@@ -604,6 +652,27 @@ two surrounds (`Ls`/`Rs`) — 15-20 dB below the front channels, consistently,
 across every leg and commit recorded so far — which tracks with the encoder
 allocating fewer bits to the less-dominant surround channels, not a
 per-run fluke.
+
+The **tightest margin** column is the one to watch, and it is deliberately a
+different question. Every channel is gated against its *own* floor now (see
+[Validation](verification.md#one-floor-per-channel-not-one-per-file) for how
+those floors are derived), and the channel closest to failing is not the
+channel with the lowest number — usually the reverse. The surrounds are lowest
+*and* have the lowest floors, so they typically sit further above their gate
+than a front channel does above its much higher one. Hovering shows every
+channel's margin.
+
+Rows written before per-channel floors show `—` here rather than a number.
+They were genuinely gated on one floor shared by all six channels, and
+back-computing a per-channel margin for them would make the history look like
+it carried a gate it did not have. The `worst channel` column is directly
+comparable across that boundary; this one is not, by construction.
+
+A regression is now flagged when **any channel** falls 0.5 dB below its own
+trailing average, not only when the worst channel does. That closed a real
+hole: the worst channel was the same dither-dominated surround on every single
+run, so a front channel could fall a long way without the trend check ever
+looking at it.
 
 A 🏷 badge marks a row whose commit was tagged as a GitHub release (fetched
 client-side from the GitHub API, best-effort — it silently shows nothing if

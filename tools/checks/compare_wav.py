@@ -11,14 +11,26 @@ Python 3 preinstalled on Windows/Linux/macOS, so this adds zero new CI
 provisioning the way pulling in numpy would.
 
 Usage:  python compare_wav.py <reference.wav> <actual.wav> [--min-snr-db N] [--max-lag-samples N]
-Exit 0 if every channel's SNR >= the threshold, exit 1 (with the offending
+Exit 0 if every channel's SNR >= its threshold, exit 1 (with the offending
 channel and its SNR) otherwise.
 
+--min-snr-db-per-channel is the same gate stated per channel instead of once
+for all of them, and it exists because one floor across six channels is not
+one gate - it is one gate on the worst channel and dead slack on the rest.
+On the 5.1 fixtures here the surrounds sit 20-60 dB below the front channels
+by construction (the encoder spends fewer bits there, and §7.3.4 dither in the
+zero-bit bins puts two independently correct decoders further apart still), so
+a floor low enough for Ls/Rs to pass leaves L/R/C/LFE 30-70 dB of room to
+collapse in silently. Every floor here was derived from that channel's own
+measured minimum across every CI leg and every recorded commit - see
+tools/checks/verify_gold_reference.sh, which carries the vectors and the
+derivation.
+
 --json-out additionally writes a structured result (per-channel SNR, lag,
-threshold, pass/fail) for a caller that wants to persist the numbers rather
-than just gate on them - see docs/quality-trend.md. --codec-label and
---bitrate-kbps are pure passthrough metadata for that file; this script does
-not care what codec produced its inputs.
+per-channel thresholds and headroom, pass/fail) for a caller that wants to
+persist the numbers rather than just gate on them - see docs/quality-trend.md.
+--codec-label and --bitrate-kbps are pure passthrough metadata for that file;
+this script does not care what codec produced its inputs.
 
 --max-diff-dbfs is the other way of asking the same question, for material
 where the SNR form cannot answer it. SNR is a RATIO, so on a passage that is
@@ -152,6 +164,52 @@ def snr_db(reference: list[float], actual: list[float]) -> float:
     return 10.0 * math.log10(signal_power / noise_power)
 
 
+# WAV channel order ac3::io::ac3_layout_for(6) expects - see
+# tools/generators/gen_gold_reference_wav.py, and docs/quality-trend.md's own
+# copy of this list for the rendered table. Naming the channels in this
+# script's output rather than only numbering them is what lets a CI log say
+# which channel moved without the reader holding the layout in their head.
+CHANNEL_LABELS = {
+    1: ["M"],
+    2: ["L", "R"],
+    6: ["L", "R", "C", "LFE", "Ls", "Rs"],
+}
+
+
+def channel_labels(channels: int) -> list[str]:
+    """Falls back to a plain index label for any layout not named above,
+    rather than guessing at a mapping - same rule docs/quality-trend.md's
+    channelLabel() follows for the same reason."""
+    return CHANNEL_LABELS.get(channels, [f"ch{i}" for i in range(channels)])
+
+
+def resolve_thresholds(per_channel: str | None, scalar: float, channels: int) -> list[float]:
+    """The per-channel floor vector this run gates on.
+
+    Absent --min-snr-db-per-channel, that is the scalar floor repeated - which
+    is exactly what every caller got before per-channel floors existed, so an
+    unconverted call site behaves identically rather than quietly gaining a
+    different gate.
+
+    A length mismatch is fatal rather than padded or truncated. A vector
+    written for 5.1 and handed a stereo file would otherwise gate two channels
+    and silently ignore four floors, which is the same class of
+    comparison-oracle-that-checks-less-than-it-claims that `strict=True` on
+    every zip in this file exists to prevent.
+    """
+    if per_channel is None:
+        return [scalar] * channels
+    try:
+        values = [float(v) for v in per_channel.split(",")]
+    except ValueError as exc:
+        raise SystemExit(f"--min-snr-db-per-channel: not a comma-separated list of "
+                          f"numbers: {per_channel!r}") from exc
+    if len(values) != channels:
+        raise SystemExit(f"--min-snr-db-per-channel has {len(values)} floor(s) but the "
+                          f"files carry {channels} channel(s): {per_channel!r}")
+    return values
+
+
 def json_safe_db(value: float) -> float:
     """Clamp +-inf (a bit-exact match, or a degenerate all-zero reference) to a
     finite sentinel. json.dumps happily emits the non-standard `Infinity`
@@ -171,6 +229,11 @@ def main() -> int:
     parser.add_argument("reference", type=Path)
     parser.add_argument("actual", type=Path)
     parser.add_argument("--min-snr-db", type=float, default=20.0)
+    parser.add_argument("--min-snr-db-per-channel", default=None,
+                         help="Comma-separated per-channel SNR floors, in the file's own "
+                              "channel order, e.g. '51,57,52,76,16,16' for L R C LFE Ls Rs. "
+                              "Overrides --min-snr-db, which stays the fallback for callers "
+                              "that have no per-channel vector. See the module docstring.")
     parser.add_argument("--max-diff-dbfs", type=float, default=None,
                          help="Also require every channel's RMS difference to sit below "
                               "this absolute level, in dBFS. See the module docstring for "
@@ -201,29 +264,50 @@ def main() -> int:
     act_mono = [sum(frame) for frame in zip(*act_channels, strict=True)]
     lag = best_lag(ref_mono, act_mono, args.max_lag_samples, args.probe_samples)
 
+    thresholds = resolve_thresholds(args.min_snr_db_per_channel, args.min_snr_db,
+                                     len(ref_channels))
+    labels = channel_labels(len(ref_channels))
+
     worst = math.inf
     worst_diff = -math.inf
     failed = False
     channels_db = []
     diffs_dbfs = []
+    headroom_db = []
     for idx, (ref_ch, act_ch) in enumerate(zip(ref_channels, act_channels, strict=True)):
         r, a = align(ref_ch, act_ch, lag)
         result = snr_db(r, a)
         diff = diff_rms_dbfs(r, a)
+        floor = thresholds[idx]
         channels_db.append(result)
         diffs_dbfs.append(diff)
+        headroom_db.append(result - floor)
         worst = min(worst, result)
         worst_diff = max(worst_diff, diff)
-        ok = result >= args.min_snr_db
+        ok = result >= floor
         if args.max_diff_dbfs is not None:
             ok = ok and diff <= args.max_diff_dbfs
         status = "ok" if ok else "FAIL"
         if not ok:
             failed = True
         suffix = "" if args.max_diff_dbfs is None else f", diff {diff:.2f} dBFS"
-        print(f"channel {idx}: {result:.2f} dB{suffix} [{status}]")
+        print(f"channel {idx} ({labels[idx]}): {result:.2f} dB{suffix} "
+              f"[floor {floor:g} dB, {result - floor:+.2f} dB] [{status}]")
 
-    print(f"lag: {lag} samples, worst channel: {worst:.2f} dB, threshold: {args.min_snr_db} dB")
+    # The channel closest to its OWN floor, which is the thing a reader wants
+    # and is no longer the same channel as the worst-scoring one: with per-
+    # channel floors a 58 dB centre channel 6 dB above a 52 dB floor is tighter
+    # than a 22 dB surround 6 dB above a 16 dB floor, even though the surround
+    # is the lower number. Reported alongside the worst channel rather than
+    # instead of it - they answer different questions, and collapsing them is
+    # what the single-floor form did.
+    tightest = min(range(len(headroom_db)), key=lambda i: headroom_db[i])
+    worst_idx = channels_db.index(worst)
+
+    print(f"lag: {lag} samples, worst channel: {labels[worst_idx]} {worst:.2f} dB "
+          f"(floor {thresholds[worst_idx]:g} dB)")
+    print(f"tightest margin: {labels[tightest]} {headroom_db[tightest]:+.2f} dB over its "
+          f"{thresholds[tightest]:g} dB floor")
     if args.max_diff_dbfs is not None:
         print(f"loudest channel difference: {worst_diff:.2f} dBFS, "
               f"threshold: {args.max_diff_dbfs} dBFS")
@@ -235,9 +319,26 @@ def main() -> int:
             "bitrate_kbps": args.bitrate_kbps,
             "sample_rate": ref_rate,
             "lag_samples": lag,
-            "threshold_db": args.min_snr_db,
+            # Kept, and kept scalar: every consumer written before per-channel
+            # floors existed reads this, and docs/performance-quality.md
+            # computes a headroom from it. In per-channel mode it is the floor
+            # the WORST-scoring channel was judged against, so `worst_db -
+            # threshold_db` still means what it always meant rather than
+            # silently becoming a comparison against an unrelated channel's
+            # gate.
+            "threshold_db": thresholds[worst_idx],
             "channels_db": [json_safe_db(v) for v in channels_db],
             "worst_db": json_safe_db(worst),
+            # The new, complete form. thresholds_db is the vector actually
+            # gated on; headroom_db is channels_db - thresholds_db, carried
+            # rather than left for each consumer to recompute and get subtly
+            # different. tightest_channel indexes the smallest headroom, which
+            # is the number a status card should lead with.
+            "channel_labels": labels,
+            "thresholds_db": thresholds,
+            "headroom_db": [json_safe_db(v) for v in headroom_db],
+            "tightest_channel": tightest,
+            "tightest_headroom_db": json_safe_db(headroom_db[tightest]),
             "diffs_dbfs": [json_safe_db(v) for v in diffs_dbfs],
             "worst_diff_dbfs": json_safe_db(worst_diff),
             "pass": not failed,
@@ -245,9 +346,9 @@ def main() -> int:
 
     if failed:
         if args.max_diff_dbfs is None:
-            print("FAIL: at least one channel is below the SNR threshold")
+            print("FAIL: at least one channel is below its own SNR floor")
         else:
-            print("FAIL: at least one channel is below the SNR threshold or above the "
+            print("FAIL: at least one channel is below its own SNR floor or above the "
                   "difference threshold")
         return 1
     print("PASS")
