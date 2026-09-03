@@ -77,27 +77,27 @@
         <translation>Keine Ausgabe</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="508"/>
+        <location filename="../ui/desk_controller.cpp" line="510"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>Installation läuft, bitte die Rechteanfrage beantworten …</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="509"/>
+        <location filename="../ui/desk_controller.cpp" line="511"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>Entfernen läuft, bitte die Rechteanfrage beantworten …</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <location filename="../ui/desk_controller.cpp" line="537"/>
         <source>installed</source>
         <translation>installiert</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <location filename="../ui/desk_controller.cpp" line="537"/>
         <source>removed</source>
         <translation>entfernt</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="539"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 fehlgeschlagen (Exit-Code %2)</translation>
     </message>
@@ -187,9 +187,13 @@
         <translation type="vanished"> JOC</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="133"/>
         <source>15 objects · %1 placed · %2 in the bed · 5 bed slots</source>
-        <translation>15 Objekte · %1 platziert · %2 im Bett · 5 Bett-Plätze</translation>
+        <translation type="vanished">15 Objekte · %1 platziert · %2 im Bett · 5 Bett-Plätze</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Main.qml" line="133"/>
+        <source>15 objects · %1 placed · %2 in the bed · 5 bed slots · %3-channel taps</source>
+        <translation>15 Objekte · %1 platziert · %2 im Bett · 5 Bett-Plätze · %3-Kanal-Abgriffe</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="145"/>
@@ -792,202 +796,202 @@
         <translation>Signaturschlüssel wählen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="38"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="39"/>
         <source>LATENCY</source>
         <translation>LATENZ</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="40"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="41"/>
         <source>Normal · 32 ms frames</source>
         <translation>Normal · 32-ms-Frames</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="40"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="41"/>
         <source>Low · 5.3 ms frames</source>
         <translation>Niedrig · 5,3-ms-Frames</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="42"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="43"/>
         <source>Latency</source>
         <translation>Latenz</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="45"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="46"/>
         <source>Low latency shortens the E-AC-3 frame to one block and raises the bitrate to about 1.5 Mb/s so fifteen objects&apos; metadata still fits. The receiver&apos;s own decode delay does not change. Changing this restarts the stream.</source>
         <translation>Niedrige Latenz verkürzt den E-AC-3-Frame auf einen Block und hebt die Bitrate auf etwa 1,5 Mb/s, damit die Metadaten von fünfzehn Objekten noch hineinpassen. Die Dekodierverzögerung des Receivers selbst ändert sich nicht. Eine Änderung startet den Stream neu.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="50"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="51"/>
         <source>CODEC</source>
         <translation>CODEC</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="53"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="54"/>
         <source>Bitrate</source>
         <translation>Bitrate</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="59"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
         <source>automatic</source>
         <translation>automatisch</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="59"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
         <source>256 kb/s</source>
         <translation>256 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="59"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
         <source>384 kb/s</source>
         <translation>384 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="61"/>
         <source>448 kb/s</source>
         <translation>448 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="61"/>
         <source>640 kb/s</source>
         <translation>640 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="61"/>
         <source>1024 kb/s</source>
         <translation>1024 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="61"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="62"/>
         <source>1536 kb/s</source>
         <translation>1536 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="61"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="62"/>
         <source>2048 kb/s</source>
         <translation>2048 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="81"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="82"/>
         <source>E-AC-3 · 5.1 bed + up to 15 objects · automatic is 448 kb/s, or 1536 kb/s in low latency</source>
         <translation>E-AC-3 · 5.1-Bett + bis zu 15 Objekte · automatisch ist 448 kb/s, oder 1536 kb/s bei niedriger Latenz</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="83"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="84"/>
         <source>Split stereo applications into two objects</source>
         <translation>Stereo-Anwendungen in zwei Objekte aufteilen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="83"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="84"/>
         <source>Costs two slots per application; the pair sits either side of the position you place. Not built yet.</source>
         <translation>Kostet zwei Plätze pro Anwendung; das Paar sitzt beiderseits der gesetzten Position. Noch nicht gebaut.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="88"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="89"/>
         <source>SIGNING KEY</source>
         <translation>SIGNATURSCHLÜSSEL</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="102"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="103"/>
         <source>no key file chosen · AC3FORGE_SIGNING_KEY_FILE and AC3FORGE_SIGNING_KEY are honoured</source>
         <translation>keine Schlüsseldatei gewählt · AC3FORGE_SIGNING_KEY_FILE und AC3FORGE_SIGNING_KEY werden beachtet</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="109"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="110"/>
         <source>Browse…</source>
         <translation>Durchsuchen…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="110"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="111"/>
         <source>Clear</source>
         <translation>Löschen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="117"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="118"/>
         <source>Only the path is remembered; the key stays in its file. Without a key the app streams the 5.1 bed only: an unsigned object container would be refused outright by a validating decoder.</source>
         <translation>Nur der Pfad wird gemerkt; der Schlüssel bleibt in seiner Datei. Ohne Schlüssel streamt die App nur das 5.1-Bett: ein unsignierter Objektcontainer würde von einem validierenden Decoder rundweg abgelehnt.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="128"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="130"/>
         <source>VIRTUAL OUTPUT DEVICE</source>
         <translation>VIRTUELLES AUSGABEGERÄT</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="135"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="137"/>
         <source>an endpoint named like &quot;%1&quot; is present</source>
         <translation>ein Endpunkt mit Namen wie „%1“ ist vorhanden</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="135"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="137"/>
         <source>no endpoint named like &quot;%1&quot;</source>
         <translation>kein Endpunkt mit Namen wie „%1“</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="137"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="139"/>
         <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. Any silent endpoint stands in until it is installed.</source>
         <translation>Ein Null-Senken-Treiber, der verwirft, was er bekommt. Anwendungen rendern hinein; surroundfähige Spiele rendern 7.1 hinein und erreichen das Bett unversehrt. Bis er installiert ist, springt jeder stumme Endpunkt ein.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="143"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
         <source>could not read the kernel&apos;s code-integrity state</source>
         <translation>der Code-Integritätsstatus des Kernels konnte nicht gelesen werden</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
         <source>test signing on</source>
         <translation>Testsignierung an</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
         <source>test signing off</source>
         <translation>Testsignierung aus</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="147"/>
         <source>, </source>
         <translation>, </translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="148"/>
         <source>memory integrity on</source>
         <translation>Speicherintegrität an</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="148"/>
         <source>memory integrity off</source>
         <translation>Speicherintegrität aus</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="147"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="149"/>
         <source>: a test-signed package will not load</source>
         <translation>: ein testsigniertes Paket wird nicht geladen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="153"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="155"/>
         <source>Install driver</source>
         <translation>Treiber installieren</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="154"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="156"/>
         <source>Remove driver</source>
         <translation>Treiber entfernen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="155"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="157"/>
         <source>Re-check</source>
         <translation>Erneut prüfen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="162"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="164"/>
         <source>Driver folder</source>
         <translation>Treiberordner</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="184"/>
         <source>install.ps1, remove.ps1 and the built package are here</source>
         <translation>install.ps1, remove.ps1 und das gebaute Paket liegen hier</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="184"/>
         <source>no install.ps1, remove.ps1 and built package here</source>
         <translation>kein install.ps1, remove.ps1 und gebautes Paket hier</translation>
     </message>
@@ -996,91 +1000,91 @@
         <translation type="vanished">Ein Null-Senken-Treiber, der verwirft, was er bekommt. Anwendungen rendern hinein; surroundfähige Spiele rendern 7.1 hinein und erreichen das Bett unversehrt. Der Treiber selbst ist Phase 4; bis dahin springt jeder stumme Endpunkt ein.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="186"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="188"/>
         <source>Silent device</source>
         <translation>Stummes Gerät</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="208"/>
         <source>any endpoint whose name contains this is never an output</source>
         <translation>kein Endpunkt, dessen Name dies enthält, ist je eine Ausgabe</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="214"/>
         <source>APPEARANCE</source>
         <translation>ERSCHEINUNGSBILD</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="215"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="221"/>
         <source>Theme</source>
         <translation>Thema</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="231"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="233"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>System</source>
         <translation>System</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
         <source>Light</source>
         <translation>Hell</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
         <source>Dark</source>
         <translation>Dunkel</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="227"/>
         <source>Language</source>
         <translation>Sprache</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="250"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="252"/>
         <source>System follows Windows; the translations are mechanical for now</source>
         <translation>System folgt Windows; die Übersetzungen sind vorerst maschinell</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="254"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="260"/>
         <source>Palette</source>
         <translation>Palette</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>Signal</source>
         <translation>Signal</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>Ink</source>
         <translation>Tinte</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>Console</source>
         <translation>Konsole</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="266"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="268"/>
         <source>BEHAVIOUR</source>
         <translation>VERHALTEN</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="268"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="270"/>
         <source>Move the default output to the silent device on launch</source>
         <translation>Standardausgabe beim Start auf das stumme Gerät verschieben</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="269"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="271"/>
         <source>Restored to the previous device on quit.</source>
         <translation>Beim Beenden auf das vorherige Gerät zurückgesetzt.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="274"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="276"/>
         <source>Keep running in the tray when the window is closed</source>
         <translation>Beim Schließen des Fensters im Infobereich weiterlaufen</translation>
     </message>

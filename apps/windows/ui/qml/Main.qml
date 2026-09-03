@@ -130,7 +130,7 @@ ApplicationWindow {
                     qsTr("%1 underruns").arg(DeskController.underruns),
                     qsTr("%1 starved reads").arg(DeskController.starvedReads),
                     (DeskController.lowLatency ? qsTr("1-block frames") : qsTr("6-block frames")) + " · E-AC-3" + (DeskController.objectsEnabled ? " JOC" : " 5.1"),
-                    qsTr("15 objects · %1 placed · %2 in the bed · 5 bed slots").arg(DeskController.placedCount).arg(DeskController.bedCount)
+                    qsTr("15 objects · %1 placed · %2 in the bed · 5 bed slots · %3-channel taps").arg(DeskController.placedCount).arg(DeskController.bedCount).arg(DeskController.tapChannels)
                 ]
                 delegate: Text {
                     required property string modelData

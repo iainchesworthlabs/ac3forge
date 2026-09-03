@@ -177,7 +177,9 @@ void DeskController::poll() {
     const QString error = from_utf8(s.last_error);
     if (mode_name != mode_name_ || key != mode_key_ || endpoint != endpoint_name_ ||
         reason != output_reason_ || signing != signing_status_ ||
-        s.objects_enabled != objects_enabled_ || error != last_error_) {
+        s.objects_enabled != objects_enabled_ || error != last_error_ ||
+        static_cast<int>(s.tap_channels) != tap_channels_) {
+        tap_channels_ = static_cast<int>(s.tap_channels);
         mode_name_ = mode_name;
         mode_key_ = key;
         endpoint_name_ = endpoint;

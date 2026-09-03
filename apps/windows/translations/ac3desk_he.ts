@@ -77,27 +77,27 @@
         <translation>אין פלט</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="508"/>
+        <location filename="../ui/desk_controller.cpp" line="510"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>מתקין, יש לענות לבקשת ההרשאות…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="509"/>
+        <location filename="../ui/desk_controller.cpp" line="511"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>מסיר, יש לענות לבקשת ההרשאות…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <location filename="../ui/desk_controller.cpp" line="537"/>
         <source>installed</source>
         <translation>הותקן</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <location filename="../ui/desk_controller.cpp" line="537"/>
         <source>removed</source>
         <translation>הוסר</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="539"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 נכשל (קוד יציאה %2)</translation>
     </message>
@@ -187,9 +187,13 @@
         <translation type="vanished"> JOC</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="133"/>
         <source>15 objects · %1 placed · %2 in the bed · 5 bed slots</source>
-        <translation>15 אובייקטים · %1 ממוקמים · %2 במיטה · 5 משבצות מיטה</translation>
+        <translation type="vanished">15 אובייקטים · %1 ממוקמים · %2 במיטה · 5 משבצות מיטה</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Main.qml" line="133"/>
+        <source>15 objects · %1 placed · %2 in the bed · 5 bed slots · %3-channel taps</source>
+        <translation>15 אובייקטים · %1 ממוקמים · %2 במיטה · 5 משבצות מיטה · לכידות של %3 ערוצים</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="145"/>
@@ -792,202 +796,202 @@
         <translation>בחר את מפתח החתימה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="38"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="39"/>
         <source>LATENCY</source>
         <translation>השהיה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="40"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="41"/>
         <source>Normal · 32 ms frames</source>
         <translation>רגיל · מסגרות 32 ms</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="40"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="41"/>
         <source>Low · 5.3 ms frames</source>
         <translation>נמוכה · מסגרות 5.3 ms</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="42"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="43"/>
         <source>Latency</source>
         <translation>השהיה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="45"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="46"/>
         <source>Low latency shortens the E-AC-3 frame to one block and raises the bitrate to about 1.5 Mb/s so fifteen objects&apos; metadata still fits. The receiver&apos;s own decode delay does not change. Changing this restarts the stream.</source>
         <translation>השהיה נמוכה מקצרת את מסגרת ה-E-AC-3 לבלוק אחד ומעלה את קצב הסיביות לכ-1.5 Mb/s כדי שהמטא-נתונים של חמישה עשר אובייקטים עדיין ייכנסו. עיכוב הפענוח של המקלט עצמו אינו משתנה. שינוי זה מפעיל מחדש את הזרם.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="50"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="51"/>
         <source>CODEC</source>
         <translation>קודק</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="53"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="54"/>
         <source>Bitrate</source>
         <translation>קצב סיביות</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="59"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
         <source>automatic</source>
         <translation>אוטומטי</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="59"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
         <source>256 kb/s</source>
         <translation>256 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="59"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
         <source>384 kb/s</source>
         <translation>384 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="61"/>
         <source>448 kb/s</source>
         <translation>448 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="61"/>
         <source>640 kb/s</source>
         <translation>640 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="60"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="61"/>
         <source>1024 kb/s</source>
         <translation>1024 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="61"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="62"/>
         <source>1536 kb/s</source>
         <translation>1536 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="61"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="62"/>
         <source>2048 kb/s</source>
         <translation>2048 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="81"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="82"/>
         <source>E-AC-3 · 5.1 bed + up to 15 objects · automatic is 448 kb/s, or 1536 kb/s in low latency</source>
         <translation>E-AC-3 · מיטת 5.1 + עד 15 אובייקטים · אוטומטי הוא 448 kb/s, או 1536 kb/s בהשהיה נמוכה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="83"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="84"/>
         <source>Split stereo applications into two objects</source>
         <translation>פצל יישומי סטריאו לשני אובייקטים</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="83"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="84"/>
         <source>Costs two slots per application; the pair sits either side of the position you place. Not built yet.</source>
         <translation>עולה שתי משבצות ליישום; הזוג יושב משני צידי המיקום שתמקם. עדיין לא נבנה.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="88"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="89"/>
         <source>SIGNING KEY</source>
         <translation>מפתח חתימה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="102"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="103"/>
         <source>no key file chosen · AC3FORGE_SIGNING_KEY_FILE and AC3FORGE_SIGNING_KEY are honoured</source>
         <translation>לא נבחר קובץ מפתח · AC3FORGE_SIGNING_KEY_FILE ו-AC3FORGE_SIGNING_KEY מכובדים</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="109"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="110"/>
         <source>Browse…</source>
         <translation>עיון…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="110"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="111"/>
         <source>Clear</source>
         <translation>נקה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="117"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="118"/>
         <source>Only the path is remembered; the key stays in its file. Without a key the app streams the 5.1 bed only: an unsigned object container would be refused outright by a validating decoder.</source>
         <translation>רק הנתיב נזכר; המפתח נשאר בקובץ שלו. ללא מפתח האפליקציה משדרת רק את מיטת ה-5.1: מכולת אובייקטים לא חתומה תידחה על הסף על ידי מפענח מאמת.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="128"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="130"/>
         <source>VIRTUAL OUTPUT DEVICE</source>
         <translation>התקן פלט וירטואלי</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="135"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="137"/>
         <source>an endpoint named like &quot;%1&quot; is present</source>
         <translation>קיימת נקודת קצה בשם כמו "%1"</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="135"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="137"/>
         <source>no endpoint named like &quot;%1&quot;</source>
         <translation>אין נקודת קצה בשם כמו "%1"</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="137"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="139"/>
         <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. Any silent endpoint stands in until it is installed.</source>
         <translation>מנהל התקן יעד ריק שמשליך את מה שניתן לו. היישומים מנגנים לתוכו; משחקים תומכי היקפי מנגנים 7.1 לתוכו ומגיעים למיטה בשלמות. כל נקודת קצה שקטה משמשת כתחליף עד שיותקן.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="143"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
         <source>could not read the kernel&apos;s code-integrity state</source>
         <translation>לא ניתן לקרוא את מצב שלמות הקוד של הליבה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
         <source>test signing on</source>
         <translation>חתימת בדיקה פעילה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
         <source>test signing off</source>
         <translation>חתימת בדיקה כבויה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="147"/>
         <source>, </source>
         <translation>, </translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="148"/>
         <source>memory integrity on</source>
         <translation>שלמות זיכרון פעילה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="148"/>
         <source>memory integrity off</source>
         <translation>שלמות זיכרון כבויה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="147"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="149"/>
         <source>: a test-signed package will not load</source>
         <translation>: חבילה חתומה לבדיקה לא תיטען</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="153"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="155"/>
         <source>Install driver</source>
         <translation>התקן מנהל התקן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="154"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="156"/>
         <source>Remove driver</source>
         <translation>הסר מנהל התקן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="155"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="157"/>
         <source>Re-check</source>
         <translation>בדוק שוב</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="162"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="164"/>
         <source>Driver folder</source>
         <translation>תיקיית מנהל ההתקן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="184"/>
         <source>install.ps1, remove.ps1 and the built package are here</source>
         <translation>install.ps1, remove.ps1 והחבילה הבנויה נמצאים כאן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="184"/>
         <source>no install.ps1, remove.ps1 and built package here</source>
         <translation>אין כאן install.ps1, remove.ps1 וחבילה בנויה</translation>
     </message>
@@ -996,91 +1000,91 @@
         <translation type="vanished">מנהל התקן יעד ריק שמשליך את מה שניתן לו. היישומים מנגנים לתוכו; משחקים תומכי היקפי מנגנים 7.1 לתוכו ומגיעים למיטה בשלמות. מנהל ההתקן עצמו הוא שלב 4; עד אז כל נקודת קצה שקטה משמשת כתחליף.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="186"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="188"/>
         <source>Silent device</source>
         <translation>התקן שקט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="208"/>
         <source>any endpoint whose name contains this is never an output</source>
         <translation>כל נקודת קצה ששמה מכיל את זה לעולם אינה פלט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="214"/>
         <source>APPEARANCE</source>
         <translation>מראה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="215"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="221"/>
         <source>Theme</source>
         <translation>ערכת נושא</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="231"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="233"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>System</source>
         <translation>מערכת</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
         <source>Light</source>
         <translation>בהיר</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
         <source>Dark</source>
         <translation>כהה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="227"/>
         <source>Language</source>
         <translation>שפה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="250"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="252"/>
         <source>System follows Windows; the translations are mechanical for now</source>
         <translation>מערכת עוקבת אחר Windows; התרגומים מכניים בינתיים</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="254"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="260"/>
         <source>Palette</source>
         <translation>פלטה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>Signal</source>
         <translation>אות</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>Ink</source>
         <translation>דיו</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>Console</source>
         <translation>קונסולה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="266"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="268"/>
         <source>BEHAVIOUR</source>
         <translation>התנהגות</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="268"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="270"/>
         <source>Move the default output to the silent device on launch</source>
         <translation>העבר את פלט ברירת המחדל להתקן השקט בהפעלה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="269"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="271"/>
         <source>Restored to the previous device on quit.</source>
         <translation>משוחזר להתקן הקודם ביציאה.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="274"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="276"/>
         <source>Keep running in the tray when the window is closed</source>
         <translation>המשך לפעול במגש כשהחלון סגור</translation>
     </message>

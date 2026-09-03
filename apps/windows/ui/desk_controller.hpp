@@ -43,6 +43,7 @@ class DeskController : public QObject {
     Q_PROPERTY(QVariantList endpoints READ endpoints NOTIFY endpointsChanged)
     Q_PROPERTY(int placedCount READ placedCount NOTIFY appsChanged)
     Q_PROPERTY(int bedCount READ bedCount NOTIFY appsChanged)
+    Q_PROPERTY(int tapChannels READ tapChannels NOTIFY stateChanged)
 
     // --- settings -----------------------------------------------------------
     Q_PROPERTY(QString pinned READ pinned WRITE setPinned NOTIFY settingsChanged)
@@ -95,6 +96,7 @@ public:
     [[nodiscard]] QVariantList endpoints() const { return endpoints_; }
     [[nodiscard]] int placedCount() const { return placed_; }
     [[nodiscard]] int bedCount() const { return bed_; }
+    [[nodiscard]] int tapChannels() const { return tap_channels_; }
 
     [[nodiscard]] QString pinned() const;
     void setPinned(const QString& mode);
@@ -174,6 +176,7 @@ private:
     double frames_ = 0, underruns_ = 0, starved_ = 0, last_frame_ms_ = 0, worst_frame_ms_ = 0;
     QVariantList endpoints_;
     int placed_ = 0, bed_ = 0;
+    int tap_channels_ = 0;
 
     QString default_name_, previous_default_name_, default_message_;
     std::string previous_default_id_;

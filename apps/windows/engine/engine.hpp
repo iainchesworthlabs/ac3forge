@@ -25,7 +25,11 @@ struct EngineConfig {
     bool low_latency = false;      // 1-block frames at a bitrate that carries the metadata
     std::uint32_t bitrate_kbps = 0;  // 0: 448 normal, 1536 low-latency
     std::optional<OutputMode> pinned;
-    std::uint16_t tap_channels = 2;  // follows the null sink's format once the driver exists
+    // The width taps open at until the first probe; after each probe the
+    // engine follows the null sink's shared-mode channel count (2, 6 or 8),
+    // so a surround-capable application rendering 7.1 into the driver
+    // reaches the bed by channel rather than as a stereo fold.
+    std::uint16_t tap_channels = 2;
 };
 
 struct AppStatus {
@@ -55,6 +59,7 @@ struct EngineStatus {
     double last_frame_ms = 0.0;
     double worst_frame_ms = 0.0;
     std::string last_error;
+    std::uint16_t tap_channels = 0;  // the width every tap is open at
 };
 
 class Engine {

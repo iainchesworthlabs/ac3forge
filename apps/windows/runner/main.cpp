@@ -44,11 +44,11 @@ std::optional<OutputMode> parse_mode(const std::string& word) {
 }
 
 void print_status(const ac3::windemo::EngineStatus& s) {
-    std::printf("[%s on \"%s\"] frames=%llu last=%.2fms worst=%.2fms starved=%llu underruns=%llu objects=%s\n",
+    std::printf("[%s on \"%s\"] frames=%llu last=%.2fms worst=%.2fms starved=%llu underruns=%llu taps=%uch objects=%s\n",
                 std::string(ac3::windemo::describe(s.mode)).c_str(), s.endpoint_name.c_str(),
                 static_cast<unsigned long long>(s.frames_encoded), s.last_frame_ms, s.worst_frame_ms,
                 static_cast<unsigned long long>(s.starved_reads),
-                static_cast<unsigned long long>(s.underruns), s.objects_enabled ? "on" : "off");
+                static_cast<unsigned long long>(s.underruns), static_cast<unsigned>(s.tap_channels), s.objects_enabled ? "on" : "off");
     std::printf("  output: %s\n  signing: %s\n", s.output_reason.c_str(), s.signing.c_str());
     if (!s.last_error.empty()) {
         std::printf("  last error: %s\n", s.last_error.c_str());

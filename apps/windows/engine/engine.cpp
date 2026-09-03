@@ -100,6 +100,23 @@ struct Engine::Impl {
         bed_views.resize(6);
     }
 
+    // Taps are opened at the null sink's own width, so what a surround
+    // application renders into it arrives by channel. A change closes every
+    // tap; the next session refresh reopens them at the new width.
+    void follow_null_sink_width() {
+        std::uint16_t want = taps.channels();
+        for (const auto& e : output->status().endpoints) {
+            if (e.is_null_sink && (e.shared_channels == 2 || e.shared_channels == 6 || e.shared_channels == 8)) {
+                want = e.shared_channels;
+                break;
+            }
+        }
+        if (want != taps.channels()) {
+            taps = TapPool{want};
+            refresh_sessions();
+        }
+    }
+
     void refresh_sessions() {
         auto apps = sessions.refresh();
         std::vector<AppId> ids;
@@ -199,6 +216,7 @@ struct Engine::Impl {
         s.endpoint_name = out.endpoint_name;
         s.output_reason = out.reason;
         s.endpoints = out.endpoints;
+        s.tap_channels = taps.channels();
         s.underruns = out.underruns;
         s.signing = signing_status;
         s.objects_enabled = signing.available();
@@ -242,6 +260,7 @@ struct Engine::Impl {
             }
             if (want_reprobe.exchange(false, std::memory_order_acq_rel)) {
                 output->reprobe(signing.available());
+                follow_null_sink_width();
             }
 
             // Taps in, slots out.
