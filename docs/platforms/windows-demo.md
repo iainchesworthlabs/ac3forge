@@ -599,7 +599,41 @@ three device restarts while idle and one under a live stream, and takes a reinst
 Special pool accounted for every allocation it made, 111 of 111, with none untagged, untracked
 or failed, and the loads and unloads balance. No bugcheck, no minidump. DDI compliance
 checking is off by default (`-Ddi` adds it): it targets pure WDF drivers, and this is a
-PortCls miniport that uses KMDF only for its entry.
+PortCls miniport that uses KMDF only for its entry. The exercise has since been widened to
+three streams open at once and a surprise removal of the device under a live stream followed
+by a reinstall from scratch; both run clean under the same checks.
+
+**KASAN, and the proof that it is live.** The instrumented package is the solution built
+with `EnableKasan`, which the kit turns into `/fsanitize=kernel-address`; it is 80 KB
+against the ordinary 52 KB and imports the sanitizer's load, store and shadow routines from
+`ntoskrnl.exe`, so it can only load on a kernel that exports them. `Verify-Driver.ps1 -Kasan`
+sets the kernel's `KasanEnabled` switch, reboots, and runs the same exercise against it: the
+instrumented driver loads, the endpoint appears, and every step passes with no bugcheck. That
+alone does not show the checks were live rather than inert exports, so a throwaway build
+carries a deliberate one-past-the-end read of a 16-byte pool block at driver entry. Under
+Driver Verifier that build bugchecks with `0x50`, a page fault on a page-aligned address:
+special pool caught it on its guard page, first. With Driver Verifier off (`-NoVerifier`) and
+only the KASAN kernel, it bugchecks with `0x1F2`, `KASAN_ILLEGAL_ACCESS`, on the unaligned
+address one byte past the block, access size 1. The sanitizer is live and the shipped
+package passes it. That build is deleted after the proof and is never staged. The exercise
+also taught the harness to survive a bugcheck mid-step: `runScriptInGuest` never returns
+when the guest goes down under it, so each guest step now has a timeout, after which the
+script waits for the guest to come back and reads the bugcheck out of the event log.
+
+**Coverage, and what "covered" can mean here.** Statement and branch coverage of the driver
+is not measured and is not attainable with public tooling: coverage instrumentation needs
+a profiling runtime in the code being measured, and there is none for kernel mode; the
+clang-cl and MSVC coverage builds the user-mode application uses cannot link into a driver,
+and Microsoft's own kernel coverage tooling is not public. What the dynamic tier gives is
+functional coverage of the driver's entry points, and it is worth being exact about it. It
+reaches PnP start, stop and remove, surprise removal with a stream open, stream creation, run
+and stop, three concurrent streams, the property handlers behind the default-role change and
+the format negotiation that playback performs, and reinstall over a live device. It does not
+reach sample-rate changes on the endpoint's format, power transitions, or driver unload with
+a stream open. Measured coverage of the driver's own logic would mean lifting the parts that
+are not PortCls plumbing (the stream position and timing simulation, the topology and
+property tables) behind a seam and testing them in user mode under the existing coverage
+preset; that is real work, sized separately if wanted.
 
 ### Phase 5: fast follows
 

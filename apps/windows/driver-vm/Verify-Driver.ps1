@@ -6,7 +6,9 @@
 # guest's KASAN-enabled kernel.
 #
 #   .\Verify-Driver.ps1                 revert, arm the verifiers, install, exercise, report
-#   .\Verify-Driver.ps1 -Kasan          the KASAN package (..\driver\Package\x64\Release\package-kasan) and kernel
+#   .\Verify-Driver.ps1 -Kasan          the newest package under a ..\driver\x64\Release*kasan*\ dir, on the KASAN kernel
+#   .\Verify-Driver.ps1 -Ddi            add Driver Verifier's DDI compliance checking (fails a PortCls start; see below)
+#   .\Verify-Driver.ps1 -NoExercise     install under the verifiers and report, no exercise
 #   .\Verify-Driver.ps1 -ReportOnly     just the report
 #
 # Arming Driver Verifier and the KASAN kernel each take a reboot; the script
@@ -29,6 +31,10 @@ param(
     # cycling and reinstall - to tell a start failure caused by the verifier
     # from one caused by the exercise itself.
     [switch]$NoExercise,
+    # Skip Driver Verifier (keep the WDF verifier and, with -Kasan, the KASAN
+    # kernel). A KASAN proof needs this: special pool catches an overrun on
+    # its guard page before the sanitizer sees it.
+    [switch]$NoVerifier,
     [switch]$ReportOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -56,10 +62,21 @@ function Invoke-Guest([string]$script, [string]$tag) {
     Set-Content -Path $local -Value $script -Encoding UTF8
     Remove-Item $out -ErrorAction SilentlyContinue
     & $vmrun @guest copyFileFromHostToGuest $vmx $local $guestScript | Out-Null
-    & $vmrun @guest runScriptInGuest $vmx '' "cmd /c powershell -NoProfile -ExecutionPolicy Bypass -File $guestScript > $guestOut 2>&1" | Out-Null
-    & $vmrun @guest copyFileFromGuestToHost $vmx $guestOut $out | Out-Null
+    # With a timeout: if the guest bugchecks while the script runs, vmrun
+    # never returns. Kill it, let the guest come back, and carry on - the
+    # report will show the bugcheck, which is the answer.
+    $p = Start-Process -FilePath $vmrun -ArgumentList ($guest + @('runScriptInGuest', "`"$vmx`"", "`"`"", "`"cmd /c powershell -NoProfile -ExecutionPolicy Bypass -File $guestScript > $guestOut 2>&1`"")) -PassThru -WindowStyle Hidden
+    if (-not $p.WaitForExit($GuestStepTimeoutMs)) {
+        $p | Stop-Process -Force -ErrorAction SilentlyContinue
+        Write-Host "  (guest step '$tag' did not return in $($GuestStepTimeoutMs / 1000) s: the guest may have bugchecked; waiting for it)"
+        Start-Sleep -Seconds 20
+        Wait-Tools 600
+        Start-Sleep -Seconds 10
+    }
+    & $vmrun @guest copyFileFromGuestToHost $vmx $guestOut $out 2>$null | Out-Null
     Get-Content $out -ErrorAction SilentlyContinue
 }
+$GuestStepTimeoutMs = 240000
 
 function Restart-Guest {
     # A guest-initiated restart, then Tools again. Driver Verifier and the
@@ -97,13 +114,14 @@ if (-not $ReportOnly) {
     if (-not $cert) { $cert = Get-ChildItem $driverRoot -Recurse -Filter 'package.cer' | Select-Object -First 1 }
     if ($cert) { & $vmrun @guest copyFileFromHostToGuest $vmx $cert.FullName "C:\Users\atmos\$($cert.Name)" | Out-Null }
 
-    Write-Host ('arming Driver Verifier and the WDF verifier' + $(if ($Ddi) { ' (with DDI compliance)' } else { '' }) + $(if ($Kasan) { ', and the KASAN kernel' } else { '' }))
+    Write-Host ($(if ($NoVerifier) { 'arming the WDF verifier' } else { 'arming Driver Verifier and the WDF verifier' }) + $(if ($Ddi) { ' (with DDI compliance)' } else { '' }) + $(if ($Kasan) { ', and the KASAN kernel' } else { '' }))
     # 0x9BB is the memory/IRQL/pool/IO/DMA/security/misc checks; -Ddi adds
     # 0x20000 (DDI compliance). A literal here-string with the flags picked
     # host-side, so the guest script has no interpolation of its own.
     $flags = if ($Ddi) { '0x209BB' } else { '0x9BB' }
+    $armLine = if ($NoVerifier) { '"driver verifier: not armed (-NoVerifier)"' } else { "verifier /flags $flags /driver Ac3ForgeNullSink.sys | Out-Null" }
     Invoke-Guest (@"
-verifier /flags $flags /driver Ac3ForgeNullSink.sys | Out-Null
+$armLine
 "@ + @'
 
 "verifier: " + ((verifier /querysettings | Select-String -Pattern 'Verified Drivers|Special Pool|Force IRQL|DDI') | ForEach-Object { $_.Line.Trim() }) -join ' | '

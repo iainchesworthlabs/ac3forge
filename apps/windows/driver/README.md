@@ -83,6 +83,19 @@ throwaway guest so a bugcheck is a guest reboot.
    the results into `Ac3ForgeNullSink.DVL.XML`, the artefact the HLK Static Tools Logo test
    consumes for submission.
 
+**KASAN.** The instrumented package is the same solution built with `/p:EnableKasan=true`,
+which the kit turns into `/fsanitize=kernel-address`; the result imports the sanitizer's
+load, store and shadow routines from `ntoskrnl.exe`, so it loads only on a kernel that
+exports them (Windows 11 24H2 and later) and only once the `KasanEnabled` value under the
+kernel's Session Manager key is set and the machine rebooted, which `Verify-Driver.ps1
+-Kasan` does. Build it into a scratch copy of this tree so the ordinary package stays put,
+then stage `package\` and `package.cer` under `x64\Release-kasan\`, where `-Kasan` finds
+it:
+
+```bat
+msbuild Ac3ForgeNullSink.sln /p:Configuration=Release /p:Platform=x64 /p:EnableKasan=true /t:Rebuild
+```
+
 Both tiers are clean as of 2026-09-03. One caution the exercise earned: the first pass at
 C6387 deleted the sample's port-class stream-resource probe, and that stopped every device
 start (`CM_PROB_FAILED_START`, `0xC000000D`) without any bugcheck to point at it. The probe
