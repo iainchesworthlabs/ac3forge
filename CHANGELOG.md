@@ -105,6 +105,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   resolves to the server root rather than the demo subdirectory, and the resulting 404 page (which
   carries no cross-origin-isolation headers) made the failure read as "COOP/COEP headers missing".
 
+### Changed
+
+- `ac3::version_details()` (and so `ac3cli --version` and the apps' About boxes) puts the
+  commits past the tag in the headline as semver build metadata: `ac3forge 0.10.0-beta.1+100`
+  rather than `ac3forge 0.10.0-beta.1`, which read as the tagged release. `version_full` is
+  unchanged; the new `git_commits_since_tag` constant carries the count (0 on a tag).
+
 ## [0.10.0-beta.1] - 2026-09-01
 
 Tenth tagged release. The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0,
