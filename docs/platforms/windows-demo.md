@@ -472,7 +472,8 @@ following the system locale) and the same six languages, mechanically translated
 Windows' locale as the default and a chooser in Settings. Verified by `--shot` captures in
 English, French, Arabic and Hebrew: layout, mirroring and the translations all render; the
 engine runs underneath and the room reflects the live session list. Not yet done: real
-Windows icons (monograms stand in), the 3D room and split-per-application. The codec-bypass
+Windows icons (monograms stand in); the 3D room and split-per-application landed under Phase
+5 below. The codec-bypass
 switch on the Output page is wired: with it on, headphones render the engine's own object
 slots where the encoder placed them (the bed's LFE as the one static channel), PCM surround
 takes the encoder's 5.1 bed by channel, and stereo takes an ITU-R BS.775 fold of it; the
@@ -526,7 +527,8 @@ harmful.
 ### Phase 5: fast follows
 
 In this order: test remediation, the end-to-end latency figure, split per application, the 3D
-room, and per-application width and size. Each is its own PR.
+room, and per-application width and size. Each is its own PR. All five landed on 2026-09-03;
+what follows records each.
 
 **Test remediation first.** As of 2026-09-03 the demo's automated tests are 37 Catch2 cases
 over its four pure modules (slots, bed fold, placement smoothing, output policy). The engine
