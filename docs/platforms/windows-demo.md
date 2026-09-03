@@ -456,7 +456,13 @@ screen, driver-free mode still working when it is absent. Prerequisite: the Wind
 installed on `D:`. Exit: "Desktop Atmos Speakers" appears in Sound settings, becomes the
 default from the app, and the direct mix is silent.
 
-**Progress, 2026-09-03:** built, not yet installed. The base turned out to be Microsoft's
+**Progress, 2026-09-03:** built, and verified in the throwaway guest (Windows 11 Pro 25H2,
+build 26100): the package stages, the "Desktop Atmos" device and its "Speakers (Desktop
+Atmos)" endpoint appear, the service runs, the endpoint takes the default role through the
+same policy-config call the demo makes, WAV playback and speech synthesis render into it
+with no bugcheck, and `remove.ps1` takes the device and package out again. Not yet installed
+on the workstation, which still has test signing off and memory integrity on; the Settings
+screen says so. The base turned out to be Microsoft's
 *Simple Audio Sample* rather than SysVAD: the same WaveRT virtual-device machinery at a fifth
 of the size. `apps/windows/driver/` carries it under its own MS-PL `LICENSE` with a `README`
 that lists every cut: the mic-array endpoint, the tone generator and the file-saving path are
