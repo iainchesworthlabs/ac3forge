@@ -96,6 +96,14 @@ TEST_CASE("headphones with a spatial format beat plain stereo", "[windemo]") {
     CHECK(choice.mode == OutputMode::kHeadphones);
 }
 
+TEST_CASE("headphones without a signing key fall to stereo", "[windemo]") {
+    // No key means no object container, so nothing for the spatial renderer
+    // to place; the stream is a 5.1 bed and stereo is its honest fold.
+    const std::vector<EndpointFacts> endpoints = {null_sink(), headphones(true)};
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = false});
+    CHECK(choice.mode == OutputMode::kStereo);
+}
+
 TEST_CASE("headphones without a spatial format fall to stereo", "[windemo]") {
     const std::vector<EndpointFacts> endpoints = {null_sink(), headphones(false)};
     const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true});

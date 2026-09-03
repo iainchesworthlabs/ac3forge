@@ -2269,7 +2269,12 @@ touching a device. Phase 2's pure half followed (`apps/windows/engine/`, namespa
 `ac3::windemo`, `option(AC3FORGE_BUILD_WINDEMO)` default OFF): the slot plan (ten positioned
 plus a five-slot speaker-pinned bed, since `AtmosEncoder` has no bed input), the bed mixer and
 mono fold, placement smoothing, and the output-mode policy carrying the S1 rule; all four
-compile into `ac3tests` on every platform (`tests/windemo/`, 36 cases).
+compile into `ac3tests` on every platform (`tests/windemo/`, 37 cases). Then the Windows half
+and the frame loop: a process-tree session monitor (which leaves the engine's own output
+session out), the tap pool, the output stage with its five routes, the signing hook, the
+engine, and `ac3windemo`, a console runner that met the phase's exit criterion short of a
+receiver: positions on stdin, an application tapped and moved between a slot and the bed,
+real-time cadence, decoded stereo out. Bitstream and spatial modes await hardware.
 </details>
 
 **UX7 (M)** — macOS loopback capture through Core Audio process/system taps. Blocked on a real

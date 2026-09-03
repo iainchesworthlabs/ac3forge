@@ -31,7 +31,12 @@ bool carries(const EndpointFacts& endpoint, OutputMode mode, bool key) {
         case OutputMode::kDdPlus51: return endpoint.accepts_eac3 && !key;
         case OutputMode::kDd51: return endpoint.accepts_ac3;
         case OutputMode::kPcmSurround: return endpoint.shared_channels >= 6;
-        case OutputMode::kHeadphones: return endpoint.spatial && endpoint.spatial_max_objects > 0;
+        // Decoded objects need a signed stream to exist at all (the decoder
+        // reconstructs JOC only behind the authenticity gate), so headphones
+        // are a with-key mode; without one the stream is 5.1 and stereo is
+        // the honest fold.
+        case OutputMode::kHeadphones:
+            return key && endpoint.spatial && endpoint.spatial_max_objects > 0;
         case OutputMode::kStereo: return endpoint.shared_channels >= 2;
         case OutputMode::kNone: return false;
     }

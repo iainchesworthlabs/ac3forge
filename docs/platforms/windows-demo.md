@@ -282,14 +282,15 @@ apps/windows/
     bed_mixer.{hpp,cpp}           stereo/5.1/7.1 taps -> mono object or the 5 bed slots      [landed]
     placement.{hpp,cpp}           UI targets -> per-frame ObjectPlacement, smoothed          [landed]
     output_policy.{hpp,cpp}       probe facts + pin -> mode, endpoint, reason (the S1 rule)  [landed]
+    tap_pool.{hpp,cpp}            one Capture::start_process_loopback per application  [landed]
+    output_stage.{hpp,cpp}        probe, policy, sink ownership, the five routes        [landed]
+    signing_hook.{hpp,cpp}        runtime key resolution, the Shield rule               [landed]
+    engine.{hpp,cpp}              the frame loop and the UI's command/status surface    [landed]
     platform/windows/             the half that talks to Windows, this directory only
-      session_monitor             IAudioSessionManager2 -> list of playing apps, notifications
-      tap_pool                    one Capture::start_process_loopback per session
-      output_stage                probe, state machine, sink ownership, fades
-      default_device              set/restore the system default output
-      foreground                  which window is full-screen and foreground
-    signing_hook.{hpp,cpp}        runtime key resolution, the Shield rule
-    engine.{hpp,cpp}              the frame loop
+      session_monitor             IAudioSessionManager2 -> applications by process tree [landed]
+      default_device              read/move/restore the default output (IPolicyConfig) [landed]
+      foreground                  SHQueryUserNotificationState + foreground window      [landed]
+  runner/main.cpp                 ac3windemo, the console runner (Phase 2's exit)       [landed]
   ui/                             Qt Quick app shell and QML
   spikes/                         Phase 0 programs, kept as documented experiments
   driver/                         the null-sink driver, separately licensed (see below)
@@ -387,6 +388,24 @@ the output policy. The policy holds the S1 rule and one more the tests forced: s
 output on the endpoint applications render to (hearing the direct mix alongside ours) is
 chosen only when no other endpoint can carry anything at all. The Windows half and the frame
 loop are next.
+
+**Progress, later the same day:** the rest of the engine and the console runner, `ac3windemo`.
+The session monitor groups sessions into applications by process tree (Chrome's audio utility
+process rolls up into chrome.exe) and leaves the engine's own process out, because a monitor
+sink's output is itself a session and the first smoke run tapped it. The tap pool keeps one
+process-loopback capture per application; the output stage owns whichever sink the policy
+chose and routes each access unit down one of five paths (E-AC-3 bursts, an AC-3 leg encoded
+from the encoder's own bed, decoded 5.1 PCM, decoded objects to Windows Spatial Sound, decoded
+Lo/Ro); the signing hook applies the Shield rule; the frame loop paces on the taps, folds each
+application into its slot, encodes, signs and submits, and republishes a status snapshot the
+UI will read. On the workstation, with a tone player rendering to the idle FxSound endpoint:
+the player was listed, tapped, moved into slot 0 on a `pos` command and back to the bed on
+`bed`, the stream ran at frame cadence with no starved reads and no underruns, and the
+decoded stereo fold played to a non-default endpoint. Headphone mode is a with-key mode (no
+key means no object container, so nothing for the spatial renderer to place). Not yet
+exercised: any bitstream mode (no receiver, and this workstation's HDMI endpoint accepts
+neither format), the spatial path (Windows Sonic is off here), and a real device-arrival
+switch. Fades on a mode switch are not written; the switch is a stop and a start.
 
 ### Phase 3: UI
 
