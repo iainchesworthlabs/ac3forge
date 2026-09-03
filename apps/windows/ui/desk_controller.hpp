@@ -77,6 +77,9 @@ class DeskController : public QObject {
     Q_PROPERTY(bool testSigningOn READ testSigningOn NOTIFY driverChanged)
     Q_PROPERTY(bool memoryIntegrityOn READ memoryIntegrityOn NOTIFY driverChanged)
     Q_PROPERTY(bool codeIntegrityKnown READ codeIntegrityKnown NOTIFY driverChanged)
+    // Whether this build carries the room's 3D view (Qt Quick 3D found at
+    // configure time; the page hides its toggle otherwise).
+    Q_PROPERTY(bool has3D READ has3D CONSTANT)
 
 public:
     explicit DeskController(QObject* parent = nullptr);
@@ -138,6 +141,7 @@ public:
     [[nodiscard]] bool testSigningOn() const { return code_integrity_.test_signing; }
     [[nodiscard]] bool memoryIntegrityOn() const { return code_integrity_.hvci; }
     [[nodiscard]] bool codeIntegrityKnown() const { return code_integrity_.known; }
+    [[nodiscard]] static bool has3D() { return AC3DESK_QUICK3D != 0; }
 
     Q_INVOKABLE void installDriver();
     Q_INVOKABLE void removeDriver();

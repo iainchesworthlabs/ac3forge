@@ -33,11 +33,12 @@ target_include_directories(ac3desk_qmltests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/ui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui")
 target_compile_definitions(ac3desk_qmltests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX
     AC3DESK_DRIVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/driver"
+    AC3DESK_QUICK3D=${AC3DESK_QUICK3D}
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/ui/tests/qml")
 target_link_libraries(ac3desk_qmltests PRIVATE
     ac3::windemo_engine
     ac3::coverage
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickTest)
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickTest ${AC3DESK_QUICK3D_LIB})
 # Into bin/ beside ac3desk.exe, whose windeployqt step puts the Qt runtime
 # there; ordered after it so the two never deploy into bin/ at once.
 set_target_properties(ac3desk_qmltests PROPERTIES

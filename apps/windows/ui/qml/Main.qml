@@ -19,6 +19,7 @@ ApplicationWindow {
     color: Theme.bg
 
     property string page: "room"
+    property bool roomThreeD: false
 
     Component.onCompleted: {
         Theme.preference = DeskController.theme;
@@ -108,7 +109,7 @@ ApplicationWindow {
     StackLayout {
         anchors.fill: parent
         currentIndex: window.page === "room" ? 0 : window.page === "output" ? 1 : 2
-        RoomPage {}
+        RoomPage { threeD: window.roomThreeD }
         OutputPage {}
         SettingsPage {}
     }

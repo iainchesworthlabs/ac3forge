@@ -7,6 +7,7 @@ import Ac3ForgeDesk
 // tray, and the output summary (docs/platforms/windows-demo.md, "UI").
 Item {
     id: page
+    property bool threeD: false
     property int selectedApp: -1
 
     function appById(id) {
@@ -81,7 +82,36 @@ Item {
                 Layout.fillWidth: true
                 Text { text: DeskController.placedCount + qsTr(" of 10 slots placed"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11 }
             }
+            // The 3D picture of the room, when the build has Qt Quick 3D;
+            // placement stays in the plan and elevation.
             RowLayout {
+                Layout.fillWidth: true
+                visible: DeskController.has3D
+                Item { Layout.fillWidth: true }
+                SegmentedControl {
+                    objectName: "roomViewChoice"
+                    model: [{ label: qsTr("Plan + elevation"), value: "2d" }, { label: qsTr("3D"), value: "3d" }]
+                    currentValue: page.threeD ? "3d" : "2d"
+                    accessibleName: qsTr("Room view")
+                    onSelected: function(value) { page.threeD = value === "3d"; }
+                }
+            }
+            Loader {
+                id: room3d
+                objectName: "room3dLoader"
+                visible: page.threeD
+                active: page.threeD && DeskController.has3D
+                Layout.preferredWidth: 400 + Theme.space6 + 400
+                Layout.preferredHeight: 400 + 22
+                source: "Room3DView.qml"
+                onLoaded: {
+                    item.caption = qsTr("Room (3D)");
+                    item.apps = Qt.binding(function() { return DeskController.apps; });
+                    item.selectedApp = Qt.binding(function() { return page.selectedApp; });
+                }
+            }
+            RowLayout {
+                visible: !page.threeD
                 spacing: Theme.space6
                 RoomView {
                     id: plan

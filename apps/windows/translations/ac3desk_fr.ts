@@ -82,32 +82,32 @@
         <translation>Pas de sortie</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="530"/>
+        <location filename="../ui/desk_controller.cpp" line="537"/>
         <source>no driver package under %1</source>
         <translation>pas de paquet de pilote sous %1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="558"/>
+        <location filename="../ui/desk_controller.cpp" line="565"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>installation, répondez à l'invite d'élévation…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="559"/>
+        <location filename="../ui/desk_controller.cpp" line="566"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>retrait, répondez à l'invite d'élévation…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="585"/>
+        <location filename="../ui/desk_controller.cpp" line="592"/>
         <source>installed</source>
         <translation>installé</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="585"/>
+        <location filename="../ui/desk_controller.cpp" line="592"/>
         <source>removed</source>
         <translation>retiré</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="587"/>
+        <location filename="../ui/desk_controller.cpp" line="594"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 a échoué (code de sortie %2)</translation>
     </message>
@@ -116,79 +116,79 @@
     <name>Main</name>
     <message>
         <location filename="../ui/qml/Main.qml" line="18"/>
-        <location filename="../ui/qml/Main.qml" line="60"/>
-        <location filename="../ui/qml/Main.qml" line="158"/>
+        <location filename="../ui/qml/Main.qml" line="61"/>
+        <location filename="../ui/qml/Main.qml" line="159"/>
         <source>Desktop Atmos</source>
         <translation>Desktop Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="67"/>
+        <location filename="../ui/qml/Main.qml" line="68"/>
         <source>your applications, placed in the room</source>
         <translation>vos applications, placées dans la pièce</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="86"/>
+        <location filename="../ui/qml/Main.qml" line="87"/>
         <source> · objects signed</source>
         <translation> · objets signés</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="86"/>
+        <location filename="../ui/qml/Main.qml" line="87"/>
         <source> · 5.1 bed only</source>
         <translation> · lit 5.1 seulement</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="96"/>
+        <location filename="../ui/qml/Main.qml" line="97"/>
         <source>Open the Output page</source>
         <translation>Ouvrir la page Sortie</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="99"/>
+        <location filename="../ui/qml/Main.qml" line="100"/>
         <source>Room</source>
         <translation>Pièce</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="99"/>
-        <location filename="../ui/qml/Main.qml" line="169"/>
+        <location filename="../ui/qml/Main.qml" line="100"/>
+        <location filename="../ui/qml/Main.qml" line="170"/>
         <source>Output</source>
         <translation>Sortie</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="99"/>
+        <location filename="../ui/qml/Main.qml" line="100"/>
         <source>Settings</source>
         <translation>Paramètres</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="101"/>
+        <location filename="../ui/qml/Main.qml" line="102"/>
         <source>Page</source>
         <translation>Page</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="128"/>
+        <location filename="../ui/qml/Main.qml" line="129"/>
         <source>frame %1 ms</source>
         <translation>trame %1 ms</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="129"/>
+        <location filename="../ui/qml/Main.qml" line="130"/>
         <source>worst %1 ms</source>
         <translation>pire %1 ms</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="130"/>
+        <location filename="../ui/qml/Main.qml" line="131"/>
         <source>%1 underruns</source>
         <translation>%1 sous-alimentations</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="131"/>
+        <location filename="../ui/qml/Main.qml" line="132"/>
         <source>%1 starved reads</source>
         <translation>%1 lectures à sec</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="132"/>
+        <location filename="../ui/qml/Main.qml" line="133"/>
         <source>1-block frames</source>
         <translation>trames de 1 bloc</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="132"/>
+        <location filename="../ui/qml/Main.qml" line="133"/>
         <source>6-block frames</source>
         <translation>trames de 6 blocs</translation>
     </message>
@@ -201,102 +201,102 @@
         <translation type="vanished">15 objets · %1 placés · %2 dans le lit · 5 emplacements de lit</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="133"/>
+        <location filename="../ui/qml/Main.qml" line="134"/>
         <source>15 objects · %1 placed · %2 in the bed · 5 bed slots · %3-channel taps</source>
         <translation>15 objets · %1 placés · %2 dans le lit · 5 emplacements de lit · prises à %3 canaux</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="145"/>
+        <location filename="../ui/qml/Main.qml" line="146"/>
         <source>engine running</source>
         <translation>moteur en marche</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="145"/>
+        <location filename="../ui/qml/Main.qml" line="146"/>
         <source>engine stopped</source>
         <translation>moteur arrêté</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="167"/>
+        <location filename="../ui/qml/Main.qml" line="168"/>
         <source>Open the room</source>
         <translation>Ouvrir la pièce</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="169"/>
+        <location filename="../ui/qml/Main.qml" line="170"/>
         <source>auto</source>
         <translation>auto</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="171"/>
+        <location filename="../ui/qml/Main.qml" line="172"/>
         <source>Automatic</source>
         <translation>Automatique</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="172"/>
+        <location filename="../ui/qml/Main.qml" line="173"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="173"/>
+        <location filename="../ui/qml/Main.qml" line="174"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="174"/>
+        <location filename="../ui/qml/Main.qml" line="175"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="175"/>
+        <location filename="../ui/qml/Main.qml" line="176"/>
         <source>PCM surround</source>
         <translation>Surround PCM</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="176"/>
+        <location filename="../ui/qml/Main.qml" line="177"/>
         <source>Headphones</source>
         <translation>Casque</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="177"/>
+        <location filename="../ui/qml/Main.qml" line="178"/>
         <source>Stereo</source>
         <translation>Stéréo</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="181"/>
+        <location filename="../ui/qml/Main.qml" line="182"/>
         <source>Default output: </source>
         <translation>Sortie par défaut : </translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="181"/>
+        <location filename="../ui/qml/Main.qml" line="182"/>
         <source>Move default output to </source>
         <translation>Déplacer la sortie par défaut vers </translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="186"/>
+        <location filename="../ui/qml/Main.qml" line="187"/>
         <source>Restore </source>
         <translation>Restaurer </translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="186"/>
+        <location filename="../ui/qml/Main.qml" line="187"/>
         <source>previous default output</source>
         <translation>la sortie par défaut précédente</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="191"/>
+        <location filename="../ui/qml/Main.qml" line="192"/>
         <source>Objects on · key loaded</source>
         <translation>Objets activés · clé chargée</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="191"/>
+        <location filename="../ui/qml/Main.qml" line="192"/>
         <source>Objects off · no key</source>
         <translation>Objets désactivés · pas de clé</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="192"/>
+        <location filename="../ui/qml/Main.qml" line="193"/>
         <source>Settings…</source>
         <translation>Paramètres…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="194"/>
+        <location filename="../ui/qml/Main.qml" line="195"/>
         <source>Quit</source>
         <translation>Quitter</translation>
     </message>
@@ -525,234 +525,262 @@
     </message>
 </context>
 <context>
+    <name>Room3DView</name>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="41"/>
+        <source>drag to orbit · wheel to zoom</source>
+        <translation>glisser pour orbiter · molette pour zoomer</translation>
+    </message>
+</context>
+<context>
     <name>RoomPage</name>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="36"/>
+        <location filename="../ui/qml/RoomPage.qml" line="37"/>
         <source>APPLICATIONS</source>
         <translation>APPLICATIONS</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="39"/>
+        <location filename="../ui/qml/RoomPage.qml" line="40"/>
         <source>nothing is playing</source>
         <translation>rien ne joue</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="39"/>
+        <location filename="../ui/qml/RoomPage.qml" line="40"/>
         <source> with sound</source>
         <translation> avec du son</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="61"/>
+        <location filename="../ui/qml/RoomPage.qml" line="62"/>
         <source>Full-screen applications stay in the bed; the lock lifts when they leave full-screen.</source>
         <translation>Les applications en plein écran restent dans le lit ; le verrou se lève quand elles quittent le plein écran.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="80"/>
+        <location filename="../ui/qml/RoomPage.qml" line="81"/>
         <source>ROOM</source>
         <translation>PIÈCE</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="82"/>
+        <location filename="../ui/qml/RoomPage.qml" line="83"/>
         <source> of 10 slots placed</source>
         <translation> emplacements sur 10 placés</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="90"/>
+        <source>Plan + elevation</source>
+        <translation>Plan + élévation</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="90"/>
+        <source>3D</source>
+        <translation>3D</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="92"/>
+        <source>Room view</source>
+        <translation>Vue de la pièce</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="105"/>
+        <source>Room (3D)</source>
+        <translation>Pièce (3D)</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="117"/>
         <source>Plan (top-down)</source>
         <translation>Plan (vue de dessus)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="91"/>
+        <location filename="../ui/qml/RoomPage.qml" line="118"/>
         <source>drag to place</source>
         <translation>glisser pour placer</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="107"/>
+        <location filename="../ui/qml/RoomPage.qml" line="134"/>
         <source>Elevation (side-on)</source>
         <translation>Élévation (vue de côté)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="108"/>
+        <location filename="../ui/qml/RoomPage.qml" line="135"/>
         <source>drag: depth + height</source>
         <translation>glisser : profondeur + hauteur</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="134"/>
+        <location filename="../ui/qml/RoomPage.qml" line="161"/>
         <source>slot </source>
         <translation>emplacement </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="135"/>
+        <location filename="../ui/qml/RoomPage.qml" line="162"/>
         <source>in the bed</source>
         <translation>dans le lit</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="144"/>
+        <location filename="../ui/qml/RoomPage.qml" line="171"/>
         <source>Send to bed</source>
         <translation>Envoyer au lit</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="144"/>
+        <location filename="../ui/qml/RoomPage.qml" line="171"/>
         <source>Place in the room</source>
         <translation>Placer dans la pièce</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="152"/>
+        <location filename="../ui/qml/RoomPage.qml" line="179"/>
         <source>Centre</source>
         <translation>Centrer</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="158"/>
+        <location filename="../ui/qml/RoomPage.qml" line="185"/>
         <source>Mono</source>
         <translation>Mono</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="158"/>
+        <location filename="../ui/qml/RoomPage.qml" line="185"/>
         <source>Split</source>
         <translation>Scinder</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="164"/>
+        <location filename="../ui/qml/RoomPage.qml" line="191"/>
         <source>full-screen: stays in the bed</source>
         <translation>plein écran : reste dans le lit</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="177"/>
+        <location filename="../ui/qml/RoomPage.qml" line="204"/>
         <source>BED</source>
         <translation>LIT</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="179"/>
+        <location filename="../ui/qml/RoomPage.qml" line="206"/>
         <source>unplaced applications, mixed to the 5.1 bed</source>
         <translation>applications non placées, mixées dans le lit 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="204"/>
+        <location filename="../ui/qml/RoomPage.qml" line="231"/>
         <source>every application is placed</source>
         <translation>chaque application est placée</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="204"/>
+        <location filename="../ui/qml/RoomPage.qml" line="231"/>
         <source>drag one into the room to place it · drag a marker back here, or double-click it, to return it</source>
         <translation>glissez-en une dans la pièce pour la placer · glissez un marqueur ici, ou double-cliquez dessus, pour la renvoyer</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="227"/>
+        <location filename="../ui/qml/RoomPage.qml" line="254"/>
         <source>OUTPUT</source>
         <translation>SORTIE</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="236"/>
+        <location filename="../ui/qml/RoomPage.qml" line="263"/>
         <source>pin: </source>
         <translation>épingle : </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="238"/>
+        <location filename="../ui/qml/RoomPage.qml" line="265"/>
         <source>Output…</source>
         <translation>Sortie…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="242"/>
+        <location filename="../ui/qml/RoomPage.qml" line="269"/>
         <source>DEFAULT OUTPUT</source>
         <translation>SORTIE PAR DÉFAUT</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="250"/>
+        <location filename="../ui/qml/RoomPage.qml" line="277"/>
         <source>no default output</source>
         <translation>pas de sortie par défaut</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="255"/>
+        <location filename="../ui/qml/RoomPage.qml" line="282"/>
         <source>Applications render here, silently.</source>
         <translation>Les applications restituent ici, en silence.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="255"/>
+        <location filename="../ui/qml/RoomPage.qml" line="282"/>
         <source> is restored on quit.</source>
         <translation> est restaurée à la fermeture.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="256"/>
+        <location filename="../ui/qml/RoomPage.qml" line="283"/>
         <source>Applications still render to a real device, so you hear them directly as well. Move the default to the silent device to fix that.</source>
         <translation>Les applications restituent encore vers un vrai périphérique, vous les entendez donc aussi directement. Déplacez la sortie par défaut vers le périphérique silencieux pour corriger cela.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="264"/>
+        <location filename="../ui/qml/RoomPage.qml" line="291"/>
         <source>Restore </source>
         <translation>Restaurer </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="264"/>
+        <location filename="../ui/qml/RoomPage.qml" line="291"/>
         <source>previous output</source>
         <translation>la sortie précédente</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="265"/>
+        <location filename="../ui/qml/RoomPage.qml" line="292"/>
         <source>Move default to </source>
         <translation>Déplacer la sortie par défaut vers </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="272"/>
+        <location filename="../ui/qml/RoomPage.qml" line="299"/>
         <source>SIGNING</source>
         <translation>SIGNATURE</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="273"/>
+        <location filename="../ui/qml/RoomPage.qml" line="300"/>
         <source>key loaded · objects on</source>
         <translation>clé chargée · objets activés</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="273"/>
+        <location filename="../ui/qml/RoomPage.qml" line="300"/>
         <source>no key · 5.1 bed only</source>
         <translation>pas de clé · lit 5.1 seulement</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="274"/>
+        <location filename="../ui/qml/RoomPage.qml" line="301"/>
         <source>load one in Settings</source>
         <translation>chargez-en une dans Paramètres</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="282"/>
+        <location filename="../ui/qml/RoomPage.qml" line="309"/>
         <source>left</source>
         <translation>gauche</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="282"/>
+        <location filename="../ui/qml/RoomPage.qml" line="309"/>
         <source>right</source>
         <translation>droite</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="282"/>
+        <location filename="../ui/qml/RoomPage.qml" line="309"/>
         <source>centre</source>
         <translation>centre</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="283"/>
+        <location filename="../ui/qml/RoomPage.qml" line="310"/>
         <source>in front of you</source>
         <translation>devant vous</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="283"/>
+        <location filename="../ui/qml/RoomPage.qml" line="310"/>
         <source>behind you</source>
         <translation>derrière vous</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="283"/>
+        <location filename="../ui/qml/RoomPage.qml" line="310"/>
         <source>beside you</source>
         <translation>à côté de vous</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="284"/>
+        <location filename="../ui/qml/RoomPage.qml" line="311"/>
         <source>up</source>
         <translation>en haut</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="284"/>
+        <location filename="../ui/qml/RoomPage.qml" line="311"/>
         <source>low</source>
         <translation>en bas</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="285"/>
+        <location filename="../ui/qml/RoomPage.qml" line="312"/>
         <source>to the </source>
         <translation>à </translation>
     </message>

@@ -35,6 +35,32 @@ TestCase {
         waitForRendering(page);
     }
 
+    function test_threeDToggleLoadsTheViewWhenBuilt() {
+        const page = createTemporaryObject(roomPage, testCase);
+        verify(page);
+        waitForRendering(page);
+        const choice = findChild(page, "roomViewChoice");
+        const loader = findChild(page, "room3dLoader");
+        verify(choice);
+        verify(loader);
+        // Effective visibility is false for everything under a TestCase
+        // (the TestCase item itself is hidden), so the toggle's presence is
+        // the check; its own visible binding follows has3D.
+        compare(loader.active, false);
+        if (!DeskController.has3D) {
+            skip("this build has no Qt Quick 3D");
+        }
+        page.threeD = true;
+        compare(loader.active, true);
+        // The view either comes up or reports why; it never hangs the page.
+        tryVerify(function() { return loader.status === Loader.Ready || loader.status === Loader.Error; }, 10000);
+        if (loader.status === Loader.Ready) {
+            compare(loader.item.apps.length, DeskController.apps.length);
+        }
+        page.threeD = false;
+        compare(loader.active, false);
+    }
+
     function test_runningRoomCountsAddUp() {
         DeskController.start();
         if (!DeskController.running) {

@@ -70,6 +70,10 @@ int main(int argc, char** argv) {
     if (engine.rootObjects().isEmpty()) {
         return 1;
     }
+    if (page == QLatin1String("room3d")) {  // the room with its 3D view up
+        engine.rootObjects().first()->setProperty("roomThreeD", true);
+        page = QStringLiteral("room");
+    }
     if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
     }

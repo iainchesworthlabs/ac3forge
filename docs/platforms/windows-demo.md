@@ -634,8 +634,17 @@ applications now enter the plan through one path that applies it.
 
 ![A split application: Music holds slots 2 and 3 as a pair at the placed position](screenshots/windows-demo-room-split.png)
 
-The room still draws one marker at the pair's centre; two small satellites either side
-are the remaining polish.
+The plan view draws a split pair as the marker with two small satellites at the spread.
+
+**The 3D room, landed 2026-09-03.** `Room3DView.qml` (Qt Quick 3D, built when the kit has
+it; the toggle is hidden otherwise and `DeskController.has3D` says which) shows the room from
+an orbiting camera: the floor and the wall line at ear level, the listener at the centre, the
+five bed speakers where the slot plan pins them, and every placed application as a sphere at
+its object position with a stem down to ear level, a split pair as two spheres. Drag orbits
+and the wheel zooms; placement stays in the plan and elevation views, which is the Q&A's
+"2D first, 3D fast follow" reading. `ac3desk --page room3d` captures it.
+
+![The 3D room: Music as a pair front-left, Game elevated at the rear right](screenshots/windows-demo-room-3d.png)
 
 ### Phase 6: docs, CI, release
 

@@ -75,6 +75,22 @@ if(NOT Qt6_FOUND)
 else()
     qt_standard_project_setup(REQUIRES 6.5)
 
+    # Qt Quick 3D is optional: the room's 3D picture (ui/qml/Room3DView.qml)
+    # is built when the kit has it and the page hides its toggle when not.
+    # The value reaches the controller as a compile-time constant, not a
+    # conditional: DeskController::has3D() returns AC3DESK_QUICK3D.
+    find_package(Qt6 6.5 QUIET COMPONENTS Quick3D)
+    if(Qt6Quick3D_FOUND)
+        set(AC3DESK_QUICK3D 1)
+        set(AC3DESK_QUICK3D_LIB Qt6::Quick3D)
+        set(AC3DESK_QUICK3D_QML "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/Room3DView.qml")
+    else()
+        set(AC3DESK_QUICK3D 0)
+        set(AC3DESK_QUICK3D_LIB)
+        set(AC3DESK_QUICK3D_QML)
+        message(STATUS "Qt Quick 3D not found: the Desktop Atmos Demo's 3D room is left out")
+    endif()
+
     set(AC3DESK_SHARED_QML Theme.qml Card.qml RailBlock.qml SegmentedControl.qml)
     # Generated INTO the source tree (ignored by git, see ui/qml/shared/.gitignore)
     # rather than the build tree: the QML ahead-of-time compiler names its
@@ -106,6 +122,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/DeskCheck.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/OutputPage.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/SettingsPage.qml"
+        ${AC3DESK_QUICK3D_QML}
         ${AC3DESK_SHARED_OUT})
     foreach(qml_file IN LISTS AC3DESK_QML_FILES)
         get_filename_component(qml_name "${qml_file}" NAME)
@@ -136,13 +153,14 @@ else()
     # Settings screen's install/remove buttons look when no driver/ folder
     # sits beside the executable (a build-tree run).
     target_compile_definitions(ac3desk PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX
-        AC3DESK_DRIVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/driver")
+        AC3DESK_DRIVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/driver"
+        AC3DESK_QUICK3D=${AC3DESK_QUICK3D})
     # ac3::warnings is deliberately not linked: Qt's generated sources would
     # be compiled under it (apps/gui carries a workaround for exactly that).
     target_link_libraries(ac3desk PRIVATE
         ac3::windemo_engine
         ac3::coverage
-        Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
+        Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 ${AC3DESK_QUICK3D_LIB})
     set_target_properties(ac3desk PROPERTIES
         WIN32_EXECUTABLE ON
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")

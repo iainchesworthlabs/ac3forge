@@ -82,32 +82,32 @@
         <translation>لا إخراج</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="530"/>
+        <location filename="../ui/desk_controller.cpp" line="537"/>
         <source>no driver package under %1</source>
         <translation>لا توجد حزمة برنامج تشغيل ضمن %1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="558"/>
+        <location filename="../ui/desk_controller.cpp" line="565"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>جارٍ التثبيت، أجب على طلب رفع الصلاحيات…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="559"/>
+        <location filename="../ui/desk_controller.cpp" line="566"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>جارٍ الإزالة، أجب على طلب رفع الصلاحيات…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="585"/>
+        <location filename="../ui/desk_controller.cpp" line="592"/>
         <source>installed</source>
         <translation>تم التثبيت</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="585"/>
+        <location filename="../ui/desk_controller.cpp" line="592"/>
         <source>removed</source>
         <translation>تمت الإزالة</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="587"/>
+        <location filename="../ui/desk_controller.cpp" line="594"/>
         <source>%1 failed (exit code %2)</source>
         <translation>فشل %1 (رمز الخروج %2)</translation>
     </message>
@@ -116,79 +116,79 @@
     <name>Main</name>
     <message>
         <location filename="../ui/qml/Main.qml" line="18"/>
-        <location filename="../ui/qml/Main.qml" line="60"/>
-        <location filename="../ui/qml/Main.qml" line="158"/>
+        <location filename="../ui/qml/Main.qml" line="61"/>
+        <location filename="../ui/qml/Main.qml" line="159"/>
         <source>Desktop Atmos</source>
         <translation>Desktop Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="67"/>
+        <location filename="../ui/qml/Main.qml" line="68"/>
         <source>your applications, placed in the room</source>
         <translation>تطبيقاتك، موضوعة في الغرفة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="86"/>
+        <location filename="../ui/qml/Main.qml" line="87"/>
         <source> · objects signed</source>
         <translation> · الكائنات موقعة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="86"/>
+        <location filename="../ui/qml/Main.qml" line="87"/>
         <source> · 5.1 bed only</source>
         <translation> · قاعدة 5.1 فقط</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="96"/>
+        <location filename="../ui/qml/Main.qml" line="97"/>
         <source>Open the Output page</source>
         <translation>فتح صفحة الإخراج</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="99"/>
+        <location filename="../ui/qml/Main.qml" line="100"/>
         <source>Room</source>
         <translation>الغرفة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="99"/>
-        <location filename="../ui/qml/Main.qml" line="169"/>
+        <location filename="../ui/qml/Main.qml" line="100"/>
+        <location filename="../ui/qml/Main.qml" line="170"/>
         <source>Output</source>
         <translation>الإخراج</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="99"/>
+        <location filename="../ui/qml/Main.qml" line="100"/>
         <source>Settings</source>
         <translation>الإعدادات</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="101"/>
+        <location filename="../ui/qml/Main.qml" line="102"/>
         <source>Page</source>
         <translation>الصفحة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="128"/>
+        <location filename="../ui/qml/Main.qml" line="129"/>
         <source>frame %1 ms</source>
         <translation>إطار %1 ms</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="129"/>
+        <location filename="../ui/qml/Main.qml" line="130"/>
         <source>worst %1 ms</source>
         <translation>الأسوأ %1 ms</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="130"/>
+        <location filename="../ui/qml/Main.qml" line="131"/>
         <source>%1 underruns</source>
         <translation>%1 نقص في التغذية</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="131"/>
+        <location filename="../ui/qml/Main.qml" line="132"/>
         <source>%1 starved reads</source>
         <translation>%1 قراءات فارغة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="132"/>
+        <location filename="../ui/qml/Main.qml" line="133"/>
         <source>1-block frames</source>
         <translation>إطارات من كتلة واحدة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="132"/>
+        <location filename="../ui/qml/Main.qml" line="133"/>
         <source>6-block frames</source>
         <translation>إطارات من 6 كتل</translation>
     </message>
@@ -201,102 +201,102 @@
         <translation type="vanished">15 كائنًا · %1 موضوعة · %2 في القاعدة · 5 فتحات قاعدة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="133"/>
+        <location filename="../ui/qml/Main.qml" line="134"/>
         <source>15 objects · %1 placed · %2 in the bed · 5 bed slots · %3-channel taps</source>
         <translation>15 كائنًا · %1 موضوعة · %2 في القاعدة · 5 فتحات قاعدة · التقاطات بـ %3 قنوات</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="145"/>
+        <location filename="../ui/qml/Main.qml" line="146"/>
         <source>engine running</source>
         <translation>المحرك يعمل</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="145"/>
+        <location filename="../ui/qml/Main.qml" line="146"/>
         <source>engine stopped</source>
         <translation>المحرك متوقف</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="167"/>
+        <location filename="../ui/qml/Main.qml" line="168"/>
         <source>Open the room</source>
         <translation>فتح الغرفة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="169"/>
+        <location filename="../ui/qml/Main.qml" line="170"/>
         <source>auto</source>
         <translation>تلقائي</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="171"/>
+        <location filename="../ui/qml/Main.qml" line="172"/>
         <source>Automatic</source>
         <translation>تلقائي</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="172"/>
+        <location filename="../ui/qml/Main.qml" line="173"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="173"/>
+        <location filename="../ui/qml/Main.qml" line="174"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="174"/>
+        <location filename="../ui/qml/Main.qml" line="175"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="175"/>
+        <location filename="../ui/qml/Main.qml" line="176"/>
         <source>PCM surround</source>
         <translation>محيطي PCM</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="176"/>
+        <location filename="../ui/qml/Main.qml" line="177"/>
         <source>Headphones</source>
         <translation>سماعات الرأس</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="177"/>
+        <location filename="../ui/qml/Main.qml" line="178"/>
         <source>Stereo</source>
         <translation>استيريو</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="181"/>
+        <location filename="../ui/qml/Main.qml" line="182"/>
         <source>Default output: </source>
         <translation>الإخراج الافتراضي: </translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="181"/>
+        <location filename="../ui/qml/Main.qml" line="182"/>
         <source>Move default output to </source>
         <translation>نقل الإخراج الافتراضي إلى </translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="186"/>
+        <location filename="../ui/qml/Main.qml" line="187"/>
         <source>Restore </source>
         <translation>استعادة </translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="186"/>
+        <location filename="../ui/qml/Main.qml" line="187"/>
         <source>previous default output</source>
         <translation>الإخراج الافتراضي السابق</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="191"/>
+        <location filename="../ui/qml/Main.qml" line="192"/>
         <source>Objects on · key loaded</source>
         <translation>الكائنات مفعلة · المفتاح محمّل</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="191"/>
+        <location filename="../ui/qml/Main.qml" line="192"/>
         <source>Objects off · no key</source>
         <translation>الكائنات معطلة · لا مفتاح</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="192"/>
+        <location filename="../ui/qml/Main.qml" line="193"/>
         <source>Settings…</source>
         <translation>الإعدادات…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="194"/>
+        <location filename="../ui/qml/Main.qml" line="195"/>
         <source>Quit</source>
         <translation>إنهاء</translation>
     </message>
@@ -525,234 +525,262 @@
     </message>
 </context>
 <context>
+    <name>Room3DView</name>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="41"/>
+        <source>drag to orbit · wheel to zoom</source>
+        <translation>اسحب للدوران · العجلة للتكبير</translation>
+    </message>
+</context>
+<context>
     <name>RoomPage</name>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="36"/>
+        <location filename="../ui/qml/RoomPage.qml" line="37"/>
         <source>APPLICATIONS</source>
         <translation>التطبيقات</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="39"/>
+        <location filename="../ui/qml/RoomPage.qml" line="40"/>
         <source>nothing is playing</source>
         <translation>لا شيء يعمل</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="39"/>
+        <location filename="../ui/qml/RoomPage.qml" line="40"/>
         <source> with sound</source>
         <translation> مع صوت</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="61"/>
+        <location filename="../ui/qml/RoomPage.qml" line="62"/>
         <source>Full-screen applications stay in the bed; the lock lifts when they leave full-screen.</source>
         <translation>تبقى تطبيقات ملء الشاشة في القاعدة؛ ويرفع القفل عندما تغادر ملء الشاشة.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="80"/>
+        <location filename="../ui/qml/RoomPage.qml" line="81"/>
         <source>ROOM</source>
         <translation>الغرفة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="82"/>
+        <location filename="../ui/qml/RoomPage.qml" line="83"/>
         <source> of 10 slots placed</source>
         <translation> من 10 فتحات موضوعة</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="90"/>
+        <source>Plan + elevation</source>
+        <translation>مسقط + ارتفاع</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="90"/>
+        <source>3D</source>
+        <translation>ثلاثي الأبعاد</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="92"/>
+        <source>Room view</source>
+        <translation>عرض الغرفة</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="105"/>
+        <source>Room (3D)</source>
+        <translation>الغرفة (ثلاثية الأبعاد)</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="117"/>
         <source>Plan (top-down)</source>
         <translation>مخطط (من الأعلى)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="91"/>
+        <location filename="../ui/qml/RoomPage.qml" line="118"/>
         <source>drag to place</source>
         <translation>اسحب للوضع</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="107"/>
+        <location filename="../ui/qml/RoomPage.qml" line="134"/>
         <source>Elevation (side-on)</source>
         <translation>ارتفاع (من الجانب)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="108"/>
+        <location filename="../ui/qml/RoomPage.qml" line="135"/>
         <source>drag: depth + height</source>
         <translation>اسحب: العمق + الارتفاع</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="134"/>
+        <location filename="../ui/qml/RoomPage.qml" line="161"/>
         <source>slot </source>
         <translation>الفتحة </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="135"/>
+        <location filename="../ui/qml/RoomPage.qml" line="162"/>
         <source>in the bed</source>
         <translation>في القاعدة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="144"/>
+        <location filename="../ui/qml/RoomPage.qml" line="171"/>
         <source>Send to bed</source>
         <translation>إرسال إلى القاعدة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="144"/>
+        <location filename="../ui/qml/RoomPage.qml" line="171"/>
         <source>Place in the room</source>
         <translation>وضع في الغرفة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="152"/>
+        <location filename="../ui/qml/RoomPage.qml" line="179"/>
         <source>Centre</source>
         <translation>توسيط</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="158"/>
+        <location filename="../ui/qml/RoomPage.qml" line="185"/>
         <source>Mono</source>
         <translation>أحادي</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="158"/>
+        <location filename="../ui/qml/RoomPage.qml" line="185"/>
         <source>Split</source>
         <translation>تقسيم</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="164"/>
+        <location filename="../ui/qml/RoomPage.qml" line="191"/>
         <source>full-screen: stays in the bed</source>
         <translation>ملء الشاشة: يبقى في القاعدة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="177"/>
+        <location filename="../ui/qml/RoomPage.qml" line="204"/>
         <source>BED</source>
         <translation>القاعدة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="179"/>
+        <location filename="../ui/qml/RoomPage.qml" line="206"/>
         <source>unplaced applications, mixed to the 5.1 bed</source>
         <translation>تطبيقات غير موضوعة، ممزوجة في قاعدة 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="204"/>
+        <location filename="../ui/qml/RoomPage.qml" line="231"/>
         <source>every application is placed</source>
         <translation>كل التطبيقات موضوعة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="204"/>
+        <location filename="../ui/qml/RoomPage.qml" line="231"/>
         <source>drag one into the room to place it · drag a marker back here, or double-click it, to return it</source>
         <translation>اسحب واحدًا إلى الغرفة لوضعه · اسحب علامة إلى هنا أو انقر عليها نقرًا مزدوجًا لإعادتها</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="227"/>
+        <location filename="../ui/qml/RoomPage.qml" line="254"/>
         <source>OUTPUT</source>
         <translation>الإخراج</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="236"/>
+        <location filename="../ui/qml/RoomPage.qml" line="263"/>
         <source>pin: </source>
         <translation>تثبيت: </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="238"/>
+        <location filename="../ui/qml/RoomPage.qml" line="265"/>
         <source>Output…</source>
         <translation>الإخراج…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="242"/>
+        <location filename="../ui/qml/RoomPage.qml" line="269"/>
         <source>DEFAULT OUTPUT</source>
         <translation>الإخراج الافتراضي</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="250"/>
+        <location filename="../ui/qml/RoomPage.qml" line="277"/>
         <source>no default output</source>
         <translation>لا يوجد إخراج افتراضي</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="255"/>
+        <location filename="../ui/qml/RoomPage.qml" line="282"/>
         <source>Applications render here, silently.</source>
         <translation>التطبيقات تصدر الصوت هنا بصمت.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="255"/>
+        <location filename="../ui/qml/RoomPage.qml" line="282"/>
         <source> is restored on quit.</source>
         <translation> يستعاد عند الإنهاء.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="256"/>
+        <location filename="../ui/qml/RoomPage.qml" line="283"/>
         <source>Applications still render to a real device, so you hear them directly as well. Move the default to the silent device to fix that.</source>
         <translation>لا تزال التطبيقات تصدر الصوت إلى جهاز حقيقي، لذا تسمعها مباشرة أيضًا. انقل الافتراضي إلى الجهاز الصامت لإصلاح ذلك.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="264"/>
+        <location filename="../ui/qml/RoomPage.qml" line="291"/>
         <source>Restore </source>
         <translation>استعادة </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="264"/>
+        <location filename="../ui/qml/RoomPage.qml" line="291"/>
         <source>previous output</source>
         <translation>الإخراج السابق</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="265"/>
+        <location filename="../ui/qml/RoomPage.qml" line="292"/>
         <source>Move default to </source>
         <translation>نقل الافتراضي إلى </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="272"/>
+        <location filename="../ui/qml/RoomPage.qml" line="299"/>
         <source>SIGNING</source>
         <translation>التوقيع</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="273"/>
+        <location filename="../ui/qml/RoomPage.qml" line="300"/>
         <source>key loaded · objects on</source>
         <translation>المفتاح محمّل · الكائنات مفعلة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="273"/>
+        <location filename="../ui/qml/RoomPage.qml" line="300"/>
         <source>no key · 5.1 bed only</source>
         <translation>لا مفتاح · قاعدة 5.1 فقط</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="274"/>
+        <location filename="../ui/qml/RoomPage.qml" line="301"/>
         <source>load one in Settings</source>
         <translation>حمّل واحدًا في الإعدادات</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="282"/>
+        <location filename="../ui/qml/RoomPage.qml" line="309"/>
         <source>left</source>
         <translation>اليسار</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="282"/>
+        <location filename="../ui/qml/RoomPage.qml" line="309"/>
         <source>right</source>
         <translation>اليمين</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="282"/>
+        <location filename="../ui/qml/RoomPage.qml" line="309"/>
         <source>centre</source>
         <translation>الوسط</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="283"/>
+        <location filename="../ui/qml/RoomPage.qml" line="310"/>
         <source>in front of you</source>
         <translation>أمامك</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="283"/>
+        <location filename="../ui/qml/RoomPage.qml" line="310"/>
         <source>behind you</source>
         <translation>خلفك</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="283"/>
+        <location filename="../ui/qml/RoomPage.qml" line="310"/>
         <source>beside you</source>
         <translation>بجانبك</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="284"/>
+        <location filename="../ui/qml/RoomPage.qml" line="311"/>
         <source>up</source>
         <translation>فوق</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="284"/>
+        <location filename="../ui/qml/RoomPage.qml" line="311"/>
         <source>low</source>
         <translation>تحت</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="285"/>
+        <location filename="../ui/qml/RoomPage.qml" line="312"/>
         <source>to the </source>
         <translation>إلى </translation>
     </message>

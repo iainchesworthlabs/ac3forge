@@ -100,6 +100,21 @@ Item {
                         height: Math.abs(field.height / 2 - marker.y)
                         color: Theme.accent400
                     }
+                    // A split application: the pair's two objects sit either
+                    // side of the marker (the engine's spread, 0.15 of the
+                    // room width, in the plan; the elevation shows one).
+                    Repeater {
+                        model: !root.elevation && marker.modelData.width === 2 ? [-1, 1] : []
+                        delegate: Rectangle {
+                            required property int modelData
+                            x: modelData * 0.15 * field.width - 4
+                            y: -4
+                            width: 8; height: 8; radius: 4
+                            color: marker.selected ? Theme.accent : Theme.neutral500
+                            border.color: Theme.bg
+                            border.width: 1
+                        }
+                    }
                     Row {
                         x: -13; y: -13
                         spacing: 6
