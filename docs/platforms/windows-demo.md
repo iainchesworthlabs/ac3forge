@@ -567,16 +567,39 @@ driver rule set, the successor to PREfast for Drivers; CodeQL with Microsoft's
 directs you to in place of the retired Static Driver Verifier; and `dvl.exe` for the Driver
 Verification Log the HLK Static Tools Logo test consumes. The Code Analysis run over the
 sample-derived source reported 157 defects, all now fixed: seventy uninitialised members
-given default initialisers, the sample's stream-resource-manager probe (which registered the
-current thread as a streaming resource, something a null sink never has) removed, a loop over
-zero capture endpoints removed rather than suppressed, an unchecked `IoRegisterDeviceInterface`
-status checked, and the pool allocators masked to never request executable memory. The
+given default initialisers, a loop over zero capture endpoints removed rather than suppressed,
+the template-parameter migration made best-effort instead of fatal to the endpoint, and the
+pool allocators masked to never request executable memory.
+
+One of those fixes had to be taken back, and it is the lesson of the exercise. C6387 pointed
+at the sample's port-class stream-resource probe, where `PcGetPhysicalDeviceObject` can leave
+the physical device object null; the first fix deleted the probe, on the reasoning that a null
+sink has no streaming resources to declare. That broke every device start:
+`CM_PROB_FAILED_START`, problem status `0xC000000D`. Bisecting the change file by file and
+then hunk by hunk against the guest showed the probe alone was responsible, and that it is not
+about the status the function returns, since a variant that removed the probe and forced a
+success return failed in the same way. Port class depends on that pass over
+`IPortClsStreamResourceManager` and its successor, so the probe stays and the rule is answered
+where it actually pointed: each probe is skipped when the device object is null, and the object
+rather than null is passed to `AddStreamResource`. The one finding left is the `ResourceSet`
+argument, annotated non-null but documented to take null for a thread resource, suppressed with
+that reason. The moral is narrow and worth keeping: in sample-derived kernel code an ignored
+status can be load-bearing, so re-install in the guest after every driver change rather than
+trusting that a static-analysis fix is inert. The
 dynamic tier (`apps/windows/driver-vm/Verify-Driver.ps1`) runs in the same throwaway guest:
 Driver Verifier with the standard checks plus the KMDF flags and the KMDF framework verifier,
 armed for the driver, then the driver installed and exercised (default endpoint, playback,
 device restarts idle and under a live stream, reinstall) and any bugcheck read back;
 `-Kasan` runs it against a KASAN-instrumented package on a KASAN kernel. A violation
 bugchecks the guest, which is a guest reboot and a line in the report.
+
+The dynamic run is clean. With the verifiers armed the driver installs, the endpoint appears,
+it takes the default role and plays twelve system sounds and three spoken passages, survives
+three device restarts while idle and one under a live stream, and takes a reinstall on top.
+Special pool accounted for every allocation it made, 111 of 111, with none untagged, untracked
+or failed, and the loads and unloads balance. No bugcheck, no minidump. DDI compliance
+checking is off by default (`-Ddi` adds it): it targets pure WDF drivers, and this is a
+PortCls miniport that uses KMDF only for its entry.
 
 ### Phase 5: fast follows
 

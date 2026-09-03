@@ -83,6 +83,13 @@ throwaway guest so a bugcheck is a guest reboot.
    the results into `Ac3ForgeNullSink.DVL.XML`, the artefact the HLK Static Tools Logo test
    consumes for submission.
 
+Both tiers are clean as of 2026-09-03. One caution the exercise earned: the first pass at
+C6387 deleted the sample's port-class stream-resource probe, and that stopped every device
+start (`CM_PROB_FAILED_START`, `0xC000000D`) without any bugcheck to point at it. The probe
+is load-bearing, so it stays and the rule is answered where it pointed, at the possibly-null
+physical device object. Re-run `..\driver-vm\Test-Driver.ps1` after any change here before
+trusting it, static-analysis fixes included.
+
 Static Driver Verifier (SDV) is deliberately absent: the current kit ships a stub that says
 SDV is no longer included and is incompatible with VS2022 and later, and directs you to
 CodeQL, which is what step 2 is.
