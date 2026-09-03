@@ -243,4 +243,37 @@ else()
     if(AC3FORGE_BUILD_TESTS)
         include(ui/tests/CMakeLists.txt)
     endif()
+
+    # Install + Qt runtime deployment for packaging, the shape apps/gui uses
+    # (see its own header for why the _qml_ variant is the one that works and
+    # why this is separate from the POST_BUILD windeployqt above, which
+    # targets the build tree). COMPONENT windemo, not runtime: the demo is
+    # its own download rather than something an ac3cli/ac3gui user is given
+    # (cmake/Packaging.cmake).
+    qt_generate_deploy_qml_app_script(
+        TARGET ac3desk
+        OUTPUT_SCRIPT AC3DESK_DEPLOY_SCRIPT
+        NO_UNSUPPORTED_PLATFORM_ERROR)
+    install(TARGETS ac3desk RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT windemo)
+    install(SCRIPT "${AC3DESK_DEPLOY_SCRIPT}" COMPONENT windemo)
 endif()
+
+# ---------------------------------------------------------------------------
+# Install (CPack component "windemo", cmake/Packaging.cmake).
+#
+# The driver's own scripts travel with the application because
+# DeskController::driverDir() looks for install.ps1 in a "driver" directory
+# beside the executable before it falls back to the source tree: a packaged
+# copy then points its Settings page at scripts that are actually there.
+# The driver BINARY is deliberately absent - it is test-signed only, so it
+# would not load on a normal machine; shipping it waits on the EV
+# certificate and attestation signing (docs/platforms/windows-demo.md,
+# "Phase 6"), after which the installer installs it and removes it on
+# uninstall rather than the Settings page asking anyone to.
+# ---------------------------------------------------------------------------
+include(GNUInstallDirs)
+install(TARGETS ac3windemo RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT windemo)
+install(FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/driver/install.ps1"
+        "${CMAKE_CURRENT_SOURCE_DIR}/driver/remove.ps1"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}/driver" COMPONENT windemo)

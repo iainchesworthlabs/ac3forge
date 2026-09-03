@@ -1020,10 +1020,39 @@ and keeps the folder and the remove button under Advanced.
 
 Five items. The first three, this page rewritten from plan to record, the roadmap record and
 the CHANGELOG entry, are done by the documentation pass of 2026-09-03, the one the status
-note at the top describes. Two remain: the demo built (driver excluded) on the self-hosted
-Windows runners, with the WDK on the runners and the driver in CI only once it builds locally
-without surprises; and the EV certificate and attestation step as the last item, after which
-the driver can join the package.
+note at the top describes.
+
+The fourth is done as of 2026-09-04: the demo is built, tested and packaged in CI. Both
+Windows legs of `_build.yml` carry `windemo: true`, which adds `-DAC3FORGE_BUILD_WINDEMO=ON`
+to their configure and so builds `ac3desk`, the `ac3windemo` runner and the window's Qt Quick
+Test suites, and runs them in the leg's existing `ctest` pass - the 68 `windemo` and `desk`
+cases, on the same runners as the library's own. Two things the legs assert rather than
+assume, because CMake treats both as optional and degrades quietly: that `ac3desk.exe` was
+built at all (a leg that installed a Qt kit on purpose and then skipped the window has a
+broken install, not a deliberate choice), and that Qt Quick 3D was found, since without it the
+room silently loses its 3D view. The kit those two need is not the base one: the "Install Qt
+(prebuilt)" step now asks for the `qtquick3d` and `qtshadertools` modules.
+
+The MSVC leg also packages it, as a CPack component of its own (`windemo`, in
+`cmake/Packaging.cmake`): `ac3forge-desktop-atmos-<version>-win64.zip`, holding the window,
+the runner, the driver's install and remove scripts, and its own Qt runtime - about 43 MB
+zipped, 104 MB unpacked. `release.yml` needs no change to ship it: its asset globs are by
+extension, so the archive travels with the rest, and `docs/releasing.md`'s table records it.
+`tools/ci/check_windemo_package.py` guards the failure mode that matters, which is not an
+empty archive but a plausible one with no Qt beside the window: it opens the zip and insists
+on the binaries, the driver scripts, the `qt.conf` that makes the layout resolve, the Windows
+platform plugin, and the `QtQuick`/`QtQuick3D` QML modules. It runs in CI and against a local
+`cpack` the same way. Verified on 2026-09-04 by extracting that archive somewhere clean and
+running the window from it: it starts, the room draws in 3D, and the signal path reads.
+
+Two things are deliberately not in CI. The driver is not built there: it needs the WDK or
+EWDK, which no runner image carries, and it is test-signed, so it stays a local build with its
+own analysis and VM verification (see "Analysis and verification" above). And the NSIS
+installer still carries exactly what it carried before - the demo is a separate download while
+its driver cannot load on a normal machine.
+
+One item remains: the EV certificate and attestation step, after which the driver joins the
+package, the installer installs both, and the demo's Settings page loses its install buttons.
 
 On how the driver reaches a machine once it is signed: with the installer, not from inside
 the window. The package installs the driver (`pnputil /add-driver /install` on the attested

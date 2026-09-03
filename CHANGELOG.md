@@ -14,6 +14,12 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- The Desktop Atmos Demo is built, tested and packaged in CI (roadmap UX11 phase 6): both
+  Windows legs build `ac3desk`/`ac3windemo` and run the demo's 68 tests, and the MSVC leg
+  packages `ac3forge-desktop-atmos-<version>-win64.zip` - the window, the runner, the
+  driver's install/remove scripts and a Qt runtime - as a release asset of its own. The
+  NSIS installer is unchanged: the demo stays a separate download while its null-sink
+  driver is test-signed only.
 - Per-process loopback capture and endpoint change notifications on Windows (roadmap UX11,
   the library pieces of the Desktop Atmos Demo): `Capture::start_process_loopback`
   taps what one process tree renders, whichever endpoint it renders to, at a caller-stated
