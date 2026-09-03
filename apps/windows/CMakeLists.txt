@@ -291,4 +291,5 @@ install(TARGETS ac3windemo RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONE
 install(FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/driver/install.ps1"
         "${CMAKE_CURRENT_SOURCE_DIR}/driver/remove.ps1"
+        "${CMAKE_CURRENT_SOURCE_DIR}/driver/NullSinkDevice.ps1"
     DESTINATION "${CMAKE_INSTALL_BINDIR}/driver" COMPONENT windemo)

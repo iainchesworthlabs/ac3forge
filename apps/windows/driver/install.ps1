@@ -1,13 +1,16 @@
 # Installs the test-signed Ac3ForgeNullSink package on this machine and creates
 # its root-enumerated device. Run as administrator, with test signing on (see
 # README.md). Pass -PackageDir to point at a build output other than the
-# default Release x64 one, and -Devcon at a devcon.exe if it is not on PATH.
+# default Release x64 one. Needs nothing beyond Windows: the package is
+# staged with pnputil and the device is created through SetupAPI
+# (NullSinkDevice.ps1), the sequence the WDK's devcon performs.
 [CmdletBinding()]
 param(
-    [string]$PackageDir = (Join-Path $PSScriptRoot 'x64\Release\package'),
-    [string]$Devcon = 'devcon.exe'
+    [string]$PackageDir = (Join-Path $PSScriptRoot 'x64\Release\package')
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'NullSinkDevice.ps1')
+
 $inf = Join-Path $PackageDir 'Ac3ForgeNullSink.inf'
 if (-not (Test-Path $inf)) { throw "no package at $PackageDir (build the solution first)" }
 
@@ -27,13 +30,12 @@ Write-Host "staging $inf"
 & pnputil /add-driver $inf /install
 if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 259) { throw "pnputil failed ($LASTEXITCODE)" }
 
-$existing = & $Devcon find 'ROOT\Ac3ForgeNullSink' 2>$null
-if ($existing -match 'ROOT\\AC3FORGENULLSINK') {
+if (Test-NullSinkDevice) {
     Write-Host 'device already present; restarting it'
-    & $Devcon restart 'ROOT\Ac3ForgeNullSink'
+    Restart-NullSinkDevice
 } else {
     Write-Host 'creating the root-enumerated device'
-    & $Devcon install $inf 'ROOT\Ac3ForgeNullSink'
-    if ($LASTEXITCODE -ne 0) { throw "devcon install failed ($LASTEXITCODE)" }
+    $instance = New-NullSinkDevice -Inf $inf
+    Write-Host "created $instance"
 }
 Write-Host 'done: look for "Speakers (Desktop Atmos)" in Sound settings'

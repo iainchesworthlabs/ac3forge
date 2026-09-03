@@ -725,18 +725,17 @@ void DeskController::run_driver_script(const QString& script, const QString& ver
     const QDir dir(driverDir());
     const QString script_path = QDir::toNativeSeparators(dir.filePath(script));
     const QString package = QDir::toNativeSeparators(dir.filePath(QStringLiteral("Package/x64/Release/package")));
-    const QString devcon = dir.exists(QStringLiteral("devcon.exe"))
-                               ? QDir::toNativeSeparators(dir.filePath(QStringLiteral("devcon.exe")))
-                               : QStringLiteral("devcon.exe");
     const QString log = driver_log_path();
     QFile::remove(log);
     // One -Command so the script's output lands in a transcript this can
     // read back; the window itself is hidden. Paths are single-quoted for
-    // PowerShell; the whole command is one argument to powershell.exe.
+    // PowerShell; the whole command is one argument to powershell.exe. The
+    // scripts need nothing beyond Windows (the device is made through
+    // SetupAPI), so no tool path travels with the call.
     const QString command =
-        QStringLiteral("Start-Transcript -Path '%1' | Out-Null; try { & '%2' -PackageDir '%3' -Devcon '%4'; $code = 0 } "
+        QStringLiteral("Start-Transcript -Path '%1' | Out-Null; try { & '%2' -PackageDir '%3'; $code = 0 } "
                        "catch { Write-Host $_; $code = 1 }; Stop-Transcript | Out-Null; exit $code")
-            .arg(log, script_path, package, devcon);
+            .arg(log, script_path, package);
     const QString arguments = QStringLiteral("-NoProfile -ExecutionPolicy Bypass -Command \"%1\"").arg(command);
     auto started = ac3::windemo::ElevatedProcess::start(L"powershell.exe", arguments.toStdWString());
     if (!started) {

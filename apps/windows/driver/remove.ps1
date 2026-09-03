@@ -1,11 +1,12 @@
 # Removes the Ac3ForgeNullSink device and its staged driver package. Run as
-# administrator. Pass -Devcon at a devcon.exe if it is not on PATH.
+# administrator. Needs nothing beyond Windows (NullSinkDevice.ps1).
 [CmdletBinding()]
-param([string]$Devcon = 'devcon.exe')
+param()
 $ErrorActionPreference = 'Continue'
+. (Join-Path $PSScriptRoot 'NullSinkDevice.ps1')
 
 Write-Host 'removing the device'
-& $Devcon remove 'ROOT\Ac3ForgeNullSink'
+if (Get-NullSinkDevices) { Remove-NullSinkDevice } else { Write-Host '  (not present)' }
 
 # Find the staged package by its original INF name and delete it.
 $staged = & pnputil /enum-drivers | Out-String

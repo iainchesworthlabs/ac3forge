@@ -7,9 +7,11 @@
 #   .\New-DriverTestVm.ps1 -WindowsIso D:\ISOs\Win11_25H2_English_x64_v2.iso
 #
 # Attaches four virtual CDs: the Windows ISO, an ISO carrying
-# autounattend.xml, an ISO carrying the built driver package plus the WDK's
-# devcon.exe, and VMware Workstation's own Tools ISO (so first logon can
-# install Tools, which is what lets vmrun run commands in the guest).
+# autounattend.xml, an ISO carrying the built driver package and its scripts
+# (the test scripts copy fresh ones from the working tree on every run, so
+# this CD is a convenience for a hand-driven guest, not what is tested), and
+# VMware Workstation's own Tools ISO (so first logon can install Tools, which
+# is what lets vmrun run commands in the guest).
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$WindowsIso,
@@ -19,7 +21,6 @@ param(
     [int]$Cpus = 4,
     [int]$DiskGB = 64,
     [string]$PackageDir = (Join-Path $PSScriptRoot '..\driver\x64\Release\package'),
-    [string]$Devcon = 'F:\Program Files\Windows Kits\10\Tools\10.0.28000.0\x64\devcon.exe',
     [string]$Workstation = 'C:\Program Files\VMware\VMware Workstation',
     # Workstation's built-in VNC server on the guest console (loopback use
     # only; no password). guest_console.py uses it to take screenshots and
@@ -58,9 +59,8 @@ Copy-Item (Join-Path $PSScriptRoot 'autounattend.xml') "$stage\unattend\autounat
 Copy-Item "$PackageDir\*" "$stage\driver\package\" -Recurse
 $cert = Get-ChildItem (Split-Path $PackageDir) -Filter '*.cer' | Select-Object -First 1
 if ($cert) { Copy-Item $cert.FullName "$stage\driver\" }
-Copy-Item (Join-Path $PSScriptRoot '..\driver\install.ps1'), (Join-Path $PSScriptRoot '..\driver\remove.ps1') "$stage\driver\"
+Copy-Item (Join-Path $PSScriptRoot '..\driver\install.ps1'), (Join-Path $PSScriptRoot '..\driver\remove.ps1'), (Join-Path $PSScriptRoot '..\driver\NullSinkDevice.ps1') "$stage\driver\"
 Copy-Item (Join-Path $PSScriptRoot 'guest\*.ps1') "$stage\driver\"
-if (Test-Path $Devcon) { Copy-Item $Devcon "$stage\driver\devcon.exe" } else { Write-Warning "devcon not found at $Devcon; install.ps1 in the guest will need it on PATH" }
 & (Join-Path $PSScriptRoot 'Build-Iso.ps1') -Source "$stage\unattend" -Out (Join-Path $VmDir 'autounattend.iso') -Label 'UNATTEND'
 & (Join-Path $PSScriptRoot 'Build-Iso.ps1') -Source "$stage\driver" -Out (Join-Path $VmDir 'driver.iso') -Label 'ATMOSDRV'
 Remove-Item $stage -Recurse -Force

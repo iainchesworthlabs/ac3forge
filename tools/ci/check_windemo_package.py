@@ -31,6 +31,7 @@ REQUIRED = (
     "bin/ac3windemo.exe",
     "bin/driver/install.ps1",
     "bin/driver/remove.ps1",
+    "bin/driver/NullSinkDevice.ps1",
     "bin/qt.conf",
     "plugins/platforms/qwindows.dll",
 )
