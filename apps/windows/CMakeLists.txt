@@ -175,6 +175,21 @@ else()
         FILES
             "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-32.png"
             "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-256.png")
+    # The GUI app's faces, so this window renders as designed on a machine
+    # that never installed Archivo, and so Arabic, Hebrew and Yiddish have
+    # glyphs (the shared LanguageManager selects the Noto faces by name).
+    # SIL OFL 1.1, attributed in the About box; the licence texts ship
+    # beside the files.
+    qt_add_resources(ac3desk "ac3desk_fonts"
+        PREFIX "/fonts"
+        BASE "${CMAKE_SOURCE_DIR}/apps/gui/fonts"
+        FILES
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-Regular.ttf"
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-Medium.ttf"
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-SemiBold.ttf"
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-ExtraBold.ttf"
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/NotoSansArabic.ttf"
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/NotoSansHebrew.ttf")
     # The .exe's own icon (Explorer, the taskbar before the window shows):
     # the GUI app's resource script, configured with this target's name.
     set(AC3_GUI_ICON_ICO "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")

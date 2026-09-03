@@ -113,6 +113,7 @@ ApplicationWindow {
         }
     }
     AboutDialog { id: about }
+    function openAbout() { about.open(); }
 
     // --- pages ----------------------------------------------------------------
     StackLayout {

@@ -44,7 +44,17 @@
         <translation>ac3forge און די אַפּליקאַציע: זעט די LICENSE טעקע אין רעפּאָזיטאָרי. דער Desktop Atmos null-sink דרייווער איז אַ באַזונדער ליצענזירטער אָפּשטאַם פֿון מייקראָסאָפֿטס Simple Audio Sample (MS-PL); זעט apps/windows/driver/README.md. Dolby, Dolby Atmos און Dolby Digital Plus זענען האַנדלסמאַרקן פֿון Dolby Laboratories; דאָס איז אַן אומאָפּהענגיקע אימפּלעמענטאַציע פֿון פֿאַרעפֿנטלעכטע סטאַנדאַרדן, נישט פֿאַרבונדן מיט Dolby.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/AboutDialog.qml" line="76"/>
+        <location filename="../ui/qml/AboutDialog.qml" line="68"/>
+        <source>Built on Qt 6, used under the GNU LGPL v3, and the {fmt} library (MIT). Profiling builds also carry the Tracy client (BSD 3-clause).</source>
+        <translation>געבויט אויף Qt 6, גענוצט אונטער GNU LGPL v3, און דער {fmt} ביבליאָטעק (MIT). פּראָפֿילירונג־בילדס טראָגן אויך דעם Tracy קליענט (BSD 3 קלאָזן).</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/AboutDialog.qml" line="74"/>
+        <source>Includes the Archivo typeface, and the Noto Sans Arabic and Noto Sans Hebrew typefaces for the languages Archivo does not cover, each licensed under the SIL Open Font License 1.1; the licence texts ship beside the fonts in apps/gui/fonts.</source>
+        <translation>נעמט אַרײַן דעם שריפֿט Archivo, און די שריפֿטן Noto Sans Arabic און Noto Sans Hebrew פֿאַר די שפּראַכן וואָס Archivo דעקט נישט, יעדער אונטער דער SIL Open Font License 1.1; די ליצענז־טעקסטן ליגן לעבן די שריפֿטן אין apps/gui/fonts.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/AboutDialog.qml" line="85"/>
         <source>Close</source>
         <translation>פֿאַרמאַכן</translation>
     </message>
@@ -175,7 +185,7 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="20"/>
         <location filename="../ui/qml/Main.qml" line="63"/>
-        <location filename="../ui/qml/Main.qml" line="177"/>
+        <location filename="../ui/qml/Main.qml" line="178"/>
         <source>Desktop Atmos</source>
         <translation>Desktop Atmos</translation>
     </message>
@@ -206,7 +216,7 @@
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="102"/>
-        <location filename="../ui/qml/Main.qml" line="188"/>
+        <location filename="../ui/qml/Main.qml" line="189"/>
         <source>Output</source>
         <translation>אַרויסגאַנג</translation>
     </message>
@@ -225,27 +235,27 @@
         <translation type="vanished">ראַם %1 ms</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="140"/>
+        <location filename="../ui/qml/Main.qml" line="141"/>
         <source>worst %1 ms</source>
         <translation>ערגסטער %1 ms</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="141"/>
+        <location filename="../ui/qml/Main.qml" line="142"/>
         <source>%1 underruns</source>
         <translation>%1 אונטערלויפֿן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="142"/>
+        <location filename="../ui/qml/Main.qml" line="143"/>
         <source>%1 starved reads</source>
         <translation>%1 ליידיקע לייענונגען</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="143"/>
+        <location filename="../ui/qml/Main.qml" line="144"/>
         <source>1-block frames</source>
         <translation>1-בלאָק ראַמען</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="143"/>
+        <location filename="../ui/qml/Main.qml" line="144"/>
         <source>6-block frames</source>
         <translation>6-בלאָק ראַמען</translation>
     </message>
@@ -263,137 +273,137 @@
         <translation>וועגן Desktop Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="138"/>
+        <location filename="../ui/qml/Main.qml" line="139"/>
         <source>encode %1 ms</source>
         <translation>ענקאָדירונג %1 ms</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="139"/>
+        <location filename="../ui/qml/Main.qml" line="140"/>
         <source>cadence %1 ms</source>
         <translation>קאַדענץ %1 ms</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="144"/>
+        <location filename="../ui/qml/Main.qml" line="145"/>
         <source>15 objects · %1 placed · %2 in the bed · 5 bed slots · %3-channel taps</source>
         <translation>15 אָביעקטן · %1 געשטעלט · %2 אין בעט · 5 בעט-שטעלן · %3-קאַנאַל כאַפּן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="156"/>
+        <location filename="../ui/qml/Main.qml" line="157"/>
         <source>engine running</source>
         <translation>מאָטאָר לויפֿט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="156"/>
+        <location filename="../ui/qml/Main.qml" line="157"/>
         <source>engine stopped</source>
         <translation>מאָטאָר אָפּגעשטעלט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="164"/>
+        <location filename="../ui/qml/Main.qml" line="165"/>
         <source>Stop</source>
         <translation>אָפּשטעלן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="164"/>
+        <location filename="../ui/qml/Main.qml" line="165"/>
         <source>Start</source>
         <translation>אָנהייבן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="167"/>
+        <location filename="../ui/qml/Main.qml" line="168"/>
         <source>Stop the engine</source>
         <translation>אָפּשטעלן דעם מאָטאָר</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="167"/>
+        <location filename="../ui/qml/Main.qml" line="168"/>
         <source>Start the engine</source>
         <translation>אָנהייבן דעם מאָטאָר</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="186"/>
+        <location filename="../ui/qml/Main.qml" line="187"/>
         <source>Open the room</source>
         <translation>עפֿן דעם צימער</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="188"/>
+        <location filename="../ui/qml/Main.qml" line="189"/>
         <source>auto</source>
         <translation>אויטאָמאַטיש</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="190"/>
+        <location filename="../ui/qml/Main.qml" line="191"/>
         <source>Automatic</source>
         <translation>אויטאָמאַטיש</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="191"/>
+        <location filename="../ui/qml/Main.qml" line="192"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="192"/>
+        <location filename="../ui/qml/Main.qml" line="193"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="193"/>
+        <location filename="../ui/qml/Main.qml" line="194"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="194"/>
+        <location filename="../ui/qml/Main.qml" line="195"/>
         <source>PCM surround</source>
         <translation>PCM אַרום</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="195"/>
+        <location filename="../ui/qml/Main.qml" line="196"/>
         <source>Headphones</source>
         <translation>קאָפּהערער</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="196"/>
+        <location filename="../ui/qml/Main.qml" line="197"/>
         <source>Stereo</source>
         <translation>סטערעאָ</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="200"/>
+        <location filename="../ui/qml/Main.qml" line="201"/>
         <source>Default output: </source>
         <translation>סטאַנדאַרט אַרויסגאַנג: </translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="200"/>
+        <location filename="../ui/qml/Main.qml" line="201"/>
         <source>Move default output to </source>
         <translation>באַוועג סטאַנדאַרט אַרויסגאַנג צו </translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="205"/>
+        <location filename="../ui/qml/Main.qml" line="206"/>
         <source>Restore </source>
         <translation>צוריקשטעלן </translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="205"/>
+        <location filename="../ui/qml/Main.qml" line="206"/>
         <source>previous default output</source>
         <translation>פֿריִערדיקן סטאַנדאַרט אַרויסגאַנג</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="210"/>
+        <location filename="../ui/qml/Main.qml" line="211"/>
         <source>Objects on · key loaded</source>
         <translation>אָביעקטן אָן · שליסל געלאָדן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="210"/>
+        <location filename="../ui/qml/Main.qml" line="211"/>
         <source>Objects off · no key</source>
         <translation>אָביעקטן אָפּ · קיין שליסל</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="211"/>
+        <location filename="../ui/qml/Main.qml" line="212"/>
         <source>Settings…</source>
         <translation>אײַנשטעלונגען…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="212"/>
+        <location filename="../ui/qml/Main.qml" line="213"/>
         <source>About…</source>
         <translation>וועגן…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="214"/>
+        <location filename="../ui/qml/Main.qml" line="215"/>
         <source>Quit</source>
         <translation>אַרויסגיין</translation>
     </message>
@@ -647,72 +657,72 @@
         <translation type="vanished">שלעפּט אַן אַפּליקאַציע זי צו רירן · Shift פֿאַר הייך · שלעפּט ליידיק צו קרייזן · רעדל צו זומען</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="45"/>
+        <location filename="../ui/qml/Room3DView.qml" line="67"/>
         <source>front left</source>
         <translation>פֿאָרנט לינקס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="46"/>
+        <location filename="../ui/qml/Room3DView.qml" line="68"/>
         <source>front right</source>
         <translation>פֿאָרנט רעכטס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="47"/>
+        <location filename="../ui/qml/Room3DView.qml" line="69"/>
         <source>centre</source>
         <translation>צענטער</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="50"/>
+        <location filename="../ui/qml/Room3DView.qml" line="72"/>
         <source>left surround</source>
         <translation>סעראַונד לינקס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="51"/>
+        <location filename="../ui/qml/Room3DView.qml" line="73"/>
         <source>right surround</source>
         <translation>סעראַונד רעכטס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="54"/>
+        <location filename="../ui/qml/Room3DView.qml" line="76"/>
         <source>side left</source>
         <translation>זײַט לינקס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="55"/>
+        <location filename="../ui/qml/Room3DView.qml" line="77"/>
         <source>side right</source>
         <translation>זײַט רעכטס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="56"/>
+        <location filename="../ui/qml/Room3DView.qml" line="78"/>
         <source>rear left</source>
         <translation>הינטן לינקס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="57"/>
+        <location filename="../ui/qml/Room3DView.qml" line="79"/>
         <source>rear right</source>
         <translation>הינטן רעכטס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="62"/>
+        <location filename="../ui/qml/Room3DView.qml" line="84"/>
         <source>top front left</source>
         <translation>אויבן פֿאָרנט לינקס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="63"/>
+        <location filename="../ui/qml/Room3DView.qml" line="85"/>
         <source>top front right</source>
         <translation>אויבן פֿאָרנט רעכטס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="64"/>
+        <location filename="../ui/qml/Room3DView.qml" line="86"/>
         <source>top rear left</source>
         <translation>אויבן הינטן לינקס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="65"/>
+        <location filename="../ui/qml/Room3DView.qml" line="87"/>
         <source>top rear right</source>
         <translation>אויבן הינטן רעכטס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="78"/>
+        <location filename="../ui/qml/Room3DView.qml" line="100"/>
         <source>drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom</source>
         <translation>שלעפּט אַן אַפּליקאַציע זי צו רירן · רעכטער קנעפּל אָדער Shift פֿאַר הייך · שלעפּט ליידיק צו קרייזן · רעדל צו זומען</translation>
     </message>
@@ -784,289 +794,289 @@
         <translation>צימער-אָנבליק</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="166"/>
+        <location filename="../ui/qml/RoomPage.qml" line="171"/>
         <source>Room (3D)</source>
         <translation>צימער (3D)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="184"/>
+        <location filename="../ui/qml/RoomPage.qml" line="189"/>
         <source>Plan (top-down)</source>
         <translation>פּלאַן (פֿון אויבן)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="185"/>
+        <location filename="../ui/qml/RoomPage.qml" line="190"/>
         <source>drag to place</source>
         <translation>שלעפּ צו שטעלן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="202"/>
+        <location filename="../ui/qml/RoomPage.qml" line="207"/>
         <source>Elevation (side-on)</source>
         <translation>הייך (פֿון דער זײַט)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="203"/>
+        <location filename="../ui/qml/RoomPage.qml" line="208"/>
         <source>drag: depth + height</source>
         <translation>שלעפּ: טיפֿקייט + הייך</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="203"/>
+        <location filename="../ui/qml/RoomPage.qml" line="208"/>
         <source>height: objects only</source>
         <translation>הייך: בלויז אָביעקטן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="216"/>
+        <location filename="../ui/qml/RoomPage.qml" line="221"/>
         <source>Bed only: depth still pans front to rear; height is carried in object metadata, which is off.</source>
         <translation>בלויז בעט: די טיפֿקייט פֿאַרטיילט נאָך פֿון פֿאָרנט צו הינטן; די הייך ווערט געטראָגן אין אָביעקט־מעטאַדאַטן, וואָס זענען אָפּ.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="242"/>
+        <location filename="../ui/qml/RoomPage.qml" line="247"/>
         <source>slot </source>
         <translation>שטעל </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="243"/>
+        <location filename="../ui/qml/RoomPage.qml" line="248"/>
         <source>in the bed</source>
         <translation>אין בעט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="254"/>
+        <location filename="../ui/qml/RoomPage.qml" line="259"/>
         <source>Send to bed</source>
         <translation>שיק צום בעט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="254"/>
+        <location filename="../ui/qml/RoomPage.qml" line="259"/>
         <source>Place in the room</source>
         <translation>שטעל אין צימער</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="262"/>
+        <location filename="../ui/qml/RoomPage.qml" line="267"/>
         <source>Centre</source>
         <translation>צענטרירן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="268"/>
+        <location filename="../ui/qml/RoomPage.qml" line="273"/>
         <source>Mono</source>
         <translation>מאָנאָ</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="268"/>
+        <location filename="../ui/qml/RoomPage.qml" line="273"/>
         <source>Split</source>
         <translation>צעטיילן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="274"/>
+        <location filename="../ui/qml/RoomPage.qml" line="279"/>
         <source>Standard stereo</source>
         <translation>סטאַנדאַרד סטערעאָ</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="283"/>
+        <location filename="../ui/qml/RoomPage.qml" line="288"/>
         <source>Put</source>
         <translation>שטעל</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="286"/>
+        <location filename="../ui/qml/RoomPage.qml" line="291"/>
         <source>in front</source>
         <translation>פֿאָרנט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="287"/>
+        <location filename="../ui/qml/RoomPage.qml" line="292"/>
         <source>behind</source>
         <translation>הינטן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="290"/>
+        <location filename="../ui/qml/RoomPage.qml" line="295"/>
         <source>overhead</source>
         <translation>איבערן קאָפּ</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="291"/>
+        <location filename="../ui/qml/RoomPage.qml" line="296"/>
         <source>front left</source>
         <translation>פֿאָרנט לינקס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="292"/>
+        <location filename="../ui/qml/RoomPage.qml" line="297"/>
         <source>front right</source>
         <translation>פֿאָרנט רעכטס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="293"/>
+        <location filename="../ui/qml/RoomPage.qml" line="298"/>
         <source>rear left</source>
         <translation>הינטן לינקס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="294"/>
+        <location filename="../ui/qml/RoomPage.qml" line="299"/>
         <source>rear right</source>
         <translation>הינטן רעכטס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="305"/>
+        <location filename="../ui/qml/RoomPage.qml" line="310"/>
         <source>full-screen: stays in the bed</source>
         <translation>פֿולער עקראַן: בלײַבט אין בעט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="313"/>
+        <location filename="../ui/qml/RoomPage.qml" line="318"/>
         <source>Size</source>
         <translation>גרייס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="334"/>
+        <location filename="../ui/qml/RoomPage.qml" line="339"/>
         <source>Object size</source>
         <translation>אָביעקט-גרייס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="336"/>
+        <location filename="../ui/qml/RoomPage.qml" line="341"/>
         <source>point</source>
         <translation>פּונקט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="339"/>
+        <location filename="../ui/qml/RoomPage.qml" line="344"/>
         <source>extent the receiver&apos;s renderer spreads the object over; the bed hears a point</source>
         <translation>אויסשפּרייט איבער וועלכן דעם רעסיווערס רענדערער צעשפּרייט דעם אָביעקט; דאָס בעט הערט אַ פּונקט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="339"/>
+        <location filename="../ui/qml/RoomPage.qml" line="344"/>
         <source>object metadata: no effect while the stream is bed only</source>
         <translation>אָביעקט מעטאַדאַטן: קיין ווירקונג בשעת דער סטרים איז בלויז בעט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="350"/>
+        <location filename="../ui/qml/RoomPage.qml" line="355"/>
         <source>BED</source>
         <translation>בעט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="352"/>
+        <location filename="../ui/qml/RoomPage.qml" line="357"/>
         <source>unplaced applications, mixed to the 5.1 bed</source>
         <translation>ניט־געשטעלטע אַפּליקאַציעס, געמישט אין 5.1 בעט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="379"/>
+        <location filename="../ui/qml/RoomPage.qml" line="384"/>
         <source>every application is placed</source>
         <translation>יעדע אַפּליקאַציע איז געשטעלט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="379"/>
+        <location filename="../ui/qml/RoomPage.qml" line="384"/>
         <source>drag one into the room to place it · drag a marker back here, or double-click it, to return it</source>
         <translation>שלעפּ איינע אין צימער אַרײַן זי צו שטעלן · שלעפּ אַ צייכן צוריק אַהער, אָדער קליק אים טאָפּל, זי צוריקצוברענגען</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="406"/>
+        <location filename="../ui/qml/RoomPage.qml" line="411"/>
         <source>OUTPUT</source>
         <translation>אַרויסגאַנג</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="415"/>
+        <location filename="../ui/qml/RoomPage.qml" line="420"/>
         <source>pin: </source>
         <translation>פֿעסט: </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="416"/>
+        <location filename="../ui/qml/RoomPage.qml" line="421"/>
         <source>Output…</source>
         <translation>אַרויסגאַנג…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="420"/>
+        <location filename="../ui/qml/RoomPage.qml" line="425"/>
         <source>DEFAULT OUTPUT</source>
         <translation>סטאַנדאַרט אַרויסגאַנג</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="428"/>
+        <location filename="../ui/qml/RoomPage.qml" line="433"/>
         <source>no default output</source>
         <translation>קיין סטאַנדאַרט אַרויסגאַנג</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="433"/>
+        <location filename="../ui/qml/RoomPage.qml" line="438"/>
         <source>Applications render here, silently.</source>
         <translation>אַפּליקאַציעס שפּילן אַהער, שטיל.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="433"/>
+        <location filename="../ui/qml/RoomPage.qml" line="438"/>
         <source> is restored on quit.</source>
         <translation> ווערט צוריקגעשטעלט בײַם אַרויסגיין.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="434"/>
+        <location filename="../ui/qml/RoomPage.qml" line="439"/>
         <source>Applications still render to a real device, so you hear them directly as well. Move the default to the silent device to fix that.</source>
         <translation>אַפּליקאַציעס שפּילן נאָך צו אַן אמתן מיטל, אַזוי אַז דו הערסט זיי אויך דירעקט. באַוועג דעם סטאַנדאַרט צום שטילן מיטל דאָס צו פֿאַרריכטן.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="442"/>
+        <location filename="../ui/qml/RoomPage.qml" line="447"/>
         <source>Restore </source>
         <translation>צוריקשטעלן </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="442"/>
+        <location filename="../ui/qml/RoomPage.qml" line="447"/>
         <source>previous output</source>
         <translation>פֿריִערדיקן אַרויסגאַנג</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="443"/>
+        <location filename="../ui/qml/RoomPage.qml" line="448"/>
         <source>Move default to </source>
         <translation>באַוועג סטאַנדאַרט צו </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="450"/>
+        <location filename="../ui/qml/RoomPage.qml" line="455"/>
         <source>SIGNING</source>
         <translation>אונטערשרײַבונג</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="451"/>
+        <location filename="../ui/qml/RoomPage.qml" line="456"/>
         <source>key loaded · objects on</source>
         <translation>שליסל געלאָדן · אָביעקטן אָן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="451"/>
+        <location filename="../ui/qml/RoomPage.qml" line="456"/>
         <source>no key · 5.1 bed only</source>
         <translation>קיין שליסל · נאָר 5.1 בעט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="452"/>
+        <location filename="../ui/qml/RoomPage.qml" line="457"/>
         <source>load one in Settings</source>
         <translation>לאָד איינעם אין אײַנשטעלונגען</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="288"/>
-        <location filename="../ui/qml/RoomPage.qml" line="460"/>
+        <location filename="../ui/qml/RoomPage.qml" line="293"/>
+        <location filename="../ui/qml/RoomPage.qml" line="465"/>
         <source>left</source>
         <translation>לינקס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="289"/>
-        <location filename="../ui/qml/RoomPage.qml" line="460"/>
+        <location filename="../ui/qml/RoomPage.qml" line="294"/>
+        <location filename="../ui/qml/RoomPage.qml" line="465"/>
         <source>right</source>
         <translation>רעכטס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="460"/>
+        <location filename="../ui/qml/RoomPage.qml" line="465"/>
         <source>centre</source>
         <translation>צענטער</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="461"/>
+        <location filename="../ui/qml/RoomPage.qml" line="466"/>
         <source>in front of you</source>
         <translation>פֿאַר דיר</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="461"/>
+        <location filename="../ui/qml/RoomPage.qml" line="466"/>
         <source>behind you</source>
         <translation>הינטער דיר</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="461"/>
+        <location filename="../ui/qml/RoomPage.qml" line="466"/>
         <source>beside you</source>
         <translation>לעבן דיר</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="462"/>
+        <location filename="../ui/qml/RoomPage.qml" line="467"/>
         <source>up</source>
         <translation>אויבן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="462"/>
+        <location filename="../ui/qml/RoomPage.qml" line="467"/>
         <source>low</source>
         <translation>אונטן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="463"/>
+        <location filename="../ui/qml/RoomPage.qml" line="468"/>
         <source>to the </source>
         <translation>צו </translation>
     </message>

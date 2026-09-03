@@ -65,8 +65,17 @@ Dialog {
             text: qsTr("ac3forge and this application: see the LICENSE file in the repository. The Desktop Atmos null-sink driver is a separately licensed derivative of Microsoft's Simple Audio Sample (MS-PL); see apps/windows/driver/README.md. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.")
         }
         Body {
+            text: qsTr("Built on Qt 6, used under the GNU LGPL v3, and the {fmt} library (MIT). Profiling builds also carry the Tracy client (BSD 3-clause).")
+        }
+        // The faces this window renders in ship as resources, each under
+        // SIL OFL 1.1, which asks that the attribution travel with the
+        // font; the licence texts sit beside the files in apps/gui/fonts.
+        Body {
+            text: qsTr("Includes the Archivo typeface, and the Noto Sans Arabic and Noto Sans Hebrew typefaces for the languages Archivo does not cover, each licensed under the SIL Open Font License 1.1; the licence texts ship beside the fonts in apps/gui/fonts.")
+        }
+        Body {
             Layout.topMargin: Theme.space2
-            text: "<a href=\"https://github.com/iainchesworthlabs/dolbydigitalconverter\">github.com/iainchesworthlabs/dolbydigitalconverter</a>"
+            text: "<a href=\"https://github.com/iainchesworthlabs/ac3forge\">github.com/iainchesworthlabs/ac3forge</a>"
             textFormat: Text.RichText
             linkColor: Theme.accent
         }

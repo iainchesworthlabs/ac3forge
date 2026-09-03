@@ -955,6 +955,16 @@ room reset on the first return from the plan views: the room is kept loaded whil
 once it has been shown, but the flag that says so was set only by a visibility change, which
 never fires for a window that opens in 3D, so the first switch away unloaded it.
 
+The About box linked a repository that does not exist (the checkout's directory name, not
+the remote's), and said nothing about the toolkit or the type. It now links
+github.com/iainchesworthlabs/ac3forge and attributes Qt 6 (LGPL v3), {fmt} (MIT), Tracy in
+profiling builds (BSD 3-clause), and the faces: the window now bundles the GUI app's Archivo
+and Noto Sans Arabic and Hebrew, each SIL OFL 1.1 with the licence texts beside the files,
+where before it fell back to whatever the machine had. The version block is what the library
+reports and is restamped every build: the version from the nearest tag, the describe with
+the commits since it, the commit, the branch, and "dirty" when the tree had uncommitted
+changes at build time. `--page about` captures the box.
+
 ### Phase 6: docs, CI, release
 
 Five items. The first three, this page rewritten from plan to record, the roadmap record and

@@ -6,6 +6,8 @@
 // `--page settings` (or output, room) picks the page it shows first, and
 // `--place Name=x,y,z` positions a listed application before the capture.
 
+#include <QFont>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QVariant>
@@ -50,6 +52,21 @@ int main(int argc, char** argv) {
     app_icon.addFile(QStringLiteral(":/icons/ac3forge-256.png"));
     QGuiApplication::setWindowIcon(app_icon);
     QGuiApplication::setApplicationDisplayName(QStringLiteral("Desktop Atmos"));
+    // The GUI app's faces (Archivo, and Noto Sans for the scripts it does
+    // not cover), registered before the engine loads so the Theme's
+    // font probe finds them, Archivo made the application default so every
+    // control uses it; the language manager swaps the family for Arabic,
+    // Hebrew and Yiddish.
+    for (const auto* face : {":/fonts/Archivo-Regular.ttf", ":/fonts/Archivo-Medium.ttf",
+                             ":/fonts/Archivo-SemiBold.ttf", ":/fonts/Archivo-ExtraBold.ttf",
+                             ":/fonts/NotoSansArabic.ttf", ":/fonts/NotoSansHebrew.ttf"}) {
+        if (QFontDatabase::addApplicationFont(QLatin1String(face)) < 0) {
+            qWarning("could not register bundled font %s", face);
+        }
+    }
+    QFont default_font = QGuiApplication::font();
+    default_font.setFamily(QStringLiteral("Archivo"));
+    QGuiApplication::setFont(default_font);
     // Every control is drawn by the QML in this module, on the Theme's
     // tokens; the Basic style is the one that gets out of the way.
     QQuickStyle::setStyle(QStringLiteral("Basic"));
@@ -97,7 +114,11 @@ int main(int argc, char** argv) {
         engine.rootObjects().first()->setProperty("roomThreeD", true);
         page = QStringLiteral("room");
     }
-    if (!page.isEmpty()) {
+    // `--page about` opens the About box over the Room page, for a capture.
+    if (page == QLatin1String("about")) {
+        engine.rootObjects().first()->setProperty("page", QStringLiteral("room"));
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openAbout");
+    } else if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
     }
 
