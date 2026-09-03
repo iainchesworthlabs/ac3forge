@@ -12,6 +12,20 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Changed
+
+- The Desktop Atmos Demo's silent output device, `Ac3ForgeNullSink`, is now an ACX (Audio
+  Class eXtensions) driver on KMDF, derived from Microsoft's AudioCodec sample, in place of
+  the PortCls/WaveRT miniport derived from the Simple Audio Sample: about 1,900 lines in
+  place of 9,700, on the framework Microsoft recommends for new audio drivers, with Driver
+  Verifier's DDI compliance and code-integrity checks now part of its verification. Nothing
+  the demo or the scripts see changes: the same hardware id, service, device description,
+  endpoint name ("Speakers (Desktop Atmos)"), 7.1/48 kHz format and discard-at-nominal-rate
+  behaviour. The position and timing simulation is now a kernel-free header with a test of
+  its own, a failed device start names the call that failed, and `install.ps1`/`remove.ps1`
+  create and remove the device through SetupAPI and `pnputil` rather than the WDK's
+  `devcon`, so they need nothing beyond Windows.
+
 ### Added
 
 - The Desktop Atmos Demo is built, tested and packaged in CI (roadmap UX11 phase 6): both

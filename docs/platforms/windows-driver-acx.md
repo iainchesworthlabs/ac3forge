@@ -9,6 +9,11 @@ proved the model. This page plans its replacement on ACX, Microsoft's current fr
 audio drivers, decided on 2026-09-04 after a review of the options (recorded under
 [Phase 6](windows-demo.md#phase-6-docs-ci-release)).
 
+*The port was made the same day. The plan below is kept as it was written; what each step
+actually found, where it departed from the plan (the install API, the header version, the
+timing simulation lifted into a testable header) and the verification record are under
+[Progress](#progress) at the end.*
+
 ## Why ACX, in three sentences
 
 Microsoft's own pages call PortCls "the current legacy model" and say ACX 1.1 "is recommended
@@ -214,3 +219,100 @@ starts where the current driver ended rather than rediscovering them.
 - Keeping both drivers. The PortCls one is not maintained past step 5.
 - HLK certification. Attestation is the signing route unless the product decision changes;
   the plan page's Phase 6 records the difference.
+
+## Progress
+
+**2026-09-04, steps 1 to 5 in one sitting.** The ACX driver is in the tree and the PortCls
+one is history. What each step found, in the order the plan gave them:
+
+1. **Prototype.** The kit carries ACX under `km\acx\km\1.1` (not `1.0` as the risk list
+   guessed), so the project pins `ACX_VERSION_MAJOR=1`, `ACX_VERSION_MINOR=1` and KMDF 1.31.
+   The endpoint appeared in the guest on the third install. The first two failed AddDevice
+   with `CM_PROB_FAILED_ADD` and `0xC000000D`, which is the PortCls lesson again: a status
+   with no location. Rather than bisect, the driver now names the step: every call that
+   builds the device or the circuit goes through `NOTE_AND_RETURN_IF_FAILED`, and a failure
+   is written to the service's `Parameters` key (`LastFailedStep`, `LastFailedStatus`, first
+   note wins) before it is returned; `Test-Driver.ps1` prints it. One run then said
+   `AcxJackCreate`: ACX refuses (`STATUS_INVALID_PARAMETER`) a jack given a presence callback
+   without the jack-detection flag, and a device with no socket wants neither, so the jack has
+   neither and ACX reports it always connected. Three build-time findings on the way, each
+   kept in the source: MSVC mangles `__declspec(code_seg("PAGE"))` into a C++ function's
+   name, so the ACX callback typedefs only link when the callbacks are declared `extern "C"`;
+   `inf2cat` refuses a UTF-16 INF without a byte-order mark ("no installation INF"), and
+   `stampinf` preserves whatever encoding the `.inx` has; and `inf2cat` rejects a `DriverVer`
+   date later than the current UTC date, so a build in Australian morning hours fails with
+   the default local-date stamp, and the project stamps the UTC date instead. Exit met:
+   device `OK`, "Speakers (Desktop Atmos)" present, service running, WAV playback and speech
+   rendering into it, no bugcheck.
+2. **Parity.** The timing simulation was not carried across verbatim but lifted out: the
+   PortCls stream's `GetPosition`/`UpdatePosition` (a QPC delta scaled to bytes per second
+   at the nominal rate) is `PositionClock` in `position.h`, with no kernel dependencies, and
+   `tests/windemo/test_nullsink_position.cpp` pins it (nine cases: nothing moves before run,
+   exactly the nominal rate, never backwards, pause and resume continuous, stop to zero,
+   completions as packets pass, a late timer owes each missed packet once without sliding
+   the schedule, completions after a pause line up, an unconfigured packet size owes
+   nothing). The comparison the plan asked for is therefore a proof rather than a
+   side-by-side run. The one format offered is 7.1 at 48 kHz. The INF cruft is gone; `winmm`
+   playback still reaches the endpoint without the `wdmaud` entries (`System.Media.SoundPlayer`
+   in the exercise is a `winmm` client), so they stay gone.
+3. **Verification.** `Verify-Driver.ps1` arms DDI compliance by default now (`-NoDdi` drops
+   it) and Driver Verifier's code-integrity checking (`0x02000000`) with it; the exercise
+   gained the idle power-down and return (the S0 idle policy, five seconds with no stream,
+   which is the D0 exit and entry a sleep would give; VMware cannot be woken from S3 under
+   script control, so a guest sleep is the one thing still done by hand), a format change
+   on the endpoint (`Set-DefaultToNullSink.ps1 -TryFormat 44100`, the set-data-format path
+   under a real request), and removal under a live stream now runs `remove.ps1`, which
+   deletes the package and so unloads the driver with the stream open. Results are below.
+4. **Install path.** Not `SwDeviceCreate` after all: on the guest it returns
+   `HRESULT 0x8007007E` (`ERROR_MOD_NOT_FOUND`) for every variant tried, including
+   Microsoft's IddSampleDriver recipe verbatim, from the session-0 batch logon `vmrun` gives
+   and from an elevated scheduled task on the desktop alike, while an unelevated call gets
+   the expected access-denied, and the same P/Invoke from the workstation gets access-denied
+   unelevated too; the cause was not found in the time it deserved, and an install path
+   cannot rest on it. `NullSinkDevice.ps1` instead performs the SetupAPI sequence `devcon
+   install` performs (`SetupDiGetINFClass`, `SetupDiCreateDeviceInfo`, the hardware id,
+   `DIF_REGISTERDEVICE`, `UpdateDriverForPlugAndPlayDevices`), which is equally documented and
+   keeps the instance path `ROOT\MEDIA\0000`; removal is `pnputil /remove-device`. `devcon` is
+   gone from the scripts, the VM tooling and the demo's Settings page, and the packaged demo's
+   `bin/driver/` carries the three scripts. One thing learnt on the way, for the next time a
+   guest step needs the desktop: `vmrun`'s guest programs run in session 0, and
+   `runProgramInGuest -interactive` lands on the desktop unelevated; an elevated desktop
+   process comes from a scheduled task (`schtasks /it /rl highest`).
+5. **Switch-over.** Done in the same commits: the ACX source replaces `Source/`, the README
+   is "what was cut from the ACX sample", the CHANGELOG and this page say so, the CodeQL
+   `init-not-cleared` waiver went with the PortCls code it excused.
+
+### Verification results
+
+**Static tier (`Analyze-Driver.ps1`, 2026-09-04).** Code Analysis at the driver rule set:
+five reports, zero defects, after a first pass that reported thirty and taught three things
+about ACX code under the analyser, each kept in the source: a member function with no
+parameters must not carry `_Use_decl_annotations_` (C28213); the kernel's own
+`KeAcquireSpinLock`/`KeReleaseSpinLock` pair is what the IRQL and lock analysis reads, so a
+tiny helper that wrapped the acquire produced a dozen C28167/C28122/C26110 findings for
+nothing; and `DriverEntry` in the INIT segment has no paged segment to assert on (C28172).
+CodeQL `mustfix` and `recommended`: clean, with no waivers (one `recommended` finding,
+padding bytes of the RT packet array leaving the driver uninitialised, answered with an
+explicit `RtlZeroMemory` on a block `ExAllocatePool2` had already zeroed). The DVL is
+produced. Two harness fixes on the way: CodeQL's tracer runs the build in an environment of
+its own in which the EWDK's `SetupBuildEnv.cmd` cannot find `vswhere` or `msbuild`, so the
+script now imports the EWDK environment into its own process and hands the tracer a bare
+`msbuild`; and `dvl.exe /create` takes the current directory as the project directory.
+
+**Dynamic tier (`Verify-Driver.ps1`, defaults: Driver Verifier's standard checks, DDI
+compliance and code-integrity checking, the KMDF framework verifier).** The first run found a
+real bug: two bugchecks `0xD1` (`DRIVER_IRQL_NOT_LESS_OR_EQUAL`, IRQL 2, access type 8, that
+is an execute fault) at the same image offset, at install time, before the exercise began.
+The stream engine's `Run`, `Pause`, the position and packet queries and the destructor were
+in the paged segment and took a spin lock; Driver Verifier trims a driver's pageable code the
+moment IRQL rises, so a paged function holding a spin lock faults on its own next
+instruction. Those functions are non-paged now (the destructor because WDF's destroy callback
+may run at DISPATCH_LEVEL), and the comment in `stream.h` says why. With that fixed the run is
+clean: the endpoint appears under the verifiers, takes the default role, plays twelve system
+sounds and three spoken passages, goes idle to D3 after five seconds and comes back for the
+next stream, refuses a 44.1 kHz format request with `AUDCLNT_E_UNSUPPORTED_FORMAT` and keeps
+rendering afterwards, survives three device restarts idle and one under a live stream and
+three concurrent streams, is removed and unloaded under a live stream (`remove.ps1`, service
+gone), and reinstalls from scratch. Special pool accounted for every allocation, 132 of 132,
+none untagged, untracked or failed; six loads and five unloads, the sixth still running; no
+bugcheck, no minidump.

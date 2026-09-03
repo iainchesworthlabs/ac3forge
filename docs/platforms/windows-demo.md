@@ -432,8 +432,9 @@ defaulting OFF, with the same pre-seeded `OFF` list for the targets it does not 
 
 ### The driver, and its licence
 
-`apps/windows/driver/` is derived from Microsoft's Simple Audio Sample virtual audio driver
-(the smaller sibling of SysVAD, same WaveRT machinery), cut down to one render endpoint that
+`apps/windows/driver/` is derived from Microsoft's AudioCodec ACX sample (until 2026-09-04,
+from the Simple Audio Sample, a PortCls/WaveRT miniport; the port is on
+[its own page](windows-driver-acx.md)), cut down to one render endpoint that
 discards its input and advertises 7.1 at 48 kHz. The sample is licensed
 under the Microsoft Public License, which the FSF lists as free but **not GPL-compatible**. That
 is fine here because the driver is a separate work: a kernel-mode binary that shares no code
@@ -564,6 +565,12 @@ The SysVAD-derived null sink, test-signed, `pnputil` install and remove from the
 screen, driver-free mode still working when it is absent. Prerequisite: the Windows Driver Kit
 installed on `D:`. Exit: "Desktop Atmos Speakers" appears in Sound settings, becomes the
 default from the app, and the direct mix is silent.
+
+*The record below is of the PortCls driver this phase produced. It was replaced on 2026-09-04
+by an ACX driver of the same names, format and behaviour, planned and recorded on
+[windows-driver-acx.md](windows-driver-acx.md); the harness, the two verification tiers and
+the lessons stand, and the parts of the record that were about PortCls (the stream-resource
+probe, DDI compliance being off) no longer apply.*
 
 **Progress, 2026-09-03:** built, and verified in the throwaway guest (Windows 11 Pro 25H2,
 build 26200): the package stages, the "Desktop Atmos" device and its "Speakers (Desktop
@@ -1067,11 +1074,12 @@ worth fixing whichever framework it is on: sample leftovers in the INF (`DRMLeve
 `devcon` where `SwDeviceCreate` is the documented API, and HVCI compliance that is assumed
 rather than demonstrated because the verification guest runs with memory integrity off. The
 port, what it keeps, its steps and the findings from Phase 4 that carry into it are planned
-on [their own page](windows-driver-acx.md). Signing waits for it, so it is paid once.
+and recorded on [their own page](windows-driver-acx.md); it was made the same day. Signing
+waits for it, so it is paid once.
 
 On how the driver reaches a machine once it is signed: with the installer, not from inside
 the window. The package installs the driver (`pnputil /add-driver /install` on the attested
-package, the device created with devcon or SwDevice as `install.ps1` does now) and removes it
+package, the device created through SetupAPI as `install.ps1` does now) and removes it
 on uninstall, so a person who installs the application has the silent device without a
 second step, and one who uninstalls it is not left with an orphan endpoint. The window then
 only reports the two facts above and offers to send applications to the device; its
