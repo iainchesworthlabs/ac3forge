@@ -983,6 +983,17 @@ or a warning sign and one more line says whether applications play to it yet; an
 pill reads "apps → stereo · Acer X34 P", or "⚠ apps heard direct → …" while the default is a
 real device.
 
+Which raised the next question: with four endpoints listed, how does a person pick the one to
+hear it on? They could not. The pin chose a mode and the policy chose the endpoint for it, a
+receiver first. The policy now takes a chosen endpoint (`OutputPolicyInput::preferred_endpoint_id`,
+"Hear it here" on any row of the table, "Automatic" to hand the choice back, remembered as
+`output/endpoint`): it gets the best mode it can carry, the pinned mode first when it can
+carry that, never a bitstream mode while applications play to it, and the reason line says
+"you chose" and what that means. An endpoint that is absent, silent, or unable to carry
+anything leaves the automatic choice standing and the reason says so, the same way an
+infeasible pin does. The table's note column reads "you hear it here · your choice" or
+"· automatic", and the path's third station says which.
+
 ### Phase 6: docs, CI, release
 
 Five items. The first three, this page rewritten from plan to record, the roadmap record and

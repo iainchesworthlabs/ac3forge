@@ -136,7 +136,7 @@ Item {
             Text { Layout.fillWidth: true; text: DeskController.outputReason; color: Theme.textMuted; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }
             RowLayout {
                 Layout.fillWidth: true
-                Text { Layout.fillWidth: true; text: qsTr("pin: ") + DeskController.pinned; color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11; elide: Text.ElideRight }
+                Text { Layout.fillWidth: true; text: (DeskController.preferredEndpoint.length ? qsTr("endpoint: your choice") : qsTr("endpoint: automatic")) + qsTr(" · pin: ") + DeskController.pinned; color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11; elide: Text.ElideRight }
                 DeskButton { visible: root.showChoose; text: qsTr("Choose…"); onClicked: root.openOutput() }
             }
         }

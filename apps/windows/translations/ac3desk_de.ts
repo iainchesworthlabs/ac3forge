@@ -150,32 +150,32 @@
         <translation>Keine Ausgabe</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="701"/>
+        <location filename="../ui/desk_controller.cpp" line="720"/>
         <source>no driver package under %1</source>
         <translation>kein Treiberpaket unter %1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="729"/>
+        <location filename="../ui/desk_controller.cpp" line="748"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>Installation läuft, bitte die Rechteanfrage beantworten …</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="730"/>
+        <location filename="../ui/desk_controller.cpp" line="749"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>Entfernen läuft, bitte die Rechteanfrage beantworten …</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="756"/>
+        <location filename="../ui/desk_controller.cpp" line="775"/>
         <source>installed</source>
         <translation>installiert</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="756"/>
+        <location filename="../ui/desk_controller.cpp" line="775"/>
         <source>removed</source>
         <translation>entfernt</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="758"/>
+        <location filename="../ui/desk_controller.cpp" line="777"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 fehlgeschlagen (Exit-Code %2)</translation>
     </message>
@@ -518,76 +518,105 @@
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="116"/>
-        <source>What the probe found on each render endpoint; the one chosen is where you hear it. &quot;Applications play here&quot; makes an endpoint the Windows default instead, which is the other stage: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
-        <translation>Was die Sonde an jedem Render-Endpunkt fand; der gewählte ist der, auf dem Sie es hören. „Anwendungen spielen hier“ macht einen Endpunkt stattdessen zur Windows-Standardausgabe, der anderen Stufe: auf einem echten Gerät hörten Sie jede Anwendung direkt, also gehören sie auf das stille Gerät.</translation>
+        <source>What the probe found on each render endpoint. &quot;Hear it here&quot; chooses one: it gets the best mode it can carry, the pin when it can, and &quot;Automatic&quot; hands the choice back (the best endpoint for the best mode, a receiver first). &quot;Send applications here&quot; is the other stage, the Windows default: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
+        <translation>Was die Sonde an jedem Render-Endpunkt fand. „Hier hören“ wählt einen: er bekommt den besten Modus, den er tragen kann, den Pin, wenn er kann, und „Automatisch“ gibt die Wahl zurück (der beste Endpunkt für den besten Modus, ein Receiver zuerst). „Anwendungen hierher senden“ ist die andere Stufe, die Windows-Standardausgabe: auf einem echten Gerät hörten Sie jede Anwendung direkt, also gehören sie auf das stille Gerät.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <source>Automatic</source>
+        <translation>Automatisch</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <source>Hear it here</source>
+        <translation>Hier hören</translation>
+    </message>
+    <message>
+        <source>What the probe found on each render endpoint; the one chosen is where you hear it. &quot;Applications play here&quot; makes an endpoint the Windows default instead, which is the other stage: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
+        <translation type="vanished">Was die Sonde an jedem Render-Endpunkt fand; der gewählte ist der, auf dem Sie es hören. „Anwendungen spielen hier“ macht einen Endpunkt stattdessen zur Windows-Standardausgabe, der anderen Stufe: auf einem echten Gerät hörten Sie jede Anwendung direkt, also gehören sie auf das stille Gerät.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="187"/>
         <source>Applications play here</source>
         <translation>Anwendungen spielen hier</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <location filename="../ui/qml/OutputPage.qml" line="187"/>
         <source>Send applications here</source>
         <translation>Anwendungen hierher senden</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="185"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
         <source>you hear it here</source>
         <translation>hier hören Sie es</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
+        <source> · your choice</source>
+        <translation> · Ihre Wahl</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
+        <source> · automatic</source>
+        <translation> · automatisch</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="193"/>
+        <source>your choice, but it cannot be used: see the reason above</source>
+        <translation>Ihre Wahl, aber nicht nutzbar: siehe den Grund oben</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>the silent device · </source>
         <translation>das stille Gerät · </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>applications play here · </source>
         <translation>Anwendungen spielen hier · </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>never heard</source>
         <translation>nie zu hören</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="187"/>
+        <location filename="../ui/qml/OutputPage.qml" line="195"/>
         <source>applications play here · a real device, so heard directly</source>
         <translation>Anwendungen spielen hier · ein echtes Gerät, also direkt hörbar</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="212"/>
+        <location filename="../ui/qml/OutputPage.qml" line="220"/>
         <source>WHERE APPLICATIONS PLAY</source>
         <translation>WO ANWENDUNGEN SPIELEN</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="220"/>
+        <location filename="../ui/qml/OutputPage.qml" line="228"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the Windows default output and the silent device: nothing is heard from it, and this app taps each application there.</source>
         <translation>Anwendungen spielen in &lt;b&gt;%1&lt;/b&gt;, die Windows-Standardausgabe und das stille Gerät: daraus ist nichts zu hören, und diese App greift dort jede Anwendung ab.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="221"/>
+        <location filename="../ui/qml/OutputPage.qml" line="229"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the Windows default output, which is a real device: you hear each application directly as well as through this app, and a receiver on it cannot be opened exclusively while they do.</source>
         <translation>Anwendungen spielen in &lt;b&gt;%1&lt;/b&gt;, die Windows-Standardausgabe, ein echtes Gerät: Sie hören jede Anwendung direkt und zusätzlich über diese App, und ein Receiver daran lässt sich währenddessen nicht exklusiv öffnen.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="221"/>
+        <location filename="../ui/qml/OutputPage.qml" line="229"/>
         <source>nothing</source>
         <translation>nichts</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>Restore %1</source>
         <translation>%1 wiederherstellen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>the previous output</source>
         <translation>die vorherige Ausgabe</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>Send applications to %1</source>
         <translation>Anwendungen an %1 senden</translation>
     </message>
@@ -647,7 +676,7 @@
         <translation type="vanished">gewählt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="185"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
         <source> · exclusive mode</source>
         <translation> · exklusiver Modus</translation>
     </message>
@@ -668,22 +697,22 @@
         <translation type="vanished">die Systemstandardausgabe · Anwendungen rendern hierher</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="188"/>
+        <location filename="../ui/qml/OutputPage.qml" line="196"/>
         <source>spatial sound on · headphones fallback</source>
         <translation>räumlicher Klang an · Kopfhörer-Rückfall</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="189"/>
+        <location filename="../ui/qml/OutputPage.qml" line="197"/>
         <source>surround PCM fallback</source>
         <translation>PCM-Surround-Rückfall</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="189"/>
+        <location filename="../ui/qml/OutputPage.qml" line="197"/>
         <source>stereo fallback</source>
         <translation>Stereo-Rückfall</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="195"/>
+        <location filename="../ui/qml/OutputPage.qml" line="203"/>
         <source>no render endpoints probed yet</source>
         <translation>noch keine Wiedergabe-Endpunkte geprüft</translation>
     </message>
@@ -720,27 +749,27 @@
         <translation type="vanished">Standard verschieben nach </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="234"/>
+        <location filename="../ui/qml/OutputPage.qml" line="242"/>
         <source>Open Sound settings</source>
         <translation>Sound-Einstellungen öffnen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="235"/>
+        <location filename="../ui/qml/OutputPage.qml" line="243"/>
         <source>Re-probe</source>
         <translation>Neu prüfen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="246"/>
+        <location filename="../ui/qml/OutputPage.qml" line="254"/>
         <source>CODEC PATH</source>
         <translation>CODEC-PFAD</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="251"/>
+        <location filename="../ui/qml/OutputPage.qml" line="259"/>
         <source>Bypass the codec on headphones and PCM</source>
         <translation>Codec bei Kopfhörern und PCM umgehen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="252"/>
+        <location filename="../ui/qml/OutputPage.qml" line="260"/>
         <source>Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine&apos;s own objects and PCM and stereo take its 5.1 bed, codec out of the loop.</source>
         <translation>Aus: Kopfhörer, PCM und Stereo spielen eine Dekodierung des E-AC-3-Streams, was Sie hören, ging also durch den Codec. An: Kopfhörer rendern die Objekte der Engine selbst, PCM und Stereo nehmen ihr 5.1-Bett, Codec außerhalb der Schleife.</translation>
     </message>
@@ -1769,8 +1798,22 @@
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source>endpoint: your choice</source>
+        <translation>Endpunkt: Ihre Wahl</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source>endpoint: automatic</source>
+        <translation>Endpunkt: automatisch</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source> · pin: </source>
+        <translation> · Pin: </translation>
+    </message>
+    <message>
         <source>pin: </source>
-        <translation>fest: </translation>
+        <translation type="vanished">fest: </translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="140"/>

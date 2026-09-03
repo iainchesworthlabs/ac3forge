@@ -150,32 +150,32 @@
         <translation>קיין אַרויסגאַנג</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="701"/>
+        <location filename="../ui/desk_controller.cpp" line="720"/>
         <source>no driver package under %1</source>
         <translation>נישטאָ קיין דרײַווער-פּאַקעט אונטער %1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="729"/>
+        <location filename="../ui/desk_controller.cpp" line="748"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>אינסטאַלירט, ענטפֿערט אויפֿן דערהייבונג-פֿרעג…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="730"/>
+        <location filename="../ui/desk_controller.cpp" line="749"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>נעמט אַראָפּ, ענטפֿערט אויפֿן דערהייבונג-פֿרעג…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="756"/>
+        <location filename="../ui/desk_controller.cpp" line="775"/>
         <source>installed</source>
         <translation>אינסטאַלירט</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="756"/>
+        <location filename="../ui/desk_controller.cpp" line="775"/>
         <source>removed</source>
         <translation>אַראָפּגענומען</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="758"/>
+        <location filename="../ui/desk_controller.cpp" line="777"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 האָט דורכגעפֿאַלן (אַרויסגאַנג-קאָד %2)</translation>
     </message>
@@ -518,76 +518,105 @@
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="116"/>
-        <source>What the probe found on each render endpoint; the one chosen is where you hear it. &quot;Applications play here&quot; makes an endpoint the Windows default instead, which is the other stage: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
-        <translation>וואָס די פּראָבע האָט געפֿונען אויף יעדן ענדפּוינט; דער אויסגעקליבענער איז וווּ איר הערט עס. „אַפּליקאַציעס שפּילן דאָ“ מאַכט אַן ענדפּוינט אַנשטאָט דעם Windows דיפֿאָלט, די אַנדערע שטאַפּל: אויף אַן אמתן מכשיר וואָלט איר געהערט יעדע אַפּליקאַציע דירעקט, דעריבער איז דער שטילער מכשיר דער וווּהין זיי צו שיקן.</translation>
+        <source>What the probe found on each render endpoint. &quot;Hear it here&quot; chooses one: it gets the best mode it can carry, the pin when it can, and &quot;Automatic&quot; hands the choice back (the best endpoint for the best mode, a receiver first). &quot;Send applications here&quot; is the other stage, the Windows default: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
+        <translation>וואָס די פּראָבע האָט געפֿונען אויף יעדן ענדפּוינט. „הערן דאָ“ קלײַבט אויס איינעם: ער באַקומט דעם בעסטן מאָדוס וואָס ער קען טראָגן, דעם פּין ווען ער קען, און „אויטאָמאַטיש“ גיט די ברירה צוריק (דער בעסטער ענדפּוינט פֿאַרן בעסטן מאָדוס, אַ רעסיווער צוערשט). „שיק אַפּליקאַציעס אַהער“ איז די אַנדערע שטאַפּל, דער Windows דיפֿאָלט: אויף אַן אמתן מכשיר וואָלט איר געהערט יעדע אַפּליקאַציע דירעקט, דעריבער איז דער שטילער מכשיר דער וווּהין זיי צו שיקן.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <source>Automatic</source>
+        <translation>אויטאָמאַטיש</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <source>Hear it here</source>
+        <translation>הערן דאָ</translation>
+    </message>
+    <message>
+        <source>What the probe found on each render endpoint; the one chosen is where you hear it. &quot;Applications play here&quot; makes an endpoint the Windows default instead, which is the other stage: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
+        <translation type="vanished">וואָס די פּראָבע האָט געפֿונען אויף יעדן ענדפּוינט; דער אויסגעקליבענער איז וווּ איר הערט עס. „אַפּליקאַציעס שפּילן דאָ“ מאַכט אַן ענדפּוינט אַנשטאָט דעם Windows דיפֿאָלט, די אַנדערע שטאַפּל: אויף אַן אמתן מכשיר וואָלט איר געהערט יעדע אַפּליקאַציע דירעקט, דעריבער איז דער שטילער מכשיר דער וווּהין זיי צו שיקן.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="187"/>
         <source>Applications play here</source>
         <translation>אַפּליקאַציעס שפּילן דאָ</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <location filename="../ui/qml/OutputPage.qml" line="187"/>
         <source>Send applications here</source>
         <translation>שיק אַפּליקאַציעס אַהער</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="185"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
         <source>you hear it here</source>
         <translation>דאָ הערט איר עס</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
+        <source> · your choice</source>
+        <translation> · אײַער ברירה</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
+        <source> · automatic</source>
+        <translation> · אויטאָמאַטיש</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="193"/>
+        <source>your choice, but it cannot be used: see the reason above</source>
+        <translation>אײַער ברירה, אָבער מען קען זי נישט נוצן: זעט די סיבה אויבן</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>the silent device · </source>
         <translation>דער שטילער מכשיר · </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>applications play here · </source>
         <translation>אַפּליקאַציעס שפּילן דאָ · </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>never heard</source>
         <translation>קיינמאָל נישט געהערט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="187"/>
+        <location filename="../ui/qml/OutputPage.qml" line="195"/>
         <source>applications play here · a real device, so heard directly</source>
         <translation>אַפּליקאַציעס שפּילן דאָ · אַן אמתער מכשיר, דעריבער געהערט דירעקט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="212"/>
+        <location filename="../ui/qml/OutputPage.qml" line="220"/>
         <source>WHERE APPLICATIONS PLAY</source>
         <translation>וווּ אַפּליקאַציעס שפּילן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="220"/>
+        <location filename="../ui/qml/OutputPage.qml" line="228"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the Windows default output and the silent device: nothing is heard from it, and this app taps each application there.</source>
         <translation>אַפּליקאַציעס שפּילן אין &lt;b&gt;%1&lt;/b&gt;, דער Windows דיפֿאָלט־אויסגאַנג און דער שטילער מכשיר: פֿון אים הערט מען גאָרנישט, און די אַפּ נעמט דאָרט יעדע אַפּליקאַציע.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="221"/>
+        <location filename="../ui/qml/OutputPage.qml" line="229"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the Windows default output, which is a real device: you hear each application directly as well as through this app, and a receiver on it cannot be opened exclusively while they do.</source>
         <translation>אַפּליקאַציעס שפּילן אין &lt;b&gt;%1&lt;/b&gt;, דער Windows דיפֿאָלט־אויסגאַנג, וואָס איז אַן אמתער מכשיר: איר הערט יעדע אַפּליקאַציע דירעקט און אויך דורך דער אַפּ, און אַ רעסיווער אויף אים קען מען דערווײַל נישט עפֿענען עקסקלוסיוו.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="221"/>
+        <location filename="../ui/qml/OutputPage.qml" line="229"/>
         <source>nothing</source>
         <translation>גאָרנישט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>Restore %1</source>
         <translation>צוריקשטעלן %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>the previous output</source>
         <translation>דעם פֿריִערדיקן אויסגאַנג</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>Send applications to %1</source>
         <translation>שיק אַפּליקאַציעס צו %1</translation>
     </message>
@@ -647,7 +676,7 @@
         <translation type="vanished">אויסגעקליבן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="185"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
         <source> · exclusive mode</source>
         <translation> · עקסקלוסיוון מאָדוס</translation>
     </message>
@@ -668,22 +697,22 @@
         <translation type="vanished">דער סיסטעם-סטאַנדאַרט · אַפּליקאַציעס שפּילן אַהער</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="188"/>
+        <location filename="../ui/qml/OutputPage.qml" line="196"/>
         <source>spatial sound on · headphones fallback</source>
         <translation>רוימלעכער קלאַנג אָן · קאָפּהערער-צוריקפֿאַל</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="189"/>
+        <location filename="../ui/qml/OutputPage.qml" line="197"/>
         <source>surround PCM fallback</source>
         <translation>PCM-אַרום צוריקפֿאַל</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="189"/>
+        <location filename="../ui/qml/OutputPage.qml" line="197"/>
         <source>stereo fallback</source>
         <translation>סטערעאָ צוריקפֿאַל</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="195"/>
+        <location filename="../ui/qml/OutputPage.qml" line="203"/>
         <source>no render endpoints probed yet</source>
         <translation>נאָך קיין אַרויסגאַנג-ענדפּונקטן ניט געפּרוּווט</translation>
     </message>
@@ -720,27 +749,27 @@
         <translation type="vanished">באַוועג סטאַנדאַרט צו </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="234"/>
+        <location filename="../ui/qml/OutputPage.qml" line="242"/>
         <source>Open Sound settings</source>
         <translation>עפֿן די קלאַנג-אײַנשטעלונגען</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="235"/>
+        <location filename="../ui/qml/OutputPage.qml" line="243"/>
         <source>Re-probe</source>
         <translation>איבערפּרוּוון</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="246"/>
+        <location filename="../ui/qml/OutputPage.qml" line="254"/>
         <source>CODEC PATH</source>
         <translation>קאָדעק-וועג</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="251"/>
+        <location filename="../ui/qml/OutputPage.qml" line="259"/>
         <source>Bypass the codec on headphones and PCM</source>
         <translation>אַרומגיין דעם קאָדעק אויף קאָפּהערער און PCM</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="252"/>
+        <location filename="../ui/qml/OutputPage.qml" line="260"/>
         <source>Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine&apos;s own objects and PCM and stereo take its 5.1 bed, codec out of the loop.</source>
         <translation>אָפּ: קאָפּהערער, PCM און סטערעאָ שפּילן אַ דעקאָדירונג פֿונעם E-AC-3 שטראָם, אַזוי אַז וואָס דו הערסט איז דורכגעגאַנגען דורכן קאָדעק. אָן: קאָפּהערער רענדערן די אייגענע אָביעקטן פֿונעם מאָטאָר און PCM און סטערעאָ נעמען זײַן 5.1 בעט, קאָדעק אַרויס פֿון דער שלייף.</translation>
     </message>
@@ -1769,8 +1798,22 @@
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source>endpoint: your choice</source>
+        <translation>ענדפּוינט: אײַער ברירה</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source>endpoint: automatic</source>
+        <translation>ענדפּוינט: אויטאָמאַטיש</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source> · pin: </source>
+        <translation> · פּין: </translation>
+    </message>
+    <message>
         <source>pin: </source>
-        <translation>פֿעסט: </translation>
+        <translation type="vanished">פֿעסט: </translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="140"/>

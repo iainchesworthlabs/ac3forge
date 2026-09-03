@@ -53,7 +53,12 @@ struct EndpointFacts {
 struct OutputPolicyInput {
     std::span<const EndpointFacts> endpoints;
     bool signing_key_loaded = false;
-    std::optional<OutputMode> pinned;  // the user's choice, honoured when feasible
+    std::optional<OutputMode> pinned;  // the user's choice of mode, honoured when feasible
+    // The user's choice of endpoint (its id; empty for automatic): taken
+    // with the best mode it can carry, the pinned mode first when it can,
+    // and never a bitstream mode while it is the default. Absent or unable
+    // to carry anything, the automatic choice stands and the reason says so.
+    std::string preferred_endpoint_id;
 };
 
 struct OutputChoice {

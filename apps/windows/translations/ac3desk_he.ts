@@ -150,32 +150,32 @@
         <translation>אין פלט</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="701"/>
+        <location filename="../ui/desk_controller.cpp" line="720"/>
         <source>no driver package under %1</source>
         <translation>אין חבילת מנהל התקן תחת %1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="729"/>
+        <location filename="../ui/desk_controller.cpp" line="748"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>מתקין, יש לענות לבקשת ההרשאות…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="730"/>
+        <location filename="../ui/desk_controller.cpp" line="749"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>מסיר, יש לענות לבקשת ההרשאות…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="756"/>
+        <location filename="../ui/desk_controller.cpp" line="775"/>
         <source>installed</source>
         <translation>הותקן</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="756"/>
+        <location filename="../ui/desk_controller.cpp" line="775"/>
         <source>removed</source>
         <translation>הוסר</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="758"/>
+        <location filename="../ui/desk_controller.cpp" line="777"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 נכשל (קוד יציאה %2)</translation>
     </message>
@@ -518,76 +518,105 @@
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="116"/>
-        <source>What the probe found on each render endpoint; the one chosen is where you hear it. &quot;Applications play here&quot; makes an endpoint the Windows default instead, which is the other stage: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
-        <translation>מה שהבדיקה מצאה בכל נקודת קצה; הנבחרת היא זו שבה שומעים. "היישומים מנגנים כאן" הופך נקודת קצה לברירת המחדל של Windows במקום זאת, השלב השני: בהתקן אמיתי הייתם שומעים כל יישום ישירות, ולכן ההתקן השקט הוא זה שאליו שולחים אותם.</translation>
+        <source>What the probe found on each render endpoint. &quot;Hear it here&quot; chooses one: it gets the best mode it can carry, the pin when it can, and &quot;Automatic&quot; hands the choice back (the best endpoint for the best mode, a receiver first). &quot;Send applications here&quot; is the other stage, the Windows default: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
+        <translation>מה שהבדיקה מצאה בכל נקודת קצה. "לשמוע כאן" בוחר אחת: היא מקבלת את המצב הטוב ביותר שהיא יכולה לשאת, את הנעיצה כשאפשר, ו"אוטומטי" מחזיר את הבחירה (נקודת הקצה הטובה ביותר למצב הטוב ביותר, מקלט תחילה). "שלח את היישומים לכאן" הוא השלב השני, ברירת המחדל של Windows: בהתקן אמיתי הייתם שומעים כל יישום ישירות, ולכן ההתקן השקט הוא זה שאליו שולחים אותם.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <source>Automatic</source>
+        <translation>אוטומטי</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <source>Hear it here</source>
+        <translation>לשמוע כאן</translation>
+    </message>
+    <message>
+        <source>What the probe found on each render endpoint; the one chosen is where you hear it. &quot;Applications play here&quot; makes an endpoint the Windows default instead, which is the other stage: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
+        <translation type="vanished">מה שהבדיקה מצאה בכל נקודת קצה; הנבחרת היא זו שבה שומעים. &quot;היישומים מנגנים כאן&quot; הופך נקודת קצה לברירת המחדל של Windows במקום זאת, השלב השני: בהתקן אמיתי הייתם שומעים כל יישום ישירות, ולכן ההתקן השקט הוא זה שאליו שולחים אותם.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="187"/>
         <source>Applications play here</source>
         <translation>היישומים מנגנים כאן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <location filename="../ui/qml/OutputPage.qml" line="187"/>
         <source>Send applications here</source>
         <translation>שלח את היישומים לכאן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="185"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
         <source>you hear it here</source>
         <translation>כאן שומעים אותו</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
+        <source> · your choice</source>
+        <translation> · הבחירה שלכם</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
+        <source> · automatic</source>
+        <translation> · אוטומטי</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="193"/>
+        <source>your choice, but it cannot be used: see the reason above</source>
+        <translation>הבחירה שלכם, אך אי אפשר להשתמש בה: ראו את הסיבה למעלה</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>the silent device · </source>
         <translation>ההתקן השקט · </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>applications play here · </source>
         <translation>היישומים מנגנים כאן · </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>never heard</source>
         <translation>לעולם לא נשמע</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="187"/>
+        <location filename="../ui/qml/OutputPage.qml" line="195"/>
         <source>applications play here · a real device, so heard directly</source>
         <translation>היישומים מנגנים כאן · התקן אמיתי, ולכן נשמע ישירות</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="212"/>
+        <location filename="../ui/qml/OutputPage.qml" line="220"/>
         <source>WHERE APPLICATIONS PLAY</source>
         <translation>היכן היישומים מנגנים</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="220"/>
+        <location filename="../ui/qml/OutputPage.qml" line="228"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the Windows default output and the silent device: nothing is heard from it, and this app taps each application there.</source>
         <translation>היישומים מנגנים ל-&lt;b&gt;%1&lt;/b&gt;, פלט ברירת המחדל של Windows וההתקן השקט: לא שומעים ממנו דבר, והיישום הזה לוכד שם כל יישום.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="221"/>
+        <location filename="../ui/qml/OutputPage.qml" line="229"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the Windows default output, which is a real device: you hear each application directly as well as through this app, and a receiver on it cannot be opened exclusively while they do.</source>
         <translation>היישומים מנגנים ל-&lt;b&gt;%1&lt;/b&gt;, פלט ברירת המחדל של Windows, שהוא התקן אמיתי: שומעים כל יישום ישירות וגם דרך היישום הזה, ואי אפשר לפתוח עליו מקלט באופן בלעדי בינתיים.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="221"/>
+        <location filename="../ui/qml/OutputPage.qml" line="229"/>
         <source>nothing</source>
         <translation>כלום</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>Restore %1</source>
         <translation>שחזר את %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>the previous output</source>
         <translation>הפלט הקודם</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>Send applications to %1</source>
         <translation>שלח את היישומים אל %1</translation>
     </message>
@@ -647,7 +676,7 @@
         <translation type="vanished">נבחר</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="185"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
         <source> · exclusive mode</source>
         <translation> · מצב בלעדי</translation>
     </message>
@@ -668,22 +697,22 @@
         <translation type="vanished">ברירת המחדל של המערכת · היישומים מנגנים לכאן</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="188"/>
+        <location filename="../ui/qml/OutputPage.qml" line="196"/>
         <source>spatial sound on · headphones fallback</source>
         <translation>צליל מרחבי פעיל · גיבוי אוזניות</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="189"/>
+        <location filename="../ui/qml/OutputPage.qml" line="197"/>
         <source>surround PCM fallback</source>
         <translation>גיבוי PCM היקפי</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="189"/>
+        <location filename="../ui/qml/OutputPage.qml" line="197"/>
         <source>stereo fallback</source>
         <translation>גיבוי סטריאו</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="195"/>
+        <location filename="../ui/qml/OutputPage.qml" line="203"/>
         <source>no render endpoints probed yet</source>
         <translation>עדיין לא נבדקו נקודות קצה לניגון</translation>
     </message>
@@ -720,27 +749,27 @@
         <translation type="vanished">העבר את ברירת המחדל אל </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="234"/>
+        <location filename="../ui/qml/OutputPage.qml" line="242"/>
         <source>Open Sound settings</source>
         <translation>פתח את הגדרות הצליל</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="235"/>
+        <location filename="../ui/qml/OutputPage.qml" line="243"/>
         <source>Re-probe</source>
         <translation>בדוק מחדש</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="246"/>
+        <location filename="../ui/qml/OutputPage.qml" line="254"/>
         <source>CODEC PATH</source>
         <translation>נתיב הקודק</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="251"/>
+        <location filename="../ui/qml/OutputPage.qml" line="259"/>
         <source>Bypass the codec on headphones and PCM</source>
         <translation>עקוף את הקודק באוזניות וב-PCM</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="252"/>
+        <location filename="../ui/qml/OutputPage.qml" line="260"/>
         <source>Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine&apos;s own objects and PCM and stereo take its 5.1 bed, codec out of the loop.</source>
         <translation>כבוי: אוזניות, PCM וסטריאו מנגנים פענוח של זרם ה-E-AC-3, כך שמה שאתה שומע עבר דרך הקודק. פועל: האוזניות מעבדות את האובייקטים של המנוע עצמו ו-PCM וסטריאו לוקחים את מיטת ה-5.1 שלו, הקודק מחוץ ללולאה.</translation>
     </message>
@@ -1769,8 +1798,22 @@
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source>endpoint: your choice</source>
+        <translation>נקודת קצה: הבחירה שלכם</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source>endpoint: automatic</source>
+        <translation>נקודת קצה: אוטומטי</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source> · pin: </source>
+        <translation> · נעיצה: </translation>
+    </message>
+    <message>
         <source>pin: </source>
-        <translation>הצמדה: </translation>
+        <translation type="vanished">הצמדה: </translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="140"/>

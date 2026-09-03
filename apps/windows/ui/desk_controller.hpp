@@ -54,6 +54,8 @@ class DeskController : public QObject {
 
     // --- settings -----------------------------------------------------------
     Q_PROPERTY(QString pinned READ pinned WRITE setPinned NOTIFY settingsChanged)
+    // The endpoint to hear it on, by id; empty for the automatic choice.
+    Q_PROPERTY(QString preferredEndpoint READ preferredEndpoint WRITE setPreferredEndpoint NOTIFY settingsChanged)
     Q_PROPERTY(QString keyPath READ keyPath NOTIFY settingsChanged)
     Q_PROPERTY(QString nullSinkName READ nullSinkName WRITE setNullSinkName NOTIFY settingsChanged)
     Q_PROPERTY(bool lowLatency READ lowLatency WRITE setLowLatency NOTIFY settingsChanged)
@@ -128,6 +130,8 @@ public:
 
     [[nodiscard]] QString pinned() const;
     void setPinned(const QString& mode);
+    [[nodiscard]] QString preferredEndpoint() const;
+    void setPreferredEndpoint(const QString& id);
     [[nodiscard]] QString keyPath() const;
     [[nodiscard]] QString nullSinkName() const;
     void setNullSinkName(const QString& name);

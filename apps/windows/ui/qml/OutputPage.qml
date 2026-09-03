@@ -113,7 +113,7 @@ Flickable {
         }
         Text {
             Layout.fillWidth: true
-            text: qsTr("What the probe found on each render endpoint; the one chosen is where you hear it. \"Applications play here\" makes an endpoint the Windows default instead, which is the other stage: on a real device you would hear every application directly, so the silent device is the one to send them to.")
+            text: qsTr("What the probe found on each render endpoint. \"Hear it here\" chooses one: it gets the best mode it can carry, the pin when it can, and \"Automatic\" hands the choice back (the best endpoint for the best mode, a receiver first). \"Send applications here\" is the other stage, the Windows default: on a real device you would hear every application directly, so the silent device is the one to send them to.")
             color: Theme.textMuted
             font.pixelSize: Theme.fontSmall
             wrapMode: Text.WordWrap
@@ -140,7 +140,7 @@ Flickable {
                     Text { Layout.preferredWidth: 56; text: qsTr("PCM CH"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
                     Text { Layout.preferredWidth: 60; text: qsTr("SPATIAL"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
                     Text { visible: page.wideTable; Layout.preferredWidth: 220; text: qsTr("NOTE"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1 }
-                    Item { Layout.preferredWidth: 150 }
+                    Item { Layout.preferredWidth: 150 + 100 + Theme.space2 }
                 }
                 Repeater {
                     model: DeskController.endpoints
@@ -176,13 +176,21 @@ Flickable {
                                 elide: Text.ElideRight
                             }
                             DeskButton {
+                                Layout.preferredWidth: 100
+                                text: endpointRow.modelData.preferred ? qsTr("Automatic") : qsTr("Hear it here")
+                                enabled: !endpointRow.modelData.isNullSink
+                                primary: endpointRow.modelData.preferred
+                                onClicked: DeskController.preferredEndpoint = endpointRow.modelData.preferred ? "" : endpointRow.modelData.id
+                            }
+                            DeskButton {
                                 Layout.preferredWidth: 150
                                 text: endpointRow.modelData.isDefault ? qsTr("Applications play here") : qsTr("Send applications here")
                                 enabled: !endpointRow.modelData.isDefault
                                 onClicked: DeskController.setDefaultOutput(endpointRow.modelData.id)
                             }
                         }
-                        readonly property string note: modelData.chosen ? qsTr("you hear it here") + (DeskController.modeKey === "atmos" || DeskController.modeKey === "ddplus" || DeskController.modeKey === "dd" ? qsTr(" · exclusive mode") : "")
+                        readonly property string note: modelData.chosen ? qsTr("you hear it here") + (modelData.preferred ? qsTr(" · your choice") : qsTr(" · automatic")) + (DeskController.modeKey === "atmos" || DeskController.modeKey === "ddplus" || DeskController.modeKey === "dd" ? qsTr(" · exclusive mode") : "")
+                            : modelData.preferred ? qsTr("your choice, but it cannot be used: see the reason above")
                             : modelData.isNullSink ? qsTr("the silent device · ") + (modelData.isDefault ? qsTr("applications play here · ") : "") + qsTr("never heard")
                             : modelData.isDefault ? qsTr("applications play here · a real device, so heard directly")
                             : modelData.spatial ? qsTr("spatial sound on · headphones fallback")

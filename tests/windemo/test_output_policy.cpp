@@ -151,6 +151,54 @@ TEST_CASE("a non-default endpoint is preferred for shared-mode output", "[windem
     CHECK(choice.endpoint_id == "usb");
 }
 
+TEST_CASE("a chosen endpoint is taken with the best mode it can carry", "[windemo]") {
+    // The automatic choice would be Atmos on the receiver; the user chose
+    // the TV, which takes surround PCM.
+    const std::vector<EndpointFacts> endpoints = {null_sink(), avr(), tv()};
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true,
+                                       .pinned = std::nullopt, .preferred_endpoint_id = "tv"});
+    CHECK(choice.mode == OutputMode::kPcmSurround);
+    CHECK(choice.endpoint_id == "tv");
+    CHECK(choice.reason.find("you chose") != std::string::npos);
+}
+
+TEST_CASE("a chosen endpoint takes the pinned mode when it can, else says why not", "[windemo]") {
+    const std::vector<EndpointFacts> endpoints = {null_sink(), avr(), headphones()};
+    const auto pinned_ok = choose_output({.endpoints = endpoints, .signing_key_loaded = true,
+                                          .pinned = OutputMode::kDd51, .preferred_endpoint_id = "avr"});
+    CHECK(pinned_ok.mode == OutputMode::kDd51);
+    CHECK(pinned_ok.endpoint_id == "avr");
+    const auto pinned_not = choose_output({.endpoints = endpoints, .signing_key_loaded = true,
+                                           .pinned = OutputMode::kAtmos, .preferred_endpoint_id = "hp"});
+    CHECK(pinned_not.mode == OutputMode::kHeadphones);
+    CHECK(pinned_not.endpoint_id == "hp");
+    CHECK(pinned_not.reason.find("pinned mode") != std::string::npos);
+}
+
+TEST_CASE("a chosen endpoint that is the default is never opened exclusively", "[windemo]") {
+    // Applications play to the receiver: the choice stands, as decoded
+    // surround on it, and the reason says what sending them elsewhere buys.
+    const std::vector<EndpointFacts> endpoints = {avr(/*is_default=*/true), headphones()};
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true,
+                                       .pinned = std::nullopt, .preferred_endpoint_id = "avr"});
+    CHECK(choice.mode == OutputMode::kPcmSurround);
+    CHECK(choice.endpoint_id == "avr");
+    CHECK(choice.reason.find("silent device") != std::string::npos);
+}
+
+TEST_CASE("a chosen endpoint that is absent or silent falls back and says so", "[windemo]") {
+    const std::vector<EndpointFacts> endpoints = {null_sink(), avr()};
+    const auto absent = choose_output({.endpoints = endpoints, .signing_key_loaded = true,
+                                       .pinned = std::nullopt, .preferred_endpoint_id = "gone"});
+    CHECK(absent.mode == OutputMode::kAtmos);
+    CHECK(absent.endpoint_id == "avr");
+    CHECK(absent.reason.find("not present") != std::string::npos);
+    const auto silent = choose_output({.endpoints = endpoints, .signing_key_loaded = true,
+                                       .pinned = std::nullopt, .preferred_endpoint_id = "null"});
+    CHECK(silent.mode == OutputMode::kAtmos);
+    CHECK(silent.reason.find("silent device") != std::string::npos);
+}
+
 TEST_CASE("every output mode describes itself", "[windemo]") {
     for (const auto mode : {OutputMode::kAtmos, OutputMode::kDdPlus51, OutputMode::kDd51,
                             OutputMode::kPcmSurround, OutputMode::kHeadphones, OutputMode::kStereo,

@@ -28,6 +28,7 @@ struct EngineConfig {
     bool low_latency = false;      // 1-block frames at a bitrate that carries the metadata
     std::uint32_t bitrate_kbps = 0;  // 0: 448 normal, 1536 low-latency
     std::optional<OutputMode> pinned;
+    std::string preferred_endpoint_id;  // the user's choice of endpoint; empty: automatic
     bool bypass_codec = false;  // headphones/PCM/stereo play the raw frame, not a decode
     // The audio devices the engine is built over; null means WASAPI
     // (audio_devices.hpp). Tests pass fakes.
@@ -113,6 +114,8 @@ public:
     // The object's extent, 0 (a point) to 1 (the whole room), clamped.
     void set_size(AppId app, double size);
     void pin(std::optional<OutputMode> mode);
+    // The endpoint to hear it on (by id; empty for the automatic choice).
+    void prefer_endpoint(std::string id);
     void set_bypass(bool on);
     void reprobe();
     // Loads (or, with an empty path, re-resolves from the environment) the

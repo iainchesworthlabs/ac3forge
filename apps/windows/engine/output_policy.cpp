@@ -91,11 +91,87 @@ constexpr OutputMode kPreference[] = {OutputMode::kAtmos,       OutputMode::kDdP
                                       OutputMode::kDd51,        OutputMode::kPcmSurround,
                                       OutputMode::kHeadphones,  OutputMode::kStereo};
 
+// What carrying `mode` on `endpoint` means, for the reason line of a
+// chosen endpoint.
+std::string carried_as(const EndpointFacts& endpoint, OutputMode mode) {
+    switch (mode) {
+        case OutputMode::kAtmos: return "it accepts E-AC-3 and a signing key is loaded: objects go out intact";
+        case OutputMode::kDdPlus51:
+            return "it accepts E-AC-3 but no signing key is loaded: 5.1 bed only, positions panned";
+        case OutputMode::kDd51: return "it accepts AC-3 but not E-AC-3: 5.1 bed, positions panned";
+        case OutputMode::kPcmSurround:
+            return "it takes " + std::to_string(endpoint.shared_channels) +
+                   " PCM channels, so the stream is decoded and played as surround";
+        case OutputMode::kHeadphones:
+            return "it has a spatial sound format enabled, so decoded objects go through Windows "
+                   "Spatial Sound";
+        case OutputMode::kStereo: return "the stream is decoded to Lo/Ro";
+        case OutputMode::kNone: break;
+    }
+    return {};
+}
+
 }  // namespace
 
 OutputChoice choose_output(const OutputPolicyInput& input) {
     const bool key = input.signing_key_loaded;
     std::string preamble;
+
+    // A chosen endpoint comes first: the best mode it can carry, the
+    // pinned one when it can.
+    if (!input.preferred_endpoint_id.empty()) {
+        const EndpointFacts* chosen = nullptr;
+        for (const auto& endpoint : input.endpoints) {
+            if (endpoint.id == input.preferred_endpoint_id) {
+                chosen = &endpoint;
+            }
+        }
+        if (chosen == nullptr) {
+            preamble = "the endpoint you chose is not present; falling back to the automatic choice. ";
+        } else if (chosen->is_null_sink) {
+            preamble = "the endpoint you chose (\"" + chosen->name +
+                       "\") is the silent device, which is never heard; falling back to the "
+                       "automatic choice. ";
+        } else {
+            std::vector<OutputMode> order;
+            if (input.pinned && *input.pinned != OutputMode::kNone) {
+                order.push_back(*input.pinned);
+            }
+            order.insert(order.end(), std::begin(kPreference), std::end(kPreference));
+            OutputMode blocked_mode = OutputMode::kNone;
+            for (const OutputMode mode : order) {
+                if (!carries(*chosen, mode, key)) {
+                    continue;
+                }
+                if (is_bitstream(mode) && chosen->is_default) {
+                    if (blocked_mode == OutputMode::kNone) {
+                        blocked_mode = mode;
+                    }
+                    continue;
+                }
+                std::string reason = "you chose \"" + chosen->name + "\": " + carried_as(*chosen, mode);
+                if (input.pinned && *input.pinned != OutputMode::kNone && mode != *input.pinned) {
+                    reason += ". It cannot carry the pinned mode, " + std::string(describe(*input.pinned)) +
+                              ", so this is the best it can do";
+                }
+                if (blocked_mode != OutputMode::kNone) {
+                    reason += ". It could carry " + std::string(describe(blocked_mode)) +
+                              " but applications play to it; send them to the silent device to use that";
+                }
+                if (chosen->is_default && !is_bitstream(mode)) {
+                    reason += ". Applications play to it too, so their direct audio is audible alongside";
+                }
+                return choose(*chosen, mode, std::move(reason));
+            }
+            preamble = "the endpoint you chose (\"" + chosen->name + "\") cannot carry any mode" +
+                       (blocked_mode != OutputMode::kNone
+                            ? " except " + std::string(describe(blocked_mode)) +
+                                  ", exclusive, while applications play to it; send them to the "
+                                  "silent device first"
+                            : std::string{}) +
+                       "; falling back to the automatic choice. ";
+        }
+    }
 
     if (input.pinned && *input.pinned != OutputMode::kNone) {
         auto pinned = best_for(input.endpoints, *input.pinned, key, /*allow_default=*/false);

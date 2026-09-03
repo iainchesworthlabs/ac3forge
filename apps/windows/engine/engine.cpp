@@ -355,7 +355,9 @@ struct Engine::Impl {
             .devices = devices,
             .bypass_codec = config.bypass_codec,
             .low_latency = config.low_latency,
-            .null_sink_substring = config.null_sink_substring, .pinned = config.pinned});
+            .null_sink_substring = config.null_sink_substring,
+            .pinned = config.pinned,
+            .preferred_endpoint_id = config.preferred_endpoint_id});
         signing_status = signing.load(config.signing_key_path);
         build_encoder();
         std::ignore = watcher.start([this](const ac3::audio::DeviceChangeEvent&) {
@@ -586,6 +588,13 @@ void Engine::unposition(AppId app) {
 void Engine::pin(std::optional<OutputMode> mode) {
     impl_->post([this, mode] {
         impl_->output->set_pinned(mode);
+        impl_->want_reprobe.store(true, std::memory_order_release);
+    });
+}
+
+void Engine::prefer_endpoint(std::string id) {
+    impl_->post([this, id = std::move(id)] {
+        impl_->output->set_preferred_endpoint(id);
         impl_->want_reprobe.store(true, std::memory_order_release);
     });
 }

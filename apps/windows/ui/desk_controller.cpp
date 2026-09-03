@@ -108,6 +108,7 @@ ac3::windemo::EngineConfig DeskController::engine_config() const {
     config.split_by_default = splitStereo();
     config.bitrate_kbps = static_cast<std::uint32_t>(std::max(0, bitrate()));
     config.pinned = mode_from_key(pinned());
+    config.preferred_endpoint_id = preferredEndpoint().toStdString();
     return config;
 }
 
@@ -287,6 +288,7 @@ void DeskController::poll() {
             row.insert(QStringLiteral("pcmChannels"), static_cast<int>(e.shared_channels));
             row.insert(QStringLiteral("spatial"), e.spatial);
             row.insert(QStringLiteral("chosen"), from_utf8(e.name) == endpoint_name_ && s.mode != OutputMode::kNone);
+            row.insert(QStringLiteral("preferred"), from_utf8(e.id) == preferredEndpoint());
             endpoints.push_back(row);
         }
         if (endpoints != endpoints_) {
@@ -312,6 +314,23 @@ void DeskController::setPinned(const QString& mode) {
         engine_->pin(mode_from_key(mode));
     }
     settings_.sync();  // survive a hard exit
+    emit settingsChanged();
+}
+
+QString DeskController::preferredEndpoint() const {
+    return settings_.value(QStringLiteral("output/endpoint")).toString();
+}
+
+void DeskController::setPreferredEndpoint(const QString& id) {
+    if (id == preferredEndpoint()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("output/endpoint"), id);
+    if (engine_) {
+        engine_->prefer_endpoint(id.toStdString());
+    }
+    settings_.sync();  // survive a hard exit
+    last_endpoint_stamp_ = 0;  // re-read the table with the new flag at the next poll
     emit settingsChanged();
 }
 

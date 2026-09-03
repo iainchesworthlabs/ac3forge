@@ -114,6 +114,10 @@ void OutputStage::set_pinned(std::optional<OutputMode> pinned) {
     config_.pinned = pinned;
 }
 
+void OutputStage::set_preferred_endpoint(std::string id) {
+    config_.preferred_endpoint_id = std::move(id);
+}
+
 void OutputStage::set_null_sink_substring(std::string substring) {
     config_.null_sink_substring = std::move(substring);
 }
@@ -142,8 +146,10 @@ const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
         }
     }
 
-    const auto choice = choose_output(
-        {.endpoints = facts, .signing_key_loaded = signing_key_loaded, .pinned = config_.pinned});
+    const auto choice = choose_output({.endpoints = facts,
+                                       .signing_key_loaded = signing_key_loaded,
+                                       .pinned = config_.pinned,
+                                       .preferred_endpoint_id = config_.preferred_endpoint_id});
     status_.endpoints = std::move(facts);
     status_.reason = choice.reason;
 

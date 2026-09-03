@@ -150,32 +150,32 @@
         <translation>لا إخراج</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="701"/>
+        <location filename="../ui/desk_controller.cpp" line="720"/>
         <source>no driver package under %1</source>
         <translation>لا توجد حزمة برنامج تشغيل ضمن %1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="729"/>
+        <location filename="../ui/desk_controller.cpp" line="748"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>جارٍ التثبيت، أجب على طلب رفع الصلاحيات…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="730"/>
+        <location filename="../ui/desk_controller.cpp" line="749"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>جارٍ الإزالة، أجب على طلب رفع الصلاحيات…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="756"/>
+        <location filename="../ui/desk_controller.cpp" line="775"/>
         <source>installed</source>
         <translation>تم التثبيت</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="756"/>
+        <location filename="../ui/desk_controller.cpp" line="775"/>
         <source>removed</source>
         <translation>تمت الإزالة</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="758"/>
+        <location filename="../ui/desk_controller.cpp" line="777"/>
         <source>%1 failed (exit code %2)</source>
         <translation>فشل %1 (رمز الخروج %2)</translation>
     </message>
@@ -518,76 +518,105 @@
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="116"/>
-        <source>What the probe found on each render endpoint; the one chosen is where you hear it. &quot;Applications play here&quot; makes an endpoint the Windows default instead, which is the other stage: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
-        <translation>ما وجده الفحص على كل نقطة نهاية؛ المختارة هي حيث تسمعه. «تعزف التطبيقات هنا» يجعل نقطة نهاية هي مخرج Windows الافتراضي بدلاً من ذلك، وهي المرحلة الأخرى: على جهاز حقيقي ستسمع كل تطبيق مباشرة، لذا الجهاز الصامت هو الذي تُرسل إليه.</translation>
+        <source>What the probe found on each render endpoint. &quot;Hear it here&quot; chooses one: it gets the best mode it can carry, the pin when it can, and &quot;Automatic&quot; hands the choice back (the best endpoint for the best mode, a receiver first). &quot;Send applications here&quot; is the other stage, the Windows default: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
+        <translation>ما وجده الفحص على كل نقطة نهاية. «اسمعه هنا» يختار واحدة: تحصل على أفضل وضع يمكنها حمله، والتثبيت عندما تستطيع، و«تلقائي» يعيد الاختيار (أفضل نقطة نهاية لأفضل وضع، جهاز استقبال أولاً). «إرسال التطبيقات إلى هنا» هو المرحلة الأخرى، مخرج Windows الافتراضي: على جهاز حقيقي ستسمع كل تطبيق مباشرة، لذا الجهاز الصامت هو الذي تُرسل إليه.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <source>Automatic</source>
+        <translation>تلقائي</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <source>Hear it here</source>
+        <translation>اسمعه هنا</translation>
+    </message>
+    <message>
+        <source>What the probe found on each render endpoint; the one chosen is where you hear it. &quot;Applications play here&quot; makes an endpoint the Windows default instead, which is the other stage: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
+        <translation type="vanished">ما وجده الفحص على كل نقطة نهاية؛ المختارة هي حيث تسمعه. «تعزف التطبيقات هنا» يجعل نقطة نهاية هي مخرج Windows الافتراضي بدلاً من ذلك، وهي المرحلة الأخرى: على جهاز حقيقي ستسمع كل تطبيق مباشرة، لذا الجهاز الصامت هو الذي تُرسل إليه.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="187"/>
         <source>Applications play here</source>
         <translation>تعزف التطبيقات هنا</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="180"/>
+        <location filename="../ui/qml/OutputPage.qml" line="187"/>
         <source>Send applications here</source>
         <translation>إرسال التطبيقات إلى هنا</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="185"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
         <source>you hear it here</source>
         <translation>تسمعه هنا</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
+        <source> · your choice</source>
+        <translation> · اختيارك</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
+        <source> · automatic</source>
+        <translation> · تلقائي</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="193"/>
+        <source>your choice, but it cannot be used: see the reason above</source>
+        <translation>اختيارك، لكن لا يمكن استخدامه: انظر السبب أعلاه</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>the silent device · </source>
         <translation>الجهاز الصامت · </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>applications play here · </source>
         <translation>تعزف التطبيقات هنا · </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <location filename="../ui/qml/OutputPage.qml" line="194"/>
         <source>never heard</source>
         <translation>لا يُسمع أبداً</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="187"/>
+        <location filename="../ui/qml/OutputPage.qml" line="195"/>
         <source>applications play here · a real device, so heard directly</source>
         <translation>تعزف التطبيقات هنا · جهاز حقيقي، لذا يُسمع مباشرة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="212"/>
+        <location filename="../ui/qml/OutputPage.qml" line="220"/>
         <source>WHERE APPLICATIONS PLAY</source>
         <translation>أين تعزف التطبيقات</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="220"/>
+        <location filename="../ui/qml/OutputPage.qml" line="228"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the Windows default output and the silent device: nothing is heard from it, and this app taps each application there.</source>
         <translation>تعزف التطبيقات في &lt;b&gt;%1&lt;/b&gt;، مخرج Windows الافتراضي والجهاز الصامت: لا يُسمع منه شيء، ويلتقط هذا التطبيق كل تطبيق هناك.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="221"/>
+        <location filename="../ui/qml/OutputPage.qml" line="229"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the Windows default output, which is a real device: you hear each application directly as well as through this app, and a receiver on it cannot be opened exclusively while they do.</source>
         <translation>تعزف التطبيقات في &lt;b&gt;%1&lt;/b&gt;، مخرج Windows الافتراضي، وهو جهاز حقيقي: تسمع كل تطبيق مباشرة وعبر هذا التطبيق أيضاً، ولا يمكن فتح جهاز استقبال عليه حصرياً أثناء ذلك.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="221"/>
+        <location filename="../ui/qml/OutputPage.qml" line="229"/>
         <source>nothing</source>
         <translation>لا شيء</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>Restore %1</source>
         <translation>استعادة %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>the previous output</source>
         <translation>المخرج السابق</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="230"/>
+        <location filename="../ui/qml/OutputPage.qml" line="238"/>
         <source>Send applications to %1</source>
         <translation>إرسال التطبيقات إلى %1</translation>
     </message>
@@ -647,7 +676,7 @@
         <translation type="vanished">مختار</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="185"/>
+        <location filename="../ui/qml/OutputPage.qml" line="192"/>
         <source> · exclusive mode</source>
         <translation> · وضع حصري</translation>
     </message>
@@ -668,22 +697,22 @@
         <translation type="vanished">افتراضي النظام · التطبيقات تصدر الصوت هنا</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="188"/>
+        <location filename="../ui/qml/OutputPage.qml" line="196"/>
         <source>spatial sound on · headphones fallback</source>
         <translation>الصوت المكاني مفعل · بديل سماعات الرأس</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="189"/>
+        <location filename="../ui/qml/OutputPage.qml" line="197"/>
         <source>surround PCM fallback</source>
         <translation>بديل PCM محيطي</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="189"/>
+        <location filename="../ui/qml/OutputPage.qml" line="197"/>
         <source>stereo fallback</source>
         <translation>بديل استيريو</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="195"/>
+        <location filename="../ui/qml/OutputPage.qml" line="203"/>
         <source>no render endpoints probed yet</source>
         <translation>لم يتم فحص أي نقاط نهاية للإخراج بعد</translation>
     </message>
@@ -720,27 +749,27 @@
         <translation type="vanished">نقل الافتراضي إلى </translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="234"/>
+        <location filename="../ui/qml/OutputPage.qml" line="242"/>
         <source>Open Sound settings</source>
         <translation>فتح إعدادات الصوت</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="235"/>
+        <location filename="../ui/qml/OutputPage.qml" line="243"/>
         <source>Re-probe</source>
         <translation>إعادة الفحص</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="246"/>
+        <location filename="../ui/qml/OutputPage.qml" line="254"/>
         <source>CODEC PATH</source>
         <translation>مسار الترميز</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="251"/>
+        <location filename="../ui/qml/OutputPage.qml" line="259"/>
         <source>Bypass the codec on headphones and PCM</source>
         <translation>تجاوز الترميز على سماعات الرأس وPCM</translation>
     </message>
     <message>
-        <location filename="../ui/qml/OutputPage.qml" line="252"/>
+        <location filename="../ui/qml/OutputPage.qml" line="260"/>
         <source>Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine&apos;s own objects and PCM and stereo take its 5.1 bed, codec out of the loop.</source>
         <translation>إيقاف: تشغّل سماعات الرأس وPCM والاستيريو فك ترميز لتدفق E-AC-3، فما تسمعه مرّ عبر الترميز. تشغيل: تُصيّر سماعات الرأس كائنات المحرك نفسها ويأخذ PCM والاستيريو قاعدته 5.1، والترميز خارج الحلقة.</translation>
     </message>
@@ -1769,8 +1798,22 @@
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source>endpoint: your choice</source>
+        <translation>نقطة النهاية: اختيارك</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source>endpoint: automatic</source>
+        <translation>نقطة النهاية: تلقائي</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SignalPath.qml" line="139"/>
+        <source> · pin: </source>
+        <translation> · تثبيت: </translation>
+    </message>
+    <message>
         <source>pin: </source>
-        <translation>تثبيت: </translation>
+        <translation type="vanished">تثبيت: </translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="140"/>
