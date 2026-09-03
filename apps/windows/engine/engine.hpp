@@ -28,7 +28,7 @@ struct EngineConfig {
     bool low_latency = false;      // 1-block frames at a bitrate that carries the metadata
     std::uint32_t bitrate_kbps = 0;  // 0: 448 normal, 1536 low-latency
     std::optional<OutputMode> pinned;
-    std::string preferred_endpoint_id;  // the user's choice of endpoint; empty: automatic
+    std::string preferred_endpoint_id{};  // the user's choice of endpoint; empty: automatic
     bool bypass_codec = false;  // headphones/PCM/stereo play the raw frame, not a decode
     // The audio devices the engine is built over; null means WASAPI
     // (audio_devices.hpp). Tests pass fakes.

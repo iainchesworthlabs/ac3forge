@@ -46,7 +46,7 @@ struct OutputStageConfig {
     // such as FxSound's idle endpoint during development).
     std::string null_sink_substring = "Desktop Atmos";
     std::optional<OutputMode> pinned;
-    std::string preferred_endpoint_id;  // the user's choice of endpoint; empty: automatic
+    std::string preferred_endpoint_id{};  // the user's choice of endpoint; empty: automatic
     std::uint32_t sample_rate = 48000;
     std::uint32_t ac3_bitrate_kbps = 448;  // the DD 5.1 leg only
 };
