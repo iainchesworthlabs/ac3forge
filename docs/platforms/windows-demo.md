@@ -823,6 +823,79 @@ object as a point, so a sized object is spread by the receiver and not twice. Th
 takes `size <app> 0..1`; a placement case and a room-suite case cover it. Width per
 application is the split above.
 
+### The application review, 2026-09-03
+
+Iain ran the window for the first time and reviewed it live. What he found, and what it
+became, in his order.
+
+The rail showed monograms and executable stems and listed every process with an audio
+session, a virtual machine's backend and Windows' text-input host among them. It now shows
+each application's real icon (an image provider over the icon the shell keeps for its
+executable, the monogram kept for executables that have none, decided by comparing pixels
+with the shell's generic sheet) and the name the executable gives itself. A process is an
+application when some process in its tree owns a visible, titled, top-level window, or when
+it is a packaged app (whose windows belong to a host process); anything else, and anything
+under `Windows\SystemApps`, is background, hidden unless a Behaviour setting shows it, and
+in the bed either way. Another instance of this program is never listed.
+
+Resizing broke every page: content overflowed the window rather than reflowing, a wide
+window left a gap in the middle of the room, and the Settings page's two columns were sized
+by their content and came out lopsided. The pages now adapt. The rails keep a preferred
+width and give way a little; the room views scale between 240 and 560 px with the centre
+column and stack when it is narrow; the Output page's two-up rows go one-up below about
+900 px and its endpoint table folds its note column below 760; the Settings page's columns
+are balanced and go to one below 1000; button rows wrap, long names elide, the centre of the
+Room page scrolls when the window is short, and the window's minimum is 960 by 620.
+
+The Settings page's structure was unintuitive, the virtual-device block in particular. It is
+reordered by what is set up first on a new machine: the virtual output device, as a
+three-line status (is there a silent device; can this machine load a test-signed driver, and
+what to do if not; is there a package to install) with one action per state and the driver
+folder and silent-device filter behind an Advanced disclosure; then the signing key; then
+latency, codec, appearance and behaviour. The palette defaults to system. The language
+chooser re-selects from the language manager's own state after a retranslate rebuilds its
+model, which is why it had snapped back to System.
+
+Smaller findings, each fixed: the pin combo could read blank (it never does now); the
+endpoint table gave nothing to do (each row can be made the Windows default, through the
+same policy call the silent-device switch uses); the Output card's long endpoint name and
+the default-output buttons overflowed; the status strip's "frame" figure jittered between
+20 and 40 ms, which is the loop's wall-clock cadence paced by the taps' 10 ms packets and
+not the encoder's time, so the strip now shows the encoder's own time (about 1 to 2 ms)
+beside the cadence; there was no way to stop or start the engine (a Start/Stop sits beside
+its state); the window had no icon and no About box (both from the GUI app's assets and
+shape); the 3D room's orbit ran against the mouse, sat too far away, and drew only the 5.1
+bed speakers (it follows the mouse, frames the room, draws 5.1, 7.1 or 7.1.4 for reference,
+automatically 5.1 while the stream is bed-only and 7.1.4 once objects are on, and its
+objects can be picked and dragged across the floor, or up and down with Shift); the selected
+panel has placement presets (in front, behind, left, right, overhead, the four corners).
+
+Two findings were about what the window did not say. With no signing key the objects are
+off, so placing an application only pans it within the 5.1 bed and height and size do
+nothing, and nothing had told the person placing things so. The Room page now says it in a
+notice where the placing happens, and the elevation view is dimmed and captioned "height:
+objects only" in that state. And a split application showed two dots that could not be
+moved apart: each object of a pair is now a marker of its own, placed where it is dragged
+(the engine keeps the pair's centre between them, moves both when the centre moves, and
+"Standard stereo" puts them back at the spread).
+
+The defect behind the review's worst moment, the drag that lost its click, also explains the
+stutter Iain felt with the mouse over the window. The application list was a plain value
+list rebuilt on every 120 ms poll, and the level meters change on every poll, so every
+delegate in the rail, both room views, the bed tray and the 3D room was destroyed and
+recreated eight times a second, and a marker being dragged went with them. Each application
+is now a live object whose properties update in place, so delegates persist; the marker's
+own position and the engine's are separate properties, so a drag never breaks a binding;
+and the bed chip drags with Qt Quick's internal drag rather than the platform's, which had
+fought the chip's own mouse handling for the press.
+
+Tracy now runs through the demo as it does through the library: zones on the engine loop's
+stages (commands, session refresh, reprobe, taps, encode, submit) and the controller's poll,
+a frame mark per encoded frame, on the library's profiling header pair. A build with
+`AC3FORGE_ENABLE_TRACY=ON` and the `profiling` manifest feature carries the client and the
+capture and export tools; `tracy-capture` against the instrumented window under load gives
+the per-zone statistics the status strip can only hint at.
+
 ### Phase 6: docs, CI, release
 
 Five items. The first three, this page rewritten from plan to record, the roadmap record and
