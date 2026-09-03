@@ -47,9 +47,10 @@ function Invoke-Guest([string]$script, [string]$tag) {
     Set-Content -Path $local -Value $script -Encoding UTF8
     Remove-Item $out -ErrorAction SilentlyContinue
     & $vmrun @guest copyFileFromHostToGuest $vmx $local $guestScript | Out-Null
-    # '""' rather than '': PowerShell drops an empty argument to a native
-    # command, and vmrun would take the command line as the interpreter.
-    & $vmrun @guest runScriptInGuest $vmx '""' "cmd /c powershell -NoProfile -ExecutionPolicy Bypass -File $guestScript > $guestOut 2>&1" | Out-Null
+    # An empty interpreter ('') makes runScriptInGuest run the text as one
+    # command line. '""' (two literal quotes) is NOT empty and vmrun then
+    # looks for an interpreter named "" and reports "a file was not found".
+    & $vmrun @guest runScriptInGuest $vmx '' "cmd /c powershell -NoProfile -ExecutionPolicy Bypass -File $guestScript > $guestOut 2>&1" | Out-Null
     & $vmrun @guest copyFileFromGuestToHost $vmx $guestOut $out | Out-Null
     Get-Content $out -ErrorAction SilentlyContinue
 }
