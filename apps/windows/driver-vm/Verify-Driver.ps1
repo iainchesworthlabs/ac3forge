@@ -171,9 +171,9 @@ do {
 '@ 'noexercise' | ForEach-Object { "  $_" }
         Start-Sleep -Seconds 3
         Wait-Tools
-        return
     }
 
+    if (-not $NoExercise) {
     Write-Host 'exercising: default role, playback, idle power-down and back, a format change, device restarts idle and under a stream, concurrent streams, removal (driver unload) under a stream, reinstall'
     # Nothing here aborts the rest: each step is guarded, so one hiccup does
     # not cut the exercise short (the endpoint builds a moment after the
@@ -242,6 +242,7 @@ try { & C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package | Out-Null
 '@ 'exercise' | ForEach-Object { "  $_" }
     Start-Sleep -Seconds 8
     Wait-Tools
+    }
 }
 
 Write-Host 'report'
