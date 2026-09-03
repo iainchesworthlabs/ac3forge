@@ -155,7 +155,9 @@ Item {
                     id: room3d
                     objectName: "room3dLoader"
                     visible: page.threeD
-                    active: page.threeD && DeskController.has3D
+                    property bool shown: false
+                    onVisibleChanged: if (visible) shown = true
+                    active: (page.threeD || shown) && DeskController.has3D
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: centre.sideBySide ? centre.viewSide * 2 + Theme.space6 : centre.viewSide
                     Layout.preferredHeight: centre.viewSide + 22

@@ -92,15 +92,16 @@ Item {
                 antialiasingMode: SceneEnvironment.MSAA
                 antialiasingQuality: SceneEnvironment.Medium
             }
-            // The camera orbits the listener. Framed so the room fills the
-            // viewport at the default distance.
+            // The camera orbits the listener. The default is the view Iain set
+            // by hand: from behind the rear wall, nearly level, looking down the
+            // centre line with the whole width in frame.
             Node {
                 id: orbit
-                eulerRotation.x: -28
-                eulerRotation.y: 32
+                eulerRotation.x: -14
+                eulerRotation.y: 0
                 PerspectiveCamera {
                     id: camera
-                    position: Qt.vector3d(0, 0, 520)
+                    position: Qt.vector3d(0, 0, 560)
                     clipNear: 10
                     clipFar: 5000
                 }
@@ -183,7 +184,7 @@ Item {
                                                   root.sceneZ(appNode.app.y))
                             Model {
                                 source: "#Sphere"
-                                scale: Qt.vector3d(0.24, 0.24, 0.24)
+                                scale: Qt.vector3d(0.3, 0.3, 0.3)
                                 pickable: true
                                 property int appId: appNode.app.app
                                 materials: PrincipledMaterial {
@@ -215,6 +216,25 @@ Item {
             }
         }
 
+        DropArea {
+            anchors.fill: parent
+            keys: ["app"]
+            onDropped: function(drop) {
+                const source = drop.source;
+                if (!(source && source.app)) return;
+                // The point on the ear-level plane under the drop.
+                const near = view.mapTo3DScene(Qt.vector3d(drop.x - 1, drop.y - 1, 10));
+                const far = view.mapTo3DScene(Qt.vector3d(drop.x - 1, drop.y - 1, 100));
+                const dir = far.minus(near);
+                if (Math.abs(dir.y) < 1e-6) return;
+                const t = -near.y / dir.y;
+                if (t < 0) return;
+                const p = near.plus(dir.times(t));
+                root.moved(source.app.app, root.roomX(p.x), root.roomY(p.z), 0);
+                root.select(source.app.app);
+                drop.accept(Qt.MoveAction);
+            }
+        }
         MouseArea {
             id: mouse
             anchors.fill: parent
@@ -232,10 +252,12 @@ Item {
 
             // A point in the scene where the ray through (px, py) meets the
             // horizontal plane at height `planeY`, or null when the ray runs
-            // away from it. Two unprojections make the ray.
+            // away from it. Two unprojections make the ray; the depths are
+            // distances from the camera, and depth 0 (the camera itself)
+            // unprojects to nothing usable.
             function planeHit(px, py, planeY) {
-                const near = view.mapTo3DScene(Qt.vector3d(px, py, 0));
-                const far = view.mapTo3DScene(Qt.vector3d(px, py, 1));
+                const near = view.mapTo3DScene(Qt.vector3d(px, py, 10));
+                const far = view.mapTo3DScene(Qt.vector3d(px, py, 100));
                 const dir = far.minus(near);
                 if (Math.abs(dir.y) < 1e-6) return null;
                 const t = (planeY - near.y) / dir.y;
@@ -245,8 +267,8 @@ Item {
             // For height drags: the point where the ray meets the vertical
             // plane facing the camera through the object's floor position.
             function verticalHit(px, py, atX, atZ) {
-                const near = view.mapTo3DScene(Qt.vector3d(px, py, 0));
-                const far = view.mapTo3DScene(Qt.vector3d(px, py, 1));
+                const near = view.mapTo3DScene(Qt.vector3d(px, py, 10));
+                const far = view.mapTo3DScene(Qt.vector3d(px, py, 100));
                 const dir = far.minus(near);
                 // Plane normal: the camera's forward projected onto the floor.
                 const fwd = camera.forward;
@@ -306,7 +328,7 @@ Item {
             onReleased: dragApp = null
             onCanceled: dragApp = null
             onWheel: function(wheel) {
-                camera.position.z = Math.max(280, Math.min(2000, camera.position.z - wheel.angleDelta.y * 0.6));
+                camera.position.z = Math.max(240, Math.min(2000, camera.position.z - wheel.angleDelta.y * 0.6));
             }
         }
     }
