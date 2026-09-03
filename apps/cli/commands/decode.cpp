@@ -296,8 +296,8 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // would splice two unrelated pieces of audio together.
     const auto ids = ac3::programme_ids(stream);
     if (!ids) {
-        fmt::println(stderr, "error: stream framing failed (code {})",
-                     static_cast<int>(ids.error()));
+        fmt::println(stderr, "error: stream framing failed: {}",
+                     ac3::describe(ids.error()));
         return 1;
     }
     if (ids->empty()) {
@@ -313,8 +313,8 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // together into one set of speaker feeds.
     const auto units = ac3::split_access_units(stream, *programme);
     if (!units) {
-        fmt::println(stderr, "error: stream framing failed (code {})",
-                     static_cast<int>(units.error()));
+        fmt::println(stderr, "error: stream framing failed: {}",
+                     ac3::describe(units.error()));
         return kExitInput;
     }
     if (ids->size() > 1) {
@@ -533,8 +533,12 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         progress.tick(++units_done);
         const auto decoded = decoder.decode_access_unit(unit);
         if (!decoded) {
-            fmt::println(stderr, "error: decode failed (code {})",
-                         static_cast<int>(decoded.error()));
+            // describe(), not the raw enumerator: this is the line a CI
+            // log shows when a third-party stream will not decode, and
+            // "decode failed (code 3)" sent the reader to the enum
+            // definition to learn it meant a reserved header field.
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
             abort_all();
             return kExitInput;
         }
