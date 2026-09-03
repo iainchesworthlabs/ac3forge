@@ -46,12 +46,12 @@ class CMiniportWaveRTStream :
     public CUnknown
 {
 protected:
-    PPORTWAVERTSTREAM           m_pPortStream;
-    LIST_ENTRY                  m_NotificationList;
-    PEX_TIMER                   m_pNotificationTimer;
-    ULONG                       m_ulNotificationIntervalMs;
-    ULONG                       m_ulCurrentWritePosition;
-    LONG                        m_IsCurrentWritePositionUpdated;
+    PPORTWAVERTSTREAM           m_pPortStream {};
+    LIST_ENTRY                  m_NotificationList {};
+    PEX_TIMER                   m_pNotificationTimer {};
+    ULONG                       m_ulNotificationIntervalMs {};
+    ULONG                       m_ulCurrentWritePosition {};
+    LONG                        m_IsCurrentWritePositionUpdated {};
     
 public:
     DECLARE_STD_UNKNOWN();
@@ -79,50 +79,50 @@ public:
     friend class                CMiniportWaveRT;
     friend EXT_CALLBACK         TimerNotifyRT;
 protected:
-    CMiniportWaveRT*            m_pMiniport;
-    ULONG                       m_ulPin;
-    BOOLEAN                     m_bCapture;
-    BOOLEAN                     m_bUnregisterStream;
-    ULONG                       m_ulDmaBufferSize;
-    BYTE*                       m_pDmaBuffer;
-    ULONG                       m_ulNotificationsPerBuffer;
-    KSSTATE                     m_KsState;
-    PKTIMER                     m_pTimer;
-    PRKDPC                      m_pDpc;
-    ULONGLONG                   m_ullPlayPosition;
-    ULONGLONG                   m_ullWritePosition;
-    ULONGLONG                   m_ullLinearPosition;
-    ULONGLONG                   m_ullPresentationPosition;
-    ULONG                       m_ulLastOsReadPacket;
-    ULONG                       m_ulLastOsWritePacket;
-    LONGLONG                    m_llPacketCounter;
-    ULONGLONG                   m_ullDmaTimeStamp;
-    LARGE_INTEGER               m_ullPerformanceCounterFrequency;
-    ULONGLONG                   m_hnsElapsedTimeCarryForward;
-    ULONGLONG                   m_ullLastDPCTimeStamp;
-    ULONGLONG                   m_hnsDPCTimeCarryForward;
-    ULONG                       m_byteDisplacementCarryForward;
-    ULONG                       m_ulDmaMovementRate;
-    BOOL                        m_bLfxEnabled;
-    PBOOL                       m_pbMuted;
-    PLONG                       m_plVolumeLevel;
-    PLONG                       m_plPeakMeter;
-    PWAVEFORMATEXTENSIBLE       m_pWfExt;
-    ULONG                       m_ulContentId;
-    GUID                        m_SignalProcessingMode;
-    BOOLEAN                     m_bEoSReceived;
-    BOOLEAN                     m_bLastBufferRendered;
-    KSPIN_LOCK                  m_PositionSpinLock;
+    CMiniportWaveRT*            m_pMiniport {};
+    ULONG                       m_ulPin {};
+    BOOLEAN                     m_bCapture {};
+    BOOLEAN                     m_bUnregisterStream {};
+    ULONG                       m_ulDmaBufferSize {};
+    BYTE*                       m_pDmaBuffer {};
+    ULONG                       m_ulNotificationsPerBuffer {};
+    KSSTATE                     m_KsState {};
+    PKTIMER                     m_pTimer {};
+    PRKDPC                      m_pDpc {};
+    ULONGLONG                   m_ullPlayPosition {};
+    ULONGLONG                   m_ullWritePosition {};
+    ULONGLONG                   m_ullLinearPosition {};
+    ULONGLONG                   m_ullPresentationPosition {};
+    ULONG                       m_ulLastOsReadPacket {};
+    ULONG                       m_ulLastOsWritePacket {};
+    LONGLONG                    m_llPacketCounter {};
+    ULONGLONG                   m_ullDmaTimeStamp {};
+    LARGE_INTEGER               m_ullPerformanceCounterFrequency {};
+    ULONGLONG                   m_hnsElapsedTimeCarryForward {};
+    ULONGLONG                   m_ullLastDPCTimeStamp {};
+    ULONGLONG                   m_hnsDPCTimeCarryForward {};
+    ULONG                       m_byteDisplacementCarryForward {};
+    ULONG                       m_ulDmaMovementRate {};
+    BOOL                        m_bLfxEnabled {};
+    PBOOL                       m_pbMuted {};
+    PLONG                       m_plVolumeLevel {};
+    PLONG                       m_plPeakMeter {};
+    PWAVEFORMATEXTENSIBLE       m_pWfExt {};
+    ULONG                       m_ulContentId {};
+    GUID                        m_SignalProcessingMode {};
+    BOOLEAN                     m_bEoSReceived {};
+    BOOLEAN                     m_bLastBufferRendered {};
+    KSPIN_LOCK                  m_PositionSpinLock {};
     // Member variable as config params for tone generator
-    ULONG                       m_ulHostCaptureToneFrequency;
+    ULONG                       m_ulHostCaptureToneFrequency {};
     // If abs(m_dwHostCaptureToneAmplitude) + abs(m_dwHostCaptureToneDCValue) > 100
     // m_dwHostCaptureToneDCValue will be compensated to make the sum equal to 100
-    DWORD                       m_dwHostCaptureToneAmplitude;   // must be between -100 to 100
-    DWORD                       m_dwLoopbackCaptureToneAmplitude; // must be between -100 to 100
-    DWORD                       m_dwHostCaptureToneDCOffset;   // must be between -100 to 100
-    DWORD                       m_dwLoopbackCaptureToneDCOffset; // must be between -100 to 100
-    DWORD                       m_dwHostCaptureToneInitialPhase;   // must be between -31416 to 31416
-    DWORD                       m_dwLoopbackCaptureToneInitialPhase; // must be between -31416 to 31416
+    DWORD                       m_dwHostCaptureToneAmplitude {};  // must be between -100 to 100
+    DWORD                       m_dwLoopbackCaptureToneAmplitude {};  // must be between -100 to 100
+    DWORD                       m_dwHostCaptureToneDCOffset {};  // must be between -100 to 100
+    DWORD                       m_dwLoopbackCaptureToneDCOffset {};  // must be between -100 to 100
+    DWORD                       m_dwHostCaptureToneInitialPhase {};  // must be between -31416 to 31416
+    DWORD                       m_dwLoopbackCaptureToneInitialPhase {};  // must be between -31416 to 31416
     // Member variable as config params for tone generator
 
 public:

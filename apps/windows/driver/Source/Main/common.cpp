@@ -31,18 +31,18 @@ class CAdapterCommon :
     public CUnknown
 {
     private:
-        PSERVICEGROUP           m_pServiceGroupWave;
-        PDEVICE_OBJECT          m_pDeviceObject;
-        PDEVICE_OBJECT          m_pPhysicalDeviceObject;
-        WDFDEVICE               m_WdfDevice;            // Wdf device.
-        DEVICE_POWER_STATE      m_PowerState;
+        PSERVICEGROUP           m_pServiceGroupWave {};
+        PDEVICE_OBJECT          m_pDeviceObject {};
+        PDEVICE_OBJECT          m_pPhysicalDeviceObject {};
+        WDFDEVICE               m_WdfDevice {};  // Wdf device.
+        DEVICE_POWER_STATE      m_PowerState {};
 
-        PCSimpleAudioSampleHW   m_pHW;                  // Virtual Simple Audio Sample HW object
-        PPORTCLSETWHELPER       m_pPortClsEtwHelper;
+        PCSimpleAudioSampleHW   m_pHW {};  // Virtual Simple Audio Sample HW object
+        PPORTCLSETWHELPER       m_pPortClsEtwHelper {};
 
         static LONG             m_AdapterInstances;     // # of adapter objects.
 
-        DWORD                   m_dwIdleRequests;
+        DWORD                   m_dwIdleRequests {};
 
     public:
         //=====================================================================
@@ -235,7 +235,7 @@ class CAdapterCommon :
 
     private:
 
-    LIST_ENTRY m_SubdeviceCache;
+    LIST_ENTRY m_SubdeviceCache {};
 
     NTSTATUS GetCachedSubdevice
     (
@@ -2737,6 +2737,7 @@ Return Value:
         &KSCATEGORY_AUDIO,
         &referenceString,
         &TemplateSymbolicLinkName);
+    IF_FAILED_JUMP(ntStatus, Exit);
 
     // Open the template device interface's registry key path
     ntStatus = IoOpenDeviceInterfaceRegistryKey(&TemplateSymbolicLinkName, GENERIC_READ, &hTemplateDeviceInterfaceParametersKey);

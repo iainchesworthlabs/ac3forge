@@ -42,7 +42,12 @@ PVOID operator new
     ULONG       tag
 )
 {
-    PVOID result = ExAllocatePool2(poolFlags, iSize, tag);
+    // Never executable pool, whatever the caller asked for: the null sink
+    // allocates data only. Code Analysis (C28160) cannot see through a
+    // flags argument it did not see chosen, so the suppression states what
+    // the mask guarantees.
+#pragma warning(suppress: 28160)
+    PVOID result = ExAllocatePool2(poolFlags & ~POOL_FLAG_NON_PAGED_EXECUTE, iSize, tag);
 
     return result;
 }
@@ -59,7 +64,8 @@ PVOID operator new
     POOL_FLAGS  poolFlags
 )
 {
-    PVOID result = ExAllocatePool2(poolFlags, iSize, SIMPLEAUDIOSAMPLE_POOLTAG);
+#pragma warning(suppress: 28160)  // as above: the mask keeps the pool non-executable
+    PVOID result = ExAllocatePool2(poolFlags & ~POOL_FLAG_NON_PAGED_EXECUTE, iSize, SIMPLEAUDIOSAMPLE_POOLTAG);
 
     return result;
 }

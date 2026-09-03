@@ -32,29 +32,29 @@ class CMiniportWaveRT :
     public CUnknown
 {
 private:
-    ULONG                               m_ulSystemAllocated;
+    ULONG                               m_ulSystemAllocated {};
 
     ULONG                               m_ulMaxSystemStreams;
-    ULONG                               m_ulMaxOffloadStreams;
-    ULONG                               m_ulMaxLoopbackStreams;
+    ULONG                               m_ulMaxOffloadStreams {};
+    ULONG                               m_ulMaxLoopbackStreams {};
 
     // weak ref of running streams.
-    PCMiniportWaveRTStream            * m_SystemStreams;
+    PCMiniportWaveRTStream            * m_SystemStreams {};
 
-    BOOL                                m_bGfxEnabled;
-    PBOOL                               m_pbMuted;
-    PLONG                               m_plVolumeLevel;
-    PKSDATAFORMAT_WAVEFORMATEXTENSIBLE  m_pMixFormat;
-    PKSDATAFORMAT_WAVEFORMATEXTENSIBLE  m_pDeviceFormat;
-    PCFILTER_DESCRIPTOR                 m_FilterDesc;
+    BOOL                                m_bGfxEnabled {};
+    PBOOL                               m_pbMuted {};
+    PLONG                               m_plVolumeLevel {};
+    PKSDATAFORMAT_WAVEFORMATEXTENSIBLE  m_pMixFormat {};
+    PKSDATAFORMAT_WAVEFORMATEXTENSIBLE  m_pDeviceFormat {};
+    PCFILTER_DESCRIPTOR                 m_FilterDesc {};
     PIN_DEVICE_FORMATS_AND_MODES *      m_DeviceFormatsAndModes;
     KSPIN_LOCK                          m_DeviceFormatsAndModesLock; // To serialize access.
     KIRQL                               m_DeviceFormatsAndModesIrql;
     ULONG                               m_DeviceFormatsAndModesCount; 
     USHORT                              m_DeviceMaxChannels;
-    PDRMPORT                            m_pDrmPort;
-    DRMRIGHTS                           m_MixDrmRights;
-    ULONG                               m_ulMixDrmContentId;
+    PDRMPORT                            m_pDrmPort {};
+    DRMRIGHTS                           m_MixDrmRights {};
+    ULONG                               m_ulMixDrmContentId {};
 
     union {
         PVOID                           m_DeviceContext;
@@ -64,7 +64,7 @@ protected:
     PADAPTERCOMMON                      m_pAdapterCommon;
     ULONG                               m_DeviceFlags;
     eDeviceType                         m_DeviceType;
-    PPORTEVENTS                         m_pPortEvents;
+    PPORTEVENTS                         m_pPortEvents {};
     PENDPOINT_MINIPAIR                  m_pMiniportPair;
     
 public:

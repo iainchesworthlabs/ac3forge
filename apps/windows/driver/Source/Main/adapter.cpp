@@ -466,8 +466,6 @@ InstallEndpointRenderFilters(
 #ifdef _USE_IPortClsRuntimePower
     PPORTCLSRUNTIMEPOWER        pPortClsRuntimePower    = NULL;
 #endif // _USE_IPortClsRuntimePower
-    PPORTCLSStreamResourceManager pPortClsResMgr        = NULL;
-    PPORTCLSStreamResourceManager2 pPortClsResMgr2      = NULL;
 
     PAGED_CODE();
 
@@ -527,60 +525,9 @@ InstallEndpointRenderFilters(
         }
 #endif // _USE_IPortClsRuntimePower
 
-        //
-        // Test: add and remove current thread as streaming audio resource.
-        // In a real driver you should only add interrupts and driver-owned threads
-        // (i.e., do NOT add the current thread as streaming resource).
-        //
-        // testing IPortClsStreamResourceManager:
-        ntStatus = unknownWave->QueryInterface(IID_IPortClsStreamResourceManager, (PVOID *)&pPortClsResMgr);
-        if (NT_SUCCESS(ntStatus))
-        {
-            PCSTREAMRESOURCE_DESCRIPTOR res;
-            PCSTREAMRESOURCE hRes = NULL;
-            PDEVICE_OBJECT pdo = NULL;
-
-            PcGetPhysicalDeviceObject(_pDeviceObject, &pdo);
-            PCSTREAMRESOURCE_DESCRIPTOR_INIT(&res);
-            res.Pdo = pdo;
-            res.Type = ePcStreamResourceThread;
-            res.Resource.Thread = PsGetCurrentThread();
-
-            NTSTATUS ntStatusTest = pPortClsResMgr->AddStreamResource(NULL, &res, &hRes);
-            if (NT_SUCCESS(ntStatusTest))
-            {
-                pPortClsResMgr->RemoveStreamResource(hRes);
-                hRes = NULL;
-            }
-
-            pPortClsResMgr->Release();
-            pPortClsResMgr = NULL;
-        }
-
-        // testing IPortClsStreamResourceManager2:
-        ntStatus = unknownWave->QueryInterface(IID_IPortClsStreamResourceManager2, (PVOID *)&pPortClsResMgr2);
-        if (NT_SUCCESS(ntStatus))
-        {
-            PCSTREAMRESOURCE_DESCRIPTOR res;
-            PCSTREAMRESOURCE hRes = NULL;
-            PDEVICE_OBJECT pdo = NULL;
-
-            PcGetPhysicalDeviceObject(_pDeviceObject, &pdo);
-            PCSTREAMRESOURCE_DESCRIPTOR_INIT(&res);
-            res.Pdo = pdo;
-            res.Type = ePcStreamResourceThread;
-            res.Resource.Thread = PsGetCurrentThread();
-
-            NTSTATUS ntStatusTest = pPortClsResMgr2->AddStreamResource2(pdo, NULL, &res, &hRes);
-            if (NT_SUCCESS(ntStatusTest))
-            {
-                pPortClsResMgr2->RemoveStreamResource(hRes);
-                hRes = NULL;
-            }
-
-            pPortClsResMgr2->Release();
-            pPortClsResMgr2 = NULL;
-        }
+        // The sample probed the port class stream-resource manager here by
+        // registering the current thread and removing it again; a null sink has
+        // no streaming resources to declare, so the probe is gone.
     }
 
     SAFE_RELEASE(unknownTopology);
@@ -648,23 +595,15 @@ InstallAllCaptureFilters(
     _In_ PADAPTERCOMMON _pAdapterCommon
 )
 {
-    NTSTATUS            ntStatus;
-    PENDPOINT_MINIPAIR* ppAeMiniports = NULL;  // no capture endpoints in the null sink
-
     PAGED_CODE();
 
-    // No capture endpoints in the null sink: the bound is a constant 0.
-#pragma warning(suppress: 4296)
-    for (ULONG i = 0; i < g_cCaptureEndpoints; ++i, ++ppAeMiniports)
-    {
-        ntStatus = InstallEndpointCaptureFilters(_pDeviceObject, _pIrp, _pAdapterCommon, *ppAeMiniports);
-        IF_FAILED_JUMP(ntStatus, Exit);
-    }
-
-    ntStatus = STATUS_SUCCESS;
-
-Exit:
-    return ntStatus;
+    // The null sink has no capture endpoints (g_cCaptureEndpoints is 0), so
+    // there is nothing to install; the sample's loop over them is gone rather
+    // than left as a loop that never runs (Code Analysis C6294).
+    UNREFERENCED_PARAMETER(_pDeviceObject);
+    UNREFERENCED_PARAMETER(_pIrp);
+    UNREFERENCED_PARAMETER(_pAdapterCommon);
+    return STATUS_SUCCESS;
 }
 
 //=============================================================================
