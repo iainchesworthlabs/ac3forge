@@ -14,7 +14,7 @@ std::string version_details() {
     // for the 0.10.0-beta.1 release. version_full itself stays the tag's
     // (it names packages and the C API's version string).
     std::string headline{version_full};
-    if (git_commits_since_tag > 0) {
+    if constexpr (git_commits_since_tag > 0) {
         headline += fmt::format("+{}", git_commits_since_tag);
     }
     std::string out = fmt::format(

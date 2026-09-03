@@ -237,6 +237,21 @@ else()
         message(WARNING "windeployqt not found next to Qt6; ac3desk.exe will not run standalone from the build tree.")
     endif()
 
+    # Four windeployqt passes share bin/: ac3gui's, ac3gui_qmltests's (ordered
+    # after it, apps/gui/tests/CMakeLists.txt says why), this one, and
+    # ac3desk_qmltests's (ordered after this one, below). The GUI's pair and
+    # the demo's pair were not ordered against each other, and on a real
+    # "build everything" run two of them copying the same Qt file into bin/
+    # at once fail with "Cannot create a file when that file already
+    # exists" - seen on both Windows CI legs the day the demo joined them,
+    # each time the other application losing. This chains the demo's pair
+    # after whichever of the GUI's is last, so the four run one at a time.
+    if(TARGET ac3gui_qmltests)
+        add_dependencies(ac3desk ac3gui_qmltests)
+    elseif(TARGET ac3gui)
+        add_dependencies(ac3desk ac3gui)
+    endif()
+
     # The window's Qt Quick Test suites (ui/tests), include()d rather than
     # add_subdirectory()'d so they see AC3DESK_QML_FILES and AC3DESK_TS_FILES
     # as this scope set them.

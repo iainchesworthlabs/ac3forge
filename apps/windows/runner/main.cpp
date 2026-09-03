@@ -79,7 +79,7 @@ void print_apps(const ac3::windemo::EngineStatus& s) {
                                 std::to_string(app.position.z).substr(0, 5) + ")")
                                    .c_str()
                              : "bed",
-                    app.fullscreen ? " [full-screen]" : "", app.level_dbfs);
+                    app.fullscreen ? " [full-screen]" : "", static_cast<double>(app.level_dbfs));
         std::putchar('\n');
     }
 }
