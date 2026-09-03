@@ -28,15 +28,16 @@ const AppSlot* SlotAllocator::find(AppId app) const {
     return it == apps_.end() ? nullptr : &*it;
 }
 
-void SlotAllocator::add(AppId app) {
-    if (find(app) != nullptr) {
-        return;
+AppSlot& SlotAllocator::add(AppId app) {
+    if (AppSlot* existing = find(app); existing != nullptr) {
+        return *existing;
     }
     apps_.push_back({.app = app,
                      .positioned = std::nullopt,
                      .width = 1,
                      .wants_position = false,
                      .fullscreen = fullscreen_ == app});
+    return apps_.back();
 }
 
 void SlotAllocator::remove(AppId app) {
@@ -96,14 +97,10 @@ int SlotAllocator::width_of(AppId app) const {
 }
 
 std::optional<int> SlotAllocator::position(AppId app) {
-    AppSlot* slot = find(app);
-    if (slot == nullptr) {
-        add(app);
-        slot = find(app);
-    }
-    slot->wants_position = true;
+    AppSlot& slot = add(app);  // the slot it has, or a new one
+    slot.wants_position = true;
     reconcile();
-    return slot->positioned;
+    return slot.positioned;
 }
 
 void SlotAllocator::unposition(AppId app) {

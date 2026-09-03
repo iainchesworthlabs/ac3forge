@@ -58,7 +58,7 @@ struct OutputPolicyInput {
     // with the best mode it can carry, the pinned mode first when it can,
     // and never a bitstream mode while it is the default. Absent or unable
     // to carry anything, the automatic choice stands and the reason says so.
-    std::string preferred_endpoint_id;
+    std::string preferred_endpoint_id{};
 };
 
 struct OutputChoice {

@@ -83,7 +83,8 @@ class Rfb:
             raise ConnectionError("server refused: " + self.read(length).decode(errors="replace"))
         types = list(self.read(count))
         if 1 not in types:
-            raise ConnectionError(f"server offers security types {types}; only None (1) is supported, "
+            raise ConnectionError(
+                f"server offers security types {types}; only None (1) is supported, "
                                   "clear RemoteDisplay.vnc.password in the VMX")
         self.sock.sendall(bytes([1]))
         result = struct.unpack(">I", self.read(4))[0]
@@ -99,7 +100,8 @@ class Rfb:
         # straight onto a PIL image.
         pixel_format = struct.pack(">BBBBHHHBBBxxx", 32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
         self.sock.sendall(struct.pack(">Bxxx", 0) + pixel_format)
-        self.sock.sendall(struct.pack(">BxH", 2, 1) + struct.pack(">i", 0))  # SetEncodings: Raw only
+        # SetEncodings: Raw only.
+        self.sock.sendall(struct.pack(">BxH", 2, 1) + struct.pack(">i", 0))
 
     def key(self, keysym: int, down: bool) -> None:
         self.sock.sendall(struct.pack(">BBxxI", 4, 1 if down else 0, keysym))
@@ -172,19 +174,24 @@ class Rfb:
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5951)
     sub = parser.add_subparsers(dest="command", required=True)
     shot = sub.add_parser("shot", help="save the console as a PNG")
     shot.add_argument("out")
-    key = sub.add_parser("key", help="press a key (space, Return, Escape, F8, a single character, or a hex keysym)")
+    key = sub.add_parser(
+        "key",
+        help="press a key (space, Return, Escape, F8, a single character, or a hex keysym)")
     key.add_argument("name")
     key.add_argument("--repeat", type=int, default=1)
     key.add_argument("--interval", type=float, default=0.5)
     text = sub.add_parser("type", help="type printable text")
     text.add_argument("text")
-    combo = sub.add_parser("combo", help="hold modifiers while pressing a key, e.g. Super_L+r or Control_L+Shift_L+Escape")
+    combo = sub.add_parser(
+        "combo",
+        help="hold modifiers while pressing a key, e.g. Super_L+r or Control_L+Shift_L+Escape")
     combo.add_argument("keys")
     args = parser.parse_args(argv)
 
@@ -209,7 +216,8 @@ def main(argv: list[str]) -> int:
                 rfb.type_char(ch)
         elif args.command == "combo":
             names = args.keys.split("+")
-            syms = [KEYSYMS[n] if n in KEYSYMS else (ord(n) if len(n) == 1 else int(n, 16)) for n in names]
+            syms = [KEYSYMS[n] if n in KEYSYMS else (ord(n) if len(n) == 1 else int(n, 16))
+                    for n in names]
             for sym in syms[:-1]:
                 rfb.key(sym, True)
             rfb.press(syms[-1])

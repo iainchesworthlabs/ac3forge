@@ -64,8 +64,9 @@ struct AppSlot {
 
 class SlotAllocator {
 public:
-    // Registers an application in the bed. Idempotent for a known id.
-    void add(AppId app);
+    // Registers an application in the bed, and hands back its slot.
+    // Idempotent for a known id: the existing slot is returned.
+    AppSlot& add(AppId app);
     // Forgets an application, freeing its slot if it held one.
     void remove(AppId app);
 
