@@ -34,7 +34,7 @@ float dbfs(std::span<const float> interleaved) {
     }
     double sum = 0.0;
     for (const float v : interleaved) {
-        sum += static_cast<double>(v) * v;
+        sum += static_cast<double>(v) * static_cast<double>(v);
     }
     const double rms = std::sqrt(sum / static_cast<double>(interleaved.size()));
     return rms > 0.0 ? static_cast<float>(20.0 * std::log10(rms)) : -120.0F;
@@ -55,7 +55,8 @@ struct Engine::Impl {
 
     // Frame-thread state.
     SessionMonitor sessions;
-    TapPool taps{2};
+    std::shared_ptr<AudioDevices> devices;
+    TapPool taps;
     SlotAllocator slots;
     PlacementSmoother placement;
     BedMix bed;
@@ -77,7 +78,10 @@ struct Engine::Impl {
     std::uint64_t frames_encoded = 0;
     std::uint64_t starved = 0;
 
-    explicit Impl(EngineConfig c) : config(std::move(c)), taps(c.tap_channels) {}
+    explicit Impl(EngineConfig c)
+        : config(std::move(c)),
+          devices(config.devices ? config.devices : wasapi_devices()),
+          taps(devices, config.tap_channels) {}
 
     void post(std::function<void()> command) {
         const std::lock_guard<std::mutex> lock(mutex);
@@ -112,7 +116,7 @@ struct Engine::Impl {
             }
         }
         if (want != taps.channels()) {
-            taps = TapPool{want};
+            taps = TapPool{devices, want};
             refresh_sessions();
         }
     }
@@ -232,6 +236,7 @@ struct Engine::Impl {
 
     void loop(const std::stop_token& stop) {
         output = std::make_unique<OutputStage>(OutputStageConfig{
+            .devices = devices,
             .bypass_codec = config.bypass_codec,
             .null_sink_substring = config.null_sink_substring, .pinned = config.pinned});
         signing_status = signing.load(config.signing_key_path);
@@ -242,7 +247,7 @@ struct Engine::Impl {
 
         auto last_refresh = std::chrono::steady_clock::time_point{};
         const auto frame_duration =
-            std::chrono::microseconds(static_cast<long long>(1e6 * frames_per / 48000.0));
+            std::chrono::microseconds(static_cast<long long>(1e6 * static_cast<double>(frames_per) / 48000.0));
 
         while (!stop.stop_requested()) {
             const auto frame_start = std::chrono::steady_clock::now();

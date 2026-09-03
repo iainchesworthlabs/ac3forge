@@ -36,6 +36,13 @@ constexpr IID kIidPolicyConfig = {
     0xf8679f50, 0x850a, 0x41cf, {0x9c, 0x72, 0x43, 0x0f, 0x29, 0x02, 0x90, 0xc8}};
 
 struct IPolicyConfig : IUnknown {
+    // A COM interface: the vtable must be exactly the methods below, so no
+    // virtual destructor; protected keeps -Wnon-virtual-dtor honest and
+    // nothing here ever deletes one (Release() does).
+protected:
+    ~IPolicyConfig() = default;
+
+public:
     virtual HRESULT STDMETHODCALLTYPE GetMixFormat(LPCWSTR, WAVEFORMATEX**) = 0;
     virtual HRESULT STDMETHODCALLTYPE GetDeviceFormat(LPCWSTR, INT, WAVEFORMATEX**) = 0;
     virtual HRESULT STDMETHODCALLTYPE ResetDeviceFormat(LPCWSTR) = 0;

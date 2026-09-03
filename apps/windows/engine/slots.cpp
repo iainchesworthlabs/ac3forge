@@ -32,7 +32,10 @@ void SlotAllocator::add(AppId app) {
     if (find(app) != nullptr) {
         return;
     }
-    apps_.push_back({.app = app, .fullscreen = fullscreen_ == app});
+    apps_.push_back({.app = app,
+                     .positioned = std::nullopt,
+                     .wants_position = false,
+                     .fullscreen = fullscreen_ == app});
 }
 
 void SlotAllocator::remove(AppId app) {

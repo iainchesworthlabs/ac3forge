@@ -494,8 +494,64 @@ harmful.
 
 ### Phase 5: fast follows
 
-In this order: low-latency mode with measured numbers, split per application, the 3D room,
-and per-application width and size. Each is its own PR.
+In this order: test remediation, the end-to-end latency figure, split per application, the 3D
+room, and per-application width and size. Each is its own PR.
+
+**Test remediation first.** As of 2026-09-03 the demo's automated tests are 37 Catch2 cases
+over its four pure modules (slots, bed fold, placement smoothing, output policy). The engine
+loop, the output stage, the tap pool, the signing hook, the four Windows platform files, the
+controller and every QML file have no automated test, and no coverage figure exists: the
+repository's coverage gate is gcov on the Linux preset and the demo is Windows-only. Three
+steps, in this order:
+
+1. *A Qt Quick Test target*, `ac3desk_qmltests`, built the way `ac3gui_qmltests` is: a second
+   embedding of the `Ac3ForgeDesk` module, the real `DeskController` (no parallel fake API,
+   the same rule the GUI's tests follow), an isolated `QSettings` store, one ctest entry per
+   `tst_*.qml`. Suites: the shell (page switching, status strip, tray behaviour on close),
+   Settings (every persisted setting round-trips through the controller; the driver block
+   reads the kernel state and the package folder), Output (mode pin, bypass), the room (the
+   session list with the engine stopped and, where a machine has an audio endpoint, running),
+   and the six languages. Tests that need the engine skip when `start()` refuses, so the
+   suite is meaningful on a machine with no audio device and complete on one with.
+2. *Coverage on Windows.* `Coverage.cmake` gains a clang-cl arm (`-fprofile-instr-generate
+   -fcoverage-mapping`, the profile runtime linked explicitly because the MSVC-style link
+   step does not go through the compiler driver) and a `config-windows-llvm-coverage`
+   preset; `tools/checks/coverage_windemo.ps1` runs the `windemo` and `desk` ctest labels
+   under `LLVM_PROFILE_FILE`, merges with `llvm-profdata` and prints `llvm-cov report` over
+   `apps/windows`, which gives line and *branch* figures per file (OpenCppCoverage, the
+   MSVC alternative, reports lines only). The numbers go into this page and, once stable,
+   into per-component floors the way `coverage_report.sh` gates the library.
+3. *Seams in the engine.* `OutputStage` and `TapPool` construct the library's WASAPI classes
+   directly, so the frame loop and the five routes cannot run without an audio device. A
+   small sink interface (open, submit, stop) and a capture-source interface behind the tap
+   pool, with the library classes as the production implementations and in-memory fakes in
+   `tests/windemo/`, let Catch2 drive the loop: taps in, access units and bed out, a mode
+   switch mid-stream, the bypass fold, the null-sink width change, a starved tap. The
+   platform files stay integration-tested by the guest.
+
+**End-to-end latency, measured.** The figure the plan promised is tap to speaker, not the
+engine's own cadence (which is recorded above). Method: a spike, `s5_latency`, plays a
+periodic click from a process of its own into the null sink while the engine runs in PCM
+surround or stereo on a real endpoint; a WASAPI loopback capture of that endpoint (the
+library's ordinary `Capture`) records what came out; cross-correlating the two gives the
+delay, and the same run with the codec bypass on isolates the codec's share. Repeated in
+normal and low-latency modes, on the workstation first and on the AVR path once S2 runs,
+where the receiver's decode delay is measured the same way through an analogue return or a
+microphone at the listening position. The four numbers (normal/low, codec/bypass) go in the
+low-latency table; the receiver figure is a fifth row when it exists.
+
+**Split per application.** The stretch choice from the Q&A: a stereo application becomes two
+objects, one per channel, instead of one mono fold. Design: `SlotAllocator` gains a per-app
+width (1 or 2 slots); a split app takes two consecutive positioned slots and is refused
+(stays in the bed, with a reason in the UI) when only one is free; the bed fold is unchanged
+for bed apps. Placement: the pair sits either side of the position the user places, at a
+user-adjustable spread (default 0.15 of the room width, clamped to the walls), so dragging
+moves the pair as one and the room draws a single icon with two small satellites. Tap width
+stays whatever the null sink is; a wider tap splits to its front pair. Engine: `fold_to_mono`
+gains a `fold_to_pair` sibling; `TapRead` is unchanged. UI: the Settings checkbox already on
+the page, which now actually enables it, plus a per-app "split" toggle on the app's row.
+Tests: the allocator's two-slot cases and refusal, the pair fold, and a QML test that the
+toggle reaches the controller.
 
 ### Phase 6: docs, CI, release
 
@@ -503,6 +559,21 @@ This page rewritten from plan to record; a roadmap record; a CHANGELOG entry; th
 (driver excluded) on the self-hosted Windows runners; the WDK on the runners and the driver in
 CI only once it builds locally without surprises; the EV certificate and attestation step as
 the last item, after which the driver can join the package.
+
+## What it looks like
+
+Captured from the running window on the workstation on 2026-09-03 with three tone players
+standing in for applications (`ac3desk --page room --place Game=0.85,0.85,0.3 --place
+Music=0.2,0.25,0 --shot`): Game placed rear-right with height, Music front-left, Chat left in
+the bed, two idle applications alongside.
+
+![The room: plan and elevation, two applications placed, one in the bed](screenshots/windows-demo-room.png)
+
+![The Output page: the mode table, the endpoint probe and the codec path](screenshots/windows-demo-output.png)
+
+![The Settings page: latency, codec, signing key, the virtual device and its driver, appearance, behaviour](screenshots/windows-demo-settings.png)
+
+![The room in French, one of the six mechanically translated languages](screenshots/windows-demo-room-fr.png)
 
 ## What has and has not been verified
 

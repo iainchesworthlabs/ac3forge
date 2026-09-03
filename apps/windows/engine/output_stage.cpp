@@ -7,8 +7,6 @@
 #include <thread>
 #include <utility>
 
-#include "ac3/audio/monitor.hpp"
-#include "ac3/audio/passthrough.hpp"
 #include "ac3/audio/spatial.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
@@ -68,10 +66,11 @@ bool submit_with_patience(Sink& sink, std::uint64_t& underruns, Args&&... args) 
 }  // namespace
 
 struct OutputStage::Impl {
+    std::shared_ptr<AudioDevices> devices;
     // Exactly one of these is live at a time, per mode.
-    std::unique_ptr<ac3::audio::PassthroughSink> passthrough;
-    std::unique_ptr<ac3::audio::MonitorSink> monitor;
-    std::unique_ptr<ac3::audio::SpatialObjectSink> spatial;
+    std::unique_ptr<BurstSink> passthrough;
+    std::unique_ptr<PcmSink> monitor;
+    std::unique_ptr<ObjectSink> spatial;
     bool spatial_started = false;
 
     std::unique_ptr<ac3::iec61937::Eac3BurstPacker> packer;  // Atmos / DD+
@@ -103,7 +102,9 @@ struct OutputStage::Impl {
 };
 
 OutputStage::OutputStage(OutputStageConfig config)
-    : impl_(std::make_unique<Impl>()), config_(std::move(config)) {}
+    : impl_(std::make_unique<Impl>()), config_(std::move(config)) {
+    impl_->devices = config_.devices ? config_.devices : wasapi_devices();
+}
 
 OutputStage::~OutputStage() {
     stop();
@@ -124,24 +125,19 @@ void OutputStage::stop() {
 
 const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
     std::vector<EndpointFacts> facts;
-    const auto devices = ac3::audio::enumerate_render_devices(config_.sample_rate);
-    if (devices) {
+    {
         const std::string needle = lower(config_.null_sink_substring);
-        for (const auto& device : *devices) {
-            EndpointFacts f{.id = device.id,
-                            .name = device.name,
-                            .is_default = device.is_default,
-                            .is_null_sink = !needle.empty() &&
-                                            lower(device.name).find(needle) != std::string::npos,
-                            .accepts_eac3 = device.supports_eac3_passthrough,
-                            .accepts_ac3 = device.supports_ac3_passthrough,
-                            .shared_channels = device.channels};
-            if (const auto spatial = ac3::audio::probe_spatial_capability(device.id);
-                spatial && spatial->available) {
-                f.spatial = true;
-                f.spatial_max_objects = spatial->max_dynamic_objects;
-            }
-            facts.push_back(std::move(f));
+        for (const auto& device : impl_->devices->render_devices(config_.sample_rate)) {
+            facts.push_back({.id = device.id,
+                             .name = device.name,
+                             .is_default = device.is_default,
+                             .is_null_sink = !needle.empty() &&
+                                             lower(device.name).find(needle) != std::string::npos,
+                             .accepts_eac3 = device.accepts_eac3,
+                             .accepts_ac3 = device.accepts_ac3,
+                             .shared_channels = device.shared_channels,
+                             .spatial = device.spatial,
+                             .spatial_max_objects = device.spatial_max_objects});
         }
     }
 
@@ -172,21 +168,19 @@ const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
     switch (choice.mode) {
         case OutputMode::kAtmos:
         case OutputMode::kDdPlus51: {
-            impl_->passthrough = std::make_unique<ac3::audio::PassthroughSink>();
-            const auto started = impl_->passthrough->start(choice.endpoint_id, config_.sample_rate,
-                                                           ac3::audio::BitstreamFormat::kEac3);
+            impl_->passthrough = impl_->devices->burst_sink();
+            const auto started = impl_->passthrough->start(choice.endpoint_id, config_.sample_rate, true);
             if (!started) {
-                return refuse(std::string(ac3::audio::describe(started.error())));
+                return refuse(started.error());
             }
             impl_->packer = std::make_unique<ac3::iec61937::Eac3BurstPacker>();
             break;
         }
         case OutputMode::kDd51: {
-            impl_->passthrough = std::make_unique<ac3::audio::PassthroughSink>();
-            const auto started = impl_->passthrough->start(choice.endpoint_id, config_.sample_rate,
-                                                           ac3::audio::BitstreamFormat::kAc3);
+            impl_->passthrough = impl_->devices->burst_sink();
+            const auto started = impl_->passthrough->start(choice.endpoint_id, config_.sample_rate, false);
             if (!started) {
-                return refuse(std::string(ac3::audio::describe(started.error())));
+                return refuse(started.error());
             }
             impl_->ac3_encoder = std::make_unique<ac3::FrameEncoder>(ac3::EncoderConfig{
                 .sample_rate = ac3::SampleRate::k48000,
@@ -197,21 +191,21 @@ const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
             break;
         }
         case OutputMode::kPcmSurround: {
-            impl_->monitor = std::make_unique<ac3::audio::MonitorSink>();
+            impl_->monitor = impl_->devices->pcm_sink();
             const auto started =
                 impl_->monitor->start(choice.endpoint_id, config_.sample_rate, 6, kMask51);
             if (!started) {
-                return refuse(std::string(ac3::audio::describe(started.error())));
+                return refuse(started.error());
             }
             impl_->decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{});
             break;
         }
         case OutputMode::kStereo: {
-            impl_->monitor = std::make_unique<ac3::audio::MonitorSink>();
+            impl_->monitor = impl_->devices->pcm_sink();
             const auto started =
                 impl_->monitor->start(choice.endpoint_id, config_.sample_rate, 2, kMaskStereo);
             if (!started) {
-                return refuse(std::string(ac3::audio::describe(started.error())));
+                return refuse(started.error());
             }
             impl_->decoder = std::make_unique<ac3::Eac3Decoder>(
                 ac3::DecoderConfig{.output = {.target = ac3::DownmixTarget::kLoRo}});
@@ -220,7 +214,7 @@ const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
         case OutputMode::kHeadphones: {
             // The spatial sink is started on the first decoded unit, which
             // is when the object count and the LFE's presence are known.
-            impl_->spatial = std::make_unique<ac3::audio::SpatialObjectSink>();
+            impl_->spatial = impl_->devices->object_sink();
             impl_->decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{});
             break;
         }
@@ -243,8 +237,7 @@ bool OutputStage::ensure_spatial(bool has_lfe, std::size_t objects) {
         status_.endpoint_id, config_.sample_rate, has_lfe ? kSpeakerLowFrequency : 0U,
         static_cast<std::uint32_t>(std::max<std::size_t>(objects, 1)));
     if (!started) {
-        status_.reason += "; spatial sink refused: " +
-                          std::string(ac3::audio::describe(started.error()));
+        status_.reason += "; spatial sink refused: " + started.error();
         impl.teardown();
         status_.running = false;
         status_.mode = OutputMode::kNone;

@@ -3,17 +3,19 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <utility>
 
 namespace ac3::windemo {
 
-TapPool::TapPool(std::uint16_t channels, std::uint32_t sample_rate)
-    : channels_(channels), sample_rate_(sample_rate) {}
+TapPool::TapPool(std::shared_ptr<AudioDevices> devices, std::uint16_t channels,
+                 std::uint32_t sample_rate)
+    : devices_(std::move(devices)), channels_(channels), sample_rate_(sample_rate) {}
 
 std::vector<AppId> TapPool::sync(std::span<const AppId> wanted) {
     std::vector<AppId> failed;
     for (auto it = taps_.begin(); it != taps_.end();) {
         if (std::ranges::find(wanted, it->first) == wanted.end()) {
-            it->second.capture->stop();
+            it->second.source->stop();
             it = taps_.erase(it);
         } else {
             ++it;
@@ -23,11 +25,8 @@ std::vector<AppId> TapPool::sync(std::span<const AppId> wanted) {
         if (taps_.contains(app)) {
             continue;
         }
-        Tap tap{.capture = std::make_unique<ac3::audio::Capture>()};
-        const auto started = tap.capture->start_process_loopback(
-            app, ac3::audio::ProcessLoopbackMode::kIncludeProcessTree,
-            {.sample_rate = sample_rate_, .channels = channels_});
-        if (!started) {
+        Tap tap{.source = devices_->tap(), .scratch = {}};
+        if (const auto started = tap.source->start(app, sample_rate_, channels_); !started) {
             failed.push_back(app);
             continue;
         }
@@ -45,9 +44,7 @@ const std::vector<TapRead>& TapPool::read(std::size_t frames, int wait_ms) {
         std::size_t filled = 0;
         bool starved = false;
         while (filled < samples) {
-            const std::size_t got = tap.capture->buffer()->read(
-                std::span{tap.scratch}.subspan(filled, samples - filled));
-            filled += got;
+            filled += tap.source->read(std::span{tap.scratch}.subspan(filled, samples - filled));
             if (filled < samples) {
                 if (std::chrono::steady_clock::now() >= deadline) {
                     starved = true;

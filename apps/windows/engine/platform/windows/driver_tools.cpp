@@ -28,16 +28,6 @@ struct SystemCodeIntegrityInformationBlock {
 
 using NtQuerySystemInformationFn = NTSTATUS(NTAPI*)(int, PVOID, ULONG, PULONG);
 
-std::wstring narrow_to_wide(std::string_view s) {
-    if (s.empty()) {
-        return {};
-    }
-    const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
-    std::wstring out(static_cast<std::size_t>(n), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), out.data(), n);
-    return out;
-}
-
 std::string last_error_text(DWORD code) {
     wchar_t* buffer = nullptr;
     const DWORD n = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,

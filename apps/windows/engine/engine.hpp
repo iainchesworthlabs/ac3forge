@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+
+#include "audio_devices.hpp"
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -26,6 +29,9 @@ struct EngineConfig {
     std::uint32_t bitrate_kbps = 0;  // 0: 448 normal, 1536 low-latency
     std::optional<OutputMode> pinned;
     bool bypass_codec = false;  // headphones/PCM/stereo play the raw frame, not a decode
+    // The audio devices the engine is built over; null means WASAPI
+    // (audio_devices.hpp). Tests pass fakes.
+    std::shared_ptr<AudioDevices> devices;
     // The width taps open at until the first probe; after each probe the
     // engine follows the null sink's shared-mode channel count (2, 6 or 8),
     // so a surround-capable application rendering 7.1 into the driver

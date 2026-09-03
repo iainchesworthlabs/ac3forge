@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "ac3/audio/capture.hpp"
+#include "audio_devices.hpp"
 #include "slots.hpp"
 
 // One process-loopback tap per application, kept in step with the session
@@ -18,7 +18,8 @@
 // taps are wall-clock silence-filled by the library, so a quiet application
 // still advances; one that has stalled (its process gone, and the OS still
 // delivering zeros, or a tap that simply has not caught up) is read as
-// silence rather than holding the frame.
+// silence rather than holding the frame. The taps come from an
+// AudioDevices (audio_devices.hpp): WASAPI in the app, fakes in the tests.
 
 namespace ac3::windemo {
 
@@ -32,7 +33,8 @@ struct TapRead {
 
 class TapPool {
 public:
-    explicit TapPool(std::uint16_t channels = 2, std::uint32_t sample_rate = 48000);
+    explicit TapPool(std::shared_ptr<AudioDevices> devices, std::uint16_t channels = 2,
+                     std::uint32_t sample_rate = 48000);
 
     // Opens taps for applications in `wanted` that have none, closes taps
     // whose application is gone. Returns the ids that could not be opened,
@@ -49,9 +51,10 @@ public:
 
 private:
     struct Tap {
-        std::unique_ptr<ac3::audio::Capture> capture;
+        std::unique_ptr<TapSource> source;
         std::vector<float> scratch;
     };
+    std::shared_ptr<AudioDevices> devices_;
     std::uint16_t channels_;
     std::uint32_t sample_rate_;
     std::unordered_map<AppId, Tap> taps_;

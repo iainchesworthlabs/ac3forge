@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "ac3/oba/atmos.hpp"
+#include "audio_devices.hpp"
 #include "output_policy.hpp"
 
 // The output end of the engine (docs/platforms/windows-demo.md, "Output modes
@@ -33,6 +34,8 @@
 namespace ac3::windemo {
 
 struct OutputStageConfig {
+    // Where endpoints and sinks come from; null means WASAPI.
+    std::shared_ptr<AudioDevices> devices;
     // Headphones, PCM surround and stereo play the raw frame instead of a
     // decode of the stream.
     bool bypass_codec = false;

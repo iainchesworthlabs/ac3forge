@@ -1,0 +1,82 @@
+import QtQuick
+import QtTest
+
+import Ac3ForgeDesk
+
+// The room: the session list the controller publishes, the placed/bed
+// counts that go with it, and position/unposition commands. With the
+// engine stopped the list is empty and the counts are zero; with it
+// running (a machine with an audio endpoint) the counts add up to the list
+// and a placement round-trips. The engine-dependent case skips where
+// start() refuses.
+TestCase {
+    id: testCase
+    name: "Room"
+    when: windowShown
+    width: 1480
+    height: 820
+
+    Component { id: roomPage; RoomPage { width: 1480; height: 700 } }
+
+    function init() {
+        DeskController.stop();
+    }
+
+    function cleanup() {
+        DeskController.stop();
+    }
+
+    function test_emptyRoomWithTheEngineStopped() {
+        compare(DeskController.apps.length, 0);
+        compare(DeskController.placedCount, 0);
+        compare(DeskController.bedCount, 0);
+        const page = createTemporaryObject(roomPage, testCase);
+        verify(page);
+        waitForRendering(page);
+    }
+
+    function test_runningRoomCountsAddUp() {
+        DeskController.start();
+        if (!DeskController.running) {
+            skip("the engine did not start here: " + DeskController.lastError);
+        }
+        tryVerify(function() { return DeskController.framesEncoded > 0; }, 5000);
+        // The list is whatever this machine's sessions are; the invariant
+        // is that every application is either placed or in the bed.
+        compare(DeskController.placedCount + DeskController.bedCount, DeskController.apps.length);
+        for (const app of DeskController.apps) {
+            verify(app.app > 0);
+            verify(app.name.length > 0);
+            verify(app.slot === -1 || (app.slot >= 0 && app.slot < 10), "slot " + app.slot);
+        }
+        // Commands for an unknown application are ignored, not fatal.
+        DeskController.position(4294967295, 0.5, 0.5, 0);
+        DeskController.unposition(4294967295);
+        DeskController.reprobe();
+        const page = createTemporaryObject(roomPage, testCase);
+        verify(page);
+        waitForRendering(page);
+    }
+
+    function test_placementRoundTripsForALiveApplication() {
+        DeskController.start();
+        if (!DeskController.running) {
+            skip("the engine did not start here: " + DeskController.lastError);
+        }
+        tryVerify(function() { return DeskController.framesEncoded > 0; }, 5000);
+        if (DeskController.apps.length === 0) {
+            skip("no application has an audio session on this machine");
+        }
+        const id = DeskController.apps[0].app;
+        DeskController.position(id, 0.25, 0.75, 0.5);
+        tryVerify(function() {
+            const app = DeskController.apps.find(function(a) { return a.app === id; });
+            return app && app.slot >= 0 && Math.abs(app.x - 0.25) < 0.02 && Math.abs(app.y - 0.75) < 0.02;
+        }, 5000);
+        DeskController.unposition(id);
+        tryVerify(function() {
+            const app = DeskController.apps.find(function(a) { return a.app === id; });
+            return app && app.slot === -1;
+        }, 5000);
+    }
+}

@@ -3,10 +3,15 @@
 // only stands the QML up, applies the language, and offers one debugging
 // aid: `--shot <path.png>` grabs the window after it has settled and quits,
 // the way ac3gui's smoke modes do, so a headless check can see the screen;
-// `--page settings` (or output, room) picks the page it shows first.
+// `--page settings` (or output, room) picks the page it shows first, and
+// `--place Name=x,y,z` positions a listed application before the capture.
 
 #include <QGuiApplication>
 #include <QIcon>
+#include <QVariant>
+#include <QVariantMap>
+
+#include "desk_controller.hpp"
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QtQml>
@@ -32,12 +37,15 @@ int main(int argc, char** argv) {
 
     QString shot_path;
     QString page;
+    QStringList placements;
     const QStringList args = QCoreApplication::arguments();
     for (qsizetype i = 1; i + 1 < args.size(); ++i) {
         if (args[i] == QLatin1String("--shot")) {
             shot_path = args[i + 1];
         } else if (args[i] == QLatin1String("--page")) {
             page = args[i + 1];  // room, output or settings
+        } else if (args[i] == QLatin1String("--place")) {
+            placements.push_back(args[i + 1]);  // name=x,y,z, applied before the shot
         }
     }
 
@@ -64,6 +72,32 @@ int main(int argc, char** argv) {
     }
     if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
+    }
+
+    // `--place Name=x,y,z`, once the engine has listed the sessions: the
+    // application whose display name matches is positioned there, so a
+    // capture can show a populated room without a hand on the mouse.
+    if (!placements.isEmpty()) {
+        QTimer::singleShot(1500, &app, [&engine, placements] {
+            auto* controller = engine.singletonInstance<DeskController*>("Ac3ForgeDesk", "DeskController");
+            if (controller == nullptr) {
+                return;
+            }
+            for (const QString& spec : placements) {
+                const auto eq = spec.indexOf(QLatin1Char('='));
+                const QStringList xyz = spec.mid(eq + 1).split(QLatin1Char(','));
+                if (eq < 0 || xyz.size() != 3) {
+                    continue;
+                }
+                for (const QVariant& row : controller->apps()) {
+                    const auto map = row.toMap();
+                    if (map.value(QStringLiteral("name")).toString().compare(spec.left(eq), Qt::CaseInsensitive) == 0) {
+                        controller->position(map.value(QStringLiteral("app")).toInt(), xyz[0].toDouble(),
+                                             xyz[1].toDouble(), xyz[2].toDouble());
+                    }
+                }
+            }
+        });
     }
 
     if (!shot_path.isEmpty()) {

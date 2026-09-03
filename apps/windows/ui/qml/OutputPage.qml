@@ -182,6 +182,7 @@ Flickable {
                 RailBlock { ordinal: "04"; label: qsTr("CODEC PATH"); Layout.fillWidth: true }
                 Card {
                     DeskCheck {
+                        objectName: "bypassCheck"
                         text: qsTr("Bypass the codec on headphones and PCM")
                         note: qsTr("Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine's own objects and PCM and stereo take its 5.1 bed, codec out of the loop.")
                         checked: DeskController.bypassCodec

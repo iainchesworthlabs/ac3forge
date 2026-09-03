@@ -43,7 +43,7 @@ EndpointFacts null_sink(bool is_default = true) {
 
 TEST_CASE("an Atmos receiver with a key gets Atmos", "[windemo]") {
     const std::vector<EndpointFacts> endpoints = {null_sink(), avr(), headphones()};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kAtmos);
     CHECK(choice.endpoint_id == "avr");
     CHECK_FALSE(choice.reason.empty());
@@ -51,14 +51,14 @@ TEST_CASE("an Atmos receiver with a key gets Atmos", "[windemo]") {
 
 TEST_CASE("the same receiver without a key gets DD+ 5.1 and is told why", "[windemo]") {
     const std::vector<EndpointFacts> endpoints = {null_sink(), avr()};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = false});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = false, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kDdPlus51);
     CHECK(choice.reason.find("key") != std::string::npos);
 }
 
 TEST_CASE("a Dolby Digital only sink gets AC-3", "[windemo]") {
     const std::vector<EndpointFacts> endpoints = {null_sink(), dd_only(), headphones()};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kDd51);
     CHECK(choice.endpoint_id == "spdif");
 }
@@ -68,7 +68,7 @@ TEST_CASE("a receiver on the default endpoint is never opened exclusively", "[wi
     // there is refused and kills their streams. Headphones win, and the
     // reason names the receiver and the fix.
     const std::vector<EndpointFacts> endpoints = {avr(/*is_default=*/true), headphones()};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kHeadphones);
     CHECK(choice.reason.find("Denon AVR") != std::string::npos);
     CHECK(choice.reason.find("default") != std::string::npos);
@@ -76,7 +76,7 @@ TEST_CASE("a receiver on the default endpoint is never opened exclusively", "[wi
 
 TEST_CASE("with only the default receiver present there is nothing to choose but PCM on it", "[windemo]") {
     const std::vector<EndpointFacts> endpoints = {avr(/*is_default=*/true)};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true, .pinned = std::nullopt});
     // Shared-mode surround on the default is allowed (the user hears the
     // direct mix too, and is told).
     CHECK(choice.mode == OutputMode::kPcmSurround);
@@ -85,14 +85,14 @@ TEST_CASE("with only the default receiver present there is nothing to choose but
 
 TEST_CASE("a TV takes decoded surround PCM", "[windemo]") {
     const std::vector<EndpointFacts> endpoints = {null_sink(), tv(), headphones(false)};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kPcmSurround);
     CHECK(choice.endpoint_id == "tv");
 }
 
 TEST_CASE("headphones with a spatial format beat plain stereo", "[windemo]") {
     const std::vector<EndpointFacts> endpoints = {null_sink(), headphones(true)};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kHeadphones);
 }
 
@@ -100,25 +100,25 @@ TEST_CASE("headphones without a signing key fall to stereo", "[windemo]") {
     // No key means no object container, so nothing for the spatial renderer
     // to place; the stream is a 5.1 bed and stereo is its honest fold.
     const std::vector<EndpointFacts> endpoints = {null_sink(), headphones(true)};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = false});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = false, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kStereo);
 }
 
 TEST_CASE("headphones without a spatial format fall to stereo", "[windemo]") {
     const std::vector<EndpointFacts> endpoints = {null_sink(), headphones(false)};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kStereo);
 }
 
 TEST_CASE("the null sink is never an output", "[windemo]") {
     const std::vector<EndpointFacts> endpoints = {null_sink()};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = true, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kNone);
     CHECK_FALSE(choice.reason.empty());
 }
 
 TEST_CASE("no endpoints at all is a named nothing", "[windemo]") {
-    const auto choice = choose_output({.endpoints = {}, .signing_key_loaded = false});
+    const auto choice = choose_output({.endpoints = {}, .signing_key_loaded = false, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kNone);
     CHECK(choice.endpoint_id.empty());
     CHECK_FALSE(choice.reason.empty());
@@ -146,7 +146,7 @@ TEST_CASE("a non-default endpoint is preferred for shared-mode output", "[windem
     // mix out of the user's ears.
     const std::vector<EndpointFacts> endpoints = {headphones(false, /*is_default=*/true),
                                                   {.id = "usb", .name = "USB DAC", .shared_channels = 2}};
-    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = false});
+    const auto choice = choose_output({.endpoints = endpoints, .signing_key_loaded = false, .pinned = std::nullopt});
     CHECK(choice.mode == OutputMode::kStereo);
     CHECK(choice.endpoint_id == "usb");
 }

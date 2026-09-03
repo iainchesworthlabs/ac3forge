@@ -421,15 +421,30 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 # apps/common does above: the rules the demo's UI hangs on are worth holding
 # on a Linux CI leg that could never run the demo itself. The app target
 # (AC3FORGE_BUILD_WINDEMO) is Windows-only and separate.
+#
+# The tap pool and the output stage joined them once they were written over
+# the AudioDevices seam (apps/windows/engine/audio_devices.hpp): with the
+# WASAPI classes behind an interface they are plain C++ over the library's
+# codec, packer and decoder, and tests/windemo/fake_devices.hpp stands in
+# for the machine. wasapi_devices() itself is declared there and defined
+# only in the Windows platform directory; these tests never call it, and
+# the one place the stage would (a null `devices` in its config) is a path
+# the tests do not take, so the reference resolves to the stub below on
+# every platform and to the real thing in the app.
 target_sources(ac3tests PRIVATE
     windemo/test_slots.cpp
     windemo/test_bed_mixer.cpp
     windemo/test_placement.cpp
     windemo/test_output_policy.cpp
+    windemo/test_tap_pool.cpp
+    windemo/test_output_stage.cpp
+    windemo/wasapi_devices_stub.cpp
     "${CMAKE_SOURCE_DIR}/apps/windows/engine/slots.cpp"
     "${CMAKE_SOURCE_DIR}/apps/windows/engine/bed_mixer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/windows/engine/placement.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/windows/engine/output_policy.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/windows/engine/output_policy.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/windows/engine/tap_pool.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/windows/engine/output_stage.cpp")
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/windows/engine")
 
 # ac3adm::ac3adm is opt-in (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own

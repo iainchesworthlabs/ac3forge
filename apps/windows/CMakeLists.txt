@@ -22,9 +22,12 @@ add_library(ac3windemo_engine STATIC
 add_library(ac3::windemo_engine ALIAS ac3windemo_engine)
 target_include_directories(ac3windemo_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/engine")
 target_compile_features(ac3windemo_engine PUBLIC cxx_std_23)
+# ac3::coverage is inert unless AC3FORGE_ENABLE_COVERAGE is on
+# (config-windows-llvm-coverage); then this library, the window and its
+# tests are the instrumented set tools/checks/coverage_windemo.ps1 reports.
 target_link_libraries(ac3windemo_engine
     PUBLIC ac3::forge ac3::audio ac3::signing
-    PRIVATE ac3::warnings)
+    PRIVATE ac3::warnings ac3::coverage)
 
 # The platform half, selected the way apps/cli/CMakeLists.txt selects its
 # platform/ directory. This whole directory is already WIN32-only (the root
@@ -36,6 +39,7 @@ if(WIN32)
         engine/platform/windows/default_device.cpp
         engine/platform/windows/driver_tools.cpp
         engine/platform/windows/driver_tools.hpp
+        engine/platform/windows/wasapi_devices.cpp
         engine/platform/windows/foreground.cpp)
     target_compile_definitions(ac3windemo_engine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
     # COM for the session manager and policy config, the shell for the
@@ -137,6 +141,7 @@ else()
     # be compiled under it (apps/gui carries a workaround for exactly that).
     target_link_libraries(ac3desk PRIVATE
         ac3::windemo_engine
+        ac3::coverage
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
     set_target_properties(ac3desk PROPERTIES
         WIN32_EXECUTABLE ON
@@ -176,5 +181,12 @@ else()
             COMMENT "Deploying Qt runtime dependencies for ac3desk")
     else()
         message(WARNING "windeployqt not found next to Qt6; ac3desk.exe will not run standalone from the build tree.")
+    endif()
+
+    # The window's Qt Quick Test suites (ui/tests), include()d rather than
+    # add_subdirectory()'d so they see AC3DESK_QML_FILES and AC3DESK_TS_FILES
+    # as this scope set them.
+    if(AC3FORGE_BUILD_TESTS)
+        include(ui/tests/CMakeLists.txt)
     endif()
 endif()

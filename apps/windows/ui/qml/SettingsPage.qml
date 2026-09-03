@@ -152,7 +152,7 @@ Flickable {
                         }
                         RowLayout {
                             spacing: Theme.space2
-                            DeskButton { text: qsTr("Install driver"); primary: true; enabled: DeskController.driverPackageFound && !DeskController.driverBusy; onClicked: DeskController.installDriver() }
+                            DeskButton { objectName: "installDriverButton"; text: qsTr("Install driver"); primary: true; enabled: DeskController.driverPackageFound && !DeskController.driverBusy; onClicked: DeskController.installDriver() }
                             DeskButton { text: qsTr("Remove driver"); enabled: DeskController.driverPackageFound && !DeskController.driverBusy; onClicked: DeskController.removeDriver() }
                             DeskButton { text: qsTr("Re-check"); enabled: !DeskController.driverBusy; onClicked: DeskController.refreshDriver() }
                         }
@@ -169,6 +169,7 @@ Flickable {
                         border.color: Theme.divider
                         border.width: 1
                         TextInput {
+                            objectName: "driverFolderInput"
                             anchors.fill: parent
                             anchors.leftMargin: 10
                             anchors.rightMargin: 10

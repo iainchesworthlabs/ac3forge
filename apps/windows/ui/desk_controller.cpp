@@ -500,6 +500,14 @@ void DeskController::run_driver_script(const QString& script, const QString& ver
     if (driver_process_.running()) {
         return;
     }
+    // The buttons are disabled without a package, but the invokable is
+    // reachable regardless and an elevation prompt for a script that is
+    // not there helps nobody.
+    if (!driver_package_found_) {
+        driver_message_ = tr("no driver package under %1").arg(driverDir());
+        emit driverChanged();
+        return;
+    }
     driver_verb_ = verb;
     const QDir dir(driverDir());
     const QString script_path = QDir::toNativeSeparators(dir.filePath(script));
