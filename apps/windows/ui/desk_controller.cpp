@@ -79,7 +79,13 @@ QString from_utf8(const std::string& s) {
 }  // namespace
 
 DeskController::DeskController(QObject* parent)
-    : QObject(parent), settings_(QStringLiteral("ac3forge"), QStringLiteral("DesktopAtmos")) {
+    // The four-argument constructor: the two-argument one always uses the
+    // native store (the registry here) whatever QSettings::setDefaultFormat
+    // says, which let the test suites read and write the developer's own
+    // settings for a whole afternoon. This one honours the default format,
+    // so the tests' isolation (an INI file in a temporary directory) holds.
+    : QObject(parent),
+      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"), QStringLiteral("DesktopAtmos")) {
     poll_timer_.setInterval(kPollMs);
     connect(&poll_timer_, &QTimer::timeout, this, &DeskController::poll);
     driver_timer_.setInterval(250);
@@ -280,6 +286,7 @@ void DeskController::setPinned(const QString& mode) {
     if (engine_) {
         engine_->pin(mode_from_key(mode));
     }
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
 
@@ -296,6 +303,7 @@ void DeskController::setNullSinkName(const QString& name) {
         return;
     }
     settings_.setValue(QStringLiteral("output/nullSinkName"), name);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
     restart_engine();
     refreshDefault();
@@ -310,6 +318,7 @@ void DeskController::setLowLatency(bool on) {
         return;
     }
     settings_.setValue(QStringLiteral("codec/lowLatency"), on);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
     restart_engine();
 }
@@ -326,6 +335,7 @@ void DeskController::setBypassCodec(bool on) {
     if (engine_) {
         engine_->set_bypass(on);
     }
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
 
@@ -338,6 +348,7 @@ void DeskController::setSplitStereo(bool on) {
         return;
     }
     settings_.setValue(QStringLiteral("codec/splitStereo"), on);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
     // The default applies to applications the engine meets from now on;
     // a restart applies it to the ones it already has.
@@ -353,6 +364,7 @@ void DeskController::setBitrate(int kbps) {
         return;
     }
     settings_.setValue(QStringLiteral("codec/bitrate"), kbps);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
     restart_engine();
 }
@@ -366,6 +378,7 @@ void DeskController::setTheme(const QString& theme) {
         return;
     }
     settings_.setValue(QStringLiteral("appearance/theme"), theme);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
 
@@ -378,6 +391,7 @@ void DeskController::setPalette(const QString& palette) {
         return;
     }
     settings_.setValue(QStringLiteral("appearance/palette"), palette);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
 
@@ -391,6 +405,7 @@ void DeskController::setRoomView(const QString& view) {
         return;
     }
     settings_.setValue(QStringLiteral("appearance/roomView"), wanted);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
 
@@ -400,6 +415,7 @@ bool DeskController::keepRunningWhenClosed() const {
 
 void DeskController::setKeepRunningWhenClosed(bool on) {
     settings_.setValue(QStringLiteral("behaviour/keepRunningWhenClosed"), on);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
 
@@ -412,6 +428,7 @@ void DeskController::setShowBackgroundApps(bool on) {
         return;
     }
     settings_.setValue(QStringLiteral("behaviour/showBackgroundApps"), on);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
     poll();
 }
@@ -427,6 +444,7 @@ void DeskController::setRoomLayout(const QString& layout) {
         return;
     }
     settings_.setValue(QStringLiteral("appearance/roomLayout"), layout);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
 
@@ -450,6 +468,7 @@ bool DeskController::moveDefaultOnLaunch() const {
 
 void DeskController::setMoveDefaultOnLaunch(bool on) {
     settings_.setValue(QStringLiteral("behaviour/moveDefaultOnLaunch"), on);
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
 
@@ -511,6 +530,7 @@ void DeskController::loadKey(const QString& path) {
     if (engine_) {
         engine_->load_signing_key(local.toStdString());
     }
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
 
@@ -519,6 +539,7 @@ void DeskController::clearKey() {
     if (engine_) {
         engine_->clear_signing_key();
     }
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
 
@@ -610,6 +631,7 @@ void DeskController::setDriverDir(const QString& dir) {
     } else {
         settings_.setValue(QStringLiteral("driver/dir"), QDir::toNativeSeparators(dir.trimmed()));
     }
+    settings_.sync();  // survive a hard exit
     emit settingsChanged();
     refreshDriver();
 }

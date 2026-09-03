@@ -98,6 +98,12 @@ Item {
                     property bool dragging: false
                     property real dragX: 0
                     property real dragY: 0
+                    // After a release the engine's position arrives through the
+                    // poll a moment later; until it changes, the marker stays where
+                    // it was dropped rather than snapping to the stale value.
+                    property bool settling: false
+                    onEngineXChanged: settling = false
+                    onEngineYChanged: settling = false
                     // While one of a pair's objects is being dragged, the marker
                     // (the pair's centre) follows the midpoint of the dragged
                     // object and the other one locally, rather than waiting for
@@ -108,8 +114,8 @@ Item {
                     property real sideDragY: 0
                     readonly property real otherX: (root.elevation ? (sideDragging === 0 ? app.ry : app.ly) : (sideDragging === 0 ? app.rx : app.lx)) * field.width
                     readonly property real otherY: (root.elevation ? (1 - (sideDragging === 0 ? app.rz : app.lz)) / 2 : (sideDragging === 0 ? app.ry : app.ly)) * field.height
-                    x: dragging ? dragX : (sideDragging >= 0 ? (sideDragX + otherX) / 2 : engineX)
-                    y: dragging ? dragY : (sideDragging >= 0 ? (sideDragY + otherY) / 2 : engineY)
+                    x: dragging || settling ? dragX : (sideDragging >= 0 ? (sideDragX + otherX) / 2 : engineX)
+                    y: dragging || settling ? dragY : (sideDragging >= 0 ? (sideDragY + otherY) / 2 : engineY)
                     z: selected ? 2 : 1
                     Behavior on x { enabled: !marker.dragging && marker.sideDragging < 0; NumberAnimation { duration: 90 } }
                     Behavior on y { enabled: !marker.dragging && marker.sideDragging < 0; NumberAnimation { duration: 90 } }
@@ -142,8 +148,16 @@ Item {
                             property bool dragging: false
                             property real dragX: 0
                             property real dragY: 0
-                            x: (dragging ? dragX : fieldX) - marker.x
-                            y: (dragging ? dragY : fieldY) - marker.y
+                            property bool settling: false
+                            onFieldXChanged: settling = false
+                            onFieldYChanged: settling = false
+                            // In the elevation view a standard pair sits at the
+                            // centre's depth and height, under its icon; nudge the
+                            // two apart so both stay reachable.
+                            readonly property real nudge: root.elevation && Math.abs(fieldX - marker.engineX) < 12 && Math.abs(fieldY - marker.engineY) < 12 ? (side === 0 ? -18 : 18) : 0
+                            x: (dragging || settling ? dragX : fieldX + nudge) - marker.x
+                            y: (dragging || settling ? dragY : fieldY) - marker.y
+                            z: 3
                             Behavior on x { enabled: !satellite.dragging; NumberAnimation { duration: 90 } }
                             Behavior on y { enabled: !satellite.dragging; NumberAnimation { duration: 90 } }
                             Rectangle {
@@ -182,7 +196,7 @@ Item {
                                     marker.sideDragY = satellite.dragY;
                                     satellite.emitMove();
                                 }
-                                onReleased: { if (satellite.dragging) { satellite.emitMove(); satellite.dragging = false; marker.sideDragging = -1; } }
+                                onReleased: { if (satellite.dragging) { satellite.emitMove(); satellite.settling = true; satellite.dragging = false; marker.sideDragging = -1; } }
                                 onCanceled: { satellite.dragging = false; marker.sideDragging = -1; }
                             }
                             function emitMove() {
@@ -204,7 +218,7 @@ Item {
                         readonly property bool flip: marker.x + 19 + implicitWidth > field.width - 4
                         x: flip ? -19 - implicitWidth : 19
                         y: -implicitHeight / 2
-                        text: marker.app.name + (root.elevation ? " · z " + (marker.app.z >= 0 ? "+" : "") + marker.app.z.toFixed(2) : "")
+                        text: marker.app.name
                         color: Theme.text
                         font.family: Theme.monoFamily
                         font.pixelSize: 11
@@ -232,7 +246,7 @@ Item {
                             marker.dragY = Math.max(0, Math.min(field.height, p.y));
                             marker.emitMove();
                         }
-                        onReleased: { if (marker.dragging) { marker.emitMove(); marker.dragging = false; } }
+                        onReleased: { if (marker.dragging) { marker.emitMove(); marker.settling = true; marker.dragging = false; } }
                         onCanceled: marker.dragging = false
                         onDoubleClicked: root.returned(marker.app.app)
                     }

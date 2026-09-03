@@ -50,7 +50,7 @@ Item {
                     label: qsTr("APPLICATIONS")
                     Layout.fillWidth: true
                     Text {
-                        text: DeskController.apps.length === 0 ? qsTr("nothing is playing") : DeskController.apps.length + qsTr(" with sound")
+                        text: DeskController.apps.length === 0 ? qsTr("nothing has opened audio") : DeskController.apps.length + qsTr(" with an audio session")
                         color: Theme.textMuted
                         font.family: Theme.monoFamily
                         font.pixelSize: 11
@@ -69,6 +69,13 @@ Item {
                         selected: modelData.app === page.selectedApp
                         onClicked: page.selectedApp = modelData.app
                     }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("An application appears once it has opened audio, playing or not; one that never has cannot be tapped. A browser's windows and tabs share one entry.")
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                    wrapMode: Text.WordWrap
                 }
                 Text {
                     Layout.fillWidth: true
