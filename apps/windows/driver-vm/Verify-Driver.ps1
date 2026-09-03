@@ -18,6 +18,17 @@ param(
     [string]$Name = 'Atmos Driver Test',
     [string]$Workstation = 'C:\Program Files\VMware\VMware Workstation',
     [switch]$Kasan,
+    # Add Driver Verifier's DDI compliance checking (0x20000). Off by
+    # default: it targets pure WDF drivers and fails a PortCls audio
+    # miniport's device start (CM_PROB_FAILED_START, no bugcheck), because
+    # this driver is WDM/PortCls that uses KMDF only for its entry. The
+    # memory, IRQL, pool, I/O, DMA and security checks - the ones that catch
+    # real defects - run without it.
+    [switch]$Ddi,
+    # Install under the verifiers and report, without the device-restart
+    # cycling and reinstall - to tell a start failure caused by the verifier
+    # from one caused by the exercise itself.
+    [switch]$NoExercise,
     [switch]$ReportOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -86,14 +97,15 @@ if (-not $ReportOnly) {
     if (-not $cert) { $cert = Get-ChildItem $driverRoot -Recurse -Filter 'package.cer' | Select-Object -First 1 }
     if ($cert) { & $vmrun @guest copyFileFromHostToGuest $vmx $cert.FullName "C:\Users\atmos\$($cert.Name)" | Out-Null }
 
-    Write-Host ('arming Driver Verifier (standard + KMDF checks) and the WDF verifier' + $(if ($Kasan) { ', and the KASAN kernel' } else { '' }))
-    # A literal here-string (no host-side interpolation - that broke the guest
-    # script): Driver Verifier's standard checks plus DDI compliance (the KMDF
-    # bits) for this driver only, and the KMDF framework verifier (what
-    # wdfverifier.exe sets under the service key). 0x1209BB is /standard plus
-    # DDI compliance; verifier masks anything else.
-    Invoke-Guest @'
-verifier /flags 0x1209BB /driver Ac3ForgeNullSink.sys | Out-Null
+    Write-Host ('arming Driver Verifier and the WDF verifier' + $(if ($Ddi) { ' (with DDI compliance)' } else { '' }) + $(if ($Kasan) { ', and the KASAN kernel' } else { '' }))
+    # 0x9BB is the memory/IRQL/pool/IO/DMA/security/misc checks; -Ddi adds
+    # 0x20000 (DDI compliance). A literal here-string with the flags picked
+    # host-side, so the guest script has no interpolation of its own.
+    $flags = if ($Ddi) { '0x209BB' } else { '0x9BB' }
+    Invoke-Guest (@"
+verifier /flags $flags /driver Ac3ForgeNullSink.sys | Out-Null
+"@ + @'
+
 "verifier: " + ((verifier /querysettings | Select-String -Pattern 'Verified Drivers|Special Pool|Force IRQL|DDI') | ForEach-Object { $_.Line.Trim() }) -join ' | '
 $wdf = 'HKLM:\SYSTEM\CurrentControlSet\Services\Ac3ForgeNullSink\Parameters\Wdf'
 New-Item -Path $wdf -Force | Out-Null
@@ -102,7 +114,7 @@ Set-ItemProperty -Path $wdf -Name TrackHandles -Value '*' -Type MultiString
 Set-ItemProperty -Path $wdf -Name VerboseOn -Value 1 -Type DWord
 Set-ItemProperty -Path $wdf -Name DbgBreakOnError -Value 0 -Type DWord
 "wdf verifier armed: " + (Get-ItemProperty $wdf).VerifierOn
-'@ 'arm' | ForEach-Object { "  $_" }
+'@) 'arm' | ForEach-Object { "  $_" }
     if ($Kasan) {
         Invoke-Guest @'
 Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Kernel' -Name KasanEnabled -Value 1 -Type DWord
@@ -120,7 +132,24 @@ $drive = (Get-Volume | Where-Object FileSystemLabel -eq 'ATMOSDRV' | Select-Obje
     Start-Sleep -Seconds 10
     Wait-Tools
 
-    Write-Host 'exercising: default role, renders at several formats, restarts of the device, remove and reinstall'
+    if ($NoExercise) {
+        Invoke-Guest @'
+$deadline = (Get-Date).AddSeconds(40)
+do {
+    $ep = Get-PnpDevice -Class AudioEndpoint -ErrorAction SilentlyContinue | Where-Object FriendlyName -match 'Desktop Atmos'
+    $dev = Get-PnpDevice -Class MEDIA -ErrorAction SilentlyContinue | Where-Object FriendlyName -match 'Desktop Atmos'
+    if ($ep) { break }
+    Start-Sleep 2
+} while ((Get-Date) -lt $deadline)
+"device: " + ($dev.Status -join ',') + " problem: " + ($dev.Problem -join ',')
+"endpoint present: " + [bool]$ep + " status: " + ($ep.Status -join ',')
+'@ 'noexercise' | ForEach-Object { "  $_" }
+        Start-Sleep -Seconds 3
+        Wait-Tools
+        return
+    }
+
+    Write-Host 'exercising: default role, playback, device restarts idle and under a stream, concurrent streams, surprise removal under a stream, reinstall'
     # Nothing here aborts the rest: each step is guarded, so one hiccup does
     # not cut the exercise short (the endpoint builds a moment after the
     # device, so the first thing is to wait for it).
@@ -156,7 +185,24 @@ try {
     Wait-Job $job -Timeout 30 | Out-Null; Remove-Job $job -Force
     "restarted the device under a live stream"
 } catch { "live restart: $_" }
-try { & C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package -Devcon "$($drive):\devcon.exe" | Out-Null; "reinstalled on top" } catch { "reinstall: $_" }
+# Three streams at once: the miniport's stream table and the position
+# timer with more than one client.
+try {
+    $jobs = 1..3 | ForEach-Object { Start-Job -ArgumentList $_ { param($n) Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak("concurrent stream number $n speaking over the others") } }
+    $jobs | Wait-Job -Timeout 40 | Out-Null; $jobs | Remove-Job -Force
+    "three concurrent streams"
+} catch { "concurrent: $_" }
+# Surprise removal under a live stream: the device node goes away while a
+# client holds a pin (IRP_MN_SURPRISE_REMOVAL / REMOVE with open streams),
+# then the package is installed again from scratch.
+try {
+    $job = Start-Job { Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak("this stream is open while the device is removed from underneath it entirely") }
+    Start-Sleep 1
+    & "$($drive):\devcon.exe" remove "ROOT\Ac3ForgeNullSink" | Out-Null
+    Wait-Job $job -Timeout 30 | Out-Null; Remove-Job $job -Force
+    "removed the device under a live stream"
+} catch { "surprise removal: $_" }
+try { & C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package -Devcon "$($drive):\devcon.exe" | Out-Null; "reinstalled from scratch" } catch { "reinstall: $_" }
 '@ 'exercise' | ForEach-Object { "  $_" }
     Start-Sleep -Seconds 8
     Wait-Tools
