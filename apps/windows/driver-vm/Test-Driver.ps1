@@ -63,22 +63,22 @@ if (-not $ReportOnly -and -not $NoRevert) {
 }
 
 if (-not $ReportOnly) {
-    Write-Host 'installing the driver package from the ATMOSDRV CD'
-    # The install script itself comes from the working tree, not the CD, so
-    # a change to it is tested without rebuilding driver.iso; the package
-    # and devcon still come from the CD.
-    # The package too: the CD carries the one built when the VM was created,
-    # the tree carries the one just built. Three files plus the certificate
-    # go to the guest's profile; devcon still comes from the CD. The build
-    # output lands under Package\ or x64\ depending on how the solution was
-    # driven, so find the package by its INF rather than a fixed path.
-    $installScript = (Resolve-Path (Join-Path $PSScriptRoot '..\driver\install.ps1')).Path
+    Write-Host 'installing the driver package'
+    # Everything comes from the working tree, not the ATMOSDRV CD the VM was
+    # created with: the scripts, so a change to them is tested without
+    # rebuilding driver.iso, and the package, so the one just built is the
+    # one tested. Three files plus the certificate go to the guest's
+    # profile. The build output lands under Package\ or x64\ depending on
+    # how the solution was driven, so find the package by its INF rather
+    # than a fixed path.
     $driverRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\driver')).Path
     $inf = Get-ChildItem $driverRoot -Recurse -Filter 'Ac3ForgeNullSink.inf' |
         Where-Object { $_.FullName -match 'Release\\package\\' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $inf) { throw "no built package (Ac3ForgeNullSink.inf under a Release\package) in $driverRoot; build the driver first" }
     $packageDir = $inf.Directory.FullName
-    & $vmrun @guest copyFileFromHostToGuest $vmx $installScript 'C:\Users\atmos\install.ps1' | Out-Null
+    foreach ($script in 'install.ps1', 'remove.ps1', 'NullSinkDevice.ps1') {
+        & $vmrun @guest copyFileFromHostToGuest $vmx (Join-Path $driverRoot $script) "C:\Users\atmos\$script" | Out-Null
+    }
     & $vmrun @guest createDirectoryInGuest $vmx 'C:\Users\atmos\package' 2>$null | Out-Null
     foreach ($f in Get-ChildItem $packageDir -File) {
         & $vmrun @guest copyFileFromHostToGuest $vmx $f.FullName "C:\Users\atmos\package\$($f.Name)" | Out-Null
@@ -88,12 +88,10 @@ if (-not $ReportOnly) {
     if (-not $cert) { $cert = Get-ChildItem $driverRoot -Recurse -Filter 'package.cer' | Select-Object -First 1 }
     if ($cert) { & $vmrun @guest copyFileFromHostToGuest $vmx $cert.FullName "C:\Users\atmos\$($cert.Name)" | Out-Null }
     Invoke-Guest @'
-$drive = (Get-Volume | Where-Object FileSystemLabel -eq 'ATMOSDRV' | Select-Object -First 1).DriveLetter
-if (-not $drive) { throw 'ATMOSDRV CD not found in the guest' }
 "testsigning: " + ((bcdedit /enum '{current}' | Select-String testsigning) -join '')
 "hvci: " + (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' -ErrorAction SilentlyContinue).Enabled
 "package: " + ((Get-Item C:\Users\atmos\package\Ac3ForgeNullSink.sys).LastWriteTime)
-& C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package -Devcon "$($drive):\devcon.exe"
+& C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package
 '@ 'install' | ForEach-Object { "  $_" }
     Start-Sleep -Seconds 15
     Wait-Tools
@@ -108,6 +106,9 @@ Get-PnpDevice -Class AudioEndpoint | Select-Object Status, FriendlyName | Format
 "--- driver ---"
 driverquery /v | Select-String -Pattern 'Ac3ForgeNullSink' | ForEach-Object { $_.Line }
 Get-Service Ac3ForgeNullSink -ErrorAction SilentlyContinue | Select-Object Name, Status | Format-Table -AutoSize | Out-String
+"--- the driver's own note (written when a device-building step fails) ---"
+$note = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\Ac3ForgeNullSink\Parameters' -ErrorAction SilentlyContinue
+if ($note -and $note.LastFailedStep) { "failed step: " + $note.LastFailedStep; "status: 0x{0:X8}" -f $note.LastFailedStatus } else { "no failure noted" }
 "--- bugchecks since the clean install ---"
 Get-WinEvent -FilterHashtable @{LogName='System'; Id=1001; ProviderName='Microsoft-Windows-WER-SystemErrorReporting'} -ErrorAction SilentlyContinue | Select-Object TimeCreated, Message | Format-List | Out-String
 Get-ChildItem C:\Windows\Minidump -ErrorAction SilentlyContinue | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize | Out-String
