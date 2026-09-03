@@ -40,6 +40,11 @@ Item {
     // The speaker under the mouse (its short name), whose label shows the
     // full name while it lasts.
     property string hoverSpeaker: ""
+    Timer {
+        id: hoverClear
+        interval: 160
+        onTriggered: root.hoverSpeaker = ""
+    }
     readonly property var speakers: {
         const base = [
             { name: "L", full: qsTr("front left"), x: 0.0, y: 0.0, z: 0.0 },
@@ -290,11 +295,22 @@ Item {
                             Component { id: cabinet; CabinetSpeaker {} }
                             Component { id: ceiling; CeilingSpeaker {} }
                         }
-                        Model {  // the hover target around the unit
-                            source: "#Cube"
-                            scale: Qt.vector3d(0.24, 0.28, 0.22)
+                    }
+                    // The hover target: one invisible plate facing the camera
+                    // that covers the unit and its pill with room to spare, and
+                    // widens while hovered so the full name stays inside it (a
+                    // tight target flickered at the edges and in the gap
+                    // between the unit and the pill).
+                    Node {
+                        rotation: orbit.rotation
+                        Model {
+                            source: "#Rectangle"
+                            readonly property bool hovered: root.hoverSpeaker === modelData.name
+                            position: Qt.vector3d(0, modelData.z > 0 ? -4 : 10, 0)
+                            scale: Qt.vector3d(hovered ? 2.2 : 0.8, hovered ? 1.2 : 0.9, 1)
                             pickable: true
                             castsShadows: false
+                            receivesShadows: false
                             property string speaker: modelData.name
                             materials: PrincipledMaterial { lighting: PrincipledMaterial.NoLighting; alphaMode: PrincipledMaterial.Blend; opacity: 0 }
                         }
@@ -312,14 +328,6 @@ Item {
                         scale: Qt.vector3d(k, k, k)
                         id: labelNode
                         readonly property bool hovered: root.hoverSpeaker === modelData.name
-                        Model {  // the hover target behind the pill
-                            source: "#Rectangle"
-                            scale: Qt.vector3d(pill.width / 100, pill.height / 100, 1)
-                            pickable: true
-                            castsShadows: false
-                            property string speaker: modelData.name
-                            materials: PrincipledMaterial { lighting: PrincipledMaterial.NoLighting; alphaMode: PrincipledMaterial.Blend; opacity: 0 }
-                        }
                         Rectangle {
                             id: pill
                             anchors.centerIn: parent
@@ -486,7 +494,7 @@ Item {
             preventStealing: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             hoverEnabled: true
-            onExited: root.hoverSpeaker = ""
+            onExited: hoverClear.start()
 
             // A point in the scene where the ray through (px, py) meets the
             // horizontal plane at height `planeY`, or null when the ray runs
@@ -549,7 +557,12 @@ Item {
                 if (!(event.buttons & (Qt.LeftButton | Qt.RightButton))) {
                     // Hover: name the speaker under the pointer in full.
                     const hit = view.pick(event.x, event.y);
-                    root.hoverSpeaker = (hit.objectHit && hit.objectHit.speaker !== undefined) ? hit.objectHit.speaker : "";
+                    if (hit.objectHit && hit.objectHit.speaker !== undefined) {
+                        hoverClear.stop();
+                        root.hoverSpeaker = hit.objectHit.speaker;
+                    } else if (root.hoverSpeaker !== "" && !hoverClear.running) {
+                        hoverClear.start();
+                    }
                     return;
                 }
                 if (dragApp) {

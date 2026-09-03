@@ -91,19 +91,37 @@ Item {
                     readonly property bool placed: app.slot >= 0
                     readonly property bool selected: app.app === root.selectedApp
                     visible: placed
-                    // Where the engine has it, in field pixels.
-                    readonly property real engineX: (root.elevation ? app.y : app.x) * field.width
-                    readonly property real engineY: (root.elevation ? (1 - app.z) / 2 : app.y) * field.height
+                    // Where the engine has it, as fractions of the field, and
+                    // the glided copy the marker draws from. The glide is on
+                    // the fraction, not the pixels: the views sit in a hidden
+                    // layout at no size until first shown, and a glide on
+                    // pixels set every marker off from the corner when the
+                    // field was sized; now the sizing moves them straight to
+                    // their places and only the engine's own steps glide.
+                    readonly property real normX: root.elevation ? app.y : app.x
+                    readonly property real normY: root.elevation ? (1 - app.z) / 2 : app.y
+                    property real gx: 0
+                    property real gy: 0
+                    onNormXChanged: gx = normX
+                    onNormYChanged: gy = normY
+                    Component.onCompleted: settle(normX, normY)
+                    // Put the glided copy somewhere without a glide: at
+                    // creation, and on a release, at the drop point, where the
+                    // engine's answer lands a poll later, so the marker stays
+                    // put rather than setting off from the stale value.
+                    property bool snap: false
+                    function settle(u, v) {
+                        snap = true;
+                        gx = u;
+                        gy = v;
+                        snap = false;
+                    }
+                    readonly property real engineX: gx * field.width
+                    readonly property real engineY: gy * field.height
                     // Where the mouse has it, while dragging.
                     property bool dragging: false
                     property real dragX: 0
                     property real dragY: 0
-                    // After a release the engine's position arrives through the
-                    // poll a moment later; until it changes, the marker stays where
-                    // it was dropped rather than snapping to the stale value.
-                    property bool settling: false
-                    onEngineXChanged: settling = false
-                    onEngineYChanged: settling = false
                     // While one of a pair's objects is being dragged, the marker
                     // (the pair's centre) follows the midpoint of the dragged
                     // object and the other one locally, rather than waiting for
@@ -114,25 +132,11 @@ Item {
                     property real sideDragY: 0
                     readonly property real otherX: (root.elevation ? (sideDragging === 0 ? app.ry : app.ly) : (sideDragging === 0 ? app.rx : app.lx)) * field.width
                     readonly property real otherY: (root.elevation ? (1 - (sideDragging === 0 ? app.rz : app.lz)) / 2 : (sideDragging === 0 ? app.ry : app.ly)) * field.height
-                    x: dragging || settling ? dragX : (sideDragging >= 0 ? (sideDragX + otherX) / 2 : engineX)
-                    y: dragging || settling ? dragY : (sideDragging >= 0 ? (sideDragY + otherY) / 2 : engineY)
+                    x: dragging ? dragX : (sideDragging >= 0 ? (sideDragX + otherX) / 2 : engineX)
+                    y: dragging ? dragY : (sideDragging >= 0 ? (sideDragY + otherY) / 2 : engineY)
                     z: selected ? 2 : 1
-                    // The glide is for the engine's steps, which are small.
-                    // A move across a good part of the field is the field
-                    // itself being sized (the views sit in a hidden layout
-                    // while the 3D room shows, at no size until they are
-                    // first shown), so the marker jumps rather than sets
-                    // off from the corner.
-                    Behavior on x {
-                        id: glideX
-                        enabled: !marker.dragging && marker.sideDragging < 0
-                        NumberAnimation { duration: Math.abs(glideX.targetValue - marker.x) > field.width * 0.35 ? 0 : 90 }
-                    }
-                    Behavior on y {
-                        id: glideY
-                        enabled: !marker.dragging && marker.sideDragging < 0
-                        NumberAnimation { duration: Math.abs(glideY.targetValue - marker.y) > field.height * 0.35 ? 0 : 90 }
-                    }
+                    Behavior on gx { enabled: !marker.snap && !marker.dragging && marker.sideDragging < 0; NumberAnimation { duration: 90 } }
+                    Behavior on gy { enabled: !marker.snap && !marker.dragging && marker.sideDragging < 0; NumberAnimation { duration: 90 } }
 
                     // Elevation: a stem down to ear level.
                     Rectangle {
@@ -155,33 +159,37 @@ Item {
                             readonly property real sx: side === 0 ? marker.app.lx : marker.app.rx
                             readonly property real sy: side === 0 ? marker.app.ly : marker.app.ry
                             readonly property real sz: side === 0 ? marker.app.lz : marker.app.rz
-                            // Field position, relative to the marker (which
-                            // sits at the pair's centre).
-                            readonly property real fieldX: (root.elevation ? sy : sx) * field.width
-                            readonly property real fieldY: (root.elevation ? (1 - sz) / 2 : sy) * field.height
+                            // Field position (glided on the fraction, as the
+                            // marker's), relative to the marker, which sits at
+                            // the pair's centre.
+                            readonly property real normX: root.elevation ? sy : sx
+                            readonly property real normY: root.elevation ? (1 - sz) / 2 : sy
+                            property real gx: 0
+                            property real gy: 0
+                            onNormXChanged: gx = normX
+                            onNormYChanged: gy = normY
+                            Component.onCompleted: settle(normX, normY)
+                            property bool snap: false
+                            function settle(u, v) {
+                                snap = true;
+                                gx = u;
+                                gy = v;
+                                snap = false;
+                            }
+                            readonly property real fieldX: gx * field.width
+                            readonly property real fieldY: gy * field.height
                             property bool dragging: false
                             property real dragX: 0
                             property real dragY: 0
-                            property bool settling: false
-                            onFieldXChanged: settling = false
-                            onFieldYChanged: settling = false
                             // In the elevation view a standard pair sits at the
                             // centre's depth and height, under its icon; nudge the
                             // two apart so both stay reachable.
                             readonly property real nudge: root.elevation && Math.abs(fieldX - marker.engineX) < 12 && Math.abs(fieldY - marker.engineY) < 12 ? (side === 0 ? -18 : 18) : 0
-                            x: (dragging || settling ? dragX : fieldX + nudge) - marker.x
-                            y: (dragging || settling ? dragY : fieldY) - marker.y
+                            x: (dragging ? dragX : fieldX + nudge) - marker.x
+                            y: (dragging ? dragY : fieldY) - marker.y
                             z: 3
-                            Behavior on x {
-                                id: sideGlideX
-                                enabled: !satellite.dragging
-                                NumberAnimation { duration: Math.abs(sideGlideX.targetValue - satellite.x) > field.width * 0.35 ? 0 : 90 }
-                            }
-                            Behavior on y {
-                                id: sideGlideY
-                                enabled: !satellite.dragging
-                                NumberAnimation { duration: Math.abs(sideGlideY.targetValue - satellite.y) > field.height * 0.35 ? 0 : 90 }
-                            }
+                            Behavior on gx { enabled: !satellite.snap && !satellite.dragging; NumberAnimation { duration: 90 } }
+                            Behavior on gy { enabled: !satellite.snap && !satellite.dragging; NumberAnimation { duration: 90 } }
                             Rectangle {
                                 x: -5; y: -5
                                 width: 10; height: 10; radius: 5
@@ -218,7 +226,7 @@ Item {
                                     marker.sideDragY = satellite.dragY;
                                     satellite.emitMove();
                                 }
-                                onReleased: { if (satellite.dragging) { satellite.emitMove(); satellite.settling = true; satellite.dragging = false; marker.sideDragging = -1; } }
+                                onReleased: { if (satellite.dragging) { satellite.emitMove(); satellite.settle(satellite.dragX / field.width, satellite.dragY / field.height); satellite.dragging = false; marker.sideDragging = -1; } }
                                 onCanceled: { satellite.dragging = false; marker.sideDragging = -1; }
                             }
                             function emitMove() {
@@ -268,7 +276,7 @@ Item {
                             marker.dragY = Math.max(0, Math.min(field.height, p.y));
                             marker.emitMove();
                         }
-                        onReleased: { if (marker.dragging) { marker.emitMove(); marker.settling = true; marker.dragging = false; } }
+                        onReleased: { if (marker.dragging) { marker.emitMove(); marker.settle(marker.dragX / field.width, marker.dragY / field.height); marker.dragging = false; } }
                         onCanceled: marker.dragging = false
                         onDoubleClicked: root.returned(marker.app.app)
                     }
