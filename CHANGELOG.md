@@ -67,6 +67,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   project. Wiring it in also surfaced the spec's own bug: it navigated to `/index.html`, which
   resolves to the server root rather than the demo subdirectory, and the resulting 404 page (which
   carries no cross-origin-isolation headers) made the failure read as "COOP/COEP headers missing".
+- **macOS cross-builds compiled the wrong architecture's SIMD kernels.** `AC3FORGE_SIMD`'s `auto`
+  and the `AC3FORGE_AVX2` tier both keyed on `CMAKE_SYSTEM_PROCESSOR`, which on Apple platforms
+  describes the *host* — `CMAKE_OSX_ARCHITECTURES` overrides it per compile line. A Mac configured
+  with `-DCMAKE_OSX_ARCHITECTURES` for the other architecture therefore picked its own kernels, and
+  building for arm64 from an Intel Mac handed the ARM compile SSE2 intrinsics and `-mavx2`, failing
+  outright. Both now follow the effective target architecture, and a universal (multi-`-arch`)
+  configure resolves `generic`, since no single compile-time choice can serve both slices. Native
+  builds on every platform are unaffected.
 
 ## [0.10.0-beta.1] - 2026-09-01
 
