@@ -560,6 +560,24 @@ integrity, whether the driver folder holds the scripts and a built package, and 
 on the workstation, where neither prerequisite holds, it says so and the buttons do nothing
 harmful.
 
+**Driver quality, the WDK standard.** A kernel driver is held to two tiers, both scripted.
+The static tier (`apps/windows/driver/Analyze-Driver.ps1`) is Code Analysis with the WDK's
+driver rule set, the successor to PREfast for Drivers; CodeQL with Microsoft's
+`windows-drivers` pack (the `mustfix` and `recommended` suites), which is what the kit now
+directs you to in place of the retired Static Driver Verifier; and `dvl.exe` for the Driver
+Verification Log the HLK Static Tools Logo test consumes. The Code Analysis run over the
+sample-derived source reported 157 defects, all now fixed: seventy uninitialised members
+given default initialisers, the sample's stream-resource-manager probe (which registered the
+current thread as a streaming resource, something a null sink never has) removed, a loop over
+zero capture endpoints removed rather than suppressed, an unchecked `IoRegisterDeviceInterface`
+status checked, and the pool allocators masked to never request executable memory. The
+dynamic tier (`apps/windows/driver-vm/Verify-Driver.ps1`) runs in the same throwaway guest:
+Driver Verifier with the standard checks plus the KMDF flags and the KMDF framework verifier,
+armed for the driver, then the driver installed and exercised (default endpoint, playback,
+device restarts idle and under a live stream, reinstall) and any bugcheck read back;
+`-Kasan` runs it against a KASAN-instrumented package on a KASAN kernel. A violation
+bugchecks the guest, which is a guest reboot and a line in the report.
+
 ### Phase 5: fast follows
 
 In this order: test remediation, the end-to-end latency figure, split per application, the 3D
