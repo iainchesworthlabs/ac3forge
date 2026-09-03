@@ -451,9 +451,13 @@ builds under the Enterprise WDK (kit 10.0.28000, mounted from an ISO on `D:`, no
 on `C:`) to a test-signed package: `inf2cat`'s signability test passes, `infverif` reports the
 INF valid, and the build generates its own WDK test certificate. `install.ps1` and `remove.ps1`
 stage the package with `pnputil` and create or remove the root-enumerated device with the
-WDK's `devcon`. Loading it needs test signing on and memory integrity off, both reboots and
-both the developer's to do; until then the FxSound endpoint remains the stand-in. The
-Settings screen's install and remove buttons are not wired yet; the scripts are the path.
+WDK's `devcon`. Loading it needs test signing on and memory integrity off, so its first runs
+happen in a throwaway VMware guest rather than on the workstation: `apps/windows/driver-vm/`
+creates a Windows 11 VM that installs itself unattended into exactly that state, snapshots
+it, installs the package from a virtual CD and reports devices, endpoints, the driver's
+service state and any bugcheck (a blue screen in the guest is a guest reboot, nothing more).
+The one input is a Windows 11 ISO from Microsoft. The Settings screen's install and remove
+buttons are not wired yet; the scripts are the path.
 
 ### Phase 5: fast follows
 
