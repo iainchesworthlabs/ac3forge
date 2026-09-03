@@ -11,6 +11,7 @@
 #include <string>
 
 #include "engine.hpp"
+#include "platform/windows/driver_tools.hpp"
 
 // The one object QML talks to: the engine's status, republished as
 // properties a few times a second, and its commands, as invokables
@@ -61,6 +62,18 @@ class DeskController : public QObject {
     Q_PROPERTY(bool nullSinkPresent READ nullSinkPresent NOTIFY defaultChanged)
     Q_PROPERTY(QString defaultMessage READ defaultMessage NOTIFY defaultChanged)
 
+    // --- the null-sink driver (Phase 4) ------------------------------------
+    // The folder holding install.ps1, remove.ps1 and the built package; the
+    // scripts run elevated (a UAC prompt) with their output in a transcript
+    // this reports the tail of.
+    Q_PROPERTY(QString driverDir READ driverDir WRITE setDriverDir NOTIFY settingsChanged)
+    Q_PROPERTY(bool driverPackageFound READ driverPackageFound NOTIFY driverChanged)
+    Q_PROPERTY(bool driverBusy READ driverBusy NOTIFY driverChanged)
+    Q_PROPERTY(QString driverMessage READ driverMessage NOTIFY driverChanged)
+    Q_PROPERTY(bool testSigningOn READ testSigningOn NOTIFY driverChanged)
+    Q_PROPERTY(bool memoryIntegrityOn READ memoryIntegrityOn NOTIFY driverChanged)
+    Q_PROPERTY(bool codeIntegrityKnown READ codeIntegrityKnown NOTIFY driverChanged)
+
 public:
     explicit DeskController(QObject* parent = nullptr);
     ~DeskController() override;
@@ -107,6 +120,19 @@ public:
     [[nodiscard]] bool nullSinkPresent() const { return null_sink_present_; }
     [[nodiscard]] QString defaultMessage() const { return default_message_; }
 
+    [[nodiscard]] QString driverDir() const;
+    void setDriverDir(const QString& dir);
+    [[nodiscard]] bool driverPackageFound() const { return driver_package_found_; }
+    [[nodiscard]] bool driverBusy() const { return driver_process_.running(); }
+    [[nodiscard]] QString driverMessage() const { return driver_message_; }
+    [[nodiscard]] bool testSigningOn() const { return code_integrity_.test_signing; }
+    [[nodiscard]] bool memoryIntegrityOn() const { return code_integrity_.hvci; }
+    [[nodiscard]] bool codeIntegrityKnown() const { return code_integrity_.known; }
+
+    Q_INVOKABLE void installDriver();
+    Q_INVOKABLE void removeDriver();
+    Q_INVOKABLE void refreshDriver();
+
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void position(int app, double x, double y, double z);
@@ -126,12 +152,16 @@ signals:
     void endpointsChanged();
     void settingsChanged();
     void defaultChanged();
+    void driverChanged();
 
 private:
     void poll();
     void restart_engine();
     [[nodiscard]] ac3::windemo::EngineConfig engine_config() const;
     void emit_restored_default();
+    void run_driver_script(const QString& script, const QString& verb);
+    void poll_driver();
+    [[nodiscard]] QString driver_log_path() const;
 
     QSettings settings_;
     std::unique_ptr<ac3::windemo::Engine> engine_;
@@ -150,4 +180,11 @@ private:
     bool default_is_null_sink_ = false;
     bool null_sink_present_ = false;
     std::uint64_t last_endpoint_stamp_ = 0;
+
+    ac3::windemo::ElevatedProcess driver_process_;
+    QTimer driver_timer_;
+    ac3::windemo::CodeIntegrityState code_integrity_;
+    bool driver_package_found_ = false;
+    QString driver_message_;
+    QString driver_verb_;
 };

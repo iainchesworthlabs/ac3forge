@@ -31,6 +31,7 @@ Flickable {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
+            Layout.fillHeight: false
             spacing: Theme.space6
 
             ColumnLayout {
@@ -121,6 +122,7 @@ Flickable {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
+            Layout.fillHeight: false
             spacing: Theme.space6
 
             ColumnLayout {
@@ -134,8 +136,52 @@ Flickable {
                             Rectangle { width: 8; height: 8; color: DeskController.nullSinkPresent ? Theme.accent : Theme.neutral500 }
                             Text { Layout.fillWidth: true; text: DeskController.nullSinkPresent ? qsTr("an endpoint named like \"%1\" is present").arg(DeskController.nullSinkName) : qsTr("no endpoint named like \"%1\"").arg(DeskController.nullSinkName); color: Theme.text; font.pixelSize: 13; wrapMode: Text.WordWrap }
                         }
-                        Text { Layout.fillWidth: true; text: qsTr("A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. The driver itself is Phase 4; until then any silent endpoint stands in."); color: Theme.textMuted; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }
+                        Text { Layout.fillWidth: true; text: qsTr("A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. Any silent endpoint stands in until it is installed."); color: Theme.textMuted; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }
+                        RowLayout {
+                            spacing: Theme.space2
+                            Rectangle { width: 8; height: 8; color: DeskController.codeIntegrityKnown && DeskController.testSigningOn && !DeskController.memoryIntegrityOn ? Theme.accent : Theme.neutral500 }
+                            Text {
+                                Layout.fillWidth: true
+                                text: !DeskController.codeIntegrityKnown ? qsTr("could not read the kernel's code-integrity state")
+                                    : (DeskController.testSigningOn ? qsTr("test signing on") : qsTr("test signing off"))
+                                      + qsTr(", ")
+                                      + (DeskController.memoryIntegrityOn ? qsTr("memory integrity on") : qsTr("memory integrity off"))
+                                      + (DeskController.testSigningOn && !DeskController.memoryIntegrityOn ? "" : qsTr(": a test-signed package will not load"))
+                                color: Theme.text; font.pixelSize: 13; wrapMode: Text.WordWrap
+                            }
+                        }
+                        RowLayout {
+                            spacing: Theme.space2
+                            DeskButton { text: qsTr("Install driver"); primary: true; enabled: DeskController.driverPackageFound && !DeskController.driverBusy; onClicked: DeskController.installDriver() }
+                            DeskButton { text: qsTr("Remove driver"); enabled: DeskController.driverPackageFound && !DeskController.driverBusy; onClicked: DeskController.removeDriver() }
+                            DeskButton { text: qsTr("Re-check"); enabled: !DeskController.driverBusy; onClicked: DeskController.refreshDriver() }
+                        }
+                        Text { visible: DeskController.driverMessage.length > 0; Layout.fillWidth: true; text: DeskController.driverMessage; color: Theme.textMuted; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }
                     }
+                }
+                RowLayout {
+                    spacing: Theme.space3
+                    Text { Layout.preferredWidth: 120; text: qsTr("Driver folder"); color: Theme.text; font.pixelSize: 13 }
+                    Rectangle {
+                        implicitWidth: 240
+                        implicitHeight: 30
+                        color: Theme.neutral100
+                        border.color: Theme.divider
+                        border.width: 1
+                        TextInput {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            verticalAlignment: TextInput.AlignVCenter
+                            text: DeskController.driverDir
+                            color: Theme.text
+                            font.pixelSize: 13
+                            selectByMouse: true
+                            clip: true
+                            onEditingFinished: DeskController.driverDir = text
+                        }
+                    }
+                    Text { Layout.fillWidth: true; text: DeskController.driverPackageFound ? qsTr("install.ps1, remove.ps1 and the built package are here") : qsTr("no install.ps1, remove.ps1 and built package here"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }
                 }
                 RowLayout {
                     spacing: Theme.space3

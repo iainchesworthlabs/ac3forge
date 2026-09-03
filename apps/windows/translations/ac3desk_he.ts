@@ -42,39 +42,64 @@
 <context>
     <name>DeskController</name>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="45"/>
+        <location filename="../ui/desk_controller.cpp" line="50"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="46"/>
+        <location filename="../ui/desk_controller.cpp" line="51"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="47"/>
+        <location filename="../ui/desk_controller.cpp" line="52"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="48"/>
+        <location filename="../ui/desk_controller.cpp" line="53"/>
         <source>PCM surround</source>
         <translation>PCM היקפי</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="49"/>
+        <location filename="../ui/desk_controller.cpp" line="54"/>
         <source>Headphones</source>
         <translation>אוזניות</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="50"/>
+        <location filename="../ui/desk_controller.cpp" line="55"/>
         <source>Stereo</source>
         <translation>סטריאו</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="51"/>
+        <location filename="../ui/desk_controller.cpp" line="56"/>
         <source>No output</source>
         <translation>אין פלט</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="508"/>
+        <source>installing, answer the elevation prompt ...</source>
+        <translation>מתקין, יש לענות לבקשת ההרשאות…</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="509"/>
+        <source>removing, answer the elevation prompt ...</source>
+        <translation>מסיר, יש לענות לבקשת ההרשאות…</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <source>installed</source>
+        <translation>הותקן</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <source>removed</source>
+        <translation>הוסר</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <source>%1 failed (exit code %2)</source>
+        <translation>%1 נכשל (קוד יציאה %2)</translation>
     </message>
 </context>
 <context>
@@ -898,95 +923,164 @@
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="137"/>
-        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. The driver itself is Phase 4; until then any silent endpoint stands in.</source>
-        <translation>מנהל התקן יעד ריק שמשליך את מה שניתן לו. היישומים מנגנים לתוכו; משחקים תומכי היקפי מנגנים 7.1 לתוכו ומגיעים למיטה בשלמות. מנהל ההתקן עצמו הוא שלב 4; עד אז כל נקודת קצה שקטה משמשת כתחליף.</translation>
+        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. Any silent endpoint stands in until it is installed.</source>
+        <translation>מנהל התקן יעד ריק שמשליך את מה שניתן לו. היישומים מנגנים לתוכו; משחקים תומכי היקפי מנגנים 7.1 לתוכו ומגיעים למיטה בשלמות. כל נקודת קצה שקטה משמשת כתחליף עד שיותקן.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="142"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="143"/>
+        <source>could not read the kernel&apos;s code-integrity state</source>
+        <translation>לא ניתן לקרוא את מצב שלמות הקוד של הליבה</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <source>test signing on</source>
+        <translation>חתימת בדיקה פעילה</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <source>test signing off</source>
+        <translation>חתימת בדיקה כבויה</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
+        <source>, </source>
+        <translation>, </translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <source>memory integrity on</source>
+        <translation>שלמות זיכרון פעילה</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <source>memory integrity off</source>
+        <translation>שלמות זיכרון כבויה</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="147"/>
+        <source>: a test-signed package will not load</source>
+        <translation>: חבילה חתומה לבדיקה לא תיטען</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="153"/>
+        <source>Install driver</source>
+        <translation>התקן מנהל התקן</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="154"/>
+        <source>Remove driver</source>
+        <translation>הסר מנהל התקן</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="155"/>
+        <source>Re-check</source>
+        <translation>בדוק שוב</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="162"/>
+        <source>Driver folder</source>
+        <translation>תיקיית מנהל ההתקן</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <source>install.ps1, remove.ps1 and the built package are here</source>
+        <translation>install.ps1, remove.ps1 והחבילה הבנויה נמצאים כאן</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <source>no install.ps1, remove.ps1 and built package here</source>
+        <translation>אין כאן install.ps1, remove.ps1 וחבילה בנויה</translation>
+    </message>
+    <message>
+        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. The driver itself is Phase 4; until then any silent endpoint stands in.</source>
+        <translation type="vanished">מנהל התקן יעד ריק שמשליך את מה שניתן לו. היישומים מנגנים לתוכו; משחקים תומכי היקפי מנגנים 7.1 לתוכו ומגיעים למיטה בשלמות. מנהל ההתקן עצמו הוא שלב 4; עד אז כל נקודת קצה שקטה משמשת כתחליף.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="186"/>
         <source>Silent device</source>
         <translation>התקן שקט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="162"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
         <source>any endpoint whose name contains this is never an output</source>
         <translation>כל נקודת קצה ששמה מכיל את זה לעולם אינה פלט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="168"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
         <source>APPEARANCE</source>
         <translation>מראה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="171"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="175"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="215"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
         <source>Theme</source>
         <translation>ערכת נושא</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="187"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="231"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>System</source>
         <translation>מערכת</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
         <source>Light</source>
         <translation>בהיר</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
         <source>Dark</source>
         <translation>כהה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="181"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
         <source>Language</source>
         <translation>שפה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="250"/>
         <source>System follows Windows; the translations are mechanical for now</source>
         <translation>מערכת עוקבת אחר Windows; התרגומים מכניים בינתיים</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="210"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="214"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="254"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>Palette</source>
         <translation>פלטה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Signal</source>
         <translation>אות</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Ink</source>
         <translation>דיו</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Console</source>
         <translation>קונסולה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="222"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="266"/>
         <source>BEHAVIOUR</source>
         <translation>התנהגות</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="224"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="268"/>
         <source>Move the default output to the silent device on launch</source>
         <translation>העבר את פלט ברירת המחדל להתקן השקט בהפעלה</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="269"/>
         <source>Restored to the previous device on quit.</source>
         <translation>משוחזר להתקן הקודם ביציאה.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="230"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="274"/>
         <source>Keep running in the tray when the window is closed</source>
         <translation>המשך לפעול במגש כשהחלון סגור</translation>
     </message>

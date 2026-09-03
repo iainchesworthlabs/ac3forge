@@ -42,39 +42,64 @@
 <context>
     <name>DeskController</name>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="45"/>
+        <location filename="../ui/desk_controller.cpp" line="50"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="46"/>
+        <location filename="../ui/desk_controller.cpp" line="51"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="47"/>
+        <location filename="../ui/desk_controller.cpp" line="52"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="48"/>
+        <location filename="../ui/desk_controller.cpp" line="53"/>
         <source>PCM surround</source>
         <translation>محيطي PCM</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="49"/>
+        <location filename="../ui/desk_controller.cpp" line="54"/>
         <source>Headphones</source>
         <translation>سماعات الرأس</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="50"/>
+        <location filename="../ui/desk_controller.cpp" line="55"/>
         <source>Stereo</source>
         <translation>استيريو</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="51"/>
+        <location filename="../ui/desk_controller.cpp" line="56"/>
         <source>No output</source>
         <translation>لا إخراج</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="508"/>
+        <source>installing, answer the elevation prompt ...</source>
+        <translation>جارٍ التثبيت، أجب على طلب رفع الصلاحيات…</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="509"/>
+        <source>removing, answer the elevation prompt ...</source>
+        <translation>جارٍ الإزالة، أجب على طلب رفع الصلاحيات…</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <source>installed</source>
+        <translation>تم التثبيت</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <source>removed</source>
+        <translation>تمت الإزالة</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <source>%1 failed (exit code %2)</source>
+        <translation>فشل %1 (رمز الخروج %2)</translation>
     </message>
 </context>
 <context>
@@ -898,95 +923,164 @@
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="137"/>
-        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. The driver itself is Phase 4; until then any silent endpoint stands in.</source>
-        <translation>برنامج تشغيل مصرف فارغ يتخلص مما يُعطى له. تصدر التطبيقات الصوت إليه؛ والألعاب القادرة على المحيطي تصدر 7.1 إليه وتصل إلى القاعدة سليمة. برنامج التشغيل نفسه هو المرحلة 4؛ وحتى ذلك الحين تحل محله أي نقطة نهاية صامتة.</translation>
+        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. Any silent endpoint stands in until it is installed.</source>
+        <translation>برنامج تشغيل مصرف فارغ يتخلص مما يُعطى له. تصدر التطبيقات الصوت إليه؛ والألعاب القادرة على المحيطي تصدر 7.1 إليه وتصل إلى القاعدة سليمة. تحل محله أي نقطة نهاية صامتة حتى يتم تثبيته.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="142"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="143"/>
+        <source>could not read the kernel&apos;s code-integrity state</source>
+        <translation>تعذّر قراءة حالة سلامة الكود في النواة</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <source>test signing on</source>
+        <translation>توقيع الاختبار مفعّل</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <source>test signing off</source>
+        <translation>توقيع الاختبار معطّل</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
+        <source>, </source>
+        <translation>، </translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <source>memory integrity on</source>
+        <translation>سلامة الذاكرة مفعّلة</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <source>memory integrity off</source>
+        <translation>سلامة الذاكرة معطّلة</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="147"/>
+        <source>: a test-signed package will not load</source>
+        <translation>: لن يتم تحميل حزمة موقّعة للاختبار</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="153"/>
+        <source>Install driver</source>
+        <translation>تثبيت برنامج التشغيل</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="154"/>
+        <source>Remove driver</source>
+        <translation>إزالة برنامج التشغيل</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="155"/>
+        <source>Re-check</source>
+        <translation>إعادة الفحص</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="162"/>
+        <source>Driver folder</source>
+        <translation>مجلد برنامج التشغيل</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <source>install.ps1, remove.ps1 and the built package are here</source>
+        <translation>install.ps1 و remove.ps1 والحزمة المبنية موجودة هنا</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <source>no install.ps1, remove.ps1 and built package here</source>
+        <translation>لا يوجد هنا install.ps1 و remove.ps1 وحزمة مبنية</translation>
+    </message>
+    <message>
+        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. The driver itself is Phase 4; until then any silent endpoint stands in.</source>
+        <translation type="vanished">برنامج تشغيل مصرف فارغ يتخلص مما يُعطى له. تصدر التطبيقات الصوت إليه؛ والألعاب القادرة على المحيطي تصدر 7.1 إليه وتصل إلى القاعدة سليمة. برنامج التشغيل نفسه هو المرحلة 4؛ وحتى ذلك الحين تحل محله أي نقطة نهاية صامتة.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="186"/>
         <source>Silent device</source>
         <translation>جهاز صامت</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="162"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
         <source>any endpoint whose name contains this is never an output</source>
         <translation>أي نقطة نهاية يحتوي اسمها على هذا ليست إخراجًا أبدًا</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="168"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
         <source>APPEARANCE</source>
         <translation>المظهر</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="171"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="175"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="215"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
         <source>Theme</source>
         <translation>السمة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="187"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="231"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>System</source>
         <translation>النظام</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
         <source>Light</source>
         <translation>فاتح</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
         <source>Dark</source>
         <translation>داكن</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="181"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
         <source>Language</source>
         <translation>اللغة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="250"/>
         <source>System follows Windows; the translations are mechanical for now</source>
         <translation>النظام يتبع Windows؛ الترجمات آلية في الوقت الحالي</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="210"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="214"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="254"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>Palette</source>
         <translation>لوحة الألوان</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Signal</source>
         <translation>إشارة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Ink</source>
         <translation>حبر</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Console</source>
         <translation>وحدة التحكم</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="222"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="266"/>
         <source>BEHAVIOUR</source>
         <translation>السلوك</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="224"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="268"/>
         <source>Move the default output to the silent device on launch</source>
         <translation>نقل الإخراج الافتراضي إلى الجهاز الصامت عند التشغيل</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="269"/>
         <source>Restored to the previous device on quit.</source>
         <translation>يُستعاد إلى الجهاز السابق عند الإنهاء.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="230"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="274"/>
         <source>Keep running in the tray when the window is closed</source>
         <translation>الاستمرار في العمل في علبة النظام عند إغلاق النافذة</translation>
     </message>

@@ -42,39 +42,64 @@
 <context>
     <name>DeskController</name>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="45"/>
+        <location filename="../ui/desk_controller.cpp" line="50"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="46"/>
+        <location filename="../ui/desk_controller.cpp" line="51"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="47"/>
+        <location filename="../ui/desk_controller.cpp" line="52"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="48"/>
+        <location filename="../ui/desk_controller.cpp" line="53"/>
         <source>PCM surround</source>
         <translation>Surround PCM</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="49"/>
+        <location filename="../ui/desk_controller.cpp" line="54"/>
         <source>Headphones</source>
         <translation>Casque</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="50"/>
+        <location filename="../ui/desk_controller.cpp" line="55"/>
         <source>Stereo</source>
         <translation>Stéréo</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="51"/>
+        <location filename="../ui/desk_controller.cpp" line="56"/>
         <source>No output</source>
         <translation>Pas de sortie</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="508"/>
+        <source>installing, answer the elevation prompt ...</source>
+        <translation>installation, répondez à l'invite d'élévation…</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="509"/>
+        <source>removing, answer the elevation prompt ...</source>
+        <translation>retrait, répondez à l'invite d'élévation…</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <source>installed</source>
+        <translation>installé</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <source>removed</source>
+        <translation>retiré</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <source>%1 failed (exit code %2)</source>
+        <translation>%1 a échoué (code de sortie %2)</translation>
     </message>
 </context>
 <context>
@@ -898,95 +923,164 @@
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="137"/>
-        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. The driver itself is Phase 4; until then any silent endpoint stands in.</source>
-        <translation>Un pilote puits nul qui jette ce qu'on lui donne. Les applications y restituent ; les jeux capables de surround y restituent en 7.1 et atteignent le lit intact. Le pilote lui-même est la phase 4 ; d'ici là, n'importe quel point de terminaison silencieux fait office.</translation>
+        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. Any silent endpoint stands in until it is installed.</source>
+        <translation>Un pilote puits nul qui jette ce qu'on lui donne. Les applications y restituent ; les jeux capables de surround y restituent en 7.1 et atteignent le lit intact. N'importe quel point de terminaison silencieux fait office jusqu'à son installation.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="142"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="143"/>
+        <source>could not read the kernel&apos;s code-integrity state</source>
+        <translation>impossible de lire l'état d'intégrité du code du noyau</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <source>test signing on</source>
+        <translation>signature de test activée</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <source>test signing off</source>
+        <translation>signature de test désactivée</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
+        <source>, </source>
+        <translation>, </translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <source>memory integrity on</source>
+        <translation>intégrité de la mémoire activée</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <source>memory integrity off</source>
+        <translation>intégrité de la mémoire désactivée</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="147"/>
+        <source>: a test-signed package will not load</source>
+        <translation> : un paquet signé pour test ne se chargera pas</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="153"/>
+        <source>Install driver</source>
+        <translation>Installer le pilote</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="154"/>
+        <source>Remove driver</source>
+        <translation>Retirer le pilote</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="155"/>
+        <source>Re-check</source>
+        <translation>Revérifier</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="162"/>
+        <source>Driver folder</source>
+        <translation>Dossier du pilote</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <source>install.ps1, remove.ps1 and the built package are here</source>
+        <translation>install.ps1, remove.ps1 et le paquet compilé sont ici</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <source>no install.ps1, remove.ps1 and built package here</source>
+        <translation>pas d'install.ps1, remove.ps1 ni de paquet compilé ici</translation>
+    </message>
+    <message>
+        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. The driver itself is Phase 4; until then any silent endpoint stands in.</source>
+        <translation type="vanished">Un pilote puits nul qui jette ce qu&apos;on lui donne. Les applications y restituent ; les jeux capables de surround y restituent en 7.1 et atteignent le lit intact. Le pilote lui-même est la phase 4 ; d&apos;ici là, n&apos;importe quel point de terminaison silencieux fait office.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="186"/>
         <source>Silent device</source>
         <translation>Périphérique silencieux</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="162"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
         <source>any endpoint whose name contains this is never an output</source>
         <translation>tout point de terminaison dont le nom contient ceci n'est jamais une sortie</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="168"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
         <source>APPEARANCE</source>
         <translation>APPARENCE</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="171"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="175"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="215"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
         <source>Theme</source>
         <translation>Thème</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="187"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="231"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>System</source>
         <translation>Système</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
         <source>Light</source>
         <translation>Clair</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
         <source>Dark</source>
         <translation>Sombre</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="181"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
         <source>Language</source>
         <translation>Langue</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="250"/>
         <source>System follows Windows; the translations are mechanical for now</source>
         <translation>Système suit Windows ; les traductions sont mécaniques pour l'instant</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="210"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="214"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="254"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>Palette</source>
         <translation>Palette</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Signal</source>
         <translation>Signal</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Ink</source>
         <translation>Encre</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Console</source>
         <translation>Console</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="222"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="266"/>
         <source>BEHAVIOUR</source>
         <translation>COMPORTEMENT</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="224"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="268"/>
         <source>Move the default output to the silent device on launch</source>
         <translation>Déplacer la sortie par défaut vers le périphérique silencieux au lancement</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="269"/>
         <source>Restored to the previous device on quit.</source>
         <translation>Restauré vers le périphérique précédent à la fermeture.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="230"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="274"/>
         <source>Keep running in the tray when the window is closed</source>
         <translation>Continuer dans la zone de notification à la fermeture de la fenêtre</translation>
     </message>

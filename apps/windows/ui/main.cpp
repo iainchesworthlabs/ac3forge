@@ -2,7 +2,8 @@
 // "UI"). Everything that is not the window lives in ../engine; this file
 // only stands the QML up, applies the language, and offers one debugging
 // aid: `--shot <path.png>` grabs the window after it has settled and quits,
-// the way ac3gui's smoke modes do, so a headless check can see the screen.
+// the way ac3gui's smoke modes do, so a headless check can see the screen;
+// `--page settings` (or output, room) picks the page it shows first.
 
 #include <QGuiApplication>
 #include <QIcon>
@@ -30,10 +31,13 @@ int main(int argc, char** argv) {
     QGuiApplication::setQuitOnLastWindowClosed(false);
 
     QString shot_path;
+    QString page;
     const QStringList args = QCoreApplication::arguments();
     for (qsizetype i = 1; i + 1 < args.size(); ++i) {
         if (args[i] == QLatin1String("--shot")) {
             shot_path = args[i + 1];
+        } else if (args[i] == QLatin1String("--page")) {
+            page = args[i + 1];  // room, output or settings
         }
     }
 
@@ -57,6 +61,9 @@ int main(int argc, char** argv) {
     engine.loadFromModule("Ac3ForgeDesk", "Main");
     if (engine.rootObjects().isEmpty()) {
         return 1;
+    }
+    if (!page.isEmpty()) {
+        engine.rootObjects().first()->setProperty("page", page);
     }
 
     if (!shot_path.isEmpty()) {

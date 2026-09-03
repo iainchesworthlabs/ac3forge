@@ -34,6 +34,8 @@ if(WIN32)
     target_sources(ac3windemo_engine PRIVATE
         engine/platform/windows/session_monitor.cpp
         engine/platform/windows/default_device.cpp
+        engine/platform/windows/driver_tools.cpp
+        engine/platform/windows/driver_tools.hpp
         engine/platform/windows/foreground.cpp)
     target_compile_definitions(ac3windemo_engine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
     # COM for the session manager and policy config, the shell for the
@@ -126,7 +128,11 @@ else()
     # ui/ for the generated type registrations to find desk_controller.hpp,
     # ../gui for system_theme.hpp.
     target_include_directories(ac3desk PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/ui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui")
-    target_compile_definitions(ac3desk PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    # The driver folder in the source tree is the default place the
+    # Settings screen's install/remove buttons look when no driver/ folder
+    # sits beside the executable (a build-tree run).
+    target_compile_definitions(ac3desk PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX
+        AC3DESK_DRIVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/driver")
     # ac3::warnings is deliberately not linked: Qt's generated sources would
     # be compiled under it (apps/gui carries a workaround for exactly that).
     target_link_libraries(ac3desk PRIVATE

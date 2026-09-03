@@ -42,39 +42,64 @@
 <context>
     <name>DeskController</name>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="45"/>
+        <location filename="../ui/desk_controller.cpp" line="50"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="46"/>
+        <location filename="../ui/desk_controller.cpp" line="51"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="47"/>
+        <location filename="../ui/desk_controller.cpp" line="52"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="48"/>
+        <location filename="../ui/desk_controller.cpp" line="53"/>
         <source>PCM surround</source>
         <translation>PCM אַרום</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="49"/>
+        <location filename="../ui/desk_controller.cpp" line="54"/>
         <source>Headphones</source>
         <translation>קאָפּהערער</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="50"/>
+        <location filename="../ui/desk_controller.cpp" line="55"/>
         <source>Stereo</source>
         <translation>סטערעאָ</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="51"/>
+        <location filename="../ui/desk_controller.cpp" line="56"/>
         <source>No output</source>
         <translation>קיין אַרויסגאַנג</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="508"/>
+        <source>installing, answer the elevation prompt ...</source>
+        <translation>אינסטאַלירט, ענטפֿערט אויפֿן דערהייבונג-פֿרעג…</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="509"/>
+        <source>removing, answer the elevation prompt ...</source>
+        <translation>נעמט אַראָפּ, ענטפֿערט אויפֿן דערהייבונג-פֿרעג…</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <source>installed</source>
+        <translation>אינסטאַלירט</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="535"/>
+        <source>removed</source>
+        <translation>אַראָפּגענומען</translation>
+    </message>
+    <message>
+        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <source>%1 failed (exit code %2)</source>
+        <translation>%1 האָט דורכגעפֿאַלן (אַרויסגאַנג-קאָד %2)</translation>
     </message>
 </context>
 <context>
@@ -898,95 +923,164 @@
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="137"/>
-        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. The driver itself is Phase 4; until then any silent endpoint stands in.</source>
-        <translation>אַ נול-זינק דרײַווער וואָס וואַרפֿט אַוועק וואָס מען גיט אים. אַפּליקאַציעס שפּילן אַרײַן; אַרום-פֿעיִקע שפּילן שפּילן 7.1 אַרײַן און דערגרייכן דאָס בעט גאַנץ. דער דרײַווער אַליין איז פֿאַזע 4; ביז דעמאָלט שטעלט זיך אַרײַן יעדער שטילער ענדפּונקט.</translation>
+        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. Any silent endpoint stands in until it is installed.</source>
+        <translation>אַ נול-זינק דרײַווער וואָס וואַרפֿט אַוועק וואָס מען גיט אים. אַפּליקאַציעס שפּילן אַרײַן; אַרום-פֿעיִקע שפּילן שפּילן 7.1 אַרײַן און דערגרייכן דאָס בעט גאַנץ. יעדער שטילער ענדפּונקט שטעלט זיך אַרײַן ביז ער ווערט אינסטאַלירט.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="142"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="143"/>
+        <source>could not read the kernel&apos;s code-integrity state</source>
+        <translation>מען האָט נישט געקענט לייענען דעם קאָד-אינטעגריטעט-צושטאַנד פֿונעם קערנעל</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <source>test signing on</source>
+        <translation>טעסט-אונטערשרײַבונג אָן</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="144"/>
+        <source>test signing off</source>
+        <translation>טעסט-אונטערשרײַבונג אָפּ</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
+        <source>, </source>
+        <translation>, </translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <source>memory integrity on</source>
+        <translation>זכּרון-אינטעגריטעט אָן</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="146"/>
+        <source>memory integrity off</source>
+        <translation>זכּרון-אינטעגריטעט אָפּ</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="147"/>
+        <source>: a test-signed package will not load</source>
+        <translation>: אַ טעסט-אונטערגעשריבענער פּאַקעט וועט זיך נישט לאָדן</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="153"/>
+        <source>Install driver</source>
+        <translation>אינסטאַלירן דרײַווער</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="154"/>
+        <source>Remove driver</source>
+        <translation>אַראָפּנעמען דרײַווער</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="155"/>
+        <source>Re-check</source>
+        <translation>איבערקוקן</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="162"/>
+        <source>Driver folder</source>
+        <translation>דרײַווער-פּאַפּקע</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <source>install.ps1, remove.ps1 and the built package are here</source>
+        <translation>install.ps1, remove.ps1 און דער געבויטער פּאַקעט זענען דאָ</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="182"/>
+        <source>no install.ps1, remove.ps1 and built package here</source>
+        <translation>נישטאָ דאָ קיין install.ps1, remove.ps1 און געבויטער פּאַקעט</translation>
+    </message>
+    <message>
+        <source>A null-sink driver that discards what it is given. Applications render into it; surround-capable games render 7.1 into it and reach the bed intact. The driver itself is Phase 4; until then any silent endpoint stands in.</source>
+        <translation type="vanished">אַ נול-זינק דרײַווער וואָס וואַרפֿט אַוועק וואָס מען גיט אים. אַפּליקאַציעס שפּילן אַרײַן; אַרום-פֿעיִקע שפּילן שפּילן 7.1 אַרײַן און דערגרייכן דאָס בעט גאַנץ. דער דרײַווער אַליין איז פֿאַזע 4; ביז דעמאָלט שטעלט זיך אַרײַן יעדער שטילער ענדפּונקט.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="186"/>
         <source>Silent device</source>
         <translation>שטילער מיטל</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="162"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
         <source>any endpoint whose name contains this is never an output</source>
         <translation>יעדער ענדפּונקט וועמענס נאָמען אַנטהאַלט דאָס איז קיינמאָל ניט אַן אַרויסגאַנג</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="168"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
         <source>APPEARANCE</source>
         <translation>אויסזען</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="171"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="175"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="215"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="219"/>
         <source>Theme</source>
         <translation>טעמע</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="187"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="231"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>System</source>
         <translation>סיסטעם</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
         <source>Light</source>
         <translation>ליכטיק</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="173"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="217"/>
         <source>Dark</source>
         <translation>טונקל</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="181"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
         <source>Language</source>
         <translation>שפּראַך</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="250"/>
         <source>System follows Windows; the translations are mechanical for now</source>
         <translation>סיסטעם גייט נאָך Windows; די איבערזעצונגען זײַנען דערווײַל מעכאַניש</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="210"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="214"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="254"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="258"/>
         <source>Palette</source>
         <translation>פּאַלעטע</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Signal</source>
         <translation>סיגנאַל</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Ink</source>
         <translation>טינט</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="212"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="256"/>
         <source>Console</source>
         <translation>קאָנסאָל</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="222"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="266"/>
         <source>BEHAVIOUR</source>
         <translation>אויפֿפֿירונג</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="224"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="268"/>
         <source>Move the default output to the silent device on launch</source>
         <translation>באַוועג דעם סטאַנדאַרט אַרויסגאַנג צום שטילן מיטל בײַם אָנהייב</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="269"/>
         <source>Restored to the previous device on quit.</source>
         <translation>צוריקגעשטעלט צום פֿריִערדיקן מיטל בײַם אַרויסגיין.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="230"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="274"/>
         <source>Keep running in the tray when the window is closed</source>
         <translation>ווײַטער לויפֿן אין טרעי ווען דער פֿענצטער ווערט פֿאַרמאַכט</translation>
     </message>

@@ -1,6 +1,10 @@
 #include "desk_controller.hpp"
 
+#include <QCoreApplication>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QStandardPaths>
 #include <QUrl>
 #include <QVariantMap>
 
@@ -10,6 +14,7 @@
 
 #include "output_policy.hpp"
 #include "platform/windows/default_device.hpp"
+#include "platform/windows/driver_tools.hpp"
 
 namespace {
 
@@ -73,8 +78,11 @@ DeskController::DeskController(QObject* parent)
     : QObject(parent), settings_(QStringLiteral("ac3forge"), QStringLiteral("DesktopAtmos")) {
     poll_timer_.setInterval(kPollMs);
     connect(&poll_timer_, &QTimer::timeout, this, &DeskController::poll);
+    driver_timer_.setInterval(250);
+    connect(&driver_timer_, &QTimer::timeout, this, &DeskController::poll_driver);
     previous_default_id_ = ac3::windemo::default_render_id();
     refreshDefault();
+    refreshDriver();
 }
 
 DeskController::~DeskController() {
@@ -423,4 +431,112 @@ void DeskController::restoreDefault() {
 
 void DeskController::openSoundSettings() {
     ac3::windemo::open_sound_settings();
+}
+
+// --- the null-sink driver ---------------------------------------------------
+
+QString DeskController::driverDir() const {
+    const QString stored = settings_.value(QStringLiteral("driver/dir")).toString();
+    if (!stored.isEmpty()) {
+        return stored;
+    }
+    // Next to the executable when deployed; the source tree's driver folder
+    // when run from a build (the CMake target passes it in).
+    const QString beside = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("driver"));
+    if (QFileInfo::exists(QDir(beside).filePath(QStringLiteral("install.ps1")))) {
+        return QDir::toNativeSeparators(beside);
+    }
+    return QDir::toNativeSeparators(QStringLiteral(AC3DESK_DRIVER_SOURCE_DIR));
+}
+
+void DeskController::setDriverDir(const QString& dir) {
+    if (dir == driverDir()) {
+        return;
+    }
+    if (dir.trimmed().isEmpty()) {
+        settings_.remove(QStringLiteral("driver/dir"));
+    } else {
+        settings_.setValue(QStringLiteral("driver/dir"), QDir::toNativeSeparators(dir.trimmed()));
+    }
+    emit settingsChanged();
+    refreshDriver();
+}
+
+QString DeskController::driver_log_path() const {
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    QDir().mkpath(base);
+    return QDir::toNativeSeparators(QDir(base).filePath(QStringLiteral("driver-%1.log").arg(driver_verb_)));
+}
+
+void DeskController::refreshDriver() {
+    const QDir dir(driverDir());
+    const bool found = dir.exists(QStringLiteral("install.ps1")) && dir.exists(QStringLiteral("remove.ps1")) &&
+                       dir.exists(QStringLiteral("Package/x64/Release/package/Ac3ForgeNullSink.inf"));
+    driver_package_found_ = found;
+    code_integrity_ = ac3::windemo::code_integrity_state();
+    emit driverChanged();
+}
+
+void DeskController::run_driver_script(const QString& script, const QString& verb) {
+    if (driver_process_.running()) {
+        return;
+    }
+    driver_verb_ = verb;
+    const QDir dir(driverDir());
+    const QString script_path = QDir::toNativeSeparators(dir.filePath(script));
+    const QString package = QDir::toNativeSeparators(dir.filePath(QStringLiteral("Package/x64/Release/package")));
+    const QString devcon = dir.exists(QStringLiteral("devcon.exe"))
+                               ? QDir::toNativeSeparators(dir.filePath(QStringLiteral("devcon.exe")))
+                               : QStringLiteral("devcon.exe");
+    const QString log = driver_log_path();
+    QFile::remove(log);
+    // One -Command so the script's output lands in a transcript this can
+    // read back; the window itself is hidden. Paths are single-quoted for
+    // PowerShell; the whole command is one argument to powershell.exe.
+    const QString command =
+        QStringLiteral("Start-Transcript -Path '%1' | Out-Null; try { & '%2' -PackageDir '%3' -Devcon '%4'; $code = 0 } "
+                       "catch { Write-Host $_; $code = 1 }; Stop-Transcript | Out-Null; exit $code")
+            .arg(log, script_path, package, devcon);
+    const QString arguments = QStringLiteral("-NoProfile -ExecutionPolicy Bypass -Command \"%1\"").arg(command);
+    auto started = ac3::windemo::ElevatedProcess::start(L"powershell.exe", arguments.toStdWString());
+    if (!started) {
+        driver_message_ = from_utf8(started.error());
+        emit driverChanged();
+        return;
+    }
+    driver_process_ = std::move(*started);
+    driver_message_ = verb == QLatin1String("install") ? tr("installing, answer the elevation prompt ...")
+                                                        : tr("removing, answer the elevation prompt ...");
+    driver_timer_.start();
+    emit driverChanged();
+}
+
+void DeskController::installDriver() {
+    run_driver_script(QStringLiteral("install.ps1"), QStringLiteral("install"));
+}
+
+void DeskController::removeDriver() {
+    run_driver_script(QStringLiteral("remove.ps1"), QStringLiteral("remove"));
+}
+
+void DeskController::poll_driver() {
+    const auto code = driver_process_.poll();
+    if (!code) {
+        return;
+    }
+    driver_timer_.stop();
+    const auto tail = ac3::windemo::transcript_tail(driver_log_path().toStdWString(), 3);
+    QStringList lines;
+    for (const auto& line : tail) {
+        lines.push_back(from_utf8(line));
+    }
+    const QString detail = lines.isEmpty() ? QString() : QStringLiteral("\n") + lines.join(QStringLiteral("\n"));
+    if (*code == 0) {
+        driver_message_ = (driver_verb_ == QLatin1String("install") ? tr("installed") : tr("removed")) + detail;
+    } else {
+        driver_message_ = tr("%1 failed (exit code %2)").arg(driver_verb_).arg(*code) + detail;
+    }
+    // Endpoints appear a moment after the device does.
+    refreshDriver();
+    reprobe();
 }
