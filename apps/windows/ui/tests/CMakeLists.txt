@@ -54,6 +54,12 @@ if(AC3DESK_WINDEPLOYQT)
             --qmldir "${AC3DESK_SHARED_DIR}"
             --no-compiler-runtime
             "$<TARGET_FILE:ac3desk_qmltests>"
+        # windeployqt deploys the windows platform plugin only; the suites
+        # run under offscreen (apps/gui/tests does the same copy). Without
+        # it Qt reports the plugin missing and then waits on a message box.
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${AC3DESK_QT_BIN_DIR}/../plugins/platforms/qoffscreen$<$<CONFIG:Debug>:d>.dll"
+            "$<TARGET_FILE_DIR:ac3desk_qmltests>/platforms/"
         COMMENT "Deploying Qt runtime dependencies for ac3desk_qmltests")
 endif()
 

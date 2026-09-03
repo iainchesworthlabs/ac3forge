@@ -529,6 +529,41 @@ steps, in this order:
    switch mid-stream, the bypass fold, the null-sink width change, a starved tap. The
    platform files stay integration-tested by the guest.
 
+All three landed on 2026-09-03. `ac3desk_qmltests` runs five suites (shell, settings, output,
+room, language) under the `desk` label; `AudioDevices` (`engine/audio_devices.hpp`) is the
+seam, with `wasapi_devices.cpp` behind it in the app and `tests/windemo/fake_devices.hpp` in
+the tests, and the tap pool and output stage now compile into `ac3tests` on every platform
+(52 `windemo` cases, 15 of them over the fakes: the five routes with real access units, the
+bypass fold, a mode switch mid-stream, a sink that refuses, a full sink's underrun, a
+starved tap). The first measurement, `coverage_windemo.ps1` over the
+`config-windows-llvm-coverage` build with both labels, 57 tests, all passing:
+
+| File | Lines | Branches | Note |
+|---|---|---|---|
+| `engine/tap_pool.cpp` | 100% | 100% | fakes |
+| `engine/slots.cpp` | 98% | 93% | |
+| `engine/placement.cpp` | 100% | 83% | |
+| `engine/output_policy.cpp` | 93% | 86% | |
+| `engine/engine.cpp` | 79% | 68% | the desk suites start the real engine |
+| `engine/output_stage.cpp` | 78% | 65% | fakes; decoded-headphones and DD 5.1 error legs thin |
+| `engine/bed_mixer.cpp` | 77% | 83% | the 4-channel and "anything else" folds |
+| `ui/desk_controller.cpp` | 73% | 59% | the driver-install path is guarded, not run |
+| `platform/windows/session_monitor.cpp` | 81% | 61% | live, through the desk suites |
+| `platform/windows/default_device.cpp` | 46% | 40% | the set-default path is never taken in a test |
+| `platform/windows/wasapi_devices.cpp` | 59% | 40% | the modes this machine cannot enter |
+| `platform/windows/foreground.cpp` | 35% | 33% | no full-screen window in a test |
+| `platform/windows/driver_tools.cpp` | 14% | 4% | elevation and transcripts need the guest |
+| `engine/signing_hook.cpp` | 63% | 30% | no key in the tests |
+| `ui/main.cpp` | 0% | 0% | the test binary has its own entry point |
+| **apps/windows total** | **72%** | **60%** | 2,227 lines, 1,004 branches |
+
+The QML itself is outside these figures: llvm-cov sees compiled C++, and the five suites
+exercise the pages by driving them, not by instrumenting them. The thin rows are the ones
+whose remaining paths need the machine to be in a state a unit test cannot put it in (a key
+loaded, a full-screen game, an AVR, the elevation prompt); the guest run covers the driver
+path and the AVR spike will cover the bitstream modes live. Floors are the next step once a
+second measurement shows the numbers hold.
+
 **End-to-end latency, measured.** The figure the plan promised is tap to speaker, not the
 engine's own cadence (which is recorded above). Method: a spike, `s5_latency`, plays a
 periodic click from a process of its own into the null sink while the engine runs in PCM
