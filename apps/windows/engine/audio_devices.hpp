@@ -62,6 +62,9 @@ public:
                                                                  std::uint16_t channels,
                                                                  std::uint32_t channel_mask) = 0;
     virtual bool submit(std::span<const float> interleaved) = 0;
+    // Sample-frames submitted but not yet rendered: the sink's queue depth,
+    // which is latency once the sink has started consuming.
+    [[nodiscard]] virtual std::size_t queued_frames() const = 0;
     virtual void stop() = 0;
 };
 
@@ -89,6 +92,8 @@ public:
                                                                  std::uint16_t channels) = 0;
     // Up to out.size() samples, as many as are available now.
     virtual std::size_t read(std::span<float> out) = 0;
+    // Samples waiting to be read: the tap's backlog, which is latency.
+    [[nodiscard]] virtual std::size_t available() const = 0;
     virtual void stop() = 0;
 };
 

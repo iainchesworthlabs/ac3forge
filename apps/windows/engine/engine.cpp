@@ -27,6 +27,14 @@ namespace {
 
 constexpr auto kSessionRefresh = std::chrono::milliseconds(500);
 constexpr int kTapWaitMs = 80;
+// The PCM sink's queue is allowed this many frames of the encoder's frame
+// length (never less than 30 ms: three of the sink's 10 ms periods, under
+// which one-block frames oscillate across the line and get dropped
+// needlessly) before the loop drops tap audio to catch up. The sink
+// queues up to a second; without a bound whatever offset the pipeline
+// started with is the session's latency (spike S5).
+constexpr std::size_t kMaxSinkQueueFrames = 2;
+constexpr std::size_t kMinSinkQueueBound = 1440;
 
 float dbfs(std::span<const float> interleaved) {
     if (interleaved.empty()) {
@@ -77,6 +85,8 @@ struct Engine::Impl {
     double worst_ms = 0.0;
     std::uint64_t frames_encoded = 0;
     std::uint64_t starved = 0;
+    double tap_backlog_ms = 0.0;
+    std::uint64_t catchups = 0;
 
     explicit Impl(EngineConfig c)
         : config(std::move(c)),
@@ -222,6 +232,9 @@ struct Engine::Impl {
         s.endpoints = out.endpoints;
         s.tap_channels = taps.channels();
         s.codec_bypassed = out.bypassed;
+        s.tap_backlog_ms = tap_backlog_ms;
+        s.sink_queue_ms = 1000.0 * static_cast<double>(out.sink_queue_frames) / 48000.0;
+        s.catchups = catchups;
         s.underruns = out.underruns;
         s.signing = signing_status;
         s.objects_enabled = signing.available();
@@ -266,8 +279,15 @@ struct Engine::Impl {
                 last_refresh = frame_start;
             }
             if (want_reprobe.exchange(false, std::memory_order_acq_rel)) {
+                const auto before = output->status().mode;
+                const auto before_endpoint = output->status().endpoint_id;
                 output->reprobe(signing.available());
                 follow_null_sink_width();
+                if (output->status().mode != before || output->status().endpoint_id != before_endpoint) {
+                    // A sink took time to open; what the taps gathered
+                    // meanwhile would sit in its queue for good.
+                    taps.flush();
+                }
             }
 
             // Taps in, slots out.
@@ -275,6 +295,21 @@ struct Engine::Impl {
                 std::ranges::fill(object, 0.0F);
             }
             bed.clear();
+            {
+                // Over the bound: drop down to half of it in one go, so a
+                // correction is one audible event rather than a run of them
+                // while the queue oscillates around the line.
+                const std::size_t bound = std::max(kMaxSinkQueueFrames * frames_per, kMinSinkQueueBound);
+                const std::size_t queued = output->status().sink_queue_frames;
+                if (queued > bound && taps.size() > 0) {
+                    std::size_t to_drop = queued - bound / 2;
+                    while (to_drop > 0) {
+                        std::ignore = taps.read(std::min(to_drop, frames_per), 0);
+                        to_drop -= std::min(to_drop, frames_per);
+                    }
+                    ++catchups;
+                }
+            }
             if (taps.size() == 0) {
                 // Nothing to tap: keep the stream alive at real time anyway.
                 std::this_thread::sleep_for(frame_duration);
@@ -327,6 +362,7 @@ struct Engine::Impl {
                 snapshot.last_frame_ms = ms;
             }
             if ((frames_encoded % 8) == 0) {
+                tap_backlog_ms = 1000.0 * static_cast<double>(taps.backlog_frames()) / 48000.0;
                 publish_status();
             }
         }

@@ -47,6 +47,12 @@ public:
         return {};
     }
     bool submit(std::span<const float> interleaved) override { return sink_.submit(interleaved); }
+    std::size_t queued_frames() const override {
+        const auto stats = sink_.stats();
+        return stats.frames_submitted > stats.frames_rendered
+                   ? static_cast<std::size_t>(stats.frames_submitted - stats.frames_rendered)
+                   : 0;
+    }
     void stop() override { sink_.stop(); }
 
 private:
@@ -89,6 +95,10 @@ public:
     std::size_t read(std::span<float> out) override {
         auto* ring = capture_.buffer();
         return ring != nullptr ? ring->read(out) : 0;
+    }
+    std::size_t available() const override {
+        auto* ring = const_cast<ac3::audio::Capture&>(capture_).buffer();
+        return ring != nullptr ? ring->available() : 0;
     }
     void stop() override { capture_.stop(); }
 

@@ -35,6 +35,25 @@ std::vector<AppId> TapPool::sync(std::span<const AppId> wanted) {
     return failed;
 }
 
+void TapPool::flush() {
+    std::vector<float> sink(4096);
+    for (auto& [app, tap] : taps_) {
+        while (tap.source->available() > 0) {
+            if (tap.source->read(sink) == 0) {
+                break;
+            }
+        }
+    }
+}
+
+std::size_t TapPool::backlog_frames() const {
+    std::size_t deepest = 0;
+    for (const auto& [app, tap] : taps_) {
+        deepest = std::max(deepest, tap.source->available() / channels_);
+    }
+    return deepest;
+}
+
 const std::vector<TapRead>& TapPool::read(std::size_t frames, int wait_ms) {
     reads_.clear();
     const std::size_t samples = frames * channels_;

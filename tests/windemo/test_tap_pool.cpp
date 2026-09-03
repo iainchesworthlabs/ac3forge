@@ -95,6 +95,22 @@ TEST_CASE("tap pool reads the same frame count from every tap, as signal", "[win
     CHECK(devices->taps[0]->samples_read == 2 * 1536 * 2);
 }
 
+TEST_CASE("tap pool reports the deepest backlog and flush discards it", "[windemo][tap_pool]") {
+    auto devices = std::make_shared<FakeDevices>();
+    TapPool pool(devices, 2);
+    std::ignore = pool.sync(std::vector<AppId>{1, 2});
+    devices->taps[0]->backlog = 2 * 4800;   // 100 ms of stereo
+    devices->taps[1]->backlog = 2 * 480;    // 10 ms
+    CHECK(pool.backlog_frames() == 4800);
+    pool.flush();
+    CHECK(pool.backlog_frames() == 0);
+    CHECK(devices->taps[0]->samples_read >= 2 * 4800);
+    // Reading afterwards still delivers signal.
+    const auto& reads = pool.read(256, 3);
+    REQUIRE(reads.size() == 2);
+    CHECK_FALSE(reads[0].starved);
+}
+
 TEST_CASE("tap pool reads a stalled tap as silence and says so", "[windemo][tap_pool]") {
     auto devices = std::make_shared<FakeDevices>();
     TapPool pool(devices, 2);

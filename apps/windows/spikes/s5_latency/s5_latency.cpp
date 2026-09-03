@@ -384,7 +384,10 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "usage: s5_latency <runner-pid> [null-sink-substring] [seconds]\n");
         return 2;
     }
-    const DWORD runner_pid = static_cast<DWORD>(std::strtoul(argv[1], nullptr, 10));
+    // "self": tap this process instead of a runner, which measures the
+    // render-to-loopback path alone and calibrates the rest.
+    const DWORD runner_pid = std::string(argv[1]) == "self" ? GetCurrentProcessId()
+                                                             : static_cast<DWORD>(std::strtoul(argv[1], nullptr, 10));
     const std::wstring sink = argc > 2 ? widen(argv[2]) : L"FxSound";
     const double seconds = argc > 3 ? std::atof(argv[3]) : 20.0;
 

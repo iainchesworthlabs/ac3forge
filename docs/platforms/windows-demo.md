@@ -239,8 +239,39 @@ fifteen seconds each):
 | Starved tap reads / sink underruns | 0 / 0 | 0 / 0 |
 
 The one-block frame holds its cadence with the same zero-underrun margin as the six-block
-one; the start-up worst case is the first frame's device opens. The end-to-end figure, tap
-to speaker, is still to be taken.
+one; the start-up worst case is the first frame's device opens.
+
+**End to end, measured (2026-09-03, spike S5).** `apps/windows/spikes/s5_latency` renders
+5 ms tone bursts on a pseudo-random schedule into the null sink from its own process, taps
+the runner's output by process loopback, and times both on the QPC clock (`IAudioClock` on the
+render side, the capture packet position on the tap side); `Measure-Latency.ps1` runs the
+four configurations. Workstation, FxSound's idle endpoint as the null sink, stereo decoded
+on the Realtek endpoint, 20 s and 77 bursts each:
+
+| Configuration | Measured, tap to tap | Less the measuring tap | Sink queue |
+|---|---|---|---|
+| Normal frames, codec in the loop | 127 ms (sd 0.0) | about 108 ms | 32 ms |
+| Normal frames, bypass | 128 ms (sd 1.2) | about 109 ms | 36 ms |
+| Low latency, codec in the loop | 110 ms (sd 4.8) | about 91 ms | 12 ms |
+| Low latency, bypass | 110 ms (sd 3.5) | about 91 ms | 22 ms |
+
+The spike tapping itself, with no engine in between, measures the render-to-loopback path
+alone: 15 ms on the FxSound endpoint and 19 ms on Realtek, jitter-free. The "less the
+measuring tap" column subtracts the latter; what remains is the engine's own tap delivery
+(the same 15 ms, set by the OS), the frame, the decoder's one-unit hold-back in the codec
+rows, the sink's queue, and the shared-mode render engine.
+
+Two things the measurement changed in the engine. The taps are flushed when the output
+starts or switches: what they gathered while a sink was opening otherwise sat in the sink's
+one-second queue for the rest of the session, and the first runs showed both modes at 125 ms
+for that reason. And the sink's queue is bounded (two frames, never under 30 ms) with a
+catch-up that drops tap audio down to half the bound in one step; the status line carries the
+tap backlog, the sink queue and the catch-up count. The low-latency rows still show a few
+catch-ups per 20 s: the tap is paced by the null sink's clock and the sink by the Realtek
+endpoint's, and a one-block frame leaves little room between them. The remaining gap between
+the two modes is smaller than the frame arithmetic promised because the floor is the two
+process-loopback deliveries and the render engine, not the frame; the AVR row, when S2 runs,
+adds the receiver's decode on top of the codec rows.
 
 ## Object signing
 

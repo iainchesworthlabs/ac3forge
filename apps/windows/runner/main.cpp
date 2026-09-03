@@ -44,11 +44,11 @@ std::optional<OutputMode> parse_mode(const std::string& word) {
 }
 
 void print_status(const ac3::windemo::EngineStatus& s) {
-    std::printf("[%s on \"%s\"] frames=%llu last=%.2fms worst=%.2fms starved=%llu underruns=%llu taps=%uch objects=%s bypass=%s\n",
+    std::printf("[%s on \"%s\"] frames=%llu last=%.2fms worst=%.2fms starved=%llu underruns=%llu taps=%uch backlog=%.0fms sink=%.0fms catchups=%llu objects=%s bypass=%s\n",
                 std::string(ac3::windemo::describe(s.mode)).c_str(), s.endpoint_name.c_str(),
                 static_cast<unsigned long long>(s.frames_encoded), s.last_frame_ms, s.worst_frame_ms,
                 static_cast<unsigned long long>(s.starved_reads),
-                static_cast<unsigned long long>(s.underruns), static_cast<unsigned>(s.tap_channels), s.objects_enabled ? "on" : "off", s.codec_bypassed ? "on" : "off");
+                static_cast<unsigned long long>(s.underruns), static_cast<unsigned>(s.tap_channels), s.tap_backlog_ms, s.sink_queue_ms, static_cast<unsigned long long>(s.catchups), s.objects_enabled ? "on" : "off", s.codec_bypassed ? "on" : "off");
     std::printf("  output: %s\n  signing: %s\n", s.output_reason.c_str(), s.signing.c_str());
     if (!s.last_error.empty()) {
         std::printf("  last error: %s\n", s.last_error.c_str());

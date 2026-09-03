@@ -38,6 +38,7 @@ struct SinkRecord {
     std::size_t submits = 0;
     std::size_t bytes = 0;    // bursts
     std::size_t samples = 0;  // interleaved PCM
+    std::size_t queued_frames = 0;  // what a PCM sink reports as its queue depth
     std::vector<float> last_pcm;
     std::size_t last_dynamic_objects = 0;
     std::size_t last_static_objects = 0;
@@ -105,6 +106,10 @@ public:
         record_->last_pcm.assign(interleaved.begin(), interleaved.end());
         return true;
     }
+    std::size_t queued_frames() const override {
+        const std::lock_guard lock(record_->mutex);
+        return record_->queued_frames;
+    }
     void stop() override {
         const std::lock_guard lock(record_->mutex);
         record_->stopped = true;
@@ -169,6 +174,7 @@ struct TapRecord {
     bool stopped = false;
     bool refuse_start = false;
     bool starve = false;  // read() returns nothing
+    std::size_t backlog = 0;  // what available() reports; read() consumes it
     std::size_t samples_read = 0;
     double phase = 0.0;
 };
@@ -203,7 +209,14 @@ public:
             record_->phase += step;
         }
         record_->samples_read += out.size();
+        record_->backlog -= std::min(record_->backlog, out.size());
         return out.size();
+    }
+    // A fake tap is a generator: it reports whatever backlog the test set,
+    // and flush() drains that through read().
+    std::size_t available() const override {
+        const std::lock_guard lock(record_->mutex);
+        return record_->starve ? 0 : record_->backlog;
     }
     void stop() override {
         const std::lock_guard lock(record_->mutex);

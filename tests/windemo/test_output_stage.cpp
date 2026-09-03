@@ -190,12 +190,20 @@ TEST_CASE("output stage: a stereo endpoint gets a Lo/Ro decode, and the bypass a
     CHECK(decoded_submits >= 2);
     CHECK(devices->pcm_sinks[0]->last_pcm.size() == kFrames * 2);
     CHECK_FALSE(stage.status().bypassed);
+    // The sink's queue depth is reported after each submit, for the
+    // engine's catch-up rule.
+    devices->pcm_sinks[0]->queued_frames = 4321;
+    {
+        const auto raw = encoded.next();
+        stage.submit(encoded.unit, raw);
+    }
+    CHECK(stage.status().sink_queue_frames == 4321);
 
     stage.set_bypass(true);
     const auto raw = encoded.next();
     stage.submit(encoded.unit, raw);
     CHECK(stage.status().bypassed);
-    CHECK(devices->pcm_sinks[0]->submits == decoded_submits + 1);
+    CHECK(devices->pcm_sinks[0]->submits == decoded_submits + 2);  // the queue-depth submit above, then this
     // The raw fold of the encoder's bed: signal present, and the
     // normalisation keeps a bed carrying the tone on every channel under
     // full scale (a full-scale sine has an RMS of 0.707).

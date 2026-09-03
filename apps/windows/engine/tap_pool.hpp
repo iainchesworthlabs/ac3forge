@@ -45,6 +45,16 @@ public:
     // a view per application. Waits up to `wait_ms` for a lagging tap.
     [[nodiscard]] const std::vector<TapRead>& read(std::size_t frames, int wait_ms);
 
+    // Discards everything the taps hold, so the next read starts at "now".
+    // Called when the output starts or switches: the backlog that built up
+    // while a sink was opening would otherwise sit in the sink's queue for
+    // the rest of the session, as latency (spike S5 measured it).
+    void flush();
+
+    // The deepest tap backlog, in frames: the latency the taps are adding
+    // right now.
+    [[nodiscard]] std::size_t backlog_frames() const;
+
     [[nodiscard]] std::uint16_t channels() const { return channels_; }
     [[nodiscard]] std::size_t size() const { return taps_.size(); }
     [[nodiscard]] bool has(AppId app) const { return taps_.contains(app); }

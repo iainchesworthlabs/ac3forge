@@ -57,6 +57,9 @@ struct OutputStatus {
     std::uint64_t underruns = 0;
     std::vector<EndpointFacts> endpoints;  // what the last probe saw
     bool bypassed = false;                 // the last unit took the raw path
+    // The PCM sink's queue depth after the last submit (0 for bitstream
+    // and headphone modes): latency the output stage is adding.
+    std::size_t sink_queue_frames = 0;
 };
 
 // The engine's own signal for one frame: every object slot's PCM with its

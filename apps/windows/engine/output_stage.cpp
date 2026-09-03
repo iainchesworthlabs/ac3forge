@@ -121,6 +121,7 @@ void OutputStage::set_null_sink_substring(std::string substring) {
 void OutputStage::stop() {
     impl_->teardown();
     status_.running = false;
+    status_.sink_queue_frames = 0;
 }
 
 const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
@@ -154,6 +155,7 @@ const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
 
     impl_->teardown();
     status_.running = false;
+    status_.sink_queue_frames = 0;
     status_.mode = choice.mode;
     status_.endpoint_id = choice.endpoint_id;
     status_.endpoint_name = choice.endpoint_name;
@@ -301,6 +303,7 @@ void OutputStage::submit_raw(const RawFrame& raw) {
     }
     submit_with_patience(*impl.monitor, status_.underruns,
                          std::span<const float>(impl.interleaved));
+    status_.sink_queue_frames = impl.monitor->queued_frames();
 }
 
 void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
@@ -405,6 +408,7 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
     }
     submit_with_patience(*impl.monitor, status_.underruns,
                          std::span<const float>(impl.interleaved));
+    status_.sink_queue_frames = impl.monitor->queued_frames();
 }
 
 }  // namespace ac3::windemo
