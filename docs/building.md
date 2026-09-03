@@ -823,13 +823,19 @@ CMake-substituted string, so a binary cannot claim a directory it was not built 
 platforms `CMAKE_OSX_ARCHITECTURES` overrides `CMAKE_SYSTEM_PROCESSOR` per compile line, so the two
 disagree whenever a Mac builds for the other architecture — and the compile line, not the host, is
 what the kernels have to be right for. `auto` therefore takes `-arch` as the truth wherever one is
-set: an Intel Mac configured with `-DCMAKE_OSX_ARCHITECTURES=arm64` (which is exactly what
-cibuildwheel does when it builds the arm64 wheel on the `macos-15-intel` runner — see
-`python/pyproject.toml`) resolves `aarch64` and not `x86_64`. Reading the host variable instead
+set: an Intel Mac configured with `-DCMAKE_OSX_ARCHITECTURES=arm64` resolves `aarch64` and not
+`x86_64`. Reading the host variable instead
 selects SSE2 intrinsics and an `-mavx2` flag for an ARM compile, which does not degrade quietly; it
 fails the build outright with `clang++: error: unsupported option '-mavx2' for target
 'x86_64-apple-darwin24.6.0'` — a diagnostic that names the host triple rather than the `-arch` the
 flag is actually invalid for, which is why the real cause is easy to misread from the log alone.
+
+This is not hypothetical: it is how `Build wheels (macos-15-intel)` failed when that runner was
+first added and inherited a wheel config that cross-built arm64. That matrix now names each row's
+architecture explicitly (`CIBW_ARCHS` in `.github/workflows/wheels.yml`), so nothing in CI
+cross-builds today — but a hand-run `cibuildwheel`, a `-DCMAKE_OSX_ARCHITECTURES` configure, or any
+future cross-targeting matrix row would hit the same gate, which is why it is fixed here rather
+than only routed around there.
 
 A macOS *universal* binary — more than one `-arch` from a single configure, so every source is
 compiled once per slice — resolves `generic`, because no single compile-time architecture choice can

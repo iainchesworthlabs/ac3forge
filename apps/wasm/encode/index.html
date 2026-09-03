@@ -86,9 +86,12 @@
   <h1>ac3forge - WASM encode demo</h1>
   <p class="lede">
     A real AC-3/E-AC-3 encoder, compiled to WebAssembly and running entirely in this tab: no
-    server-side encode, no upload. Drop a <code>.wav</code> file, pick a coding mode, and get back
-    a real elementary stream plus a loudness/true-peak QC verdict against five delivery presets -
-    all computed on your machine.
+    server-side encode, no upload. Drop a <code>.wav</code> file - mono, stereo, 5.1, or the wide
+    E-AC-3 layouts 7.1 / 5.1.4 / 7.1.4 - or record live from the microphone, and get back a real
+    elementary stream carrying a <em>measured</em> dialnorm, plus a loudness/true-peak QC verdict
+    against five delivery presets - all computed on your machine. There is also an
+    <a href="atmos/">Atmos object-authoring demo</a>: pan real audio objects around a room and
+    encode the result as E-AC-3 + JOC, live.
   </p>
 
   <div class="panel">
@@ -112,6 +115,7 @@
         <input type="number" id="bitrate" value="192" min="32" max="1024" step="8">
       </label>
       <button id="encodeBtn" disabled>Encode</button>
+      <button id="micBtn">Record from microphone</button>
     </div>
     <div id="status"></div>
     <div id="streamInfo" class="hint"></div>
@@ -140,10 +144,12 @@
       <tbody></tbody>
     </table>
     <p class="hint">
-      Measured with <code>ac3::meta::LoudnessMeter</code> (ITU-R BS.1770-4) against the same five
-      presets <code>ac3cli qc</code> checks - see each row's source document. Integrated loudness
-      is a gated, whole-programme measure, so this verdict is only available once the whole file
-      has been processed.
+      Measured with <code>ac3::meta::LoudnessMeter</code> (ITU-R BS.1770-4; the BS.1770-5
+      extended channel set for 7.1/5.1.4/7.1.4) against the same five presets
+      <code>ac3cli qc</code> checks - see each row's source document. Integrated loudness is a
+      gated, whole-programme measure, so this verdict is only available once the whole file has
+      been processed - and the same measurement now sets the stream's <code>dialnorm</code>
+      (BSI §5.4.2.8) instead of shipping the unmeasured default.
     </p>
   </div>
 

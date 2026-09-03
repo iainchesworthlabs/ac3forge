@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 58> kOptionTokens{{
+constexpr std::array<OptionToken, 59> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -69,6 +69,7 @@ constexpr std::array<OptionToken, 58> kOptionTokens{{
     {"mode=", "performance (default) or reference - both transforms at once"},
     {"dither=", "off pins §7.3.4 dithflag at 0 wherever this command encodes"},
     {"joc-domain=", "atmos*/decode: mdct estimates JOC over 256 MDCT bins, not §7.1's QMF"},
+    {"numblkscod=", "atmos* encode: 0-3 (default 3), §E2.3.1.4 short syncframes of 1/2/3/6 blocks"},
     {"search=", "AC-3 encode, and eac3-encode under CBR: bit-allocation search, off (default)"},
     {"fgaincod=", "encode: auto (default) or 0..7, §7.2.2.4 fast gain pinned for the whole encode"},
     {"verify", "eac3-encode: decode every access unit as it's encoded and diff against it"},
@@ -524,6 +525,12 @@ void print_option_blocks(std::uint32_t mask) {
                      "part of mode= either way: unlike the two transform switches, these are "
                      "different answers rather than the same one at different speed, and the "
                      "default is already the domain the clause states");
+        fmt::println("  numblkscod=<N>    atmos* encode: 0-3 (default 3), section E2.3.1.4's short "
+                     "syncframes of 1/2/3/6 blocks (5.3/10.7/16/32 ms). The object layer scales "
+                     "with the frame: the OAMD update's ramp covers exactly one shortened frame "
+                     "and the JOC matrix interpolates over the frame's own QMF timeslots, so "
+                     "objects update proportionally more often at the same cost in header "
+                     "repetition eac3-encode's numblkscod:N tools token already pays");
         fmt::println("  search=<what>     choose §7.2.2's transmitted bit allocation parameters "
                      "per frame from the reconstruction error a decoder will produce, instead of "
                      "the rate-derived defaults. distortion minimises that error; perceptual "

@@ -21,7 +21,6 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   that drains the §3.7 hold-back on exit. Wheels now build for manylinux aarch64 (the
   documented-but-wheelless Raspberry Pi) and Intel macOS, and a `stubtest` step holds the
   hand-written type stubs to the compiled module on every push.
-
 - AC-4 container carriage (roadmap IM4's remaining slice): `ac3cli mp4`/`ts` accept an AC-4
   elementary stream — TS 103 190-2 Annex E's `ac-4` sample entry and `dac4` box on the MP4
   side (with the Annex E.13 `codecs` string for HLS/DASH), EN 300 468 Annex D.7's DVB
@@ -29,21 +28,53 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   either back out (byte-identical through TS; re-framed with the no-CRC sync word out of MP4,
   where the container drops the wrapper by design). Both readers recognise the new signalling;
   ffprobe identifies the output of both muxers as `ac4`.
+- The `atmos*` encode commands take `numblkscod=N` (0–3), carrying the object layer over
+  §E2.3.1.4 short syncframes: the OAMD update's ramp covers exactly one shortened frame, the
+  JOC matrix interpolates across the frame's own QMF timeslots (four per block), and both
+  reconstruction domains handle 1/2/3-block frames — completing roadmap EQ11's second half.
+  Measured worst-object SNR at every short code matches the six-block control on stationary
+  material.
+- Browser (WASM): the encode demo now covers the whole of roadmap UX6 — wide E-AC-3 layouts
+  (7.1 / 5.1.4 / 7.1.4, routed through `ac3::plan` inside the module so the page
+  never restates channel-order knowledge, with `QcMeter.meterOrderForWav()` supplying the
+  BS.1770-5 metering order the same way), `dialnorm` derived from the QC pass's measured
+  integrated loudness instead of shipping the unmeasured default 31, live microphone capture
+  (`getUserMedia` → `AudioWorklet` → the same encoder, with a measure-then-encode pre-roll so the
+  first frame already carries a measured dialnorm), and a new Atmos object-authoring page
+  (`apps/wasm/atmos/`, a subdirectory of the encode demo) that pans real audio objects on a room
+  canvas and encodes each drag as that frame's OAMD/JOC placement via the already-bound
+  `AtmosBedEncoder`. All of it is Playwright-tested (`encode.spec.js`, `atmos.spec.js`),
+  including the microphone path via Chromium's fake media device.
+- The Rust bindings now cover the whole codec surface (roadmap AP9's completeness pass): the
+  wide-layout access-unit encoder and rendered-programme decoder, the Atmos/JOC object encoder
+  with the OAMD/JOC decode accessors, the stream framing/scan helpers (whose spans come back as
+  borrow-checked slices into the caller's buffer), and the BS.1770 loudness meter — each with
+  real-signal round-trip tests. `build-rust` runs on all three desktop OSes now; the first
+  Windows build found and fixed a real portability bug (bindgen types C enums `i32` on MSVC,
+  `u32` elsewhere — `Error::Other` had baked the Linux answer in).
 
 ### Fixed
 
-- **macOS cross-builds no longer compile the wrong architecture's SIMD kernels.** `AC3FORGE_SIMD`'s
-  `auto` and the `AC3FORGE_AVX2` tier both keyed on `CMAKE_SYSTEM_PROCESSOR`, which on Apple
-  platforms describes the *host*: a Mac configured with `-DCMAKE_OSX_ARCHITECTURES` for the other
-  architecture picked its own kernels and, building for arm64 from an Intel Mac, handed the ARM
-  compile `-mavx2` and failed outright. Both now follow the effective target architecture, and a
-  universal (multi-`-arch`) configure resolves `generic`, since no single compile-time choice can
-  serve both slices. Native builds on every platform are unaffected.
-- **The two new wheel runners built the wrong architecture.** `[tool.cibuildwheel]`'s hardcoded
-  per-platform `archs` meant `macos-15-intel` cross-built an arm64 wheel (the failure above) and
-  `ubuntu-24.04-arm` built x86_64 under emulation — so neither produced the wheel it was added for,
-  and both would have collided with an existing artifact at publish time. Both now build their own
-  native architecture, which is what the manylinux aarch64 and Intel macOS entries above describe.
+- Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte budget, so a
+  short stream measured 6×/3×/2× its nominal bit rate — each shortened frame carried a
+  full-length frame's bytes. CBR frames now take `frame_words`' documented per-block scaling,
+  matching what `validate()` already checked. Six-block streams are byte-identical to before.
+- **The AudioWorklet pipeline's browser test never ran.** `apps/wasm/tests/worklet.spec.js` — the
+  one check that a real `AudioWorkletNode`, a real Worker and a real `SharedArrayBuffer` ring
+  buffer carry decoded audio end to end — was added in 0.10.0-beta.1 but matched no Playwright
+  project, so `npx playwright test` silently skipped it locally and in CI while the release notes
+  and `docs/platforms/wasm.md` both described that pipeline as covered. It now runs in the decode
+  project. Wiring it in also surfaced the spec's own bug: it navigated to `/index.html`, which
+  resolves to the server root rather than the demo subdirectory, and the resulting 404 page (which
+  carries no cross-origin-isolation headers) made the failure read as "COOP/COEP headers missing".
+- **macOS cross-builds compiled the wrong architecture's SIMD kernels.** `AC3FORGE_SIMD`'s `auto`
+  and the `AC3FORGE_AVX2` tier both keyed on `CMAKE_SYSTEM_PROCESSOR`, which on Apple platforms
+  describes the *host* — `CMAKE_OSX_ARCHITECTURES` overrides it per compile line. A Mac configured
+  with `-DCMAKE_OSX_ARCHITECTURES` for the other architecture therefore picked its own kernels, and
+  building for arm64 from an Intel Mac handed the ARM compile SSE2 intrinsics and `-mavx2`, failing
+  outright. Both now follow the effective target architecture, and a universal (multi-`-arch`)
+  configure resolves `generic`, since no single compile-time choice can serve both slices. Native
+  builds on every platform are unaffected.
 
 ## [0.10.0-beta.1] - 2026-09-01
 

@@ -262,9 +262,16 @@ combination the tools argument accepts is legal here. `all` does not currently i
 blocks (10.7 ms) — useful where 32 ms of encode latency is too much (live monitoring, a
 round-trip over a network link) at the cost of the bsi/audfrm header repeating three times as
 often for the same audio, which comes straight out of the mantissas at a fixed bit rate.
-`atmos-encode` does not accept this token yet — Atmos's object metadata (OAMD/JOC) is timed and
-interpolated across a full six-block frame, and extending it to a shorter one is unstarted work,
-not merely unexposed.
+
+The `atmos*` encode commands take the same choice as a `numblkscod=N` key=value option rather
+than a tools token (they have no `[tools]` positional — the bed's coding tools are the object
+encoder's own business). The object layer scales with the frame: the OAMD update's
+`ramp_duration` covers exactly one shortened frame (Table 24 spells 1536 and 512 directly, 256
+through Table 25's ramp table, and a three-block frame's 768 as the 11-bit literal), and the JOC
+matrix interpolates across the frame's own QMF timeslots — four per block — instead of a fixed
+24. So objects update proportionally more often, at the same header-repetition cost as above
+plus a proportionally larger share of each frame spent on the OAMD/JOC container itself, which
+repeats per syncframe too.
 
 ## The `vbr` token (`eac3-encode` only)
 

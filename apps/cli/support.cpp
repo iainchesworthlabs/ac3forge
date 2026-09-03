@@ -500,6 +500,20 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                          token);
             return false;
         }
+        if (key == "numblkscod") {
+            unsigned parsed = 0;
+            const auto [ptr, ec] =
+                std::from_chars(value.data(), value.data() + value.size(), parsed);
+            if (ec != std::errc{} || ptr != value.data() + value.size() || parsed > 3) {
+                fmt::println(stderr,
+                             "error: numblkscod is 0-3 (1/2/3/6 blocks per syncframe, "
+                             "section E2.3.1.4) (got '{}')",
+                             token);
+                return false;
+            }
+            out.atmos_numblkscod = static_cast<int>(parsed);
+            continue;
+        }
         if (key == "joc-domain") {
             if (value == "qmf") {
                 out.joc_domain = ac3::oba::joc::Domain::kQmf;

@@ -100,6 +100,12 @@ jobs:
               status=1
             fi
           done
+          for f in index.html app.js; do
+            if ! cmp -s "apps/wasm/atmos/$f" "docs/assets/wasm-encode-demo/atmos/$f"; then
+              echo "::error file=docs/assets/wasm-encode-demo/atmos/$f::Out of sync with apps/wasm/atmos/$f - re-copy it (see docs/platforms/wasm.md)."
+              status=1
+            fi
+          done
           exit "$status"
 
       - run: mkdocs build --strict
