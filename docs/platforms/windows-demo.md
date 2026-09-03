@@ -456,8 +456,14 @@ happen in a throwaway VMware guest rather than on the workstation: `apps/windows
 creates a Windows 11 VM that installs itself unattended into exactly that state, snapshots
 it, installs the package from a virtual CD and reports devices, endpoints, the driver's
 service state and any bugcheck (a blue screen in the guest is a guest reboot, nothing more).
-The one input is a Windows 11 ISO from Microsoft. The Settings screen's install and remove
-buttons are not wired yet; the scripts are the path.
+The one input is a Windows 11 ISO from Microsoft. Two things stood between the scripts and a
+booting guest: a hand-written VMX needs the PCIe root ports (`pciBridge4` to `7`) or
+Workstation crashes at power-on with "No PCIe slot available for Ethernet0", and Microsoft's
+media stops at "Press any key to boot from CD or DVD" under EFI, so the scripts re-pack it
+once with the media's own `efisys_noprompt.bin`. Because `vmrun` cannot see the guest until
+Tools is installed, the console is exposed over Workstation's VNC server and a small RFB
+client (`guest_console.py`) takes screenshots and presses keys during Setup. The Settings
+screen's install and remove buttons are not wired yet; the scripts are the path.
 
 ### Phase 5: fast follows
 
