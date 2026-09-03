@@ -395,7 +395,7 @@ Item {
             }
         }
 
-        // --- 04 output / 05 default / 06 signing ---------------------------------
+        // --- 04 signal path / 05 signing -----------------------------------------
         Rectangle {
             Layout.preferredWidth: 280
             Layout.minimumWidth: 220
@@ -408,51 +408,19 @@ Item {
                 anchors.fill: parent
                 anchors.margins: Theme.space4
                 spacing: Theme.space3
-                RailBlock { ordinal: "04"; label: qsTr("OUTPUT"); Layout.fillWidth: true; Layout.fillHeight: false }
-                Card {
+                RailBlock {
+                    ordinal: "04"
+                    label: qsTr("SIGNAL PATH")
+                    Layout.fillWidth: true
                     Layout.fillHeight: false
-                    ColumnLayout {
-                        spacing: Theme.space2
-                        Text { Layout.fillWidth: true; text: DeskController.modeName; color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: 18; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                        Text { Layout.fillWidth: true; text: DeskController.endpointName; color: Theme.text; font.pixelSize: 13; elide: Text.ElideRight; visible: text.length > 0 }
-                        Text { Layout.fillWidth: true; text: DeskController.outputReason; color: Theme.textMuted; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }
-                        RowLayout {
-                            Text { Layout.fillWidth: true; text: qsTr("pin: ") + DeskController.pinned; color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11; elide: Text.ElideRight }
-                            DeskButton { text: qsTr("Output…"); onClicked: page.openOutput() }
-                        }
-                    }
+                    Text { Layout.fillWidth: true; text: qsTr("applications → this app → what you hear"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11; elide: Text.ElideRight }
                 }
-                RailBlock { ordinal: "05"; label: qsTr("DEFAULT OUTPUT"); Layout.fillWidth: true; Layout.fillHeight: false }
-                Card {
-                    Layout.fillHeight: false
-                    ColumnLayout {
-                        spacing: Theme.space2
-                        RowLayout {
-                            spacing: Theme.space2
-                            Rectangle { width: 8; height: 8; color: DeskController.defaultIsNullSink ? Theme.accent : Theme.neutral500 }
-                            Text { Layout.fillWidth: true; text: DeskController.defaultOutputName.length ? DeskController.defaultOutputName : qsTr("no default output"); color: Theme.text; font.pixelSize: 13; elide: Text.ElideRight }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: DeskController.defaultIsNullSink
-                                ? qsTr("Applications render here, silently.") + (DeskController.previousDefaultName.length ? " " + DeskController.previousDefaultName + qsTr(" is restored on quit.") : "")
-                                : qsTr("Applications still render to a real device, so you hear them directly as well. Move the default to the silent device to fix that.")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
-                        DeskButton {
-                            Layout.fillWidth: true
-                            text: DeskController.defaultIsNullSink
-                                ? qsTr("Restore ") + (DeskController.previousDefaultName.length ? DeskController.previousDefaultName : qsTr("previous output"))
-                                : qsTr("Move default to ") + DeskController.nullSinkName
-                            enabled: DeskController.defaultIsNullSink ? DeskController.previousDefaultName.length > 0 : DeskController.nullSinkPresent
-                            onClicked: DeskController.defaultIsNullSink ? DeskController.restoreDefault() : DeskController.moveDefaultToNullSink()
-                        }
-                        Text { Layout.fillWidth: true; visible: DeskController.defaultMessage.length > 0; text: DeskController.defaultMessage; color: Theme.accent; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }
-                    }
+                SignalPath {
+                    Layout.fillWidth: true
+                    wide: false
+                    onOpenOutput: page.openOutput()
                 }
-                RailBlock { ordinal: "06"; label: qsTr("SIGNING"); Layout.fillWidth: true; Layout.fillHeight: false }
+                RailBlock { ordinal: "05"; label: qsTr("SIGNING"); Layout.fillWidth: true; Layout.fillHeight: false }
                 Text { Layout.fillWidth: true; text: DeskController.objectsEnabled ? qsTr("key loaded · objects on") : qsTr("no key · 5.1 bed only"); color: Theme.text; font.pixelSize: 13; elide: Text.ElideRight }
                 Text { Layout.fillWidth: true; text: DeskController.keyPath.length ? DeskController.keyPath : qsTr("load one in Settings"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11; elide: Text.ElideMiddle }
                 Item { Layout.fillHeight: true }

@@ -4,9 +4,9 @@ import QtQuick.Layouts
 
 import Ac3ForgeDesk
 
-// Output: what is going out and why, every endpoint with what the probe
-// found (and a way to make one the Windows default), the pin, the
-// default-output switch, and the codec-path switch.
+// The signal path: the three stations sound passes through, side by side,
+// then each stage's detail: the pin (what you hear it as), every endpoint
+// with what the probe found, where applications play, the codec path.
 //
 // Sizing: one column that scrolls; the two-up rows become one-up below
 // about 900 px, the endpoint table drops its note column below about 760,
@@ -26,7 +26,27 @@ Flickable {
         width: page.innerWidth
         spacing: Theme.space6
 
-        RailBlock { ordinal: "01"; label: qsTr("NOW"); Layout.fillWidth: true; Layout.fillHeight: false }
+        RailBlock {
+            ordinal: "01"
+            label: qsTr("SIGNAL PATH")
+            Layout.fillWidth: true
+            Layout.fillHeight: false
+            Text { text: qsTr("two devices, two stages: applications play into one, you hear the result on the other"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11; elide: Text.ElideRight; Layout.fillWidth: true }
+        }
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("Every application plays into the Windows default output. With the silent Desktop Atmos device as that default, nothing is heard from it; this app taps each application there, places it in the room, encodes the scene, and sends the result to the endpoint the pin and the hardware choose. That endpoint is the only thing you hear.")
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontSmall
+            wrapMode: Text.WordWrap
+        }
+        SignalPath {
+            Layout.fillWidth: true
+            wide: page.twoUp
+            showChoose: false
+        }
+
+        RailBlock { ordinal: "02"; label: qsTr("WHAT YOU HEAR IT AS"); Layout.fillWidth: true; Layout.fillHeight: false }
         Card {
             GridLayout {
                 Layout.fillWidth: true
@@ -38,8 +58,7 @@ Flickable {
                     Layout.alignment: Qt.AlignTop
                     spacing: Theme.space2
                     Text { Layout.fillWidth: true; text: DeskController.modeName + (DeskController.modeKey === "atmos" ? qsTr(" · E-AC-3 JOC over HDMI") : ""); color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: Theme.fontTitle; font.weight: Font.Bold; wrapMode: Text.WordWrap }
-                    Text { Layout.fillWidth: true; text: DeskController.endpointName; color: Theme.text; font.pixelSize: Theme.fontNormal; elide: Text.ElideRight; visible: text.length > 0 }
-                    Text { Layout.fillWidth: true; text: DeskController.outputReason + qsTr(" The output follows the hardware: pull HDMI and it moves to the next best endpoint below."); color: Theme.textMuted; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                    Text { Layout.fillWidth: true; text: DeskController.outputReason + qsTr(" The endpoint follows the hardware: pull HDMI and it moves to the next best one below."); color: Theme.textMuted; font.pixelSize: 13; wrapMode: Text.WordWrap }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -87,14 +106,14 @@ Flickable {
         }
 
         RailBlock {
-            ordinal: "02"
-            label: qsTr("ENDPOINTS")
+            ordinal: "03"
+            label: qsTr("ENDPOINTS · WHERE YOU CAN HEAR IT")
             Layout.fillWidth: true
             Text { text: qsTr("re-probed on every device change"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11 }
         }
         Text {
             Layout.fillWidth: true
-            text: qsTr("What the probe found on each render endpoint. The pin above chooses the mode and the output follows the hardware; \"Make default\" sends every application's audio to that endpoint, which is where this app taps it.")
+            text: qsTr("What the probe found on each render endpoint; the one chosen is where you hear it. \"Applications play here\" makes an endpoint the Windows default instead, which is the other stage: on a real device you would hear every application directly, so the silent device is the one to send them to.")
             color: Theme.textMuted
             font.pixelSize: Theme.fontSmall
             wrapMode: Text.WordWrap
@@ -121,7 +140,7 @@ Flickable {
                     Text { Layout.preferredWidth: 56; text: qsTr("PCM CH"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
                     Text { Layout.preferredWidth: 60; text: qsTr("SPATIAL"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
                     Text { visible: page.wideTable; Layout.preferredWidth: 220; text: qsTr("NOTE"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1 }
-                    Item { Layout.preferredWidth: 104 }
+                    Item { Layout.preferredWidth: 150 }
                 }
                 Repeater {
                     model: DeskController.endpoints
@@ -157,15 +176,15 @@ Flickable {
                                 elide: Text.ElideRight
                             }
                             DeskButton {
-                                Layout.preferredWidth: 104
-                                text: endpointRow.modelData.isDefault ? qsTr("Default") : qsTr("Make default")
+                                Layout.preferredWidth: 150
+                                text: endpointRow.modelData.isDefault ? qsTr("Applications play here") : qsTr("Send applications here")
                                 enabled: !endpointRow.modelData.isDefault
                                 onClicked: DeskController.setDefaultOutput(endpointRow.modelData.id)
                             }
                         }
-                        readonly property string note: modelData.chosen ? qsTr("chosen") + (DeskController.modeKey === "atmos" || DeskController.modeKey === "ddplus" || DeskController.modeKey === "dd" ? qsTr(" · exclusive mode") : "")
-                            : modelData.isNullSink ? qsTr("null sink · ") + (modelData.isDefault ? qsTr("the system default · ") : "") + qsTr("never an output")
-                            : modelData.isDefault ? qsTr("the system default · applications render here")
+                        readonly property string note: modelData.chosen ? qsTr("you hear it here") + (DeskController.modeKey === "atmos" || DeskController.modeKey === "ddplus" || DeskController.modeKey === "dd" ? qsTr(" · exclusive mode") : "")
+                            : modelData.isNullSink ? qsTr("the silent device · ") + (modelData.isDefault ? qsTr("applications play here · ") : "") + qsTr("never heard")
+                            : modelData.isDefault ? qsTr("applications play here · a real device, so heard directly")
                             : modelData.spatial ? qsTr("spatial sound on · headphones fallback")
                             : modelData.pcmChannels >= 6 ? qsTr("surround PCM fallback") : qsTr("stereo fallback")
                     }
@@ -190,7 +209,7 @@ Flickable {
                 Layout.preferredWidth: 1
                 Layout.alignment: Qt.AlignTop
                 spacing: Theme.space3
-                RailBlock { ordinal: "03"; label: qsTr("DEFAULT OUTPUT"); Layout.fillWidth: true; Layout.fillHeight: false }
+                RailBlock { ordinal: "04"; label: qsTr("WHERE APPLICATIONS PLAY"); Layout.fillWidth: true; Layout.fillHeight: false }
                 Card {
                     ColumnLayout {
                         spacing: Theme.space2
@@ -198,8 +217,8 @@ Flickable {
                             Layout.fillWidth: true
                             textFormat: Text.StyledText
                             text: DeskController.defaultIsNullSink
-                                ? qsTr("Windows default output is <b>") + DeskController.defaultOutputName + qsTr("</b>. Every application renders into it silently; this app taps each one and sends the result to the endpoint above.")
-                                : qsTr("Windows default output is <b>") + (DeskController.defaultOutputName.length ? DeskController.defaultOutputName : qsTr("not set")) + qsTr("</b>, a real device. You hear each application directly as well as through this app, and a receiver on that device cannot be opened exclusively while applications render to it.")
+                                ? qsTr("Applications play to <b>%1</b>, the Windows default output and the silent device: nothing is heard from it, and this app taps each application there.").arg(DeskController.defaultOutputName)
+                                : qsTr("Applications play to <b>%1</b>, the Windows default output, which is a real device: you hear each application directly as well as through this app, and a receiver on it cannot be opened exclusively while they do.").arg(DeskController.defaultOutputName.length ? DeskController.defaultOutputName : qsTr("nothing"))
                             color: Theme.text
                             font.pixelSize: 13
                             wrapMode: Text.WordWrap
@@ -208,7 +227,7 @@ Flickable {
                             Layout.fillWidth: true
                             spacing: Theme.space2
                             DeskButton {
-                                text: DeskController.defaultIsNullSink ? qsTr("Restore ") + (DeskController.previousDefaultName.length ? DeskController.previousDefaultName : qsTr("previous output")) : qsTr("Move default to ") + DeskController.nullSinkName
+                                text: DeskController.defaultIsNullSink ? qsTr("Restore %1").arg(DeskController.previousDefaultName.length ? DeskController.previousDefaultName : qsTr("the previous output")) : qsTr("Send applications to %1").arg(DeskController.nullSinkName)
                                 enabled: DeskController.defaultIsNullSink ? DeskController.previousDefaultName.length > 0 : DeskController.nullSinkPresent
                                 onClicked: DeskController.defaultIsNullSink ? DeskController.restoreDefault() : DeskController.moveDefaultToNullSink()
                             }
@@ -224,7 +243,7 @@ Flickable {
                 Layout.preferredWidth: 1
                 Layout.alignment: Qt.AlignTop
                 spacing: Theme.space3
-                RailBlock { ordinal: "04"; label: qsTr("CODEC PATH"); Layout.fillWidth: true; Layout.fillHeight: false }
+                RailBlock { ordinal: "05"; label: qsTr("CODEC PATH"); Layout.fillWidth: true; Layout.fillHeight: false }
                 Card {
                     DeskCheck {
                         objectName: "bypassCheck"

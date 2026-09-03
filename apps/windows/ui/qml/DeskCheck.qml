@@ -34,6 +34,7 @@ Item {
                 border.color: Theme.divider
                 border.width: 1
                 Canvas {
+                    id: tick
                     anchors.fill: parent
                     visible: root.checked
                     onPaint: {
@@ -47,7 +48,7 @@ Item {
                         c.lineTo(13, 4);
                         c.stroke();
                     }
-                    Connections { target: Theme; function onBgChanged() { requestPaint(); } }
+                    Connections { target: Theme; function onBgChanged() { tick.requestPaint(); } }
                 }
             }
             Text { text: root.text; color: Theme.text; font.pixelSize: Theme.fontNormal }

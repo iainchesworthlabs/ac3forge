@@ -84,8 +84,11 @@ ApplicationWindow {
                     anchors.centerIn: parent
                     spacing: Theme.space2
                     Rectangle { width: 8; height: 8; color: DeskController.modeKey === "none" ? Theme.neutral500 : Theme.accent }
+                    // The path in one line: where applications play (a warning
+                    // when that is a real device), then what is heard, where.
                     Text {
-                        text: (DeskController.modeName + (DeskController.endpointName.length ? " · " + DeskController.endpointName : "")
+                        text: ((DeskController.defaultIsNullSink ? qsTr("apps → ") : qsTr("⚠ apps heard direct → "))
+                               + DeskController.modeName + (DeskController.endpointName.length ? " · " + DeskController.endpointName : "")
                                + (DeskController.objectsEnabled ? qsTr(" · objects signed") : qsTr(" · 5.1 bed only"))).toUpperCase()
                         color: Theme.text
                         font.family: Theme.monoFamily
@@ -96,10 +99,10 @@ ApplicationWindow {
                 }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: window.page = "output" }
                 Accessible.role: Accessible.Button
-                Accessible.name: qsTr("Open the Output page")
+                Accessible.name: qsTr("Open the Signal path page")
             }
             SegmentedControl {
-                model: [{ label: qsTr("Room"), value: "room" }, { label: qsTr("Output"), value: "output" }, { label: qsTr("Settings"), value: "settings" }]
+                model: [{ label: qsTr("Room"), value: "room" }, { label: qsTr("Signal path"), value: "output" }, { label: qsTr("Settings"), value: "settings" }]
                 currentValue: window.page
                 accessibleName: qsTr("Page")
                 onSelected: function(value) { window.page = value; }
@@ -186,7 +189,7 @@ ApplicationWindow {
         menu: Platform.Menu {
             Platform.MenuItem { text: qsTr("Open the room"); onTriggered: { window.page = "room"; window.show(); window.raise(); window.requestActivate(); } }
             Platform.Menu {
-                title: qsTr("Output") + " · " + (DeskController.pinned === "auto" ? qsTr("auto") : DeskController.pinned)
+                title: qsTr("Signal path") + " · " + (DeskController.pinned === "auto" ? qsTr("auto") : DeskController.pinned)
                 Platform.MenuItemGroup { id: pinGroup }
                 Platform.MenuItem { text: qsTr("Automatic"); checkable: true; checked: DeskController.pinned === "auto"; group: pinGroup; onTriggered: DeskController.pinned = "auto" }
                 Platform.MenuItem { text: qsTr("Atmos"); checkable: true; checked: DeskController.pinned === "atmos"; group: pinGroup; onTriggered: DeskController.pinned = "atmos" }

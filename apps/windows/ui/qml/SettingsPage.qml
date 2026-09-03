@@ -39,6 +39,16 @@ Flickable {
         font.pixelSize: Theme.fontSmall
         wrapMode: Text.WordWrap
     }
+    // One line of a status: a tick when it is as the path needs, a warning
+    // sign when it is not, so what still needs doing reads as such.
+    component StatusRow: RowLayout {
+        property bool ok: false
+        property alias text: body.text
+        Layout.fillWidth: true
+        spacing: Theme.space2
+        Text { text: parent.ok ? "✓" : "⚠"; color: parent.ok ? Theme.textMuted : Theme.accent; font.pixelSize: 13; Layout.alignment: Qt.AlignTop }
+        Text { id: body; Layout.fillWidth: true; color: parent.ok ? Theme.textMuted : Theme.text; font.pixelSize: 13; wrapMode: Text.WordWrap }
+    }
     component Field: Rectangle {
         property alias input: input
         property alias text: input.text
@@ -83,24 +93,25 @@ Flickable {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: Theme.space3
-                RailBlock { ordinal: "01"; label: qsTr("VIRTUAL OUTPUT DEVICE"); Layout.fillWidth: true; Layout.fillHeight: false }
-                Note { text: qsTr("Windows needs somewhere silent to send every application's sound so that only this app's output is heard. That is the Desktop Atmos driver: an output device that discards what it is given. Until it is installed, any silent endpoint whose name matches the filter below stands in.") }
+                RailBlock { ordinal: "01"; label: qsTr("SILENT DEVICE · WHERE APPLICATIONS PLAY"); Layout.fillWidth: true; Layout.fillHeight: false }
+                Note { text: qsTr("Sound takes two stages here. Applications play into the Windows default output; this app taps them there and sends the result to the endpoint you hear. For the first stage to be silent, the default must be a device that discards what it is given: the Desktop Atmos driver. Until it is installed, any silent endpoint whose name matches the filter under Advanced stands in.") }
                 Card {
                     ColumnLayout {
                         spacing: Theme.space2
                         // 1. Is there a device?
-                        RowLayout {
-                            spacing: Theme.space2
-                            Rectangle { width: 8; height: 8; color: DeskController.nullSinkPresent ? Theme.accent : Theme.neutral500 }
-                            Text { Layout.fillWidth: true; text: DeskController.nullSinkPresent ? qsTr("Silent device present: an endpoint named like \"%1\"").arg(DeskController.nullSinkName) : qsTr("No silent device: nothing named like \"%1\" exists").arg(DeskController.nullSinkName); color: Theme.text; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                        StatusRow {
+                            ok: DeskController.nullSinkPresent
+                            text: DeskController.nullSinkPresent ? qsTr("Silent device present: an endpoint named like \"%1\"").arg(DeskController.nullSinkName) : qsTr("No silent device: nothing named like \"%1\" exists, so applications can only play to a real device and are heard directly.").arg(DeskController.nullSinkName)
+                        }
+                        // 1b. Are applications playing to it?
+                        StatusRow {
+                            ok: DeskController.defaultIsNullSink
+                            text: DeskController.defaultIsNullSink ? qsTr("Applications play to it: it is the Windows default output.") : qsTr("Applications do not play to it yet: the Windows default output is %1. Send them there from the Room or Signal path page.").arg(DeskController.defaultOutputName.length ? DeskController.defaultOutputName : qsTr("not set"))
                         }
                         // 2. Can a test-signed driver load here?
-                        RowLayout {
-                            spacing: Theme.space2
-                            Rectangle { width: 8; height: 8; color: DeskController.codeIntegrityKnown && DeskController.testSigningOn && !DeskController.memoryIntegrityOn ? Theme.accent : Theme.neutral500 }
-                            Text {
-                                Layout.fillWidth: true
-                                text: !DeskController.codeIntegrityKnown ? qsTr("Could not read the kernel's code-integrity state.")
+                        StatusRow {
+                            ok: DeskController.codeIntegrityKnown && DeskController.testSigningOn && !DeskController.memoryIntegrityOn
+                            text: !DeskController.codeIntegrityKnown ? qsTr("Could not read the kernel's code-integrity state.")
                                     : (DeskController.testSigningOn && !DeskController.memoryIntegrityOn
                                         ? qsTr("This machine can load the test-signed driver: test signing is on and memory integrity is off.")
                                         : qsTr("This machine cannot load the test-signed driver yet: ")
@@ -108,14 +119,11 @@ Flickable {
                                           + (!DeskController.testSigningOn && DeskController.memoryIntegrityOn ? qsTr(" and ") : "")
                                           + (DeskController.memoryIntegrityOn ? qsTr("turn memory integrity off (Windows Security, Core isolation, then restart)") : "")
                                           + ".")
-                                color: Theme.text; font.pixelSize: 13; wrapMode: Text.WordWrap
-                            }
                         }
                         // 3. Is a package to install here?
-                        RowLayout {
-                            spacing: Theme.space2
-                            Rectangle { width: 8; height: 8; color: DeskController.driverPackageFound ? Theme.accent : Theme.neutral500 }
-                            Text { Layout.fillWidth: true; text: DeskController.driverPackageFound ? qsTr("A built driver package and its install scripts are in the driver folder.") : qsTr("No built driver package in the driver folder (see Advanced below)."); color: Theme.text; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                        StatusRow {
+                            ok: DeskController.driverPackageFound
+                            text: DeskController.driverPackageFound ? qsTr("A built driver package and its install scripts are in the driver folder.") : qsTr("No built driver package in the driver folder (see Advanced below).")
                         }
                         Flow {
                             Layout.fillWidth: true

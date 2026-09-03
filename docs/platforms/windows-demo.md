@@ -965,6 +965,24 @@ reports and is restamped every build: the version from the nearest tag, the desc
 the commits since it, the commit, the branch, and "dirty" when the tree had uncommitted
 changes at build time. `--page about` captures the box.
 
+The finding that outlasted the others was about the two devices. The demo depends on two:
+the Windows default output, which must be the silent device so that applications play into
+it unheard and this app can tap them there; and the endpoint the pin and the hardware choose,
+which is the only thing a person hears. The window had called the second "Output" and the
+first "Default output", on three screens, and Iain took a long while to work out which was
+which and that they were two stages of one thing. Everything now says the path. A
+`SignalPath` component draws it as three numbered stations, "applications play to", "Desktop
+Atmos", "you hear it on", each with what it is set to, a warning sign and sentence when it is
+not what the path needs (a real device as the default; no silent device; the engine stopped),
+and the one action that fixes it. The Room rail stacks it in place of the two blocks; the
+Output page, renamed Signal path, opens with it side by side and names its sections by stage
+("what you hear it as", "endpoints, where you can hear it", "where applications play"); the
+endpoint table's "Make default" reads "Send applications here", which is what it does; the
+Settings block is "silent device, where applications play", its status lines carry a tick
+or a warning sign and one more line says whether applications play to it yet; and the header
+pill reads "apps → stereo · Acer X34 P", or "⚠ apps heard direct → …" while the default is a
+real device.
+
 ### Phase 6: docs, CI, release
 
 Five items. The first three, this page rewritten from plan to record, the roadmap record and

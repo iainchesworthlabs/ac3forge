@@ -125,6 +125,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/DeskButton.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/DeskCheck.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/OutputPage.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/SignalPath.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/SettingsPage.qml"
         ${AC3DESK_QUICK3D_QML}
         ${AC3DESK_SHARED_OUT})

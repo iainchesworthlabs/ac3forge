@@ -19,7 +19,6 @@ Dialog {
         border.color: Theme.text
         border.width: 2
     }
-    Accessible.name: qsTr("About Desktop Atmos")
 
     component Kicker: Text {
         Layout.topMargin: Theme.space2
@@ -37,6 +36,9 @@ Dialog {
 
     contentItem: ColumnLayout {
         spacing: Theme.space2
+        // On the content, not the dialog: a Popup is not an Item.
+        Accessible.role: Accessible.Dialog
+        Accessible.name: qsTr("About Desktop Atmos")
         RowLayout {
             spacing: Theme.space3
             Image {
