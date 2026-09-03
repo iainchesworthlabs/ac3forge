@@ -148,8 +148,8 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         for (const auto& unit : *units) {
             const auto decoded = decoder->decode_access_unit(unit);
             if (!decoded) {
-                fmt::println(stderr, "error: decode failed (code {})",
-                             static_cast<int>(decoded.error()));
+                fmt::println(stderr, "error: decode failed: {}",
+                             ac3::describe(decoded.error()));
                 return kExitInput;
             }
             if (!decoded->has_value()) {
@@ -384,8 +384,8 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
         if (!decoded) {
-            fmt::println(stderr, "error: decode failed (code {})",
-                         static_cast<int>(decoded.error()));
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
             return kExitInput;
         }
         if (!decoded->has_value()) {

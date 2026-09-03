@@ -117,6 +117,27 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   project. Wiring it in also surfaced the spec's own bug: it navigated to `/index.html`, which
   resolves to the server root rather than the demo subdirectory, and the resulting 404 page (which
   carries no cross-origin-isolation headers) made the failure read as "COOP/COEP headers missing".
+- **macOS cross-builds compiled the wrong architecture's SIMD kernels.** `AC3FORGE_SIMD`'s `auto`
+  and the `AC3FORGE_AVX2` tier both keyed on `CMAKE_SYSTEM_PROCESSOR`, which on Apple platforms
+  describes the *host* — `CMAKE_OSX_ARCHITECTURES` overrides it per compile line. A Mac configured
+  with `-DCMAKE_OSX_ARCHITECTURES` for the other architecture therefore picked its own kernels, and
+  building for arm64 from an Intel Mac handed the ARM compile SSE2 intrinsics and `-mavx2`, failing
+  outright. Both now follow the effective target architecture, and a universal (multi-`-arch`)
+  configure resolves `generic`, since no single compile-time choice can serve both slices. Native
+  builds on every platform are unaffected.
+- **A §E2.3.1.2 legacy-core stream failed to decode, or silently selected the wrong programme.**
+  `Eac3Decoder::decode_access_unit`'s programme-selection step parsed its unit's lead frame as an
+  Annex E syncframe. An AC-3 core carries neither `strmtyp` nor `substreamid` — the two bits where
+  `strmtyp` lives are the top of `crc1` — so the selection read a programme id out of a checksum:
+  about a quarter of frames alias to the reserved `strmtyp` 0x3 and failed the decode outright with
+  `kReservedValue`, and the rest aliased to a plausible id and were selected on silently. The
+  identity is now asserted from `bsid`, as the surrounding framing and `decode_substream` already
+  did. FFmpeg's FATE fixture `the_great_wall_7.1.eac3` (an AC-3 core plus an Annex E dependent
+  extending it to 7.1) decodes all 157 access units as a result; it had failed on its first.
+- `ac3cli` reports a decode failure in words rather than as an enumerator — `decode failed: a header
+  field holds a value A/52 reserves`, not `decode failed (code 3)`. `describe()` already existed for
+  these; nine call sites across `decode`, `analysis` and `live` were not using it, which is what made
+  the failure above unreadable from a CI log.
 
 ## [0.10.0-beta.1] - 2026-09-01
 
