@@ -463,7 +463,11 @@ media stops at "Press any key to boot from CD or DVD" under EFI, so the scripts 
 once with the media's own `efisys_noprompt.bin`. Because `vmrun` cannot see the guest until
 Tools is installed, the console is exposed over Workstation's VNC server and a small RFB
 client (`guest_console.py`) takes screenshots and presses keys during Setup. The Settings
-screen's install and remove buttons are not wired yet; the scripts are the path.
+screen's virtual-device block shows what the kernel reports about test signing and memory
+integrity, whether the driver folder holds the scripts and a built package, and runs
+`install.ps1` or `remove.ps1` elevated with the tail of their transcript as its status line;
+on the workstation, where neither prerequisite holds, it says so and the buttons do nothing
+harmful.
 
 ### Phase 5: fast follows
 
