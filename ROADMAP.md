@@ -2259,7 +2259,13 @@ rather than bypassing the codec, with a bypass switch so the difference can be s
 2026-09-03 (`apps/windows/spikes/`): sixteen taps separate exactly at 48 kHz float, a tap
 opened before the process plays picks it up, applications on an idle virtual endpoint are
 tapped identically while another endpoint is held exclusively, session mute silences a tap, and
-an exclusive open on an endpoint with live shared streams is refused and kills them.
+an exclusive open on an endpoint with live shared streams is refused and kills them. S4 the same
+day: fifteen objects plus the per-frame fold and mix at p99 1.8 ms of the 32 ms frame; the
+one-block low-latency frame at 0.7 ms of 5.3 ms but refusing below roughly 1.5 Mb/s. Phase 1
+(library) landed next: `Capture::start_process_loopback` and `DeviceWatcher` in the Windows
+backend, `kNoBackend`/`kProcessLoopbackUnavailable` twins everywhere else, two new
+`AudioBackend` capabilities, and the backend contract test extended to cover both without
+touching a device.
 </details>
 
 **UX7 (M)** — macOS loopback capture through Core Audio process/system taps. Blocked on a real

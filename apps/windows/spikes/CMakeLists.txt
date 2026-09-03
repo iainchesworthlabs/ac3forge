@@ -38,3 +38,11 @@ if(AC3FORGE_SPIKES_WITH_LIBRARY)
     target_compile_options(s4_throughput PRIVATE /W4 /EHsc /permissive- /utf-8)
     target_link_libraries(s4_throughput PRIVATE ac3::forge)
 endif()
+
+# S1 part two: the same tap through the library's own Capture/DeviceWatcher.
+if(AC3FORGE_SPIKES_WITH_LIBRARY)
+    add_executable(s1_library_tap s1_taps/s1_library_tap.cpp)
+    target_compile_definitions(s1_library_tap PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+    target_compile_options(s1_library_tap PRIVATE /W4 /EHsc /permissive- /utf-8)
+    target_link_libraries(s1_library_tap PRIVATE ac3::audio)
+endif()

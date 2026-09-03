@@ -61,8 +61,8 @@ inventory the plan is built on, with the header each item lives in.
 | Object signing hook pattern | exists, on Android | `apps/android/app/src/main/cpp/shield_signing_hook.hpp` |
 | Draggable room widget, plan plus elevation | exists, in the GUI's Live tab | `apps/gui/qml/Main.qml` (`liveRoom`), `SoundfieldView.qml` |
 | Reference live encode loop | exists, twice | `apps/cli/commands/live_audio.cpp` (`run_live`), `apps/android/.../live_cursor.cpp` |
-| **Per-process loopback capture** | **new** | Windows backend only, see [Library additions](#library-additions) |
-| **Render-device arrival and removal notifications** | **new** | Windows backend only |
+| **Per-process loopback capture** | **landed** (Phase 1) | `Capture::start_process_loopback`, Windows backend only, see [Library additions](#library-additions) |
+| **Render-device arrival and removal notifications** | **landed** (Phase 1) | `ac3::audio::DeviceWatcher`, Windows backend only |
 | **Audio session enumeration** (who is playing, PID, name, icon) | **new, app-level** | `apps/windows/` |
 | **Virtual null-sink audio device** | **new, separate driver project** | `apps/windows/driver/` |
 | **Output-mode state machine with hot switching** | **new, app-level** | `apps/windows/` |
@@ -293,12 +293,17 @@ apps/windows/
 
 The library gains, in `src/audio`:
 
-- **`Capture` with `DeviceKind::kProcessLoopback`** and a process ID, implemented in
-  `src/audio/src/backend/windows/capture.cpp` with the activation-params route; every other
-  backend's `start()` refuses it with `kNoBackend`.
-- **`RenderDeviceWatcher`** (working name) in a new backend file, delivering default-changed,
-  arrived and removed events on a caller-supplied callback; non-Windows backends return
-  `kNoBackend`.
+- **`Capture::start_process_loopback(pid, mode, format)`**, implemented in
+  `src/audio/src/backend/windows/capture.cpp` with the activation-params route, sharing the
+  capture thread with the endpoint paths; every other backend refuses it with `kNoBackend` or
+  `kProcessLoopbackUnavailable`, and `process_loopback_available()` answers for the machine
+  rather than the build. **Landed 2026-09-03.**
+- **`DeviceWatcher`** (`ac3/audio/device_watcher.hpp`), a new backend file in every
+  directory, delivering default-changed, added, removed and state-changed events on a
+  caller-supplied callback; non-Windows backends return `kNoBackend`. **Landed 2026-09-03.**
+- Both are reported by `audio_backend()` as `process_loopback` and `device_watch`, and the
+  backend contract test exercises both without touching a device (the watcher is actually
+  started and stopped wherever the backend exists, since registering needs no endpoint).
 
 Session enumeration, default-device switching and the foreground check are **app-level**, under
 `apps/windows/engine/`, because they are demo policy rather than audio I/O and because one of
@@ -348,10 +353,14 @@ enabled on the headphone endpoint (S3). S3 and S4 do not wait for S2.
 
 ### Phase 1: library additions
 
-The process-loopback capture kind and the render-device watcher, both in the Windows backend
-with `kNoBackend` twins elsewhere, with `tests/backend/windows/` cases for the device-free
-logic (parameter validation, refusal paths, watcher lifecycle) and `docs/platforms/windows.md`
-updated. Exit: a CLI-free test program tapping one named process to a WAV.
+The process-loopback capture entry point and the device watcher, both in the Windows backend
+with `kNoBackend` twins elsewhere, the device-free logic (parameter validation, refusal paths,
+watcher lifecycle) covered by the unconditional backend contract test rather than a new
+`tests/backend/windows/` directory, and `docs/platforms/windows.md` updated. Exit: a program
+tapping one process through the library and reading the tone back. **Done 2026-09-03**:
+`s1_library_tap` in the spikes tree reads the spawned player's tone through
+`start_process_loopback` at the expected level and frequency, refuses a process id nobody
+owns, and starts and stops a `DeviceWatcher`.
 
 ### Phase 2: engine
 

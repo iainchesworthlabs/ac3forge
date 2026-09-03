@@ -14,6 +14,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- Per-process loopback capture and endpoint change notifications on Windows (roadmap UX11,
+  the first library pieces of the planned Desktop Atmos Demo): `Capture::start_process_loopback`
+  taps what one process tree renders, whichever endpoint it renders to, at a caller-stated
+  format (Windows 10 build 20348+; `process_loopback_available()` and
+  `audio_backend().process_loopback` say whether this machine can), and `DeviceWatcher` delivers
+  endpoint added/removed/state-changed and default-changed events on a callback instead of
+  leaving an application to poll. Every other backend refuses both honestly rather than the API
+  disappearing. `AudioBackend` gains `process_loopback` and `device_watch` capabilities.
 - Python completeness (roadmap AP6): new `ac3forge.containers` (Matroska/MP4/MPEG-TS mux and
   demux, with `build_codec_config_box()` for the `dac3`/`dec3` payload), `ac3forge.meta`
   (BS.1770 `LoudnessMeter`, the cited QC presets and `evaluate_qc_gate`) and

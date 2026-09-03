@@ -55,6 +55,16 @@ virtual endpoint present and idle.
   default has moved to the null sink and the sessions have followed it.
 - Taps can be opened for a session the moment it appears in the session list, before it plays.
 
+### Through the library (`s1_library_tap`), 2026-09-03
+
+Once Phase 1 landed, the same check through `ac3::audio::Capture::start_process_loopback` and
+`ac3::audio::DeviceWatcher` rather than raw WASAPI. `audio_backend()` reported both available;
+a process id nobody owns was refused with "no process has the requested id" before anything was
+opened (the raw spike had shown the OS itself activates such a tap and delivers zeros); the
+spawned 440 Hz player read back at -15.1 dBFS and an estimated 434 Hz over four seconds,
+48 000 frames/s, zero ring drops, 991 frames of silence synthesised across the first packet gap;
+and the watcher started, ran, and stopped with `running()` following it.
+
 ## S4: encoder throughput (`s4_throughput`)
 
 Links the real `ac3::forge` (the spike CMake pulls the repo root in the way the Android app
