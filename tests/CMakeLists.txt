@@ -438,6 +438,7 @@ target_sources(ac3tests PRIVATE
     windemo/test_output_policy.cpp
     windemo/test_tap_pool.cpp
     windemo/test_output_stage.cpp
+    windemo/test_nullsink_position.cpp
     windemo/wasapi_devices_stub.cpp
     "${CMAKE_SOURCE_DIR}/apps/windows/engine/slots.cpp"
     "${CMAKE_SOURCE_DIR}/apps/windows/engine/bed_mixer.cpp"
@@ -445,7 +446,13 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/windows/engine/output_policy.cpp"
     "${CMAKE_SOURCE_DIR}/apps/windows/engine/tap_pool.cpp"
     "${CMAKE_SOURCE_DIR}/apps/windows/engine/output_stage.cpp")
-target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/windows/engine")
+# The null-sink driver's position clock (apps/windows/driver/Source/Main/
+# position.h) is a header with no kernel dependencies, kept that way so the
+# one piece of the driver that is logic rather than framework plumbing is
+# tested here, on every platform, where kernel code could never be.
+target_include_directories(ac3tests PRIVATE
+    "${CMAKE_SOURCE_DIR}/apps/windows/engine"
+    "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main")
 
 # ac3adm::ac3adm is opt-in (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own
 # option() for why it is not on by default like matroska/mp4/mpegts) - test_adm.cpp is only

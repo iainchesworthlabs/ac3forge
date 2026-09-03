@@ -1,28 +1,18 @@
 /*++
 
-Copyright (c) Microsoft Corporation All Rights Reserved
-
-Module Name:
-
-    SimpleAudioSample.rc
-
-Abstract:
+Version resource for Ac3ForgeNullSink.sys.
 
 --*/
 
 #include <windows.h>
-
 #include <ntverp.h>
 
 #define VER_FILETYPE                VFT_DRV
 #define VER_FILESUBTYPE             VFT2_DRV_SOUND
-#define VER_FILEDESCRIPTION_STR     "ac3forge Desktop Atmos null-sink audio driver (derived from Microsoft's Simple Audio Sample)"
+#define VER_FILEDESCRIPTION_STR     "ac3forge Desktop Atmos null-sink audio driver (ACX; derived from Microsoft's ACX AudioCodec sample)"
 #define VER_INTERNALNAME_STR        "Ac3ForgeNullSink.sys"
 #define VER_ORIGINALFILENAME_STR    "Ac3ForgeNullSink.sys"
-
-#define VER_LEGALCOPYRIGHT_YEARS    "2013-2026"
-#define VER_LEGALCOPYRIGHT_STR	    "Copyright (C) Microsoft Corp. (sample); modifications Copyright (C) ac3forge contributors, MS-PL" VER_LEGALCOPYRIGHT_YEARS
+#define VER_LEGALCOPYRIGHT_YEARS    "2021-2026"
+#define VER_LEGALCOPYRIGHT_STR      "Copyright (C) Microsoft Corp. (sample); modifications Copyright (C) ac3forge contributors, MS-PL " VER_LEGALCOPYRIGHT_YEARS
 
 #include "common.ver"
-
-

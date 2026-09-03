@@ -39,10 +39,20 @@ New-Item -ItemType Directory -Force $rulesTo | Out-Null
 Copy-Item (Join-Path $rulesFrom '*.ruleset') $rulesTo -Force
 $failed = @()
 
+# The EWDK's environment, imported into this process once: CodeQL's tracer
+# runs the build command in an environment of its own making, in which
+# SetupBuildEnv.cmd cannot find vswhere or msbuild ("is not recognized"),
+# so the environment is set up here and the tracer is handed a bare msbuild.
+$ewdkEnv = & cmd /c "call `"$BuildEnv`" >nul 2>&1 && set"
+if ($LASTEXITCODE -ne 0) { throw "could not set up the EWDK environment from $BuildEnv" }
+foreach ($line in $ewdkEnv) {
+    if ($line -match '^([^=]+)=(.*)$') { Set-Item -Path "Env:$($Matches[1])" -Value $Matches[2] }
+}
+if (-not (Get-Command msbuild -ErrorAction SilentlyContinue)) { throw 'msbuild is not on PATH after the EWDK environment was imported' }
+
 function Invoke-EwdkBuild([string[]]$properties, [string]$target) {
     $args = @("/p:Configuration=Release", "/p:Platform=x64", "/t:$target", "/m", "/v:m", "/nologo") + $properties
-    $line = "call `"$BuildEnv`" && msbuild `"$solution`" " + ($args -join ' ')
-    & cmd /c $line 2>&1 | ForEach-Object { "$_" }
+    & msbuild $solution @args 2>&1 | ForEach-Object { "$_" }
     if ($LASTEXITCODE -ne 0) { throw "msbuild $target failed ($LASTEXITCODE)" }
 }
 
@@ -64,20 +74,18 @@ if (-not $SkipCodeQL) {
     if (-not (Test-Path $CodeQL)) { throw "CodeQL CLI not found: $CodeQL" }
     if (Test-Path $Database) { Remove-Item $Database -Recurse -Force }
     New-Item -ItemType Directory -Force (Split-Path $Database) | Out-Null
-    $build = "cmd /c call `"$BuildEnv`" && msbuild `"$solution`" /p:Configuration=Release /p:Platform=x64 /t:Rebuild /m /v:m /nologo"
+    $build = "msbuild `"$solution`" /p:Configuration=Release /p:Platform=x64 /t:Rebuild /m /v:m /nologo"
     & $CodeQL database create $Database --language=cpp --source-root=$driver "--command=$build" 2>&1 |
         Where-Object { $_ -match 'error|Finalizing|Successfully' } | ForEach-Object { Write-Host "   $_" }
     if ($LASTEXITCODE -ne 0) { throw "codeql database create failed ($LASTEXITCODE)" }
     # Justified exceptions: a CodeQL rule id plus a file substring the finding
-    # is known-good in, with the reason. mustfix carries none - it is the hard
-    # gate. recommended carries the one PortCls false positive: the audio
-    # miniport creates its FDO through PcAddAdapterDevice, which clears
-    # DO_DEVICE_INITIALIZING itself, so cpp/drivers/init-not-cleared (which
-    # cannot see into PortCls) fires where it should not - the same reason the
-    # sample disables PREfast 28152 at AddDevice.
+    # is known-good in, with the reason. Both suites carry none for the ACX
+    # driver (the PortCls driver's one waiver, init-not-cleared at its
+    # PcAddAdapterDevice, went with the PortCls code). A waiver added here
+    # needs its reason beside it.
     $known = @{
-        'recommended' = @(@{ rule = 'cpp/drivers/init-not-cleared'; file = 'adapter.cpp';
-                             why = 'PcAddAdapterDevice (PortCls) creates the FDO and clears DO_DEVICE_INITIALIZING' })
+        'mustfix' = @()
+        'recommended' = @()
     }
     foreach ($suite in 'mustfix', 'recommended') {
         $sarif = Join-Path $driver "Ac3ForgeNullSink.codeql.$suite.sarif"
@@ -107,8 +115,13 @@ if (-not $SkipDvl) {
     # project; the kit's target runs it in the project directory.
     $main = Join-Path $driver 'Source\Main'
     foreach ($s in Get-ChildItem $driver -Filter '*.sarif') { Copy-Item $s.FullName $main -Force }
-    $line = "call `"$BuildEnv`" && msbuild `"$main\Main.vcxproj`" /p:Configuration=Release /p:Platform=x64 /t:dvl /v:m /nologo"
-    & cmd /c $line 2>&1 | Where-Object { $_ -match 'error|warning|DVL|dvl' } | ForEach-Object { Write-Host "   $_" }
+    # dvl.exe /create takes the current directory as the project directory.
+    Push-Location $main
+    try {
+        & msbuild "$main\Main.vcxproj" /p:Configuration=Release /p:Platform=x64 /t:dvl /v:m /nologo 2>&1 | Where-Object { $_ -match 'error|warning|DVL|dvl' } | ForEach-Object { Write-Host "   $_" }
+    } finally {
+        Pop-Location
+    }
     $dvl = Get-ChildItem $main -Filter '*.DVL.XML' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($dvl) { Write-Host "   $($dvl.FullName)" } else { $failed += 'no DVL produced' }
 }
