@@ -94,7 +94,7 @@ Item {
                 clearColor: Theme.neutral100
                 backgroundMode: SceneEnvironment.Color
                 antialiasingMode: SceneEnvironment.MSAA
-                antialiasingQuality: SceneEnvironment.Medium
+                antialiasingQuality: SceneEnvironment.High
             }
             // The camera orbits the listener. The default is the view Iain set
             // by hand: from behind the rear wall, nearly level, looking down the
@@ -110,18 +110,54 @@ Item {
                     clipFar: 5000
                 }
             }
+            // A key light with soft shadows, so the objects and speakers sit
+            // on the floor rather than float over it, and a low fill.
             DirectionalLight {
-                eulerRotation.x: -45
-                eulerRotation.y: 30
-                brightness: 1.2
-                ambientColor: Qt.rgba(0.35, 0.35, 0.38, 1)
+                eulerRotation.x: -55
+                eulerRotation.y: 25
+                brightness: 1.3
+                ambientColor: Qt.rgba(0.30, 0.30, 0.34, 1)
+                castsShadow: true
+                shadowFactor: 55
+                shadowMapQuality: Light.ShadowMapQualityHigh
+                shadowBias: 12
+                pcfFactor: 6
             }
-            // Floor as a thin slab; the walls as an outline at ear level.
+            DirectionalLight {
+                eulerRotation.x: -20
+                eulerRotation.y: -120
+                brightness: 0.35
+            }
+            // The floor, with a faint grid so distance and depth read; the
+            // walls as an outline at ear level.
             Model {
                 source: "#Cube"
                 position: Qt.vector3d(0, -root.roomHeight / 2, 0)
                 scale: Qt.vector3d(root.roomWidth / 100, 0.02, root.roomDepth / 100)
-                materials: PrincipledMaterial { baseColor: Theme.neutral300; roughness: 0.9 }
+                receivesShadows: true
+                materials: PrincipledMaterial {
+                    roughness: 0.95
+                    baseColorMap: Texture {
+                        generateMipmaps: true
+                        mipFilter: Texture.Linear
+                        sourceItem: Canvas {
+                            width: 512
+                            height: 512
+                            onPaint: {
+                                const c = getContext("2d");
+                                c.fillStyle = Theme.neutral300;
+                                c.fillRect(0, 0, width, height);
+                                c.strokeStyle = Theme.neutral400;
+                                c.lineWidth = 1.5;
+                                for (let i = 0; i <= 8; ++i) {
+                                    const v = i * width / 8;
+                                    c.beginPath(); c.moveTo(v, 0); c.lineTo(v, height); c.stroke();
+                                    c.beginPath(); c.moveTo(0, v); c.lineTo(width, v); c.stroke();
+                                }
+                            }
+                        }
+                    }
+                }
                 pickable: false
             }
             Repeater3D {
@@ -154,7 +190,8 @@ Item {
                     Model {
                         source: "#Cube"
                         scale: Qt.vector3d(0.16, 0.16, 0.16)
-                        materials: PrincipledMaterial { baseColor: modelData.z > 0 ? Theme.neutral600 : Theme.neutral500; roughness: 0.8 }
+                        castsShadows: true
+                        materials: PrincipledMaterial { baseColor: modelData.z > 0 ? Theme.neutral600 : Theme.neutral500; roughness: 0.7; metalness: 0.05 }
                     }
                     Node {
                         y: 22
@@ -199,23 +236,27 @@ Item {
                                     source: "#Rectangle"
                                     scale: Qt.vector3d(0.42, 0.42, 1)
                                     pickable: true
+                                    castsShadows: true
                                     property int appId: appNode.app.app
                                     materials: PrincipledMaterial {
                                         lighting: PrincipledMaterial.NoLighting
                                         alphaMode: PrincipledMaterial.Blend
                                         baseColorMap: Texture {
+                                            generateMipmaps: true
+                                            mipFilter: Texture.Linear
+                                            magFilter: Texture.Linear
                                             sourceItem: Item {
-                                                width: 96
-                                                height: 96
+                                                width: 192
+                                                height: 192
                                                 Rectangle {
                                                     anchors.fill: parent
                                                     color: "transparent"
                                                     border.color: appNode.selected ? Theme.accent : "transparent"
-                                                    border.width: 6
+                                                    border.width: 10
                                                 }
                                                 AppIcon {
                                                     anchors.centerIn: parent
-                                                    size: 80
+                                                    size: 160
                                                     name: appNode.app.name
                                                     imagePath: appNode.app.imagePath
                                                     fill: appNode.selected ? Theme.accent600 : Theme.neutral700
@@ -228,7 +269,7 @@ Item {
                                                     text: side === 0 ? "L" : "R"
                                                     color: Theme.text
                                                     font.family: Theme.monoFamily
-                                                    font.pixelSize: 18
+                                                    font.pixelSize: 34
                                                     font.bold: true
                                                 }
                                             }
