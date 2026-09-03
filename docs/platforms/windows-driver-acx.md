@@ -316,3 +316,36 @@ three concurrent streams, is removed and unloaded under a live stream (`remove.p
 gone), and reinstalls from scratch. Special pool accounted for every allocation, 132 of 132,
 none untagged, untracked or failed; six loads and five unloads, the sixth still running; no
 bugcheck, no minidump.
+
+**KASAN.** The instrumented package (45,736 bytes against the ordinary 32,824) on the KASAN
+kernel, under the same verifier settings and the same exercise: clean, 132 of 132 allocations
+in special pool, no bugcheck. The proof that the sanitizer is live is repeated below with a
+throwaway build carrying a deliberate one-past-the-end read of a 16-byte pool block at driver
+entry, never staged past the run.
+
+**The proof that the sanitizer is live, repeated.** The same throwaway method as Phase 4's,
+with one more thing learnt. A build reading one past the end of a 16-byte block at driver
+entry, under Driver Verifier on the KASAN kernel, bugchecks `0x50` on a page-aligned address:
+special pool's guard page catches it first, as before. With Driver Verifier off and the KASAN
+kernel alone, that aligned read at offset 16 of a 16-byte block is *not* flagged on this
+build (the driver loads and the endpoint appears): the shadow granule past a 16-byte
+allocation is evidently not poisoned at that offset. A second build reading one byte past a
+24-byte block (offset 25, unaligned) and then reading the block after freeing it bugchecks
+`0x1F2`, `KASAN_ILLEGAL_ACCESS`, on the unaligned address one byte past the block, access
+size 1, which is the signature the PortCls record has too (its note said "unaligned"; now we
+know why that word matters). The sanitizer is live and the shipped KASAN package passes it.
+Both throwaway packages were deleted after the runs and were never staged anywhere the
+harness could pick up again.
+
+**Not done.** A guest sleep and resume under a live stream: VMware cannot be woken from S3
+under script control, so the S0 idle-to-D3 transition, which exercises the same driver
+callbacks, stands in; a sleep on the workstation is a manual check for the day the driver is
+installed there. And the timing comparison the plan called for was replaced by the unit test
+of the lifted clock rather than run side by side against the PortCls driver.
+
+**Parity (step 2's exit).** `Test-Driver.ps1` on the final package, then `Deploy-Desk.ps1
+-Shot -Page output` in the same guest: the window starts against the installed ACX driver,
+its endpoint probe lists "Speakers (Desktop Atmos)" beside the guest's HD Audio device, and
+the Output page's signal path reads as it did on 2026-09-03 (applications still on the real
+device, the one-click move to the silent device offered, stereo on the HD Audio endpoint as
+the best the guest can carry).
