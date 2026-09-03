@@ -64,7 +64,7 @@ Item {
     }
     Text {
         anchors.right: parent.right
-        text: qsTr("drag an application to move it · Shift for height · drag space to orbit · wheel to zoom")
+        text: qsTr("drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom")
         color: Theme.textMuted
         font.family: Theme.monoFamily
         font.pixelSize: 11
@@ -86,6 +86,10 @@ Item {
             id: view
             anchors.fill: parent
             anchors.margins: 1
+            // Named explicitly: rendering finds a camera in the scene on its
+            // own, but mapTo3DScene (the drag and drop rays) uses this
+            // property and returned zero vectors while it was unset.
+            camera: camera
             environment: SceneEnvironment {
                 clearColor: Theme.neutral100
                 backgroundMode: SceneEnvironment.Color
@@ -176,40 +180,81 @@ Item {
                     readonly property bool selected: app.app === root.selectedApp
                     visible: placed
                     Repeater3D {
-                        model: appNode.app.width === 2 ? [-root.spread, root.spread] : [0]
+                        model: appNode.app.width === 2 ? [0, 1] : [-1]
                         delegate: Node {
-                            required property real modelData
-                            position: Qt.vector3d(root.sceneX(Math.max(0, Math.min(1, appNode.app.x + modelData))),
-                                                  root.sceneY(appNode.app.z),
-                                                  root.sceneZ(appNode.app.y))
-                            Model {
-                                source: "#Sphere"
-                                scale: Qt.vector3d(0.3, 0.3, 0.3)
-                                pickable: true
-                                property int appId: appNode.app.app
-                                materials: PrincipledMaterial {
-                                    baseColor: appNode.selected ? Theme.accent : Theme.accent700
-                                    roughness: 0.5
+                            required property int modelData
+                            readonly property int side: modelData  // -1 mono, 0 left, 1 right
+                            readonly property real ox: side < 0 ? appNode.app.x : (side === 0 ? appNode.app.lx : appNode.app.rx)
+                            readonly property real oy: side < 0 ? appNode.app.y : (side === 0 ? appNode.app.ly : appNode.app.ry)
+                            readonly property real oz: side < 0 ? appNode.app.z : (side === 0 ? appNode.app.lz : appNode.app.rz)
+                            position: Qt.vector3d(root.sceneX(ox), root.sceneY(oz), root.sceneZ(oy))
+                            // The object is a card carrying the application's own
+                            // icon (or its monogram), turned to face the camera: the
+                            // orbit node's rotation is the camera's, and a
+                            // rectangle faces its own +z, so a card rotated with
+                            // the orbit always faces the viewer.
+                            Node {
+                                rotation: orbit.rotation
+                                Model {
+                                    source: "#Rectangle"
+                                    scale: Qt.vector3d(0.42, 0.42, 1)
+                                    pickable: true
+                                    property int appId: appNode.app.app
+                                    materials: PrincipledMaterial {
+                                        lighting: PrincipledMaterial.NoLighting
+                                        alphaMode: PrincipledMaterial.Blend
+                                        baseColorMap: Texture {
+                                            sourceItem: Item {
+                                                width: 96
+                                                height: 96
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    color: "transparent"
+                                                    border.color: appNode.selected ? Theme.accent : "transparent"
+                                                    border.width: 6
+                                                }
+                                                AppIcon {
+                                                    anchors.centerIn: parent
+                                                    size: 80
+                                                    name: appNode.app.name
+                                                    imagePath: appNode.app.imagePath
+                                                    fill: appNode.selected ? Theme.accent600 : Theme.neutral700
+                                                }
+                                                Text {
+                                                    visible: side >= 0
+                                                    anchors.right: parent.right
+                                                    anchors.bottom: parent.bottom
+                                                    anchors.margins: 4
+                                                    text: side === 0 ? "L" : "R"
+                                                    color: Theme.text
+                                                    font.family: Theme.monoFamily
+                                                    font.pixelSize: 18
+                                                    font.bold: true
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             // A stem down to ear level shows height at a glance.
                             Model {
                                 source: "#Cylinder"
-                                visible: Math.abs(appNode.app.z) > 0.02
-                                position: Qt.vector3d(0, -root.sceneY(appNode.app.z) / 2, 0)
-                                scale: Qt.vector3d(0.015, Math.abs(root.sceneY(appNode.app.z)) / 100, 0.015)
+                                visible: Math.abs(oz) > 0.02
+                                position: Qt.vector3d(0, -root.sceneY(oz) / 2, 0)
+                                scale: Qt.vector3d(0.015, Math.abs(root.sceneY(oz)) / 100, 0.015)
                                 materials: PrincipledMaterial { baseColor: Theme.accent400; lighting: PrincipledMaterial.NoLighting }
                             }
                         }
                     }
                     Node {
-                        position: Qt.vector3d(root.sceneX(appNode.app.x), root.sceneY(appNode.app.z) + 30, root.sceneZ(appNode.app.y))
+                        visible: appNode.selected
+                        position: Qt.vector3d(root.sceneX(appNode.app.x), root.sceneY(appNode.app.z) + 34, root.sceneZ(appNode.app.y))
                         Text {
                             anchors.centerIn: parent
                             text: appNode.app.name
                             color: Theme.text
                             font.family: Theme.monoFamily
-                            font.pixelSize: 26
+                            font.pixelSize: 20
                         }
                     }
                 }
@@ -223,8 +268,8 @@ Item {
                 const source = drop.source;
                 if (!(source && source.app)) return;
                 // The point on the ear-level plane under the drop.
-                const near = view.mapTo3DScene(Qt.vector3d(drop.x - 1, drop.y - 1, 10));
-                const far = view.mapTo3DScene(Qt.vector3d(drop.x - 1, drop.y - 1, 100));
+                const near = view.mapTo3DScene(Qt.vector3d(drop.x - 1, drop.y - 1, 0.2));
+                const far = view.mapTo3DScene(Qt.vector3d(drop.x - 1, drop.y - 1, 0.8));
                 const dir = far.minus(near);
                 if (Math.abs(dir.y) < 1e-6) return;
                 const t = -near.y / dir.y;
@@ -247,17 +292,19 @@ Item {
             property real dragOffsetX: 0
             property real dragOffsetY: 0
             property real dragOffsetZ: 0
-            cursorShape: dragApp ? Qt.SizeAllCursor : Qt.ArrowCursor
+            cursorShape: dragApp ? (dragHeight ? Qt.SizeVerCursor : Qt.SizeAllCursor) : Qt.ArrowCursor
             preventStealing: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
 
             // A point in the scene where the ray through (px, py) meets the
             // horizontal plane at height `planeY`, or null when the ray runs
-            // away from it. Two unprojections make the ray; the depths are
-            // distances from the camera, and depth 0 (the camera itself)
-            // unprojects to nothing usable.
+            // away from it. Two unprojections make the ray; the depth is a
+            // normalised 0..1 (mapTo3DScene returns a zero vector outside
+            // that range, and the ends are degenerate), so two points
+            // partway along.
             function planeHit(px, py, planeY) {
-                const near = view.mapTo3DScene(Qt.vector3d(px, py, 10));
-                const far = view.mapTo3DScene(Qt.vector3d(px, py, 100));
+                const near = view.mapTo3DScene(Qt.vector3d(px, py, 0.2));
+                const far = view.mapTo3DScene(Qt.vector3d(px, py, 0.8));
                 const dir = far.minus(near);
                 if (Math.abs(dir.y) < 1e-6) return null;
                 const t = (planeY - near.y) / dir.y;
@@ -267,8 +314,8 @@ Item {
             // For height drags: the point where the ray meets the vertical
             // plane facing the camera through the object's floor position.
             function verticalHit(px, py, atX, atZ) {
-                const near = view.mapTo3DScene(Qt.vector3d(px, py, 10));
-                const far = view.mapTo3DScene(Qt.vector3d(px, py, 100));
+                const near = view.mapTo3DScene(Qt.vector3d(px, py, 0.2));
+                const far = view.mapTo3DScene(Qt.vector3d(px, py, 0.8));
                 const dir = far.minus(near);
                 // Plane normal: the camera's forward projected onto the floor.
                 const fwd = camera.forward;
@@ -292,7 +339,8 @@ Item {
                     const app = appById(hit.objectHit.appId);
                     if (app && !app.fullscreen) {
                         dragApp = app;
-                        dragHeight = (event.modifiers & Qt.ShiftModifier) !== 0;
+                        // Height: Shift with the left button, or the right button.
+                        dragHeight = (event.modifiers & Qt.ShiftModifier) !== 0 || (event.button === Qt.RightButton);
                         root.select(app.app);
                         if (dragHeight) {
                             const p = verticalHit(event.x, event.y, root.sceneX(app.x), root.sceneZ(app.y));
@@ -306,7 +354,7 @@ Item {
                 }
             }
             onPositionChanged: function(event) {
-                if (!(event.buttons & Qt.LeftButton)) return;
+                if (!(event.buttons & (Qt.LeftButton | Qt.RightButton))) return;
                 if (dragApp) {
                     if (dragHeight) {
                         const p = verticalHit(event.x, event.y, root.sceneX(dragApp.x), root.sceneZ(dragApp.y));
