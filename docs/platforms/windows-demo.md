@@ -896,6 +896,18 @@ a frame mark per encoded frame, on the library's profiling header pair. A build 
 capture and export tools; `tracy-capture` against the instrumented window under load gives
 the per-zone statistics the status strip can only hint at.
 
+The first capture (30 s, three tone players, 899 frames) said where the time went. The
+encoder took 1.4 ms per frame; the wait for the taps 28 ms (the frame's pacing); the
+controller's poll 1.6 ms. The session refresh ran on the frame thread every 500 ms and took
+48 ms on average and 217 ms at worst, between two frames: enumerating sessions and
+processes, walking every window, and reading each executable's version resource. That was
+the worst-frame figure and the cadence's swing. The monitor now runs on its own thread and
+the loop takes its latest list when one is fresh, and the facts about a process that never
+change are read once per pid. The same capture afterwards: worst frame 290 ms to 74 ms; the
+frame's minimum 1.2 ms to 24 ms, which means the loop no longer runs short and drops tap
+audio to catch up; session work on the frame thread 48 ms to 0.4 ms per refresh; the
+enumeration itself 42 ms, on its own thread.
+
 ### Phase 6: docs, CI, release
 
 Five items. The first three, this page rewritten from plan to record, the roadmap record and
