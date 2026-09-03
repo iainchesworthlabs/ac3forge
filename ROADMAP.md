@@ -2265,7 +2265,11 @@ one-block low-latency frame at 0.7 ms of 5.3 ms but refusing below roughly 1.5 M
 (library) landed next: `Capture::start_process_loopback` and `DeviceWatcher` in the Windows
 backend, `kNoBackend`/`kProcessLoopbackUnavailable` twins everywhere else, two new
 `AudioBackend` capabilities, and the backend contract test extended to cover both without
-touching a device.
+touching a device. Phase 2's pure half followed (`apps/windows/engine/`, namespace
+`ac3::windemo`, `option(AC3FORGE_BUILD_WINDEMO)` default OFF): the slot plan (ten positioned
+plus a five-slot speaker-pinned bed, since `AtmosEncoder` has no bed input), the bed mixer and
+mono fold, placement smoothing, and the output-mode policy carrying the S1 rule; all four
+compile into `ac3tests` on every platform (`tests/windemo/`, 36 cases).
 </details>
 
 **UX7 (M)** — macOS loopback capture through Core Audio process/system taps. Blocked on a real

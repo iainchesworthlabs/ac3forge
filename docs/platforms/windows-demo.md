@@ -126,11 +126,15 @@ be taken in exclusive mode (`S_OK`) without the taps noticing.
 
 The undocumented per-application routing interface that EarTrumpet uses
 (`IAudioPolicyConfigFactory::SetPersistedDefaultAudioEndpoint`) is deliberately **not** used.
-The app changes the system default output, with the documented policy-config route and a
-confirmation, and restores the previous default on exit. Per-application rerouting would let the
-app work alongside a normal default device, but it is unsupported API, it is exactly the kind of
-thing that breaks across Windows feature updates, and it is not what FxSound does. It stays on
-the list as a possible later phase.
+The app changes the system default output, with a confirmation, and restores the previous
+default on exit. Windows has no documented API for that either: the route every
+default-switcher utility takes is the well-known `IPolicyConfig::SetDefaultEndpoint`, stable
+since Vista and used by FxSound, SoundSwitch and EarTrumpet alike. It is still unsupported, so
+the app treats it as a convenience with a fallback: if the call is refused, it opens the Sound
+settings page and asks the user to pick the device, and detects the change through the
+`DeviceWatcher`. Per-application rerouting would let the app work alongside a normal default
+device, but it is a second, less-travelled undocumented surface, and it is not what FxSound
+does. It stays on the list as a possible later phase.
 
 ## Objects and the bed
 
@@ -273,23 +277,29 @@ the 2D views work, not part of the first cut.
 ```
 apps/windows/
   CMakeLists.txt                  in-tree, behind option(AC3FORGE_BUILD_WINDEMO) and if(WIN32)
-  README.md                       one paragraph, points here
-  engine/                         headless, unit-tested, no Qt
-    session_monitor.{hpp,cpp}     IAudioSessionManager2 -> list of playing apps, notifications
-    tap_pool.{hpp,cpp}            one process-loopback Capture per session, lifecycle
-    slot_allocator.{hpp,cpp}      15 slots, mono/split, bed membership, full-screen rule
-    placement.{hpp,cpp}           UI positions -> SceneCursor, smoothing
-    bed_mixer.{hpp,cpp}           stereo/5.1/7.1 taps -> 5.1 bed
-    output_stage.{hpp,cpp}        mode probe, state machine, sink ownership, fades
-    default_device.{hpp,cpp}      set/restore the system default output
-    foreground.{hpp,cpp}          which window is full-screen and foreground
+  engine/                         headless, namespace ac3::windemo, no Qt
+    slots.{hpp,cpp}               the plan: 10 positioned + 5 bed slots, full-screen rule   [landed]
+    bed_mixer.{hpp,cpp}           stereo/5.1/7.1 taps -> mono object or the 5 bed slots      [landed]
+    placement.{hpp,cpp}           UI targets -> per-frame ObjectPlacement, smoothed          [landed]
+    output_policy.{hpp,cpp}       probe facts + pin -> mode, endpoint, reason (the S1 rule)  [landed]
+    platform/windows/             the half that talks to Windows, this directory only
+      session_monitor             IAudioSessionManager2 -> list of playing apps, notifications
+      tap_pool                    one Capture::start_process_loopback per session
+      output_stage                probe, state machine, sink ownership, fades
+      default_device              set/restore the system default output
+      foreground                  which window is full-screen and foreground
     signing_hook.{hpp,cpp}        runtime key resolution, the Shield rule
     engine.{hpp,cpp}              the frame loop
   ui/                             Qt Quick app shell and QML
   spikes/                         Phase 0 programs, kept as documented experiments
   driver/                         the null-sink driver, separately licensed (see below)
-  tests/                          engine unit tests on the ordinary CTest suite
+tests/windemo/                    the pure modules' tests, on every CI leg, ungated
 ```
+
+The pure modules compile into `ac3tests` on every platform, the way `apps/common` does, so
+the rules the UI hangs on (the slot budget, what a full-screen application does, which output
+wins when) hold on a Linux CI leg that could never run the demo. The `platform/windows/`
+half builds only under the option.
 
 The library gains, in `src/audio`:
 
@@ -369,6 +379,14 @@ placement, output stage with the mode state machine, signing hook, and the frame
 on `run_live`. Everything that does not touch Windows is unit-tested on CTest; everything that
 does is behind an interface the tests can fake. Exit: a console runner that takes positions on
 stdin, streams Atmos to the receiver, and switches to headphones when HDMI is pulled.
+
+**Progress, 2026-09-03:** the pure half landed first, with its tests (36 cases, every
+platform): the slot plan with the full-screen rule and a waiting list for the eleventh
+application, the bed mixer and mono fold with the channel maps above, placement smoothing, and
+the output policy. The policy holds the S1 rule and one more the tests forced: shared-mode
+output on the endpoint applications render to (hearing the direct mix alongside ours) is
+chosen only when no other endpoint can carry anything at all. The Windows half and the frame
+loop are next.
 
 ### Phase 3: UI
 

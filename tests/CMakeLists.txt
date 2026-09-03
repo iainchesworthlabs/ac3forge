@@ -413,6 +413,25 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp")
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 
+# The Windows Desktop Atmos Demo's engine core (roadmap UX11, apps/windows/
+# engine/): the slot plan, the bed mixer, placement smoothing and the
+# output-mode policy. All four are plain C++ over ac3::oba types with no
+# Windows in them - the platform layer next to them is what talks to WASAPI -
+# so they compile into this target on every platform, ungated, the same way
+# apps/common does above: the rules the demo's UI hangs on are worth holding
+# on a Linux CI leg that could never run the demo itself. The app target
+# (AC3FORGE_BUILD_WINDEMO) is Windows-only and separate.
+target_sources(ac3tests PRIVATE
+    windemo/test_slots.cpp
+    windemo/test_bed_mixer.cpp
+    windemo/test_placement.cpp
+    windemo/test_output_policy.cpp
+    "${CMAKE_SOURCE_DIR}/apps/windows/engine/slots.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/windows/engine/bed_mixer.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/windows/engine/placement.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/windows/engine/output_policy.cpp")
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/windows/engine")
+
 # ac3adm::ac3adm is opt-in (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own
 # option() for why it is not on by default like matroska/mp4/mpegts) - test_adm.cpp is only
 # added, and ac3adm::ac3adm only linked, when that option turned this target on. Unlike cli/test_cli.cpp
