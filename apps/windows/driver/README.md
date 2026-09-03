@@ -60,6 +60,44 @@ passes and `infverif /w` reports the INF valid.
 Diffing against the sample: the touched files had trailing whitespace stripped when the cuts
 were applied, so use `diff -w` (or `--ignore-trailing-space`) to see only the real changes.
 
+## Analysis and verification
+
+A kernel driver is held to the WDK quality standard, which is two tiers: static analysis of
+the source at build time, and dynamic verification of the running driver. The static tier is
+`Analyze-Driver.ps1`; the dynamic tier is `..\driver-vm\Verify-Driver.ps1`, which runs in the
+throwaway guest so a bugcheck is a guest reboot.
+
+**Static.** `Analyze-Driver.ps1` runs, and fails on anything reported by, all three:
+
+1. **Code Analysis with the driver rule set.** A rebuild with `RunCodeAnalysis` on and the
+   WDK's `DriverRecommendedRules.ruleset`, which is the successor to PREfast for Drivers (the
+   `/analyze` engine plus the driver-specific `__drv_` annotation and concurrency rules). It
+   writes one `*.nativecodeanalysis.xml` per file; the driver is clean against it. The rule
+   set is copied to a path without spaces first, because the MSBuild property does not survive
+   one through `cmd`.
+2. **CodeQL with `microsoft/windows-drivers`.** A database built from the same rebuild,
+   analysed with the pack's `mustfix` and `recommended` suites into SARIF. Get the CLI and the
+   pack once: a CodeQL CLI on `PATH` (or point `-CodeQL` at it) and
+   `codeql pack download microsoft/windows-drivers`.
+3. **The Driver Verification Log** (`dvl.exe`, the kit's `dvl` MSBuild target), which bundles
+   the results into `Ac3ForgeNullSink.DVL.XML`, the artefact the HLK Static Tools Logo test
+   consumes for submission.
+
+Static Driver Verifier (SDV) is deliberately absent: the current kit ships a stub that says
+SDV is no longer included and is incompatible with VS2022 and later, and directs you to
+CodeQL, which is what step 2 is.
+
+**Dynamic.** `..\driver-vm\Verify-Driver.ps1` reverts the guest to its clean snapshot, arms
+Driver Verifier for this driver with the standard checks plus the KMDF verification flags,
+turns the KMDF framework verifier on (handle tracking and verbose framework logging, what
+`wdfverifier.exe` sets), reboots, installs, then exercises the driver: makes it the default
+endpoint, renders system sounds and speech through it, restarts the device repeatedly while
+idle and once under a live stream, and reinstalls on top. It then reports the verifier state,
+the service and device, and any bugcheck or minidump. `-Kasan` runs the same against a
+KASAN-instrumented package on the guest's KASAN-enabled kernel, which catches out-of-bounds
+and use-after-free in pool the other checks miss. Driver Verifier bugchecks on a violation,
+which the report reads back from the guest rather than taking the workstation down.
+
 ## Installing (test-signed, your own machine only)
 
 A test-signed driver loads only with test signing on and memory integrity off:

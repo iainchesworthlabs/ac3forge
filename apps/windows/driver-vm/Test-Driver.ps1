@@ -66,14 +66,33 @@ if (-not $ReportOnly) {
     # The install script itself comes from the working tree, not the CD, so
     # a change to it is tested without rebuilding driver.iso; the package
     # and devcon still come from the CD.
+    # The package too: the CD carries the one built when the VM was created,
+    # the tree carries the one just built. Three files plus the certificate
+    # go to the guest's profile; devcon still comes from the CD. The build
+    # output lands under Package\ or x64\ depending on how the solution was
+    # driven, so find the package by its INF rather than a fixed path.
     $installScript = (Resolve-Path (Join-Path $PSScriptRoot '..\driver\install.ps1')).Path
+    $driverRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\driver')).Path
+    $inf = Get-ChildItem $driverRoot -Recurse -Filter 'Ac3ForgeNullSink.inf' |
+        Where-Object { $_.FullName -match 'Release\\package\\' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $inf) { throw "no built package (Ac3ForgeNullSink.inf under a Release\package) in $driverRoot; build the driver first" }
+    $packageDir = $inf.Directory.FullName
     & $vmrun @guest copyFileFromHostToGuest $vmx $installScript 'C:\Users\atmos\install.ps1' | Out-Null
+    & $vmrun @guest createDirectoryInGuest $vmx 'C:\Users\atmos\package' 2>$null | Out-Null
+    foreach ($f in Get-ChildItem $packageDir -File) {
+        & $vmrun @guest copyFileFromHostToGuest $vmx $f.FullName "C:\Users\atmos\package\$($f.Name)" | Out-Null
+    }
+    $cert = Get-ChildItem (Split-Path $packageDir) -Filter '*.cer' -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $cert) { $cert = Get-ChildItem $driverRoot -Recurse -Filter 'package.cer' | Select-Object -First 1 }
+    if ($cert) { & $vmrun @guest copyFileFromHostToGuest $vmx $cert.FullName "C:\Users\atmos\$($cert.Name)" | Out-Null }
     Invoke-Guest @'
 $drive = (Get-Volume | Where-Object FileSystemLabel -eq 'ATMOSDRV' | Select-Object -First 1).DriveLetter
 if (-not $drive) { throw 'ATMOSDRV CD not found in the guest' }
 "testsigning: " + ((bcdedit /enum '{current}' | Select-String testsigning) -join '')
 "hvci: " + (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' -ErrorAction SilentlyContinue).Enabled
-& C:\Users\atmos\install.ps1 -PackageDir "$($drive):\package" -Devcon "$($drive):\devcon.exe"
+"package: " + ((Get-Item C:\Users\atmos\package\Ac3ForgeNullSink.sys).LastWriteTime)
+& C:\Users\atmos\install.ps1 -PackageDir C:\Users\atmos\package -Devcon "$($drive):\devcon.exe"
 '@ 'install' | ForEach-Object { "  $_" }
     Start-Sleep -Seconds 15
     Wait-Tools
