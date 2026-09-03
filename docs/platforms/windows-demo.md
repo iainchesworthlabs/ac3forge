@@ -935,6 +935,13 @@ unit or the pill, through the same pick the drags use, against one invisible pla
 speaker that faces the camera, covers the unit and the pill with room to spare, widens
 while hovered so the full name stays inside it, and lets go a moment after the pointer
 leaves (a tight plate on each flickered at their edges and in the gap between them).
+The pills cost the drags: a press takes what the scene says is under the pointer, and
+with 2D items in the scene the nearest hit became a pill or a name, which comes back with
+no object at no distance, so a press on a card found nothing. A press now scans every hit
+for the nearest placed application's card, and a hover for the nearest bubble; unplaced
+applications' cards, which sit at the origin invisible but were still hit, are not
+pickable. A capture run (`--shot`) logs what a press at each placed card would find, which
+is how this was seen.
 
 Two first-time-only defects from the same sitting, both about the views' first showing.
 A marker in the plan views set off from the corner and glided to its place the first time

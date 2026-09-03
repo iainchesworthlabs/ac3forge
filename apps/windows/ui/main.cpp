@@ -118,6 +118,11 @@ int main(int argc, char** argv) {
         int code = 1;
         if (window != nullptr) {
             qInfo("--shot: page %s", qPrintable(window->property("page").toString()));
+            if (auto* loader = window->findChild<QObject*>(QStringLiteral("room3dLoader"))) {
+                if (auto* room = loader->property("item").value<QObject*>()) {
+                    QMetaObject::invokeMethod(room, "debugPick");
+                }
+            }
             code = window->grabWindow().save(shot_path) ? 0 : 2;
         }
         QCoreApplication::exit(code);

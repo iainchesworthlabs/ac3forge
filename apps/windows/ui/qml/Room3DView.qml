@@ -27,6 +27,23 @@ Item {
     readonly property real roomDepth: 400
     readonly property real roomHeight: 260
     readonly property real spread: 0.15
+    // For a capture run: what a press at each placed application's centre
+    // would hit, nearest first.
+    function debugPick() {
+        for (let i = 0; i < apps.length; ++i) {
+            const a = apps[i];
+            if (a.slot < 0) continue;
+            const p = view.mapFrom3DScene(Qt.vector3d(sceneX(a.x), sceneY(a.z), sceneZ(a.y)));
+            const hits = view.pickAll(p.x, p.y);
+            let line = a.name + " at (" + p.x.toFixed(0) + ", " + p.y.toFixed(0) + "):";
+            for (let h = 0; h < hits.length; ++h) {
+                const o = hits[h].objectHit;
+                line += " [" + (o ? (o.appId !== undefined ? "app " + o.appId : (o.speaker !== undefined ? "speaker " + o.speaker : o.toString())) : "none") + " d=" + hits[h].distance.toFixed(0) + "]";
+            }
+            const u = mouse.under(p.x, p.y);
+            console.log("debugPick: " + line + " => app " + (u.app ? u.app.name : "none") + ", speaker " + (u.speaker || "none"));
+        }
+    }
     function sceneX(x) { return (x - 0.5) * roomWidth; }
     function sceneZ(y) { return (y - 0.5) * roomDepth; }
     function sceneY(z) { return z * roomHeight / 2; }
@@ -379,7 +396,7 @@ Item {
                                 Model {
                                     source: "#Rectangle"
                                     scale: Qt.vector3d(0.42, 0.42, 1)
-                                    pickable: true
+                                    pickable: appNode.placed
                                     castsShadows: true
                                     property int appId: appNode.app.app
                                     materials: PrincipledMaterial {
@@ -530,13 +547,35 @@ Item {
                 for (let i = 0; i < root.apps.length; ++i) if (root.apps[i].app === id) return root.apps[i];
                 return null;
             }
+            // What is under (px, py): the nearest placed application's card,
+            // and the nearest speaker bubble. Every hit is scanned rather
+            // than the single nearest taken: the 2D items in the scene (the
+            // pills, the names) come back as hits with no object at no
+            // distance, and one of those as "the" hit made a press find
+            // nothing. Unplaced applications' cards sit at the origin,
+            // invisible but still hit, so a card counts only when placed.
+            function under(px, py) {
+                const hits = view.pickAll(px, py);
+                let app = null;
+                let speaker = "";
+                for (let h = 0; h < hits.length; ++h) {
+                    const o = hits[h].objectHit;
+                    if (!o) continue;
+                    if (app === null && o.appId !== undefined) {
+                        const a = appById(o.appId);
+                        if (a && a.slot >= 0) app = a;
+                    } else if (speaker === "" && o.speaker !== undefined) {
+                        speaker = o.speaker;
+                    }
+                }
+                return { app: app, speaker: speaker };
+            }
 
             onPressed: function(event) {
                 lastX = event.x; lastY = event.y;
                 dragApp = null;
-                const hit = view.pick(event.x, event.y);
-                if (hit.objectHit && hit.objectHit.appId !== undefined) {
-                    const app = appById(hit.objectHit.appId);
+                const app = under(event.x, event.y).app;
+                {
                     if (app && !app.fullscreen) {
                         dragApp = app;
                         // Height: Shift with the left button, or the right button.
@@ -556,10 +595,12 @@ Item {
             onPositionChanged: function(event) {
                 if (!(event.buttons & (Qt.LeftButton | Qt.RightButton))) {
                     // Hover: name the speaker under the pointer in full.
-                    const hit = view.pick(event.x, event.y);
-                    if (hit.objectHit && hit.objectHit.speaker !== undefined) {
+                    // A card under the pointer wins: no speaker name over it.
+                    const u = under(event.x, event.y);
+                    const speaker = u.app ? "" : u.speaker;
+                    if (speaker !== "") {
                         hoverClear.stop();
-                        root.hoverSpeaker = hit.objectHit.speaker;
+                        root.hoverSpeaker = speaker;
                     } else if (root.hoverSpeaker !== "" && !hoverClear.running) {
                         hoverClear.start();
                     }
