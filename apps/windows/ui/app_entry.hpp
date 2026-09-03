@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QObject>
+
+#include <algorithm>
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
@@ -75,7 +77,12 @@ public:
         if (structural) {
             emit changed();
         }
-        const double level = static_cast<double>(s.level_dbfs);
+        // Meter ballistics: a rise is shown at once, a fall at a steady
+        // rate, so the bar moves continuously between polls rather than
+        // stepping to each new reading.
+        const double reading = static_cast<double>(s.level_dbfs);
+        const double fall_per_poll = 2.4;  // dB per poll, 40 dB/s at 60 ms
+        const double level = reading >= level_ ? reading : std::max(reading, level_ - fall_per_poll);
         if (level != level_) {
             level_ = level;
             emit levelChanged();

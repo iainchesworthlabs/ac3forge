@@ -75,7 +75,9 @@ Rectangle {
                     // -60 dBFS .. 0 dBFS across the bar.
                     width: parent.width * Math.max(0, Math.min(1, (root.app.level + 60) / 60))
                     color: Theme.accent700
-                    Behavior on width { NumberAnimation { duration: 80 } }
+                    // Linear over one poll, so successive readings join into
+                    // one motion rather than easing to a stop at each.
+                    Behavior on width { NumberAnimation { duration: 60; easing.type: Easing.Linear } }
                 }
             }
         }

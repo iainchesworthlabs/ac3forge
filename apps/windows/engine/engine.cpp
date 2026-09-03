@@ -495,7 +495,9 @@ struct Engine::Impl {
                 snapshot.last_frame_ms = ms;
                 snapshot.encode_ms = encode_ms;
             }
-            if ((frames_encoded % 8) == 0) {
+            // Every other frame: the meters are read from this, and eight
+            // frames (a quarter of a second) stepped visibly.
+            if ((frames_encoded % 2) == 0) {
                 tap_backlog_ms = 1000.0 * static_cast<double>(taps.backlog_frames()) / 48000.0;
                 publish_status();
             }

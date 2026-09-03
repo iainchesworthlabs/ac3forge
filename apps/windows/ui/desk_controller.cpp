@@ -24,7 +24,7 @@ namespace {
 
 using ac3::windemo::OutputMode;
 
-constexpr int kPollMs = 120;
+constexpr int kPollMs = 60;  // the meters read at this rate; 120 stepped visibly
 
 QString mode_key(OutputMode mode) {
     switch (mode) {
