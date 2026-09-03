@@ -22,6 +22,7 @@ guest that never leaves this machine.
 | `New-NoPromptIso.ps1 -WindowsIso <iso>` | Re-packs Microsoft's ISO as `<stem>-noprompt.iso` beside it, booting through the media's own `efisys_noprompt.bin` instead of `efisys.bin`, because the stock EFI boot stops at "Press any key to boot from CD or DVD" and nobody is there to press it. `New-DriverTestVm.ps1` calls it and reuses the result. A few minutes the first time. |
 | `Wait-DriverTestVm.ps1` | Polls until Tools is running and the first-logon marker exists, then takes the `clean-install` snapshot. |
 | `Test-Driver.ps1` | Reverts to `clean-install`, runs `install.ps1` from the driver CD inside the guest, and reports: test signing and HVCI state, MEDIA devices and audio endpoints, whether the driver service is loaded, any bugchecks and minidumps, and the tail of `setupapi.dev.log`. `-NoRevert` skips the revert, `-ReportOnly` just reports. |
+| `Verify-Driver.ps1` | Reverts to `clean-install`, arms Driver Verifier (the standard checks plus the KMDF flags) and the KMDF framework verifier for the driver, reboots, installs, exercises it (default role, playback, device restarts idle and under a stream, three concurrent streams, surprise removal under a stream, reinstall from scratch) and reports the verifier state, the service and device, and any bugcheck or minidump. `-Kasan` does the same with the KASAN-instrumented package on the KASAN kernel; `-Ddi`, `-NoVerifier`, `-NoExercise` and `-ReportOnly` are described in `..\driver\README.md`. |
 | `Build-Iso.ps1` | Writes an ISO from a directory with Windows' own IMAPI2 (ISO 9660 + Joliet, or UDF with an EFI boot image); the other scripts use it. |
 | `guest_console.py` | Screenshots (`shot out.png`), key presses (`key space`, `combo Super_L+r`) and typing (`type text`) on the guest console over Workstation's VNC server, for the stretch before Tools is running when `vmrun` cannot see the guest. Needs Python with Pillow. The VNC server maps keys by the US layout, so the guest is installed with a US keyboard and the helper adds Shift for capitals and symbols itself. |
 | `guest/Set-DefaultToNullSink.ps1` | Runs inside the guest, on the driver CD: makes "Speakers (Desktop Atmos)" the default output the way the demo does, so the endpoint is exercised as a default without the demo installed there. |
@@ -46,11 +47,19 @@ and run `Test-Driver.ps1` again, which reverts to the clean snapshot first. A ch
 `install.ps1` alone needs neither: the test copies the working tree's copy into the guest and
 runs that against the package on the CD.
 
-Verified 2026-09-03 on Windows 11 Pro 25H2 (build 26100) in the guest: the package stages,
-the root-enumerated "Desktop Atmos" device and its "Speakers (Desktop Atmos)" endpoint
-appear, the service runs, the endpoint takes the default role through the same
-policy-config call the demo makes, and rendering into it (WAV playback, speech synthesis)
-leaves the guest up with no bugcheck.
+Verified 2026-09-03 on Windows 11 Pro 25H2 (build 26200, installed from
+`Win11_25H2_English_x64_v2.iso`) in the guest: the package stages, the root-enumerated
+"Desktop Atmos" device and its "Speakers (Desktop Atmos)" endpoint appear, the service runs,
+the endpoint takes the default role through the same policy-config call the demo makes, and
+rendering into it (WAV playback, speech synthesis) leaves the guest up with no bugcheck.
+`Verify-Driver.ps1` then ran the same install under Driver Verifier's standard checks plus
+the KMDF flags and the KMDF framework verifier: special pool accounted for 111 of 111
+allocations, the loads and unloads balance, and the widened exercise (three streams at once,
+a surprise removal under a live stream, a reinstall from scratch) ran with no bugcheck and no
+minidump. `-Kasan` ran the KASAN-instrumented package on the KASAN kernel clean, and a
+throwaway build carrying a deliberate one-past-the-end pool read proved the sanitizer live:
+under Driver Verifier it bugchecks `0x50`, special pool's guard page catching it first, and
+with `-NoVerifier`, KASAN alone, `0x1F2` `KASAN_ILLEGAL_ACCESS` on the byte past the block.
 
 Things learned the hard way, all encoded in the scripts: a hand-written VMX needs the PCIe
 root-port bridges; do not set `bios.bootOrder` (it overrides the NVRAM entry Setup registers

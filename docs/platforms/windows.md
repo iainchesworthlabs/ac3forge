@@ -126,6 +126,17 @@ both Windows-only in the backend tree:
     a hosted CI runner beyond the device-free contract in `tests/audio/test_audio_backend.cpp`,
     which does start and stop a real watcher wherever the backend exists.
 
+`MonitorSink::start` also takes a `low_latency` flag, added for the demo's one-block mode: it
+asks `IAudioClient3::GetSharedModeEnginePeriod` for the engine's smallest shared-mode period
+for the stream's format and opens with `InitializeSharedAudioStream` at that, falling back to
+the default period where the interface is missing or the engine refuses the format at that
+size; the other backends take the flag and ignore it. On the workstation's Realtek endpoint
+it changes nothing, and the spike's `period_probe` (`apps/windows/spikes/s5_latency/`) says
+why: the engine answers 480 frames, 10 ms, for the default, fundamental, minimum and maximum
+period alike, for the demo's float format and for the mix format both. `IAudioClient`'s
+"minimum 3 ms" device period is the exclusive-mode floor, not a shared-mode offer. A device
+that offers 2.7 ms will get it; this one does not.
+
 ### Passthrough capture
 
 The reverse direction — a WASAPI endpoint *delivering* IEC 61937 rather than PCM, which is what

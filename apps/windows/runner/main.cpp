@@ -6,15 +6,25 @@
 //   ac3windemo [--null-sink SUBSTR] [--key PATH] [--pin MODE] [--low-latency]
 //              [--bitrate KBPS] [--set-default SUBSTR]
 //
-//   list                       the applications and their slots
+//   --null-sink SUBSTR         the silent endpoint applications render into ("Desktop Atmos")
+//   --key PATH                 the signing key file; else the AC3FORGE_SIGNING_KEY* variables
+//   --pin MODE                 start pinned to a mode (the pin verb's list), not the policy's choice
+//   --low-latency              one-block frames, the PCM sink at the engine's smallest period
+//   --bitrate KBPS             a fixed bitrate instead of 448 kb/s (1536 in low latency)
+//   --set-default SUBSTR       move the system default output there first, restore it on quit
+//
+//   list                       the applications and their slots (<app> below is the id it prints)
 //   pos <app> <x> <y> <z>      position an application (x,y in [0,1], z in [-1,1])
 //   bed <app>                  send it back to the bed
 //   pin <mode>|off             atmos ddplus dd pcm headphones stereo
 //   key <path>|none            load or clear the signing key
+//   bypass on|off              PCM-side modes take the engine's own slots and bed, not a decode
+//   split <app> on|off         a stereo application as a pair of objects, or one mono fold
+//   size <app> 0..1            the object's extent, a point to the whole room
 //   default <substr>|restore   move the system default output, or put it back
 //   probe                      re-run the output probe
 //   status                     one line of engine state
-//   quit
+//   quit | exit
 
 #include <atomic>
 #include <chrono>

@@ -1,9 +1,10 @@
 # Phase 0 spikes: Windows Desktop Atmos Demo
 
 Throwaway experiments for [docs/platforms/windows-demo.md](../../../docs/platforms/windows-demo.md),
-one question each. They are standalone (not part of the root CMake build, not linked to the
-library) and their answers are recorded here and on that page. Nothing in this directory is
-reused as code.
+one question each. They are standalone (not part of the root CMake build; the raw spikes use
+WASAPI directly, while `s1_library_tap` links `ac3::audio` and S4 links `ac3::forge` by
+pulling the repo root in) and their answers are recorded here and on that page. Nothing in
+this directory is reused as code.
 
 ```bash
 cmake -S apps/windows/spikes -B D:/aa-wt-builds/spikes -G Ninja \
@@ -99,3 +100,62 @@ for 15 objects does not fit a 256-sample frame at that rate. The floor lies some
   needs on the order of 1.5 Mb/s to carry 15 objects' metadata every 5.3 ms. Over HDMI that is
   fine (E-AC-3 bursts carry up to 6.144 Mb/s); it is the receiver's decode latency and the
   capture buffer, not the encoder, that will dominate what the user hears.
+
+## S5: end-to-end latency (`s5_latency`, `period_probe`, `Measure-Latency.ps1`)
+
+Run under Phase 5 rather than Phase 0, and kept here with the others. `s5_latency
+<runner-pid> [null-sink-substring] [seconds]` is an "application": it renders 5 ms tone
+bursts on a pseudo-random schedule (180 to 320 ms apart, so a burst cannot pair with the
+wrong one) into the null sink from its own process, while the demo's runner (`ac3windemo`,
+the given pid) taps it, encodes, and plays its output on a real endpoint. A process-loopback
+tap on the runner captures what it rendered, and both sides sit on the QPC clock
+(`IAudioClock` on the render side, the capture packet position on the tap side), so each
+burst's delay is the difference; the `RESULT` line carries the mean, median, spread and
+count. `self` in place of the pid taps this process itself and measures the
+render-to-loopback path alone. Neither the endpoint's DAC delay nor a receiver's decode is
+included.
+
+`Measure-Latency.ps1 -Runner <ac3windemo.exe> -Spike <s5_latency.exe> [-NullSink FxSound]
+[-Seconds 20] [-Pin stereo]` runs the four configurations: normal and low-latency frames,
+each with the codec in the loop and bypassed (`bypass on` on the runner's stdin), and prints
+one row per configuration with the runner's last status line beside the result.
+
+`period_probe [device-name-substring] [channels]` asks an endpoint what shared-mode periods
+the audio engine offers for the demo's float format (`IAudioClient3::GetSharedModeEnginePeriod`)
+and whether it will open a stream at the smallest, which is what `MonitorSink`'s low-latency
+option depends on.
+
+### Results, 2026-09-03
+
+Workstation, FxSound's idle endpoint as the null sink, the runner pinned to stereo on the
+Realtek endpoint, 20 s and 77 bursts per run. The measuring tap alone (`self`) is 15 ms on
+the FxSound endpoint and 19 ms on Realtek, jitter-free.
+
+| Configuration | Tap to tap |
+|---|---|
+| Normal frames, codec in the loop | about 127 ms |
+| Normal frames, bypass | about 125 ms |
+| Low latency, codec in the loop | 110 to 114 ms |
+| Low latency, bypass | 102 to 112 ms |
+
+Repeated runs of one configuration spread by about 15 ms, which is the phase of the sink's
+22 ms buffer and the tap's packets against the frame clock; the plan page's table records
+one run of each (127, 128, 110 and 110 ms) with the breakdown of the terms. The first runs,
+before the engine flushed its taps on an output switch and bounded the sink's queue, put
+both modes at about 125 ms: what the taps gathered while a sink opened sat in the sink's
+one-second queue for the whole session.
+
+`period_probe` on the Realtek endpoint: `GetSharedModeEnginePeriod` answers 480 frames
+(10 ms, with a 22 ms buffer) for the default, fundamental, minimum and maximum period alike,
+for the demo's float format and for the mix format both, so the low-latency period has no
+travel there. `IAudioClient::GetDevicePeriod`'s "minimum 3 ms" is the exclusive-mode floor,
+not a shared-mode offer.
+
+### What this means for the plan
+
+- The encoder is not on the path (1 to 2 ms of a frame); two terms are structural, the
+  process-loopback delivery (about 15 ms, the OS's) and the frame itself.
+- The render period would move if the endpoint offered a smaller shared-mode one, and this
+  one does not; exclusive-mode PCM output would, and that is a new sink, not a flag.
+- The AVR path leaves through the exclusive-mode bitstream sink with none of the PCM-side
+  terms; its unknown is the receiver's decode, which waits on S2.

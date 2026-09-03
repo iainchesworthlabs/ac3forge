@@ -18,7 +18,7 @@ param(
     [int]$MemoryMB = 8192,
     [int]$Cpus = 4,
     [int]$DiskGB = 64,
-    [string]$PackageDir = (Join-Path $PSScriptRoot '..\driver\Package\x64\Release\package'),
+    [string]$PackageDir = (Join-Path $PSScriptRoot '..\driver\x64\Release\package'),
     [string]$Devcon = 'F:\Program Files\Windows Kits\10\Tools\10.0.28000.0\x64\devcon.exe',
     [string]$Workstation = 'C:\Program Files\VMware\VMware Workstation',
     # Workstation's built-in VNC server on the guest console (loopback use

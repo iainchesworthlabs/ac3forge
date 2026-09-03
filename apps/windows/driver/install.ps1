@@ -4,7 +4,7 @@
 # default Release x64 one, and -Devcon at a devcon.exe if it is not on PATH.
 [CmdletBinding()]
 param(
-    [string]$PackageDir = (Join-Path $PSScriptRoot 'Package\x64\Release\package'),
+    [string]$PackageDir = (Join-Path $PSScriptRoot 'x64\Release\package'),
     [string]$Devcon = 'devcon.exe'
 )
 $ErrorActionPreference = 'Stop'

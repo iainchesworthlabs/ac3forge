@@ -1,12 +1,16 @@
 # Windows (Desktop Atmos Demo)
 
-!!! warning "Status: plan, nothing built yet"
-    This page is the design and phase plan for a Windows demo app that does not exist yet
-    (roadmap UX11). It is written in the shape of [the Android page](android.md) so that, as
-    phases land, each section is rewritten from "will" to "does" and the
-    [verification section](#what-has-and-has-not-been-verified) fills in. Until then, every
-    claim below about how Windows behaves is either a documented API contract or an open
-    question that [Phase 0](#phase-0-spikes) exists to answer, and the text says which.
+!!! note "Status: built, Phase 6 open"
+    Phases 1 to 5 of the plan below landed on 2026-09-03 (roadmap UX11): the library taps and
+    watcher, the engine and its console runner, the `ac3desk` window, the null-sink driver
+    verified in a throwaway guest, and the fast follows. Phase 6 is open: of its five items,
+    this page's rewrite from plan to record, the roadmap record and the CHANGELOG entry are
+    done by the documentation pass of 2026-09-03, and CI on the self-hosted Windows runners
+    and attestation signing remain. The page keeps the shape of
+    [the Android page](android.md): the design sections say what the app does, each phase
+    carries its progress record, and the
+    [verification section](#what-has-and-has-not-been-verified) says what has been checked on
+    real hardware and what has not.
 
 The Windows demo is a different animal from the Shield app. The Shield app plays one authored
 stream and lets a controller move one object. The Windows app, **Desktop Atmos Demo**
@@ -210,7 +214,8 @@ default has been moved to the null sink and the session list confirms nothing is
 **The headphone and PCM paths decode what was encoded.** It would be less work and lower latency
 to hand the taps' PCM and positions straight to the spatial sink, but then those modes would
 never exercise the codec, and the demo would be making a claim about the encoder it cannot back.
-A "bypass codec" switch in settings exists precisely so the difference can be demonstrated.
+A codec-bypass switch on the Output page exists precisely so the difference can be
+demonstrated.
 
 ### Low-latency mode
 
@@ -342,9 +347,21 @@ the GUI rather than copying them. Screens:
   right-click reset to return it. The foreground full-screen application shows with a lock.
 - **Output**: what mode is active, which endpoint, why (the probe result in one line each), and
   a pin. The default-device switch lives here with its confirmation.
-- **Settings**: low-latency mode, bypass codec, split per application, signing-key path,
-  bitrate, driver install status with the install and remove buttons that shell out to
-  `pnputil`.
+- **Settings**: six blocks, whose keys are `DeskController`'s in
+  `apps/windows/ui/desk_controller.cpp`. Latency (normal or low-latency frames,
+  `codec/lowLatency`). Codec (the bitrate, `codec/bitrate`, and the split-stereo default for
+  applications the engine meets from now on, `codec/splitStereo`). Signing key (the key
+  file's path, `signing/keyPath`; the `AC3FORGE_SIGNING_KEY_FILE` and `AC3FORGE_SIGNING_KEY`
+  variables are honoured when none is chosen). Virtual output device (what the kernel reports
+  about test signing and memory integrity, the driver folder, `driver/dir`, with the install,
+  remove and re-check buttons that run `install.ps1` and `remove.ps1` elevated, and the
+  silent device's name, `output/nullSinkName`). Appearance (theme, `appearance/theme`;
+  palette, `appearance/palette`; the room view, `appearance/roomView`; and the language
+  chooser, which is the GUI's `LanguageManager` on this app's translations, `language/code`,
+  with `AC3GUI_LOCALE` as the test override). Behaviour (move the default output to the
+  silent device on launch, `behaviour/moveDefaultOnLaunch`, and keep running in the tray when
+  the window is closed, `behaviour/keepRunningWhenClosed`). The codec-bypass switch is on the
+  Output page (`bypassCheck`, `codec/bypass`), beside the mode pin, not here.
 - **Tray**: minimise to tray, tray menu with output mode, pin, and quit. Closing the window
   keeps the engine running; quitting restores the previous default device.
 
@@ -361,6 +378,7 @@ apps/windows/
     bed_mixer.{hpp,cpp}           stereo/5.1/7.1 taps -> mono object or the 5 bed slots      [landed]
     placement.{hpp,cpp}           UI targets -> per-frame ObjectPlacement, smoothed          [landed]
     output_policy.{hpp,cpp}       probe facts + pin -> mode, endpoint, reason (the S1 rule)  [landed]
+    audio_devices.hpp             the AudioDevices seam: endpoints, sinks and taps as interfaces [landed]
     tap_pool.{hpp,cpp}            one Capture::start_process_loopback per application  [landed]
     output_stage.{hpp,cpp}        probe, policy, sink ownership, the five routes        [landed]
     signing_hook.{hpp,cpp}        runtime key resolution, the Shield rule               [landed]
@@ -369,19 +387,26 @@ apps/windows/
       session_monitor             IAudioSessionManager2 -> applications by process tree [landed]
       default_device              read/move/restore the default output (IPolicyConfig) [landed]
       foreground                  SHQueryUserNotificationState + foreground window      [landed]
+      wasapi_devices.cpp          the production AudioDevices over the library's WASAPI classes [landed]
+      driver_tools.{hpp,cpp}      code-integrity state, the driver folder, elevated install/remove [landed]
   runner/main.cpp                 ac3windemo, the console runner (Phase 2's exit)       [landed]
   ui/                             ac3desk: main.cpp, desk_controller, qml/ (module Ac3ForgeDesk) [landed]
     qml/shared/                   generated at configure time from apps/gui/qml, git-ignored
+    tests/                        ac3desk_qmltests: five Qt Quick Test suites, ctest label desk [landed]
   translations/                   ac3desk_{fr,de,es,ar,he,yi}.ts, the GUI's language set    [landed]
   spikes/                         Phase 0 programs, kept as documented experiments
   driver/                         the null-sink driver, separately licensed (see below)
-tests/windemo/                    the pure modules' tests, on every CI leg, ungated
+  driver-vm/                      the throwaway VMware guest: create, test and verify scripts
+tests/windemo/                    Catch2, on every CI leg, ungated: the four pure modules, and the
+                                  tap pool and output stage over the fakes (fake_devices.hpp,
+                                  wasapi_devices_stub.cpp)
 ```
 
-The pure modules compile into `ac3tests` on every platform, the way `apps/common` does, so
-the rules the UI hangs on (the slot budget, what a full-screen application does, which output
-wins when) hold on a Linux CI leg that could never run the demo. The `platform/windows/`
-half builds only under the option.
+The pure modules, and the tap pool and output stage over the `AudioDevices` fakes, compile
+into `ac3tests` on every platform, the way `apps/common` does, so the rules the UI hangs on
+(the slot budget, what a full-screen application does, which output wins when) hold on a
+Linux CI leg that could never run the demo. The `platform/windows/` half builds only under
+the option.
 
 The library gains, in `src/audio`:
 
@@ -440,6 +465,7 @@ leaving its answer in this page. None of it is reused as code.
 | **S2 bitstream** | Does `PassthroughSink` in E-AC-3 and AC-3 exclusive mode lock on a real Atmos receiver from this workstation? This is DR9's Windows row. | the receiver's front panel reads DD+ Atmos, then DD, at zero underruns for a minute |
 | **S3 headphones** | With Windows Sonic enabled on the Realtek endpoint, does encode then decode then `SpatialObjectSink` produce audible height and rear movement by ear? | yes or no, and the measured round-trip latency |
 | **S4 throughput** | Does a 15-object `AtmosEncoder` plus 16 taps plus the bed mix hold 32 ms cadence on this machine with margin? | **Done 2026-09-03**, results in `apps/windows/spikes/README.md`: p99 1.8 ms of the 32 ms budget in normal mode; the 1-block frame p99 0.7 ms of 5.3 ms, but needs at least about 1.5 Mb/s to carry 15 objects' metadata (640 kb/s is refused) |
+| **S5 latency** | End to end, application to output, how far behind is each mode, and how much of it is the codec? Run under Phase 5, kept here with the others (`s5_latency.cpp`, `period_probe.cpp`, `Measure-Latency.ps1`) | **Done 2026-09-03**, results in `apps/windows/spikes/README.md` and under [Low-latency mode](#low-latency-mode): normal frames about 127 ms and low-latency about 110 ms tap to tap, of which 19 ms is the measuring tap itself; `period_probe` found the Realtek endpoint offers only a 10 ms shared-mode period, so the low-latency render period has no travel there |
 
 Prerequisites: a long HDMI cable to the receiver (S2, the developer's to-do); Windows Sonic
 enabled on the headphone endpoint (S3). S3 and S4 do not wait for S2.
@@ -463,9 +489,10 @@ on `run_live`. Everything that does not touch Windows is unit-tested on CTest; e
 does is behind an interface the tests can fake. Exit: a console runner that takes positions on
 stdin, streams Atmos to the receiver, and switches to headphones when HDMI is pulled.
 
-**Progress, 2026-09-03:** the pure half landed first, with its tests (36 cases, every
-platform): the slot plan with the full-screen rule and a waiting list for the eleventh
-application, the bed mixer and mono fold with the channel maps above, placement smoothing, and
+**Progress, 2026-09-03:** the pure half landed first, with its tests (36 cases at the time,
+every platform; the same four modules hold 42 today): the slot plan with the full-screen rule
+and a waiting list for the eleventh application, the bed mixer and mono fold with the channel
+maps above, placement smoothing, and
 the output policy. The policy holds the S1 rule and one more the tests forced: shared-mode
 output on the endpoint applications render to (hearing the direct mix alongside ours) is
 chosen only when no other endpoint can carry anything at all. The Windows half and the frame
@@ -489,6 +516,17 @@ exercised: any bitstream mode (no receiver, and this workstation's HDMI endpoint
 neither format), the spatial path (Windows Sonic is off here), and a real device-arrival
 switch. Fades on a mode switch are not written; the switch is a stop and a start.
 
+The runner's surface as it stands on 2026-09-03 (`apps/windows/runner/main.cpp`). Flags:
+`--null-sink SUBSTR` names the silent endpoint (default "Desktop Atmos"); `--key PATH` loads
+a signing key file, otherwise the `AC3FORGE_SIGNING_KEY_FILE` and `AC3FORGE_SIGNING_KEY`
+variables are read; `--pin MODE` starts pinned to one of `atmos`, `ddplus`, `dd`, `pcm`,
+`headphones` or `stereo`; `--low-latency` selects one-block frames; `--bitrate KBPS` fixes
+the bitrate (otherwise 448 kb/s, or 1536 in low latency); `--set-default SUBSTR` moves the
+system default output to that endpoint before starting and restores it on quit. The verbs
+on stdin, `<app>` being the id that `list` prints: `list`, `status`, `pos <app> x y z`,
+`bed <app>`, `pin <mode>|off`, `key <path>|none`, `bypass on|off`, `split <app> on|off`,
+`size <app> 0..1`, `probe`, `default <substr>|restore`, and `quit` or `exit`.
+
 ### Phase 3: UI
 
 The Qt Quick shell, the room in plan and elevation, the bed tray, the output screen, settings,
@@ -496,8 +534,11 @@ and tray residency. Exit: the user story above, minus the driver, works end to e
 
 **Progress, 2026-09-03:** built to the design canvas after a human-factors pass on it.
 `ac3desk` (`apps/windows/ui/`, QML module `Ac3ForgeDesk`) has the three pages, the tray icon
-with its output submenu and default-output switch, the status strip, and the `--shot`
-capture aid borrowed from the GUI's smoke modes. The GUI's Theme, Card, RailBlock and
+with its output submenu and default-output switch, the status strip, and the capture aids
+borrowed from the GUI's smoke modes (`apps/windows/ui/main.cpp`): `--shot <png>` grabs the
+window once it has settled and quits, `--page room|output|settings|room3d` picks the page it
+shows first, and `--place Name=x,y,z[,split]` positions a listed application, as a pair with
+the suffix, before the capture. The GUI's Theme, Card, RailBlock and
 SegmentedControl are not copied: the demo's CMake rewrites each one's module import at
 configure time into an ignored directory and registers the result, so an edit to
 `apps/gui/qml/Theme.qml` reaches both apps. `DeskController` is a QML singleton that polls the
@@ -525,7 +566,7 @@ installed on `D:`. Exit: "Desktop Atmos Speakers" appears in Sound settings, bec
 default from the app, and the direct mix is silent.
 
 **Progress, 2026-09-03:** built, and verified in the throwaway guest (Windows 11 Pro 25H2,
-build 26100): the package stages, the "Desktop Atmos" device and its "Speakers (Desktop
+build 26200): the package stages, the "Desktop Atmos" device and its "Speakers (Desktop
 Atmos)" endpoint appear, the service runs, the endpoint takes the default role through the
 same policy-config call the demo makes, WAV playback and speech synthesis render into it
 with no bugcheck, and `remove.ps1` takes the device and package out again. Not yet installed
@@ -565,7 +606,10 @@ The static tier (`apps/windows/driver/Analyze-Driver.ps1`) is Code Analysis with
 driver rule set, the successor to PREfast for Drivers; CodeQL with Microsoft's
 `windows-drivers` pack (the `mustfix` and `recommended` suites), which is what the kit now
 directs you to in place of the retired Static Driver Verifier; and `dvl.exe` for the Driver
-Verification Log the HLK Static Tools Logo test consumes. The Code Analysis run over the
+Verification Log the HLK Static Tools Logo test consumes. Its switches are `-BuildEnv` (the
+EWDK's `SetupBuildEnv.cmd`), `-CodeQL` (the CLI's path), `-RuleSet` (the Code Analysis rule
+set, `DriverRecommendedRules.ruleset` by default), `-Database` (where the CodeQL database is
+built), `-SkipCodeQL` and `-SkipDvl`. The Code Analysis run over the
 sample-derived source reported 157 defects, all now fixed: seventy uninitialised members
 given default initialisers, a loop over zero capture endpoints removed rather than suppressed,
 the template-parameter migration made best-effort instead of fatal to the endpoint, and the
@@ -590,8 +634,14 @@ dynamic tier (`apps/windows/driver-vm/Verify-Driver.ps1`) runs in the same throw
 Driver Verifier with the standard checks plus the KMDF flags and the KMDF framework verifier,
 armed for the driver, then the driver installed and exercised (default endpoint, playback,
 device restarts idle and under a live stream, reinstall) and any bugcheck read back;
-`-Kasan` runs it against a KASAN-instrumented package on a KASAN kernel. A violation
-bugchecks the guest, which is a guest reboot and a line in the report.
+`-Kasan` runs it against a KASAN-instrumented package on a KASAN kernel. Its other
+switches: `-Ddi` adds DDI compliance checking (off by default, below); `-NoVerifier` leaves
+Driver Verifier off and keeps the WDF verifier and, with `-Kasan`, the KASAN kernel, which
+the KASAN proof below needs; `-NoExercise` installs under the verifiers and reports without
+the exercise, to tell a start failure caused by the verifier from one caused by the exercise
+itself; `-ReportOnly` just reports; and `-VmDir`, `-Name` and `-Workstation` name the guest
+and the Workstation install. A violation bugchecks the guest, which is a guest reboot and a
+line in the report.
 
 The dynamic run is clean. With the verifiers armed the driver installs, the endpoint appears,
 it takes the default role and plays twelve system sounds and three spoken passages, survives
@@ -641,12 +691,12 @@ In this order: test remediation, the end-to-end latency figure, split per applic
 room, and per-application width and size. Each is its own PR. All five landed on 2026-09-03;
 what follows records each.
 
-**Test remediation first.** As of 2026-09-03 the demo's automated tests are 37 Catch2 cases
-over its four pure modules (slots, bed fold, placement smoothing, output policy). The engine
-loop, the output stage, the tap pool, the signing hook, the four Windows platform files, the
-controller and every QML file have no automated test, and no coverage figure exists: the
-repository's coverage gate is gcov on the Linux preset and the demo is Windows-only. Three
-steps, in this order:
+**Test remediation first.** When Phase 5 began on 2026-09-03 the demo's automated tests were
+37 Catch2 cases over its four pure modules (slots, bed fold, placement smoothing, output
+policy; those four hold 42 today, after split and size). The engine loop, the output stage,
+the tap pool, the signing hook, the four Windows platform files, the controller and every
+QML file had no automated test, and no coverage figure existed: the repository's coverage
+gate is gcov on the Linux preset and the demo is Windows-only. Three steps, in this order:
 
 1. *A Qt Quick Test target*, `ac3desk_qmltests`, built the way `ac3gui_qmltests` is: a second
    embedding of the `Ac3ForgeDesk` module, the real `DeskController` (no parallel fake API,
@@ -677,10 +727,12 @@ All three landed on 2026-09-03. `ac3desk_qmltests` runs five suites (shell, sett
 room, language) under the `desk` label; `AudioDevices` (`engine/audio_devices.hpp`) is the
 seam, with `wasapi_devices.cpp` behind it in the app and `tests/windemo/fake_devices.hpp` in
 the tests, and the tap pool and output stage now compile into `ac3tests` on every platform
-(52 `windemo` cases, 15 of them over the fakes: the five routes with real access units, the
-bypass fold, a mode switch mid-stream, a sink that refuses, a full sink's underrun, a
-starved tap). The first measurement, `coverage_windemo.ps1` over the
-`config-windows-llvm-coverage` build with both labels, 57 tests, all passing:
+(59 `windemo` cases today, 17 of them over the fakes in `test_tap_pool.cpp` and
+`test_output_stage.cpp`: the five routes with real access units, the bypass fold, a mode
+switch mid-stream, a sink that refuses, a full sink's underrun, a starved tap). The first
+measurement, `coverage_windemo.ps1` over the `config-windows-llvm-coverage` build with both
+labels, 57 ctest entries at the time (64 today: the 59 `windemo` cases and the five `desk`
+suites), all passing:
 
 | File | Lines | Branches | Note |
 |---|---|---|---|
@@ -773,10 +825,12 @@ application is the split above.
 
 ### Phase 6: docs, CI, release
 
-This page rewritten from plan to record; a roadmap record; a CHANGELOG entry; the demo built
-(driver excluded) on the self-hosted Windows runners; the WDK on the runners and the driver in
-CI only once it builds locally without surprises; the EV certificate and attestation step as
-the last item, after which the driver can join the package.
+Five items. The first three, this page rewritten from plan to record, the roadmap record and
+the CHANGELOG entry, are done by the documentation pass of 2026-09-03, the one the status
+note at the top describes. Two remain: the demo built (driver excluded) on the self-hosted
+Windows runners, with the WDK on the runners and the driver in CI only once it builds locally
+without surprises; and the EV certificate and attestation step as the last item, after which
+the driver can join the package.
 
 ## What it looks like
 
@@ -809,8 +863,10 @@ the bed, two idle applications alongside.
     32 ms frame in normal mode, 0.7 ms of the 5.3 ms one-block frame. The one-block frame
     refuses below roughly 1.5 Mb/s because the object metadata no longer fits. Same file.
 
-Everything else is still a plan. When S2 runs, the "Windows/WASAPI exclusive: unconfirmed"
-line in roadmap DR9 and the warning in [Windows](windows.md) are the first two things to change.
+What the phase records above claim was checked on the workstation or in the guest, as each
+record says; the bitstream modes, the spatial path and a real device-arrival switch wait on
+hardware. When S2 runs, the "Windows/WASAPI exclusive: unconfirmed" line in roadmap DR9 and
+the warning in [Windows](windows.md) are the first two things to change.
 
 ## Open questions this plan does not settle
 

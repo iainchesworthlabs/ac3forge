@@ -52,8 +52,9 @@ msbuild <repo>\apps\windows\driver\Ac3ForgeNullSink.sln /p:Configuration=Release
 ```
 
 The `package` project runs `inf2cat` and test-signs the package with a WDK test certificate.
-Output: `Package\x64\Release\package\` holding the `.sys`, `.inf` and `.cat`, with the test
-certificate beside it as `Package\x64\Release\package.cer`. The build was confirmed on the
+Output, under this directory: `x64\Release\package\` holding the `.sys`, `.inf` and `.cat`,
+with the test certificate beside it as `x64\Release\package.cer` (the KASAN build below goes
+to `x64\Release-kasan\`). The build was confirmed on the
 EWDK for Windows 11 26H1 (kit 10.0.28000, VS 2026 build tools): `inf2cat`'s signability test
 passes and `infverif /w` reports the INF valid.
 
@@ -82,6 +83,10 @@ throwaway guest so a bugcheck is a guest reboot.
 3. **The Driver Verification Log** (`dvl.exe`, the kit's `dvl` MSBuild target), which bundles
    the results into `Ac3ForgeNullSink.DVL.XML`, the artefact the HLK Static Tools Logo test
    consumes for submission.
+
+Its switches: `-BuildEnv` (the EWDK's `SetupBuildEnv.cmd`), `-CodeQL` (the CLI, when it is
+not on `PATH`), `-RuleSet` (`DriverRecommendedRules.ruleset` by default), `-Database` (where
+the CodeQL database is built), `-SkipCodeQL` and `-SkipDvl`.
 
 **KASAN.** The instrumented package is the same solution built with `/p:EnableKasan=true`,
 which the kit turns into `/fsanitize=kernel-address`; the result imports the sanitizer's
@@ -112,11 +117,21 @@ Driver Verifier for this driver with the standard checks plus the KMDF verificat
 turns the KMDF framework verifier on (handle tracking and verbose framework logging, what
 `wdfverifier.exe` sets), reboots, installs, then exercises the driver: makes it the default
 endpoint, renders system sounds and speech through it, restarts the device repeatedly while
-idle and once under a live stream, and reinstalls on top. It then reports the verifier state,
-the service and device, and any bugcheck or minidump. `-Kasan` runs the same against a
+idle and once under a live stream, opens three streams at once, surprise-removes the device
+under a live stream, and reinstalls from scratch. It then reports the verifier state, the
+service and device, and any bugcheck or minidump. `-Kasan` runs the same against a
 KASAN-instrumented package on the guest's KASAN-enabled kernel, which catches out-of-bounds
-and use-after-free in pool the other checks miss. Driver Verifier bugchecks on a violation,
-which the report reads back from the guest rather than taking the workstation down.
+and use-after-free in pool the other checks miss. `-Ddi` adds Driver Verifier's DDI
+compliance checking, off by default because it targets pure WDF drivers and fails a PortCls
+miniport's device start (`CM_PROB_FAILED_START`, no bugcheck; this driver is WDM/PortCls and
+uses KMDF only for its entry), while the memory, IRQL, pool, I/O, DMA and security checks
+run without it. `-NoVerifier` leaves Driver Verifier off and keeps the WDF verifier and, with
+`-Kasan`, the KASAN kernel, which a KASAN proof needs because special pool catches an overrun
+on its guard page before the sanitizer sees it; `-NoExercise` installs under the verifiers
+and reports without the exercise; `-ReportOnly` just reports; `-VmDir`, `-Name` and
+`-Workstation` name the guest and the Workstation install. Driver Verifier bugchecks on a
+violation, which the report reads back from the guest rather than taking the workstation
+down.
 
 ## Installing (test-signed, your own machine only)
 
