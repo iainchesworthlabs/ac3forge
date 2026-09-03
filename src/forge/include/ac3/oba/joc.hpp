@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <span>
@@ -375,6 +376,14 @@ struct ReconstructionState {
         // both it and bed_real/bed_imag are contiguous in the subband index
         // the accumulation runs over.
         std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> mix{};
+        // Short syncframes only (see reconstruct_qmf_short in joc.cpp): the
+        // per-timeslot mixing coefficients scheduled but not yet emitted,
+        // oldest first, each entry objects * channels * kQmfSubbands wide.
+        // The QMF pair's kQmfDelaySlots can meet or exceed a short frame's
+        // own slot count, so the delayed coefficients ride an explicit FIFO
+        // instead of the 24-slot path's two-snapshot blend. Always empty on
+        // the ordinary 24-slot path.
+        std::deque<std::vector<double>> pending{};
     };
     std::unique_ptr<QmfState> qmf{};
 
@@ -390,12 +399,15 @@ struct ReconstructionState {
 // Reconstructs each JOC object's time-domain audio for one frame from the
 // decoded downmix and this frame's parsed JOC parameters.
 //
-// `bed` must be exactly `params.channels` channels of kSamplesPerFrame
-// samples each, in Table 53's JOC channel order (L, R, C, Ls, Rs, and for a
-// 7-channel downmix Lb, Rb) - NOT AC-3's Table 5.8 order (L, C, R, Ls, Rs);
-// the caller permutes, the same permutation atmos.cpp's AtmosEncoder applies
-// on the way in (see its kAc3FromJoc). Returns one waveform per object,
-// `params.objects` of them, each kSamplesPerFrame samples, in the SAME order
+// `bed` must be exactly `params.channels` channels of one frame's samples
+// each - kSamplesPerFrame ordinarily, or 256/512/768 for a §E2.3.1.4 short
+// syncframe; the frame length is taken from the spans themselves and must be
+// a whole number of 256-sample blocks. Channels are in Table 53's JOC
+// channel order (L, R, C, Ls, Rs, and for a 7-channel downmix Lb, Rb) - NOT
+// AC-3's Table 5.8 order (L, C, R, Ls, Rs); the caller permutes, the same
+// permutation atmos.cpp's AtmosEncoder applies on the way in (see its
+// kAc3FromJoc). Returns one waveform per object, `params.objects` of them,
+// each the bed's own length, in the SAME order
 // build_payload's own `objects`/matrix rows use - which, for a program this
 // project's own AtmosEncoder produces (dynamic-object-only with a bypassed
 // LFE, no bed), is exactly oba::DecodedProgram::objects' order too. An

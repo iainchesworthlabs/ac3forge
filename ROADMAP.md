@@ -14,14 +14,14 @@ cut, just moved out of the way of a first read.
 
 | Theme | Shipped | In progress | Considering |
 |---|---|---|---|
-| EQ — Encoder decision quality | 8 | 4 | 1 |
+| EQ — Encoder decision quality | 12 | 0 | 2 |
 | DC — Decoder and consumer output | 10 | 0 | 0 |
 | IO — Streams in and out | 12 | 0 | 0 |
-| IM — Immersive and other formats | 4 | 2 | 1 |
+| IM — Immersive and other formats | 5 | 1 | 1 |
 | VX — Verification and oracles | 19 | 2 | 1 |
 | PF — Performance and portability | 8 | 0 | 0 |
-| AP — Library surface, bindings and v1.0 | 8 | 2 | 2 |
-| UX — Applications | 7 | 1 | 2 |
+| AP — Library surface, bindings and v1.0 | 9 | 1 | 2 |
+| UX — Applications | 8 | 0 | 2 |
 | DR — Distribution, release engineering and hardware | 5 | 1 | 3 |
 
 ## Where this starts from
@@ -194,13 +194,68 @@ by an integral controller, over a sliding-window bit reservoir that caps any win
 budget.
 </details>
 
-### In progress
+**EQ11 (M)** — E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync`, complete: shipped
+for `eac3-encode` first, and the object layer (`atmos*`) now scales with the frame too. Closing
+the second half also surfaced the first half's one latent defect — short frames were sized at
+the six-block byte budget, so a short stream measured 6×/3×/2× its nominal rate — fixed.
+<details markdown="1">
+<summary>Full record</summary>
 
-**EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`. Partly addressed:
-both encoders now take the per-channel-rate curve as a ceiling and put the frame's own
-spectrum under it, band by band against Table 7.15's hearing threshold, up to 128 kbit/s per
-channel. `fgaincod` follows a measured line from 7 at 38 kbit/s per channel to 0 at 128,
-replacing §8.2.12's fixed 4, on AC-3 by default (`encoder.cpp`'s `fgaincod_for`).
+Done for `eac3-encode`: `FrameConfig::numblkscod` (default 3, the CLI's `numblkscod:N` tools
+token), `AccessUnitConfig` refuses substreams that disagree about it, AHT and the hoisted
+(Table E2.10) exponent form are unavailable below six blocks exactly as Table E1.3 requires,
+and `convsync` cycles across each group of `6 / blocks_per_syncframe` frames. The decoder's
+`numblkscod != 3` path — spec-derived, never before driven by a real stream — now is:
+round-trip tests decode a real access unit at every code, including one with a dependent
+substream, through `tools/ci/run_codec_matrix.sh`'s FFmpeg strict-decode leg as well as this
+project's own decoder. A CLI-reachable crash surfaced along the way: `auto` tools selection can
+choose AHT, which a short `numblkscod` forbids outright, and
+`run_eac3_encode`/`run_eac3_encode_multi` asserted on the resulting rejected config instead of
+reporting it — fixed to the same clean error every other unexpressable configuration already
+gets.
+
+**The `atmos*` half, done second.** `AtmosConfig::numblkscod` (the CLI's `numblkscod=N`
+key=value on every `atmos*` encode command — they have no `[tools]` positional), and the whole
+object pipeline scales with the frame rather than assuming six blocks: the bed render and its
+gain ramps cover the shortened frame; the OAMD update's `ramp_duration` covers exactly one
+frame (Table 24 spells 1536 and 512 directly, 256 via Table 25's ramp table, a three-block
+frame's 768 as the 11-bit literal — all four read back by the existing parser); the JOC matrix
+interpolates over the frame's own QMF timeslots (four per block) in both domains; and both
+reconstruction paths take the frame length from the bed itself. Two of the fixes were
+out-of-bounds reads, not parameterisation: `band_energy` and `qmf_band_energy` both walked a
+fixed six blocks/24 slots over what a short frame hands them. The QMF reconstruction needed
+real design rather than substitution — its filterbank delay (9 timeslots) meets or exceeds a
+short frame's own slot count (4/8/12), so the 24-slot path's two-snapshot tail blend cannot
+name which frame an emitted slot belongs to; short frames take a separate explicit-delay path
+(the per-timeslot mixing schedule rides a FIFO delayed by exactly the filterbank's own delay),
+while the six-block path is kept byte-identical because golden decode hashes pin it. Verified
+end to end at every code × both domains: encode → real decode → OAMD `ramp_duration` asserted
+per frame → JOC reconstruct, worst-object SNR 22.3 dB at every short code against 22.1 at the
+six-block control (QMF; the shortened frame costs nothing on stationary material because the
+matrix updates proportionally more often), plus a relative gate holding short codes within 3 dB
+of the control so a timing regression cannot hide under an absolute floor.
+
+**The latent defect the second half surfaced:** every short CBR syncframe was sized by
+`frame_words`' six-block default rather than its documented per-block scaling — `validate()`
+checked the scaled size, the encode path then budgeted the unscaled one — so a `numblkscod`
+0/1/2 stream carried 6×/3×/2× its nominal bit rate and every short frame had silently
+luxurious mantissa budgets. Fixed at all three call sites (encode budget, `access_unit_words`,
+`plan.cpp`'s framability check); six-block streams are byte-identical by construction
+(`blocks_per_syncframe(3)` is the old default), confirmed by the golden hashes. The honest
+consequence for objects: the OAMD+JOC container repeats per syncframe whatever its length, so
+its fixed cost is a six-times share of a one-block frame — four objects at 640 kbit/s fit a
+six-block frame and are correctly refused at one block, where ~2 Mbit/s is the realistic
+floor. That envelope is now stated in `docs/cli/metadata-options.md` rather than discovered.
+</details>
+
+**EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`, complete. The
+coded-bandwidth ceiling shipped on both encoders (band by band against Table 7.15's hearing
+threshold, up to 128 kbit/s per channel); AC-3 carries the measured `fgaincod` curve by
+default (`encoder.cpp`'s `fgaincod_for`, 7 at 38 kbit/s per channel to 0 at 128, replacing
+§8.2.12's fixed 4); and the E-AC-3 half is closed as **measured-and-declined** — the curve
+loses on ViSQOL at every rate because SNR and MOS run *opposite* ways along this axis there,
+so the implied `0x4` default stands, with `eac3::FrameConfig::fgaincod` shipped for pinning
+and as EQ13's restricted search axis.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -261,10 +316,12 @@ legs are single-window on synthetic material, because no redistributable native 
 source exists.
 </details>
 
-**EQ8 (M)** — Close the E-AC-3 stereo/192 gap. The coded-bandwidth fix (EQ7) is worth 1.2–2.7
-dB SNR at that rate but does not move the *landscape* number; the remaining gap is
-bit-allocation efficiency (EQ2/EQ3's territory), not a tool or search problem — three separate
-searches ruled out as the lever.
+**EQ8 (M)** — Close the E-AC-3 stereo/192 gap — closed. The trend gate's own landscape leg
+now measures this encoder **+0.63 dB SNR ahead of FFmpeg** (the 0.79 dB deficit the entry was
+opened on is gone) with LSD 1.01 against FFmpeg's 0.83, from 1.97. What remains is a −0.20
+MOS-LQO delta to FFmpeg and DEE alike, and four findings place it in bit-allocation/
+exponent-strategy territory (EQ1's whole-frame exponent set under AHT) — not tools, not
+search, in any axis this project can move.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -296,33 +353,28 @@ and −0.001±0.000 on music — inert, and correctly so: the curve asks for 2 a
 refit rejects it, and the search reproduces the one-axis answer exactly. So the prerequisite
 this entry was waiting on has been supplied and spent, and the stereo/192 gap is *still* not a
 transmitted-bit-allocation-parameter problem in any axis this project can now search.
+
+**Close-out (2026-09-02).** The headline gap inverted since the findings above were written:
+on the live trend history (`quality-history` branch, `external-comparison-main.jsonl`, main @
+`b43aa092`), the `eac3-stereo-192` landscape leg measures SNR 33.44 dB — **vs FFmpeg
++0.63 dB** — LSD 1.01 against FFmpeg's 0.83 (this record's own 1.97 is gone), MOS-LQO 4.399.
+The SNR sign flipped between the 2026-08-22 and 2026-08-26 trend records, a window that landed
+EQ13's distortion search and #405's coupling-determinism fix among others; no single commit
+claims it. What remains is −0.20 MOS-LQO to FFmpeg *and* DEE, and the same run's per-variant
+rows say where it lives: `none` (4.476) and `ecpl` (4.608) out-score `auto`'s pick (4.399) on
+MOS while `auto` wins SNR — the AHT/narrowing SNR-vs-ViSQOL opposition already measured above
+(`auto` runs −2.6 dB high-band on the flat-to-Nyquist fixture, where there is nothing
+inaudible to drop). That is EQ1-exponent-set territory plus VX9's listening question, exactly
+where the four findings left it. The entry closes as characterized: the named gap is shut,
+and the residual is owned by entries that already exist.
 </details>
 
-**EQ11 (M)** — E-AC-3 short syncframes (`numblkscod` 0–2) and `convsync`. Shipped for
-`eac3-encode`; `atmos-encode`'s object metadata over short frames is unstarted.
-<details markdown="1">
-<summary>Full record</summary>
-
-Done for `eac3-encode`: `FrameConfig::numblkscod` (default 3, the CLI's `numblkscod:N` tools
-token), `AccessUnitConfig` refuses substreams that disagree about it, AHT and the hoisted
-(Table E2.10) exponent form are unavailable below six blocks exactly as Table E1.3 requires,
-and `convsync` cycles across each group of `6 / blocks_per_syncframe` frames. The decoder's
-`numblkscod != 3` path — spec-derived, never before driven by a real stream — now is:
-round-trip tests decode a real access unit at every code, including one with a dependent
-substream, through `tools/ci/run_codec_matrix.sh`'s FFmpeg strict-decode leg as well as this
-project's own decoder. **Not done: `atmos-encode`.** OAMD/JOC's object metadata is timed and
-interpolated across a full six-block frame; extending that to a shorter one is unstarted, not
-merely unexposed — see `docs/cli/metadata-options.md`'s own note. A CLI-reachable crash
-surfaced along the way: `auto` tools selection can choose AHT, which a short `numblkscod`
-forbids outright, and `run_eac3_encode`/`run_eac3_encode_multi` asserted on the resulting
-rejected config instead of reporting it — fixed to the same clean error every other
-unexpressable configuration already gets.
-</details>
-
-**EQ13 (XL)** — Distortion-measured parameter search and a perceptual model. A real win on
-AC-3 from 448 kbit/s up; on E-AC-3 the two-axis search is inert at 192 kbit/s and actively
-harmful at 96 (up to −0.396 MOS), now restricted to the codes where SNR and MOS agree. The
-perceptual criterion still loses at every rate tested and stays off by default.
+**EQ13 (XL)** — Distortion-measured parameter search and a perceptual model, shipped for
+the scope that wins: the distortion criterion is a real gain on AC-3 from 448 kbit/s up and on
+E-AC-3's restricted axis (+3.3 dB SNR at 640 stereo with MOS flat, +1.17 dB/+0.29 MOS at
+coupled 5.1/640), with the harmful half of the axis measured and fenced off. The perceptual
+criterion is validated in isolation but uncalibrated and stays off; it and the other open
+threads are EQ14's now.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -391,7 +443,10 @@ named), and the perceptual model needs further calibration before it is worth tu
   driven by a criterion that tracks perception — `kPerceptual`, still uncalibrated — rather
   than more axes under `kDistortion`.
 
-5.1 external-metric harness alignment: still open, not attempted this pass.
+**Close-out (2026-09-02).** This entry ships on the measured wins above; what its record
+leaves open — `kPerceptual` calibration, driving EQ2/EQ5/EQ7's knobs and delta segments from
+either criterion, and the 5.1 external-metric harness alignment never attempted here — moves
+to EQ14 rather than holding a shipped search hostage to an uncalibrated model.
 </details>
 
 ### Considering
@@ -423,6 +478,25 @@ differs. The decoder's own 0x2 path was brought into line with that transcriptio
 (it read no `cplfsnroffst` at all). What is left genuinely untried is the per-BLOCK dimension,
 which on E-AC-3 needs a bit allocation per block rather than per frame — six times the work in
 the rate search's innermost loop — and has its own measurement to justify that.
+</details>
+
+**EQ14 (L)** — The perceptual criterion, calibrated: EQ13's open threads. `kPerceptual`
+loses at every rate tested and needs calibration against real material before it is worth
+turning on anywhere; neither criterion drives EQ2/EQ5/EQ7's knobs or delta segments yet; and
+the 5.1 external-metric harness alignment EQ13 scoped out remains unattempted.
+<details markdown="1">
+<summary>Full record</summary>
+
+Read EQ13's record before starting: more axes under `kDistortion` is *measured* territory —
+per-frame searches over the transmitted bit-allocation parameters have little left to find
+(`dbpbcod` was settled by EQ3, `fgaincod`'s SNR-optimal direction is perceptually wrong on
+E-AC-3, and EQ8's gap moved for other reasons entirely). The genuinely open work is a
+criterion that tracks perception: `ac3::quality::PerceptualModel` is a cited/tested
+Johnston+MPEG-1-model-2 tonality/masking model that is validated in isolation yet loses to
+the fixed defaults on real material with rematrixing active, which means calibration work
+(and VX9's listening test to anchor it), not more plumbing. Wiring whichever criterion
+survives into EQ2/EQ5/EQ7's knobs and the delta segments — the fields the encoder's own
+dead-end comment named — comes after a criterion worth wiring exists.
 </details>
 
 ## DC. Decoder and consumer output
@@ -926,10 +1000,11 @@ drops the wrapper and CRC by design) into a stream `ac4::scan` parses identicall
 frame.
 </details>
 
-### In progress
-
-**IM3 (XL)** — IAMF / Eclipsa Audio interop. Phase 1 (a channel-based OBU/ISOBMFF writer)
-shipped; object elements (phase 2) and an OBU reader (phase 3) are unstarted.
+**IM3 (XL)** — IAMF / Eclipsa Audio interop. Phase 1 — the channel-based OBU/ISOBMFF writer —
+shipped, and it is the whole scope reachable today: phases 2–3 (object elements, an OBU
+reader) were gated on IAMF v2.0 being final, and it is not (re-verified 2026-09-02: the AOM
+spec still carries Working Group Draft boilerplate and `AOMediaCodec/iamf`'s latest release
+remains v1.1.0). They re-open as their own entry when v2.0 lands.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -959,8 +1034,19 @@ OBU/ISOBMFF walker built into `test_iamf.cpp` itself (no `libiamf` dependency ad
 build) — deliberately proven able to fail: a substream/channel-pairing swap was reintroduced
 and confirmed to break the PCM round-trip test before being reverted. No Parameter Block OBUs,
 no Temporal Delimiter OBU, no trimming, batch API only — see `iamf/iamf.hpp`'s own header for
-the full phase-1 boundary. Phases 2 and 3 are unstarted.
+the full phase-1 boundary.
+
+Phases 2 and 3 are unstarted, and stay that way on purpose (re-checked 2026-09-02): no v2.0.0
+tag exists — `AOMediaCodec/iamf`'s latest release is still v1.1.0 (2024-11-08) — and the spec
+page carries the "AOM Working Group Draft" boilerplate with its own "should not be referenced
+other than as a working draft" warning, so the 2026-07-27 working-group approval this record
+noted has not become a final deliverable. Writing object elements against a moving draft would
+be DAMF/TrueHD territory — implementing a wire format no shipped decoder reads — so phase 2
+waits on the standard, not on effort here, and phase 3's reader has the same dependency for
+its object half. The channel-based writer above is complete against v1.1.0, which *is* final.
 </details>
+
+### In progress
 
 **IM5 (L)** — Land the TrueHD/MLP branch as an explicitly experimental module. A substantial
 internal codec already exists on a long-lived branch; needs a rebase, its own build target, and
@@ -968,8 +1054,9 @@ honest output labelling before it can merge.
 <details markdown="1">
 <summary>Full record</summary>
 
-(was `D1`). `feature/truehd-atmos-support` (pushed; 21 commits, +8,090 lines, 41 commits behind
-`develop`) is far past the old `D1` text: a complete internal lossless codec — stream
+(was `D1`). `feature/truehd-atmos-support` (pushed; 21 commits, +8,090 lines, ~1,140 commits
+behind `main` as of 2026-09-02 — the old "41 behind `develop`" figure predates the
+trunk-based switch) is far past the old `D1` text: a complete internal lossless codec — stream
 assembler, PMQ matrix cascade, Huffman tables from WO 96/37048, automatic predictor and matrix
 selection, FIFO timing, end-of-stream terminators, the `16ch_channel_meaning` +
 `EXTRA_DATA`/EMDF/OAMD Atmos layer — plus `truehd-encode`/`truehd-decode`/`truehd-atmos`
@@ -1912,40 +1999,9 @@ joined the hash-pinned pytest lock), and the wheel matrix gained `ubuntu-24.04-a
 aarch64 — Raspberry Pi is a documented platform and finally has a wheel) and `macos-15-intel`.
 Still C++-only, recorded in `docs/library/python-api.md` as the boundary: the incremental
 container `Reader`/`Writer` classes and the fragmented-MP4/HLS/DASH surface.
-</details>
-
-### In progress
-
-**AP1 (L)** — API freeze → v1.0.0. The tiering, SemVer policy, and release criteria are
-written down; `SOVERSION`/ABI-tagging changes are deliberately deferred to the v1.0.0 cut
-itself, sequenced with AP4's ABI gate going required.
-<details markdown="1">
-<summary>Full record</summary>
-
-(was `F5`). Written down in `docs/library/api-stability.md`: every header under `ac3/` gets a
-Public/Internal/Diagnostic/Experimental tier (the `ac3/core/` bit-reader, bit-allocation,
-exponent, mantissa and FFT internals are Internal; `ac3iab` is Experimental until `IM1`
-finishes; the five `namespace detail` headers are unaffected by tier — nothing in `detail` is
-ever covered regardless); a SemVer and deprecation policy (`DEFINE_NO_DEPRECATED` stays until
-`v1.0.0`, then drops from all nine libraries' `generate_export_header()` calls); a C config
-struct growth policy (major bump or an additive `_v2` sibling, no size-sentinel scheme);
-release criteria against the standing Known gaps; and a cadence/governance statement answering
-the vcpkg reviewer's "all releases are prereleases" maturity note with a written criteria list
-instead of an implicit "not yet." Compile-time version macros landed for real:
-`AC3FORGE_C_VERSION_MAJOR`/`MINOR`/`PATCH`/`AC3FORGE_C_VERSION` in `ac3forge_c/ac3forge.h`
-(generated from a new `version.h.in`), tested against the runtime `ac3forge_version()` in
-`tests/capi/test_capi.cpp`. Still open, both deliberately deferred to the `v1.0.0` cut itself
-rather than done now (see the page's own reasoning): flipping `SOVERSION` from the full version
-to the major component across all nine `CMakeLists.txt`, and introducing `inline namespace v1`
-for ABI tagging — both are sequenced together with `AP4`'s ABI gate going from advisory to
-required, so a real break can't slip through the gap between promising compatibility and
-actually checking for it. `AP5`/`AP6` completion is now one of the page's own release-gate
-criteria rather than a separate, unlinked concern.
-</details>
-
-**AP9 (L)** — A first non-Python binding over the C API (Rust) — a `bindgen`-generated `-sys`
-crate plus a safe wrapper, with real round-trip tests; found and fixed a real header bug along
-the way. Wide layouts, Atmos, and non-Linux CI legs are not done.
+**AP9 (L)** — A first non-Python binding over the C API (Rust), complete: the `-sys` crate, a
+safe wrapper over the whole codec surface (wide layouts, Atmos objects, framing/scan, metering),
+CI on all three desktop OSes — and two real portability findings for the header's record.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1976,6 +2032,49 @@ and OAMD/JOC object-audio decode accessors, the stream-framing helpers
 silently missing, in the same README. AP5's still-open C API gap (`scan`, caller-buffer `_into`
 decode forms, metering) needs no design change here: `bindgen` picks up new declarations the
 moment they land.
+
+**The completeness pass** closed everything the paragraph above deferred: `AccessUnitEncoder`/
+`AccessUnit` and `decode_access_unit`/`DecodedAccessUnit` (round-tripped through a real 5.1.2
+encode and rendered decode), `atmos::AtmosEncoder` with the OAMD/JOC accessors on both decoded
+types (positions asserted through OAMD's own quantizers, reconstructed object audio asserted
+non-silent), `stream::split_frames`/`split_access_units`/`stream_bsid`/`scan` (spans returned
+as borrow-checked slices into the caller's buffer - the C header's lifetime clause stated in
+the type system), and `meter::LoudnessMeter` both ways plus `dialnorm_from_lkfs`. Still
+deliberately out, recorded in the README: the `_into` decode forms and the level meter.
+`build-rust` widened from Linux-only to ubuntu/windows/macos - and the FIRST Windows build
+immediately earned its keep: bindgen types C enums `i32` on MSVC and `u32` elsewhere, so
+`Error::Other(u32)` failed to compile - the crate had baked one platform's representation into
+its API. Fixed with representation-neutral casts and recorded as portability finding #3 in
+rust/README.md, exactly the class of cross-boundary fact AP9 exists to surface.
+</details>
+
+### In progress
+
+**AP1 (L)** — API freeze → v1.0.0. The tiering, SemVer policy, and release criteria are
+written down; `SOVERSION`/ABI-tagging changes are deliberately deferred to the v1.0.0 cut
+itself, sequenced with AP4's ABI gate going required.
+<details markdown="1">
+<summary>Full record</summary>
+
+(was `F5`). Written down in `docs/library/api-stability.md`: every header under `ac3/` gets a
+Public/Internal/Diagnostic/Experimental tier (the `ac3/core/` bit-reader, bit-allocation,
+exponent, mantissa and FFT internals are Internal; `ac3iab` is Experimental until `IM1`
+finishes; the five `namespace detail` headers are unaffected by tier — nothing in `detail` is
+ever covered regardless); a SemVer and deprecation policy (`DEFINE_NO_DEPRECATED` stays until
+`v1.0.0`, then drops from all nine libraries' `generate_export_header()` calls); a C config
+struct growth policy (major bump or an additive `_v2` sibling, no size-sentinel scheme);
+release criteria against the standing Known gaps; and a cadence/governance statement answering
+the vcpkg reviewer's "all releases are prereleases" maturity note with a written criteria list
+instead of an implicit "not yet." Compile-time version macros landed for real:
+`AC3FORGE_C_VERSION_MAJOR`/`MINOR`/`PATCH`/`AC3FORGE_C_VERSION` in `ac3forge_c/ac3forge.h`
+(generated from a new `version.h.in`), tested against the runtime `ac3forge_version()` in
+`tests/capi/test_capi.cpp`. Still open, both deliberately deferred to the `v1.0.0` cut itself
+rather than done now (see the page's own reasoning): flipping `SOVERSION` from the full version
+to the major component across all nine `CMakeLists.txt`, and introducing `inline namespace v1`
+for ABI tagging — both are sequenced together with `AP4`'s ABI gate going from advisory to
+required, so a real break can't slip through the gap between promising compatibility and
+actually checking for it. `AP5`/`AP6` completion is now one of the page's own release-gate
+criteria rather than a separate, unlinked concern.
 </details>
 
 ### Considering
@@ -2148,11 +2247,10 @@ refusal `play` always gave. Not verified against real EDID/ELD hardware this rou
 box in the loop) - see `docs/platforms/linux.md`.
 </details>
 
-### In progress
-
-**UX6 (XL)** — In-browser encoding. The encode module and a drop-a-WAV demo page shipped
-(385×/120×/82× real-time for AC-3/E-AC-3/4-object Atmos, no threads needed); mic capture and an
-object-authoring UI are still open.
+**UX6 (XL)** — In-browser encoding, shipped end to end: the encode module and drop-a-WAV page
+(385×/120×/82× real-time for AC-3/E-AC-3/4-object Atmos, no threads needed), the wide
+7.1/5.1.4/7.1.4 layouts, measured dialnorm, live microphone capture, and an Atmos
+object-authoring page.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2171,16 +2269,23 @@ controls, the five-preset QC verdict table, and a round-trip preview through the
 module — plus `apps/wasm/tests/encode.spec.js` extending VX18(a)'s Playwright harness (asserts a
 known tone's encoded byte count, QC verdict and true peak, and a successful round-trip decode).
 See [docs/platforms/wasm.md#encode-module](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/wasm.md#encode-module)
-for the full numbers. **Still open**: capture-a-mic (real-time capture/buffering plumbing —
-`getUserMedia`/`AudioWorklet` — the CPU budget is proven, this is UX work); an object-authoring
-UI on top of the already-bound `WasmAtmosBedEncoder`; wider channel layouts (7.1, height
-channels) than the mono/stereo/5.1 the drop-a-WAV page reorders today. Dialnorm is left at
-§5.4.2.8's unmeasured default (31) rather than derived from the QC pass's own measured
-loudness — the QC verdict itself measures the source PCM directly so this does not affect it,
-but a real decoder's dialnorm normalisation would under-attenuate loud content this page
-produces. VX18(a)'s browser-test coverage now spans both demos, but neither demo's visual/
-interactive surface (drag-and-drop, the QC table's rendering, the decode side's visualizations)
-is CI-tested — see `wasm.md`'s own "Not yet verified" note.
+for the full numbers. **Landed to finish (2026-09-02)**, closing every "still open" item that
+paragraph used to carry: the wide layouts (8/10/12-channel WAVs read as 7.1/5.1.4/7.1.4 and
+routed through `ac3::plan::route`/`render` *inside the module*, so the page hands them over in
+plain WAV order and the channel-order knowledge lives beside the plan code that defines it —
+`QcMeter.meterOrderForWav()` supplies the BS.1770-5 metering order the same way); dialnorm
+derived from the QC pass's own measured integrated loudness in a two-pass encode (the earlier
+record's own criticism of the unmeasured default 31); microphone capture (`getUserMedia` → an
+inline-Blob `AudioWorklet` → the same encoder, with a measure-only pre-roll so the first frame
+already carries a measured dialnorm and nothing of the take is lost); and the object-authoring
+page (`apps/wasm/atmos/`, a subdirectory of the encode demo sharing its modules via `../`) —
+drag objects on a room canvas while `WasmAtmosBedEncoder` encodes one placement set per frame,
+at real-time cadence, with the same round-trip preview. Playwright covers all of it
+(`encode.spec.js` grew dialnorm-in-the-bytes, 12-channel-7.1.4 and fake-microphone tests;
+`atmos.spec.js` asserts the authored pan is audible in the decoded output — the object panned
+hard right must out-carry the left channel — and drives a session through the page UI). The
+canvas drag-by-pointer itself and real microphone hardware remain manual-only checks — see
+`wasm.md`'s "Not yet verified" note.
 </details>
 
 ### Considering

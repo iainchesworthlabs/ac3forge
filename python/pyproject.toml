@@ -96,6 +96,10 @@ test-command = "pytest {package}/tests"
 manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
 
+# These per-platform archs are the LOCAL-run defaults (a native build on
+# whatever machine runs cibuildwheel by hand). CI overrides them per matrix
+# row via CIBW_ARCHS (wheels.yml) because macOS and Linux each appear there
+# on two architectures now - see that matrix's own comment.
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
 

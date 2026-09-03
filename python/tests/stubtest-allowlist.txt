@@ -6,7 +6,15 @@
 # runtime has a module. These entries allow exactly that shape difference;
 # the CONTENTS of each namespace are still checked member by member.
 ac3forge\.(eac3|meta|signing|containers|verify)
-ac3forge\._ac3forge.*
+# pybind11 enums expose __members__/__int__/__index__ from their own enum
+# machinery; the stubs model them as enum.Enum, which spells the members but
+# not pybind11's dunder surface.
+ac3forge\.(Acmod|CentreMixLevel|DecodeError|FrameError|ProfileId|SampleRate|ScanError|StreamKind|StreamType|SurroundMixLevel)\.__(members|int|index)__
+# type(X) is pybind11's own metaclass at runtime, which a stub cannot spell.
+# These entries are ANCHORED CLASS NAMES, so they allow only class-level
+# complaints (the metaclass one); attribute errors carry the attribute's own
+# dotted name and are still reported.
+ac3forge\.(AccessUnitTiming|AtmosConfig|AtmosEncoder|DecodedAccessUnit|DecodedFrame|DecodedProgram|DecodedSubstream|DecoderConfig|DynamicObject|Eac3Decoder|EncoderConfig|FrameDecoder|FrameEncoder|FrameHeader|HeavyConfig|LatencyBudget|ObjectPlacement|Position|Profile|Program|ScannedProgramme|ScannedStream|SubstreamService)
 # KwargBinder constructors take **kwargs at runtime; the stubs for the plain
 # config classes spell the fields instead. Same convention as the C++ side's
 # designated initializers.
