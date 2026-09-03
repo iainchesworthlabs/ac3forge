@@ -18,10 +18,12 @@ guest that never leaves this machine.
 
 | Script | What it does |
 |---|---|
-| `New-DriverTestVm.ps1 -WindowsIso <iso>` | Creates the VM under `D:\Virtual Machines\Atmos Driver Test` (EFI, Secure Boot off, no TPM, 4 vCPU, 8 GB, 64 GB NVMe, NAT, HD Audio), attaches the Windows ISO, an ISO carrying `autounattend.xml`, an ISO carrying the built driver package plus `devcon.exe` and the guest scripts, and VMware's Tools ISO, then starts it. |
+| `New-DriverTestVm.ps1 -WindowsIso <iso>` | Creates the VM under `D:\Virtual Machines\Atmos Driver Test` (EFI, Secure Boot off, no TPM, 4 vCPU, 8 GB, 64 GB NVMe, NAT, HD Audio, console on VNC port 5951), attaches the no-prompt copy of the Windows ISO, an ISO carrying `autounattend.xml`, an ISO carrying the built driver package plus `devcon.exe` and the guest scripts, and VMware's Tools ISO, then starts it. |
+| `New-NoPromptIso.ps1 -WindowsIso <iso>` | Re-packs Microsoft's ISO as `<stem>-noprompt.iso` beside it, booting through the media's own `efisys_noprompt.bin` instead of `efisys.bin`, because the stock EFI boot stops at "Press any key to boot from CD or DVD" and nobody is there to press it. `New-DriverTestVm.ps1` calls it and reuses the result. A few minutes the first time. |
 | `Wait-DriverTestVm.ps1` | Polls until Tools is running and the first-logon marker exists, then takes the `clean-install` snapshot. |
 | `Test-Driver.ps1` | Reverts to `clean-install`, runs `install.ps1` from the driver CD inside the guest, and reports: test signing and HVCI state, MEDIA devices and audio endpoints, whether the driver service is loaded, any bugchecks and minidumps, and the tail of `setupapi.dev.log`. `-NoRevert` skips the revert, `-ReportOnly` just reports. |
-| `Build-Iso.ps1` | Writes an ISO from a directory with Windows' own IMAPI2; the other scripts use it. |
+| `Build-Iso.ps1` | Writes an ISO from a directory with Windows' own IMAPI2 (ISO 9660 + Joliet, or UDF with an EFI boot image); the other scripts use it. |
+| `guest_console.py` | Screenshots (`shot out.png`) and key presses (`key space`, `type text`) on the guest console over Workstation's VNC server, for the stretch before Tools is running when `vmrun` cannot see the guest. Needs Python with Pillow. |
 | `guest/Set-DefaultToNullSink.ps1` | Runs inside the guest, on the driver CD: makes "Speakers (Desktop Atmos)" the default output the way the demo does, so the endpoint is exercised as a default without the demo installed there. |
 
 `autounattend.xml` does the rest: bypasses the TPM, Secure Boot and RAM checks, partitions and
@@ -33,7 +35,7 @@ from its CD, writes the marker and reboots.
 
 ```powershell
 cd apps\windows\driver-vm
-.\New-DriverTestVm.ps1 -WindowsIso D:\ISOs\Win11_24H2_English_x64.iso   # 15-30 min unattended
+.\New-DriverTestVm.ps1 -WindowsIso D:\ISOs\Win11_25H2_English_x64_v2.iso # 15-30 min unattended
 .\Wait-DriverTestVm.ps1                                                  # snapshot when ready
 .\Test-Driver.ps1                                                        # install and report
 ```

@@ -4,7 +4,7 @@
 # Ac3ForgeNullSink package can be loaded, crashed and rolled back without
 # touching the host. See README.md.
 #
-#   .\New-DriverTestVm.ps1 -WindowsIso D:\ISOs\Win11_24H2_English_x64.iso
+#   .\New-DriverTestVm.ps1 -WindowsIso D:\ISOs\Win11_25H2_English_x64_v2.iso
 #
 # Attaches four virtual CDs: the Windows ISO, an ISO carrying
 # autounattend.xml, an ISO carrying the built driver package plus the WDK's
@@ -21,6 +21,10 @@ param(
     [string]$PackageDir = (Join-Path $PSScriptRoot '..\driver\Package\x64\Release\package'),
     [string]$Devcon = 'F:\Program Files\Windows Kits\10\Tools\10.0.28000.0\x64\devcon.exe',
     [string]$Workstation = 'C:\Program Files\VMware\VMware Workstation',
+    # Workstation's built-in VNC server on the guest console (loopback use
+    # only; no password). guest_console.py uses it to take screenshots and
+    # press keys before Tools is running.
+    [int]$VncPort = 5951,
     [switch]$Recreate
 )
 $ErrorActionPreference = 'Stop'
@@ -31,6 +35,13 @@ foreach ($f in @($vmrun, $vdisk, $toolsIso, $WindowsIso)) { if (-not (Test-Path 
 $PackageDir = (Resolve-Path $PackageDir).Path
 $inf = Join-Path $PackageDir 'Ac3ForgeNullSink.inf'
 if (-not (Test-Path $inf)) { throw "no driver package at $PackageDir (build apps/windows/driver first)" }
+
+# Stock Microsoft media stops at "Press any key to boot from CD or DVD" under
+# EFI and nobody is there to press it; boot a no-prompt re-pack instead.
+if ($WindowsIso -notmatch '-noprompt\.iso$') {
+    $WindowsIso = & (Join-Path $PSScriptRoot 'New-NoPromptIso.ps1') -WindowsIso $WindowsIso | Select-Object -Last 1
+}
+$WindowsIso = (Resolve-Path $WindowsIso).Path
 
 $vmx = Join-Path $VmDir "$Name.vmx"
 if ((Test-Path $vmx) -and -not $Recreate) { throw "$vmx exists; pass -Recreate to replace it (this deletes the guest)" }
@@ -61,7 +72,9 @@ $vmdk = Join-Path $VmDir "$Name.vmdk"
 # Secure Boot deliberately off: a test-signed driver does not load under it.
 # No vTPM either (Workstation would want the guest encrypted for one); the
 # answer file bypasses the TPM check. Sound present so the guest has a
-# normal endpoint to compare against.
+# normal endpoint to compare against. The PCIe root ports (pciBridge4-7)
+# are what give e1000e, NVMe and xHCI their slots; without them vmware-vmx
+# logs "No PCIe slot available" and crashes at power-on.
 @"
 .encoding = "UTF-8"
 config.version = "8"
@@ -75,13 +88,27 @@ numvcpus = "$Cpus"
 cpuid.coresPerSocket = "$Cpus"
 vhv.enable = "FALSE"
 mem.hotadd = "TRUE"
+hpet0.present = "TRUE"
+pciBridge0.present = "TRUE"
+pciBridge4.present = "TRUE"
+pciBridge4.virtualDev = "pcieRootPort"
+pciBridge4.functions = "8"
+pciBridge5.present = "TRUE"
+pciBridge5.virtualDev = "pcieRootPort"
+pciBridge5.functions = "8"
+pciBridge6.present = "TRUE"
+pciBridge6.virtualDev = "pcieRootPort"
+pciBridge6.functions = "8"
+pciBridge7.present = "TRUE"
+pciBridge7.virtualDev = "pcieRootPort"
+pciBridge7.functions = "8"
 nvme0.present = "TRUE"
 nvme0:0.present = "TRUE"
 nvme0:0.fileName = "$Name.vmdk"
 sata0.present = "TRUE"
 sata0:0.present = "TRUE"
 sata0:0.deviceType = "cdrom-image"
-sata0:0.fileName = "$($WindowsIso -replace '\\','\\')"
+sata0:0.fileName = "$WindowsIso"
 sata0:1.present = "TRUE"
 sata0:1.deviceType = "cdrom-image"
 sata0:1.fileName = "autounattend.iso"
@@ -90,7 +117,7 @@ sata0:2.deviceType = "cdrom-image"
 sata0:2.fileName = "driver.iso"
 sata0:3.present = "TRUE"
 sata0:3.deviceType = "cdrom-image"
-sata0:3.fileName = "$($toolsIso -replace '\\','\\')"
+sata0:3.fileName = "$toolsIso"
 bios.bootOrder = "cdrom,hdd"
 ethernet0.present = "TRUE"
 ethernet0.connectionType = "nat"
@@ -108,6 +135,8 @@ tools.upgrade.policy = "manual"
 powerType.powerOff = "soft"
 powerType.reset = "soft"
 powerType.suspend = "soft"
+RemoteDisplay.vnc.enabled = "TRUE"
+RemoteDisplay.vnc.port = "$VncPort"
 "@ | Set-Content -Path $vmx -Encoding UTF8
 
 Write-Host "starting $Name; Windows Setup runs unattended (allow 15 to 30 minutes)"
