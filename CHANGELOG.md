@@ -75,6 +75,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   outright. Both now follow the effective target architecture, and a universal (multi-`-arch`)
   configure resolves `generic`, since no single compile-time choice can serve both slices. Native
   builds on every platform are unaffected.
+- **A §E2.3.1.2 legacy-core stream failed to decode, or silently selected the wrong programme.**
+  `Eac3Decoder::decode_access_unit`'s programme-selection step parsed its unit's lead frame as an
+  Annex E syncframe. An AC-3 core carries neither `strmtyp` nor `substreamid` — the two bits where
+  `strmtyp` lives are the top of `crc1` — so the selection read a programme id out of a checksum:
+  about a quarter of frames alias to the reserved `strmtyp` 0x3 and failed the decode outright with
+  `kReservedValue`, and the rest aliased to a plausible id and were selected on silently. The
+  identity is now asserted from `bsid`, as the surrounding framing and `decode_substream` already
+  did. FFmpeg's FATE fixture `the_great_wall_7.1.eac3` (an AC-3 core plus an Annex E dependent
+  extending it to 7.1) decodes all 157 access units as a result; it had failed on its first.
+- `ac3cli` reports a decode failure in words rather than as an enumerator — `decode failed: a header
+  field holds a value A/52 reserves`, not `decode failed (code 3)`. `describe()` already existed for
+  these; nine call sites across `decode`, `analysis` and `live` were not using it, which is what made
+  the failure above unreadable from a CI log.
 
 ## [0.10.0-beta.1] - 2026-09-01
 
