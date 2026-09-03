@@ -39,8 +39,9 @@ private:
 class WasapiPcmSink final : public PcmSink {
 public:
     std::expected<void, std::string> start(const std::string& device_id, std::uint32_t sample_rate,
-                                           std::uint16_t channels, std::uint32_t channel_mask) override {
-        const auto started = sink_.start(device_id, sample_rate, channels, channel_mask);
+                                           std::uint16_t channels, std::uint32_t channel_mask,
+                                           bool low_latency) override {
+        const auto started = sink_.start(device_id, sample_rate, channels, channel_mask, low_latency);
         if (!started) {
             return std::unexpected(std::string(ac3::audio::describe(started.error())));
         }

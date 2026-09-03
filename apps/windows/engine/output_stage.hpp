@@ -39,6 +39,9 @@ struct OutputStageConfig {
     // Headphones, PCM surround and stereo play the raw frame instead of a
     // decode of the stream.
     bool bypass_codec = false;
+    // One-block frames: the PCM sinks ask for the platform's smallest
+    // render period, since they are fed 5.3 ms at a time.
+    bool low_latency = false;
     // The null sink is recognised by name (the driver's own, or a stand-in
     // such as FxSound's idle endpoint during development).
     std::string null_sink_substring = "Desktop Atmos";

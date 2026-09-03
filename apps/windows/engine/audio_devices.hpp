@@ -57,10 +57,12 @@ public:
 class PcmSink {
 public:
     virtual ~PcmSink() = default;
+    // `low_latency` asks for the platform's smallest render period.
     [[nodiscard]] virtual std::expected<void, std::string> start(const std::string& device_id,
                                                                  std::uint32_t sample_rate,
                                                                  std::uint16_t channels,
-                                                                 std::uint32_t channel_mask) = 0;
+                                                                 std::uint32_t channel_mask,
+                                                                 bool low_latency) = 0;
     virtual bool submit(std::span<const float> interleaved) = 0;
     // Sample-frames submitted but not yet rendered: the sink's queue depth,
     // which is latency once the sink has started consuming.

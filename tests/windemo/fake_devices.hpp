@@ -27,6 +27,7 @@ struct SinkRecord {
     bool eac3 = false;
     std::uint16_t channels = 0;
     std::uint32_t channel_mask = 0;
+    bool low_latency = false;
     std::uint32_t static_channels = 0;
     std::uint32_t max_dynamic_objects = 0;
     bool started = false;
@@ -83,7 +84,8 @@ class FakePcmSink final : public PcmSink {
 public:
     explicit FakePcmSink(std::shared_ptr<SinkRecord> record) : record_(std::move(record)) {}
     std::expected<void, std::string> start(const std::string& device_id, std::uint32_t sample_rate,
-                                           std::uint16_t channels, std::uint32_t channel_mask) override {
+                                           std::uint16_t channels, std::uint32_t channel_mask,
+                                           bool low_latency) override {
         const std::lock_guard lock(record_->mutex);
         if (record_->refuse_start) {
             return std::unexpected("refused by the test");
@@ -92,6 +94,7 @@ public:
         record_->sample_rate = sample_rate;
         record_->channels = channels;
         record_->channel_mask = channel_mask;
+        record_->low_latency = low_latency;
         record_->started = true;
         return {};
     }

@@ -17,8 +17,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(tone_player s1_taps/tone_player.cpp)
 add_executable(s1_taps s1_taps/s1_taps.cpp)
 add_executable(s5_latency s5_latency/s5_latency.cpp)
+add_executable(period_probe s5_latency/period_probe.cpp)
 
-foreach(target tone_player s1_taps s5_latency)
+foreach(target tone_player s1_taps s5_latency period_probe)
     target_compile_definitions(${target} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
     target_compile_options(${target} PRIVATE /W4 /EHsc /permissive- /utf-8)
     # ActivateAudioInterfaceAsync lives in mmdevapi.lib; PKEY_* property keys need

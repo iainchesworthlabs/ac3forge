@@ -54,10 +54,18 @@ public:
     // render thread. `channel_mask` is the WAVEFORMATEXTENSIBLE speaker mask
     // (e.g. KSAUDIO_SPEAKER_5POINT1) describing what each channel position
     // means; 0 lets the platform pick a default for the channel count.
+    // `low_latency` asks the platform for its smallest render period rather
+    // than its default one (Windows: IAudioClient3's shared-mode engine
+    // period, typically 2.7 ms against the default 10; falls back to the
+    // default when the engine will not run this format at that size). A
+    // caller submitting small chunks at a steady cadence gets a shorter
+    // queue-to-speaker path; one submitting 32 ms frames gains nothing and
+    // should leave it off. Ignored on platforms without such a knob.
     [[nodiscard]] std::expected<void, MonitorError> start(const std::string& device_id,
                                                            std::uint32_t sample_rate,
                                                            std::uint16_t channels,
-                                                           std::uint32_t channel_mask = 0);
+                                                           std::uint32_t channel_mask = 0,
+                                                           bool low_latency = false);
 
     // Queues interleaved float samples (a multiple of `channels` long).
     // Returns false if the queue is full - the caller is running ahead of

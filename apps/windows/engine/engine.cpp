@@ -32,7 +32,10 @@ constexpr int kTapWaitMs = 80;
 // which one-block frames oscillate across the line and get dropped
 // needlessly) before the loop drops tap audio to catch up. The sink
 // queues up to a second; without a bound whatever offset the pipeline
-// started with is the session's latency (spike S5).
+// started with is the session's latency (spike S5). Two frames, not one:
+// the queue holds the frame just submitted while the sink drains it, so a
+// one-frame bound is crossed at every submit and the loop dropped audio
+// twice a second for no gain in latency (S5 measured both).
 constexpr std::size_t kMaxSinkQueueFrames = 2;
 constexpr std::size_t kMinSinkQueueBound = 1440;
 
@@ -286,6 +289,7 @@ struct Engine::Impl {
         output = std::make_unique<OutputStage>(OutputStageConfig{
             .devices = devices,
             .bypass_codec = config.bypass_codec,
+            .low_latency = config.low_latency,
             .null_sink_substring = config.null_sink_substring, .pinned = config.pinned});
         signing_status = signing.load(config.signing_key_path);
         build_encoder();

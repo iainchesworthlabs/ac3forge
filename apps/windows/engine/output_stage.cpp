@@ -195,7 +195,7 @@ const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
         case OutputMode::kPcmSurround: {
             impl_->monitor = impl_->devices->pcm_sink();
             const auto started =
-                impl_->monitor->start(choice.endpoint_id, config_.sample_rate, 6, kMask51);
+                impl_->monitor->start(choice.endpoint_id, config_.sample_rate, 6, kMask51, config_.low_latency);
             if (!started) {
                 return refuse(started.error());
             }
@@ -205,7 +205,7 @@ const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
         case OutputMode::kStereo: {
             impl_->monitor = impl_->devices->pcm_sink();
             const auto started =
-                impl_->monitor->start(choice.endpoint_id, config_.sample_rate, 2, kMaskStereo);
+                impl_->monitor->start(choice.endpoint_id, config_.sample_rate, 2, kMaskStereo, config_.low_latency);
             if (!started) {
                 return refuse(started.error());
             }

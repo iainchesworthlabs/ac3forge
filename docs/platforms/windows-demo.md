@@ -273,6 +273,42 @@ the two modes is smaller than the frame arithmetic promised because the floor is
 process-loopback deliveries and the render engine, not the frame; the AVR row, when S2 runs,
 adds the receiver's decode on top of the codec rows.
 
+Where the rest can and cannot go. The encoder is not on the path: it takes 1 to 2 ms of a
+frame, and making it faster changes nothing measurable. Two of the terms are structural:
+the process-loopback delivery (about 15 ms, the OS's) and the frame itself (already one
+block in low-latency mode). One term looked movable and is not: reading the null-sink
+driver's own buffer instead of tapping processes would save the loopback delivery, but the
+audio engine mixes every application before anything reaches the driver, so that buffer
+holds the desktop's mix and cannot feed per-application placement; the taps are the price of
+the objects. The terms that do move are the sink's queue bound (two frames today, one is
+possible with the encode headroom S4 measured) and the render period: the monitor sink asks
+the audio engine for its smallest shared-mode period in low-latency mode (IAudioClient3,
+falling back to the default period where the engine refuses the format at that size).
+
+That second lever turned out to have no travel on this machine. `period_probe`, beside the
+spike, asks the endpoint what the engine offers: on the Realtek endpoint
+`GetSharedModeEnginePeriod` answers 480 frames for default, fundamental, minimum and maximum
+alike, 10 ms, with a 22 ms buffer, for the demo's float format and for the mix format both.
+`IAudioClient`'s "minimum 3 ms" is the exclusive-mode floor, not a shared-mode offer. The
+library keeps the path (a device that offers 2.7 ms will use it, and the fallback is the old
+behaviour), but the workstation's figures do not move for it. What remains on this endpoint
+is exclusive-mode PCM output, which the demo's configuration allows (S1 showed the Realtek
+endpoint can be taken exclusively while applications render into the null sink) and which
+would replace the 10 ms period and 22 ms buffer with the 3 ms the driver allows; that is a
+new sink in the library rather than a flag, and the next step if the figure matters.
+
+The queue bound was tried at one frame too. It bought nothing: the sink's queue holds the
+frame just submitted while the sink drains it, so its depth of about one frame is the
+pipeline's shape, not the bound's doing, and a one-frame bound was crossed at every submit
+and dropped audio twice a second. It is back at two. What the runs do show is a spread of
+about 15 ms between otherwise identical runs, which is the phase of the sink's 22 ms buffer
+and the tap's packets against the frame clock; the table's figures are one run each.
+
+None of the PCM-side terms exist on the demo's real target. The AVR path leaves through the
+exclusive-mode bitstream sink, with no shared-mode period, no engine buffer and no PCM
+queue: its latency is the tap delivery, the frame, the burst and the receiver's decode, and
+the receiver's decode is the one term that stays unknown until S2 runs.
+
 ## Object signing
 
 The rule is the Shield app's, unchanged, and the reasons are in

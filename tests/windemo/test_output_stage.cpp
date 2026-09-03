@@ -83,6 +83,7 @@ OutputStageConfig config_over(const std::shared_ptr<FakeDevices>& devices,
                               std::optional<OutputMode> pinned = std::nullopt, bool bypass = false) {
     return {.devices = devices,
             .bypass_codec = bypass,
+            .low_latency = false,
             .null_sink_substring = "Desktop Atmos",
             .pinned = pinned,
             .sample_rate = 48000,
@@ -312,4 +313,20 @@ TEST_CASE("output stage: stop tears the sink down and submit is then a no-op", "
     const auto raw = encoded.next();
     stage.submit(encoded.unit, raw);
     CHECK(stage.status().units_submitted == 0);
+}
+
+TEST_CASE("output stage: low-latency mode asks the PCM sink for its smallest period", "[windemo][output_stage]") {
+    auto devices = std::make_shared<FakeDevices>();
+    devices->devices = {null_sink(), realtek_default()};
+    auto config = config_over(devices);
+    config.low_latency = true;
+    OutputStage stage(config);
+    CHECK(stage.reprobe(false).mode == OutputMode::kStereo);
+    REQUIRE(devices->pcm_sinks.size() == 1);
+    CHECK(devices->pcm_sinks[0]->low_latency);
+    // Bitstream sinks have no such knob; a normal-mode stage does not ask.
+    OutputStage normal(config_over(devices));
+    normal.reprobe(false);
+    REQUIRE(devices->pcm_sinks.size() == 2);
+    CHECK_FALSE(devices->pcm_sinks[1]->low_latency);
 }
