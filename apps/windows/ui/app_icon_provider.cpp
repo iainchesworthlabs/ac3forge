@@ -46,6 +46,24 @@ QImage shell_icon(const QString& path, bool large) {
 
 AppIconProvider::AppIconProvider() : QQuickImageProvider(QQuickImageProvider::Image) {}
 
+// The executable's own icon at a requested size: PrivateExtractIcons asks
+// the resource for the size directly, so an application that ships a
+// 256-pixel icon gives that rather than the shell's 32-pixel default,
+// and one with no icon gives nothing (so the monogram stays). The shell
+// path remains for files the extractor declines (a packaged app's stub).
+QImage own_icon(const QString& path, int pixels) {
+    const auto wide = path.toStdWString();
+    HICON icon = nullptr;
+    UINT id = 0;
+    const UINT got = PrivateExtractIconsW(wide.c_str(), 0, pixels, pixels, &icon, &id, 1, 0);
+    if (got == 0 || icon == nullptr) {
+        return {};
+    }
+    QImage image = QImage::fromHICON(icon);
+    DestroyIcon(icon);
+    return image;
+}
+
 QImage AppIconProvider::requestImage(const QString& id, QSize* size, const QSize& requested_size) {
     const QString path = QUrl::fromPercentEncoding(id.toUtf8());
     const bool large = requested_size.width() > 20 || requested_size.height() > 20 || !requested_size.isValid();
@@ -59,7 +77,10 @@ QImage AppIconProvider::requestImage(const QString& id, QSize* size, const QSize
             return *it;
         }
     }
-    QImage image = path.isEmpty() ? QImage{} : shell_icon(path, large);
+    QImage image = path.isEmpty() ? QImage{} : own_icon(path, large ? 256 : 32);
+    if (image.isNull() && !path.isEmpty()) {
+        image = shell_icon(path, large);
+    }
     if (!image.isNull() && requested_size.isValid()) {
         image = image.scaled(requested_size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     }

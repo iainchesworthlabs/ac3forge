@@ -181,20 +181,74 @@ Item {
                 scale: Qt.vector3d(0.14, 0.14, 0.14)
                 materials: PrincipledMaterial { baseColor: Theme.text; roughness: 0.6 }
             }
-            // The reference speakers.
+            // The reference speakers: a cabinet with a woofer and a tweeter,
+            // turned to face the listener, for the floor layer; a round
+            // in-ceiling unit facing down for the heights. Built from
+            // primitives so every speaker matches; a glTF model could stand
+            // in for either later.
+            component CabinetSpeaker: Node {
+                Model {  // the cabinet
+                    source: "#Cube"
+                    scale: Qt.vector3d(0.16, 0.24, 0.14)
+                    castsShadows: true
+                    materials: PrincipledMaterial { baseColor: Theme.neutral600; roughness: 0.75; metalness: 0.05 }
+                }
+                Model {  // the woofer, on the front face
+                    source: "#Cylinder"
+                    position: Qt.vector3d(0, -4, 7.2)
+                    eulerRotation.x: 90
+                    scale: Qt.vector3d(0.11, 0.008, 0.11)
+                    materials: PrincipledMaterial { baseColor: Theme.neutral300; roughness: 0.9 }
+                }
+                Model {  // the dust cap
+                    source: "#Sphere"
+                    position: Qt.vector3d(0, -4, 7.6)
+                    scale: Qt.vector3d(0.035, 0.035, 0.012)
+                    materials: PrincipledMaterial { baseColor: Theme.neutral500; roughness: 0.5 }
+                }
+                Model {  // the tweeter
+                    source: "#Cylinder"
+                    position: Qt.vector3d(0, 7.5, 7.2)
+                    eulerRotation.x: 90
+                    scale: Qt.vector3d(0.045, 0.006, 0.045)
+                    materials: PrincipledMaterial { baseColor: Theme.neutral400; roughness: 0.6; metalness: 0.2 }
+                }
+            }
+            component CeilingSpeaker: Node {
+                Model {  // the trim ring, flush with the ceiling plane
+                    source: "#Cylinder"
+                    scale: Qt.vector3d(0.16, 0.012, 0.16)
+                    materials: PrincipledMaterial { baseColor: Theme.neutral400; roughness: 0.6 }
+                }
+                Model {  // the grille, a shade darker, facing down
+                    source: "#Cylinder"
+                    position: Qt.vector3d(0, -0.8, 0)
+                    scale: Qt.vector3d(0.13, 0.006, 0.13)
+                    materials: PrincipledMaterial { baseColor: Theme.neutral600; roughness: 0.95 }
+                }
+                Model {  // the driver behind the grille
+                    source: "#Sphere"
+                    position: Qt.vector3d(0, 0.5, 0)
+                    scale: Qt.vector3d(0.05, 0.02, 0.05)
+                    materials: PrincipledMaterial { baseColor: Theme.neutral500; roughness: 0.5 }
+                }
+            }
             Repeater3D {
                 model: root.speakers
                 delegate: Node {
                     required property var modelData
-                    position: Qt.vector3d(root.sceneX(modelData.x), root.sceneY(modelData.z), root.sceneZ(modelData.y))
-                    Model {
-                        source: "#Cube"
-                        scale: Qt.vector3d(0.16, 0.16, 0.16)
-                        castsShadows: true
-                        materials: PrincipledMaterial { baseColor: modelData.z > 0 ? Theme.neutral600 : Theme.neutral500; roughness: 0.7; metalness: 0.05 }
+                    readonly property real sx: root.sceneX(modelData.x)
+                    readonly property real sz: root.sceneZ(modelData.y)
+                    position: Qt.vector3d(sx, root.sceneY(modelData.z), sz)
+                    // Face the listener at the origin.
+                    eulerRotation.y: Math.atan2(-sx, -sz) * 180 / Math.PI
+                    Loader3D {
+                        sourceComponent: modelData.z > 0 ? ceiling : cabinet
+                        Component { id: cabinet; CabinetSpeaker {} }
+                        Component { id: ceiling; CeilingSpeaker {} }
                     }
                     Node {
-                        y: 22
+                        y: modelData.z > 0 ? -14 : 22
                         Text {
                             anchors.centerIn: parent
                             text: modelData.name
@@ -277,13 +331,25 @@ Item {
                                     }
                                 }
                             }
-                            // A stem down to ear level shows height at a glance.
+                            // Height at a glance: a stem from the card's edge to a
+                            // foot on the ear-level plane, on the near side of the
+                            // card for a raised object and the far side for a
+                            // lowered one, never through the icon.
+                            readonly property real cardHalf: 21
+                            readonly property real stemLength: Math.max(0, Math.abs(root.sceneY(oz)) - cardHalf)
+                            Model {
+                                source: "#Cylinder"
+                                visible: stemLength > 2
+                                position: Qt.vector3d(0, oz > 0 ? -(cardHalf + stemLength / 2) : (cardHalf + stemLength / 2), 0)
+                                scale: Qt.vector3d(0.012, stemLength / 100, 0.012)
+                                materials: PrincipledMaterial { baseColor: Theme.accent400; lighting: PrincipledMaterial.NoLighting }
+                            }
                             Model {
                                 source: "#Cylinder"
                                 visible: Math.abs(oz) > 0.02
-                                position: Qt.vector3d(0, -root.sceneY(oz) / 2, 0)
-                                scale: Qt.vector3d(0.015, Math.abs(root.sceneY(oz)) / 100, 0.015)
-                                materials: PrincipledMaterial { baseColor: Theme.accent400; lighting: PrincipledMaterial.NoLighting }
+                                position: Qt.vector3d(0, -root.sceneY(oz), 0)
+                                scale: Qt.vector3d(0.08, 0.006, 0.08)
+                                materials: PrincipledMaterial { baseColor: Theme.accent400; lighting: PrincipledMaterial.NoLighting; opacity: 0.8 }
                             }
                         }
                     }
