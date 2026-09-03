@@ -52,6 +52,7 @@ struct AppStatus {
     bool active = false;
     bool has_window = false;  // owns a visible top-level window (see AppSession)
     bool packaged = false;    // a packaged app, whose window belongs to a host
+    bool has_session = true;  // false: running, listed, nothing to tap (greyed)
     bool tapped = false;
     bool fullscreen = false;
     std::optional<int> slot;  // positioned slot (the first of `width`), or nullopt: in the bed

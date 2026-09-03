@@ -75,6 +75,7 @@ struct Engine::Impl {
     std::mutex session_mutex;
     std::vector<AppSession> latest_sessions;
     bool sessions_fresh = false;
+    std::vector<AppId> keep_ids;  // placed applications, for the monitor to keep listed
     std::shared_ptr<AudioDevices> devices;
     TapPool taps;
     SlotAllocator slots;
@@ -172,13 +173,27 @@ struct Engine::Impl {
             sessions_fresh = false;
         }
         AC3_ZONE_SCOPED_N("take sessions");
-        std::vector<AppId> ids;
+        std::vector<AppId> ids;  // what to tap: applications with a session
         ids.reserve(apps.size());
         known.clear();
         for (auto& app : apps) {
-            ids.push_back(app.app);
+            if (app.has_session) {
+                ids.push_back(app.app);
+            }
             ensure_in_plan(app.app);
             known.emplace(app.app, std::move(app));
+        }
+        {
+            // What the monitor should keep listed next time: whatever is
+            // placed, so a silent spell does not empty the room.
+            std::vector<AppId> placed;
+            for (const auto& slot : slots.apps()) {
+                if (slot.positioned) {
+                    placed.push_back(slot.app);
+                }
+            }
+            const std::lock_guard<std::mutex> lock(session_mutex);
+            keep_ids = std::move(placed);
         }
         // Forget applications that left.
         std::vector<AppId> gone;
@@ -285,6 +300,7 @@ struct Engine::Impl {
                 a.active = it->second.active;
                 a.has_window = it->second.has_window;
                 a.packaged = it->second.packaged;
+                a.has_session = it->second.has_session;
             }
             a.tapped = taps.has(slot.app);
             a.fullscreen = slot.fullscreen;
@@ -351,9 +367,14 @@ struct Engine::Impl {
         session_thread = std::jthread([this](const std::stop_token& monitor_stop) {
             while (!monitor_stop.stop_requested()) {
                 std::vector<AppSession> apps;
+                std::vector<AppId> keep;
+                {
+                    const std::lock_guard<std::mutex> lock(session_mutex);
+                    keep = keep_ids;
+                }
                 {
                     AC3_ZONE_SCOPED_N("session monitor");
-                    apps = sessions.refresh();
+                    apps = sessions.refresh(keep);
                 }
                 {
                     const std::lock_guard<std::mutex> lock(session_mutex);

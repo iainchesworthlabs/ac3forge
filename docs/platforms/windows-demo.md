@@ -908,6 +908,20 @@ frame's minimum 1.2 ms to 24 ms, which means the loop no longer runs short and d
 audio to catch up; session work on the frame thread 48 ms to 0.4 ms per refresh; the
 enumeration itself 42 ms, on its own thread.
 
+Two more findings from the second sitting. An application that fell silent vanished from the
+window, placement and all, because the list had only ever been the audio sessions; and Chrome
+did not appear until it had opened one. The list is now every running application: each
+process tree with a visible window is listed whether or not it has a session (Windows' own
+windowed hosts, `Windows\System32` and the Settings app, are not), sorted after the ones with
+sound, its icon desaturated and its line reading "no audio" until it plays, and a placed
+application stays listed and placed through a silent spell while its process lives, the
+engine passing the monitor the ids to keep. Only applications with a session are tapped. A
+Behaviour setting hides the silent ones again for a rail that shows just what is playing.
+And moving the window across the screen juddered, the frame a step behind the cursor, because
+Qt Quick's threaded render loop paints on its own thread while Windows' move loop drives the
+event thread; the window now uses the basic render loop (unless `QSG_RENDER_LOOP` says
+otherwise), which renders in step with that loop.
+
 ### Phase 6: docs, CI, release
 
 Five items. The first three, this page rewritten from plan to record, the roadmap record and

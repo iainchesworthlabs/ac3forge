@@ -24,6 +24,8 @@ class AppEntry final : public QObject {
     Q_PROPERTY(QString name READ name NOTIFY changed)
     Q_PROPERTY(QString imagePath READ imagePath NOTIFY changed)
     Q_PROPERTY(bool background READ background NOTIFY changed)
+    // Running with nothing to tap: no audio session at the moment.
+    Q_PROPERTY(bool silent READ silent NOTIFY changed)
     Q_PROPERTY(bool active READ active NOTIFY changed)
     Q_PROPERTY(bool tapped READ tapped NOTIFY changed)
     Q_PROPERTY(bool fullscreen READ fullscreen NOTIFY changed)
@@ -58,6 +60,7 @@ public:
         set(name_, name);
         set(image_path_, QString::fromStdString(s.image_path));
         set(background_, background);
+        set(silent_, !s.has_session);
         set(active_, s.active);
         set(tapped_, s.tapped);
         set(fullscreen_, s.fullscreen);
@@ -94,6 +97,7 @@ public:
     [[nodiscard]] QString name() const { return name_; }
     [[nodiscard]] QString imagePath() const { return image_path_; }
     [[nodiscard]] bool background() const { return background_; }
+    [[nodiscard]] bool silent() const { return silent_; }
     [[nodiscard]] bool active() const { return active_; }
     [[nodiscard]] bool tapped() const { return tapped_; }
     [[nodiscard]] bool fullscreen() const { return fullscreen_; }
@@ -121,6 +125,7 @@ private:
     QString name_;
     QString image_path_;
     bool background_ = false;
+    bool silent_ = false;
     bool active_ = false;
     bool tapped_ = false;
     bool fullscreen_ = false;

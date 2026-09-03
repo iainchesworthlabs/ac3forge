@@ -87,12 +87,17 @@
         <translation> · Hintergrund</translation>
     </message>
     <message>
-        <location filename="../ui/qml/AppRow.qml" line="53"/>
+        <location filename="../ui/qml/AppRow.qml" line="17"/>
+        <source> · no audio</source>
+        <translation> · kein Ton</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/AppRow.qml" line="54"/>
         <source>full-screen</source>
         <translation>Vollbild</translation>
     </message>
     <message>
-        <location filename="../ui/qml/AppRow.qml" line="53"/>
+        <location filename="../ui/qml/AppRow.qml" line="54"/>
         <source>placed</source>
         <translation>platziert</translation>
     </message>
@@ -135,32 +140,32 @@
         <translation>Keine Ausgabe</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="640"/>
+        <location filename="../ui/desk_controller.cpp" line="701"/>
         <source>no driver package under %1</source>
         <translation>kein Treiberpaket unter %1</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="668"/>
+        <location filename="../ui/desk_controller.cpp" line="729"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>Installation läuft, bitte die Rechteanfrage beantworten …</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="669"/>
+        <location filename="../ui/desk_controller.cpp" line="730"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>Entfernen läuft, bitte die Rechteanfrage beantworten …</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="695"/>
+        <location filename="../ui/desk_controller.cpp" line="756"/>
         <source>installed</source>
         <translation>installiert</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="695"/>
+        <location filename="../ui/desk_controller.cpp" line="756"/>
         <source>removed</source>
         <translation>entfernt</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="697"/>
+        <location filename="../ui/desk_controller.cpp" line="758"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 fehlgeschlagen (Exit-Code %2)</translation>
     </message>
@@ -638,347 +643,365 @@
         <translation type="vanished">ziehen zum Umkreisen · Rad zum Zoomen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Room3DView.qml" line="67"/>
         <source>drag an application to move it · Shift for height · drag space to orbit · wheel to zoom</source>
-        <translation>Anwendung ziehen, um sie zu bewegen · Umschalt für Höhe · Leere ziehen, um zu kreisen · Rad zum Zoomen</translation>
+        <translation type="vanished">Anwendung ziehen, um sie zu bewegen · Umschalt für Höhe · Leere ziehen, um zu kreisen · Rad zum Zoomen</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/Room3DView.qml" line="67"/>
+        <source>drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom</source>
+        <translation>Anwendung ziehen, um sie zu bewegen · Rechtsziehen oder Umschalt für Höhe · Leere ziehen, um zu kreisen · Rad zum Zoomen</translation>
     </message>
 </context>
 <context>
     <name>RoomPage</name>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="48"/>
+        <location filename="../ui/qml/RoomPage.qml" line="50"/>
         <source>APPLICATIONS</source>
         <translation>ANWENDUNGEN</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="51"/>
         <source>nothing is playing</source>
-        <translation>nichts spielt</translation>
+        <translation type="vanished">nichts spielt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="51"/>
+        <location filename="../ui/qml/RoomPage.qml" line="53"/>
         <source> with sound</source>
         <translation> mit Ton</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="73"/>
+        <location filename="../ui/qml/RoomPage.qml" line="53"/>
+        <source>no applications</source>
+        <translation>keine Anwendungen</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="53"/>
+        <source> applications · </source>
+        <translation> Anwendungen · </translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="75"/>
+        <source>Every running application with a window is listed; one with nothing to tap is greyed until it plays. A browser&apos;s windows and tabs share one entry. A placed application stays placed while it runs.</source>
+        <translation>Jede laufende Anwendung mit Fenster wird gelistet; eine ohne etwas abzugreifen ist ausgegraut, bis sie spielt. Fenster und Tabs eines Browsers teilen sich einen Eintrag. Eine platzierte Anwendung bleibt platziert, solange sie läuft.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/RoomPage.qml" line="82"/>
         <source>Full-screen applications stay in the bed; the lock lifts when they leave full-screen.</source>
         <translation>Vollbild-Anwendungen bleiben im Bett; die Sperre hebt sich, wenn sie den Vollbildmodus verlassen.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="107"/>
+        <location filename="../ui/qml/RoomPage.qml" line="116"/>
         <source>ROOM</source>
         <translation>RAUM</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="109"/>
+        <location filename="../ui/qml/RoomPage.qml" line="118"/>
         <source> of 10 slots placed</source>
         <translation> von 10 Plätzen belegt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="125"/>
+        <location filename="../ui/qml/RoomPage.qml" line="134"/>
         <source>No signing key, so objects are off: the stream is the 5.1 bed only. Placing an application pans it between the five bed speakers; height and size have no effect, and a receiver renders nothing you place. Load a key in Settings to send objects.</source>
         <translation>Kein Signaturschlüssel, also keine Objekte: der Stream ist nur das 5.1-Bett. Eine platzierte Anwendung wird zwischen den fünf Bett-Lautsprechern verteilt; Höhe und Größe haben keine Wirkung, und ein Receiver rendert nichts von dem, was Sie platzieren. Laden Sie in den Einstellungen einen Schlüssel, um Objekte zu senden.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="139"/>
+        <location filename="../ui/qml/RoomPage.qml" line="148"/>
         <source>Plan + elevation</source>
         <translation>Grundriss + Aufriss</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="139"/>
+        <location filename="../ui/qml/RoomPage.qml" line="148"/>
         <source>3D</source>
         <translation>3D</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="141"/>
+        <location filename="../ui/qml/RoomPage.qml" line="150"/>
         <source>Room view</source>
         <translation>Raumansicht</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="155"/>
+        <location filename="../ui/qml/RoomPage.qml" line="166"/>
         <source>Room (3D)</source>
         <translation>Raum (3D)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="173"/>
+        <location filename="../ui/qml/RoomPage.qml" line="184"/>
         <source>Plan (top-down)</source>
         <translation>Grundriss (von oben)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="174"/>
+        <location filename="../ui/qml/RoomPage.qml" line="185"/>
         <source>drag to place</source>
         <translation>ziehen zum Platzieren</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="191"/>
+        <location filename="../ui/qml/RoomPage.qml" line="202"/>
         <source>Elevation (side-on)</source>
         <translation>Aufriss (von der Seite)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="192"/>
+        <location filename="../ui/qml/RoomPage.qml" line="203"/>
         <source>drag: depth + height</source>
         <translation>ziehen: Tiefe + Höhe</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="192"/>
+        <location filename="../ui/qml/RoomPage.qml" line="203"/>
         <source>height: objects only</source>
         <translation>Höhe: nur Objekte</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="205"/>
+        <location filename="../ui/qml/RoomPage.qml" line="216"/>
         <source>Bed only: depth still pans front to rear; height is carried in object metadata, which is off.</source>
         <translation>Nur Bett: die Tiefe verteilt weiterhin von vorn nach hinten; die Höhe steckt in den Objekt-Metadaten, die aus sind.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="231"/>
+        <location filename="../ui/qml/RoomPage.qml" line="242"/>
         <source>slot </source>
         <translation>Platz </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="232"/>
+        <location filename="../ui/qml/RoomPage.qml" line="243"/>
         <source>in the bed</source>
         <translation>im Bett</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="243"/>
+        <location filename="../ui/qml/RoomPage.qml" line="254"/>
         <source>Send to bed</source>
         <translation>Ins Bett schicken</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="243"/>
+        <location filename="../ui/qml/RoomPage.qml" line="254"/>
         <source>Place in the room</source>
         <translation>Im Raum platzieren</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="251"/>
+        <location filename="../ui/qml/RoomPage.qml" line="262"/>
         <source>Centre</source>
         <translation>Zentrieren</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="257"/>
+        <location filename="../ui/qml/RoomPage.qml" line="268"/>
         <source>Mono</source>
         <translation>Mono</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="257"/>
+        <location filename="../ui/qml/RoomPage.qml" line="268"/>
         <source>Split</source>
         <translation>Aufteilen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="263"/>
+        <location filename="../ui/qml/RoomPage.qml" line="274"/>
         <source>Standard stereo</source>
         <translation>Standard-Stereo</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="272"/>
+        <location filename="../ui/qml/RoomPage.qml" line="283"/>
         <source>Put</source>
         <translation>Setzen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="275"/>
+        <location filename="../ui/qml/RoomPage.qml" line="286"/>
         <source>in front</source>
         <translation>vorn</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="276"/>
+        <location filename="../ui/qml/RoomPage.qml" line="287"/>
         <source>behind</source>
         <translation>hinten</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="279"/>
+        <location filename="../ui/qml/RoomPage.qml" line="290"/>
         <source>overhead</source>
         <translation>über Kopf</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="280"/>
+        <location filename="../ui/qml/RoomPage.qml" line="291"/>
         <source>front left</source>
         <translation>vorn links</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="281"/>
+        <location filename="../ui/qml/RoomPage.qml" line="292"/>
         <source>front right</source>
         <translation>vorn rechts</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="282"/>
+        <location filename="../ui/qml/RoomPage.qml" line="293"/>
         <source>rear left</source>
         <translation>hinten links</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="283"/>
+        <location filename="../ui/qml/RoomPage.qml" line="294"/>
         <source>rear right</source>
         <translation>hinten rechts</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="294"/>
+        <location filename="../ui/qml/RoomPage.qml" line="305"/>
         <source>full-screen: stays in the bed</source>
         <translation>Vollbild: bleibt im Bett</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="302"/>
+        <location filename="../ui/qml/RoomPage.qml" line="313"/>
         <source>Size</source>
         <translation>Größe</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="323"/>
+        <location filename="../ui/qml/RoomPage.qml" line="334"/>
         <source>Object size</source>
         <translation>Objektgröße</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="325"/>
+        <location filename="../ui/qml/RoomPage.qml" line="336"/>
         <source>point</source>
         <translation>Punkt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="328"/>
+        <location filename="../ui/qml/RoomPage.qml" line="339"/>
         <source>extent the receiver&apos;s renderer spreads the object over; the bed hears a point</source>
         <translation>Ausdehnung, über die der Renderer des Receivers das Objekt verteilt; das Bett hört einen Punkt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="328"/>
+        <location filename="../ui/qml/RoomPage.qml" line="339"/>
         <source>object metadata: no effect while the stream is bed only</source>
         <translation>Objekt-Metadaten: ohne Wirkung, solange der Stream nur das Bett ist</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="339"/>
+        <location filename="../ui/qml/RoomPage.qml" line="350"/>
         <source>BED</source>
         <translation>BETT</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="341"/>
+        <location filename="../ui/qml/RoomPage.qml" line="352"/>
         <source>unplaced applications, mixed to the 5.1 bed</source>
         <translation>nicht platzierte Anwendungen, ins 5.1-Bett gemischt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="368"/>
+        <location filename="../ui/qml/RoomPage.qml" line="379"/>
         <source>every application is placed</source>
         <translation>jede Anwendung ist platziert</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="368"/>
+        <location filename="../ui/qml/RoomPage.qml" line="379"/>
         <source>drag one into the room to place it · drag a marker back here, or double-click it, to return it</source>
         <translation>eine in den Raum ziehen, um sie zu platzieren · eine Markierung hierher zurückziehen oder doppelklicken, um sie zurückzuholen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="395"/>
+        <location filename="../ui/qml/RoomPage.qml" line="406"/>
         <source>OUTPUT</source>
         <translation>AUSGABE</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="404"/>
+        <location filename="../ui/qml/RoomPage.qml" line="415"/>
         <source>pin: </source>
         <translation>fest: </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="405"/>
+        <location filename="../ui/qml/RoomPage.qml" line="416"/>
         <source>Output…</source>
         <translation>Ausgabe…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="409"/>
+        <location filename="../ui/qml/RoomPage.qml" line="420"/>
         <source>DEFAULT OUTPUT</source>
         <translation>STANDARDAUSGABE</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="417"/>
+        <location filename="../ui/qml/RoomPage.qml" line="428"/>
         <source>no default output</source>
         <translation>keine Standardausgabe</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="422"/>
+        <location filename="../ui/qml/RoomPage.qml" line="433"/>
         <source>Applications render here, silently.</source>
         <translation>Anwendungen rendern hierher, lautlos.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="422"/>
+        <location filename="../ui/qml/RoomPage.qml" line="433"/>
         <source> is restored on quit.</source>
         <translation> wird beim Beenden wiederhergestellt.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="423"/>
+        <location filename="../ui/qml/RoomPage.qml" line="434"/>
         <source>Applications still render to a real device, so you hear them directly as well. Move the default to the silent device to fix that.</source>
         <translation>Anwendungen rendern noch auf ein echtes Gerät, Sie hören sie also auch direkt. Verschieben Sie die Standardausgabe auf das stumme Gerät, um das zu beheben.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="431"/>
+        <location filename="../ui/qml/RoomPage.qml" line="442"/>
         <source>Restore </source>
         <translation>Wiederherstellen: </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="431"/>
+        <location filename="../ui/qml/RoomPage.qml" line="442"/>
         <source>previous output</source>
         <translation>vorherige Ausgabe</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="432"/>
+        <location filename="../ui/qml/RoomPage.qml" line="443"/>
         <source>Move default to </source>
         <translation>Standard verschieben nach </translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="439"/>
+        <location filename="../ui/qml/RoomPage.qml" line="450"/>
         <source>SIGNING</source>
         <translation>SIGNIERUNG</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="440"/>
+        <location filename="../ui/qml/RoomPage.qml" line="451"/>
         <source>key loaded · objects on</source>
         <translation>Schlüssel geladen · Objekte an</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="440"/>
+        <location filename="../ui/qml/RoomPage.qml" line="451"/>
         <source>no key · 5.1 bed only</source>
         <translation>kein Schlüssel · nur 5.1-Bett</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="441"/>
+        <location filename="../ui/qml/RoomPage.qml" line="452"/>
         <source>load one in Settings</source>
         <translation>einen in den Einstellungen laden</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="277"/>
-        <location filename="../ui/qml/RoomPage.qml" line="449"/>
+        <location filename="../ui/qml/RoomPage.qml" line="288"/>
+        <location filename="../ui/qml/RoomPage.qml" line="460"/>
         <source>left</source>
         <translation>links</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="278"/>
-        <location filename="../ui/qml/RoomPage.qml" line="449"/>
+        <location filename="../ui/qml/RoomPage.qml" line="289"/>
+        <location filename="../ui/qml/RoomPage.qml" line="460"/>
         <source>right</source>
         <translation>rechts</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="449"/>
+        <location filename="../ui/qml/RoomPage.qml" line="460"/>
         <source>centre</source>
         <translation>Mitte</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="450"/>
+        <location filename="../ui/qml/RoomPage.qml" line="461"/>
         <source>in front of you</source>
         <translation>vor Ihnen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="450"/>
+        <location filename="../ui/qml/RoomPage.qml" line="461"/>
         <source>behind you</source>
         <translation>hinter Ihnen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="450"/>
+        <location filename="../ui/qml/RoomPage.qml" line="461"/>
         <source>beside you</source>
         <translation>neben Ihnen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="451"/>
+        <location filename="../ui/qml/RoomPage.qml" line="462"/>
         <source>up</source>
         <translation>oben</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="451"/>
+        <location filename="../ui/qml/RoomPage.qml" line="462"/>
         <source>low</source>
         <translation>unten</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="452"/>
+        <location filename="../ui/qml/RoomPage.qml" line="463"/>
         <source>to the </source>
         <translation>nach </translation>
     </message>
@@ -1212,11 +1235,21 @@
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="354"/>
+        <source>Show applications with no audio</source>
+        <translation>Anwendungen ohne Ton anzeigen</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="355"/>
+        <source>Running applications with a window but no audio session, greyed until they play. Off hides them unless they are placed.</source>
+        <translation>Laufende Anwendungen mit Fenster, aber ohne Audiositzung, ausgegraut bis sie spielen. Aus: ausgeblendet, sofern nicht platziert.</translation>
+    </message>
+    <message>
+        <location filename="../ui/qml/SettingsPage.qml" line="361"/>
         <source>Show background processes in the room</source>
         <translation>Hintergrundprozesse im Raum anzeigen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="355"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="362"/>
         <source>Processes with sound but no window of their own (a virtual machine&apos;s backend, the text-input host). They stay in the bed either way.</source>
         <translation>Prozesse mit Ton, aber ohne eigenes Fenster (das Backend einer virtuellen Maschine, der Texteingabe-Host). Sie bleiben ohnehin im Bett.</translation>
     </message>

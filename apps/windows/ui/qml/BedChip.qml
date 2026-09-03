@@ -32,8 +32,8 @@ Rectangle {
         id: row
         anchors.centerIn: parent
         spacing: Theme.space2
-        AppIcon { name: root.app.name; imagePath: root.app.imagePath; size: 24; fill: root.app.active ? Theme.neutral600 : Theme.neutral500 }
-        Text { text: root.app.name; color: Theme.text; font.pixelSize: 13; elide: Text.ElideRight; Layout.maximumWidth: 160 }
+        AppIcon { name: root.app.name; imagePath: root.app.imagePath; size: 24; fill: root.app.active ? Theme.neutral600 : Theme.neutral500; dimmed: root.app.silent }
+        Text { text: root.app.name; color: root.app.silent ? Theme.textMuted : Theme.text; font.pixelSize: 13; elide: Text.ElideRight; Layout.maximumWidth: 160 }
         Canvas {
             visible: root.app.fullscreen
             width: 12; height: 12

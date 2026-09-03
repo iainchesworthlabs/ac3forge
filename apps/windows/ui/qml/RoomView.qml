@@ -210,7 +210,7 @@ Item {
                             }
                         }
                     }
-                    AppIcon { x: -13; y: -13; name: marker.app.name; imagePath: marker.app.imagePath; size: 26; fill: marker.selected ? Theme.accent600 : Theme.neutral700 }
+                    AppIcon { x: -13; y: -13; name: marker.app.name; imagePath: marker.app.imagePath; size: 26; fill: marker.selected ? Theme.accent600 : Theme.neutral700; dimmed: marker.app.silent }
                     Text {
                         id: markerLabel
                         // Right of the icon, or left of it when that would run

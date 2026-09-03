@@ -172,6 +172,8 @@ void DeskController::poll() {
     int placed = 0;
     int bed = 0;
     const bool show_background = showBackgroundApps();
+    const bool show_silent = showSilentApps();
+    int sounding = 0;
     QList<QObject*> apps;
     bool membership_changed = false;
     for (const auto& app : s.apps) {
@@ -181,6 +183,13 @@ void DeskController::poll() {
         const bool background = !app.has_window && !app.packaged;
         if (background && !show_background) {
             continue;
+        }
+        // Silent and unplaced: listed only when asked for.
+        if (!app.has_session && !app.slot && !show_silent) {
+            continue;
+        }
+        if (app.has_session && app.active) {
+            ++sounding;
         }
         const int id = static_cast<int>(app.app);
         auto* entry = qobject_cast<ac3::desk::AppEntry*>(entries_.value(id, nullptr));
@@ -203,6 +212,22 @@ void DeskController::poll() {
         } else {
             ++it;
         }
+    }
+    // Sound first, then a session without sound, then silent; by name
+    // within each, so the rail reads top to bottom.
+    std::stable_sort(apps.begin(), apps.end(), [](QObject* a, QObject* b) {
+        auto* ea = qobject_cast<ac3::desk::AppEntry*>(a);
+        auto* eb = qobject_cast<ac3::desk::AppEntry*>(b);
+        const int ra = ea->silent() ? 2 : (ea->active() ? 0 : 1);
+        const int rb = eb->silent() ? 2 : (eb->active() ? 0 : 1);
+        if (ra != rb) {
+            return ra < rb;
+        }
+        return ea->name().compare(eb->name(), Qt::CaseInsensitive) < 0;
+    });
+    if (sounding != sounding_) {
+        sounding_ = sounding;
+        membership_changed = true;
     }
     if (membership_changed || apps != apps_) {
         apps_ = std::move(apps);
@@ -428,6 +453,20 @@ void DeskController::setShowBackgroundApps(bool on) {
         return;
     }
     settings_.setValue(QStringLiteral("behaviour/showBackgroundApps"), on);
+    settings_.sync();  // survive a hard exit
+    emit settingsChanged();
+    poll();
+}
+
+bool DeskController::showSilentApps() const {
+    return settings_.value(QStringLiteral("behaviour/showSilentApps"), true).toBool();
+}
+
+void DeskController::setShowSilentApps(bool on) {
+    if (on == showSilentApps()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("behaviour/showSilentApps"), on);
     settings_.sync();  // survive a hard exit
     emit settingsChanged();
     poll();

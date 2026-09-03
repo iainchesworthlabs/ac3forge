@@ -67,6 +67,11 @@ class DeskController : public QObject {
     // Background processes with audio sessions (no visible window, not a
     // packaged app) are hidden from the rail unless this is on.
     Q_PROPERTY(bool showBackgroundApps READ showBackgroundApps WRITE setShowBackgroundApps NOTIFY settingsChanged)
+    // Running applications with no audio session are listed (greyed) so
+    // they can be placed before they play; off hides them unless placed.
+    Q_PROPERTY(bool showSilentApps READ showSilentApps WRITE setShowSilentApps NOTIFY settingsChanged)
+    // How many listed applications have sound right now.
+    Q_PROPERTY(int soundingCount READ soundingCount NOTIFY appsChanged)
     // The reference speaker layout the 3D room draws: "auto" (5.1 while
     // the stream is bed-only, 7.1.4 once objects are on), "5.1", "7.1", "7.1.4".
     Q_PROPERTY(QString roomLayout READ roomLayout WRITE setRoomLayout NOTIFY settingsChanged)
@@ -164,6 +169,9 @@ public:
     // call the silent-device switch uses), by its endpoint id.
     Q_INVOKABLE void setDefaultOutput(const QString& id);
     [[nodiscard]] bool showBackgroundApps() const;
+    [[nodiscard]] bool showSilentApps() const;
+    void setShowSilentApps(bool on);
+    [[nodiscard]] int soundingCount() const { return sounding_; }
     void setShowBackgroundApps(bool on);
     [[nodiscard]] QString roomLayout() const;
     void setRoomLayout(const QString& layout);
@@ -220,7 +228,7 @@ private:
     bool objects_enabled_ = false;
     double frames_ = 0, underruns_ = 0, starved_ = 0, last_frame_ms_ = 0, worst_frame_ms_ = 0, encode_ms_ = 0;
     QVariantList endpoints_;
-    int placed_ = 0, bed_ = 0;
+    int placed_ = 0, bed_ = 0, sounding_ = 0;
     int tap_channels_ = 0;
     bool codec_bypassed_ = false;
 

@@ -351,6 +351,13 @@ Flickable {
                 }
                 DeskCheck {
                     Layout.fillWidth: true
+                    text: qsTr("Show applications with no audio")
+                    note: qsTr("Running applications with a window but no audio session, greyed until they play. Off hides them unless they are placed.")
+                    checked: DeskController.showSilentApps
+                    onToggled: function(on) { DeskController.showSilentApps = on; }
+                }
+                DeskCheck {
+                    Layout.fillWidth: true
                     text: qsTr("Show background processes in the room")
                     note: qsTr("Processes with sound but no window of their own (a virtual machine's backend, the text-input host). They stay in the bed either way.")
                     checked: DeskController.showBackgroundApps

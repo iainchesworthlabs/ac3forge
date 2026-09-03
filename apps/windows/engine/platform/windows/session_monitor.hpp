@@ -39,6 +39,10 @@ struct AppSession {
     // with an audio session, such as a VM's backend or the text-input host.
     bool has_window = false;
     bool packaged = false;
+    // False for an application listed because it runs with a window (or
+    // because the engine asked for it to be kept) while it has no audio
+    // session: nothing to tap, shown greyed.
+    bool has_session = true;
     std::vector<std::uint32_t> session_pids;
 };
 
@@ -46,7 +50,9 @@ class SessionMonitor {
 public:
     // Applications with at least one audio session, active or not, sorted
     // by app id. The system sounds session (pid 0) is left out.
-    [[nodiscard]] std::vector<AppSession> refresh();
+    // `keep`: application ids to list while their process lives even with
+    // no session and no window (the engine passes what is placed).
+    [[nodiscard]] std::vector<AppSession> refresh(const std::vector<std::uint32_t>& keep = {});
 
 private:
     // What is read once per process and kept while it lives: the image

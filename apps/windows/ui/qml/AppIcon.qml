@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 
 import Ac3ForgeDesk
 
@@ -11,13 +12,16 @@ Item {
     property string imagePath: ""
     property color fill: Theme.neutral700
     property int size: 28
+    // Greyed: the application has nothing to tap right now.
+    property bool dimmed: false
     width: size
     height: size
     Monogram {
         anchors.fill: parent
         name: root.name
-        fill: root.fill
+        fill: root.dimmed ? Theme.neutral500 : root.fill
         size: root.size
+        opacity: root.dimmed ? 0.55 : 1.0
         visible: icon.status !== Image.Ready
     }
     Image {
@@ -29,6 +33,14 @@ Item {
         smooth: true
         asynchronous: true
         cache: true
-        visible: status === Image.Ready
+        visible: status === Image.Ready && !root.dimmed
+    }
+    MultiEffect {
+        anchors.fill: icon
+        source: icon
+        visible: icon.status === Image.Ready && root.dimmed
+        saturation: -1.0
+        brightness: -0.1
+        opacity: 0.6
     }
 }

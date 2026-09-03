@@ -313,6 +313,7 @@ Item {
                                                     size: 160
                                                     name: appNode.app.name
                                                     imagePath: appNode.app.imagePath
+                                                    dimmed: appNode.app.silent
                                                     fill: appNode.selected ? Theme.accent600 : Theme.neutral700
                                                 }
                                                 Text {

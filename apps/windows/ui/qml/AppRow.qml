@@ -14,7 +14,7 @@ Rectangle {
     readonly property bool placed: app.slot >= 0
     readonly property string detail: placed
         ? (app.width === 2 ? qsTr("slots ") + (app.slot + 1) + "+" + (app.slot + 2) : qsTr("slot ") + (app.slot + 1)) + " · " + app.x.toFixed(2) + ", " + app.y.toFixed(2) + ", " + (app.z >= 0 ? "+" : "") + app.z.toFixed(2)
-        : qsTr("bed") + (app.fullscreen ? qsTr(" · full-screen") : "") + (app.active ? "" : qsTr(" · idle")) + (app.tapped ? "" : qsTr(" · no tap")) + (app.background ? qsTr(" · background") : "")
+        : qsTr("bed") + (app.fullscreen ? qsTr(" · full-screen") : "") + (app.silent ? qsTr(" · no audio") : (app.active ? "" : qsTr(" · idle"))) + (app.tapped || app.silent ? "" : qsTr(" · no tap")) + (app.background ? qsTr(" · background") : "")
     implicitHeight: row.implicitHeight + Theme.space4
     color: selected ? Theme.neutral100 : "transparent"
     border.color: selected ? Theme.accent : "transparent"
@@ -32,6 +32,7 @@ Rectangle {
             name: root.app.name
             imagePath: root.app.imagePath
             size: 28
+            dimmed: root.app.silent
             fill: root.placed ? (root.selected ? Theme.accent600 : Theme.neutral700) : (root.app.active ? Theme.neutral600 : Theme.neutral500)
         }
         ColumnLayout {
@@ -39,7 +40,7 @@ Rectangle {
             spacing: Theme.space1
             RowLayout {
                 spacing: Theme.space2
-                Text { text: root.app.name; color: Theme.text; font.pixelSize: Theme.fontNormal; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: root.app.name; color: root.app.silent ? Theme.textMuted : Theme.text; font.pixelSize: Theme.fontNormal; elide: Text.ElideRight; Layout.fillWidth: true }
                 Rectangle {
                     visible: root.placed || root.app.fullscreen
                     implicitWidth: tag.implicitWidth + 12

@@ -183,6 +183,21 @@ bool is_system_app(const std::string& image_path) {
     return lower.find("\\windows\\systemapps\\") != std::string::npos;
 }
 
+// Windows' own windowed hosts (the frame host for packaged apps, Settings,
+// anything else under System32): windows, but not applications a person
+// would place. Only the silent listing asks; a process here that opens an
+// audio session is listed like any other, so no source is hidden.
+bool is_shell_host(const std::string& image_path) {
+    std::string lower = image_path;
+    std::ranges::transform(lower, lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    for (const char* dir : {"\\windows\\system32\\", "\\windows\\syswow64\\", "\\windows\\immersivecontrolpanel\\"}) {
+        if (lower.find(dir) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Whether a process is a packaged app (Store/UWP): its windows belong to a
 // host process, so the window test below would miss it.
 bool packaged_of(std::uint32_t pid) {
@@ -246,7 +261,7 @@ std::string friendly_name(IMMDevice* device) {
 
 }  // namespace
 
-std::vector<AppSession> SessionMonitor::refresh() {
+std::vector<AppSession> SessionMonitor::refresh(const std::vector<std::uint32_t>& keep) {
     std::vector<AppSession> out;
     ComScope com;
     if (!com.ok()) {
@@ -352,11 +367,52 @@ std::vector<AppSession> SessionMonitor::refresh() {
     }
     // A window anywhere in the tree counts for the root: a game's launcher
     // may own the session while its child owns the window, or the reverse.
+    const auto windowed = windowed_processes();
+    // Every windowed process tree, and every kept id whose process lives,
+    // is an application too: listed without a session, so a person can
+    // place it before it plays, and so a placed one that falls silent
+    // stays where it was put rather than vanishing.
+    auto add_silent = [&](std::uint32_t root) {
+        if (root == 0 || root == self_root || apps.contains(root)) {
+            return;
+        }
+        const auto info = procs.find(root);
+        if (info == procs.end() || info->second.image == self_image) {
+            return;
+        }
+        AppSession app;
+        app.app = root;
+        app.name = stem_of(info->second.image);
+        app.has_session = false;
+        auto facts = facts_.find(root);
+        if (facts == facts_.end()) {
+            Facts f;
+            f.image_path = image_path_of(root);
+            f.description = description_of(f.image_path);
+            f.system_app = is_system_app(f.image_path);
+            f.packaged = packaged_of(root) && !f.system_app;
+            facts = facts_.emplace(root, std::move(f)).first;
+        }
+        if (facts->second.system_app || is_shell_host(facts->second.image_path)) {
+            return;
+        }
+        app.image_path = facts->second.image_path;
+        app.description = facts->second.description;
+        app.packaged = facts->second.packaged;
+        apps.emplace(root, std::move(app));
+    };
+    for (const auto& [pid, is_windowed] : windowed) {
+        if (is_windowed) {
+            add_silent(root_of(pid, procs));
+        }
+    }
+    for (const std::uint32_t id : keep) {
+        add_silent(id);
+    }
     // Facts for processes that have gone.
     for (auto it = facts_.begin(); it != facts_.end();) {
         it = apps.contains(it->first) ? std::next(it) : facts_.erase(it);
     }
-    const auto windowed = windowed_processes();
     for (auto& [root, app] : apps) {
         // Windows' own shell components own windows and are packaged, and
         // are still not what a person means by an application.

@@ -30,6 +30,16 @@
 #include "language_manager.hpp"
 
 int main(int argc, char** argv) {
+    // Render on the GUI thread. With the threaded loop the window's frames
+    // are produced on a render thread that paints while Windows moves the
+    // window, so a drag translates the frame a step behind the cursor and
+    // the motion judders. The basic loop renders in step with the event
+    // loop, which Windows' move loop drives, so the window follows the
+    // cursor smoothly. A person can still choose another loop with the
+    // environment variable.
+    if (qEnvironmentVariableIsEmpty("QSG_RENDER_LOOP")) {
+        qputenv("QSG_RENDER_LOOP", QByteArrayLiteral("basic"));
+    }
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("Desktop Atmos"));
     QGuiApplication::setOrganizationName(QStringLiteral("ac3forge"));
