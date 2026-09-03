@@ -81,7 +81,7 @@ Flickable {
                     }
                     Text { text: qsTr("E-AC-3 · 5.1 bed + up to 15 objects · automatic is 448 kb/s, or 1536 kb/s in low latency"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall }
                 }
-                DeskCheck { text: qsTr("Split stereo applications into two objects"); note: qsTr("Costs two slots per application; the pair sits either side of the position you place. Not built yet."); checked: false; enabled: false }
+                DeskCheck { objectName: "splitCheck"; text: qsTr("Split stereo applications into two objects"); note: qsTr("Costs two slots per application; the pair sits either side of the position you place, and an application that cannot get two free slots waits in the bed. Applies to applications the engine meets from now on; each application's row can override it."); checked: DeskController.splitStereo; onToggled: function(on) { DeskController.splitStereo = on; } }
             }
 
             ColumnLayout {

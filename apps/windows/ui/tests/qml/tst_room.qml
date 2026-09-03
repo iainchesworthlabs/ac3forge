@@ -58,12 +58,41 @@ TestCase {
         waitForRendering(page);
     }
 
+    function test_splitTakesTwoSlotsAndMonoGivesOneBack() {
+        DeskController.start();
+        if (!DeskController.running) {
+            skip("the engine did not start here: " + DeskController.lastError);
+        }
+        tryVerify(function() { return DeskController.framesEncoded > 0; }, 5000);
+        wait(800);  // the fresh engine's first session list reaches the controller on its next polls
+        if (DeskController.apps.length === 0) {
+            skip("no application has an audio session on this machine");
+        }
+        const id = DeskController.apps[0].app;
+        function row() { return DeskController.apps.find(function(a) { return a.app === id; }); }
+        DeskController.setSplit(id, true);
+        DeskController.position(id, 0.5, 0.5, 0);
+        tryVerify(function() {
+            const app = row();
+            return app && app.width === 2 && app.slot >= 0;
+        }, 5000, "after split: " + JSON.stringify(row()));
+        const placed = DeskController.placedCount;
+        DeskController.setSplit(id, false);
+        tryVerify(function() {
+            const app = row();
+            return app && app.width === 1 && app.slot >= 0;
+        }, 5000, "after mono: " + JSON.stringify(row()));
+        compare(DeskController.placedCount, placed);  // one application either way
+        DeskController.unposition(id);
+    }
+
     function test_placementRoundTripsForALiveApplication() {
         DeskController.start();
         if (!DeskController.running) {
             skip("the engine did not start here: " + DeskController.lastError);
         }
         tryVerify(function() { return DeskController.framesEncoded > 0; }, 5000);
+        wait(800);
         if (DeskController.apps.length === 0) {
             skip("no application has an audio session on this machine");
         }

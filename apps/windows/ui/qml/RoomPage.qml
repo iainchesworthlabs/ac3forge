@@ -153,6 +153,12 @@ Item {
                                     enabled: page.selected !== null && page.selected.slot >= 0
                                     onClicked: DeskController.position(page.selected.app, 0.5, 0.5, 0)
                                 }
+                                DeskButton {
+                                    objectName: "splitButton"
+                                    text: page.selected && page.selected.width === 2 ? qsTr("Mono") : qsTr("Split")
+                                    enabled: page.selected !== null
+                                    onClicked: DeskController.setSplit(page.selected.app, page.selected.width !== 2)
+                                }
                                 Item { Layout.fillWidth: true }
                                 Text {
                                     text: page.selected ? (page.selected.fullscreen ? qsTr("full-screen: stays in the bed") : (page.selected.slot >= 0 ? page.describe(page.selected) : "")) : ""

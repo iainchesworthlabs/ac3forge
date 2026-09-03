@@ -85,15 +85,24 @@ int main(int argc, char** argv) {
             }
             for (const QString& spec : placements) {
                 const auto eq = spec.indexOf(QLatin1Char('='));
-                const QStringList xyz = spec.mid(eq + 1).split(QLatin1Char(','));
+                // A trailing ",split" asks for the pair.
+                const bool split = spec.endsWith(QLatin1String(",split"), Qt::CaseInsensitive);
+                QString coords = spec.mid(eq + 1);
+                if (split) {
+                    coords.chop(6);
+                }
+                const QStringList xyz = coords.split(QLatin1Char(','));
                 if (eq < 0 || xyz.size() != 3) {
                     continue;
                 }
                 for (const QVariant& row : controller->apps()) {
                     const auto map = row.toMap();
                     if (map.value(QStringLiteral("name")).toString().compare(spec.left(eq), Qt::CaseInsensitive) == 0) {
-                        controller->position(map.value(QStringLiteral("app")).toInt(), xyz[0].toDouble(),
-                                             xyz[1].toDouble(), xyz[2].toDouble());
+                        const int app = map.value(QStringLiteral("app")).toInt();
+                        if (split) {
+                            controller->setSplit(app, true);
+                        }
+                        controller->position(app, xyz[0].toDouble(), xyz[1].toDouble(), xyz[2].toDouble());
                     }
                 }
             }

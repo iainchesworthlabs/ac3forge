@@ -73,6 +73,53 @@ void fold_to_mono(std::span<const float> interleaved, std::uint16_t channels,
     std::fill(out.begin() + static_cast<std::ptrdiff_t>(frames), out.end(), 0.0F);
 }
 
+void fold_to_pair(std::span<const float> interleaved, std::uint16_t channels,
+                  std::span<float> left, std::span<float> right) {
+    const std::size_t out_frames = std::min(left.size(), right.size());
+    if (channels == 0) {
+        std::ranges::fill(left, 0.0F);
+        std::ranges::fill(right, 0.0F);
+        return;
+    }
+    const std::size_t frames = std::min(out_frames, interleaved.size() / channels);
+    switch (channels) {
+        case 2:
+            for (std::size_t i = 0; i < frames; ++i) {
+                left[i] = interleaved[i * 2];
+                right[i] = interleaved[i * 2 + 1];
+            }
+            break;
+        case 6: {
+            // L R C LFE Ls Rs: each side is its front, the shared centre and
+            // its surround, the latter two at -3 dB.
+            constexpr float kNorm = 1.0F / (1.0F + 2.0F * kMinus3dB);
+            for (std::size_t i = 0; i < frames; ++i) {
+                const float* f = &interleaved[i * 6];
+                left[i] = kNorm * (f[0] + kMinus3dB * (f[2] + f[4]));
+                right[i] = kNorm * (f[1] + kMinus3dB * (f[2] + f[5]));
+            }
+            break;
+        }
+        case 8: {
+            // L R C LFE Lss Rss Lrs Rrs.
+            constexpr float kNorm = 1.0F / (1.0F + 3.0F * kMinus3dB);
+            for (std::size_t i = 0; i < frames; ++i) {
+                const float* f = &interleaved[i * 8];
+                left[i] = kNorm * (f[0] + kMinus3dB * (f[2] + f[4] + f[6]));
+                right[i] = kNorm * (f[1] + kMinus3dB * (f[2] + f[5] + f[7]));
+            }
+            break;
+        }
+        default: {
+            fold_to_mono(interleaved, channels, left.subspan(0, frames));
+            std::copy_n(left.begin(), frames, right.begin());
+            break;
+        }
+    }
+    std::fill(left.begin() + static_cast<std::ptrdiff_t>(frames), left.end(), 0.0F);
+    std::fill(right.begin() + static_cast<std::ptrdiff_t>(frames), right.end(), 0.0F);
+}
+
 void add_to_bed(std::span<const float> interleaved, std::uint16_t channels, float gain,
                 BedMix& bed) {
     if (channels == 0) {

@@ -48,6 +48,14 @@ struct BedMix {
 void fold_to_mono(std::span<const float> interleaved, std::uint16_t channels,
                   std::span<float> out);
 
+// Folds one tap to a left/right pair for a split application (outs the
+// same length as fold_to_mono's). Stereo passes straight through; 5.1 and
+// 7.1 fold each side's surrounds at -3 dB and share the centre between the
+// two at -3 dB, normalised like fold_to_mono; mono and anything else land
+// on both sides.
+void fold_to_pair(std::span<const float> interleaved, std::uint16_t channels,
+                  std::span<float> left, std::span<float> right);
+
 // Adds one tap into the bed slots, scaled by `gain`. Stereo lands on L and
 // R; 5.1/7.1 map by channel with the rear pairs folded at -3 dB into Ls/Rs.
 void add_to_bed(std::span<const float> interleaved, std::uint16_t channels, float gain,

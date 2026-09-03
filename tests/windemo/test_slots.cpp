@@ -127,3 +127,53 @@ TEST_CASE("adding a known application twice changes nothing", "[windemo]") {
     CHECK(slots.slot_of(1) == 0);
     CHECK(slots.apps().size() == 1);
 }
+
+TEST_CASE("a split application takes two consecutive slots and gives both back", "[windemo]") {
+    SlotAllocator plan;
+    plan.add(1);
+    plan.add(2);
+    REQUIRE(plan.position(1) == 0);
+    plan.set_width(2, 2);
+    CHECK(plan.width_of(2) == 2);
+    REQUIRE(plan.position(2) == 1);  // slots 1 and 2
+    CHECK(plan.free_positioned_slots() == kPositionedSlots - 3);
+    plan.add(3);
+    REQUIRE(plan.position(3) == 3);  // the next free one after the pair
+    plan.unposition(2);
+    CHECK(plan.free_positioned_slots() == kPositionedSlots - 2);
+    plan.add(4);
+    CHECK(plan.position(4) == 1);    // a mono app fills the pair's first slot
+    plan.add(5);
+    plan.set_width(5, 2);
+    CHECK(plan.position(5) == 4);    // slot 2 alone is too narrow; 4 and 5 are the next pair
+}
+
+TEST_CASE("changing width while positioned re-takes slots as one block, or waits", "[windemo]") {
+    SlotAllocator plan;
+    for (AppId app = 1; app <= 9; ++app) {
+        plan.add(app);
+        REQUIRE(plan.position(app) == static_cast<int>(app - 1));
+    }
+    // Nine mono apps hold slots 0..8; only slot 9 is free.
+    plan.set_width(1, 2);
+    CHECK_FALSE(plan.slot_of(1).has_value());  // no pair free: back to the bed, waiting
+    CHECK(plan.width_of(1) == 2);
+    CHECK(plan.free_positioned_slots() == 2);  // 0 and 9
+    plan.unposition(2);                        // frees slot 1: 0 and 1 are now a pair
+    CHECK(plan.slot_of(1) == 0);
+    plan.set_width(1, 1);                      // back to mono: keeps a slot, frees the other
+    CHECK(plan.slot_of(1).has_value());
+    CHECK(plan.free_positioned_slots() == 2);
+}
+
+TEST_CASE("a split application that goes full-screen frees both slots", "[windemo]") {
+    SlotAllocator plan;
+    plan.add(7);
+    plan.set_width(7, 2);
+    REQUIRE(plan.position(7) == 0);
+    plan.set_fullscreen(7);
+    CHECK(plan.in_bed(7));
+    CHECK(plan.free_positioned_slots() == kPositionedSlots);
+    plan.set_fullscreen(std::nullopt);
+    CHECK(plan.slot_of(7) == 0);
+}

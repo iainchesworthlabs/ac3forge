@@ -73,6 +73,7 @@ struct Engine::Impl {
     std::unique_ptr<ac3::oba::AtmosEncoder> encoder;
     ac3::audio::DeviceWatcher watcher;
     std::unordered_map<AppId, ac3::oba::Position> wanted_positions;
+    std::unordered_map<AppId, bool> split_choice;  // per-app override of split_by_default
     std::unordered_map<AppId, AppSession> known;
     std::unordered_map<AppId, float> levels;
     std::vector<std::vector<float>> objects;
@@ -131,6 +132,20 @@ struct Engine::Impl {
         }
     }
 
+    // Registers an application in the slot plan at the width its split
+    // choice (or the default) asks for. Commands can name an application
+    // before the first session refresh has listed it - a test, or a UI that
+    // remembers - so this is the one place applications enter the plan.
+    void ensure_in_plan(AppId app) {
+        if (slots.known(app)) {
+            return;
+        }
+        slots.add(app);
+        const auto choice = split_choice.find(app);
+        const bool split = choice != split_choice.end() ? choice->second : config.split_by_default;
+        slots.set_width(app, split ? 2 : 1);
+    }
+
     void refresh_sessions() {
         auto apps = sessions.refresh();
         std::vector<AppId> ids;
@@ -138,7 +153,7 @@ struct Engine::Impl {
         known.clear();
         for (auto& app : apps) {
             ids.push_back(app.app);
-            slots.add(app.app);
+            ensure_in_plan(app.app);
             known.emplace(app.app, std::move(app));
         }
         // Forget applications that left.
@@ -151,6 +166,7 @@ struct Engine::Impl {
         for (const AppId app : gone) {
             slots.remove(app);
             wanted_positions.erase(app);
+            split_choice.erase(app);
             levels.erase(app);
         }
         taps.sync(ids);
@@ -177,9 +193,13 @@ struct Engine::Impl {
     std::unordered_map<int, AppId> slot_owner;
     void apply_slot_changes() {
         std::unordered_map<int, AppId> now;
+        std::unordered_map<int, double> side;  // -1 left, +1 right, 0 mono
         for (const auto& app : slots.apps()) {
             if (app.positioned) {
-                now[*app.positioned] = app.app;
+                for (int i = 0; i < app.width; ++i) {
+                    now[*app.positioned + i] = app.app;
+                    side[*app.positioned + i] = app.width == 2 ? (i == 0 ? -1.0 : 1.0) : 0.0;
+                }
             }
         }
         for (int slot = 0; slot < kPositionedSlots; ++slot) {
@@ -192,8 +212,11 @@ struct Engine::Impl {
                 continue;
             }
             const auto wanted = wanted_positions.find(after->second);
-            const ac3::oba::Position where =
+            ac3::oba::Position where =
                 wanted == wanted_positions.end() ? ac3::oba::Position{0.5, 0.5, 0.0} : wanted->second;
+            // A split pair sits either side of the placed position, kept
+            // inside the room.
+            where.x = std::clamp(where.x + side[slot] * config.split_spread, 0.0, 1.0);
             if (before == slot_owner.end() || before->second != after->second) {
                 placement.set_target(slot, {.position = where, .gain = 0.0});
                 placement.snap(slot);
@@ -217,8 +240,13 @@ struct Engine::Impl {
             a.tapped = taps.has(slot.app);
             a.fullscreen = slot.fullscreen;
             a.slot = slot.positioned;
+            a.width = slot.width;
             if (slot.positioned) {
                 a.position = placement.current(*slot.positioned).position;
+                if (slot.width == 2) {
+                    // Report the pair's centre, which is what the user placed.
+                    a.position.x = 0.5 * (a.position.x + placement.current(*slot.positioned + 1).position.x);
+                }
             }
             if (const auto level = levels.find(slot.app); level != levels.end()) {
                 a.level_dbfs = level->second;
@@ -320,8 +348,14 @@ struct Engine::Impl {
                     }
                     levels[read.app] = dbfs(read.interleaved);
                     if (const auto slot = slots.slot_of(read.app)) {
-                        fold_to_mono(read.interleaved, taps.channels(),
-                                     objects[static_cast<std::size_t>(*slot)]);
+                        if (slots.width_of(read.app) == 2) {
+                            fold_to_pair(read.interleaved, taps.channels(),
+                                         objects[static_cast<std::size_t>(*slot)],
+                                         objects[static_cast<std::size_t>(*slot + 1)]);
+                        } else {
+                            fold_to_mono(read.interleaved, taps.channels(),
+                                         objects[static_cast<std::size_t>(*slot)]);
+                        }
                     } else {
                         add_to_bed(read.interleaved, taps.channels(), 1.0F, bed);
                     }
@@ -402,6 +436,7 @@ void Engine::stop() {
 void Engine::position(AppId app, ac3::oba::Position where) {
     impl_->post([this, app, where] {
         impl_->wanted_positions[app] = where;
+        impl_->ensure_in_plan(app);
         std::ignore = impl_->slots.position(app);
         impl_->apply_slot_changes();
     });
@@ -418,6 +453,15 @@ void Engine::pin(std::optional<OutputMode> mode) {
     impl_->post([this, mode] {
         impl_->output->set_pinned(mode);
         impl_->want_reprobe.store(true, std::memory_order_release);
+    });
+}
+
+void Engine::set_split(AppId app, bool split) {
+    impl_->post([this, app, split] {
+        impl_->split_choice[app] = split;
+        impl_->ensure_in_plan(app);
+        impl_->slots.set_width(app, split ? 2 : 1);
+        impl_->apply_slot_changes();
     });
 }
 

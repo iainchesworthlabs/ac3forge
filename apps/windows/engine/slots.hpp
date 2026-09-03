@@ -50,8 +50,10 @@ enum class BedChannel : std::uint8_t { kL = 0, kR = 1, kC = 2, kLs = 3, kRs = 4 
 struct AppSlot {
     AppId app = 0;
     // A positioned slot index in [0, kPositionedSlots), or nullopt: this
-    // application is in the bed.
+    // application is in the bed. A split application (width 2) holds this
+    // slot and the next one: left, then right.
     std::optional<int> positioned;
+    int width = 1;
     // The user asked for this application to be positioned. Kept separately
     // from `positioned` because the full-screen rule can override it: a
     // full-screen foreground application is the bed whatever the user asked,
@@ -75,6 +77,14 @@ public:
     // The user dragged it back, or pressed reset.
     void unposition(AppId app);
 
+    // Split (width 2: a stereo application becomes two objects, one per
+    // channel) or mono (width 1). A positioned application that changes
+    // width gives its slots back and takes the new count as one block; when
+    // two consecutive slots are not free it waits in the bed, like any
+    // other waiter, and gets them when they free up.
+    void set_width(AppId app, int width);
+    [[nodiscard]] int width_of(AppId app) const;
+
     // The platform layer's report of which application is full-screen in the
     // foreground, or nullopt. Only that application is forced into the bed;
     // everything else keeps what it has.
@@ -89,7 +99,8 @@ public:
 private:
     AppSlot* find(AppId app);
     const AppSlot* find(AppId app) const;
-    std::optional<int> take_free_slot();
+    std::optional<int> take_free_slots(int width);
+    void release(AppSlot& slot);
     void reconcile();
 
     std::vector<AppSlot> apps_;

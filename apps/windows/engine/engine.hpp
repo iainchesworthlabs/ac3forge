@@ -32,6 +32,11 @@ struct EngineConfig {
     // The audio devices the engine is built over; null means WASAPI
     // (audio_devices.hpp). Tests pass fakes.
     std::shared_ptr<AudioDevices> devices;
+    // Split (two objects, one per channel) rather than mono, for every
+    // application unless told otherwise per application; and how far
+    // either side of the placed position the pair sits, in room widths.
+    bool split_by_default = false;
+    double split_spread = 0.15;
     // The width taps open at until the first probe; after each probe the
     // engine follows the null sink's shared-mode channel count (2, 6 or 8),
     // so a surround-capable application rendering 7.1 into the driver
@@ -46,7 +51,8 @@ struct AppStatus {
     bool active = false;
     bool tapped = false;
     bool fullscreen = false;
-    std::optional<int> slot;  // positioned slot, or nullopt: in the bed
+    std::optional<int> slot;  // positioned slot (the first of `width`), or nullopt: in the bed
+    int width = 1;            // 2: split, a left and a right object
     ac3::oba::Position position{0.5, 0.5, 0.0};
     float level_dbfs = -120.0F;
 };
@@ -86,6 +92,8 @@ public:
     // Commands, safe from any thread; applied at the next frame boundary.
     void position(AppId app, ac3::oba::Position where);
     void unposition(AppId app);
+    // Two objects (one per channel) or one for this application.
+    void set_split(AppId app, bool split);
     void pin(std::optional<OutputMode> mode);
     void set_bypass(bool on);
     void reprobe();

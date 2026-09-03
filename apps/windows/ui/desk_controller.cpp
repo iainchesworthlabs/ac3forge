@@ -95,6 +95,7 @@ ac3::windemo::EngineConfig DeskController::engine_config() const {
     config.signing_key_path = keyPath().toStdString();
     config.low_latency = lowLatency();
     config.bypass_codec = bypassCodec();
+    config.split_by_default = splitStereo();
     config.bitrate_kbps = static_cast<std::uint32_t>(std::max(0, bitrate()));
     config.pinned = mode_from_key(pinned());
     return config;
@@ -126,6 +127,13 @@ void DeskController::stop() {
         running_ = false;
         emit stateChanged();
     }
+    // The list was the old engine's; a fresh one starts empty.
+    if (!apps_.isEmpty() || placed_ != 0 || bed_ != 0) {
+        apps_.clear();
+        placed_ = 0;
+        bed_ = 0;
+        emit appsChanged();
+    }
 }
 
 void DeskController::restart_engine() {
@@ -156,6 +164,7 @@ void DeskController::poll() {
         row.insert(QStringLiteral("tapped"), app.tapped);
         row.insert(QStringLiteral("fullscreen"), app.fullscreen);
         row.insert(QStringLiteral("slot"), app.slot ? *app.slot : -1);
+        row.insert(QStringLiteral("width"), app.width);
         row.insert(QStringLiteral("x"), app.position.x);
         row.insert(QStringLiteral("y"), app.position.y);
         row.insert(QStringLiteral("z"), app.position.z);
@@ -290,6 +299,21 @@ void DeskController::setBypassCodec(bool on) {
     emit settingsChanged();
 }
 
+bool DeskController::splitStereo() const {
+    return settings_.value(QStringLiteral("codec/splitStereo"), false).toBool();
+}
+
+void DeskController::setSplitStereo(bool on) {
+    if (on == splitStereo()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("codec/splitStereo"), on);
+    emit settingsChanged();
+    // The default applies to applications the engine meets from now on;
+    // a restart applies it to the ones it already has.
+    restart_engine();
+}
+
 int DeskController::bitrate() const {
     return settings_.value(QStringLiteral("codec/bitrate"), 0).toInt();
 }
@@ -357,6 +381,12 @@ void DeskController::position(int app, double x, double y, double z) {
 void DeskController::unposition(int app) {
     if (engine_) {
         engine_->unposition(static_cast<ac3::windemo::AppId>(app));
+    }
+}
+
+void DeskController::setSplit(int app, bool split) {
+    if (engine_) {
+        engine_->set_split(static_cast<ac3::windemo::AppId>(app), split);
     }
 }
 

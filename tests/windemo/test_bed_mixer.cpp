@@ -106,3 +106,30 @@ TEST_CASE("a short input leaves the tail of the output silent", "[windemo]") {
     CHECK(mono[1] == 0.0F);
     CHECK(mono[3] == 0.0F);
 }
+
+TEST_CASE("fold_to_pair passes stereo through and shares the centre of 5.1", "[windemo]") {
+    using ac3::windemo::fold_to_pair;
+    std::vector<float> left(4), right(4);
+    const std::vector<float> stereo{0.5F, -0.25F, 0.5F, -0.25F, 0.5F, -0.25F, 0.5F, -0.25F};
+    fold_to_pair(stereo, 2, left, right);
+    for (std::size_t i = 0; i < 4; ++i) {
+        CHECK(left[i] == 0.5F);
+        CHECK(right[i] == -0.25F);
+    }
+    // 5.1 with 1.0 on every channel: each side is (1 + 0.707 + 0.707) normalised = 1.0.
+    const std::vector<float> six(6 * 4, 1.0F);
+    fold_to_pair(six, 6, left, right);
+    CHECK(left[0] == Catch::Approx(1.0F).margin(1e-5));
+    CHECK(right[0] == Catch::Approx(1.0F).margin(1e-5));
+    // Centre only: both sides hear it at the -3 dB weight.
+    std::vector<float> centre(6 * 4, 0.0F);
+    for (std::size_t i = 0; i < 4; ++i) centre[i * 6 + 2] = 1.0F;
+    fold_to_pair(centre, 6, left, right);
+    CHECK(left[0] == Catch::Approx(0.7071F / (1.0F + 2.0F * 0.7071F)).margin(1e-4));
+    CHECK(left[0] == Catch::Approx(right[0]).margin(1e-6));
+    // Mono lands on both.
+    const std::vector<float> mono{0.3F, 0.3F, 0.3F, 0.3F};
+    fold_to_pair(mono, 1, left, right);
+    CHECK(left[2] == 0.3F);
+    CHECK(right[2] == 0.3F);
+}

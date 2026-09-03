@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "engine: %s\n", started.error().c_str());
         return 1;
     }
-    std::puts("engine running; type 'list', 'pos <app> x y z', 'bed <app>', 'pin <mode>', 'bypass on|off', 'status', 'quit'");
+    std::puts("engine running; type 'list', 'pos <app> x y z', 'bed <app>', 'pin <mode>', 'bypass on|off', 'split <app> on|off', 'status', 'quit'");
     std::this_thread::sleep_for(std::chrono::milliseconds(800));
     print_status(engine.status());
     print_apps(engine.status());
@@ -158,6 +158,11 @@ int main(int argc, char** argv) {
             } else {
                 engine.load_signing_key(path);
             }
+        } else if (verb == "split") {
+            unsigned app = 0;
+            std::string on;
+            in >> app >> on;
+            engine.set_split(app, on == "on");
         } else if (verb == "bypass") {
             std::string on;
             in >> on;

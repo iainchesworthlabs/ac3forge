@@ -34,6 +34,7 @@ void SlotAllocator::add(AppId app) {
     }
     apps_.push_back({.app = app,
                      .positioned = std::nullopt,
+                     .width = 1,
                      .wants_position = false,
                      .fullscreen = fullscreen_ == app});
 }
@@ -43,21 +44,55 @@ void SlotAllocator::remove(AppId app) {
     if (it == apps_.end()) {
         return;
     }
-    if (it->positioned) {
-        taken_[static_cast<std::size_t>(*it->positioned)] = false;
-    }
+    release(*it);
     apps_.erase(it);
     reconcile();
 }
 
-std::optional<int> SlotAllocator::take_free_slot() {
-    for (int i = 0; i < kPositionedSlots; ++i) {
-        if (!taken_[static_cast<std::size_t>(i)]) {
-            taken_[static_cast<std::size_t>(i)] = true;
-            return i;
+void SlotAllocator::release(AppSlot& slot) {
+    if (slot.positioned) {
+        for (int i = 0; i < slot.width; ++i) {
+            taken_[static_cast<std::size_t>(*slot.positioned + i)] = false;
+        }
+        slot.positioned.reset();
+    }
+}
+
+// The lowest run of `width` free slots, taken as one block.
+std::optional<int> SlotAllocator::take_free_slots(int width) {
+    for (int first = 0; first + width <= kPositionedSlots; ++first) {
+        bool free = true;
+        for (int i = 0; i < width; ++i) {
+            free = free && !taken_[static_cast<std::size_t>(first + i)];
+        }
+        if (free) {
+            for (int i = 0; i < width; ++i) {
+                taken_[static_cast<std::size_t>(first + i)] = true;
+            }
+            return first;
         }
     }
     return std::nullopt;
+}
+
+void SlotAllocator::set_width(AppId app, int width) {
+    AppSlot* slot = find(app);
+    if (slot == nullptr) {
+        add(app);
+        slot = find(app);
+    }
+    width = width >= 2 ? 2 : 1;
+    if (slot->width == width) {
+        return;
+    }
+    release(*slot);
+    slot->width = width;
+    reconcile();
+}
+
+int SlotAllocator::width_of(AppId app) const {
+    const AppSlot* slot = find(app);
+    return slot == nullptr ? 1 : slot->width;
 }
 
 std::optional<int> SlotAllocator::position(AppId app) {
@@ -97,14 +132,13 @@ void SlotAllocator::reconcile() {
     for (auto& slot : apps_) {
         const bool qualifies = slot.wants_position && !slot.fullscreen;
         if (slot.positioned && !qualifies) {
-            taken_[static_cast<std::size_t>(*slot.positioned)] = false;
-            slot.positioned.reset();
+            release(slot);
         }
     }
     for (auto& slot : apps_) {
         const bool qualifies = slot.wants_position && !slot.fullscreen;
         if (qualifies && !slot.positioned) {
-            slot.positioned = take_free_slot();
+            slot.positioned = take_free_slots(slot.width);
         }
     }
 }

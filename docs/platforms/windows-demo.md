@@ -619,6 +619,24 @@ the page, which now actually enables it, plus a per-app "split" toggle on the ap
 Tests: the allocator's two-slot cases and refusal, the pair fold, and a QML test that the
 toggle reaches the controller.
 
+*Landed 2026-09-03.* `SlotAllocator::set_width` takes two consecutive slots as one block (the
+lowest free pair) and gives both back; an application that cannot get a pair waits in the
+bed with its request remembered, and one that goes full-screen frees both. `fold_to_pair`
+passes stereo through and, for 5.1 and 7.1, gives each side its front, its surrounds at
+-3 dB and the shared centre at -3 dB, normalised like the mono fold. The engine places the
+pair either side of the placed position at the configured spread (0.15 of the room width,
+clamped to the walls) and reports the pair's centre as the application's position; the
+Settings checkbox is the default for applications the engine meets from now on, the room's
+selected-application panel has a Split/Mono button per application, and the runner takes
+`split <app> on|off`. One thing it found: a command naming an application before the first
+session refresh had listed it used to enter the plan at width 1 whatever the choice was;
+applications now enter the plan through one path that applies it.
+
+![A split application: Music holds slots 2 and 3 as a pair at the placed position](screenshots/windows-demo-room-split.png)
+
+The room still draws one marker at the pair's centre; two small satellites either side
+are the remaining polish.
+
 ### Phase 6: docs, CI, release
 
 This page rewritten from plan to record; a roadmap record; a CHANGELOG entry; the demo built

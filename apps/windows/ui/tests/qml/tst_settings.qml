@@ -20,6 +20,7 @@ TestCase {
         DeskController.pinned = "auto";
         DeskController.lowLatency = false;
         DeskController.bypassCodec = false;
+        DeskController.splitStereo = false;
         DeskController.bitrate = 0;
         DeskController.theme = "system";
         DeskController.palette = "signal";
@@ -54,8 +55,10 @@ TestCase {
         DeskController.keepRunningWhenClosed = false;
         DeskController.moveDefaultOnLaunch = true;
         DeskController.pinned = "stereo";
+        DeskController.splitStereo = true;
         compare(DeskController.lowLatency, true);
         compare(DeskController.bypassCodec, true);
+        compare(DeskController.splitStereo, true);
         compare(DeskController.bitrate, 640);
         compare(DeskController.theme, "dark");
         compare(DeskController.palette, "ink");

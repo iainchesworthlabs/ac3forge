@@ -13,7 +13,7 @@ Rectangle {
 
     readonly property bool placed: app.slot >= 0
     readonly property string detail: placed
-        ? qsTr("slot ") + (app.slot + 1) + " · " + app.x.toFixed(2) + ", " + app.y.toFixed(2) + ", " + (app.z >= 0 ? "+" : "") + app.z.toFixed(2)
+        ? (app.width === 2 ? qsTr("slots ") + (app.slot + 1) + "+" + (app.slot + 2) : qsTr("slot ") + (app.slot + 1)) + " · " + app.x.toFixed(2) + ", " + app.y.toFixed(2) + ", " + (app.z >= 0 ? "+" : "") + app.z.toFixed(2)
         : qsTr("bed") + (app.fullscreen ? qsTr(" · full-screen") : "") + (app.active ? "" : qsTr(" · idle")) + (app.tapped ? "" : qsTr(" · no tap"))
 
     implicitHeight: row.implicitHeight + Theme.space4

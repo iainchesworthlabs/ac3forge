@@ -52,6 +52,7 @@ class DeskController : public QObject {
     Q_PROPERTY(QString nullSinkName READ nullSinkName WRITE setNullSinkName NOTIFY settingsChanged)
     Q_PROPERTY(bool lowLatency READ lowLatency WRITE setLowLatency NOTIFY settingsChanged)
     Q_PROPERTY(bool bypassCodec READ bypassCodec WRITE setBypassCodec NOTIFY settingsChanged)
+    Q_PROPERTY(bool splitStereo READ splitStereo WRITE setSplitStereo NOTIFY settingsChanged)
     Q_PROPERTY(int bitrate READ bitrate WRITE setBitrate NOTIFY settingsChanged)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY settingsChanged)
     Q_PROPERTY(QString palette READ palette WRITE setPalette NOTIFY settingsChanged)
@@ -110,6 +111,8 @@ public:
     void setLowLatency(bool on);
     [[nodiscard]] bool bypassCodec() const;
     void setBypassCodec(bool on);
+    [[nodiscard]] bool splitStereo() const;
+    void setSplitStereo(bool on);
     [[nodiscard]] int bitrate() const;
     void setBitrate(int kbps);
     [[nodiscard]] QString theme() const;
@@ -144,6 +147,7 @@ public:
     Q_INVOKABLE void stop();
     Q_INVOKABLE void position(int app, double x, double y, double z);
     Q_INVOKABLE void unposition(int app);
+    Q_INVOKABLE void setSplit(int app, bool split);
     Q_INVOKABLE void reprobe();
     Q_INVOKABLE void loadKey(const QString& path);
     Q_INVOKABLE void clearKey();
