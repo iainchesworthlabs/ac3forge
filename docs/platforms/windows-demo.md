@@ -1006,6 +1006,16 @@ Speakers (High Definition Audio Device)", and the endpoint table listed the sile
 PCM channel count but a tick under spatial, which is the probe's answer for the driver's
 endpoint and may be the probe rather than the driver.
 
+Two smaller Settings findings from the same sitting. The signing key's empty field carried
+the environment variables' names as its placeholder text; they are a note under the block
+now, and the field says only that no file is chosen. And the driver block put the source
+build's tools (the folder, install, remove, whether a package is there) in front of what a
+person needs to know. It now leads with the two facts that matter, whether the silent
+device is installed and whether applications play to it, shows the test-signing state only
+while the device is missing, says in a sentence what to do (an installed copy of the
+application brings the driver with it; a source build points Advanced at a built package),
+and keeps the folder and the remove button under Advanced.
+
 ### Phase 6: docs, CI, release
 
 Five items. The first three, this page rewritten from plan to record, the roadmap record and
@@ -1014,6 +1024,17 @@ note at the top describes. Two remain: the demo built (driver excluded) on the s
 Windows runners, with the WDK on the runners and the driver in CI only once it builds locally
 without surprises; and the EV certificate and attestation step as the last item, after which
 the driver can join the package.
+
+On how the driver reaches a machine once it is signed: with the installer, not from inside
+the window. The package installs the driver (`pnputil /add-driver /install` on the attested
+package, the device created with devcon or SwDevice as `install.ps1` does now) and removes it
+on uninstall, so a person who installs the application has the silent device without a
+second step, and one who uninstalls it is not left with an orphan endpoint. The window then
+only reports the two facts above and offers to send applications to the device; its
+install and remove buttons stay as the source build's tools under Advanced. A signed driver
+also drops the test-signing and memory-integrity conditions, so that status line goes with
+it. Until the attestation step exists the in-window install of a test-signed package is
+how a development machine gets the driver, which is what the block does today.
 
 ## What it looks like
 

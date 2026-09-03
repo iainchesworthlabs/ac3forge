@@ -95,47 +95,52 @@ Flickable {
                 spacing: Theme.space3
                 RailBlock { ordinal: "01"; label: qsTr("SILENT DEVICE · WHERE APPLICATIONS PLAY"); Layout.fillWidth: true; Layout.fillHeight: false }
                 Note { text: qsTr("Sound takes two stages here. Applications play into the Windows default output; this app taps them there and sends the result to the endpoint you hear. For the first stage to be silent, the default must be a device that discards what it is given: the Desktop Atmos driver. Until it is installed, any silent endpoint whose name matches the filter under Advanced stands in.") }
+                // What a person needs to know, in the order it matters: is the
+                // device there; do applications play to it; and, only while it
+                // is not there, what stands between this machine and a
+                // test-signed driver. A packaged install carries the signed
+                // driver and installs it with the application (Phase 6), so
+                // the source-build tools (the folder, install, remove) live
+                // under Advanced rather than in the way.
                 Card {
                     ColumnLayout {
                         spacing: Theme.space2
-                        // 1. Is there a device?
                         StatusRow {
                             ok: DeskController.nullSinkPresent
-                            text: DeskController.nullSinkPresent ? qsTr("Silent device present: an endpoint named like \"%1\"").arg(DeskController.nullSinkName) : qsTr("No silent device: nothing named like \"%1\" exists, so applications can only play to a real device and are heard directly.").arg(DeskController.nullSinkName)
+                            text: DeskController.nullSinkPresent ? qsTr("The silent device is installed: an endpoint named like \"%1\".").arg(DeskController.nullSinkName) : qsTr("No silent device: nothing named like \"%1\" exists, so applications can only play to a real device and are heard directly.").arg(DeskController.nullSinkName)
                         }
-                        // 1b. Are applications playing to it?
                         StatusRow {
                             ok: DeskController.defaultIsNullSink
                             text: DeskController.defaultIsNullSink ? qsTr("Applications play to it: it is the Windows default output.") : qsTr("Applications do not play to it yet: the Windows default output is %1. Send them there from the Room or Signal path page.").arg(DeskController.defaultOutputName.length ? DeskController.defaultOutputName : qsTr("not set"))
                         }
-                        // 2. Can a test-signed driver load here?
                         StatusRow {
+                            visible: !DeskController.nullSinkPresent
                             ok: DeskController.codeIntegrityKnown && DeskController.testSigningOn && !DeskController.memoryIntegrityOn
                             text: !DeskController.codeIntegrityKnown ? qsTr("Could not read the kernel's code-integrity state.")
-                                    : (DeskController.testSigningOn && !DeskController.memoryIntegrityOn
-                                        ? qsTr("This machine can load the test-signed driver: test signing is on and memory integrity is off.")
-                                        : qsTr("This machine cannot load the test-signed driver yet: ")
-                                          + (DeskController.testSigningOn ? "" : qsTr("turn test signing on (bcdedit /set testsigning on, then restart)"))
-                                          + (!DeskController.testSigningOn && DeskController.memoryIntegrityOn ? qsTr(" and ") : "")
-                                          + (DeskController.memoryIntegrityOn ? qsTr("turn memory integrity off (Windows Security, Core isolation, then restart)") : "")
-                                          + ".")
+                                : (DeskController.testSigningOn && !DeskController.memoryIntegrityOn
+                                    ? qsTr("This machine can load the test-signed driver: test signing is on and memory integrity is off.")
+                                    : qsTr("This machine cannot load the test-signed driver yet: ")
+                                      + (DeskController.testSigningOn ? "" : qsTr("turn test signing on (bcdedit /set testsigning on, then restart)"))
+                                      + (!DeskController.testSigningOn && DeskController.memoryIntegrityOn ? qsTr(" and ") : "")
+                                      + (DeskController.memoryIntegrityOn ? qsTr("turn memory integrity off (Windows Security, Core isolation, then restart)") : "")
+                                      + ".")
                         }
-                        // 3. Is a package to install here?
-                        StatusRow {
-                            ok: DeskController.driverPackageFound
-                            text: DeskController.driverPackageFound ? qsTr("A built driver package and its install scripts are in the driver folder.") : qsTr("No built driver package in the driver folder (see Advanced below).")
+                        Note {
+                            visible: !DeskController.nullSinkPresent
+                            text: DeskController.driverPackageFound
+                                ? qsTr("A built driver package is in the driver folder, ready to install.")
+                                : qsTr("An installed copy of this application brings the driver with it. This is a build from source: build the driver, then point Advanced at its folder, or put a built package there.")
                         }
                         Flow {
                             Layout.fillWidth: true
                             spacing: Theme.space2
-                            DeskButton { objectName: "installDriverButton"; text: qsTr("Install driver"); primary: true; enabled: DeskController.driverPackageFound && !DeskController.driverBusy; onClicked: DeskController.installDriver() }
-                            DeskButton { text: qsTr("Remove driver"); enabled: DeskController.driverPackageFound && !DeskController.driverBusy; onClicked: DeskController.removeDriver() }
+                            DeskButton { objectName: "installDriverButton"; visible: !DeskController.nullSinkPresent; text: qsTr("Install driver"); primary: true; enabled: DeskController.driverPackageFound && !DeskController.driverBusy; onClicked: DeskController.installDriver() }
                             DeskButton { text: qsTr("Check again"); enabled: !DeskController.driverBusy; onClicked: DeskController.refreshDriver() }
                         }
                         Note { visible: DeskController.driverMessage.length > 0; text: DeskController.driverMessage }
                     }
                 }
-                // Advanced: where the package is, and what counts as silent.
+                // Advanced: the source-build tools, and what counts as silent.
                 ColumnLayout {
                     id: advanced
                     Layout.fillWidth: true
@@ -161,7 +166,14 @@ Flickable {
                             input.onEditingFinished: DeskController.driverDir = input.text
                         }
                     }
-                    Note { visible: advanced.open; text: qsTr("Where install.ps1, remove.ps1 and the built package live: beside this app by default, or apps/windows/driver in a source tree.") }
+                    Note { visible: advanced.open; text: qsTr("Where install.ps1, remove.ps1 and the built package live: beside this app by default, or apps/windows/driver in a source tree.") + " " + (DeskController.driverPackageFound ? qsTr("A built package is there.") : qsTr("No built package is there.")) }
+                    Flow {
+                        visible: advanced.open
+                        Layout.fillWidth: true
+                        spacing: Theme.space2
+                        DeskButton { text: qsTr("Remove driver"); enabled: DeskController.driverPackageFound && !DeskController.driverBusy; onClicked: DeskController.removeDriver() }
+                    }
+                    Note { visible: advanced.open; text: qsTr("Removes the device and the driver package this folder's remove.ps1 knows about; an installed copy of the application removes its own on uninstall.") }
                     SettingRow {
                         visible: advanced.open
                         label: qsTr("Silent device")
@@ -193,7 +205,7 @@ Flickable {
                             anchors.leftMargin: 10
                             anchors.rightMargin: 10
                             verticalAlignment: Text.AlignVCenter
-                            text: DeskController.keyPath.length ? DeskController.keyPath : qsTr("no key file chosen · AC3FORGE_SIGNING_KEY_FILE and AC3FORGE_SIGNING_KEY are honoured")
+                            text: DeskController.keyPath.length ? DeskController.keyPath : qsTr("no key file chosen")
                             color: DeskController.keyPath.length ? Theme.text : Theme.textMuted
                             font.family: Theme.monoFamily
                             font.pixelSize: 12
@@ -209,6 +221,7 @@ Flickable {
                     Text { Layout.fillWidth: true; text: DeskController.signingStatus; color: Theme.text; font.pixelSize: 13; wrapMode: Text.WordWrap }
                 }
                 Note { text: qsTr("An unsigned object container would be refused outright by a validating decoder, so without a key no objects are sent.") }
+                Note { text: qsTr("With no file chosen here, the environment is honoured: AC3FORGE_SIGNING_KEY_FILE names a key file and AC3FORGE_SIGNING_KEY carries the key itself.") }
             }
         }
 
