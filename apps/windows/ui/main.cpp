@@ -18,7 +18,13 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QString>
+#include <QIcon>
 #include <QTimer>
+
+#include "app_entry.hpp"
+#include "app_icon_provider.hpp"
+
+#include <memory>
 #include <QUrl>
 
 #include "language_manager.hpp"
@@ -27,6 +33,12 @@ int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("Desktop Atmos"));
     QGuiApplication::setOrganizationName(QStringLiteral("ac3forge"));
+    // The window and taskbar icon; the .exe's own icon comes from the
+    // resource script CMake generates.
+    QIcon app_icon;
+    app_icon.addFile(QStringLiteral(":/icons/ac3forge-32.png"));
+    app_icon.addFile(QStringLiteral(":/icons/ac3forge-256.png"));
+    QGuiApplication::setWindowIcon(app_icon);
     QGuiApplication::setApplicationDisplayName(QStringLiteral("Desktop Atmos"));
     // Every control is drawn by the QML in this module, on the Theme's
     // tokens; the Basic style is the one that gets out of the way.
@@ -66,6 +78,7 @@ int main(int argc, char** argv) {
 
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
+    engine.addImageProvider(QStringLiteral("appicon"), new ac3::desk::AppIconProvider);
     engine.loadFromModule("Ac3ForgeDesk", "Main");
     if (engine.rootObjects().isEmpty()) {
         return 1;
@@ -80,14 +93,30 @@ int main(int argc, char** argv) {
 
     // `--place Name=x,y,z`, once the engine has listed the sessions: the
     // application whose display name matches is positioned there, so a
-    // capture can show a populated room without a hand on the mouse.
-    if (!placements.isEmpty()) {
-        QTimer::singleShot(1500, &app, [&engine, placements] {
-            auto* controller = engine.singletonInstance<DeskController*>("Ac3ForgeDesk", "DeskController");
-            if (controller == nullptr) {
-                return;
-            }
-            for (const QString& spec : placements) {
+    // capture can show a populated room without a hand on the mouse. The
+    // list arrives when the engine's first refresh does, which is not at a
+    // fixed time, so this polls until every named application has been
+    // placed (or gives up after six seconds) rather than guessing once.
+    auto* poll = new QTimer(&app);
+    auto pending = std::make_shared<QStringList>(placements);
+    auto tries = std::make_shared<int>(0);
+    auto take_shot = [&engine, shot_path] {
+        if (shot_path.isEmpty()) {
+            return;
+        }
+        auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+        int code = 1;
+        if (window != nullptr) {
+            qInfo("--shot: page %s", qPrintable(window->property("page").toString()));
+            code = window->grabWindow().save(shot_path) ? 0 : 2;
+        }
+        QCoreApplication::exit(code);
+    };
+    QObject::connect(poll, &QTimer::timeout, &app, [&engine, &app, poll, pending, tries, take_shot, shot_path] {
+        auto* controller = engine.singletonInstance<DeskController*>("Ac3ForgeDesk", "DeskController");
+        if (controller != nullptr) {
+            for (auto it = pending->begin(); it != pending->end();) {
+                const QString& spec = *it;
                 const auto eq = spec.indexOf(QLatin1Char('='));
                 // A trailing ",split" asks for the pair.
                 const bool split = spec.endsWith(QLatin1String(",split"), Qt::CaseInsensitive);
@@ -96,32 +125,37 @@ int main(int argc, char** argv) {
                     coords.chop(6);
                 }
                 const QStringList xyz = coords.split(QLatin1Char(','));
-                if (eq < 0 || xyz.size() != 3) {
-                    continue;
-                }
-                for (const QVariant& row : controller->apps()) {
-                    const auto map = row.toMap();
-                    if (map.value(QStringLiteral("name")).toString().compare(spec.left(eq), Qt::CaseInsensitive) == 0) {
-                        const int app = map.value(QStringLiteral("app")).toInt();
-                        if (split) {
-                            controller->setSplit(app, true);
+                bool done = eq < 0 || xyz.size() != 3;  // malformed: drop it
+                if (!done) {
+                    for (QObject* object : controller->apps()) {
+                        auto* entry = qobject_cast<ac3::desk::AppEntry*>(object);
+                        if (entry != nullptr && entry->name().compare(spec.left(eq), Qt::CaseInsensitive) == 0) {
+                            const int app = entry->app();
+                            if (split) {
+                                controller->setSplit(app, true);
+                            }
+                            controller->position(app, xyz[0].toDouble(), xyz[1].toDouble(), xyz[2].toDouble());
+                            qInfo("--place: %s -> app %d at (%s)", qPrintable(spec.left(eq)), app, qPrintable(coords));
+                            done = true;
                         }
-                        controller->position(app, xyz[0].toDouble(), xyz[1].toDouble(), xyz[2].toDouble());
                     }
                 }
+                it = done ? pending->erase(it) : it + 1;
             }
-        });
+        }
+        ++*tries;
+        if (pending->isEmpty() || *tries >= 24) {
+            for (const QString& spec : *pending) {
+                qWarning("--place: no application named %s after %d polls", qPrintable(spec.left(spec.indexOf(QLatin1Char('=')))), *tries);
+            }
+            poll->stop();
+            // Let the placement glide and the views settle before the grab.
+            QTimer::singleShot(shot_path.isEmpty() ? 0 : 1500, &app, take_shot);
+        }
+    });
+    if (!placements.isEmpty() || !shot_path.isEmpty()) {
+        poll->start(250);
     }
 
-    if (!shot_path.isEmpty()) {
-        QTimer::singleShot(3000, &app, [&engine, shot_path] {
-            auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
-            int code = 1;
-            if (window != nullptr) {
-                code = window->grabWindow().save(shot_path) ? 0 : 2;
-            }
-            QCoreApplication::exit(code);
-        });
-    }
     return QGuiApplication::exec();
 }

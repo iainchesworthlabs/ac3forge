@@ -1,5 +1,9 @@
 #include "desk_controller.hpp"
 
+#include "ac3/internal/profiling.hpp"
+
+#include "ac3/version.hpp"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -129,6 +133,10 @@ void DeskController::stop() {
     }
     // The list was the old engine's; a fresh one starts empty.
     if (!apps_.isEmpty() || placed_ != 0 || bed_ != 0) {
+        for (auto* entry : entries_) {
+            entry->deleteLater();
+        }
+        entries_.clear();
         apps_.clear();
         placed_ = 0;
         bed_ = 0;
@@ -145,36 +153,56 @@ void DeskController::restart_engine() {
 }
 
 void DeskController::poll() {
+    AC3_ZONE_SCOPED_N("desk poll");
     if (!engine_) {
         return;
     }
     const auto s = engine_->status();
 
-    // Applications: rebuilt every poll (the list is short); the QML side
-    // keys its delegates by app id so a rebuild does not reset a drag.
-    QVariantList apps;
+    // Applications: one live entry each, updated in place. The list is
+    // rebuilt (and appsChanged emitted) only when an application appears,
+    // leaves, or its order changes; a position or level change reaches the
+    // delegates through the entry's own signals.
     int placed = 0;
     int bed = 0;
+    const bool show_background = showBackgroundApps();
+    QList<QObject*> apps;
+    bool membership_changed = false;
     for (const auto& app : s.apps) {
-        QVariantMap row;
-        row.insert(QStringLiteral("app"), static_cast<int>(app.app));
-        row.insert(QStringLiteral("name"), display_name(app.name));
-        row.insert(QStringLiteral("imagePath"), from_utf8(app.image_path));
-        row.insert(QStringLiteral("active"), app.active);
-        row.insert(QStringLiteral("tapped"), app.tapped);
-        row.insert(QStringLiteral("fullscreen"), app.fullscreen);
-        row.insert(QStringLiteral("slot"), app.slot ? *app.slot : -1);
-        row.insert(QStringLiteral("width"), app.width);
-        row.insert(QStringLiteral("size"), app.size);
-        row.insert(QStringLiteral("x"), app.position.x);
-        row.insert(QStringLiteral("y"), app.position.y);
-        row.insert(QStringLiteral("z"), app.position.z);
-        row.insert(QStringLiteral("level"), static_cast<double>(app.level_dbfs));
-        apps.push_back(row);
+        // Background processes (no window of their own, not packaged) stay
+        // out of the rail unless asked for; they keep their tap and their
+        // place in the bed regardless.
+        const bool background = !app.has_window && !app.packaged;
+        if (background && !show_background) {
+            continue;
+        }
+        const int id = static_cast<int>(app.app);
+        auto* entry = qobject_cast<ac3::desk::AppEntry*>(entries_.value(id, nullptr));
+        if (entry == nullptr) {
+            entry = new ac3::desk::AppEntry(id, this);
+            entries_.insert(id, entry);
+            membership_changed = true;
+        }
+        // The executable's own description ("Steam", "Zoom") over its stem.
+        entry->update(app, app.description.empty() ? display_name(app.name) : from_utf8(app.description), background);
+        apps.push_back(entry);
         (app.slot ? placed : bed) += 1;
     }
-    if (apps != apps_ || placed != placed_ || bed != bed_) {
+    // Entries for applications that left.
+    for (auto it = entries_.begin(); it != entries_.end();) {
+        if (!apps.contains(it.value())) {
+            it.value()->deleteLater();
+            it = entries_.erase(it);
+            membership_changed = true;
+        } else {
+            ++it;
+        }
+    }
+    if (membership_changed || apps != apps_) {
         apps_ = std::move(apps);
+        emit appsChanged();
+    }
+    if (placed != placed_ || bed != bed_) {
         placed_ = placed;
         bed_ = bed;
         emit appsChanged();
@@ -209,6 +237,7 @@ void DeskController::poll() {
     starved_ = static_cast<double>(s.starved_reads);
     last_frame_ms_ = s.last_frame_ms;
     worst_frame_ms_ = s.worst_frame_ms;
+    encode_ms_ = s.encode_ms;
     emit statsChanged();
 
     // The endpoint table is what the engine's last probe saw; it changes
@@ -341,7 +370,7 @@ void DeskController::setTheme(const QString& theme) {
 }
 
 QString DeskController::palette() const {
-    return settings_.value(QStringLiteral("appearance/palette"), QStringLiteral("signal")).toString();
+    return settings_.value(QStringLiteral("appearance/palette"), QStringLiteral("system")).toString();
 }
 
 void DeskController::setPalette(const QString& palette) {
@@ -372,6 +401,47 @@ bool DeskController::keepRunningWhenClosed() const {
 void DeskController::setKeepRunningWhenClosed(bool on) {
     settings_.setValue(QStringLiteral("behaviour/keepRunningWhenClosed"), on);
     emit settingsChanged();
+}
+
+bool DeskController::showBackgroundApps() const {
+    return settings_.value(QStringLiteral("behaviour/showBackgroundApps"), false).toBool();
+}
+
+void DeskController::setShowBackgroundApps(bool on) {
+    if (on == showBackgroundApps()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("behaviour/showBackgroundApps"), on);
+    emit settingsChanged();
+    poll();
+}
+
+QString DeskController::roomLayout() const {
+    const auto v = settings_.value(QStringLiteral("appearance/roomLayout"), QStringLiteral("auto")).toString();
+    static const QStringList known{QStringLiteral("auto"), QStringLiteral("5.1"), QStringLiteral("7.1"), QStringLiteral("7.1.4")};
+    return known.contains(v) ? v : QStringLiteral("auto");
+}
+
+void DeskController::setRoomLayout(const QString& layout) {
+    if (layout == roomLayout()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("appearance/roomLayout"), layout);
+    emit settingsChanged();
+}
+
+QString DeskController::versionDetails() const {
+    return QString::fromStdString(ac3::version_details());
+}
+
+void DeskController::setDefaultOutput(const QString& id) {
+    if (const auto ok = ac3::windemo::set_default_render(id.toStdString()); !ok) {
+        default_message_ = from_utf8(ok.error());
+        emit defaultChanged();
+        return;
+    }
+    default_message_.clear();
+    refreshDefault();
 }
 
 bool DeskController::moveDefaultOnLaunch() const {

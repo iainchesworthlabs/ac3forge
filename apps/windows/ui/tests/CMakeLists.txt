@@ -17,6 +17,9 @@ qt_add_executable(ac3desk_qmltests
     ui/tests/qml_test_main.cpp
     ui/desk_controller.cpp
     ui/desk_controller.hpp
+    ui/app_entry.hpp
+    ui/app_icon_provider.cpp
+    ui/app_icon_provider.hpp
     ../gui/system_theme.cpp
     ../gui/system_theme.hpp
     ../gui/language_manager.cpp

@@ -5,32 +5,45 @@ import QtQuick.Layouts
 import Ac3ForgeDesk
 
 // Output: what is going out and why, every endpoint with what the probe
-// found, the pin, the default-output switch, and the codec-path switch.
+// found (and a way to make one the Windows default), the pin, the
+// default-output switch, and the codec-path switch.
+//
+// Sizing: one column that scrolls; the two-up rows become one-up below
+// about 900 px, the endpoint table drops its note column below about 760,
+// and every button row wraps rather than overflows.
 Flickable {
     id: page
     contentHeight: column.implicitHeight + Theme.space6 * 2
     clip: true
+    readonly property real innerWidth: width - Theme.space6 * 2
+    readonly property bool twoUp: innerWidth >= 900
+    readonly property bool wideTable: innerWidth >= 760
 
     ColumnLayout {
         id: column
         x: Theme.space6
         y: Theme.space6
-        width: page.width - Theme.space6 * 2
+        width: page.innerWidth
         spacing: Theme.space6
 
-        RailBlock { ordinal: "01"; label: qsTr("NOW"); Layout.fillWidth: true }
+        RailBlock { ordinal: "01"; label: qsTr("NOW"); Layout.fillWidth: true; Layout.fillHeight: false }
         Card {
-            RowLayout {
-                spacing: Theme.space6
+            GridLayout {
+                Layout.fillWidth: true
+                columns: page.twoUp ? 2 : 1
+                columnSpacing: Theme.space6
+                rowSpacing: Theme.space4
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
                     spacing: Theme.space2
-                    Text { text: DeskController.modeName + (DeskController.modeKey === "atmos" ? qsTr(" · E-AC-3 JOC over HDMI") : ""); color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: Theme.fontTitle; font.weight: Font.Bold }
-                    Text { text: DeskController.endpointName; color: Theme.text; font.pixelSize: Theme.fontNormal; visible: text.length > 0 }
+                    Text { Layout.fillWidth: true; text: DeskController.modeName + (DeskController.modeKey === "atmos" ? qsTr(" · E-AC-3 JOC over HDMI") : ""); color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: Theme.fontTitle; font.weight: Font.Bold; wrapMode: Text.WordWrap }
+                    Text { Layout.fillWidth: true; text: DeskController.endpointName; color: Theme.text; font.pixelSize: Theme.fontNormal; elide: Text.ElideRight; visible: text.length > 0 }
                     Text { Layout.fillWidth: true; text: DeskController.outputReason + qsTr(" The output follows the hardware: pull HDMI and it moves to the next best endpoint below."); color: Theme.textMuted; font.pixelSize: 13; wrapMode: Text.WordWrap }
                 }
                 ColumnLayout {
-                    Layout.preferredWidth: 420
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: page.twoUp ? 420 : -1
                     Layout.alignment: Qt.AlignTop
                     spacing: Theme.space2
                     Text { text: qsTr("PIN"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1 }
@@ -48,12 +61,15 @@ Flickable {
                             { label: qsTr("Stereo"), value: "stereo" }]
                         textRole: "label"
                         valueRole: "value"
-                        currentIndex: indexOfValue(DeskController.pinned)
+                        // Never blank: an unknown or empty pin reads as automatic.
+                        function sync() { const i = indexOfValue(DeskController.pinned); currentIndex = i < 0 ? 0 : i; }
+                        Component.onCompleted: sync()
+                        onModelChanged: sync()
                         onActivated: DeskController.pinned = currentValue
-                        Connections { target: DeskController; function onSettingsChanged() { pinBox.currentIndex = pinBox.indexOfValue(DeskController.pinned); } }
+                        Connections { target: DeskController; function onSettingsChanged() { pinBox.sync(); } }
                         font.pixelSize: 13
                         background: Rectangle { color: Theme.neutral100; border.color: Theme.divider; border.width: 1 }
-                        contentItem: Text { leftPadding: 10; text: pinBox.displayText; color: Theme.text; font.pixelSize: 13; verticalAlignment: Text.AlignVCenter }
+                        contentItem: Text { leftPadding: 10; rightPadding: 26; text: pinBox.displayText; color: Theme.text; font.pixelSize: 13; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
                         indicator: Text { x: pinBox.width - 22; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: 14 }
                         popup.background: Rectangle { color: Theme.surface; border.color: Theme.divider; border.width: 1 }
                         delegate: ItemDelegate {
@@ -76,6 +92,13 @@ Flickable {
             Layout.fillWidth: true
             Text { text: qsTr("re-probed on every device change"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11 }
         }
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("What the probe found on each render endpoint. The pin above chooses the mode and the output follows the hardware; \"Make default\" sends every application's audio to that endpoint, which is where this app taps it.")
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontSmall
+            wrapMode: Text.WordWrap
+        }
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: table.implicitHeight
@@ -92,43 +115,59 @@ Flickable {
                     Layout.leftMargin: Theme.space3
                     Layout.rightMargin: Theme.space3
                     spacing: Theme.space2
-                    Text { Layout.preferredWidth: 300; text: qsTr("ENDPOINT"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1 }
-                    Text { Layout.preferredWidth: 70; text: qsTr("E-AC-3"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
-                    Text { Layout.preferredWidth: 70; text: qsTr("AC-3"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
-                    Text { Layout.preferredWidth: 70; text: qsTr("PCM CH"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
-                    Text { Layout.preferredWidth: 80; text: qsTr("SPATIAL"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
-                    Text { Layout.fillWidth: true; text: qsTr("NOTE"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1 }
+                    Text { Layout.fillWidth: true; Layout.minimumWidth: 140; text: qsTr("ENDPOINT"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1 }
+                    Text { Layout.preferredWidth: 56; text: qsTr("E-AC-3"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
+                    Text { Layout.preferredWidth: 48; text: qsTr("AC-3"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
+                    Text { Layout.preferredWidth: 56; text: qsTr("PCM CH"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
+                    Text { Layout.preferredWidth: 60; text: qsTr("SPATIAL"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; horizontalAlignment: Text.AlignHCenter }
+                    Text { visible: page.wideTable; Layout.preferredWidth: 220; text: qsTr("NOTE"); color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1 }
+                    Item { Layout.preferredWidth: 104 }
                 }
                 Repeater {
                     model: DeskController.endpoints
                     delegate: ColumnLayout {
+                        id: endpointRow
                         required property var modelData
                         Layout.fillWidth: true
                         spacing: 0
                         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.divider }
                         RowLayout {
                             Layout.fillWidth: true
-                            Layout.margins: 10
+                            Layout.margins: 8
                             Layout.leftMargin: Theme.space3
                             Layout.rightMargin: Theme.space3
                             spacing: Theme.space2
-                            Text { Layout.preferredWidth: 300; text: modelData.name; color: Theme.text; font.pixelSize: 13; elide: Text.ElideRight }
-                            Text { Layout.preferredWidth: 70; text: modelData.eac3 ? "✓" : "—"; color: modelData.eac3 ? Theme.text : Theme.neutral500; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 13 }
-                            Text { Layout.preferredWidth: 70; text: modelData.ac3 ? "✓" : "—"; color: modelData.ac3 ? Theme.text : Theme.neutral500; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 13 }
-                            Text { Layout.preferredWidth: 70; text: modelData.pcmChannels > 0 ? modelData.pcmChannels : "—"; color: modelData.pcmChannels > 0 ? Theme.text : Theme.neutral500; horizontalAlignment: Text.AlignHCenter; font.family: Theme.monoFamily; font.pixelSize: 12 }
-                            Text { Layout.preferredWidth: 80; text: modelData.spatial ? "✓" : "—"; color: modelData.spatial ? Theme.text : Theme.neutral500; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 13 }
-                            Text {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                text: modelData.chosen ? qsTr("chosen") + (DeskController.modeKey === "atmos" || DeskController.modeKey === "ddplus" || DeskController.modeKey === "dd" ? qsTr(" · exclusive mode") : "")
-                                    : modelData.isNullSink ? qsTr("null sink · ") + (modelData.isDefault ? qsTr("the system default · ") : "") + qsTr("never an output")
-                                    : modelData.isDefault ? qsTr("the system default · applications render here")
-                                    : modelData.spatial ? qsTr("spatial sound on · headphones fallback")
-                                    : modelData.pcmChannels >= 6 ? qsTr("surround PCM fallback") : qsTr("stereo fallback")
-                                color: modelData.chosen ? Theme.accent : Theme.textMuted
+                                Layout.minimumWidth: 140
+                                spacing: 1
+                                Text { Layout.fillWidth: true; text: endpointRow.modelData.name; color: Theme.text; font.pixelSize: 13; elide: Text.ElideRight }
+                                Text { visible: !page.wideTable; Layout.fillWidth: true; text: endpointRow.note; color: endpointRow.modelData.chosen ? Theme.accent : Theme.textMuted; font.pixelSize: Theme.fontSmall; elide: Text.ElideRight }
+                            }
+                            Text { Layout.preferredWidth: 56; text: endpointRow.modelData.eac3 ? "✓" : "—"; color: endpointRow.modelData.eac3 ? Theme.text : Theme.neutral500; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 13 }
+                            Text { Layout.preferredWidth: 48; text: endpointRow.modelData.ac3 ? "✓" : "—"; color: endpointRow.modelData.ac3 ? Theme.text : Theme.neutral500; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 13 }
+                            Text { Layout.preferredWidth: 56; text: endpointRow.modelData.pcmChannels > 0 ? endpointRow.modelData.pcmChannels : "—"; color: endpointRow.modelData.pcmChannels > 0 ? Theme.text : Theme.neutral500; horizontalAlignment: Text.AlignHCenter; font.family: Theme.monoFamily; font.pixelSize: 12 }
+                            Text { Layout.preferredWidth: 60; text: endpointRow.modelData.spatial ? "✓" : "—"; color: endpointRow.modelData.spatial ? Theme.text : Theme.neutral500; horizontalAlignment: Text.AlignHCenter; font.pixelSize: 13 }
+                            Text {
+                                visible: page.wideTable
+                                Layout.preferredWidth: 220
+                                text: endpointRow.note
+                                color: endpointRow.modelData.chosen ? Theme.accent : Theme.textMuted
                                 font.pixelSize: Theme.fontSmall
                                 elide: Text.ElideRight
                             }
+                            DeskButton {
+                                Layout.preferredWidth: 104
+                                text: endpointRow.modelData.isDefault ? qsTr("Default") : qsTr("Make default")
+                                enabled: !endpointRow.modelData.isDefault
+                                onClicked: DeskController.setDefaultOutput(endpointRow.modelData.id)
+                            }
                         }
+                        readonly property string note: modelData.chosen ? qsTr("chosen") + (DeskController.modeKey === "atmos" || DeskController.modeKey === "ddplus" || DeskController.modeKey === "dd" ? qsTr(" · exclusive mode") : "")
+                            : modelData.isNullSink ? qsTr("null sink · ") + (modelData.isDefault ? qsTr("the system default · ") : "") + qsTr("never an output")
+                            : modelData.isDefault ? qsTr("the system default · applications render here")
+                            : modelData.spatial ? qsTr("spatial sound on · headphones fallback")
+                            : modelData.pcmChannels >= 6 ? qsTr("surround PCM fallback") : qsTr("stereo fallback")
                     }
                 }
                 Text {
@@ -141,13 +180,17 @@ Flickable {
             }
         }
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
-            spacing: Theme.space6
+            columns: page.twoUp ? 2 : 1
+            columnSpacing: Theme.space6
+            rowSpacing: Theme.space6
             ColumnLayout {
                 Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                Layout.alignment: Qt.AlignTop
                 spacing: Theme.space3
-                RailBlock { ordinal: "03"; label: qsTr("DEFAULT OUTPUT"); Layout.fillWidth: true }
+                RailBlock { ordinal: "03"; label: qsTr("DEFAULT OUTPUT"); Layout.fillWidth: true; Layout.fillHeight: false }
                 Card {
                     ColumnLayout {
                         spacing: Theme.space2
@@ -161,7 +204,8 @@ Flickable {
                             font.pixelSize: 13
                             wrapMode: Text.WordWrap
                         }
-                        RowLayout {
+                        Flow {
+                            Layout.fillWidth: true
                             spacing: Theme.space2
                             DeskButton {
                                 text: DeskController.defaultIsNullSink ? qsTr("Restore ") + (DeskController.previousDefaultName.length ? DeskController.previousDefaultName : qsTr("previous output")) : qsTr("Move default to ") + DeskController.nullSinkName
@@ -176,13 +220,15 @@ Flickable {
                 }
             }
             ColumnLayout {
-                Layout.preferredWidth: 380
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
                 Layout.alignment: Qt.AlignTop
                 spacing: Theme.space3
-                RailBlock { ordinal: "04"; label: qsTr("CODEC PATH"); Layout.fillWidth: true }
+                RailBlock { ordinal: "04"; label: qsTr("CODEC PATH"); Layout.fillWidth: true; Layout.fillHeight: false }
                 Card {
                     DeskCheck {
                         objectName: "bypassCheck"
+                        Layout.fillWidth: true
                         text: qsTr("Bypass the codec on headphones and PCM")
                         note: qsTr("Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine's own objects and PCM and stereo take its 5.1 bed, codec out of the loop.")
                         checked: DeskController.bypassCodec

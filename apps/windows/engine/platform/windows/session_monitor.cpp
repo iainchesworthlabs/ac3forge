@@ -5,6 +5,7 @@
 #include <audiopolicy.h>
 #include <mmdeviceapi.h>
 #include <tlhelp32.h>
+#include <appmodel.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -127,6 +128,102 @@ std::string image_path_of(std::uint32_t pid) {
     return path;
 }
 
+// The executable's FileDescription from its version resource: "Steam",
+// "Zoom", "VMware Workstation VMX", rather than the image's stem.
+std::string description_of(const std::string& image_path) {
+    if (image_path.empty()) {
+        return {};
+    }
+    const int wide_len = MultiByteToWideChar(CP_UTF8, 0, image_path.c_str(), -1, nullptr, 0);
+    std::wstring wide(static_cast<std::size_t>(wide_len > 0 ? wide_len - 1 : 0), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, image_path.c_str(), -1, wide.data(), wide_len);
+    DWORD handle = 0;
+    const DWORD size = GetFileVersionInfoSizeW(wide.c_str(), &handle);
+    if (size == 0) {
+        return {};
+    }
+    std::vector<std::byte> block(size);
+    if (!GetFileVersionInfoW(wide.c_str(), 0, size, block.data())) {
+        return {};
+    }
+    struct LangCodePage {
+        WORD language;
+        WORD code_page;
+    };
+    LangCodePage* translations = nullptr;
+    UINT translations_size = 0;
+    if (!VerQueryValueW(block.data(), L"\\VarFileInfo\\Translation", reinterpret_cast<void**>(&translations),
+                        &translations_size) ||
+        translations_size < sizeof(LangCodePage)) {
+        return {};
+    }
+    // The first translation, then a neutral fallback.
+    const LangCodePage candidates[] = {translations[0], {0x0409, 0x04B0}, {0x0409, 0x04E4}};
+    for (const auto& c : candidates) {
+        wchar_t key[64];
+        swprintf_s(key, L"\\StringFileInfo\\%04x%04x\\FileDescription", c.language, c.code_page);
+        wchar_t* value = nullptr;
+        UINT value_len = 0;
+        if (VerQueryValueW(block.data(), key, reinterpret_cast<void**>(&value), &value_len) && value != nullptr &&
+            value_len > 1) {
+            std::string out = to_utf8(value);
+            while (!out.empty() && (out.back() == ' ' || out.back() == '\0')) {
+                out.pop_back();
+            }
+            return out;
+        }
+    }
+    return {};
+}
+
+// Windows\SystemApps holds the shell's own packaged components.
+bool is_system_app(const std::string& image_path) {
+    std::string lower = image_path;
+    std::ranges::transform(lower, lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return lower.find("\\windows\\systemapps\\") != std::string::npos;
+}
+
+// Whether a process is a packaged app (Store/UWP): its windows belong to a
+// host process, so the window test below would miss it.
+bool packaged_of(std::uint32_t pid) {
+    const HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (handle == nullptr) {
+        return false;
+    }
+    UINT32 length = 0;
+    const LONG rc = GetPackageFullName(handle, &length, nullptr);
+    CloseHandle(handle);
+    return rc == ERROR_INSUFFICIENT_BUFFER;  // a name exists; APPMODEL_ERROR_NO_PACKAGE otherwise
+}
+
+// Every process that owns a visible, titled, top-level window that is not
+// a tool window: one EnumWindows pass per refresh.
+std::unordered_map<std::uint32_t, bool> windowed_processes() {
+    std::unordered_map<std::uint32_t, bool> out;
+    EnumWindows(
+        [](HWND hwnd, LPARAM param) -> BOOL {
+            auto* map = reinterpret_cast<std::unordered_map<std::uint32_t, bool>*>(param);
+            if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != nullptr) {
+                return TRUE;
+            }
+            const LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            if ((ex & WS_EX_TOOLWINDOW) != 0) {
+                return TRUE;
+            }
+            if (GetWindowTextLengthW(hwnd) == 0) {
+                return TRUE;
+            }
+            DWORD pid = 0;
+            GetWindowThreadProcessId(hwnd, &pid);
+            if (pid != 0) {
+                (*map)[pid] = true;
+            }
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&out));
+    return out;
+}
+
 std::string stem_of(const std::wstring& image) {
     const auto dot = image.find_last_of(L'.');
     return to_utf8(image.substr(0, dot).c_str());
@@ -173,6 +270,8 @@ std::vector<AppSession> SessionMonitor::refresh() {
     // into the bed - found on the first smoke run, where the engine showed
     // up in its own list at -24 dBFS.
     const std::uint32_t self_root = root_of(GetCurrentProcessId(), procs);
+    const auto self_info = procs.find(self_root);
+    const std::wstring self_image = self_info == procs.end() ? std::wstring{} : self_info->second.image;
     std::map<std::uint32_t, AppSession> apps;
 
     for (UINT i = 0; i < count; ++i) {
@@ -214,12 +313,23 @@ std::vector<AppSession> SessionMonitor::refresh() {
             if (root == self_root) {
                 continue;
             }
+            // Another instance of this same program (a capture run beside a
+            // live one, say): its output is our own stream, not an application.
+            if (const auto info = procs.find(root); info != procs.end() && info->second.image == self_image) {
+                continue;
+            }
             auto& app = apps[root];
             if (app.app == 0) {
                 app.app = root;
                 const auto info = procs.find(root);
                 app.name = info == procs.end() ? std::to_string(root) : stem_of(info->second.image);
                 app.image_path = image_path_of(root);
+                app.description = description_of(app.image_path);
+                // Windows' own shell components (the text-input host, the
+                // search and start hosts) are packaged apps, but nobody
+                // means them when they say "application": their images
+                // live under Windows\SystemApps.
+                app.packaged = packaged_of(root) && !is_system_app(app.image_path);
                 if (endpoint_name.empty()) {
                     endpoint_name = friendly_name(device.Get());
                 }
@@ -228,6 +338,24 @@ std::vector<AppSession> SessionMonitor::refresh() {
             app.active = app.active || state == AudioSessionStateActive;
             if (std::ranges::find(app.session_pids, pid) == app.session_pids.end()) {
                 app.session_pids.push_back(pid);
+            }
+        }
+    }
+    // A window anywhere in the tree counts for the root: a game's launcher
+    // may own the session while its child owns the window, or the reverse.
+    const auto windowed = windowed_processes();
+    for (auto& [root, app] : apps) {
+        // Windows' own shell components own windows and are packaged, and
+        // are still not what a person means by an application.
+        if (is_system_app(app.image_path)) {
+            app.has_window = false;
+            app.packaged = false;
+            continue;
+        }
+        for (const auto& [pid, info] : procs) {
+            if (windowed.contains(pid) && root_of(pid, procs) == root) {
+                app.has_window = true;
+                break;
             }
         }
     }

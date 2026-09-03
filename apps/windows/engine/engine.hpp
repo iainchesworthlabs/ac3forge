@@ -48,7 +48,10 @@ struct AppStatus {
     AppId app = 0;
     std::string name;
     std::string image_path;
+    std::string description;  // the executable's own name for itself, or empty
     bool active = false;
+    bool has_window = false;  // owns a visible top-level window (see AppSession)
+    bool packaged = false;    // a packaged app, whose window belongs to a host
     bool tapped = false;
     bool fullscreen = false;
     std::optional<int> slot;  // positioned slot (the first of `width`), or nullopt: in the bed
@@ -70,7 +73,8 @@ struct EngineStatus {
     std::uint64_t frames_encoded = 0;
     std::uint64_t starved_reads = 0;
     std::uint64_t underruns = 0;
-    double last_frame_ms = 0.0;
+    double last_frame_ms = 0.0;  // wall time of the last loop iteration: paced by the taps, so it swings around the frame period
+    double encode_ms = 0.0;      // the encoder's own time for that frame
     double worst_frame_ms = 0.0;
     std::string last_error;
     std::uint16_t tap_channels = 0;  // the width every tap is open at

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QSettings>
 #include <QString>
@@ -10,6 +11,7 @@
 #include <memory>
 #include <string>
 
+#include "app_entry.hpp"
 #include "engine.hpp"
 #include "platform/windows/driver_tools.hpp"
 
@@ -27,7 +29,9 @@ class DeskController : public QObject {
 
     // --- engine state -------------------------------------------------------
     Q_PROPERTY(bool running READ running NOTIFY stateChanged)
-    Q_PROPERTY(QVariantList apps READ apps NOTIFY appsChanged)
+    // Live entries, one per application (AppEntry); the list itself
+    // changes only when an application appears or leaves.
+    Q_PROPERTY(QList<QObject*> apps READ apps NOTIFY appsChanged)
     Q_PROPERTY(QString modeName READ modeName NOTIFY stateChanged)
     Q_PROPERTY(QString modeKey READ modeKey NOTIFY stateChanged)
     Q_PROPERTY(QString endpointName READ endpointName NOTIFY stateChanged)
@@ -39,6 +43,8 @@ class DeskController : public QObject {
     Q_PROPERTY(double starvedReads READ starvedReads NOTIFY statsChanged)
     Q_PROPERTY(double lastFrameMs READ lastFrameMs NOTIFY statsChanged)
     Q_PROPERTY(double worstFrameMs READ worstFrameMs NOTIFY statsChanged)
+    // The encoder's own time for the last frame, as distinct from the loop's cadence.
+    Q_PROPERTY(double encodeMs READ encodeMs NOTIFY statsChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY stateChanged)
     Q_PROPERTY(QVariantList endpoints READ endpoints NOTIFY endpointsChanged)
     Q_PROPERTY(int placedCount READ placedCount NOTIFY appsChanged)
@@ -58,6 +64,14 @@ class DeskController : public QObject {
     Q_PROPERTY(QString palette READ palette WRITE setPalette NOTIFY settingsChanged)
     Q_PROPERTY(QString roomView READ roomView WRITE setRoomView NOTIFY settingsChanged)  // "2d" or "3d"
     Q_PROPERTY(bool keepRunningWhenClosed READ keepRunningWhenClosed WRITE setKeepRunningWhenClosed NOTIFY settingsChanged)
+    // Background processes with audio sessions (no visible window, not a
+    // packaged app) are hidden from the rail unless this is on.
+    Q_PROPERTY(bool showBackgroundApps READ showBackgroundApps WRITE setShowBackgroundApps NOTIFY settingsChanged)
+    // The reference speaker layout the 3D room draws: "auto" (5.1 while
+    // the stream is bed-only, 7.1.4 once objects are on), "5.1", "7.1", "7.1.4".
+    Q_PROPERTY(QString roomLayout READ roomLayout WRITE setRoomLayout NOTIFY settingsChanged)
+    // Version, commit and build target, for About.
+    Q_PROPERTY(QString versionDetails READ versionDetails CONSTANT)
     Q_PROPERTY(bool moveDefaultOnLaunch READ moveDefaultOnLaunch WRITE setMoveDefaultOnLaunch NOTIFY settingsChanged)
 
     // --- the default output ---------------------------------------------------
@@ -87,7 +101,7 @@ public:
     ~DeskController() override;
 
     [[nodiscard]] bool running() const { return running_; }
-    [[nodiscard]] QVariantList apps() const { return apps_; }
+    [[nodiscard]] QList<QObject*> apps() const { return apps_; }
     [[nodiscard]] QString modeName() const { return mode_name_; }
     [[nodiscard]] QString modeKey() const { return mode_key_; }
     [[nodiscard]] QString endpointName() const { return endpoint_name_; }
@@ -99,6 +113,7 @@ public:
     [[nodiscard]] double starvedReads() const { return starved_; }
     [[nodiscard]] double lastFrameMs() const { return last_frame_ms_; }
     [[nodiscard]] double worstFrameMs() const { return worst_frame_ms_; }
+    [[nodiscard]] double encodeMs() const { return encode_ms_; }
     [[nodiscard]] QString lastError() const { return last_error_; }
     [[nodiscard]] QVariantList endpoints() const { return endpoints_; }
     [[nodiscard]] int placedCount() const { return placed_; }
@@ -145,6 +160,14 @@ public:
     [[nodiscard]] bool memoryIntegrityOn() const { return code_integrity_.hvci; }
     [[nodiscard]] bool codeIntegrityKnown() const { return code_integrity_.known; }
     [[nodiscard]] static bool has3D() { return AC3DESK_QUICK3D != 0; }
+    // Make any probed endpoint the Windows default output (the same policy
+    // call the silent-device switch uses), by its endpoint id.
+    Q_INVOKABLE void setDefaultOutput(const QString& id);
+    [[nodiscard]] bool showBackgroundApps() const;
+    void setShowBackgroundApps(bool on);
+    [[nodiscard]] QString roomLayout() const;
+    void setRoomLayout(const QString& layout);
+    [[nodiscard]] QString versionDetails() const;
 
     Q_INVOKABLE void installDriver();
     Q_INVOKABLE void removeDriver();
@@ -187,10 +210,11 @@ private:
     QTimer poll_timer_;
 
     bool running_ = false;
-    QVariantList apps_;
+    QList<QObject*> apps_;  // AppEntry*, owned by this
+    QHash<int, QObject*> entries_;  // by app id
     QString mode_name_, mode_key_, endpoint_name_, output_reason_, signing_status_, last_error_;
     bool objects_enabled_ = false;
-    double frames_ = 0, underruns_ = 0, starved_ = 0, last_frame_ms_ = 0, worst_frame_ms_ = 0;
+    double frames_ = 0, underruns_ = 0, starved_ = 0, last_frame_ms_ = 0, worst_frame_ms_ = 0, encode_ms_ = 0;
     QVariantList endpoints_;
     int placed_ = 0, bed_ = 0;
     int tap_channels_ = 0;

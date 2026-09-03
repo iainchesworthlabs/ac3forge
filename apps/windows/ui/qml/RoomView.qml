@@ -10,6 +10,13 @@ import Ac3ForgeDesk
 //
 // Room coordinates are ac3::oba::Position's: x 0..1 left to right, y 0..1
 // front to back, z -1..1 floor to ceiling.
+//
+// Dragging: a marker follows the engine's position except while it is
+// being dragged, when it follows the mouse and tells the engine where it
+// is. The two are kept in separate properties (the engine's position
+// arrives as a binding, the drag position is assigned) so a drag never
+// breaks the binding, and the entries behind `apps` are live objects, so a
+// position or level change never rebuilds the markers mid-drag.
 Item {
     id: root
     property bool elevation: false
@@ -31,8 +38,7 @@ Item {
         RowLayout {
             id: heading
             Layout.fillWidth: true
-            Text { text: root.caption; color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; font.capitalization: Font.AllUppercase }
-            Item { Layout.fillWidth: true }
+            Text { text: root.caption; color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; font.capitalization: Font.AllUppercase; elide: Text.ElideRight; Layout.fillWidth: true }
             Text { text: root.hint; color: Theme.textMuted; font.pixelSize: 11 }
         }
         Rectangle {
@@ -80,13 +86,19 @@ Item {
                 delegate: Item {
                     id: marker
                     required property var modelData
-                    readonly property bool placed: modelData.slot >= 0
-                    readonly property bool selected: modelData.app === root.selectedApp
+                    readonly property var app: modelData
+                    readonly property bool placed: app.slot >= 0
+                    readonly property bool selected: app.app === root.selectedApp
                     visible: placed
-                    // Position from the engine unless a drag is in progress.
+                    // Where the engine has it, in field pixels.
+                    readonly property real engineX: (root.elevation ? app.y : app.x) * field.width
+                    readonly property real engineY: (root.elevation ? (1 - app.z) / 2 : app.y) * field.height
+                    // Where the mouse has it, while dragging.
                     property bool dragging: false
-                    x: dragging ? x : (root.elevation ? modelData.y : modelData.x) * field.width
-                    y: dragging ? y : (root.elevation ? (1 - modelData.z) / 2 : modelData.y) * field.height
+                    property real dragX: 0
+                    property real dragY: 0
+                    x: dragging ? dragX : engineX
+                    y: dragging ? dragY : engineY
                     z: selected ? 2 : 1
                     Behavior on x { enabled: !marker.dragging; NumberAnimation { duration: 90 } }
                     Behavior on y { enabled: !marker.dragging; NumberAnimation { duration: 90 } }
@@ -104,7 +116,7 @@ Item {
                     // side of the marker (the engine's spread, 0.15 of the
                     // room width, in the plan; the elevation shows one).
                     Repeater {
-                        model: !root.elevation && marker.modelData.width === 2 ? [-1, 1] : []
+                        model: !root.elevation && marker.app.width === 2 ? [-1, 1] : []
                         delegate: Rectangle {
                             required property int modelData
                             x: modelData * 0.15 * field.width - 4
@@ -115,17 +127,18 @@ Item {
                             border.width: 1
                         }
                     }
-                    Row {
-                        x: -13; y: -13
-                        spacing: 6
-                        Monogram { name: marker.modelData.name; size: 26; fill: marker.selected ? Theme.accent600 : Theme.neutral700 }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: marker.modelData.name + (root.elevation ? " · z " + (marker.modelData.z >= 0 ? "+" : "") + marker.modelData.z.toFixed(2) : "")
-                            color: Theme.text
-                            font.family: Theme.monoFamily
-                            font.pixelSize: 11
-                        }
+                    AppIcon { x: -13; y: -13; name: marker.app.name; imagePath: marker.app.imagePath; size: 26; fill: marker.selected ? Theme.accent600 : Theme.neutral700 }
+                    Text {
+                        id: markerLabel
+                        // Right of the icon, or left of it when that would run
+                        // off the field's right edge.
+                        readonly property bool flip: marker.x + 19 + implicitWidth > field.width - 4
+                        x: flip ? -19 - implicitWidth : 19
+                        y: -implicitHeight / 2
+                        text: marker.app.name + (root.elevation ? " · z " + (marker.app.z >= 0 ? "+" : "") + marker.app.z.toFixed(2) : "")
+                        color: Theme.text
+                        font.family: Theme.monoFamily
+                        font.pixelSize: 11
                     }
                     Rectangle {
                         x: -14; y: -14; width: 28; height: 28
@@ -136,37 +149,48 @@ Item {
                     MouseArea {
                         x: -14; y: -14; width: 28; height: 28
                         cursorShape: Qt.SizeAllCursor
-                        onPressed: { root.select(marker.modelData.app); marker.dragging = true; }
+                        preventStealing: true
+                        onPressed: function(mouse) {
+                            root.select(marker.app.app);
+                            marker.dragX = marker.x;
+                            marker.dragY = marker.y;
+                            marker.dragging = true;
+                        }
                         onPositionChanged: function(mouse) {
                             if (!marker.dragging) return;
                             const p = mapToItem(field, mouse.x, mouse.y);
-                            marker.x = Math.max(0, Math.min(field.width, p.x));
-                            marker.y = Math.max(0, Math.min(field.height, p.y));
+                            marker.dragX = Math.max(0, Math.min(field.width, p.x));
+                            marker.dragY = Math.max(0, Math.min(field.height, p.y));
                             marker.emitMove();
                         }
-                        onReleased: { marker.emitMove(); marker.dragging = false; }
-                        onDoubleClicked: root.returned(marker.modelData.app)
+                        onReleased: { if (marker.dragging) { marker.emitMove(); marker.dragging = false; } }
+                        onCanceled: marker.dragging = false
+                        onDoubleClicked: root.returned(marker.app.app)
                     }
                     function emitMove() {
-                        const u = marker.x / field.width;
-                        const v = marker.y / field.height;
+                        const u = marker.dragX / field.width;
+                        const v = marker.dragY / field.height;
                         if (root.elevation) {
-                            root.moved(marker.modelData.app, marker.modelData.x, u, 1 - 2 * v);
+                            root.moved(marker.app.app, marker.app.x, u, 1 - 2 * v);
                         } else {
-                            root.moved(marker.modelData.app, u, v, marker.modelData.z);
+                            root.moved(marker.app.app, u, v, marker.app.z);
                         }
                     }
                 }
             }
 
-            // A chip dragged in from the bed tray.
+            // A chip dragged in from the bed tray (an internal drag: the
+            // chip itself is the source).
             DropArea {
                 id: dropArea
                 anchors.fill: parent
                 keys: ["app"]
                 onDropped: function(drop) {
-                    root.dropped(parseInt(drop.getDataAsString("app")), drop.x / field.width, drop.y / field.height);
-                    drop.accept();
+                    const source = drop.source;
+                    if (source && source.app) {
+                        root.dropped(source.app.app, drop.x / field.width, drop.y / field.height);
+                        drop.accept(Qt.MoveAction);
+                    }
                 }
             }
         }

@@ -29,8 +29,15 @@ struct AppSession {
     AppId app = 0;               // the root process of the tree
     std::string name;            // image name without extension, e.g. "chrome"
     std::string image_path;      // the root process's executable, for an icon
+    std::string description;     // the executable's FileDescription, or empty
     std::string endpoint_name;   // where its session lives (the first one seen)
     bool active = false;         // AudioSessionStateActive on at least one session
+    // An application, as a person means it: some process in the tree owns
+    // a visible top-level window, or the root is a packaged app (whose
+    // window belongs to a host process). Neither: a background process
+    // with an audio session, such as a VM's backend or the text-input host.
+    bool has_window = false;
+    bool packaged = false;
     std::vector<std::uint32_t> session_pids;
 };
 

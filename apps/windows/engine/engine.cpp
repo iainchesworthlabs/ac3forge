@@ -1,5 +1,7 @@
 #include "engine.hpp"
 
+#include "ac3/internal/profiling.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -242,7 +244,10 @@ struct Engine::Impl {
             if (const auto it = known.find(slot.app); it != known.end()) {
                 a.name = it->second.name;
                 a.image_path = it->second.image_path;
+                a.description = it->second.description;
                 a.active = it->second.active;
+                a.has_window = it->second.has_window;
+                a.packaged = it->second.packaged;
             }
             a.tapped = taps.has(slot.app);
             a.fullscreen = slot.fullscreen;
@@ -279,6 +284,7 @@ struct Engine::Impl {
         s.frames_encoded = frames_encoded;
         s.starved_reads = starved;
         s.worst_frame_ms = worst_ms;
+        s.encode_ms = snapshot.encode_ms;
         const std::lock_guard<std::mutex> lock(mutex);
         s.last_frame_ms = snapshot.last_frame_ms;
         s.last_error = snapshot.last_error;
@@ -302,8 +308,10 @@ struct Engine::Impl {
             std::chrono::microseconds(static_cast<long long>(1e6 * static_cast<double>(frames_per) / 48000.0));
 
         while (!stop.stop_requested()) {
+            AC3_ZONE_SCOPED_N("windemo frame");
             const auto frame_start = std::chrono::steady_clock::now();
             {
+                AC3_ZONE_SCOPED_N("commands");
                 std::vector<std::function<void()>> pending;
                 {
                     const std::lock_guard<std::mutex> lock(mutex);
@@ -314,10 +322,12 @@ struct Engine::Impl {
                 }
             }
             if (frame_start - last_refresh >= kSessionRefresh) {
+                AC3_ZONE_SCOPED_N("refresh sessions");
                 refresh_sessions();
                 last_refresh = frame_start;
             }
             if (want_reprobe.exchange(false, std::memory_order_acq_rel)) {
+                AC3_ZONE_SCOPED_N("reprobe");
                 const auto before = output->status().mode;
                 const auto before_endpoint = output->status().endpoint_id;
                 output->reprobe(signing.available());
@@ -351,8 +361,10 @@ struct Engine::Impl {
             }
             if (taps.size() == 0) {
                 // Nothing to tap: keep the stream alive at real time anyway.
+                AC3_ZONE_SCOPED_N("idle");
                 std::this_thread::sleep_for(frame_duration);
             } else {
+                AC3_ZONE_SCOPED_N("taps");
                 for (const auto& read : taps.read(frames_per, kTapWaitMs)) {
                     if (read.starved) {
                         ++starved;
@@ -381,7 +393,13 @@ struct Engine::Impl {
             }
             placement.step(placements);
 
+            const auto encode_start = std::chrono::steady_clock::now();
+            AC3_ZONE_BEGIN(encode_zone, "encode");
             auto unit = encoder->encode_frame(views, placements);
+            AC3_ZONE_END(encode_zone);
+            const double encode_ms = std::chrono::duration<double, std::milli>(
+                                         std::chrono::steady_clock::now() - encode_start)
+                                         .count();
             if (!unit) {
                 const std::lock_guard<std::mutex> lock(mutex);
                 snapshot.last_error = "encode_frame refused a frame";
@@ -395,8 +413,12 @@ struct Engine::Impl {
             for (std::size_t ch = 0; ch < 6 && ch < bed_channels.size(); ++ch) {
                 bed_views[ch] = bed_channels[ch];
             }
-            output->submit(unit_bytes, RawFrame{.objects = views, .placements = placements, .bed = bed_views});
+            {
+                AC3_ZONE_SCOPED_N("submit");
+                output->submit(unit_bytes, RawFrame{.objects = views, .placements = placements, .bed = bed_views});
+            }
             ++frames_encoded;
+            AC3_FRAME_MARK();
 
             const double ms = std::chrono::duration<double, std::milli>(
                                   std::chrono::steady_clock::now() - frame_start)
@@ -405,6 +427,7 @@ struct Engine::Impl {
             {
                 const std::lock_guard<std::mutex> lock(mutex);
                 snapshot.last_frame_ms = ms;
+                snapshot.encode_ms = encode_ms;
             }
             if ((frames_encoded % 8) == 0) {
                 tap_backlog_ms = 1000.0 * static_cast<double>(taps.backlog_frames()) / 48000.0;

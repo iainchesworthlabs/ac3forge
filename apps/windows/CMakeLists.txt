@@ -26,7 +26,7 @@ target_compile_features(ac3windemo_engine PUBLIC cxx_std_23)
 # (config-windows-llvm-coverage); then this library, the window and its
 # tests are the instrumented set tools/checks/coverage_windemo.ps1 reports.
 target_link_libraries(ac3windemo_engine
-    PUBLIC ac3::forge ac3::audio ac3::signing
+    PUBLIC ac3::forge ac3::audio ac3::signing ac3::tracy
     PRIVATE ac3::warnings ac3::coverage)
 
 # The platform half, selected the way apps/cli/CMakeLists.txt selects its
@@ -44,7 +44,9 @@ if(WIN32)
     target_compile_definitions(ac3windemo_engine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
     # COM for the session manager and policy config, the shell for the
     # full-screen query and the Settings fallback.
-    target_link_libraries(ac3windemo_engine PRIVATE ole32 shell32)
+    target_link_libraries(ac3windemo_engine PRIVATE ole32 shell32 user32 version)
+target_include_directories(ac3windemo_engine PUBLIC
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
 endif()
 
 # The console runner: Phase 2's exit criterion, and the thing the UI replaces.
@@ -118,6 +120,8 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/AppRow.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/BedChip.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/Monogram.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/AboutDialog.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/AppIcon.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/DeskButton.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/DeskCheck.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/OutputPage.qml"
@@ -140,7 +144,11 @@ else()
         ../gui/system_theme.cpp
         ../gui/system_theme.hpp
         ../gui/language_manager.cpp
-        ../gui/language_manager.hpp)
+        ../gui/language_manager.hpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_icon_provider.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_icon_provider.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_entry.hpp"
+    )
     qt_add_qml_module(ac3desk
         URI Ac3ForgeDesk
         VERSION 1.0
@@ -161,6 +169,18 @@ else()
         ac3::windemo_engine
         ac3::coverage
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 ${AC3DESK_QUICK3D_LIB})
+    qt_add_resources(ac3desk "ac3desk_icons"
+        PREFIX "/icons"
+        BASE "${CMAKE_SOURCE_DIR}/apps/gui/icons"
+        FILES
+            "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-32.png"
+            "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-256.png")
+    # The .exe's own icon (Explorer, the taskbar before the window shows):
+    # the GUI app's resource script, configured with this target's name.
+    set(AC3_GUI_ICON_ICO "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
+    file(TO_CMAKE_PATH "${AC3_GUI_ICON_ICO}" AC3_GUI_ICON_ICO)
+    configure_file("${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3gui.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/ac3desk.rc" @ONLY)
+    target_sources(ac3desk PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ac3desk.rc")
     set_target_properties(ac3desk PROPERTIES
         WIN32_EXECUTABLE ON
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")

@@ -12,8 +12,10 @@ ApplicationWindow {
     id: window
     width: 1480
     height: 820
-    minimumWidth: 1180
-    minimumHeight: 700
+    // The pages adapt down to this; below it the rails would have to
+    // collapse, which they do not.
+    minimumWidth: 960
+    minimumHeight: 620
     visible: true
     title: qsTr("Desktop Atmos")
     color: Theme.bg
@@ -102,8 +104,15 @@ ApplicationWindow {
                 accessibleName: qsTr("Page")
                 onSelected: function(value) { window.page = value; }
             }
+            DeskButton {
+                text: "?"
+                implicitWidth: 30
+                onClicked: about.open()
+                Accessible.name: qsTr("About Desktop Atmos")
+            }
         }
     }
+    AboutDialog { id: about }
 
     // --- pages ----------------------------------------------------------------
     StackLayout {
@@ -126,7 +135,8 @@ ApplicationWindow {
             spacing: Theme.space6
             Repeater {
                 model: [
-                    qsTr("frame %1 ms").arg(DeskController.lastFrameMs.toFixed(1)),
+                    qsTr("encode %1 ms").arg(DeskController.encodeMs.toFixed(2)),
+                    qsTr("cadence %1 ms").arg(DeskController.lastFrameMs.toFixed(1)),
                     qsTr("worst %1 ms").arg(DeskController.worstFrameMs.toFixed(1)),
                     qsTr("%1 underruns").arg(DeskController.underruns),
                     qsTr("%1 starved reads").arg(DeskController.starvedReads),
@@ -147,6 +157,14 @@ ApplicationWindow {
                 color: DeskController.lastError.length ? Theme.accent : Theme.textMuted
                 font.family: Theme.monoFamily
                 font.pixelSize: 11
+                elide: Text.ElideLeft
+                Layout.maximumWidth: 360
+            }
+            DeskButton {
+                text: DeskController.running ? qsTr("Stop") : qsTr("Start")
+                implicitHeight: 22
+                onClicked: DeskController.running ? DeskController.stop() : DeskController.start()
+                Accessible.name: DeskController.running ? qsTr("Stop the engine") : qsTr("Start the engine")
             }
         }
     }
@@ -191,6 +209,7 @@ ApplicationWindow {
             Platform.MenuSeparator {}
             Platform.MenuItem { text: DeskController.objectsEnabled ? qsTr("Objects on · key loaded") : qsTr("Objects off · no key"); enabled: false }
             Platform.MenuItem { text: qsTr("Settings…"); onTriggered: { window.page = "settings"; window.show(); window.raise(); window.requestActivate(); } }
+            Platform.MenuItem { text: qsTr("About…"); onTriggered: { window.show(); window.raise(); window.requestActivate(); about.open(); } }
             Platform.MenuSeparator {}
             Platform.MenuItem { text: qsTr("Quit"); onTriggered: { DeskController.stop(); Qt.quit(); } }
         }

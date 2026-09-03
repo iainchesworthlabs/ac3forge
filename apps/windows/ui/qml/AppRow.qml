@@ -3,26 +3,24 @@ import QtQuick.Layouts
 
 import Ac3ForgeDesk
 
-// One application in the left rail: monogram, name, the tag, the mono
-// detail line, and a level bar.
+// One application in the left rail: its icon, name, the tag, the mono
+// detail line, and a level bar. `app` is a live AppEntry; its properties
+// update in place.
 Rectangle {
     id: root
     required property var app
     property bool selected: false
     signal clicked()
-
     readonly property bool placed: app.slot >= 0
     readonly property string detail: placed
         ? (app.width === 2 ? qsTr("slots ") + (app.slot + 1) + "+" + (app.slot + 2) : qsTr("slot ") + (app.slot + 1)) + " · " + app.x.toFixed(2) + ", " + app.y.toFixed(2) + ", " + (app.z >= 0 ? "+" : "") + app.z.toFixed(2)
-        : qsTr("bed") + (app.fullscreen ? qsTr(" · full-screen") : "") + (app.active ? "" : qsTr(" · idle")) + (app.tapped ? "" : qsTr(" · no tap"))
-
+        : qsTr("bed") + (app.fullscreen ? qsTr(" · full-screen") : "") + (app.active ? "" : qsTr(" · idle")) + (app.tapped ? "" : qsTr(" · no tap")) + (app.background ? qsTr(" · background") : "")
     implicitHeight: row.implicitHeight + Theme.space4
     color: selected ? Theme.neutral100 : "transparent"
     border.color: selected ? Theme.accent : "transparent"
     border.width: 1
     Accessible.role: Accessible.ListItem
     Accessible.name: app.name + ", " + detail
-
     RowLayout {
         id: row
         anchors.fill: parent
@@ -30,7 +28,12 @@ Rectangle {
         anchors.leftMargin: 10
         anchors.rightMargin: 10
         spacing: 10
-        Monogram { name: root.app.name; fill: root.placed ? (root.selected ? Theme.accent600 : Theme.neutral700) : (root.app.active ? Theme.neutral600 : Theme.neutral500) }
+        AppIcon {
+            name: root.app.name
+            imagePath: root.app.imagePath
+            size: 28
+            fill: root.placed ? (root.selected ? Theme.accent600 : Theme.neutral700) : (root.app.active ? Theme.neutral600 : Theme.neutral500)
+        }
         ColumnLayout {
             Layout.fillWidth: true
             spacing: Theme.space1
