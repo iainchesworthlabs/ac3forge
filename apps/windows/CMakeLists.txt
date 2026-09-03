@@ -46,3 +46,129 @@ add_executable(ac3windemo runner/main.cpp)
 target_link_libraries(ac3windemo PRIVATE ac3::windemo_engine ac3::warnings)
 target_compile_definitions(ac3windemo PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 set_target_properties(ac3windemo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+# ---------------------------------------------------------------------------
+# The window: ac3desk, Qt Quick, module Ac3ForgeDesk (Phase 3).
+#
+# Qt is a prebuilt kit found the way apps/gui finds it (cmake/FindQt6.cmake).
+# It is optional here so that a build with the engine and runner but no Qt
+# kit still configures: the UI is simply skipped, with a warning.
+#
+# Theme, Card, RailBlock and SegmentedControl are the GUI's own files, not
+# copies: each is read at configure time, its `import Ac3Forge` rewritten to
+# this module's URI, and the result written to an ignored directory under
+# ui/qml/ and registered here. Edit apps/gui/qml/*.qml and both apps follow. The Theme
+# needs the GUI's SystemTheme singleton (the desktop accent colour), so that
+# C++ is compiled into this target too, where QML_ELEMENT registers it in
+# this module.
+# ---------------------------------------------------------------------------
+find_package(Qt6 6.5 QUIET COMPONENTS Core Gui Qml Quick QuickControls2 LinguistTools)
+if(NOT Qt6_FOUND)
+    message(WARNING "Qt6 not found: the Desktop Atmos Demo's window (ac3desk) is skipped; "
+                    "the engine and the ac3windemo runner still build.")
+else()
+    qt_standard_project_setup(REQUIRES 6.5)
+
+    set(AC3DESK_SHARED_QML Theme.qml Card.qml RailBlock.qml SegmentedControl.qml)
+    # Generated INTO the source tree (ignored by git, see ui/qml/shared/.gitignore)
+    # rather than the build tree: the QML ahead-of-time compiler names its
+    # cache files after the path relative to the source directory, and a
+    # build-tree path produced an unusable name with a drive letter in the
+    # middle of it.
+    set(AC3DESK_SHARED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/shared")
+    file(MAKE_DIRECTORY "${AC3DESK_SHARED_DIR}")
+    set(AC3DESK_SHARED_OUT)
+    foreach(name IN LISTS AC3DESK_SHARED_QML)
+        set(src "${CMAKE_CURRENT_SOURCE_DIR}/../gui/qml/${name}")
+        set(dst "${AC3DESK_SHARED_DIR}/${name}")
+        file(READ "${src}" contents)
+        string(REPLACE "import Ac3Forge\n" "import Ac3ForgeDesk\n" contents "${contents}")
+        file(WRITE "${dst}" "${contents}")
+        # Re-run configure when the GUI's file changes, so the rewrite follows it.
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${src}")
+        list(APPEND AC3DESK_SHARED_OUT "${dst}")
+    endforeach()
+
+    set(AC3DESK_QML_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/Main.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/RoomPage.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/RoomView.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/AppRow.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/BedChip.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/Monogram.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/DeskButton.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/DeskCheck.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/OutputPage.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/SettingsPage.qml"
+        ${AC3DESK_SHARED_OUT})
+    foreach(qml_file IN LISTS AC3DESK_QML_FILES)
+        get_filename_component(qml_name "${qml_file}" NAME)
+        set_source_files_properties("${qml_file}" PROPERTIES QT_RESOURCE_ALIAS "${qml_name}")
+    endforeach()
+    set_source_files_properties("${AC3DESK_SHARED_DIR}/Theme.qml"
+        PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/tray.svg"
+        PROPERTIES QT_RESOURCE_ALIAS "tray.svg")
+
+    qt_add_executable(ac3desk
+        ui/main.cpp
+        ui/desk_controller.cpp
+        ui/desk_controller.hpp
+        ../gui/system_theme.cpp
+        ../gui/system_theme.hpp
+        ../gui/language_manager.cpp
+        ../gui/language_manager.hpp)
+    qt_add_qml_module(ac3desk
+        URI Ac3ForgeDesk
+        VERSION 1.0
+        QML_FILES ${AC3DESK_QML_FILES}
+        RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/tray.svg")
+    # ui/ for the generated type registrations to find desk_controller.hpp,
+    # ../gui for system_theme.hpp.
+    target_include_directories(ac3desk PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/ui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui")
+    target_compile_definitions(ac3desk PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    # ac3::warnings is deliberately not linked: Qt's generated sources would
+    # be compiled under it (apps/gui carries a workaround for exactly that).
+    target_link_libraries(ac3desk PRIVATE
+        ac3::windemo_engine
+        Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
+    set_target_properties(ac3desk PROPERTIES
+        WIN32_EXECUTABLE ON
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+    # The same language set as the GUI (roadmap UX3), the same pipeline:
+    # lupdate scans this target's QML and C++, lrelease compiles the .ts
+    # into :/i18n/ac3desk_<code>.qm, which the shared LanguageManager loads
+    # (main.cpp passes it the "ac3desk" basename). Regenerate with
+    # `cmake --build <dir> --target ac3desk_lupdate`; the translations are
+    # mechanical for now (docs/gui/localisation.md).
+    set(AC3DESK_TS_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3desk_fr.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3desk_de.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3desk_es.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3desk_ar.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3desk_he.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3desk_yi.ts")
+    qt_add_translations(ac3desk
+        IMMEDIATE_CALL
+        SOURCE_TARGETS ac3desk
+        TS_FILES ${AC3DESK_TS_FILES}
+        LUPDATE_TARGET ac3desk_lupdate
+        LRELEASE_TARGET ac3desk_lrelease)
+
+    # Qt runtime next to the executable, as apps/gui does it, so the demo
+    # runs from the build tree.
+    get_filename_component(AC3DESK_QT_BIN_DIR "${Qt6_DIR}/../../../bin" ABSOLUTE)
+    find_program(AC3DESK_WINDEPLOYQT NAMES windeployqt6 windeployqt HINTS "${AC3DESK_QT_BIN_DIR}")
+    if(AC3DESK_WINDEPLOYQT)
+        add_custom_command(TARGET ac3desk POST_BUILD
+            COMMAND "${AC3DESK_WINDEPLOYQT}"
+                --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml"
+                --qmldir "${AC3DESK_SHARED_DIR}"
+                --compiler-runtime
+                "$<TARGET_FILE:ac3desk>"
+            COMMENT "Deploying Qt runtime dependencies for ac3desk")
+    else()
+        message(WARNING "windeployqt not found next to Qt6; ac3desk.exe will not run standalone from the build tree.")
+    endif()
+endif()

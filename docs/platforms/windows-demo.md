@@ -291,7 +291,9 @@ apps/windows/
       default_device              read/move/restore the default output (IPolicyConfig) [landed]
       foreground                  SHQueryUserNotificationState + foreground window      [landed]
   runner/main.cpp                 ac3windemo, the console runner (Phase 2's exit)       [landed]
-  ui/                             Qt Quick app shell and QML
+  ui/                             ac3desk: main.cpp, desk_controller, qml/ (module Ac3ForgeDesk) [landed]
+    qml/shared/                   generated at configure time from apps/gui/qml, git-ignored
+  translations/                   ac3desk_{fr,de,es,ar,he,yi}.ts, the GUI's language set    [landed]
   spikes/                         Phase 0 programs, kept as documented experiments
   driver/                         the null-sink driver, separately licensed (see below)
 tests/windemo/                    the pure modules' tests, on every CI leg, ungated
@@ -411,6 +413,23 @@ switch. Fades on a mode switch are not written; the switch is a stop and a start
 
 The Qt Quick shell, the room in plan and elevation, the bed tray, the output screen, settings,
 and tray residency. Exit: the user story above, minus the driver, works end to end.
+
+**Progress, 2026-09-03:** built to the design canvas after a human-factors pass on it.
+`ac3desk` (`apps/windows/ui/`, QML module `Ac3ForgeDesk`) has the three pages, the tray icon
+with its output submenu and default-output switch, the status strip, and the `--shot`
+capture aid borrowed from the GUI's smoke modes. The GUI's Theme, Card, RailBlock and
+SegmentedControl are not copied: the demo's CMake rewrites each one's module import at
+configure time into an ignored directory and registers the result, so an edit to
+`apps/gui/qml/Theme.qml` reaches both apps. `DeskController` is a QML singleton that polls the
+engine's status snapshot a few times a second and republishes it as properties, and persists
+settings through QSettings under the GUI's organisation. Localisation shares the GUI's
+`LanguageManager` (given a translation basename so a second app can use it, and a way back to
+following the system locale) and the same six languages, mechanically translated for now, with
+Windows' locale as the default and a chooser in Settings. Verified by `--shot` captures in
+English, French, Arabic and Hebrew: layout, mirroring and the translations all render; the
+engine runs underneath and the room reflects the live session list. Not yet done: real
+Windows icons (monograms stand in), the 3D room, split-per-application, and the codec-bypass
+switch, which is shown disabled until the engine has the path.
 
 ### Phase 4: driver
 

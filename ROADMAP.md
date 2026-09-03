@@ -2274,7 +2274,12 @@ and the frame loop: a process-tree session monitor (which leaves the engine's ow
 session out), the tap pool, the output stage with its five routes, the signing hook, the
 engine, and `ac3windemo`, a console runner that met the phase's exit criterion short of a
 receiver: positions on stdin, an application tapped and moved between a slot and the bed,
-real-time cadence, decoded stereo out. Bitstream and spatial modes await hardware.
+real-time cadence, decoded stereo out. Bitstream and spatial modes await hardware. Phase 3
+followed the same day: `ac3desk`, the Qt Quick window (module `Ac3ForgeDesk`), built to a
+design canvas after a human-factors pass; it shares the GUI's Theme and rail components by
+configure-time rewrite rather than copy, its `LanguageManager` (now taking a translation
+basename) and its six-language set, mechanically translated, following the Windows locale
+with an override in Settings. Verified by window captures in four languages.
 </details>
 
 **UX7 (M)** — macOS loopback capture through Core Audio process/system taps. Blocked on a real

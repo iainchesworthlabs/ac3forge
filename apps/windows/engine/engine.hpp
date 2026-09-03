@@ -46,6 +46,7 @@ struct EngineStatus {
     OutputMode mode = OutputMode::kNone;
     std::string endpoint_name;
     std::string output_reason;
+    std::vector<EndpointFacts> endpoints;  // what the output stage last probed
     std::string signing;
     bool objects_enabled = false;
     std::uint64_t frames_encoded = 0;

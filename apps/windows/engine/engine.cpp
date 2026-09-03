@@ -198,6 +198,7 @@ struct Engine::Impl {
         s.mode = out.mode;
         s.endpoint_name = out.endpoint_name;
         s.output_reason = out.reason;
+        s.endpoints = out.endpoints;
         s.underruns = out.underruns;
         s.signing = signing_status;
         s.objects_enabled = signing.available();
