@@ -474,6 +474,19 @@ void DeskController::setSize(int app, double size) {
     }
 }
 
+void DeskController::positionSide(int app, int side, double x, double y, double z) {
+    if (engine_) {
+        engine_->position_side(static_cast<ac3::windemo::AppId>(app), side,
+                               {std::clamp(x, 0.0, 1.0), std::clamp(y, 0.0, 1.0), std::clamp(z, -1.0, 1.0)});
+    }
+}
+
+void DeskController::resetPair(int app) {
+    if (engine_) {
+        engine_->reset_pair(static_cast<ac3::windemo::AppId>(app));
+    }
+}
+
 void DeskController::setSplit(int app, bool split) {
     if (engine_) {
         engine_->set_split(static_cast<ac3::windemo::AppId>(app), split);

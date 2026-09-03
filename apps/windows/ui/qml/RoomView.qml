@@ -26,6 +26,7 @@ Item {
     property string hint: ""
     signal select(int app)
     signal moved(int app, double x, double y, double z)
+    signal movedSide(int app, int side, double x, double y, double z)
     signal returned(int app)
     signal dropped(int app, double x, double y)
 
@@ -112,19 +113,72 @@ Item {
                         height: Math.abs(field.height / 2 - marker.y)
                         color: Theme.accent400
                     }
-                    // A split application: the pair's two objects sit either
-                    // side of the marker (the engine's spread, 0.15 of the
-                    // room width, in the plan; the elevation shows one).
+                    // A split application: the pair's two objects, each a
+                    // marker of its own that can be dragged where it should
+                    // go (the engine keeps the pair's centre between them).
                     Repeater {
-                        model: !root.elevation && marker.app.width === 2 ? [-1, 1] : []
-                        delegate: Rectangle {
+                        model: marker.app.width === 2 ? [0, 1] : []
+                        delegate: Item {
+                            id: satellite
                             required property int modelData
-                            x: modelData * 0.15 * field.width - 4
-                            y: -4
-                            width: 8; height: 8; radius: 4
-                            color: marker.selected ? Theme.accent : Theme.neutral500
-                            border.color: Theme.bg
-                            border.width: 1
+                            readonly property int side: modelData
+                            readonly property real sx: side === 0 ? marker.app.lx : marker.app.rx
+                            readonly property real sy: side === 0 ? marker.app.ly : marker.app.ry
+                            readonly property real sz: side === 0 ? marker.app.lz : marker.app.rz
+                            // Field position, relative to the marker (which
+                            // sits at the pair's centre).
+                            readonly property real fieldX: (root.elevation ? sy : sx) * field.width
+                            readonly property real fieldY: (root.elevation ? (1 - sz) / 2 : sy) * field.height
+                            property bool dragging: false
+                            property real dragX: 0
+                            property real dragY: 0
+                            x: (dragging ? dragX : fieldX) - marker.x
+                            y: (dragging ? dragY : fieldY) - marker.y
+                            Behavior on x { enabled: !satellite.dragging; NumberAnimation { duration: 90 } }
+                            Behavior on y { enabled: !satellite.dragging; NumberAnimation { duration: 90 } }
+                            Rectangle {
+                                x: -5; y: -5
+                                width: 10; height: 10; radius: 5
+                                color: marker.selected ? Theme.accent : Theme.neutral500
+                                border.color: Theme.bg
+                                border.width: 1
+                            }
+                            Text {
+                                x: 7; y: -7
+                                text: satellite.side === 0 ? "L" : "R"
+                                color: Theme.textMuted
+                                font.family: Theme.monoFamily
+                                font.pixelSize: 9
+                            }
+                            MouseArea {
+                                x: -8; y: -8; width: 16; height: 16
+                                cursorShape: Qt.SizeAllCursor
+                                preventStealing: true
+                                onPressed: {
+                                    root.select(marker.app.app);
+                                    satellite.dragX = satellite.fieldX;
+                                    satellite.dragY = satellite.fieldY;
+                                    satellite.dragging = true;
+                                }
+                                onPositionChanged: function(mouse) {
+                                    if (!satellite.dragging) return;
+                                    const p = mapToItem(field, mouse.x, mouse.y);
+                                    satellite.dragX = Math.max(0, Math.min(field.width, p.x));
+                                    satellite.dragY = Math.max(0, Math.min(field.height, p.y));
+                                    satellite.emitMove();
+                                }
+                                onReleased: { if (satellite.dragging) { satellite.emitMove(); satellite.dragging = false; } }
+                                onCanceled: satellite.dragging = false
+                            }
+                            function emitMove() {
+                                const u = satellite.dragX / field.width;
+                                const v = satellite.dragY / field.height;
+                                if (root.elevation) {
+                                    root.movedSide(marker.app.app, satellite.side, satellite.sx, u, 1 - 2 * v);
+                                } else {
+                                    root.movedSide(marker.app.app, satellite.side, u, v, satellite.sz);
+                                }
+                            }
                         }
                     }
                     AppIcon { x: -13; y: -13; name: marker.app.name; imagePath: marker.app.imagePath; size: 26; fill: marker.selected ? Theme.accent600 : Theme.neutral700 }

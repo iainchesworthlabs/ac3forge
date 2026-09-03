@@ -152,6 +152,19 @@ int main(int argc, char** argv) {
             double x = 0.5, y = 0.5, z = 0.0;
             in >> app >> x >> y >> z;
             engine.position(app, {x, y, z});
+        } else if (verb == "side") {
+            // side <id> l|r x y z: one object of a split pair on its own.
+            unsigned app = 0;
+            std::string which;
+            double x = 0.5, y = 0.5, z = 0.0;
+            in >> app >> which >> x >> y >> z;
+            engine.position_side(app, which == "r" ? 1 : 0, {x, y, z});
+        } else if (verb == "pair") {
+            // pair <id> reset: back to the standard spread.
+            unsigned app = 0;
+            std::string what;
+            in >> app >> what;
+            engine.reset_pair(app);
         } else if (verb == "bed") {
             unsigned app = 0;
             in >> app;
@@ -202,7 +215,7 @@ int main(int argc, char** argv) {
             std::puts("  ? list | pos <app> x y z | bed <app> | pin <mode>|off | key <path>|none | default <substr>|restore | probe | status | quit");
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
-        if (verb == "pos" || verb == "bed" || verb == "pin" || verb == "key" || verb == "probe") {
+        if (verb == "pos" || verb == "side" || verb == "pair" || verb == "bed" || verb == "pin" || verb == "key" || verb == "probe") {
             print_status(engine.status());
         }
     }

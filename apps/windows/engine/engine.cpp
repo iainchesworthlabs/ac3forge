@@ -3,6 +3,7 @@
 #include "ac3/internal/profiling.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -198,6 +199,22 @@ struct Engine::Impl {
     // application snaps to that application's wanted position and fades
     // in; a freed slot fades out where it is.
     std::unordered_map<int, AppId> slot_owner;
+    // Custom pair positions: left and right, when a side has been placed.
+    std::unordered_map<AppId, std::array<ac3::oba::Position, 2>> pair_positions;
+    // The pair's two positions as they stand: custom, or the spread.
+    std::array<ac3::oba::Position, 2> pair_of(AppId app) const {
+        if (const auto custom = pair_positions.find(app); custom != pair_positions.end()) {
+            return custom->second;
+        }
+        const auto wanted = wanted_positions.find(app);
+        const ac3::oba::Position centre =
+            wanted == wanted_positions.end() ? ac3::oba::Position{0.5, 0.5, 0.0} : wanted->second;
+        ac3::oba::Position left = centre;
+        ac3::oba::Position right = centre;
+        left.x = std::clamp(centre.x - config.split_spread, 0.0, 1.0);
+        right.x = std::clamp(centre.x + config.split_spread, 0.0, 1.0);
+        return {left, right};
+    }
     void apply_slot_changes() {
         std::unordered_map<int, AppId> now;
         std::unordered_map<int, double> side;  // -1 left, +1 right, 0 mono
@@ -221,9 +238,12 @@ struct Engine::Impl {
             const auto wanted = wanted_positions.find(after->second);
             ac3::oba::Position where =
                 wanted == wanted_positions.end() ? ac3::oba::Position{0.5, 0.5, 0.0} : wanted->second;
-            // A split pair sits either side of the placed position, kept
-            // inside the room.
-            where.x = std::clamp(where.x + side[slot] * config.split_spread, 0.0, 1.0);
+            // A split pair's objects sit where the pair puts them: at the
+            // standard spread either side of the placed position, or where
+            // each was dragged to.
+            if (side[slot] != 0.0) {
+                where = pair_of(after->second)[side[slot] < 0 ? 0 : 1];
+            }
             const auto sized = sizes.find(after->second);
             const double size = sized == sizes.end() ? 0.0 : sized->second;
             if (before == slot_owner.end() || before->second != after->second) {
@@ -253,6 +273,12 @@ struct Engine::Impl {
             a.fullscreen = slot.fullscreen;
             a.slot = slot.positioned;
             a.width = slot.width;
+            {
+                const auto pair = pair_of(slot.app);
+                a.left = pair[0];
+                a.right = pair[1];
+                a.pair_custom = pair_positions.contains(slot.app);
+            }
             if (const auto sized = sizes.find(slot.app); sized != sizes.end()) {
                 a.size = sized->second;
             }
@@ -469,6 +495,17 @@ void Engine::stop() {
 
 void Engine::position(AppId app, ac3::oba::Position where) {
     impl_->post([this, app, where] {
+        // A custom pair moves as one: both objects by the same amount.
+        if (const auto custom = impl_->pair_positions.find(app); custom != impl_->pair_positions.end()) {
+            const auto old = impl_->wanted_positions.find(app);
+            const ac3::oba::Position from =
+                old == impl_->wanted_positions.end() ? ac3::oba::Position{0.5, 0.5, 0.0} : old->second;
+            for (auto& p : custom->second) {
+                p.x = std::clamp(p.x + (where.x - from.x), 0.0, 1.0);
+                p.y = std::clamp(p.y + (where.y - from.y), 0.0, 1.0);
+                p.z = std::clamp(p.z + (where.z - from.z), -1.0, 1.0);
+            }
+        }
         impl_->wanted_positions[app] = where;
         impl_->ensure_in_plan(app);
         std::ignore = impl_->slots.position(app);
@@ -495,6 +532,32 @@ void Engine::set_split(AppId app, bool split) {
         impl_->split_choice[app] = split;
         impl_->ensure_in_plan(app);
         impl_->slots.set_width(app, split ? 2 : 1);
+        impl_->apply_slot_changes();
+    });
+}
+
+void Engine::position_side(AppId app, int side, ac3::oba::Position where) {
+    impl_->post([this, app, side, where] {
+        if (side != 0 && side != 1) {
+            return;
+        }
+        auto& pair = impl_->pair_positions.try_emplace(app, impl_->pair_of(app)).first->second;
+        pair[static_cast<std::size_t>(side)] = where;
+        // The pair's centre follows, so the plan's marker stays between them.
+        auto& centre = impl_->wanted_positions[app];
+        centre.x = (pair[0].x + pair[1].x) / 2.0;
+        centre.y = (pair[0].y + pair[1].y) / 2.0;
+        centre.z = (pair[0].z + pair[1].z) / 2.0;
+        impl_->ensure_in_plan(app);
+        impl_->slots.set_width(app, 2);
+        std::ignore = impl_->slots.position(app);
+        impl_->apply_slot_changes();
+    });
+}
+
+void Engine::reset_pair(AppId app) {
+    impl_->post([this, app] {
+        impl_->pair_positions.erase(app);
         impl_->apply_slot_changes();
     });
 }

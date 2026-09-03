@@ -176,6 +176,7 @@ Item {
                         selectedApp: page.selectedApp
                         onSelect: function(app) { page.selectedApp = app; }
                         onMoved: function(app, x, y, z) { DeskController.position(app, x, y, z); }
+                        onMovedSide: function(app, side, x, y, z) { DeskController.positionSide(app, side, x, y, z); }
                         onReturned: function(app) { DeskController.unposition(app); }
                         onDropped: function(app, x, y) { DeskController.position(app, x, y, 0); page.selectedApp = app; }
                     }
@@ -194,6 +195,7 @@ Item {
                             selectedApp: page.selectedApp
                             onSelect: function(app) { page.selectedApp = app; }
                             onMoved: function(app, x, y, z) { DeskController.position(app, x, y, z); }
+                        onMovedSide: function(app, side, x, y, z) { DeskController.positionSide(app, side, x, y, z); }
                             onReturned: function(app) { DeskController.unposition(app); }
                             onDropped: function(app, x, y) { DeskController.position(app, 0.5, x, 1 - 2 * y); page.selectedApp = app; }
                         }
@@ -255,6 +257,12 @@ Item {
                                 text: page.selected && page.selected.width === 2 ? qsTr("Mono") : qsTr("Split")
                                 enabled: page.selected !== null
                                 onClicked: DeskController.setSplit(page.selected.app, page.selected.width !== 2)
+                            }
+                            DeskButton {
+                                objectName: "standardStereoButton"
+                                text: qsTr("Standard stereo")
+                                visible: page.selected !== null && page.selected.width === 2 && page.selected.pairCustom
+                                onClicked: DeskController.resetPair(page.selected.app)
                             }
                         }
                         // Quick placements, for lining things up without a drag.

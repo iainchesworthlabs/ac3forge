@@ -140,4 +140,25 @@ TestCase {
             return app && app.slot === -1;
         }, 5000);
     }
+    // A split pair's objects can be placed on their own; "standard stereo"
+    // puts them back at the spread either side of the centre.
+    function test_pairSidesPlaceOnTheirOwnAndResetToTheSpread() {
+        DeskController.start();
+        wait(800);
+        const app = DeskController.apps.length ? DeskController.apps[0].app : -1;
+        if (app < 0) { skip("no application with sound to place"); return; }
+        DeskController.setSplit(app, true);
+        DeskController.position(app, 0.5, 0.5, 0);
+        tryVerify(function() { return DeskController.apps[0].width === 2 && !DeskController.apps[0].pairCustom; }, 5000, "split at the spread");
+        tryCompare(DeskController.apps[0], "lx", 0.35);
+        DeskController.positionSide(app, 1, 0.9, 0.9, 0);
+        tryVerify(function() { return DeskController.apps[0].pairCustom; }, 5000, "custom after a side was placed");
+        tryCompare(DeskController.apps[0], "rx", 0.9);
+        tryCompare(DeskController.apps[0], "ry", 0.9);
+        DeskController.resetPair(app);
+        tryVerify(function() { return !DeskController.apps[0].pairCustom; }, 5000, "back to standard");
+        DeskController.setSplit(app, false);
+        DeskController.stop();
+    }
+
 }

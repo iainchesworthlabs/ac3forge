@@ -178,6 +178,10 @@ public:
     Q_INVOKABLE void position(int app, double x, double y, double z);
     Q_INVOKABLE void unposition(int app);
     Q_INVOKABLE void setSplit(int app, bool split);
+    // One object of a split pair (side 0 left, 1 right) placed on its own,
+    // and the way back to the standard spread.
+    Q_INVOKABLE void positionSide(int app, int side, double x, double y, double z);
+    Q_INVOKABLE void resetPair(int app);
     Q_INVOKABLE void setSize(int app, double size);
     Q_INVOKABLE void reprobe();
     Q_INVOKABLE void loadKey(const QString& path);

@@ -31,6 +31,14 @@ class AppEntry final : public QObject {
     Q_PROPERTY(double x READ x NOTIFY changed)
     Q_PROPERTY(double y READ y NOTIFY changed)
     Q_PROPERTY(double z READ z NOTIFY changed)
+    // A split pair's two objects, and whether they were placed on their own.
+    Q_PROPERTY(double lx READ lx NOTIFY changed)
+    Q_PROPERTY(double ly READ ly NOTIFY changed)
+    Q_PROPERTY(double lz READ lz NOTIFY changed)
+    Q_PROPERTY(double rx READ rx NOTIFY changed)
+    Q_PROPERTY(double ry READ ry NOTIFY changed)
+    Q_PROPERTY(double rz READ rz NOTIFY changed)
+    Q_PROPERTY(bool pairCustom READ pairCustom NOTIFY changed)
     Q_PROPERTY(double level READ level NOTIFY levelChanged)
 
 public:
@@ -57,6 +65,13 @@ public:
         set(x_, s.position.x);
         set(y_, s.position.y);
         set(z_, s.position.z);
+        set(lx_, s.left.x);
+        set(ly_, s.left.y);
+        set(lz_, s.left.z);
+        set(rx_, s.right.x);
+        set(ry_, s.right.y);
+        set(rz_, s.right.z);
+        set(pair_custom_, s.pair_custom);
         if (structural) {
             emit changed();
         }
@@ -81,6 +96,13 @@ public:
     [[nodiscard]] double x() const { return x_; }
     [[nodiscard]] double y() const { return y_; }
     [[nodiscard]] double z() const { return z_; }
+    [[nodiscard]] double lx() const { return lx_; }
+    [[nodiscard]] double ly() const { return ly_; }
+    [[nodiscard]] double lz() const { return lz_; }
+    [[nodiscard]] double rx() const { return rx_; }
+    [[nodiscard]] double ry() const { return ry_; }
+    [[nodiscard]] double rz() const { return rz_; }
+    [[nodiscard]] bool pairCustom() const { return pair_custom_; }
     [[nodiscard]] double level() const { return level_; }
 
 signals:
@@ -101,6 +123,8 @@ private:
     double x_ = 0.5;
     double y_ = 0.5;
     double z_ = 0.0;
+    double lx_ = 0.5, ly_ = 0.5, lz_ = 0.0, rx_ = 0.5, ry_ = 0.5, rz_ = 0.0;
+    bool pair_custom_ = false;
     double level_ = -120.0;
 };
 
