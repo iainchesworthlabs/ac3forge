@@ -74,6 +74,7 @@ struct Engine::Impl {
     ac3::audio::DeviceWatcher watcher;
     std::unordered_map<AppId, ac3::oba::Position> wanted_positions;
     std::unordered_map<AppId, bool> split_choice;  // per-app override of split_by_default
+    std::unordered_map<AppId, double> sizes;       // per-app object extent, default a point
     std::unordered_map<AppId, AppSession> known;
     std::unordered_map<AppId, float> levels;
     std::vector<std::vector<float>> objects;
@@ -167,6 +168,7 @@ struct Engine::Impl {
             slots.remove(app);
             wanted_positions.erase(app);
             split_choice.erase(app);
+            sizes.erase(app);
             levels.erase(app);
         }
         taps.sync(ids);
@@ -217,11 +219,13 @@ struct Engine::Impl {
             // A split pair sits either side of the placed position, kept
             // inside the room.
             where.x = std::clamp(where.x + side[slot] * config.split_spread, 0.0, 1.0);
+            const auto sized = sizes.find(after->second);
+            const double size = sized == sizes.end() ? 0.0 : sized->second;
             if (before == slot_owner.end() || before->second != after->second) {
-                placement.set_target(slot, {.position = where, .gain = 0.0});
+                placement.set_target(slot, {.position = where, .gain = 0.0, .size = size});
                 placement.snap(slot);
             }
-            placement.set_target(slot, {.position = where, .gain = 1.0});
+            placement.set_target(slot, {.position = where, .gain = 1.0, .size = size});
         }
         slot_owner = std::move(now);
     }
@@ -241,6 +245,9 @@ struct Engine::Impl {
             a.fullscreen = slot.fullscreen;
             a.slot = slot.positioned;
             a.width = slot.width;
+            if (const auto sized = sizes.find(slot.app); sized != sizes.end()) {
+                a.size = sized->second;
+            }
             if (slot.positioned) {
                 a.position = placement.current(*slot.positioned).position;
                 if (slot.width == 2) {
@@ -461,6 +468,13 @@ void Engine::set_split(AppId app, bool split) {
         impl_->split_choice[app] = split;
         impl_->ensure_in_plan(app);
         impl_->slots.set_width(app, split ? 2 : 1);
+        impl_->apply_slot_changes();
+    });
+}
+
+void Engine::set_size(AppId app, double size) {
+    impl_->post([this, app, size] {
+        impl_->sizes[app] = std::clamp(size, 0.0, 1.0);
         impl_->apply_slot_changes();
     });
 }

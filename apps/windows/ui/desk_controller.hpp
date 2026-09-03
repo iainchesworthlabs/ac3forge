@@ -56,6 +56,7 @@ class DeskController : public QObject {
     Q_PROPERTY(int bitrate READ bitrate WRITE setBitrate NOTIFY settingsChanged)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY settingsChanged)
     Q_PROPERTY(QString palette READ palette WRITE setPalette NOTIFY settingsChanged)
+    Q_PROPERTY(QString roomView READ roomView WRITE setRoomView NOTIFY settingsChanged)  // "2d" or "3d"
     Q_PROPERTY(bool keepRunningWhenClosed READ keepRunningWhenClosed WRITE setKeepRunningWhenClosed NOTIFY settingsChanged)
     Q_PROPERTY(bool moveDefaultOnLaunch READ moveDefaultOnLaunch WRITE setMoveDefaultOnLaunch NOTIFY settingsChanged)
 
@@ -122,6 +123,8 @@ public:
     void setTheme(const QString& theme);
     [[nodiscard]] QString palette() const;
     void setPalette(const QString& palette);
+    [[nodiscard]] QString roomView() const;
+    void setRoomView(const QString& view);
     [[nodiscard]] bool keepRunningWhenClosed() const;
     void setKeepRunningWhenClosed(bool on);
     [[nodiscard]] bool moveDefaultOnLaunch() const;
@@ -152,6 +155,7 @@ public:
     Q_INVOKABLE void position(int app, double x, double y, double z);
     Q_INVOKABLE void unposition(int app);
     Q_INVOKABLE void setSplit(int app, bool split);
+    Q_INVOKABLE void setSize(int app, double size);
     Q_INVOKABLE void reprobe();
     Q_INVOKABLE void loadKey(const QString& path);
     Q_INVOKABLE void clearKey();

@@ -54,6 +54,7 @@ struct AppStatus {
     std::optional<int> slot;  // positioned slot (the first of `width`), or nullopt: in the bed
     int width = 1;            // 2: split, a left and a right object
     ac3::oba::Position position{0.5, 0.5, 0.0};
+    double size = 0.0;        // the object's extent, 0 (a point) to 1
     float level_dbfs = -120.0F;
 };
 
@@ -94,6 +95,8 @@ public:
     void unposition(AppId app);
     // Two objects (one per channel) or one for this application.
     void set_split(AppId app, bool split);
+    // The object's extent, 0 (a point) to 1 (the whole room), clamped.
+    void set_size(AppId app, double size);
     void pin(std::optional<OutputMode> mode);
     void set_bypass(bool on);
     void reprobe();

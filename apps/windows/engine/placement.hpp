@@ -23,6 +23,10 @@ namespace ac3::windemo {
 struct PlacementTarget {
     ac3::oba::Position position{0.5, 0.5, 0.0};
     double gain = 0.0;  // 0 = silent slot
+    // Isotropic extent, 0 (a point) to 1 (the whole room), carried to the
+    // OAMD payload for the receiver's renderer (TS 103 420 §5.6.1.2); the
+    // encoder's own bed render treats every object as a point.
+    double size = 0.0;
 };
 
 class PlacementSmoother {

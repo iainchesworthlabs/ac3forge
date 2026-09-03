@@ -85,3 +85,24 @@ TEST_CASE("a zero time constant is immediate", "[windemo]") {
     CHECK(out[0].position.x == 1.0);
     CHECK(out[0].gain == 1.0);
 }
+
+TEST_CASE("an object's size glides like its position and reaches the placement", "[windemo]") {
+    PlacementSmoother smoother(3.0);
+    std::vector<ac3::oba::ObjectPlacement> out(kObjectSlots);
+    smoother.set_target(2, {.position = {0.5, 0.5, 0.0}, .gain = 1.0, .size = 0.6});
+    smoother.snap(2);
+    smoother.step(out);
+    CHECK(out[2].size.width == Approx(0.6));
+    CHECK(out[2].size.depth == Approx(0.6));
+    CHECK(out[2].size.height == Approx(0.6));
+    CHECK(out[3].size.is_point());
+    // A new size approaches over a few frames rather than jumping.
+    smoother.set_target(2, {.position = {0.5, 0.5, 0.0}, .gain = 1.0, .size = 0.0});
+    smoother.step(out);
+    CHECK(out[2].size.width < 0.6);
+    CHECK(out[2].size.width > 0.0);
+    for (int i = 0; i < 40; ++i) {
+        smoother.step(out);
+    }
+    CHECK(out[2].size.width == Approx(0.0).margin(1e-6));
+}

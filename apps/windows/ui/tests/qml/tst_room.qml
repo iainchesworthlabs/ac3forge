@@ -109,6 +109,12 @@ TestCase {
             return app && app.width === 1 && app.slot >= 0;
         }, 5000, "after mono: " + JSON.stringify(row()));
         compare(DeskController.placedCount, placed);  // one application either way
+        // The object's extent round-trips, clamped to the room.
+        DeskController.setSize(id, 0.4);
+        tryVerify(function() { const app = row(); return app && Math.abs(app.size - 0.4) < 1e-6; }, 5000, "size 0.4");
+        DeskController.setSize(id, 7);
+        tryVerify(function() { const app = row(); return app && app.size === 1; }, 5000, "size clamped to 1");
+        DeskController.setSize(id, 0);
         DeskController.unposition(id);
     }
 

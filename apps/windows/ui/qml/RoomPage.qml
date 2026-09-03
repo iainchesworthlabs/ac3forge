@@ -7,7 +7,8 @@ import Ac3ForgeDesk
 // tray, and the output summary (docs/platforms/windows-demo.md, "UI").
 Item {
     id: page
-    property bool threeD: false
+    // The room view the user chose last time, or what the window asks for.
+    property bool threeD: DeskController.roomView === "3d"
     property int selectedApp: -1
 
     function appById(id) {
@@ -93,7 +94,7 @@ Item {
                     model: [{ label: qsTr("Plan + elevation"), value: "2d" }, { label: qsTr("3D"), value: "3d" }]
                     currentValue: page.threeD ? "3d" : "2d"
                     accessibleName: qsTr("Room view")
-                    onSelected: function(value) { page.threeD = value === "3d"; }
+                    onSelected: function(value) { DeskController.roomView = value; page.threeD = value === "3d"; }
                 }
             }
             Loader {
@@ -143,63 +144,90 @@ Item {
                         onReturned: function(app) { DeskController.unposition(app); }
                         onDropped: function(app, x, y) { DeskController.position(app, 0.5, x, 1 - 2 * y); page.selectedApp = app; }
                     }
-                    // The selected application.
-                    Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: selectedColumn.implicitHeight + Theme.space6
-                        color: Theme.surface
-                        border.color: Theme.divider
-                        border.width: 1
-                        visible: page.selected !== null
-                        ColumnLayout {
-                            id: selectedColumn
-                            anchors.fill: parent
-                            anchors.margins: Theme.space3
-                            spacing: Theme.space2
-                            RowLayout {
-                                spacing: Theme.space2
-                                Text { text: page.selected ? page.selected.name : ""; color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: 15; font.weight: Font.DemiBold }
-                                Text {
-                                    text: page.selected ? (page.selected.slot >= 0
-                                        ? qsTr("slot ") + (page.selected.slot + 1) + " · x " + page.selected.x.toFixed(2) + " · y " + page.selected.y.toFixed(2) + " · z " + (page.selected.z >= 0 ? "+" : "") + page.selected.z.toFixed(2)
-                                        : qsTr("in the bed")) : ""
-                                    color: Theme.textMuted
-                                    font.family: Theme.monoFamily
-                                    font.pixelSize: 11
-                                }
-                            }
-                            RowLayout {
-                                spacing: Theme.space2
-                                DeskButton {
-                                    text: page.selected && page.selected.slot >= 0 ? qsTr("Send to bed") : qsTr("Place in the room")
-                                    enabled: page.selected !== null && !(page.selected.fullscreen)
-                                    onClicked: {
-                                        if (page.selected.slot >= 0) DeskController.unposition(page.selected.app);
-                                        else DeskController.position(page.selected.app, 0.5, 0.5, 0);
-                                    }
-                                }
-                                DeskButton {
-                                    text: qsTr("Centre")
-                                    enabled: page.selected !== null && page.selected.slot >= 0
-                                    onClicked: DeskController.position(page.selected.app, 0.5, 0.5, 0)
-                                }
-                                DeskButton {
-                                    objectName: "splitButton"
-                                    text: page.selected && page.selected.width === 2 ? qsTr("Mono") : qsTr("Split")
-                                    enabled: page.selected !== null
-                                    onClicked: DeskController.setSplit(page.selected.app, page.selected.width !== 2)
-                                }
-                                Item { Layout.fillWidth: true }
-                                Text {
-                                    text: page.selected ? (page.selected.fullscreen ? qsTr("full-screen: stays in the bed") : (page.selected.slot >= 0 ? page.describe(page.selected) : "")) : ""
-                                    color: Theme.textMuted
-                                    font.pixelSize: Theme.fontSmall
-                                }
-                            }
-                        }
-                    }
                 }
                 Item { Layout.fillWidth: true }
+            }
+            // The selected application.
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: selectedColumn.implicitHeight + Theme.space6
+                color: Theme.surface
+                border.color: Theme.divider
+                border.width: 1
+                visible: page.selected !== null
+                ColumnLayout {
+                    id: selectedColumn
+                    anchors.fill: parent
+                    anchors.margins: Theme.space3
+                    spacing: Theme.space2
+                    RowLayout {
+                        spacing: Theme.space2
+                        Text { text: page.selected ? page.selected.name : ""; color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: 15; font.weight: Font.DemiBold }
+                        Text {
+                            text: page.selected ? (page.selected.slot >= 0
+                                ? qsTr("slot ") + (page.selected.slot + 1) + " · x " + page.selected.x.toFixed(2) + " · y " + page.selected.y.toFixed(2) + " · z " + (page.selected.z >= 0 ? "+" : "") + page.selected.z.toFixed(2)
+                                : qsTr("in the bed")) : ""
+                            color: Theme.textMuted
+                            font.family: Theme.monoFamily
+                            font.pixelSize: 11
+                        }
+                    }
+                    RowLayout {
+                        spacing: Theme.space2
+                        DeskButton {
+                            text: page.selected && page.selected.slot >= 0 ? qsTr("Send to bed") : qsTr("Place in the room")
+                            enabled: page.selected !== null && !(page.selected.fullscreen)
+                            onClicked: {
+                                if (page.selected.slot >= 0) DeskController.unposition(page.selected.app);
+                                else DeskController.position(page.selected.app, 0.5, 0.5, 0);
+                            }
+                        }
+                        DeskButton {
+                            text: qsTr("Centre")
+                            enabled: page.selected !== null && page.selected.slot >= 0
+                            onClicked: DeskController.position(page.selected.app, 0.5, 0.5, 0)
+                        }
+                        DeskButton {
+                            objectName: "splitButton"
+                            text: page.selected && page.selected.width === 2 ? qsTr("Mono") : qsTr("Split")
+                            enabled: page.selected !== null
+                            onClicked: DeskController.setSplit(page.selected.app, page.selected.width !== 2)
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: page.selected ? (page.selected.fullscreen ? qsTr("full-screen: stays in the bed") : (page.selected.slot >= 0 ? page.describe(page.selected) : "")) : ""
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.fontSmall
+                        }
+                    }
+                    RowLayout {
+                        spacing: Theme.space3
+                        Text { text: qsTr("Size"); color: Theme.text; font.pixelSize: 13 }
+                        Rectangle {
+                            id: sizeTrack
+                            objectName: "sizeSlider"
+                            implicitWidth: 180
+                            implicitHeight: 14
+                            color: "transparent"
+                            readonly property real value: page.selected ? page.selected.size : 0
+                            Rectangle { y: 6; width: parent.width; height: 2; color: Theme.divider }
+                            Rectangle { y: 6; width: parent.width * sizeTrack.value; height: 2; color: Theme.accent }
+                            Rectangle { x: parent.width * sizeTrack.value - 5; y: 2; width: 10; height: 10; radius: 5; color: Theme.accent }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: page.selected !== null
+                                cursorShape: Qt.PointingHandCursor
+                                function apply(mouse) { DeskController.setSize(page.selected.app, Math.max(0, Math.min(1, mouse.x / width))); }
+                                onPressed: function(mouse) { apply(mouse); }
+                                onPositionChanged: function(mouse) { if (mouse.buttons & Qt.LeftButton) apply(mouse); }
+                            }
+                            Accessible.role: Accessible.Slider
+                            Accessible.name: qsTr("Object size")
+                        }
+                        Text { text: page.selected ? (page.selected.size === 0 ? qsTr("point") : Math.round(page.selected.size * 100) + "%") : ""; color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11 }
+                        Text { text: qsTr("extent the receiver's renderer spreads the object over; the bed hears a point"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall; Layout.fillWidth: true; elide: Text.ElideRight }
+                    }
+                }
             }
             RailBlock {
                 ordinal: "03"

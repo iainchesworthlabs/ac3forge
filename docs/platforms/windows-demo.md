@@ -646,6 +646,18 @@ and the wheel zooms; placement stays in the plan and elevation views, which is t
 
 ![The 3D room: Music as a pair front-left, Game elevated at the rear right](screenshots/windows-demo-room-3d.png)
 
+The view choice persists (`appearance/roomView`), and the selected-application panel sits
+below the views so it serves both.
+
+**Per-application size, landed 2026-09-03.** The selected-application panel has a size
+slider, 0 (a point) to 1 (the whole room), which the engine carries through the placement
+smoother (glided like position and gain, so a change does not step) into the object's
+isotropic extent in the OAMD payload (TS 103 420 §5.6.1.2). It reaches the receiver's
+renderer only: as `ObjectPlacement` documents, the encoder's own 5.1 bed render treats every
+object as a point, so a sized object is spread by the receiver and not twice. The runner
+takes `size <app> 0..1`; a placement case and a room-suite case cover it. Width per
+application is the split above.
+
 ### Phase 6: docs, CI, release
 
 This page rewritten from plan to record; a roadmap record; a CHANGELOG entry; the demo built

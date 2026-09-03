@@ -165,6 +165,7 @@ void DeskController::poll() {
         row.insert(QStringLiteral("fullscreen"), app.fullscreen);
         row.insert(QStringLiteral("slot"), app.slot ? *app.slot : -1);
         row.insert(QStringLiteral("width"), app.width);
+        row.insert(QStringLiteral("size"), app.size);
         row.insert(QStringLiteral("x"), app.position.x);
         row.insert(QStringLiteral("y"), app.position.y);
         row.insert(QStringLiteral("z"), app.position.z);
@@ -351,6 +352,19 @@ void DeskController::setPalette(const QString& palette) {
     emit settingsChanged();
 }
 
+QString DeskController::roomView() const {
+    return settings_.value(QStringLiteral("appearance/roomView"), QStringLiteral("2d")).toString();
+}
+
+void DeskController::setRoomView(const QString& view) {
+    const QString wanted = view == QLatin1String("3d") ? QStringLiteral("3d") : QStringLiteral("2d");
+    if (wanted == roomView()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("appearance/roomView"), wanted);
+    emit settingsChanged();
+}
+
 bool DeskController::keepRunningWhenClosed() const {
     return settings_.value(QStringLiteral("behaviour/keepRunningWhenClosed"), true).toBool();
 }
@@ -381,6 +395,12 @@ void DeskController::position(int app, double x, double y, double z) {
 void DeskController::unposition(int app) {
     if (engine_) {
         engine_->unposition(static_cast<ac3::windemo::AppId>(app));
+    }
+}
+
+void DeskController::setSize(int app, double size) {
+    if (engine_) {
+        engine_->set_size(static_cast<ac3::windemo::AppId>(app), std::clamp(size, 0.0, 1.0));
     }
 }
 

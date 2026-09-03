@@ -109,7 +109,7 @@ ApplicationWindow {
     StackLayout {
         anchors.fill: parent
         currentIndex: window.page === "room" ? 0 : window.page === "output" ? 1 : 2
-        RoomPage { threeD: window.roomThreeD }
+        RoomPage { threeD: window.roomThreeD || DeskController.roomView === "3d" }
         OutputPage {}
         SettingsPage {}
     }

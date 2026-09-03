@@ -42,8 +42,10 @@ void PlacementSmoother::step(std::span<ac3::oba::ObjectPlacement> out) {
         now.position.y = approach(now.position.y, want.position.y, alpha_);
         now.position.z = approach(now.position.z, want.position.z, alpha_);
         now.gain = approach(now.gain, want.gain, alpha_);
+        now.size = approach(now.size, want.size, alpha_);
         out[index].position = now.position;
         out[index].gain = now.gain;
+        out[index].size = {.width = now.size, .depth = now.size, .height = now.size};
         out[index].snap = false;
     }
     for (int channel = 0; channel < kBedSlots; ++channel) {
