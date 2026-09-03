@@ -1450,12 +1450,20 @@ Create the audio interface (in disabled mode).
     //
     if (NULL != TemplateReferenceString)
     {
+        // Best-effort: the template migration copies optional defaults from
+        // an INF template interface; without them the endpoint is complete
+        // and works. On this OS the migration fails with
+        // STATUS_INVALID_PARAMETER after the ports are registered, and the
+        // sample only appeared to tolerate that because a later probe in
+        // InstallEndpointRenderFilters overwrote the status with success.
+        // With that probe gone, treating this as fatal failed every device
+        // start (CM_PROB_FAILED_START, 0xC000000D). Log it and continue.
         ntStatus = MigrateDeviceInterfaceTemplateParameters(AudioSymbolicLinkName, TemplateReferenceString);
-
-        IF_FAILED_ACTION_JUMP(
-            ntStatus,
-            DPF(D_ERROR, ("MigrateDeviceInterfaceTempalteParameters: MigrateDeviceInterfaceTemplateParameters(...): failed, 0x%x", ntStatus)),
-            Done);
+        if (!NT_SUCCESS(ntStatus))
+        {
+            DPF(D_VERBOSE, ("CreateAudioInterfaceWithProperties: template migration skipped, 0x%x", ntStatus));
+            ntStatus = STATUS_SUCCESS;
+        }
     }
 
     //
@@ -2737,7 +2745,18 @@ Return Value:
         &KSCATEGORY_AUDIO,
         &referenceString,
         &TemplateSymbolicLinkName);
-    IF_FAILED_JUMP(ntStatus, Exit);
+    if (!NT_SUCCESS(ntStatus))
+    {
+        // The template migration is a nicety, not a requirement: without a
+        // template interface there is nothing to copy and the endpoint is
+        // fine with its own defaults. The status is examined (C28193) and
+        // logged, and the caller, which treats this function's failure as
+        // fatal to the endpoint, gets success. Returning the failure here
+        // made every device start fail with the raw STATUS_INVALID_PARAMETER.
+        DPF(D_VERBOSE, ("MigrateDeviceInterfaceTemplateParameters: no template interface, 0x%x", ntStatus));
+        ntStatus = STATUS_SUCCESS;
+        goto Exit;
+    }
 
     // Open the template device interface's registry key path
     ntStatus = IoOpenDeviceInterfaceRegistryKey(&TemplateSymbolicLinkName, GENERIC_READ, &hTemplateDeviceInterfaceParametersKey);

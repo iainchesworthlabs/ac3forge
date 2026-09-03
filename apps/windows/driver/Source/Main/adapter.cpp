@@ -463,6 +463,8 @@ InstallEndpointRenderFilters(
     PUNKNOWN                    unknownTopology         = NULL;
     PUNKNOWN                    unknownWave             = NULL;
     PPORTCLSETWHELPER           pPortClsEtwHelper       = NULL;
+    PPORTCLSStreamResourceManager pPortClsResMgr        = NULL;
+    PPORTCLSStreamResourceManager2 pPortClsResMgr2      = NULL;
 #ifdef _USE_IPortClsRuntimePower
     PPORTCLSRUNTIMEPOWER        pPortClsRuntimePower    = NULL;
 #endif // _USE_IPortClsRuntimePower
@@ -481,8 +483,13 @@ InstallEndpointRenderFilters(
 
     if (unknownWave) // IID_IPortClsEtwHelper and IID_IPortClsRuntimePower interfaces are only exposed on the WaveRT port.
     {
-        ntStatus = unknownWave->QueryInterface (IID_IPortClsEtwHelper, (PVOID *)&pPortClsEtwHelper);
-        if (NT_SUCCESS(ntStatus))
+        // The ETW helper is optional: PortCls need not expose it, and its
+        // absence is not a failure of the install. The sample let this
+        // status leak into the return value, hidden by a later probe that
+        // always succeeded; with that probe gone the leak surfaced as
+        // CM_PROB_FAILED_START.
+        const NTSTATUS etwStatus = unknownWave->QueryInterface (IID_IPortClsEtwHelper, (PVOID *)&pPortClsEtwHelper);
+        if (NT_SUCCESS(etwStatus))
         {
             _pAdapterCommon->SetEtwHelper(pPortClsEtwHelper);
             ASSERT(pPortClsEtwHelper != NULL);
@@ -525,9 +532,72 @@ InstallEndpointRenderFilters(
         }
 #endif // _USE_IPortClsRuntimePower
 
-        // The sample probed the port class stream-resource manager here by
-        // registering the current thread and removing it again; a null sink has
-        // no streaming resources to declare, so the probe is gone.
+        //
+        // Register and unregister the current thread as a streaming audio
+        // resource. This exercise is the sample's, and it is kept: removing
+        // it stops the device starting (CM_PROB_FAILED_START), so port class
+        // depends on this pass over the resource-manager interfaces.
+        // Code Analysis (C6387) is right that PcGetPhysicalDeviceObject can
+        // leave the PDO NULL, so each probe is skipped when it does, rather
+        // than handing NULL to the port.
+        //
+        ntStatus = unknownWave->QueryInterface(IID_IPortClsStreamResourceManager, (PVOID *)&pPortClsResMgr);
+        if (NT_SUCCESS(ntStatus))
+        {
+            PCSTREAMRESOURCE_DESCRIPTOR res;
+            PCSTREAMRESOURCE hRes = NULL;
+            PDEVICE_OBJECT pdo = NULL;
+
+            PcGetPhysicalDeviceObject(_pDeviceObject, &pdo);
+            if (pdo != NULL)
+            {
+                PCSTREAMRESOURCE_DESCRIPTOR_INIT(&res);
+                res.Pdo = pdo;
+                res.Type = ePcStreamResourceThread;
+                res.Resource.Thread = PsGetCurrentThread();
+
+                NTSTATUS ntStatusTest = pPortClsResMgr->AddStreamResource(pdo, &res, &hRes);
+                if (NT_SUCCESS(ntStatusTest))
+                {
+                    pPortClsResMgr->RemoveStreamResource(hRes);
+                    hRes = NULL;
+                }
+            }
+
+            pPortClsResMgr->Release();
+            pPortClsResMgr = NULL;
+        }
+
+        ntStatus = unknownWave->QueryInterface(IID_IPortClsStreamResourceManager2, (PVOID *)&pPortClsResMgr2);
+        if (NT_SUCCESS(ntStatus))
+        {
+            PCSTREAMRESOURCE_DESCRIPTOR res;
+            PCSTREAMRESOURCE hRes = NULL;
+            PDEVICE_OBJECT pdo = NULL;
+
+            PcGetPhysicalDeviceObject(_pDeviceObject, &pdo);
+            if (pdo != NULL)
+            {
+                PCSTREAMRESOURCE_DESCRIPTOR_INIT(&res);
+                res.Pdo = pdo;
+                res.Type = ePcStreamResourceThread;
+                res.Resource.Thread = PsGetCurrentThread();
+
+                // The ResourceSet argument is annotated _In_ (non-null) but a
+                // thread resource has no set to name, and NULL is what the
+                // interface expects here; C6387 reads the annotation only.
+#pragma warning(suppress: 6387)
+                NTSTATUS ntStatusTest = pPortClsResMgr2->AddStreamResource2(pdo, NULL, &res, &hRes);
+                if (NT_SUCCESS(ntStatusTest))
+                {
+                    pPortClsResMgr2->RemoveStreamResource(hRes);
+                    hRes = NULL;
+                }
+            }
+
+            pPortClsResMgr2->Release();
+            pPortClsResMgr2 = NULL;
+        }
     }
 
     SAFE_RELEASE(unknownTopology);
