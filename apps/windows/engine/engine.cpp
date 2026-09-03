@@ -69,6 +69,12 @@ struct Engine::Impl {
 
     // Frame-thread state.
     SessionMonitor sessions;
+    // The monitor's thread and its latest list; the frame loop takes the
+    // list when one is fresh and never waits for the monitor.
+    std::jthread session_thread;
+    std::mutex session_mutex;
+    std::vector<AppSession> latest_sessions;
+    bool sessions_fresh = false;
     std::shared_ptr<AudioDevices> devices;
     TapPool taps;
     SlotAllocator slots;
@@ -153,8 +159,19 @@ struct Engine::Impl {
         slots.set_width(app, split ? 2 : 1);
     }
 
+    // Called every frame: nothing to do unless the monitor's thread has a
+    // new list.
     void refresh_sessions() {
-        auto apps = sessions.refresh();
+        std::vector<AppSession> apps;
+        {
+            const std::lock_guard<std::mutex> lock(session_mutex);
+            if (!sessions_fresh) {
+                return;
+            }
+            apps = std::move(latest_sessions);
+            sessions_fresh = false;
+        }
+        AC3_ZONE_SCOPED_N("take sessions");
         std::vector<AppId> ids;
         ids.reserve(apps.size());
         known.clear();
@@ -329,7 +346,34 @@ struct Engine::Impl {
             want_reprobe.store(true, std::memory_order_release);
         });
 
-        auto last_refresh = std::chrono::steady_clock::time_point{};
+        // The session monitor, on its own thread, for as long as the loop
+        // runs (the guard joins it on the way out).
+        session_thread = std::jthread([this](const std::stop_token& monitor_stop) {
+            while (!monitor_stop.stop_requested()) {
+                std::vector<AppSession> apps;
+                {
+                    AC3_ZONE_SCOPED_N("session monitor");
+                    apps = sessions.refresh();
+                }
+                {
+                    const std::lock_guard<std::mutex> lock(session_mutex);
+                    latest_sessions = std::move(apps);
+                    sessions_fresh = true;
+                }
+                for (int i = 0; i < 10 && !monitor_stop.stop_requested(); ++i) {
+                    std::this_thread::sleep_for(kSessionRefresh / 10);
+                }
+            }
+        });
+        struct StopMonitor {
+            std::jthread& thread;
+            ~StopMonitor() {
+                thread.request_stop();
+                if (thread.joinable()) {
+                    thread.join();
+                }
+            }
+        } stop_monitor{session_thread};
         const auto frame_duration =
             std::chrono::microseconds(static_cast<long long>(1e6 * static_cast<double>(frames_per) / 48000.0));
 
@@ -347,11 +391,7 @@ struct Engine::Impl {
                     command();
                 }
             }
-            if (frame_start - last_refresh >= kSessionRefresh) {
-                AC3_ZONE_SCOPED_N("refresh sessions");
-                refresh_sessions();
-                last_refresh = frame_start;
-            }
+            refresh_sessions();
             if (want_reprobe.exchange(false, std::memory_order_acq_rel)) {
                 AC3_ZONE_SCOPED_N("reprobe");
                 const auto before = output->status().mode;

@@ -323,13 +323,22 @@ std::vector<AppSession> SessionMonitor::refresh() {
                 app.app = root;
                 const auto info = procs.find(root);
                 app.name = info == procs.end() ? std::to_string(root) : stem_of(info->second.image);
-                app.image_path = image_path_of(root);
-                app.description = description_of(app.image_path);
-                // Windows' own shell components (the text-input host, the
-                // search and start hosts) are packaged apps, but nobody
-                // means them when they say "application": their images
-                // live under Windows\SystemApps.
-                app.packaged = packaged_of(root) && !is_system_app(app.image_path);
+                auto facts = facts_.find(root);
+                if (facts == facts_.end()) {
+                    Facts f;
+                    f.image_path = image_path_of(root);
+                    f.description = description_of(f.image_path);
+                    f.system_app = is_system_app(f.image_path);
+                    // Windows' own shell components (the text-input host,
+                    // the search and start hosts) are packaged apps, but
+                    // nobody means them when they say "application": their
+                    // images live under Windows\SystemApps.
+                    f.packaged = packaged_of(root) && !f.system_app;
+                    facts = facts_.emplace(root, std::move(f)).first;
+                }
+                app.image_path = facts->second.image_path;
+                app.description = facts->second.description;
+                app.packaged = facts->second.packaged;
                 if (endpoint_name.empty()) {
                     endpoint_name = friendly_name(device.Get());
                 }
@@ -343,11 +352,15 @@ std::vector<AppSession> SessionMonitor::refresh() {
     }
     // A window anywhere in the tree counts for the root: a game's launcher
     // may own the session while its child owns the window, or the reverse.
+    // Facts for processes that have gone.
+    for (auto it = facts_.begin(); it != facts_.end();) {
+        it = apps.contains(it->first) ? std::next(it) : facts_.erase(it);
+    }
     const auto windowed = windowed_processes();
     for (auto& [root, app] : apps) {
         // Windows' own shell components own windows and are packaged, and
         // are still not what a person means by an application.
-        if (is_system_app(app.image_path)) {
+        if (const auto f = facts_.find(root); f != facts_.end() && f->second.system_app) {
             app.has_window = false;
             app.packaged = false;
             continue;

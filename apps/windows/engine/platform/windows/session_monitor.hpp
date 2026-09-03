@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "slots.hpp"
@@ -46,6 +47,19 @@ public:
     // Applications with at least one audio session, active or not, sorted
     // by app id. The system sounds session (pid 0) is left out.
     [[nodiscard]] std::vector<AppSession> refresh();
+
+private:
+    // What is read once per process and kept while it lives: the image
+    // path, the executable's description, whether it is packaged. Reading
+    // a version resource for every process on every refresh was most of
+    // the refresh's cost.
+    struct Facts {
+        std::string image_path;
+        std::string description;
+        bool packaged = false;
+        bool system_app = false;
+    };
+    std::unordered_map<std::uint32_t, Facts> facts_;
 };
 
 }  // namespace ac3::windemo
