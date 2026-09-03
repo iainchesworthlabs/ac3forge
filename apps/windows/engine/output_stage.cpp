@@ -230,8 +230,87 @@ const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
     return status_;
 }
 
-void OutputStage::submit(std::span<const std::byte> unit,
-                         std::span<const std::span<const float>> bed) {
+void OutputStage::set_bypass(bool on) {
+    config_.bypass_codec = on;
+}
+
+bool OutputStage::ensure_spatial(bool has_lfe, std::size_t objects) {
+    auto& impl = *impl_;
+    if (impl.spatial_started) {
+        return true;
+    }
+    const auto started = impl.spatial->start(
+        status_.endpoint_id, config_.sample_rate, has_lfe ? kSpeakerLowFrequency : 0U,
+        static_cast<std::uint32_t>(std::max<std::size_t>(objects, 1)));
+    if (!started) {
+        status_.reason += "; spatial sink refused: " +
+                          std::string(ac3::audio::describe(started.error()));
+        impl.teardown();
+        status_.running = false;
+        status_.mode = OutputMode::kNone;
+        return false;
+    }
+    impl.spatial_started = true;
+    return true;
+}
+
+// The bypass: the decoded modes fed from the engine's own frame. Headphones
+// render every object slot where the encoder placed it, with the bed's LFE
+// as the one static channel; PCM surround takes the bed by channel; stereo
+// takes an ITU-R BS.775 fold of it (centre and surrounds at -3 dB, LFE
+// dropped), normalised so full scale on every channel cannot clip.
+void OutputStage::submit_raw(const RawFrame& raw) {
+    auto& impl = *impl_;
+    if (status_.mode == OutputMode::kHeadphones) {
+        const bool has_lfe = raw.bed.size() >= 6;
+        if (!ensure_spatial(has_lfe, raw.objects.size())) {
+            return;
+        }
+        impl.dynamic_updates.clear();
+        for (std::size_t i = 0; i < raw.objects.size() && i < raw.placements.size(); ++i) {
+            const auto xyz = to_windows_spatial(raw.placements[i].position);
+            impl.dynamic_updates.push_back({.pcm = raw.objects[i],
+                                            .x = xyz.x,
+                                            .y = xyz.y,
+                                            .z = xyz.z,
+                                            .gain = static_cast<float>(raw.placements[i].gain)});
+        }
+        impl.static_updates.clear();
+        if (has_lfe) {
+            impl.static_updates.push_back({.pcm = raw.bed[5], .channel = kSpeakerLowFrequency});
+        }
+        submit_with_patience(*impl.spatial, status_.underruns,
+                             std::span<const ac3::audio::DynamicObjectUpdate>(impl.dynamic_updates),
+                             std::span<const ac3::audio::StaticObjectUpdate>(impl.static_updates));
+        return;
+    }
+    if (raw.bed.size() < 6) {
+        return;
+    }
+    const std::size_t frames = raw.bed[0].size();
+    if (status_.mode == OutputMode::kPcmSurround) {
+        constexpr std::size_t kCodedForWave[6] = {0, 2, 1, 5, 3, 4};
+        impl.interleaved.resize(frames * 6);
+        for (std::size_t i = 0; i < frames; ++i) {
+            for (std::size_t w = 0; w < 6; ++w) {
+                impl.interleaved[i * 6 + w] = raw.bed[kCodedForWave[w]][i];
+            }
+        }
+    } else {
+        constexpr float kMinus3dB = 0.70710678F;
+        constexpr float kNormalise = 1.0F / (1.0F + kMinus3dB + kMinus3dB);
+        impl.interleaved.resize(frames * 2);
+        for (std::size_t i = 0; i < frames; ++i) {
+            const float c = raw.bed[1][i] * kMinus3dB;
+            impl.interleaved[i * 2] = (raw.bed[0][i] + c + raw.bed[3][i] * kMinus3dB) * kNormalise;
+            impl.interleaved[i * 2 + 1] = (raw.bed[2][i] + c + raw.bed[4][i] * kMinus3dB) * kNormalise;
+        }
+    }
+    submit_with_patience(*impl.monitor, status_.underruns,
+                         std::span<const float>(impl.interleaved));
+}
+
+void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
     if (!status_.running) {
         return;
     }
@@ -249,7 +328,7 @@ void OutputStage::submit(std::span<const std::byte> unit,
             return;
         }
         case OutputMode::kDd51: {
-            const auto frame = impl.ac3_encoder->encode_frame(bed);
+            const auto frame = impl.ac3_encoder->encode_frame(raw.bed);
             if (!frame) {
                 return;
             }
@@ -265,6 +344,12 @@ void OutputStage::submit(std::span<const std::byte> unit,
         case OutputMode::kNone: return;
     }
 
+    status_.bypassed = config_.bypass_codec;
+    if (config_.bypass_codec) {
+        submit_raw(raw);
+        return;
+    }
+
     const auto decoded = impl.decoder->decode_access_unit(unit);
     if (!decoded || !decoded->has_value()) {
         return;  // a decode error, or §3.7's held-back unit
@@ -272,20 +357,9 @@ void OutputStage::submit(std::span<const std::byte> unit,
     const auto& out = **decoded;
 
     if (status_.mode == OutputMode::kHeadphones) {
-        if (!impl.spatial_started) {
-            const bool has_lfe = out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program);
-            const auto started = impl.spatial->start(
-                status_.endpoint_id, config_.sample_rate, has_lfe ? kSpeakerLowFrequency : 0U,
-                static_cast<std::uint32_t>(std::max<std::size_t>(out.object_audio.size(), 1)));
-            if (!started) {
-                status_.reason += "; spatial sink refused: " +
-                                  std::string(ac3::audio::describe(started.error()));
-                impl.teardown();
-                status_.running = false;
-                status_.mode = OutputMode::kNone;
-                return;
-            }
-            impl.spatial_started = true;
+        const bool has_lfe = out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program);
+        if (!ensure_spatial(has_lfe, out.object_audio.size())) {
+            return;
         }
         impl.dynamic_updates.clear();
         if (out.object_metadata) {

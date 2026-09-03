@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "ac3/oba/atmos.hpp"
 #include "output_policy.hpp"
 
 // The output end of the engine (docs/platforms/windows-demo.md, "Output modes
@@ -23,12 +24,18 @@
 //
 // The three decoded modes decode what was encoded, on purpose: they are
 // what makes the demo's headphone and TV paths exercise the codec rather
-// than bypass it. A switch stops the old sink and starts the new one; the
-// encoder upstream never notices.
+// than bypass it. The bypass switch is the exception, there so the
+// difference can be demonstrated: with it on, those modes take the engine's
+// own objects and bed (RawFrame) and the decoder is out of the loop. A mode
+// switch stops the old sink and starts the new one; the encoder upstream
+// never notices.
 
 namespace ac3::windemo {
 
 struct OutputStageConfig {
+    // Headphones, PCM surround and stereo play the raw frame instead of a
+    // decode of the stream.
+    bool bypass_codec = false;
     // The null sink is recognised by name (the driver's own, or a stand-in
     // such as FxSound's idle endpoint during development).
     std::string null_sink_substring = "Desktop Atmos";
@@ -46,6 +53,16 @@ struct OutputStatus {
     std::uint64_t units_submitted = 0;
     std::uint64_t underruns = 0;
     std::vector<EndpointFacts> endpoints;  // what the last probe saw
+    bool bypassed = false;                 // the last unit took the raw path
+};
+
+// The engine's own signal for one frame: every object slot's PCM with its
+// placement, and the encoder's 5.1 bed in AC-3 coded order (L C R Ls Rs
+// LFE). The DD 5.1 leg reads the bed; the bypass path reads all of it.
+struct RawFrame {
+    std::span<const std::span<const float>> objects;
+    std::span<const ac3::oba::ObjectPlacement> placements;
+    std::span<const std::span<const float>> bed;
 };
 
 class OutputStage {
@@ -61,17 +78,19 @@ public:
     const OutputStatus& reprobe(bool signing_key_loaded);
     void set_pinned(std::optional<OutputMode> pinned);
     void set_null_sink_substring(std::string substring);
+    void set_bypass(bool on);
 
-    // One E-AC-3 access unit from the encoder, and the encoder's own 5.1
-    // bed for the same frame (AC-3 coded order: L C R Ls Rs LFE), which
-    // only the DD 5.1 leg reads.
-    void submit(std::span<const std::byte> unit, std::span<const std::span<const float>> bed);
+    // One E-AC-3 access unit from the encoder, with the raw frame it was
+    // encoded from.
+    void submit(std::span<const std::byte> unit, const RawFrame& raw);
 
     void stop();
     [[nodiscard]] const OutputStatus& status() const { return status_; }
 
 private:
     struct Impl;
+    [[nodiscard]] bool ensure_spatial(bool has_lfe, std::size_t objects);
+    void submit_raw(const RawFrame& raw);
     std::unique_ptr<Impl> impl_;
     OutputStageConfig config_;
     OutputStatus status_;

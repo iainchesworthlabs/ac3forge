@@ -429,8 +429,13 @@ following the system locale) and the same six languages, mechanically translated
 Windows' locale as the default and a chooser in Settings. Verified by `--shot` captures in
 English, French, Arabic and Hebrew: layout, mirroring and the translations all render; the
 engine runs underneath and the room reflects the live session list. Not yet done: real
-Windows icons (monograms stand in), the 3D room, split-per-application, and the codec-bypass
-switch, which is shown disabled until the engine has the path.
+Windows icons (monograms stand in), the 3D room and split-per-application. The codec-bypass
+switch on the Output page is wired: with it on, headphones render the engine's own object
+slots where the encoder placed them (the bed's LFE as the one static channel), PCM surround
+takes the encoder's 5.1 bed by channel, and stereo takes an ITU-R BS.775 fold of it; the
+status bar and the runner's status line say which path the last frame took. Taps also
+follow the null sink's shared-mode width (2, 6 or 8 channels) after every probe, so a game
+rendering 7.1 into the driver reaches the bed by channel.
 
 ### Phase 4: driver
 

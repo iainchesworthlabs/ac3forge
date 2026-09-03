@@ -94,6 +94,7 @@ ac3::windemo::EngineConfig DeskController::engine_config() const {
     config.null_sink_substring = nullSinkName().toStdString();
     config.signing_key_path = keyPath().toStdString();
     config.low_latency = lowLatency();
+    config.bypass_codec = bypassCodec();
     config.bitrate_kbps = static_cast<std::uint32_t>(std::max(0, bitrate()));
     config.pinned = mode_from_key(pinned());
     return config;
@@ -178,8 +179,9 @@ void DeskController::poll() {
     if (mode_name != mode_name_ || key != mode_key_ || endpoint != endpoint_name_ ||
         reason != output_reason_ || signing != signing_status_ ||
         s.objects_enabled != objects_enabled_ || error != last_error_ ||
-        static_cast<int>(s.tap_channels) != tap_channels_) {
+        static_cast<int>(s.tap_channels) != tap_channels_ || s.codec_bypassed != codec_bypassed_) {
         tap_channels_ = static_cast<int>(s.tap_channels);
+        codec_bypassed_ = s.codec_bypassed;
         mode_name_ = mode_name;
         mode_key_ = key;
         endpoint_name_ = endpoint;
@@ -271,6 +273,21 @@ void DeskController::setLowLatency(bool on) {
     settings_.setValue(QStringLiteral("codec/lowLatency"), on);
     emit settingsChanged();
     restart_engine();
+}
+
+bool DeskController::bypassCodec() const {
+    return settings_.value(QStringLiteral("codec/bypass"), false).toBool();
+}
+
+void DeskController::setBypassCodec(bool on) {
+    if (on == bypassCodec()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("codec/bypass"), on);
+    if (engine_) {
+        engine_->set_bypass(on);
+    }
+    emit settingsChanged();
 }
 
 int DeskController::bitrate() const {

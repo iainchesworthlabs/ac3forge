@@ -77,27 +77,27 @@
         <translation>Pas de sortie</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="510"/>
+        <location filename="../ui/desk_controller.cpp" line="527"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>installation, répondez à l'invite d'élévation…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="511"/>
+        <location filename="../ui/desk_controller.cpp" line="528"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>retrait, répondez à l'invite d'élévation…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="554"/>
         <source>installed</source>
         <translation>installé</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="554"/>
         <source>removed</source>
         <translation>retiré</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="539"/>
+        <location filename="../ui/desk_controller.cpp" line="556"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 a échoué (code de sortie %2)</translation>
     </message>
@@ -506,8 +506,12 @@
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <source>Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine&apos;s own objects and PCM and stereo take its 5.1 bed, codec out of the loop.</source>
+        <translation>Désactivé : le casque, le PCM et la stéréo jouent un décodage du flux E-AC-3, donc ce que vous entendez est passé par le codec. Activé : le casque restitue les objets propres du moteur, le PCM et la stéréo prennent son lit 5.1, codec hors boucle.</translation>
+    </message>
+    <message>
         <source>Off: headphones and PCM play a decode of the E-AC-3 stream, so what you hear went through the codec. On: taps go straight to the renderer, lower latency, codec out of the loop. Not wired to the engine yet.</source>
-        <translation>Désactivé : le casque et le PCM jouent un décodage du flux E-AC-3, donc ce que vous entendez est passé par le codec. Activé : les prises vont directement au moteur de rendu, latence plus faible, codec hors boucle. Pas encore relié au moteur.</translation>
+        <translation type="vanished">Désactivé : le casque et le PCM jouent un décodage du flux E-AC-3, donc ce que vous entendez est passé par le codec. Activé : les prises vont directement au moteur de rendu, latence plus faible, codec hors boucle. Pas encore relié au moteur.</translation>
     </message>
 </context>
 <context>

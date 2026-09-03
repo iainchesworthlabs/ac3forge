@@ -77,27 +77,27 @@
         <translation>لا إخراج</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="510"/>
+        <location filename="../ui/desk_controller.cpp" line="527"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>جارٍ التثبيت، أجب على طلب رفع الصلاحيات…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="511"/>
+        <location filename="../ui/desk_controller.cpp" line="528"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>جارٍ الإزالة، أجب على طلب رفع الصلاحيات…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="554"/>
         <source>installed</source>
         <translation>تم التثبيت</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="554"/>
         <source>removed</source>
         <translation>تمت الإزالة</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="539"/>
+        <location filename="../ui/desk_controller.cpp" line="556"/>
         <source>%1 failed (exit code %2)</source>
         <translation>فشل %1 (رمز الخروج %2)</translation>
     </message>
@@ -506,8 +506,12 @@
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <source>Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine&apos;s own objects and PCM and stereo take its 5.1 bed, codec out of the loop.</source>
+        <translation>إيقاف: تشغّل سماعات الرأس وPCM والاستيريو فك ترميز لتدفق E-AC-3، فما تسمعه مرّ عبر الترميز. تشغيل: تُصيّر سماعات الرأس كائنات المحرك نفسها ويأخذ PCM والاستيريو قاعدته 5.1، والترميز خارج الحلقة.</translation>
+    </message>
+    <message>
         <source>Off: headphones and PCM play a decode of the E-AC-3 stream, so what you hear went through the codec. On: taps go straight to the renderer, lower latency, codec out of the loop. Not wired to the engine yet.</source>
-        <translation>إيقاف: تشغّل سماعات الرأس وPCM فك ترميز لتدفق E-AC-3، فما تسمعه مرّ عبر الترميز. تشغيل: تذهب الالتقاطات مباشرة إلى المُصيّر، زمن استجابة أقل، والترميز خارج الحلقة. غير موصول بالمحرك بعد.</translation>
+        <translation type="vanished">إيقاف: تشغّل سماعات الرأس وPCM فك ترميز لتدفق E-AC-3، فما تسمعه مرّ عبر الترميز. تشغيل: تذهب الالتقاطات مباشرة إلى المُصيّر، زمن استجابة أقل، والترميز خارج الحلقة. غير موصول بالمحرك بعد.</translation>
     </message>
 </context>
 <context>

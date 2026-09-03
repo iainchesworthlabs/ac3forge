@@ -77,27 +77,27 @@
         <translation>קיין אַרויסגאַנג</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="510"/>
+        <location filename="../ui/desk_controller.cpp" line="527"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>אינסטאַלירט, ענטפֿערט אויפֿן דערהייבונג-פֿרעג…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="511"/>
+        <location filename="../ui/desk_controller.cpp" line="528"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>נעמט אַראָפּ, ענטפֿערט אויפֿן דערהייבונג-פֿרעג…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="554"/>
         <source>installed</source>
         <translation>אינסטאַלירט</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="554"/>
         <source>removed</source>
         <translation>אַראָפּגענומען</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="539"/>
+        <location filename="../ui/desk_controller.cpp" line="556"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 האָט דורכגעפֿאַלן (אַרויסגאַנג-קאָד %2)</translation>
     </message>
@@ -506,8 +506,12 @@
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <source>Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine&apos;s own objects and PCM and stereo take its 5.1 bed, codec out of the loop.</source>
+        <translation>אָפּ: קאָפּהערער, PCM און סטערעאָ שפּילן אַ דעקאָדירונג פֿונעם E-AC-3 שטראָם, אַזוי אַז וואָס דו הערסט איז דורכגעגאַנגען דורכן קאָדעק. אָן: קאָפּהערער רענדערן די אייגענע אָביעקטן פֿונעם מאָטאָר און PCM און סטערעאָ נעמען זײַן 5.1 בעט, קאָדעק אַרויס פֿון דער שלייף.</translation>
+    </message>
+    <message>
         <source>Off: headphones and PCM play a decode of the E-AC-3 stream, so what you hear went through the codec. On: taps go straight to the renderer, lower latency, codec out of the loop. Not wired to the engine yet.</source>
-        <translation>אָפּ: קאָפּהערער און PCM שפּילן אַ דעקאָדירונג פֿונעם E-AC-3 שטראָם, אַזוי אַז וואָס דו הערסט איז דורכגעגאַנגען דורכן קאָדעק. אָן: כאַפּן גייען גלײַך צום רענדערער, נידעריקערע לאַטענץ, קאָדעק אַרויס פֿון דער שלייף. נאָך ניט פֿאַרבונדן מיטן מאָטאָר.</translation>
+        <translation type="vanished">אָפּ: קאָפּהערער און PCM שפּילן אַ דעקאָדירונג פֿונעם E-AC-3 שטראָם, אַזוי אַז וואָס דו הערסט איז דורכגעגאַנגען דורכן קאָדעק. אָן: כאַפּן גייען גלײַך צום רענדערער, נידעריקערע לאַטענץ, קאָדעק אַרויס פֿון דער שלייף. נאָך ניט פֿאַרבונדן מיטן מאָטאָר.</translation>
     </message>
 </context>
 <context>

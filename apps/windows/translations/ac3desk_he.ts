@@ -77,27 +77,27 @@
         <translation>אין פלט</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="510"/>
+        <location filename="../ui/desk_controller.cpp" line="527"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>מתקין, יש לענות לבקשת ההרשאות…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="511"/>
+        <location filename="../ui/desk_controller.cpp" line="528"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>מסיר, יש לענות לבקשת ההרשאות…</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="554"/>
         <source>installed</source>
         <translation>הותקן</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="554"/>
         <source>removed</source>
         <translation>הוסר</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="539"/>
+        <location filename="../ui/desk_controller.cpp" line="556"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 נכשל (קוד יציאה %2)</translation>
     </message>
@@ -506,8 +506,12 @@
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <source>Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine&apos;s own objects and PCM and stereo take its 5.1 bed, codec out of the loop.</source>
+        <translation>כבוי: אוזניות, PCM וסטריאו מנגנים פענוח של זרם ה-E-AC-3, כך שמה שאתה שומע עבר דרך הקודק. פועל: האוזניות מעבדות את האובייקטים של המנוע עצמו ו-PCM וסטריאו לוקחים את מיטת ה-5.1 שלו, הקודק מחוץ ללולאה.</translation>
+    </message>
+    <message>
         <source>Off: headphones and PCM play a decode of the E-AC-3 stream, so what you hear went through the codec. On: taps go straight to the renderer, lower latency, codec out of the loop. Not wired to the engine yet.</source>
-        <translation>כבוי: אוזניות ו-PCM מנגנים פענוח של זרם ה-E-AC-3, כך שמה שאתה שומע עבר דרך הקודק. פועל: הלכידות הולכות ישירות למעבד, השהיה נמוכה יותר, הקודק מחוץ ללולאה. עדיין לא מחובר למנוע.</translation>
+        <translation type="vanished">כבוי: אוזניות ו-PCM מנגנים פענוח של זרם ה-E-AC-3, כך שמה שאתה שומע עבר דרך הקודק. פועל: הלכידות הולכות ישירות למעבד, השהיה נמוכה יותר, הקודק מחוץ ללולאה. עדיין לא מחובר למנוע.</translation>
     </message>
 </context>
 <context>

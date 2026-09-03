@@ -183,9 +183,9 @@ Flickable {
                 Card {
                     DeskCheck {
                         text: qsTr("Bypass the codec on headphones and PCM")
-                        note: qsTr("Off: headphones and PCM play a decode of the E-AC-3 stream, so what you hear went through the codec. On: taps go straight to the renderer, lower latency, codec out of the loop. Not wired to the engine yet.")
-                        checked: false
-                        enabled: false
+                        note: qsTr("Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine's own objects and PCM and stereo take its 5.1 bed, codec out of the loop.")
+                        checked: DeskController.bypassCodec
+                        onToggled: function(on) { DeskController.bypassCodec = on; }
                     }
                 }
             }

@@ -217,6 +217,7 @@ struct Engine::Impl {
         s.output_reason = out.reason;
         s.endpoints = out.endpoints;
         s.tap_channels = taps.channels();
+        s.codec_bypassed = out.bypassed;
         s.underruns = out.underruns;
         s.signing = signing_status;
         s.objects_enabled = signing.available();
@@ -231,6 +232,7 @@ struct Engine::Impl {
 
     void loop(const std::stop_token& stop) {
         output = std::make_unique<OutputStage>(OutputStageConfig{
+            .bypass_codec = config.bypass_codec,
             .null_sink_substring = config.null_sink_substring, .pinned = config.pinned});
         signing_status = signing.load(config.signing_key_path);
         build_encoder();
@@ -308,7 +310,7 @@ struct Engine::Impl {
             for (std::size_t ch = 0; ch < 6 && ch < bed_channels.size(); ++ch) {
                 bed_views[ch] = bed_channels[ch];
             }
-            output->submit(unit_bytes, bed_views);
+            output->submit(unit_bytes, RawFrame{.objects = views, .placements = placements, .bed = bed_views});
             ++frames_encoded;
 
             const double ms = std::chrono::duration<double, std::milli>(
@@ -376,6 +378,10 @@ void Engine::pin(std::optional<OutputMode> mode) {
         impl_->output->set_pinned(mode);
         impl_->want_reprobe.store(true, std::memory_order_release);
     });
+}
+
+void Engine::set_bypass(bool on) {
+    impl_->post([this, on] { impl_->output->set_bypass(on); });
 }
 
 void Engine::reprobe() {

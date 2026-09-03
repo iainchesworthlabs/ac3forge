@@ -25,6 +25,7 @@ struct EngineConfig {
     bool low_latency = false;      // 1-block frames at a bitrate that carries the metadata
     std::uint32_t bitrate_kbps = 0;  // 0: 448 normal, 1536 low-latency
     std::optional<OutputMode> pinned;
+    bool bypass_codec = false;  // headphones/PCM/stereo play the raw frame, not a decode
     // The width taps open at until the first probe; after each probe the
     // engine follows the null sink's shared-mode channel count (2, 6 or 8),
     // so a surround-capable application rendering 7.1 into the driver
@@ -60,6 +61,7 @@ struct EngineStatus {
     double worst_frame_ms = 0.0;
     std::string last_error;
     std::uint16_t tap_channels = 0;  // the width every tap is open at
+    bool codec_bypassed = false;     // the last unit took the raw path
 };
 
 class Engine {
@@ -76,6 +78,7 @@ public:
     void position(AppId app, ac3::oba::Position where);
     void unposition(AppId app);
     void pin(std::optional<OutputMode> mode);
+    void set_bypass(bool on);
     void reprobe();
     // Loads (or, with an empty path, re-resolves from the environment) the
     // signing key and rebuilds the encoder, since objects-or-nothing is

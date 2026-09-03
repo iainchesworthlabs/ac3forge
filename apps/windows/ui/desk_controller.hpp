@@ -44,12 +44,14 @@ class DeskController : public QObject {
     Q_PROPERTY(int placedCount READ placedCount NOTIFY appsChanged)
     Q_PROPERTY(int bedCount READ bedCount NOTIFY appsChanged)
     Q_PROPERTY(int tapChannels READ tapChannels NOTIFY stateChanged)
+    Q_PROPERTY(bool codecBypassed READ codecBypassed NOTIFY stateChanged)
 
     // --- settings -----------------------------------------------------------
     Q_PROPERTY(QString pinned READ pinned WRITE setPinned NOTIFY settingsChanged)
     Q_PROPERTY(QString keyPath READ keyPath NOTIFY settingsChanged)
     Q_PROPERTY(QString nullSinkName READ nullSinkName WRITE setNullSinkName NOTIFY settingsChanged)
     Q_PROPERTY(bool lowLatency READ lowLatency WRITE setLowLatency NOTIFY settingsChanged)
+    Q_PROPERTY(bool bypassCodec READ bypassCodec WRITE setBypassCodec NOTIFY settingsChanged)
     Q_PROPERTY(int bitrate READ bitrate WRITE setBitrate NOTIFY settingsChanged)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY settingsChanged)
     Q_PROPERTY(QString palette READ palette WRITE setPalette NOTIFY settingsChanged)
@@ -97,6 +99,7 @@ public:
     [[nodiscard]] int placedCount() const { return placed_; }
     [[nodiscard]] int bedCount() const { return bed_; }
     [[nodiscard]] int tapChannels() const { return tap_channels_; }
+    [[nodiscard]] bool codecBypassed() const { return codec_bypassed_; }
 
     [[nodiscard]] QString pinned() const;
     void setPinned(const QString& mode);
@@ -105,6 +108,8 @@ public:
     void setNullSinkName(const QString& name);
     [[nodiscard]] bool lowLatency() const;
     void setLowLatency(bool on);
+    [[nodiscard]] bool bypassCodec() const;
+    void setBypassCodec(bool on);
     [[nodiscard]] int bitrate() const;
     void setBitrate(int kbps);
     [[nodiscard]] QString theme() const;
@@ -177,6 +182,7 @@ private:
     QVariantList endpoints_;
     int placed_ = 0, bed_ = 0;
     int tap_channels_ = 0;
+    bool codec_bypassed_ = false;
 
     QString default_name_, previous_default_name_, default_message_;
     std::string previous_default_id_;

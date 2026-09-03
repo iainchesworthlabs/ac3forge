@@ -77,27 +77,27 @@
         <translation>Keine Ausgabe</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="510"/>
+        <location filename="../ui/desk_controller.cpp" line="527"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>Installation läuft, bitte die Rechteanfrage beantworten …</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="511"/>
+        <location filename="../ui/desk_controller.cpp" line="528"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>Entfernen läuft, bitte die Rechteanfrage beantworten …</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="554"/>
         <source>installed</source>
         <translation>installiert</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="537"/>
+        <location filename="../ui/desk_controller.cpp" line="554"/>
         <source>removed</source>
         <translation>entfernt</translation>
     </message>
     <message>
-        <location filename="../ui/desk_controller.cpp" line="539"/>
+        <location filename="../ui/desk_controller.cpp" line="556"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 fehlgeschlagen (Exit-Code %2)</translation>
     </message>
@@ -506,8 +506,12 @@
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="186"/>
+        <source>Off: headphones, PCM and stereo play a decode of the E-AC-3 stream, so what you hear went through the codec. On: headphones render the engine&apos;s own objects and PCM and stereo take its 5.1 bed, codec out of the loop.</source>
+        <translation>Aus: Kopfhörer, PCM und Stereo spielen eine Dekodierung des E-AC-3-Streams, was Sie hören, ging also durch den Codec. An: Kopfhörer rendern die Objekte der Engine selbst, PCM und Stereo nehmen ihr 5.1-Bett, Codec außerhalb der Schleife.</translation>
+    </message>
+    <message>
         <source>Off: headphones and PCM play a decode of the E-AC-3 stream, so what you hear went through the codec. On: taps go straight to the renderer, lower latency, codec out of the loop. Not wired to the engine yet.</source>
-        <translation>Aus: Kopfhörer und PCM spielen eine Dekodierung des E-AC-3-Streams, was Sie hören, ging also durch den Codec. An: Abgriffe gehen direkt zum Renderer, geringere Latenz, Codec außerhalb der Schleife. Noch nicht mit der Engine verbunden.</translation>
+        <translation type="vanished">Aus: Kopfhörer und PCM spielen eine Dekodierung des E-AC-3-Streams, was Sie hören, ging also durch den Codec. An: Abgriffe gehen direkt zum Renderer, geringere Latenz, Codec außerhalb der Schleife. Noch nicht mit der Engine verbunden.</translation>
     </message>
 </context>
 <context>

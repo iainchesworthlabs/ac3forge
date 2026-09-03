@@ -44,11 +44,11 @@ std::optional<OutputMode> parse_mode(const std::string& word) {
 }
 
 void print_status(const ac3::windemo::EngineStatus& s) {
-    std::printf("[%s on \"%s\"] frames=%llu last=%.2fms worst=%.2fms starved=%llu underruns=%llu taps=%uch objects=%s\n",
+    std::printf("[%s on \"%s\"] frames=%llu last=%.2fms worst=%.2fms starved=%llu underruns=%llu taps=%uch objects=%s bypass=%s\n",
                 std::string(ac3::windemo::describe(s.mode)).c_str(), s.endpoint_name.c_str(),
                 static_cast<unsigned long long>(s.frames_encoded), s.last_frame_ms, s.worst_frame_ms,
                 static_cast<unsigned long long>(s.starved_reads),
-                static_cast<unsigned long long>(s.underruns), static_cast<unsigned>(s.tap_channels), s.objects_enabled ? "on" : "off");
+                static_cast<unsigned long long>(s.underruns), static_cast<unsigned>(s.tap_channels), s.objects_enabled ? "on" : "off", s.codec_bypassed ? "on" : "off");
     std::printf("  output: %s\n  signing: %s\n", s.output_reason.c_str(), s.signing.c_str());
     if (!s.last_error.empty()) {
         std::printf("  last error: %s\n", s.last_error.c_str());
@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "engine: %s\n", started.error().c_str());
         return 1;
     }
-    std::puts("engine running; type 'list', 'pos <app> x y z', 'bed <app>', 'pin <mode>', 'status', 'quit'");
+    std::puts("engine running; type 'list', 'pos <app> x y z', 'bed <app>', 'pin <mode>', 'bypass on|off', 'status', 'quit'");
     std::this_thread::sleep_for(std::chrono::milliseconds(800));
     print_status(engine.status());
     print_apps(engine.status());
@@ -158,6 +158,10 @@ int main(int argc, char** argv) {
             } else {
                 engine.load_signing_key(path);
             }
+        } else if (verb == "bypass") {
+            std::string on;
+            in >> on;
+            engine.set_bypass(on == "on");
         } else if (verb == "probe") {
             engine.reprobe();
         } else if (verb == "default") {
