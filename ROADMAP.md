@@ -2279,7 +2279,11 @@ followed the same day: `ac3desk`, the Qt Quick window (module `Ac3ForgeDesk`), b
 design canvas after a human-factors pass; it shares the GUI's Theme and rail components by
 configure-time rewrite rather than copy, its `LanguageManager` (now taking a translation
 basename) and its six-language set, mechanically translated, following the Windows locale
-with an override in Settings. Verified by window captures in four languages.
+with an override in Settings. Verified by window captures in four languages. Phase 4's driver
+is built but not installed: `apps/windows/driver/`, Microsoft's Simple Audio Sample under its
+own MS-PL licence, cut to one 7.1/48 kHz render endpoint that discards what it is given
+("Speakers (Desktop Atmos)", `ROOT\Ac3ForgeNullSink`), test-signed under the Enterprise WDK
+with `inf2cat` and `infverif` clean; loading it needs test signing on and memory integrity off.
 </details>
 
 **UX7 (M)** — macOS loopback capture through Core Audio process/system taps. Blocked on a real

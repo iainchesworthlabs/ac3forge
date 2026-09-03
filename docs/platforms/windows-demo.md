@@ -328,8 +328,9 @@ defaulting OFF, with the same pre-seeded `OFF` list for the targets it does not 
 
 ### The driver, and its licence
 
-`apps/windows/driver/` is derived from Microsoft's SysVAD virtual audio sample, cut down to one
-render endpoint that discards its input and advertises 7.1 at 48 kHz. The sample is licensed
+`apps/windows/driver/` is derived from Microsoft's Simple Audio Sample virtual audio driver
+(the smaller sibling of SysVAD, same WaveRT machinery), cut down to one render endpoint that
+discards its input and advertises 7.1 at 48 kHz. The sample is licensed
 under the Microsoft Public License, which the FSF lists as free but **not GPL-compatible**. That
 is fine here because the driver is a separate work: a kernel-mode binary that shares no code
 with the GPL-3.0-or-later application and is only ever reached through public Windows APIs.
@@ -437,6 +438,22 @@ The SysVAD-derived null sink, test-signed, `pnputil` install and remove from the
 screen, driver-free mode still working when it is absent. Prerequisite: the Windows Driver Kit
 installed on `D:`. Exit: "Desktop Atmos Speakers" appears in Sound settings, becomes the
 default from the app, and the direct mix is silent.
+
+**Progress, 2026-09-03:** built, not yet installed. The base turned out to be Microsoft's
+*Simple Audio Sample* rather than SysVAD: the same WaveRT virtual-device machinery at a fifth
+of the size. `apps/windows/driver/` carries it under its own MS-PL `LICENSE` with a `README`
+that lists every cut: the mic-array endpoint, the tone generator and the file-saving path are
+gone, the speaker is 7.1 at 48 kHz, rendered data is discarded while the DMA position still
+advances at the nominal rate, and the INF is rewritten for one endpoint under the hardware id
+`ROOT\Ac3ForgeNullSink` with device description "Desktop Atmos", so Windows shows the endpoint
+as "Speakers (Desktop Atmos)", which is what the demo's default null-sink name matches. It
+builds under the Enterprise WDK (kit 10.0.28000, mounted from an ISO on `D:`, nothing installed
+on `C:`) to a test-signed package: `inf2cat`'s signability test passes, `infverif` reports the
+INF valid, and the build generates its own WDK test certificate. `install.ps1` and `remove.ps1`
+stage the package with `pnputil` and create or remove the root-enumerated device with the
+WDK's `devcon`. Loading it needs test signing on and memory integrity off, both reboots and
+both the developer's to do; until then the FxSound endpoint remains the stand-in. The
+Settings screen's install and remove buttons are not wired yet; the scripts are the path.
 
 ### Phase 5: fast follows
 
