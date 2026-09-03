@@ -17,6 +17,8 @@ Item {
     // The room view the user chose last time, or what the window asks for.
     property bool threeD: DeskController.roomView === "3d"
     property int selectedApp: -1
+    // The Output card's button: the window switches pages.
+    signal openOutput()
 
     function appById(id) {
         const apps = DeskController.apps;
@@ -402,7 +404,7 @@ Item {
                         Text { Layout.fillWidth: true; text: DeskController.outputReason; color: Theme.textMuted; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }
                         RowLayout {
                             Text { Layout.fillWidth: true; text: qsTr("pin: ") + DeskController.pinned; color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11; elide: Text.ElideRight }
-                            DeskButton { text: qsTr("Output…"); onClicked: page.parent.parent.page = "output" }
+                            DeskButton { text: qsTr("Output…"); onClicked: page.openOutput() }
                         }
                     }
                 }

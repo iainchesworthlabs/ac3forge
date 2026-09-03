@@ -98,11 +98,21 @@ Item {
                     property bool dragging: false
                     property real dragX: 0
                     property real dragY: 0
-                    x: dragging ? dragX : engineX
-                    y: dragging ? dragY : engineY
+                    // While one of a pair's objects is being dragged, the marker
+                    // (the pair's centre) follows the midpoint of the dragged
+                    // object and the other one locally, rather than waiting for
+                    // the engine's answer through the poll, which arrived in
+                    // 120 ms steps and restarted the glide each time.
+                    property int sideDragging: -1
+                    property real sideDragX: 0
+                    property real sideDragY: 0
+                    readonly property real otherX: (root.elevation ? (sideDragging === 0 ? app.ry : app.ly) : (sideDragging === 0 ? app.rx : app.lx)) * field.width
+                    readonly property real otherY: (root.elevation ? (1 - (sideDragging === 0 ? app.rz : app.lz)) / 2 : (sideDragging === 0 ? app.ry : app.ly)) * field.height
+                    x: dragging ? dragX : (sideDragging >= 0 ? (sideDragX + otherX) / 2 : engineX)
+                    y: dragging ? dragY : (sideDragging >= 0 ? (sideDragY + otherY) / 2 : engineY)
                     z: selected ? 2 : 1
-                    Behavior on x { enabled: !marker.dragging; NumberAnimation { duration: 90 } }
-                    Behavior on y { enabled: !marker.dragging; NumberAnimation { duration: 90 } }
+                    Behavior on x { enabled: !marker.dragging && marker.sideDragging < 0; NumberAnimation { duration: 90 } }
+                    Behavior on y { enabled: !marker.dragging && marker.sideDragging < 0; NumberAnimation { duration: 90 } }
 
                     // Elevation: a stem down to ear level.
                     Rectangle {
@@ -159,16 +169,21 @@ Item {
                                     satellite.dragX = satellite.fieldX;
                                     satellite.dragY = satellite.fieldY;
                                     satellite.dragging = true;
+                                    marker.sideDragX = satellite.fieldX;
+                                    marker.sideDragY = satellite.fieldY;
+                                    marker.sideDragging = satellite.side;
                                 }
                                 onPositionChanged: function(mouse) {
                                     if (!satellite.dragging) return;
                                     const p = mapToItem(field, mouse.x, mouse.y);
                                     satellite.dragX = Math.max(0, Math.min(field.width, p.x));
                                     satellite.dragY = Math.max(0, Math.min(field.height, p.y));
+                                    marker.sideDragX = satellite.dragX;
+                                    marker.sideDragY = satellite.dragY;
                                     satellite.emitMove();
                                 }
-                                onReleased: { if (satellite.dragging) { satellite.emitMove(); satellite.dragging = false; } }
-                                onCanceled: satellite.dragging = false
+                                onReleased: { if (satellite.dragging) { satellite.emitMove(); satellite.dragging = false; marker.sideDragging = -1; } }
+                                onCanceled: { satellite.dragging = false; marker.sideDragging = -1; }
                             }
                             function emitMove() {
                                 const u = satellite.dragX / field.width;
