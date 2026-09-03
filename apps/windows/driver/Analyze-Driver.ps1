@@ -68,15 +68,35 @@ if (-not $SkipCodeQL) {
     & $CodeQL database create $Database --language=cpp --source-root=$driver "--command=$build" 2>&1 |
         Where-Object { $_ -match 'error|Finalizing|Successfully' } | ForEach-Object { Write-Host "   $_" }
     if ($LASTEXITCODE -ne 0) { throw "codeql database create failed ($LASTEXITCODE)" }
+    # Justified exceptions: a CodeQL rule id plus a file substring the finding
+    # is known-good in, with the reason. mustfix carries none - it is the hard
+    # gate. recommended carries the one PortCls false positive: the audio
+    # miniport creates its FDO through PcAddAdapterDevice, which clears
+    # DO_DEVICE_INITIALIZING itself, so cpp/drivers/init-not-cleared (which
+    # cannot see into PortCls) fires where it should not - the same reason the
+    # sample disables PREfast 28152 at AddDevice.
+    $known = @{
+        'recommended' = @(@{ rule = 'cpp/drivers/init-not-cleared'; file = 'adapter.cpp';
+                             why = 'PcAddAdapterDevice (PortCls) creates the FDO and clears DO_DEVICE_INITIALIZING' })
+    }
     foreach ($suite in 'mustfix', 'recommended') {
         $sarif = Join-Path $driver "Ac3ForgeNullSink.codeql.$suite.sarif"
         & $CodeQL database analyze $Database "microsoft/windows-drivers:windows-driver-suites/$suite.qls" --format=sarifv2.1.0 --output=$sarif --download 2>&1 |
             Where-Object { $_ -match 'error|Interpreting|results' } | ForEach-Object { Write-Host "   $_" }
         if ($LASTEXITCODE -ne 0) { throw "codeql database analyze ($suite) failed ($LASTEXITCODE)" }
-        $results = 0
-        foreach ($run in (Get-Content $sarif -Raw | ConvertFrom-Json).runs) { $results += @($run.results).Count }
-        Write-Host ("   {0}: {1} results -> {2}" -f $suite, $results, (Split-Path $sarif -Leaf))
-        if ($results -gt 0) { $failed += "CodeQL $suite`: $results results" }
+        $exceptions = @($known[$suite])
+        $blocking = 0
+        $waived = 0
+        foreach ($run in (Get-Content $sarif -Raw | ConvertFrom-Json).runs) {
+            foreach ($res in @($run.results)) {
+                $uri = $res.locations[0].physicalLocation.artifactLocation.uri
+                $ex = $exceptions | Where-Object { $_ -and $res.ruleId -eq $_.rule -and $uri -match $_.file }
+                if ($ex) { $waived++; Write-Host "   waived $($res.ruleId) in $uri ($($ex[0].why))" }
+                else { $blocking++; Write-Host "   $($res.ruleId) in $uri" }
+            }
+        }
+        Write-Host ("   {0}: {1} blocking, {2} waived -> {3}" -f $suite, $blocking, $waived, (Split-Path $sarif -Leaf))
+        if ($blocking -gt 0) { $failed += "CodeQL $suite`: $blocking results" }
     }
 }
 

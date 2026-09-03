@@ -9,3 +9,8 @@ Source/*/ARM64/
 *.vcxproj.filters
 .vs/
 *.log
+
+# Driver analysis artefacts (Analyze-Driver.ps1)
+*.sarif
+*.nativecodeanalysis.xml
+*.DVL.XML
