@@ -40,6 +40,17 @@ KEYSYMS = {
     "F8": 0xFFC5,
     "F10": 0xFFC7,
     "F12": 0xFFC9,
+    "Shift_L": 0xFFE1,
+    "Control_L": 0xFFE3,
+    "Alt_L": 0xFFE9,
+    "Super_L": 0xFFEB,
+}
+
+# Shifted symbol -> the unshifted key under it, US layout.
+US_SHIFTED = {
+    "~": "`", "!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7", "*": "8",
+    "(": "9", ")": "0", "_": "-", "+": "=", "{": "[", "}": "]", "|": "\\", ":": ";", '"': "'",
+    "<": ",", ">": ".", "?": "/",
 }
 
 
@@ -99,6 +110,31 @@ class Rfb:
         self.key(keysym, False)
         time.sleep(0.05)
 
+    # Workstation's VNC server turns a keysym into a scancode by the US
+    # layout and does not add Shift on its own, so a capital or a shifted
+    # symbol is sent as Shift plus the unshifted key. The guest is installed
+    # with a US keyboard (autounattend.xml) for the same reason.
+    def type_char(self, ch: str) -> None:
+        if ch == "\n":
+            self.press(KEYSYMS["Return"])
+            return
+        if ch == "\t":
+            self.press(KEYSYMS["Tab"])
+            return
+        base = ch
+        shifted = ch.isupper() or ch in US_SHIFTED
+        if ch in US_SHIFTED:
+            base = US_SHIFTED[ch]
+        elif ch.isupper():
+            base = ch.lower()
+        if shifted:
+            self.key(KEYSYMS["Shift_L"], True)
+            time.sleep(0.02)
+        self.press(ord(base))
+        if shifted:
+            self.key(KEYSYMS["Shift_L"], False)
+            time.sleep(0.02)
+
     def screenshot(self, deadline: float = 5.0) -> Image.Image:
         image = Image.new("RGB", (self.width, self.height), (0, 0, 0))
         self.sock.sendall(struct.pack(">BBHHHH", 3, 0, 0, 0, self.width, self.height))
@@ -148,6 +184,8 @@ def main(argv: list[str]) -> int:
     key.add_argument("--interval", type=float, default=0.5)
     text = sub.add_parser("type", help="type printable text")
     text.add_argument("text")
+    combo = sub.add_parser("combo", help="hold modifiers while pressing a key, e.g. Super_L+r or Control_L+Shift_L+Escape")
+    combo.add_argument("keys")
     args = parser.parse_args(argv)
 
     rfb = Rfb(args.host, args.port)
@@ -168,7 +206,15 @@ def main(argv: list[str]) -> int:
                     time.sleep(args.interval)
         elif args.command == "type":
             for ch in args.text:
-                rfb.press(0xFF0D if ch == "\n" else ord(ch))
+                rfb.type_char(ch)
+        elif args.command == "combo":
+            names = args.keys.split("+")
+            syms = [KEYSYMS[n] if n in KEYSYMS else (ord(n) if len(n) == 1 else int(n, 16)) for n in names]
+            for sym in syms[:-1]:
+                rfb.key(sym, True)
+            rfb.press(syms[-1])
+            for sym in reversed(syms[:-1]):
+                rfb.key(sym, False)
     finally:
         rfb.close()
     return 0

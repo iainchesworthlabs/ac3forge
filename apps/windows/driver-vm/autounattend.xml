@@ -22,7 +22,7 @@
   <settings pass="windowsPE">
     <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <SetupUILanguage><UILanguage>en-US</UILanguage></SetupUILanguage>
-      <InputLocale>en-GB</InputLocale>
+      <InputLocale>en-US</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-US</UILanguage>
       <UserLocale>en-GB</UserLocale>
@@ -83,7 +83,7 @@
   </settings>
   <settings pass="oobeSystem">
     <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <InputLocale>en-GB</InputLocale>
+      <InputLocale>en-US</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-US</UILanguage>
       <UserLocale>en-GB</UserLocale>
@@ -138,8 +138,8 @@
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
           <Order>5</Order>
-          <Description>VMware Tools, silently, from whichever CD carries setup64.exe</Description>
-          <CommandLine>cmd /c for %d in (D E F G H I) do if exist %d:\setup64.exe %d:\setup64.exe /S /v"/qn REBOOT=R"</CommandLine>
+          <Description>VMware Tools, silently, from the CD that carries VMwareToolsUpgrader.exe (its installer is setup.exe; the Windows CD has one too)</Description>
+          <CommandLine>cmd /c for %d in (D E F G H I) do if exist %d:\VMwareToolsUpgrader.exe %d:\setup.exe /S /v"/qn REBOOT=R"</CommandLine>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
           <Order>6</Order>
