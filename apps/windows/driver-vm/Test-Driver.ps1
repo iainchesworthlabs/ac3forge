@@ -23,23 +23,34 @@ $guest = @('-T', 'ws', '-gu', 'atmos', '-gp', 'atmos')
 function Wait-Tools([int]$seconds = 300) {
     $deadline = (Get-Date).AddSeconds($seconds)
     while ((Get-Date) -lt $deadline) {
-        if ((& $vmrun -T ws checkToolsState $vmx 2>$null) -match 'running') { return }
+        if ((& $vmrun -T ws checkToolsState $vmx 2>$null) -match 'running|installed') { return }
         Start-Sleep -Seconds 5
     }
     throw 'VMware Tools not running in the guest'
 }
 
 function Invoke-Guest([string]$script, [string]$tag) {
-    # Runs a PowerShell snippet in the guest elevated (atmos is an
-    # administrator and UAC is not in the way for vmrun's session) and
-    # brings its output back as a file.
+    # Runs a PowerShell snippet in the guest and brings its output back as
+    # a file. vmrun's guest programs run as the user's batch logon: High
+    # integrity with Administrators enabled, so no UAC prompt stands in the
+    # way of pnputil. Two things that do not work and cost an afternoon:
+    # runProgramInGuest with a redirection in cmd's arguments (the shell
+    # sits forever), and runScriptInGuest with an interpreter path that
+    # carries arguments ("a file was not found"). The empty interpreter,
+    # which runs the text as one command line, does work. Files go under
+    # the user's profile: the unelevated file-copy side of Tools cannot
+    # write to C:\.
     $local = Join-Path $env:TEMP "atmos-guest-$tag.ps1"
     $out = Join-Path $env:TEMP "atmos-guest-$tag.txt"
+    $guestScript = "C:\Users\atmos\atmos-$tag.ps1"
+    $guestOut = "C:\Users\atmos\atmos-$tag.txt"
     Set-Content -Path $local -Value $script -Encoding UTF8
-    & $vmrun @guest copyFileFromHostToGuest $vmx $local "C:\atmos-$tag.ps1" | Out-Null
-    & $vmrun @guest runProgramInGuest $vmx -activeWindow -interactive 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' `
-        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', "& C:\atmos-$tag.ps1 *>&1 | Out-File -Encoding UTF8 C:\atmos-$tag.txt" | Out-Null
-    & $vmrun @guest copyFileFromGuestToHost $vmx "C:\atmos-$tag.txt" $out | Out-Null
+    Remove-Item $out -ErrorAction SilentlyContinue
+    & $vmrun @guest copyFileFromHostToGuest $vmx $local $guestScript | Out-Null
+    # '""' rather than '': PowerShell drops an empty argument to a native
+    # command, and vmrun would take the command line as the interpreter.
+    & $vmrun @guest runScriptInGuest $vmx '""' "cmd /c powershell -NoProfile -ExecutionPolicy Bypass -File $guestScript > $guestOut 2>&1" | Out-Null
+    & $vmrun @guest copyFileFromGuestToHost $vmx $guestOut $out | Out-Null
     Get-Content $out -ErrorAction SilentlyContinue
 }
 
@@ -52,12 +63,17 @@ if (-not $ReportOnly -and -not $NoRevert) {
 
 if (-not $ReportOnly) {
     Write-Host 'installing the driver package from the ATMOSDRV CD'
+    # The install script itself comes from the working tree, not the CD, so
+    # a change to it is tested without rebuilding driver.iso; the package
+    # and devcon still come from the CD.
+    $installScript = (Resolve-Path (Join-Path $PSScriptRoot '..\driver\install.ps1')).Path
+    & $vmrun @guest copyFileFromHostToGuest $vmx $installScript 'C:\Users\atmos\install.ps1' | Out-Null
     Invoke-Guest @'
 $drive = (Get-Volume | Where-Object FileSystemLabel -eq 'ATMOSDRV' | Select-Object -First 1).DriveLetter
 if (-not $drive) { throw 'ATMOSDRV CD not found in the guest' }
 "testsigning: " + ((bcdedit /enum '{current}' | Select-String testsigning) -join '')
 "hvci: " + (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' -ErrorAction SilentlyContinue).Enabled
-& "$($drive):\install.ps1" -PackageDir "$($drive):\package" -Devcon "$($drive):\devcon.exe"
+& C:\Users\atmos\install.ps1 -PackageDir "$($drive):\package" -Devcon "$($drive):\devcon.exe"
 '@ 'install' | ForEach-Object { "  $_" }
     Start-Sleep -Seconds 15
     Wait-Tools

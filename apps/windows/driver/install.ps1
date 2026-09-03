@@ -14,8 +14,13 @@ if (-not (Test-Path $inf)) { throw "no package at $PackageDir (build the solutio
 $cert = Get-ChildItem (Split-Path $PackageDir) -Filter '*.cer' | Select-Object -First 1
 if ($cert) {
     Write-Host "trusting test certificate $($cert.Name) (local machine, Root + TrustedPublisher)"
-    Import-Certificate -FilePath $cert.FullName -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
-    Import-Certificate -FilePath $cert.FullName -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+    # certutil rather than Import-Certificate: the cmdlet is refused
+    # (E_ACCESSDENIED) under the elevated batch logon vmrun gives the test
+    # guest, certutil is not, and both do the same thing.
+    foreach ($store in 'Root', 'TrustedPublisher') {
+        & certutil -addstore -f $store $cert.FullName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "certutil -addstore $store failed ($LASTEXITCODE)" }
+    }
 }
 
 Write-Host "staging $inf"

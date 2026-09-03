@@ -17,13 +17,13 @@ $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
 Write-Host "waiting for Tools and the first-logon marker in $Name ..."
 while ((Get-Date) -lt $deadline) {
     $tools = & $vmrun -T ws checkToolsState $vmx 2>$null
-    if ($tools -match 'running') {
+    if ($tools -match 'running|installed') {
         $marker = & $vmrun @guest fileExistsInGuest $vmx 'C:\atmos-first-logon-done.txt' 2>$null
         if ($marker -match 'exists') {
             # First logon ends with a reboot; give the guest a moment to be
             # past it, then confirm Tools again.
             Start-Sleep -Seconds 60
-            if ((& $vmrun -T ws checkToolsState $vmx 2>$null) -match 'running') {
+            if ((& $vmrun -T ws checkToolsState $vmx 2>$null) -match 'running|installed') {
                 Write-Host 'guest ready; taking snapshot "clean-install"'
                 & $vmrun -T ws snapshot $vmx 'clean-install'
                 exit 0

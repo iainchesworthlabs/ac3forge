@@ -42,7 +42,23 @@ cd apps\windows\driver-vm
 
 After a driver change: rebuild the package, then `New-DriverTestVm.ps1 -Recreate` is the
 heavy way; the light way is to rebuild `driver.iso` with `Build-Iso.ps1` into the VM directory
-and run `Test-Driver.ps1` again, which reverts to the clean snapshot first.
+and run `Test-Driver.ps1` again, which reverts to the clean snapshot first. A change to
+`install.ps1` alone needs neither: the test copies the working tree's copy into the guest and
+runs that against the package on the CD.
+
+Verified 2026-09-03 on Windows 11 Pro 25H2 (build 26100) in the guest: the package stages,
+the root-enumerated "Desktop Atmos" device and its "Speakers (Desktop Atmos)" endpoint
+appear, the service runs, the endpoint takes the default role through the same
+policy-config call the demo makes, and rendering into it (WAV playback, speech synthesis)
+leaves the guest up with no bugcheck.
+
+Things learned the hard way, all encoded in the scripts: a hand-written VMX needs the PCIe
+root-port bridges; do not set `bios.bootOrder` (it overrides the NVRAM entry Setup registers
+to continue from the disk); Microsoft's media needs the no-prompt EFI boot image; Workstation
+26's Tools ISO carries `setup.exe`, not `setup64.exe`; the VNC server types by the US layout;
+`vmrun` reports a running Tools as "installed"; `vmrun`'s guest programs are elevated but
+`Import-Certificate` is still refused where `certutil` is not; and `runScriptInGuest` needs an
+empty interpreter passed as `'""'` from PowerShell.
 
 The guest's credentials are deliberately trivial and the guest is NAT-only; do not put anything
 on it you care about.
