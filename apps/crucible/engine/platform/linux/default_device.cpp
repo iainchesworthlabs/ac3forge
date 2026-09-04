@@ -128,14 +128,29 @@ bool with_default_metadata(Action&& act) {
     state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
     pw_main_loop_run(loop.get());
 
-    bool ok = false;
-    if (state.metadata != nullptr) {
-        ok = act(state.metadata, core.get(), loop.get());
-        pw_proxy_destroy(state.metadata);
+    if (state.metadata == nullptr) {
+        spa_hook_remove(&core_listener);
+        spa_hook_remove(&registry_listener);
+        return false;
     }
+
+    // `act` only prepares - registers a listener, or issues a write - and the
+    // second round trip is done here. It has to be, because pw_core_sync()
+    // returns a fresh sequence number each time and the `done` handler above
+    // quits only for the one it was told to expect: a caller that synced and
+    // ran the loop itself would wait for a sequence nobody was matching, and
+    // hang. (It did. The first run on a machine with a real session never
+    // printed a line; nothing without a session gets far enough to find it,
+    // because pw_context_connect() fails first.)
+    act(state.metadata);
+    state.done = false;
+    state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
+    pw_main_loop_run(loop.get());
+
+    pw_proxy_destroy(state.metadata);
     spa_hook_remove(&core_listener);
     spa_hook_remove(&registry_listener);
-    return ok;
+    return true;
 }
 
 class LinuxDefaultDevice final : public DefaultDevice {
@@ -160,30 +175,24 @@ public:
     }
 
     std::string default_id() override {
+        // Everything the callback touches lives here rather than inside the
+        // lambda: binding replays every property during the round trip the
+        // helper runs after `act` returns, so the listener and its data have
+        // to outlive `act` itself.
         std::string name;
-        with_default_metadata([&name](pw_proxy* metadata, pw_core* core, pw_main_loop* loop) {
-            struct Read {
-                std::string* out;
-                pw_main_loop* loop;
-            } read{&name, loop};
-            spa_hook listener{};
-            pw_metadata_events events{};
-            events.version = PW_VERSION_METADATA_EVENTS;
-            events.property = [](void* data, std::uint32_t, const char* key, const char*,
-                                 const char* value) {
-                auto* self = static_cast<Read*>(data);
-                if (key != nullptr && std::string_view{key} == kDefaultSinkKey) {
-                    *self->out = name_from_json(value);
-                }
-                return 0;
-            };
-            pw_proxy_add_object_listener(metadata, &listener, &events, &read);
-            // Binding replays every property; one sync round trip is enough
-            // to know they have all arrived.
-            pw_core_sync(core, PW_ID_CORE, 0);
-            pw_main_loop_run(loop);
-            spa_hook_remove(&listener);
-            return true;
+        spa_hook listener{};
+        pw_metadata_events events{};
+        events.version = PW_VERSION_METADATA_EVENTS;
+        events.property = [](void* data, std::uint32_t, const char* key, const char*,
+                             const char* value) {
+            auto* out = static_cast<std::string*>(data);
+            if (key != nullptr && std::string_view{key} == kDefaultSinkKey) {
+                *out = name_from_json(value);
+            }
+            return 0;
+        };
+        with_default_metadata([&](pw_proxy* metadata) {
+            pw_proxy_add_object_listener(metadata, &listener, &events, &name);
         });
         return name;
     }
@@ -193,14 +202,10 @@ public:
             return std::unexpected("no endpoint given");
         }
         const std::string json = "{\"name\":\"" + std::string{endpoint_id} + "\"}";
-        const bool ok = with_default_metadata(
-            [&json](pw_proxy* metadata, pw_core* core, pw_main_loop* loop) {
-                pw_metadata_set_property(reinterpret_cast<pw_metadata*>(metadata), PW_ID_CORE,
-                                         kDefaultSinkKey, "Spa:String:JSON", json.c_str());
-                pw_core_sync(core, PW_ID_CORE, 0);
-                pw_main_loop_run(loop);
-                return true;
-            });
+        const bool ok = with_default_metadata([&json](pw_proxy* metadata) {
+            pw_metadata_set_property(reinterpret_cast<pw_metadata*>(metadata), PW_ID_CORE,
+                                     kDefaultSinkKey, "Spa:String:JSON", json.c_str());
+        });
         if (!ok) {
             return std::unexpected(
                 "could not reach PipeWire's default metadata; is a session running?");

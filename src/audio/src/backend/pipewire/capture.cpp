@@ -362,9 +362,11 @@ std::expected<void, CaptureError> Capture::Impl::connect_stream(
                                                       PW_STREAM_FLAG_RT_PROCESS);
     if (pw_stream_connect(new_stream.get(), PW_DIRECTION_INPUT, PW_ID_ANY, flags, params, 1) < 0) {
         pw_thread_loop_unlock(loop.get());
+        // Stop first: destroying a stream while its loop still runs is a
+        // call from the wrong context, and wedges the loop.
+        pw_thread_loop_stop(loop.get());
         new_stream.reset();
         ring.reset();
-        pw_thread_loop_stop(loop.get());
         loop.reset();
         return std::unexpected(CaptureError::kComFailure);
     }
@@ -374,9 +376,12 @@ std::expected<void, CaptureError> Capture::Impl::connect_stream(
 
     if (!ready) {
         pw_thread_loop_unlock(loop.get());
-        new_stream.reset();
-        ring.reset();
         pw_thread_loop_stop(loop.get());
+        // `stream`, not `new_stream`: the move above already happened, so
+        // this is where the live stream is. It has to go before the loop it
+        // was created on.
+        stream.reset();
+        ring.reset();
         loop.reset();
         return std::unexpected(CaptureError::kDeviceNotFound);
     }
@@ -434,17 +439,19 @@ std::expected<void, CaptureError> Capture::start_process_loopback(
     // Which node to link to. An application can own several streams; the
     // first is taken, which is the same choice the Windows backend makes by
     // tapping the process tree rather than one stream.
+    //
+    // The pid is resolved through the owning Client, not read off the node -
+    // see output_stream_nodes() for why the obvious version matches nothing.
+    const auto streams = ac3::pipewire::output_stream_nodes();
     std::string target;
-    const bool session = ac3::pipewire::for_each_audio_node(
-        [&target, process_id](std::uint32_t, const spa_dict& props) {
-            if (!target.empty() || !ac3::pipewire::is_output_stream(props)) {
-                return;
-            }
-            if (ac3::pipewire::node_process_id(props) == process_id) {
-                target = ac3::pipewire::node_target(props);
-            }
-        });
-    if (!session) {
+    for (const auto& stream : streams) {
+        if (stream.pid == process_id && !stream.target.empty()) {
+            target = stream.target;
+            break;
+        }
+    }
+    if (streams.empty() && !ac3::pipewire::for_each_audio_node(
+                               [](std::uint32_t, const spa_dict&) {})) {
         return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
     }
     if (target.empty()) {

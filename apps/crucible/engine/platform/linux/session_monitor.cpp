@@ -20,11 +20,17 @@
 // Windows has to group audio sessions **by process tree**, because the
 // session's process is usually not the application - a browser renders its
 // audio from a utility process under the browser - so it walks parents until
-// the image name changes. PipeWire needs none of that: the daemon tags every
-// client stream with `application.process.id` from the client's own
-// credentials, and the process that owns the stream is the one a person
-// means. So an application here is one process id, and the tree walk has no
-// counterpart.
+// the image name changes. PipeWire needs none of that: the process that owns
+// a stream is the one a person means, so an application here is one process
+// id and the tree walk has no counterpart.
+//
+// Finding that process id is not where it looks, though. A
+// Stream/Output/Audio node carries application.name, media.class and a
+// client.id - and no pid at all. The process is on the **Client** object the
+// client.id names, where the daemon records it from the socket credentials
+// as pipewire.sec.pid. Reading application.process.id off the node, which is
+// the obvious thing, matches nothing and yields an empty list for ever.
+// ac3::pipewire::output_stream_nodes() does the join.
 //
 // What is lost with it is Windows' `has_window` test, which asks the shell
 // whether some process in the tree owns a visible top-level window. There is
@@ -66,37 +72,30 @@ public:
     std::vector<AppSession> refresh(const std::vector<std::uint32_t>& keep) override {
         std::unordered_map<std::uint32_t, AppSession> apps;
 
-        const bool session = ac3::pipewire::for_each_audio_node(
-            [&apps, this](std::uint32_t, const spa_dict& props) {
-                if (!ac3::pipewire::is_output_stream(props)) {
-                    return;
-                }
-                const std::uint32_t pid = ac3::pipewire::node_process_id(props);
-                if (pid == 0) {
-                    return;  // the daemon could not attribute it; nothing to tap
-                }
-                auto& app = apps[pid];
-                if (app.app != 0) {
-                    // A second stream from the same application: one entry,
-                    // and the tap takes the process, not the stream.
-                    app.session_pids.push_back(pid);
-                    return;
-                }
-                const Facts& facts = facts_for(pid);
-                app.app = pid;
-                app.name = facts.name;
-                app.image_path = facts.exe;
-                app.description = ac3::pipewire::node_application_name(props);
-                app.endpoint_name = ac3::pipewire::node_friendly_name(props);
-                app.active = true;
-                // No portable way to ask; see this file's header comment.
-                app.has_window = true;
-                app.packaged = false;
-                app.has_session = true;
-                app.session_pids.push_back(pid);
-            });
-        if (!session) {
-            return {};
+        // The pid comes from the Client that owns each stream, not from the
+        // stream node - output_stream_nodes() does that join and says why.
+        const auto streams = ac3::pipewire::output_stream_nodes();
+        for (const auto& stream : streams) {
+            if (stream.pid == 0) {
+                continue;  // the daemon could not attribute it; nothing to tap
+            }
+            auto& app = apps[stream.pid];
+            if (app.app != 0) {
+                // A second stream from the same application: one entry, and
+                // the tap takes the process, not the stream.
+                continue;
+            }
+            const Facts& facts = facts_for(stream.pid);
+            app.app = stream.pid;
+            app.name = facts.name.empty() ? stream.application : facts.name;
+            app.image_path = facts.exe;
+            app.description = stream.application;
+            app.active = true;
+            // No portable way to ask; see this file's header comment.
+            app.has_window = true;
+            app.packaged = false;
+            app.has_session = true;
+            app.session_pids.push_back(stream.pid);
         }
 
         // Applications the engine asked to keep: listed while their process

@@ -1,6 +1,8 @@
 #include "foreground.hpp"
 
 #include <cstdlib>
+#include <filesystem>
+#include <system_error>
 #include <memory>
 #include <string_view>
 
@@ -31,15 +33,38 @@ namespace ac3::crucible {
 
 namespace {
 
-// XDG_SESSION_TYPE is what logind sets and what every desktop toolkit reads;
-// WAYLAND_DISPLAY is the fallback for a session that did not set it.
+// XDG_SESSION_TYPE is what logind sets and WAYLAND_DISPLAY what the compositor
+// exports; between them they answer for an application the desktop launched,
+// which is how this one is meant to run.
+//
+// Neither is set in a session that is not the graphical one - an ssh login,
+// most obviously - and the environment of the shell this happens to be
+// running in says nothing about the seat. So when both are silent, the last
+// resort is to look for a compositor socket in the runtime directory, which
+// is there whoever is asking. Getting this wrong is not academic: it decides
+// which of two reasons the UI prints, and reporting "X11, not implemented" on
+// a Wayland desktop sends somebody looking for a feature that cannot exist.
 [[nodiscard]] bool session_is_wayland() {
     if (const char* type = std::getenv("XDG_SESSION_TYPE");
         type != nullptr && std::string_view{type} == "wayland") {
         return true;
     }
-    const char* display = std::getenv("WAYLAND_DISPLAY");
-    return display != nullptr && display[0] != '\0';
+    if (const char* display = std::getenv("WAYLAND_DISPLAY");
+        display != nullptr && display[0] != '\0') {
+        return true;
+    }
+    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+    if (runtime == nullptr || runtime[0] == '\0') {
+        return false;
+    }
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(runtime, ec)) {
+        const auto name = entry.path().filename().string();
+        if (name.starts_with("wayland-") && !name.ends_with(".lock")) {
+            return true;
+        }
+    }
+    return false;
 }
 
 class LinuxForeground final : public Foreground {

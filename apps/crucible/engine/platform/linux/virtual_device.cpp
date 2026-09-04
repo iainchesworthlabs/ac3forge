@@ -5,10 +5,7 @@
 #include <string>
 #include <thread>
 
-// pw_context_load_module() and pw_impl_module live in PipeWire's
-// implementation header, not the client one: loading a module is something
-// a host does, and a client that wants to own a node does it too.
-#include <pipewire/impl-module.h>
+#include <string_view>
 
 #include "pipewire_support.hpp"
 #include "platform_services.hpp"
@@ -17,10 +14,21 @@
 // (docs/crucible/promotion.md, "The silent device, per platform").
 //
 // Windows needs a signed kernel driver for this, because Windows gives user
-// mode no way to create a render endpoint. Linux does: a client loads
-// `libpipewire-module-adapter` with the `support.null-audio-sink` factory
-// and the node it creates is visible to every other client in the graph.
-// No driver, no signing, no elevation, no reboot.
+// mode no way to create a render endpoint. Linux does: a client asks the
+// daemon to make one, through the `adapter` factory with
+// `factory.name=support.null-audio-sink`. No driver, no signing, no
+// elevation, no reboot.
+//
+// It has to be `pw_core_create_object()` and not `pw_context_load_module()`.
+// Loading the adapter module into this process's own context does succeed -
+// it returns a module and reports no error - but the node it makes lives in
+// that local context and is never exported to the daemon's registry, so no
+// other client can see it, target it, or be made to play into it. The first
+// version here did exactly that and reported the device as present on the
+// strength of the module load; the graph had no such node, and the device
+// watcher never saw one arrive, which is how it was caught.
+// pw_core_create_object() asks the daemon for the object instead, so it is a
+// real global that other clients can use.
 //
 // It also behaves better than the Windows device in one way worth stating.
 // The node belongs to **this application's own connection**, so it exists
@@ -43,16 +51,7 @@ namespace {
 // channels, so a surround-rendering application's tap arrives as eight
 // channels the way the Windows driver's 7.1 advertisement makes it - see
 // EngineConfig::tap_channels.
-constexpr const char* kModule = "libpipewire-module-adapter";
-constexpr const char* kArgs =
-    "{ factory.name=support.null-audio-sink "
-    "  node.name=ac3forge_crucible_sink "
-    "  node.description=\"Crucible (silent)\" "
-    "  media.class=Audio/Sink "
-    "  object.linger=false "
-    "  audio.position=[FL FR FC LFE SL SR RL RR] "
-    "  audio.rate=48000 "
-    "  monitor.channel-volumes=true }";
+constexpr const char* kNodeName = "ac3forge_crucible_sink";
 
 // The node lives on a context that has to stay alive for as long as it does,
 // so this owns a thread loop of its own rather than a scoped round trip like
@@ -68,7 +67,11 @@ public:
         const std::lock_guard lock(mutex_);
         SilentDeviceState out;
         out.needed = true;
-        out.present = query.endpoint_present || loaded_;
+        // Asked of the graph, not of a flag. A local module load reports
+        // success for a node nobody else can see, so "did the call return"
+        // is not the same question as "is there a silent device", and only
+        // the second one matters to anything downstream.
+        out.present = query.endpoint_present || node_in_graph();
         out.in_use = query.endpoint_is_default;
         out.can_install = !loaded_;
         if (!out.present && !last_error_.empty()) {
@@ -111,11 +114,21 @@ public:
             teardown_locked();
             return fail("no PipeWire session to create the silent device in");
         }
-        module_ = pw_context_load_module(context_.get(), kModule, kArgs, nullptr);
+        // The daemon's own adapter factory, so the node is a real global.
+        // object.linger=false ties it to this connection: it goes when the
+        // application does, which is the behaviour worth keeping.
+        pw_properties* props = pw_properties_new(
+            "factory.name", "support.null-audio-sink", PW_KEY_NODE_NAME, kNodeName,
+            PW_KEY_NODE_DESCRIPTION, "Crucible (silent)", PW_KEY_MEDIA_CLASS, "Audio/Sink",
+            "object.linger", "false", "audio.position", "[FL,FR,FC,LFE,SL,SR,RL,RR]",
+            "audio.rate", "48000", "monitor.channel-volumes", "true", nullptr);
+        node_ = static_cast<pw_proxy*>(pw_core_create_object(
+            core_.get(), "adapter", PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, &props->dict, 0));
+        pw_properties_free(props);
         pw_thread_loop_unlock(loop_.get());
-        if (module_ == nullptr) {
+        if (node_ == nullptr) {
             teardown_locked();
-            return fail("PipeWire refused to load the null-sink module");
+            return fail("PipeWire refused to create the silent device");
         }
         loaded_ = true;
         last_error_.clear();
@@ -145,13 +158,26 @@ private:
         teardown_locked();
     }
 
+    // Whether the graph actually holds our node, asked of the daemon.
+    [[nodiscard]] static bool node_in_graph() {
+        bool found = false;
+        ac3::pipewire::for_each_audio_node([&found](std::uint32_t, const spa_dict& props) {
+            if (found) {
+                return;
+            }
+            const char* name = spa_dict_lookup(&props, PW_KEY_NODE_NAME);
+            found = name != nullptr && std::string_view{name} == kNodeName;
+        });
+        return found;
+    }
+
     void teardown_locked() {
         if (loop_) {
             pw_thread_loop_stop(loop_.get());
         }
-        // The module goes with the context that loaded it, and the node with
-        // the connection, which is the whole point of object.linger=false.
-        module_ = nullptr;
+        // The node goes with the connection, which is the whole point of
+        // object.linger=false; destroying the core is what releases it.
+        node_ = nullptr;
         core_.reset();
         context_.reset();
         loop_.reset();
@@ -162,7 +188,7 @@ private:
     ac3::pipewire::ThreadLoop loop_;
     ac3::pipewire::Context context_;
     ac3::pipewire::Core core_;
-    pw_impl_module* module_ = nullptr;
+    pw_proxy* node_ = nullptr;
     bool loaded_ = false;
     std::string last_error_;
 };

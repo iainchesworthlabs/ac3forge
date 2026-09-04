@@ -11,6 +11,8 @@
 #include <charconv>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 #include "ac3/audio/passthrough.hpp"
 
@@ -114,7 +116,7 @@ inline constexpr std::size_t kCarrierFrameBytes = 4;
 // what an empty result means from context, the same way an empty ALSA
 // enumeration is a success rather than an error.
 template <typename Visitor>
-bool for_each_audio_node(Visitor&& visit) {
+bool for_each_global(Visitor&& visit) {
     ensure_initialized();
 
     MainLoop loop{pw_main_loop_new(nullptr)};
@@ -148,8 +150,8 @@ bool for_each_audio_node(Visitor&& visit) {
                                  const char* type, uint32_t /*version*/,
                                  const spa_dict* props) {
         auto& s = *static_cast<State*>(data);
-        if (props != nullptr && std::string_view{type} == PW_TYPE_INTERFACE_Node) {
-            (*s.visit)(id, *props);
+        if (props != nullptr && type != nullptr) {
+            (*s.visit)(id, std::string_view{type}, *props);
         }
     };
     pw_registry_add_listener(registry.get(), &registry_listener, &registry_events, &state);
@@ -170,6 +172,18 @@ bool for_each_audio_node(Visitor&& visit) {
     pw_main_loop_run(loop.get());
 
     return state.done;
+}
+
+// Every Node in the graph, which is what this backend's device enumeration
+// wants. Written over for_each_global() so there is still exactly one
+// connect-list-disconnect round trip in this file.
+template <typename Visitor>
+bool for_each_audio_node(Visitor&& visit) {
+    return for_each_global([&visit](std::uint32_t id, std::string_view type, const spa_dict& props) {
+        if (type == PW_TYPE_INTERFACE_Node) {
+            visit(id, props);
+        }
+    });
 }
 
 // "Audio/Source" (a real input) or "Audio/Sink" (a render endpoint, whose
@@ -217,19 +231,97 @@ bool for_each_audio_node(Visitor&& visit) {
     return class_name != nullptr && std::string_view{class_name} == "Stream/Output/Audio";
 }
 
-// The process that owns a stream node, or 0 when the node does not say.
-// PipeWire fills application.process.id in from the client's credentials,
-// so it is the kernel's answer rather than the client's claim.
-[[nodiscard]] inline std::uint32_t node_process_id(const spa_dict& props) {
-    const char* pid = spa_dict_lookup(&props, PW_KEY_APP_PROCESS_ID);
-    if (pid == nullptr) {
+// A numeric property, or 0 when it is absent or unparsable.
+[[nodiscard]] inline std::uint32_t dict_u32(const spa_dict& props, const char* key) {
+    const char* text = spa_dict_lookup(&props, key);
+    if (text == nullptr) {
         return 0;
     }
     std::uint32_t value = 0;
-    const auto* first = pid;
-    const auto* last = pid + std::char_traits<char>::length(pid);
+    const auto* first = text;
+    const auto* last = text + std::char_traits<char>::length(text);
     const auto result = std::from_chars(first, last, value);
     return result.ec == std::errc{} ? value : 0;
+}
+
+// One application's playback stream, with the process behind it.
+struct OutputStreamNode {
+    std::uint32_t id = 0;      // the registry global id
+    std::string target;        // what PW_KEY_TARGET_OBJECT accepts for it
+    std::string application;   // application.name, for a person to read
+    std::uint32_t pid = 0;     // the process that owns the owning client
+};
+
+// Every application playback stream in the graph, each with the process id
+// behind it.
+//
+// The pid is **not on the node**, which is the thing worth writing down: a
+// Stream/Output/Audio node carries application.name, media.class and a
+// client.id, and nothing else about who owns it. The process lives on the
+// **Client** object that client.id names. Reading application.process.id off
+// the node - the obvious thing, and the wrong thing - matches nothing at all,
+// so a tap keyed on it never finds a process and a session list is always
+// empty. Both happened, and neither shows up without a real session to walk.
+//
+// Of the two pids the Client carries, pipewire.sec.pid is the daemon's own,
+// taken from the socket credentials, while application.process.id is whatever
+// the client said. The first is preferred and the second is the fallback.
+[[nodiscard]] inline std::vector<OutputStreamNode> output_stream_nodes() {
+    struct Pending {
+        std::uint32_t id = 0;
+        std::string target;
+        std::string application;
+        std::uint32_t client_id = 0;
+    };
+    std::vector<Pending> streams;
+    std::unordered_map<std::uint32_t, std::uint32_t> client_pids;
+
+    const bool session = for_each_global(
+        [&streams, &client_pids](std::uint32_t id, std::string_view type, const spa_dict& props) {
+            if (type == PW_TYPE_INTERFACE_Client) {
+                std::uint32_t pid = dict_u32(props, "pipewire.sec.pid");
+                if (pid == 0) {
+                    pid = dict_u32(props, PW_KEY_APP_PROCESS_ID);
+                }
+                if (pid != 0) {
+                    client_pids.emplace(id, pid);
+                }
+                return;
+            }
+            if (type != PW_TYPE_INTERFACE_Node) {
+                return;
+            }
+            const char* media_class = spa_dict_lookup(&props, PW_KEY_MEDIA_CLASS);
+            if (media_class == nullptr ||
+                std::string_view{media_class} != "Stream/Output/Audio") {
+                return;
+            }
+            const char* name = spa_dict_lookup(&props, PW_KEY_APP_NAME);
+            const char* serial = spa_dict_lookup(&props, PW_KEY_OBJECT_SERIAL);
+            const char* node_name = spa_dict_lookup(&props, PW_KEY_NODE_NAME);
+            streams.push_back({.id = id,
+                               .target = serial != nullptr    ? serial
+                                         : node_name != nullptr ? node_name
+                                                                : std::string{},
+                               .application = name != nullptr ? name
+                                              : node_name != nullptr ? node_name
+                                                                     : std::string{},
+                               .client_id = dict_u32(props, PW_KEY_CLIENT_ID)});
+        });
+    if (!session) {
+        return {};
+    }
+
+    std::vector<OutputStreamNode> out;
+    out.reserve(streams.size());
+    for (auto& stream : streams) {
+        const auto found = client_pids.find(stream.client_id);
+        out.push_back({.id = stream.id,
+                       .target = std::move(stream.target),
+                       .application = std::move(stream.application),
+                       .pid = found == client_pids.end() ? 0 : found->second});
+    }
+    return out;
 }
 
 // What a human would call the application behind a stream node.

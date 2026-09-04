@@ -443,10 +443,69 @@ places one, and encodes; the signal path renders with the null sink as the defau
     plays sound is rare on a desktop, and listing one is a smaller error than hiding a real
     application.
 
-    **What this does not establish**: WSL2 has no PipeWire session, so none of the four seams has
-    yet done its real work. No tap has carried an application's audio, no default has been moved,
-    no null-sink module has been loaded. All of that needs a desktop Linux session, and it is the
-    same run DR9's PipeWire row waits on.
+    **Verified on hardware 2026-09-05**, on the Raspberry Pi 4B this project already uses for
+    DR9 — Pi OS 13 (Trixie), kernel 6.18.39, aarch64, PipeWire 1.4.2 with WirePlumber, a live
+    Wayland session. `tools/checks/crucible_platform_probe.cpp` exercises each seam against the
+    real machine; it is a tool rather than a test because it needs a session, and it is
+    read-mostly — it creates and removes the silent device and never moves the default output.
+
+    ```
+    process_loopback_available() = true
+    session monitor:  pid 30183  pw-play  active=1 session=1
+    per-app tap:      116736 frames, 0 silence-filled, 0 dropped
+    default device:   alsa_output.platform-fe00b840.mailbox.stereo-fallback
+    foreground:       Wayland gives a client no way to ask which window is full-screen
+    device watcher:   added ac3forge_crucible_sink / removed ac3forge_crucible_sink   (5 events)
+    ```
+
+    The watcher line is the one worth reading twice: an independent client saw the silent device
+    arrive and depart, which verifies the watcher and the silent device at once.
+
+    **Five defects, none of which any amount of building could have found.** Every one needed a
+    session to exist, and on WSL2 `pw_context_connect()` fails first and the code below it never
+    runs.
+
+    1. **The passthrough probe deadlocked on every success.** `probe_connect()` destroyed its
+       stream after unlocking the loop but before stopping it — a `pw_stream` call from the wrong
+       context, which wedged the loop so the `pw_thread_loop_stop()` that followed never
+       returned. This is library code, older than this work, on the path every probe of a real
+       node takes: `enumerate_render_devices()` hung the application at startup. The order is
+       unlock, stop, destroy, and `Capture::stop()` had it right all along.
+    2. **A capture teardown freed the wrong handle.** After the move into the member, the local
+       is empty, so the not-ready path destroyed nothing and left a live stream to outlive the
+       loop it was created on. Introduced by this work, in the Phase 3 refactor that renamed the
+       local to avoid a shadow warning.
+    3. **The metadata helper hung on its second round trip.** `pw_core_sync()` returns a fresh
+       sequence each time and the `done` handler quits only for the one it expects, so a caller
+       that synced and ran the loop itself waited for a sequence nobody was matching. The helper
+       owns both round trips now.
+    4. **The process id is not on the stream node.** A `Stream/Output/Audio` node carries
+       `application.name`, `media.class` and a `client.id` — and no pid. The process is on the
+       **Client** object, as `pipewire.sec.pid`, which the daemon takes from the socket
+       credentials. Reading `application.process.id` off the node, which is the obvious thing and
+       what this work did, matches nothing: the session list was empty for ever and
+       `start_process_loopback()` could never find a process to tap. Both the library and the
+       application go through `output_stream_nodes()` now, which does the join.
+    5. **The silent device did not exist.** `pw_context_load_module()` loads the adapter into
+       *this process's own context*: it returns a module, reports no error, and creates a node no
+       other client can see, target, or be made to play into. The state query then reported the
+       device present on the strength of that module load. It is `pw_core_create_object()` now,
+       which asks the daemon for the object, and the state query asks the graph rather than a
+       flag. The failure was visible only because the device watcher, which should have seen the
+       device arrive, stayed silent.
+
+    Defect 5 is the one worth keeping as a lesson: the code returned success, the state said
+    present, and nothing existed. A second, independent observer of the same fact — the watcher —
+    is what made the difference between believing it and knowing it.
+
+    **What this still does not establish.** The Pi's HDMI is unplugged (both connectors read
+    `disconnected`, so WirePlumber has both `vc4hdmi` cards' profiles Off and only the analogue
+    jack has a sink), and the receiver is off. So nothing here says a PipeWire sink will carry an
+    E-AC-3 bitstream to a receiver — DR9's PipeWire row is untouched, and it remains
+    [on Crucible's critical path on Linux](#alsa-or-pipewire). Worth knowing before that run: the
+    Pi's own checkout sits on `bugfix/vc4-hdmi-device-classification`, whose HEAD is "classify
+    vc4-hdmi PCMs by card name, not just PCM name" — HDMI audio classification on this exact
+    hardware has bitten someone once already.
 
 ### Phase 5: macOS
 
@@ -508,7 +567,7 @@ not.
 
 | Claim | Can it be verified | Blocker |
 |---|---|---|
-| Linux per-application tap and null sink | **yes**, on the Pi or a desktop Linux session | none; the code is in, the run is not |
+| Linux per-application tap and null sink | **confirmed 2026-09-05** on the Pi | none |
 | Linux bitstream to a receiver over ALSA | **already confirmed**, 2026-08-20 | none |
 | Linux bitstream over PipeWire `iec958` | yes, with a WirePlumber codec rule | needs a session; DR9 |
 | Windows bitstream to a real receiver | not yet | an HDMI cable; DR9 |

@@ -159,15 +159,19 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
     if (pw_stream_connect(stream.get(), PW_DIRECTION_OUTPUT, PW_ID_ANY, flags, params, n_params) <
         0) {
         pw_thread_loop_unlock(loop.get());
-        stream.reset();
         pw_thread_loop_stop(loop.get());
+        stream.reset();
         return false;
     }
 
     const bool ready = wait_for_connect(loop.get(), state, timeout_seconds);
     pw_thread_loop_unlock(loop.get());
-    stream.reset();
+    // Stop before destroying, not after. Every successful probe reached this
+    // line, and on the first machine with a real PipeWire session it
+    // deadlocked here: pw_stream_destroy() ran from the wrong context, and
+    // the pw_thread_loop_stop() that followed never returned.
     pw_thread_loop_stop(loop.get());
+    stream.reset();
     return ready;
 }
 
