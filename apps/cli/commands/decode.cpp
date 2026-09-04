@@ -741,6 +741,13 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         fmt::println(stderr, "error: no access units");
         return kExitInput;
     }
+    // Same point in the sequence as run_decode's: after the loop proved it
+    // decoded something, before the sink closes. The accumulation above is
+    // per access unit rather than per syncframe because BapCensus::observe
+    // folds an access unit's substreams together by stream index itself.
+    if (census_wanted && !write_bap_census(census, meta.bap_census_path)) {
+        return kExitOutput;
+    }
     // Dual mono has no Table E2.5 location to order by - decode_access_unit
     // leaves `layout` empty for exactly this case - so Ch1 and Ch2 go out in
     // coded order, the same identity write_wav_f32 falls back to itself.
