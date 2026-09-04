@@ -105,6 +105,15 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **`bap-census=` was accepted by commands that cannot produce a census.** The option parser is
+  effectively global — 88 keys, three of them command-scoped — so `qc`, `levels`, `transcode`,
+  `probe`, `normalize`, `cut`, `spdif` and `mkv` all parsed the key and then did nothing with it,
+  exiting 0 having written no file. That is the same silent-no-output trap the E-AC-3 decode path
+  had (below), and it contradicts the parser's own contract, which refuses a key it cannot honour
+  with `error: unknown option`. `bap-census=` is now scoped to `decode`, the only command that
+  builds one — `run_decode` is reached from nowhere else, and the loudness commands run their own
+  decode loop that never accumulates a census — so every other command now refuses the token
+  through that existing error rather than swallowing it.
 - **`ac3cli decode … bap-census=` silently wrote nothing for E-AC-3 input.** `run_decode_eac3`
   wired the per-block trace in and accumulated it into the census for every access unit, but never
   wrote the result — so the flag was accepted, the trace cost was paid, and no file appeared, with
