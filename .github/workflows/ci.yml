@@ -466,6 +466,22 @@ jobs:
         shell: bash
         run: .lintvenv/bin/ruff check --no-cache --output-format=github .
 
+      # The oracles' own unit tests. This job's header explains why the ~30
+      # Python files under tools/ get more scrutiny than ordinary scripts -
+      # they ARE the gates - and lint alone cannot tell whether a gate still
+      # gates. compare_wav.py's suite pins the case that motivated per-channel
+      # SNR floors: a single floor low enough for a 5.1 fixture's
+      # dither-dominated surrounds leaves the front channels 30-70 dB of room
+      # to collapse in without failing anything.
+      #
+      # stdlib unittest, run with the system python3 rather than .lintvenv:
+      # these tests deliberately import nothing that is not in the standard
+      # library (same rule the scripts under test follow), so needing the
+      # linter venv at all would be a sign one of them had grown a dependency.
+      - name: Oracle unit tests
+        shell: bash
+        run: python3 -m unittest discover --start-directory tools/checks --pattern 'test_*.py' --verbose
+
       # `git ls-files` rather than a hard-coded list of directories: a shell
       # script added anywhere in the tree is then linted the day it lands,
       # instead of silently sitting outside the gate until someone remembers to

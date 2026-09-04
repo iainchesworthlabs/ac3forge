@@ -3154,16 +3154,36 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // JOC continuity, the §3.7 hold-back queues) ever advances for a
     // programme the caller did not ask for. The unit's first frame is by
     // definition its independent substream, and its substreamid IS the
-    // programme id.
+    // programme id - EXCEPT for §E2.3.1.2's legacy core, which carries neither
+    // field. An AC-3 frame's bits 16-17 are the top of crc1, not strmtyp, so
+    // parse_bsi here would read a programme id out of a checksum: on the
+    // FFmpeg FATE fixture the_great_wall_7.1.eac3 that lands on strmtyp 0x3
+    // and the whole decode fails with kReservedValue, and on the 59% of that
+    // file's frames whose crc1 happens to start 00/01/10 it would instead have
+    // parsed as a plausible id and silently selected the wrong programme. The
+    // identity is asserted rather than parsed, exactly as the key loop below
+    // and decode_substream both already do.
     if (impl_->config_.programme) {
-        BitReader peek{frames->front()};
-        const auto lead_bsi = parse_bsi(peek, frames->front().size());
-        if (!lead_bsi) {
-            return std::unexpected(lead_bsi.error());
+        const auto lead_bsid = stream_bsid(frames->front());
+        if (!lead_bsid) {
+            return std::unexpected(lead_bsid.error());
         }
-        if (lead_bsi->substreamid != *impl_->config_.programme ||
-            lead_bsi->strmtyp == eac3::StreamType::kDependent) {
-            return std::optional<DecodedAccessUnit>(std::nullopt);
+        if (*lead_bsid <= 8) {
+            // §E2.3.1.2 assigns the core the identity (independent, 0), so it
+            // is programme 0 and never a dependent.
+            if (*impl_->config_.programme != 0) {
+                return std::optional<DecodedAccessUnit>(std::nullopt);
+            }
+        } else {
+            BitReader peek{frames->front()};
+            const auto lead_bsi = parse_bsi(peek, frames->front().size());
+            if (!lead_bsi) {
+                return std::unexpected(lead_bsi.error());
+            }
+            if (lead_bsi->substreamid != *impl_->config_.programme ||
+                lead_bsi->strmtyp == eac3::StreamType::kDependent) {
+                return std::optional<DecodedAccessUnit>(std::nullopt);
+            }
         }
     }
 

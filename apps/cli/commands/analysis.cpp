@@ -328,8 +328,8 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
     for (const auto& frame : *frames) {
         const auto decoded = decoder->decode_substream(frame);
         if (!decoded) {
-            fmt::println(stderr, "error: decode failed (code {})",
-                         static_cast<int>(decoded.error()));
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
             return std::nullopt;
         }
         // §3.7: this substream's frame is being held back pending transient
@@ -426,8 +426,8 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
         if (!decoded) {
-            fmt::println(stderr, "error: decode failed (code {})",
-                         static_cast<int>(decoded.error()));
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
             return std::nullopt;
         }
         if (!decoded->has_value()) {
@@ -583,8 +583,8 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
         if (!decoded) {
-            fmt::println(stderr, "error: decode failed (code {})",
-                         static_cast<int>(decoded.error()));
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
             return std::nullopt;
         }
         if (!decoded->has_value()) {
@@ -812,8 +812,8 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     for (const auto& unit : *units) {
         const auto decoded = decoder.decode_access_unit(unit);
         if (!decoded) {
-            fmt::println(stderr, "error: {}: decode failed (code {})", in_path,
-                         static_cast<int>(decoded.error()));
+            fmt::println(stderr, "error: {}: decode failed: {}", in_path,
+                         ac3::describe(decoded.error()));
             return kExitInput;
         }
         if (!decoded->has_value()) {

@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <fmt/base.h>
 #include <fmt/format.h>
+#include <fstream>
+#include <ios>
 #include <optional>
 #include <span>
 #include <string>
@@ -31,12 +33,35 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/verify/bap_census.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
+#include "ac3/verify/mirror.hpp"
 
 namespace ac3cli::commands {
 
 namespace {
 
 namespace plan = ac3::plan;
+
+// bap-census= output. Failure to write is an error rather than a warning: the
+// census is evidence a CI check is about to gate on, and a decode that was
+// asked for it and silently produced none would leave that check passing on a
+// stale file from a previous run.
+bool write_bap_census(const ac3::verify::BapCensus& census, const std::string& path) {
+    const std::string json = census.to_json();
+    std::ofstream out{path, std::ios::binary};
+    if (!out) {
+        fmt::println(stderr, "error: cannot open bap-census output {}", path);
+        return false;
+    }
+    out.write(json.data(), static_cast<std::streamsize>(json.size()));
+    out.close();
+    if (!out) {
+        fmt::println(stderr, "error: cannot write bap-census output {}", path);
+        return false;
+    }
+    return true;
+}
 
 // Whether the §7.8 output stage is going to fold this programme, which
 // decides what the sink is opened for: a fold's own channels are already L/R
@@ -296,8 +321,8 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // would splice two unrelated pieces of audio together.
     const auto ids = ac3::programme_ids(stream);
     if (!ids) {
-        fmt::println(stderr, "error: stream framing failed (code {})",
-                     static_cast<int>(ids.error()));
+        fmt::println(stderr, "error: stream framing failed: {}",
+                     ac3::describe(ids.error()));
         return 1;
     }
     if (ids->empty()) {
@@ -313,14 +338,19 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // together into one set of speaker feeds.
     const auto units = ac3::split_access_units(stream, *programme);
     if (!units) {
-        fmt::println(stderr, "error: stream framing failed (code {})",
-                     static_cast<int>(units.error()));
+        fmt::println(stderr, "error: stream framing failed: {}",
+                     ac3::describe(units.error()));
         return kExitInput;
     }
     if (ids->size() > 1) {
         fmt::println(status_stream(out_path), "  programme {} of {} ({})", *programme,
                      ids->size(), format_programme_ids(*ids));
     }
+    // Same convention as the AC-3 path below: null unless bap-census= asked
+    // for it, so an ordinary decode pays nothing.
+    const bool census_wanted = !meta.bap_census_path.empty();
+    ac3::verify::Eac3AccessUnitTrace census_trace;
+    ac3::verify::BapCensus census;
     ac3::Eac3Decoder decoder{{.drc_scale = meta.drc_scale,
                              .fast_imdct = meta.fast_imdct,
                              .heavy_compression = meta.p.heavy.has_value(),
@@ -328,6 +358,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                              .concealment = meta.concealment,
                              .fast_mdct = meta.fast_mdct,
                              .joc_domain = meta.joc_domain,
+                             .eac3_trace = census_wanted ? &census_trace : nullptr,
                              .programme = programme}};
     // The decoded programme goes out through the sink as units decode - the
     // sink's per-slot carry absorbs the one place slots advance unevenly
@@ -533,10 +564,17 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         progress.tick(++units_done);
         const auto decoded = decoder.decode_access_unit(unit);
         if (!decoded) {
-            fmt::println(stderr, "error: decode failed (code {})",
-                         static_cast<int>(decoded.error()));
+            // describe(), not the raw enumerator: this is the line a CI
+            // log shows when a third-party stream will not decode, and
+            // "decode failed (code 3)" sent the reader to the enum
+            // definition to learn it meant a reserved header field.
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
             abort_all();
             return kExitInput;
+        }
+        if (census_wanted) {
+            census.observe(census_trace);
         }
         if (!decoded->has_value()) {
             // §3.7: this access unit's frame(s) are being held back pending
@@ -828,11 +866,18 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(frames.error()));
         return kExitInput;
     }
+    // bap-census= only. The trace pointer stays null otherwise, which is what
+    // keeps an ordinary decode at one null test per block and no allocation -
+    // the convention DecoderConfig::trace already sets.
+    const bool census_wanted = !meta.bap_census_path.empty();
+    ac3::verify::FrameTrace census_trace;
+    ac3::verify::BapCensus census;
     ac3::FrameDecoder decoder{{.drc_scale = meta.drc_scale,
                               .fast_imdct = meta.fast_imdct,
                               .heavy_compression = meta.p.heavy.has_value(),
                               .output = meta.output,
-                              .concealment = meta.concealment}};
+                              .concealment = meta.concealment,
+                              .trace = census_wanted ? &census_trace : nullptr}};
     PlanarWavSink sink;
     std::optional<ac3::analysis::LevelMeter> meter;
     ac3::DecodedFrame first{};
@@ -858,6 +903,13 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
             fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
             sink.abort();
             return kExitInput;
+        }
+        if (census_wanted) {
+            // After the success check, so a refused frame contributes nothing.
+            // BapCensus::observe also skips un-allocated blocks itself; both
+            // guards exist because a partially-filled trace read as real
+            // evidence is exactly the misreading a census must not make.
+            census.observe(census_trace);
         }
         if (decoded->concealed) {
             ++concealed_frames;
@@ -920,6 +972,9 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     if (!have_first) {
         fmt::println(stderr, "error: no frames");
         return kExitInput;
+    }
+    if (census_wanted && !write_bap_census(census, meta.bap_census_path)) {
+        return kExitOutput;
     }
     const auto written = sink.close();
     if (!written) {

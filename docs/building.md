@@ -257,7 +257,7 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_ADM` | `OFF` | Build `ac3adm::ac3adm` (`src/ac3adm`), the standalone BW64/RF64 + ADM parser — see [ADM / BW64 reading](library/adm.md). Off by default, unlike every other library component: it vendors libbw64/libadm via `FetchContent`, and libadm needs several Boost header libraries, resolved separately via `-DVCPKG_MANIFEST_FEATURES=adm` (`vcpkg.json`'s `adm` feature) — turning this `ON` without also selecting that feature fails with a clear configure-time message rather than a bare "Boost not found". |
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
-| `AC3FORGE_SIMD` | `auto` | Which `src/forge/src/internal/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from `CMAKE_SYSTEM_PROCESSOR` and falls back to `generic` everywhere else, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
+| `AC3FORGE_SIMD` | `auto` | Which `src/forge/src/internal/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from the *effective target* architecture (`CMAKE_SYSTEM_PROCESSOR`, or `CMAKE_OSX_ARCHITECTURES` where a macOS cross-build sets one) and falls back to `generic` everywhere else, including a macOS universal binary, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
 | `AC3FORGE_AVX2` | `ON` | x86_64 only. Compiles an AVX2 SIMD tier alongside the baseline SSE2 one, selected at *runtime* rather than at configure time. See [Runtime AVX2 dispatch](#runtime-avx2-dispatch). `OFF` (or a non-x86_64 target) yields a provably AVX2-free binary. |
 | `AC3FORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_COVERAGE` | `OFF` | `--coverage` gcov instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. Off is a no-op; GCC/Clang only, other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` preset above rather than by hand. |
@@ -819,6 +819,30 @@ for first when two machines disagree. The resolved value is printed by the confi
 by `ac3cli --version`, which reads it from the compiled header rather than from a
 CMake-substituted string, so a binary cannot claim a directory it was not built with.
 
+**Cross-builds, and why `CMAKE_SYSTEM_PROCESSOR` is not the question `auto` asks.** On Apple
+platforms `CMAKE_OSX_ARCHITECTURES` overrides `CMAKE_SYSTEM_PROCESSOR` per compile line, so the two
+disagree whenever a Mac builds for the other architecture — and the compile line, not the host, is
+what the kernels have to be right for. `auto` therefore takes `-arch` as the truth wherever one is
+set: an Intel Mac configured with `-DCMAKE_OSX_ARCHITECTURES=arm64` resolves `aarch64` and not
+`x86_64`. Reading the host variable instead
+selects SSE2 intrinsics and an `-mavx2` flag for an ARM compile, which does not degrade quietly; it
+fails the build outright with `clang++: error: unsupported option '-mavx2' for target
+'x86_64-apple-darwin24.6.0'` — a diagnostic that names the host triple rather than the `-arch` the
+flag is actually invalid for, which is why the real cause is easy to misread from the log alone.
+
+This is not hypothetical: it is how `Build wheels (macos-15-intel)` failed when that runner was
+first added and inherited a wheel config that cross-built arm64. That matrix now names each row's
+architecture explicitly (`CIBW_ARCHS` in `.github/workflows/wheels.yml`), so nothing in CI
+cross-builds today — but a hand-run `cibuildwheel`, a `-DCMAKE_OSX_ARCHITECTURES` configure, or any
+future cross-targeting matrix row would hit the same gate, which is why it is fixed here rather
+than only routed around there.
+
+A macOS *universal* binary — more than one `-arch` from a single configure, so every source is
+compiled once per slice — resolves `generic`, because no single compile-time architecture choice can
+be correct for both slices at once. That is a real, if conservative, cost: universal builds get the
+scalar kernels on both halves. Configure the two slices separately and `lipo` them together if you
+want SSE2 and NEON in one binary.
+
 **What is vectorised.** The kernels live once, in shared code, written against the two 128-bit
 types the header defines (`f64x2`, two doubles; `i32x4`, four 32-bit integers) — the directories
 carry the types, not a copy of each kernel:
@@ -920,7 +944,11 @@ Never `-mfma`: this project's code must not call an FMA intrinsic regardless of 
 otherwise permit — see [Floating-point contraction](#floating-point-contraction) — and not
 requesting it keeps the CPUID gate to the single AVX2 bit. `INTERPROCEDURAL_OPTIMIZATION` is forced
 `OFF` on this target specifically: LTO/LTCG is the one mechanism that could hoist AVX2-flagged
-codegen across a translation-unit boundary into a caller `has_avx2()` never approved for it.
+codegen across a translation-unit boundary into a caller `has_avx2()` never approved for it. The
+target exists only where `AC3FORGE_SIMD` resolved to `x86_64`, so it follows the effective target
+architecture through a [cross-build](#simd-kernels-and-the-architecture-tree) rather than the host:
+an arm64 or universal macOS build does not build it at all, rather than building it without the
+flag.
 
 **Testing — compile everywhere, execute only where capable.** `forge_simd_avx2` links into
 `ac3tests` on every x86_64 leg unconditionally, proving the AVX2 code is valid, compilable,
@@ -1082,6 +1110,33 @@ without that hardware — a native package can carry different default codegen/t
 identical flags and the identical GCC version), or a genuine real-silicon floating-point behaviour
 `qemu-user`'s software emulation does not reproduce. Both need the real runners to test further.
 
+**FFmpeg's own architecture-specific kernels — tested directly, ruled out.** Every hypothesis
+above is about this project's side of the comparison, but the gold-reference gate measures
+*agreement between two decoders*, and the other one is FFmpeg — which ships hand-written SIMD for
+its AC-3 decoder and therefore runs different code on x86-64 (SSE/AVX) than on aarch64 (NEON). If
+FFmpeg's NEON decode differed from its SSE decode by a last bit, that alone would move the measured
+agreement and nothing in this project would be at fault.
+
+It does not. Decoding `tests/golden/external-baseline/ac3-51-448/dee.ac3` twice on the same x86-64
+host, once normally and once with `ffmpeg -cpuflags 0` forcing its plain-C reference path, gives
+two WAVs that are *not* byte-identical — FFmpeg's kernel choice does change its output — but the
+difference sits at **100–117 dB** per channel. That is 30 dB or more below the ~88 dB level at
+which this project's decode and FFmpeg's actually agree, so it is buried: `ac3cli`'s SNR against
+FFmpeg is identical to two decimal places (57.50 / 63.84 / 58.19 / 88.23 / 22.76 / 22.67 dB)
+whether FFmpeg decoded with SIMD or without. A difference that cannot move the number by 0.01 dB
+on one architecture cannot produce 6.02 dB across two. The reference side is exonerated; whatever
+is left is on this project's side of the comparison.
+
+**Where the gap appears is level-dependent, which constrains what it can be.** Sorting all 52
+(check, channel) pairs in the recorded history by their x86-64 SNR gives a step rather than a
+gradient: every pair below 67 dB shows an arm64 difference of 0.00–0.11 dB, every pair above it
+shows 5.85–6.05 dB, and nothing lands in between. So the gap is not a systematic codec error,
+which would be level-independent and shift every channel equally. It appears only where the two
+decoders agree closely enough that arithmetic is the only thing left to disagree about — which is
+also why the LFE is the only channel to split on the fixed third-party fixtures, at 88 dB the one
+channel there whose comparison is rounding-limited. See
+[Validation](verification.md#why-arm64-and-x86-64-disagree).
+
 The flag stays pinned regardless of either result, for an unrelated and unconditional reason: it is
 what makes the SIMD seam's bit-exactness argument hold. The seam maps every operation to one
 IEEE-754 add, subtract or multiply so a vectorised kernel is bit-identical to the scalar loop it
@@ -1101,11 +1156,27 @@ bitstream-hash gate (`tools/checks/check_cross_platform_hash.py`, wired into
 [the gold-reference gate](#gold-reference-correctness-gate)) pins a SHA-256 of the actual encoded
 bytes per `(kernel, transform mode)` pair in `tests/golden/bitstream-hashes.json`, so this specific
 divergence — resolved or not — cannot silently change size without a CI failure pointing straight
-at it. `x86_64-sse2` and `generic` are pinned from the measurements above; `aarch64-neon` and the
-macOS kernel are deliberately left unpinned rather than pre-filled from the qemu measurement, since
-that measurement is exactly the evidence that an emulated cross-build is not equivalent to a real
-CI leg — the next person with those CI logs in front of them should pin what the real hardware
-actually produces.
+at it. `x86_64-sse2` and `generic` were pinned from the measurements above, and `aarch64-neon` is now
+pinned too — from the real arm64 CI legs rather than the qemu cross-build this file declined to
+pre-fill from (PR #503, CI run 33635430769: `linux-gcc-arm64`, `linux-llvm-arm64`,
+`windows-msvc-arm64`, `macos-llvm`).
+
+**All three streams came back byte-identical to `x86_64-sse2`.** That is a result, not a
+formality: this project's *encoder* is bit-exact across architectures, so the ~6.02 dB
+gold-reference gap the arm64 legs measure is entirely **decode-side** — the same bytes go in and
+different PCM comes out.
+
+It also resolves what looked like it needed two mechanisms. Only the LFE splits on the fixed
+third-party fixtures, but *every* channel splits on this project's own gold-reference streams,
+which invites the inference that the arm64 encoder must be producing different bytes. It is not.
+The gold-reference streams are encoded `dither=off` (`nodither` for E-AC-3), so nothing is
+dither-limited and every channel sits in the rounding-limited regime above 67 dB where the
+last-bit difference is all that is left; the third-party fixtures carry dither, which dominates
+every channel except the LFE. One mechanism, two fixture populations.
+
+With the encoder excluded by these hashes, FFmpeg's own kernels excluded by the `-cpuflags 0`
+test above, and contraction and libm excluded before that, what remains for VX11 is the decode
+path on real arm64 silicon — which is also the one thing no emulated run has reproduced.
 
 ## Gold-reference correctness gate
 

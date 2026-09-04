@@ -45,6 +45,30 @@ and it is the right tool for catching a decoder that has genuinely broken —
 but it punishes techniques that are *designed* to discard inaudible detail, so a
 low SNR is not automatically a quality problem.
 
+!!! note "What the SNR number on this page is actually measuring"
+    The **Decode accuracy** card above is not a measure of how good this codec
+    sounds. It is a measure of how closely this project's decoder agrees with
+    an independent one (FFmpeg's) given the *same* bitstream — including
+    bitstreams produced by Dolby's own encoder, which neither decoder controls.
+
+    That distinction matters for reading the number. Perfect agreement would be
+    limited only by floating-point noise, and on the channels that carry most
+    of the audio it very nearly is: 57–88 dB, run after run, on every platform.
+    Where the two decoders diverge, it is usually not because either is wrong.
+    A/52 §7.3.4 says a decoder may substitute *"any reasonably random
+    sequence"* for the bins the encoder spent no bits on, so two
+    spec-correct decoders are *required* to differ there — and those bins
+    cluster in the surround channels, which is why a 5.1 fixture's Ls/Rs land
+    around 22 dB while its centre channel sits near 58 dB.
+
+    So: a low number on one channel of one fixture is a statement about how
+    much freedom the standard leaves, not about audio quality. Read
+    [Quality trend](quality-trend.md) for what the number does over time, which
+    is the part that carries information, and see
+    [Validation](verification.md#what-would-make-these-numbers-excellent) for
+    what it would take to remove that spec-permitted divergence from the
+    measurement entirely.
+
 **MOS-LQO** (1 to 5) is a prediction of what a listening panel would say,
 produced by [ViSQOL](https://github.com/google/visqol). It models hearing rather
 than arithmetic, so it credits a stream that sounds right even where the
@@ -74,6 +98,22 @@ serious tier blocks a merge:
 | Soft | 20% slower, or 0.5 dB of quality lost | Warning on the run; merge proceeds |
 | Hard | **Twice** as slow, or a gate floor breached | **Fails the build** |
 
+Quality is gated **per channel**, not once per file. Each channel of each
+fixture has its own floor, derived from that channel's own lowest measurement
+across every platform and every commit on record
+(`tools/checks/derive_channel_floors.py` is the derivation, and it is a script
+rather than a judgement call so a floor move is reviewable as a diff against
+evidence). The trend check works the same way: a channel is compared against
+its own trailing average, so a front channel slipping is caught even while the
+surrounds — which sit far lower by design — have not moved at all.
+
+That is a recent change, and it closed a real hole. One floor per fixture had
+to be low enough for the lowest channel to pass, which on the 5.1 fixtures
+meant a floor set by the dither-dominated surrounds: 22 dB, against a centre
+channel measuring 58 dB. The centre could have collapsed by 36 dB and the gate
+would still have gone green. Per channel, the same fixture now fails on a 6 dB
+move in **any** channel.
+
 Timings come from shared CI runners, so a single slow run is not evidence of
 anything. Every published number is the fastest of several repetitions, and the
 trend pages show the run-to-run spread beside it so you can tell a real move
@@ -92,9 +132,24 @@ is processed in 0.6 seconds. Below 1x means it cannot keep up live.
 
 **ms/frame** — the same number before the division. Lower is better.
 
-**SNR (dB)** — how closely the decoded audio matches the original waveform.
-Higher is better. Every 6 dB is roughly one more bit of accuracy. Below about
-20 dB the difference is usually audible; above about 40 dB it usually is not.
+**SNR (dB)** — how closely two pieces of audio match, sample by sample. Higher
+is better, and every 6 dB is roughly one more bit of accuracy. What the two
+pieces *are* decides how to read it: against the original recording it measures
+coding loss (where below ~20 dB is usually audible and above ~40 dB usually is
+not), while on this page's Decode accuracy card it measures agreement between
+two independent decoders given the same bitstream — a different question, with
+a different scale, explained in the note above.
+
+**Floor** — the SNR a given channel of a given fixture must stay above. One per
+channel, not one per file, and each derived from that channel's own measured
+history rather than chosen. The surrounds of a 5.1 fixture have much lower
+floors than its front channels because the standard permits decoders to differ
+more there, not because less is expected of them.
+
+**Headroom** — how far a channel currently sits above its own floor. This is
+the number to watch: the raw SNR says how two decoders compare, headroom says
+how close the gate is to firing. A channel with a low SNR and healthy headroom
+is behaving exactly as designed.
 
 **MOS-LQO** — predicted listening quality from 1 to 5, where 5 is
 indistinguishable from the original. Roughly: **4-5** excellent, **3-4** good,
@@ -227,17 +282,43 @@ ceiling) fails the build rather than merely being recorded.
     const scored = rows.filter((r) => typeof r.worst_db === "number" &&
                                       typeof r.threshold_db === "number");
     if (scored.length === 0) return card("Decode accuracy", "&mdash;", "", "No measurement recorded.", NONE);
-    const tight = scored.reduce((a, b) =>
-      (a.worst_db - a.threshold_db < b.worst_db - b.threshold_db ? a : b));
-    const headroom = tight.worst_db - tight.threshold_db;
-    // Its own gate, not a headroom margin invented here. These floors are set
-    // deliberately close to the measurement (see the transient leg's comment
-    // in tools/ci/quality_race.py on why), so "tight" is the design, not a
-    // warning sign. Above the floor passes; below it, CI has already failed.
-    return card("Decode accuracy", tight.worst_db.toFixed(1), "dB SNR",
-      `Tightest of ${scored.length} checks (<code>${tight.leg}</code>), ` +
-      `${headroom.toFixed(1)} dB above its ${tight.threshold_db.toFixed(0)} dB gate.`,
-      tight.worst_db >= tight.threshold_db ? OK : WATCH);
+
+    // Each check is gated per CHANNEL, so the number that matters is the
+    // smallest per-channel margin, which is NOT the same thing as the lowest
+    // SNR. A 58 dB centre channel 6 dB above a 52 dB floor is closer to
+    // failing than a 22 dB surround 6 dB above a 16 dB floor - and the
+    // surround is the one this card used to report, every single time,
+    // because it reported the lowest number rather than the tightest one.
+    //
+    // tightest_headroom_db/thresholds_db arrived with per-channel floors;
+    // records written before that carry only worst_db and a scalar
+    // threshold_db, and fall back to exactly the old computation rather than
+    // being dropped from the comparison.
+    const headroomOf = (r) => typeof r.tightest_headroom_db === "number"
+      ? r.tightest_headroom_db
+      : r.worst_db - r.threshold_db;
+    const tight = scored.reduce((a, b) => (headroomOf(a) < headroomOf(b) ? a : b));
+    const headroom = headroomOf(tight);
+
+    // Name the channel when we know it. "Ls 22.8 dB, 6.8 dB above its 16 dB
+    // floor" tells a reader which channel to go and look at; "22.7 dB SNR"
+    // on its own invites the reading that the codec is 22 dB accurate, which
+    // it is not - see "What the SNR number is measuring" on this page.
+    const thresholds = Array.isArray(tight.thresholds_db) ? tight.thresholds_db : null;
+    let value, note;
+    if (thresholds) {
+      const i = typeof tight.tightest_channel === "number" ? tight.tightest_channel : 0;
+      const name = (tight.channel_labels || [])[i] || `ch${i}`;
+      value = (tight.channels_db ? tight.channels_db[i] : tight.worst_db).toFixed(1);
+      note = `Tightest channel of ${scored.length} checks: ${name} on ` +
+             `<code>${tight.leg}</code>, ${headroom.toFixed(1)} dB above its own ` +
+             `${thresholds[i]} dB floor. Every channel is gated separately.`;
+    } else {
+      value = tight.worst_db.toFixed(1);
+      note = `Tightest of ${scored.length} checks (<code>${tight.leg}</code>), ` +
+             `${headroom.toFixed(1)} dB above its ${tight.threshold_db.toFixed(0)} dB gate.`;
+    }
+    return card("Decode accuracy", value, "dB SNR", note, headroom >= 0 ? OK : WATCH);
   }
 
   function listeningCard(rows) {

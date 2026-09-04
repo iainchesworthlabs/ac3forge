@@ -41,8 +41,13 @@ class WebRemote(private val onCommand: (Command) -> Unit) {
     sealed interface Command {
         data class Move(val dx: Float, val dy: Float, val dz: Float) : Command
         data class Scene(val delta: Int) : Command
-        data object ToggleObjects : Command
-        data object Snap : Command
+        // Plain object, not data object: with no properties to compare, the
+        // compiler-generated equals() for a data object still emits a cast-and-
+        // discard local for the (property-less) comparison, which CodeQL reads as
+        // an unread local variable (#162). Singleton reference equality already
+        // is the correct equals() here - data added nothing but that dead local.
+        object ToggleObjects : Command
+        object Snap : Command
     }
 
     @Volatile

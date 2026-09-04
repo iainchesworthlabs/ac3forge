@@ -93,7 +93,12 @@ class Haptics {
         resolvedForDeviceId = lastDeviceId
         vibrator = try {
             val device = InputDevice.getDevice(lastDeviceId)
-            @Suppress("DEPRECATION")  // getVibrator() is the API available at minSdk
+            // getVibrator() is the API available at minSdk 26 - getVibratorManager()
+            // needs API 31 (see PassthroughBridge's class doc for the same shape of
+            // trade-off). The codeql[] array entry is what actually registers with
+            // CodeQL's AlertSuppressionAnnotations query - a suppression comment
+            // above this line does not, see PassthroughBridge.kt.
+            @Suppress("DEPRECATION", "codeql[java/deprecated-call]")
             val v = device?.vibrator
             if (v != null && v.hasVibrator()) v else null
         } catch (t: Throwable) {

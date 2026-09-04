@@ -46,8 +46,18 @@ private const val BUFFER_BURSTS = 8
  * app/build.gradle.kts), and this specific Shield is API 30, so the
  * deprecated static method is the only one that exists on the actual
  * target hardware. Suppressed deliberately, not an oversight.
+ *
+ * The `codeql[java/deprecated-call]` entry alongside `DEPRECATION` is load-
+ * bearing, not decorative: a same-line/preceding-line `// codeql[...]`
+ * comment (tried first, at each of the three call sites below) never
+ * suppressed alerts #144-146 - GitHub's alert-suppression comment matching
+ * did not fire for this Kotlin source. The annotation form is what
+ * `@SuppressWarnings({"deprecation", "codeql[query-id]"})` actually means in
+ * CodeQL's own AlertSuppressionAnnotations query, and a class-scoped
+ * `@Suppress` covers every call site inside it - see that query for why this
+ * is the array entry that registers, not the comment.
  */
-@Suppress("DEPRECATION")
+@Suppress("DEPRECATION", "codeql[java/deprecated-call]")
 class PassthroughBridge {
     private var audioTrack: AudioTrack? = null
 
@@ -81,7 +91,6 @@ class PassthroughBridge {
     fun isDirectPlaybackSupported(carrierRateHz: Int, eac3: Boolean): Boolean {
         if (!hasDirectPlaybackQuery()) return false
         val format = iec61937Format(carrierRateHz)
-        // codeql[java/deprecated-call]: no replacement below API 33 - see class doc.
         val supported = AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)
         Log.d(TAG, "isDirectPlaybackSupported(carrier=$carrierRateHz eac3=$eac3) = $supported")
         return supported
@@ -95,7 +104,6 @@ class PassthroughBridge {
             .setSampleRate(sampleRateHz)
             .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
             .build()
-        // codeql[java/deprecated-call]: no replacement below API 33 - see class doc.
         return AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)
     }
 
@@ -105,7 +113,6 @@ class PassthroughBridge {
 
         if (!hasDirectPlaybackQuery()) return@synchronized false
         val format = iec61937Format(carrierRateHz)
-        // codeql[java/deprecated-call]: no replacement below API 33 - see class doc.
         if (!AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)) {
             Log.w(TAG, "open: isDirectPlaybackSupported=false for carrier=$carrierRateHz eac3=$eac3")
             return@synchronized false

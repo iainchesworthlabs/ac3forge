@@ -69,14 +69,44 @@ else()
     set(AC3FORGE_BUILD_OS "${CMAKE_SYSTEM_NAME}")
 endif()
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+# CMAKE_SYSTEM_PROCESSOR names the machine CMake was configured for, which on
+# Apple platforms is NOT the same thing as the machine the compiler is asked to
+# emit code for: CMAKE_OSX_ARCHITECTURES overrides it per compile line. An
+# Intel Mac cross-building an arm64 wheel (cibuildwheel does exactly this - see
+# python/pyproject.toml and .github/workflows/wheels.yml) still reports
+# CMAKE_SYSTEM_PROCESSOR=x86_64 while every compile line carries `-arch arm64`,
+# so anything keyed on the raw variable - the SIMD directory and the AVX2 tier
+# below both are - silently picks the HOST's answer and hands the compiler an
+# x86 flag for an ARM target. That is a hard error, not a slow path -
+# `clang++: error: unsupported option '-mavx2' for target
+# 'x86_64-apple-darwin24.6.0'`, a diagnostic that unhelpfully names the host
+# triple rather than the -arch the flag is actually invalid for.
+#
+# `-arch` therefore wins wherever one is set. More than one of them is a
+# universal binary, where the same source is compiled once per slice from a
+# single configure: no compile-time SIMD choice can be right for both slices,
+# so that case gets its own name and lands on generic below rather than
+# guessing at whichever slice happens to be listed first.
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+    list(LENGTH CMAKE_OSX_ARCHITECTURES AC3FORGE_OSX_ARCH_COUNT)
+    if(AC3FORGE_OSX_ARCH_COUNT GREATER 1)
+        set(AC3FORGE_TARGET_PROCESSOR "universal")
+    else()
+        set(AC3FORGE_TARGET_PROCESSOR "${CMAKE_OSX_ARCHITECTURES}")
+    endif()
+    unset(AC3FORGE_OSX_ARCH_COUNT)
+else()
+    set(AC3FORGE_TARGET_PROCESSOR "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+if(AC3FORGE_TARGET_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     set(AC3FORGE_BUILD_ARCH "x86_64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
+elseif(AC3FORGE_TARGET_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
     set(AC3FORGE_BUILD_ARCH "arm64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86|i686|X86)$")
+elseif(AC3FORGE_TARGET_PROCESSOR MATCHES "^(x86|i686|X86)$")
     set(AC3FORGE_BUILD_ARCH "x86")
 else()
-    set(AC3FORGE_BUILD_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+    set(AC3FORGE_BUILD_ARCH "${AC3FORGE_TARGET_PROCESSOR}")
 endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -172,6 +202,7 @@ target_sources(forge_objects
         src/quality/distortion.cpp
         src/quality/perceptual.cpp
         src/spatial/spatial.cpp
+        src/verify/bap_census.cpp
         src/verify/eac3_mirror.cpp
         src/verify/eac3_selfcheck.cpp
         src/verify/mirror.cpp
@@ -248,17 +279,21 @@ target_include_directories(forge_objects PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/sr
 # tests/core/test_simd_kernels.cpp's scalar side is written to match.
 # ---------------------------------------------------------------------------
 set(AC3FORGE_SIMD "auto" CACHE STRING
-    "SIMD kernel directory: auto (from CMAKE_SYSTEM_PROCESSOR), generic, x86_64, or aarch64")
+    "SIMD kernel directory: auto (from the effective target architecture), generic, x86_64, or aarch64")
 set_property(CACHE AC3FORGE_SIMD PROPERTY STRINGS auto generic x86_64 aarch64)
 
 if(AC3FORGE_SIMD STREQUAL "auto")
     # AC3FORGE_BUILD_ARCH is resolved further up this file for version
-    # strings, from the same CMAKE_SYSTEM_PROCESSOR; reuse it rather than
-    # spelling the platform regexes a second time and letting the two drift.
+    # strings, from the effective target architecture (CMAKE_SYSTEM_PROCESSOR,
+    # or CMAKE_OSX_ARCHITECTURES where a cross-build sets one); reuse it
+    # rather than spelling the platform regexes a second time and letting the
+    # two drift - and rather than reading CMAKE_SYSTEM_PROCESSOR directly,
+    # which is the host's answer on an Apple cross-build and was how an
+    # arm64 wheel built on an Intel runner ended up being handed -mavx2.
     # Anything that is not one of the two architectures with a directory -
-    # 32-bit x86, WebAssembly (Emscripten reports "x86"), a soft-float
-    # embedded target - lands on generic, which is a complete implementation
-    # and not a stub.
+    # 32-bit x86, WebAssembly (Emscripten reports "x86"), a macOS universal
+    # binary, a soft-float embedded target - lands on generic, which is a
+    # complete implementation and not a stub.
     if(AC3FORGE_BUILD_ARCH STREQUAL "x86_64")
         set(AC3FORGE_SIMD_RESOLVED "x86_64")
     elseif(AC3FORGE_BUILD_ARCH STREQUAL "arm64")
