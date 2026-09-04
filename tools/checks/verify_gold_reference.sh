@@ -396,10 +396,18 @@ check_one "eac3_cplbndstrce0" "$CPLBNDSTRCE0_EC3" "eac3" 448 \
     "$CPLBNDSTRCE0_MIN_SNR_DB" "$CPLBNDSTRCE0_FLOORS"
 
 # --- Third-party decode interop (roadmap VX4) -------------------------------
-# tests/golden/external-baseline/ holds six bitstreams from two real
-# third-party encoders - Dolby Encoding Engine 6.5.4 and FFmpeg 8.0.1 - across
-# three legs (see tools/generators/gen_external_baseline.py, which produced
-# them, and tests/golden/external-baseline/manifest.json for the versions).
+# This check gates six bitstreams from two real third-party encoders - Dolby
+# Encoding Engine 6.5.4 and FFmpeg 8.0.1 - across three legs: ac3-51-448,
+# eac3-51-256 and eac3-stereo-192, each in a dee/ and an ffmpeg/ copy (see
+# tools/generators/gen_external_baseline.py, which produced them, and
+# tests/golden/external-baseline/manifest.json for the versions). Six is what
+# this check GATES, which is no longer what that directory HOLDS - legs have
+# been added since for other consumers, and it is now nine leg directories and
+# fifteen bitstreams. Adding one there does not gate it here: a leg is gated
+# only once it appears in the loop below (or, for the sixth, in the
+# check_against_source call after it) with per-channel floors derived for it,
+# so count the entries rather than the directory.
+#
 # They are the closest thing to conformance vectors this project can legally
 # hold, and until now nothing in tests/ or src/ read them at all: their only
 # consumer was tools/ci/quality_race.py, which decodes them with FFMPEG for
