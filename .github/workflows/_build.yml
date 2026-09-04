@@ -421,6 +421,13 @@ jobs:
             gui: true
             packageable: true
             gold_reference: true
+            # AC3Forge Crucible's Linux half (roadmap UX12). This leg and not
+            # a GCC one because the GCC legs carry alsa_fallback, which
+            # asserts that disabling ALSA falls back to posix - true only
+            # while no PipeWire headers are installed, and the Crucible pass
+            # below installs them. Keeping the two apart leaves that
+            # assertion meaning what it says.
+            crucible: true
 
           # arm64 - Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu
           # target (see docs/platforms/raspberry-pi.md). Real ARM hardware via
@@ -1350,6 +1357,65 @@ jobs:
           }
           cmake --build build/no-alsa -- -k 0
           ctest --test-dir build/no-alsa
+
+      # AC3Forge Crucible on Linux (roadmap UX12, docs/crucible/promotion.md).
+      # One extra pass inside this leg rather than a matrix entry, the same
+      # shape as the ALSA fallback above, because it needs a different audio
+      # backend rather than a different compiler.
+      #
+      # Crucible cannot use the ALSA backend at all - it exists to tap each
+      # application separately and ALSA has no per-application concept - so
+      # this forces PipeWire, which apps/crucible/CMakeLists.txt also
+      # requires and refuses to build without. libpipewire-0.3-dev is
+      # installed here and not in the container bootstrap on purpose: adding
+      # it globally would change what -DCMAKE_DISABLE_FIND_PACKAGE_ALSA falls
+      # back to on the GCC legs, whose assertion expects posix.
+      #
+      # What this covers is exactly one thing: the Linux platform half -
+      # engine/platform/linux/, over the PipeWire capture and device watcher -
+      # compiling and linking. It deliberately runs no tests.
+      #
+      # Running the `crucible` ctest label here would look like more coverage
+      # and be none. Those cases drive the engine over the fakes and link
+      # tests/crucible/platform_services_stub.cpp, not the Linux platform half
+      # this leg exists to build, and every other Linux leg already runs them.
+      # (Worse, an earlier version of this step ran that label without
+      # building ac3tests. catch_discover_tests registers cases at build time,
+      # so there were none to match - and ctest exits 0 when nothing matches.
+      # It passed without running anything.)
+      #
+      # What no CI runner can reach is behaviour against a live PipeWire
+      # session: there is no session, so every path takes its "no session"
+      # arm. That is checked by hand on hardware with
+      # tools/checks/crucible_platform_probe.cpp; the plan records what the
+      # first such run found, which was five defects this step would never
+      # have caught.
+      - name: Build AC3Forge Crucible (Linux, PipeWire)
+        if: matrix.crucible && runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
+          $SUDO apt-get update -qq
+          $SUDO apt-get install -y -qq --no-install-recommends libpipewire-0.3-dev
+          cmake --preset config-${{ matrix.preset }} -B build/crucible \
+            -DAC3FORGE_BUILD_CRUCIBLE=ON \
+            -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON \
+            2>&1 | tee /tmp/crucible-configure.log
+          grep -q 'Audio backend  : pipewire' /tmp/crucible-configure.log || {
+            echo "::error::Crucible was configured but the PipeWire backend was not selected; \
+          apps/crucible/CMakeLists.txt should have refused this build"
+            exit 1
+          }
+          cmake --build build/crucible --target ac3crucible_engine ac3crucible-run -- -k 0
+          # Assert the runner was actually produced. CMake treats the
+          # application as optional and degrades quietly, so "the build
+          # succeeded" and "the thing got built" are different claims - the
+          # same reason the Windows legs assert on ac3crucible.exe.
+          test -x build/crucible/bin/ac3crucible-run || {
+            echo "::error::the Crucible build reported success but produced no ac3crucible-run"
+            exit 1
+          }
 
       # Proves BUILD_SHARED_LIBS=ON actually works before it ships in a real
       # release: ac3::forge_shared/matroska::matroska_shared existing and
