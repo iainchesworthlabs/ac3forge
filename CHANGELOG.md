@@ -24,7 +24,9 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   behaviour. The position and timing simulation is now a kernel-free header with a test of
   its own, a failed device start names the call that failed, and `install.ps1`/`remove.ps1`
   create and remove the device through SetupAPI and `pnputil` rather than the WDK's
-  `devcon`, so they need nothing beyond Windows.
+  `devcon`, so they need nothing beyond Windows. The driver is now built, test-signed
+  and Code-Analysed in CI on every push, from the WDK's NuGet packages, and uploaded as
+  the `ac3forge-nullsink-driver-testsigned` artifact; it is still not a release asset.
 
 ### Added
 

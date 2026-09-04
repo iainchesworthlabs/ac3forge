@@ -108,6 +108,26 @@ to `x64\Release-kasan\`). The build was confirmed on the EWDK for Windows 11 26H
 `km\acx\km\1.1`: `inf2cat`'s signability test passes and `infverif /w` reports the INF
 valid. The driver compiles at `/W4 /WX`.
 
+**Without the EWDK, and in CI.** The WDK and SDK are also NuGet packages, which is how
+Microsoft's own driver-samples CI builds and how this driver is built on every push
+(`.github/workflows/_build.yml`, the `windows-driver` job on GitHub's `windows-latest`
+image): `packages.config` names the three packages, `Directory.Build.props` imports them
+when they are present and is inert when they are not, so the EWDK build above is
+unaffected. What the packages do not carry, and the runner image does, is the "Windows
+Driver Kit" Visual Studio component (the `WindowsKernelModeDriver10.0` toolset) and the
+Spectre-mitigated libraries; a workstation needs both from the Visual Studio installer
+before this works there. Then, from a Visual Studio developer shell:
+
+```powershell
+nuget restore .\packages.config -PackagesDirectory .\packages
+msbuild .\Ac3ForgeNullSink.sln /p:Configuration=Release /p:Platform=x64
+```
+
+The job builds and test-signs the package, runs Code Analysis at the driver rule set
+with the same zero-defect bar as `Analyze-Driver.ps1`, and uploads the package as the
+`ac3forge-nullsink-driver-testsigned` artifact. It is not a release asset: a test-signed
+driver loads only with test signing on, and shipping it waits on the EV certificate.
+
 ## Analysis and verification
 
 A kernel driver is held to the WDK quality standard, which is two tiers: static analysis of

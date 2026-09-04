@@ -1075,7 +1075,9 @@ worth fixing whichever framework it is on: sample leftovers in the INF (`DRMLeve
 rather than demonstrated because the verification guest runs with memory integrity off. The
 port, what it keeps, its steps and the findings from Phase 4 that carry into it are planned
 and recorded on [their own page](windows-driver-acx.md); it was made the same day. Signing
-waits for it, so it is paid once.
+waits for it, so it is paid once. The driver is built, test-signed and Code-Analysed in CI
+on every push (`_build.yml`'s `windows-driver` job, from the WDK's NuGet packages on
+GitHub's hosted image) and uploaded as an artifact; the dynamic tier stays in the guest.
 
 On how the driver reaches a machine once it is signed: with the installer, not from inside
 the window. The package installs the driver (`pnputil /add-driver /install` on the attested
