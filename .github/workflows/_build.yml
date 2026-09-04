@@ -317,16 +317,16 @@ jobs:
             packageable: true
             release_package: true
             gold_reference: true
-            # The Desktop Atmos Demo (roadmap UX11, apps/windows): built and
+            # AC3Forge Crucible (roadmap UX11/UX12, apps/crucible): built and
             # tested on both Windows legs, packaged on this one (the Package
             # step's own condition already singles out windows-msvc), as its
-            # own archive - see cmake/Packaging.cmake's windemo component. The
+            # own archive - see cmake/Packaging.cmake's crucible component. The
             # null-sink driver is NOT built on this leg: it needs the WDK,
             # which the self-hosted fleet lacks, so it has its own
             # GitHub-hosted job (windows-driver, below) that builds it from
             # the WDK NuGet packages. Still test-signed only, so it stays out
             # of the package until the EV certificate lands (Phase 6).
-            windemo: true
+            crucible: true
 
           - name: "Windows LLVM (clang-cl)"
             runner: ${{ needs.check-runners.outputs.windows_runner_2 }}
@@ -339,7 +339,7 @@ jobs:
             # several things the demo's Qt and WASAPI code touches - but not
             # packaged: this leg carries no release_package (see the Package
             # step's condition).
-            windemo: true
+            crucible: true
 
           # ARM64 - GitHub's hosted windows-11-arm runner (roadmap DR8). Real
           # ARM64 hardware, not emulation. Deliberately NOT routed through
@@ -910,10 +910,10 @@ jobs:
       # windows-msvc-arm64 is excluded: no gui: true on that leg (see its
       # matrix comment above), so there is no Qt kit to install for it here.
       #
-      # modules: the Desktop Atmos Demo's room is drawn with Qt Quick 3D,
+      # modules: the AC3Forge Crucible's room is drawn with Qt Quick 3D,
       # which is not part of the base kit (aqtinstall calls it qtquick3d, and
       # its own shader tooling qtshadertools - both present in the local
-      # C:/Qt/6.8.3/msvc2022_64 kit this pin matches). apps/windows/
+      # C:/Qt/6.8.3/msvc2022_64 kit this pin matches). apps/crucible/
       # CMakeLists.txt treats Quick3D as optional and skips the 3D view with a
       # warning when it is absent, so without these the packaged window would
       # quietly ship with a 2D-only room and the ctest suite would exercise
@@ -1039,8 +1039,8 @@ jobs:
           fi
           # OFF by default in CMakeLists.txt (Windows-only, and a demo rather
           # than part of the library), so the legs that want it ask here.
-          if [ "${{ matrix.windemo }}" = "true" ]; then
-            extra_args+=(-DAC3FORGE_BUILD_WINDEMO=ON)
+          if [ "${{ matrix.crucible }}" = "true" ]; then
+            extra_args+=(-DAC3FORGE_BUILD_CRUCIBLE=ON)
           fi
           if [ -n "$VERSION_TAG_INPUT" ]; then
             extra_args+=(-DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT")
@@ -1082,17 +1082,17 @@ jobs:
       # The window is optional in CMake (Qt6 QUIET, and Quick3D optional
       # inside that), which is right for a source build on a machine with no
       # Qt kit and wrong here: this leg installed the kit on purpose, so a
-      # skipped ac3desk or a 2D-only room means that install broke rather
+      # skipped ac3crucible or a 2D-only room means that install broke rather
       # than a deliberate choice - the same "failing loudly beats degrading
       # quietly" reasoning as the NSIS assert further down.
-      - name: Assert the Desktop Atmos Demo was built (Windows)
-        if: matrix.windemo
+      - name: Assert the AC3Forge Crucible was built (Windows)
+        if: matrix.crucible
         shell: bash
         run: |
           set -euo pipefail
           build="build/config-${{ matrix.preset }}"
           missing=0
-          for exe in ac3desk.exe ac3windemo.exe ac3desk_qmltests.exe; do
+          for exe in ac3crucible.exe ac3crucible-run.exe ac3crucible_qmltests.exe; do
             if [ ! -f "$build/bin/$exe" ]; then
               echo "::error::$exe was not built - was Qt6 found? Check the configure log's warnings."
               missing=1
@@ -1106,7 +1106,7 @@ jobs:
             echo "::error::Qt Quick 3D was not found, so the room's 3D view is missing from this build - the 'Install Qt (prebuilt)' step's modules list is what provides it"
             exit 1
           fi
-          ls -1 "$build/bin/ac3desk.exe" "$build/bin/ac3windemo.exe"
+          ls -1 "$build/bin/ac3crucible.exe" "$build/bin/ac3crucible-run.exe"
 
       # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
       # lightweight L4 SNR check from the project's original validation-
@@ -1451,26 +1451,26 @@ jobs:
             exit 1
           fi
 
-      # The demo's own archive (cmake/Packaging.cmake's windemo component).
+      # The demo's own archive (cmake/Packaging.cmake's crucible component).
       # Without this the component could stop being packaged - a stale
       # CPACK_COMPONENTS_ALL, a rename, the option not reaching cpack - and
       # the only symptom would be a release quietly missing an asset.
-      - name: Assert the Desktop Atmos Demo was packaged (Windows)
-        if: matrix.windemo && matrix.release_package && (matrix.preset == 'windows-msvc' || inputs.do_package)
+      - name: Assert the AC3Forge Crucible was packaged (Windows)
+        if: matrix.crucible && matrix.release_package && (matrix.preset == 'windows-msvc' || inputs.do_package)
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
-          zips=(packages/ac3forge-desktop-atmos-*.zip)
+          zips=(packages/ac3forge-crucible-*.zip)
           if [ ${#zips[@]} -eq 0 ]; then
-            echo "::error::cpack produced no ac3forge-desktop-atmos-*.zip - the windemo component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake) or its install rules produced nothing (apps/windows/CMakeLists.txt)."
+            echo "::error::cpack produced no ac3forge-crucible-*.zip - the crucible component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake) or its install rules produced nothing (apps/crucible/CMakeLists.txt)."
             ls -1 packages/ || true
             exit 1
           fi
           printf 'packaged: %s\n' "${zips[@]}"
           # A plausible archive with no Qt beside the window is the real
           # failure mode here, not an empty one - see the script's own header.
-          python tools/ci/check_windemo_package.py "${zips[0]}"
+          python tools/ci/check_crucible_package.py "${zips[0]}"
 
       - name: Upload package artifacts
         if: >-
@@ -2862,7 +2862,7 @@ jobs:
         working-directory: rust
         run: cargo fmt --check
 
-  # The Desktop Atmos Demo's null-sink driver (apps/windows/driver, roadmap
+  # The AC3Forge Crucible's null-sink driver (apps/windows/driver, roadmap
   # UX11): an ACX/KMDF kernel driver, built and test-signed the way Microsoft's
   # own driver-samples CI builds theirs - the WDK and SDK as NuGet packages
   # (apps/windows/driver/packages.config) restored into the tree, MSBuild from

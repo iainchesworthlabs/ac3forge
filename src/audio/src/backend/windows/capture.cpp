@@ -722,7 +722,7 @@ std::expected<void, CaptureError> Capture::start_process_loopback(
     // format to ask for. The caller's shape is stated as float32 and the
     // engine converts to it; the buffer duration is documented as
     // irrelevant in this activation mode and 0 is what the tap was proven
-    // with (apps/windows/spikes/README.md, S1).
+    // with (apps/crucible/spikes/README.md, S1).
     WAVEFORMATEXTENSIBLE wave{};
     wave.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
     wave.Format.nChannels = format.channels;

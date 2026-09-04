@@ -553,10 +553,10 @@ components instead of `runtime`) but is best-effort - see `package-macos-univers
 | macOS | arm64 + x86_64 (universal) | macos-llvm + macos-llvm-x64, merged by `package-macos-universal` | `.dmg` | `.zip`, best-effort (see above) |
 | Android (Shield) | arm64 (NDK) | build-android | `.apk` | none - Shield links `ac3::forge`/`ac3::audio` in-tree, it isn't a `find_package(ac3forge)` consumer |
 
-Windows x64 additionally ships the Desktop Atmos Demo as its own
-`ac3forge-desktop-atmos-*-win64.zip` (roadmap UX11,
-[docs/platforms/windows-demo.md](platforms/windows-demo.md)): the `windemo` CPack component -
-`ac3desk.exe`, the `ac3windemo` runner, the driver's install/remove scripts and a Qt runtime of
+Windows x64 additionally ships the AC3Forge Crucible as its own
+`ac3forge-crucible-*-win64.zip` (roadmap UX11,
+[docs/platforms/windows-demo.md](platforms/windows-demo.md)): the `crucible` CPack component -
+`ac3crucible.exe`, the `ac3crucible-run` runner, the driver's install/remove scripts and a Qt runtime of
 its own - packaged by the same `windows-msvc` leg as the row above and picked up by
 `release.yml`'s existing `*.zip` glob. It is a separate download rather than part of the
 `runtime` component, and deliberately absent from the NSIS installer

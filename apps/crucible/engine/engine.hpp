@@ -1,0 +1,148 @@
+#pragma once
+
+#include <cstdint>
+#include <expected>
+#include <memory>
+
+#include "audio_devices.hpp"
+#include "foreground.hpp"
+#include "session_monitor.hpp"
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "ac3/oba/oamd.hpp"
+#include "output_policy.hpp"
+#include "slots.hpp"
+
+// AC3Forge Crucible's engine: everything except the window
+// (docs/platforms/windows-demo.md). One thread runs the frame loop - refresh
+// the session list, tap every application, fold each into its slot, encode,
+// sign, hand the unit to the output stage - and the UI talks to it through
+// the thread-safe commands below and reads back a status snapshot.
+
+namespace ac3::crucible {
+
+struct EngineConfig {
+    // Still "Desktop Atmos", not "Crucible": this matches the endpoint the
+    // driver actually advertises, and apps/windows/driver/ keeps its device
+    // identity until attestation signing lands (docs/crucible/promotion.md,
+    // "Coordination with the driver-signing session"). It moves to "Crucible"
+    // in the same change that renames the INF, so the name is signed once.
+    std::string null_sink_substring = "Desktop Atmos";
+    std::string signing_key_path;  // empty: the environment, then none
+    bool low_latency = false;      // 1-block frames at a bitrate that carries the metadata
+    std::uint32_t bitrate_kbps = 0;  // 0: 448 normal, 1536 low-latency
+    std::optional<OutputMode> pinned;
+    std::string preferred_endpoint_id{};  // the user's choice of endpoint; empty: automatic
+    bool bypass_codec = false;  // headphones/PCM/stereo play the raw frame, not a decode
+    // The machine the engine is built over. Null means "this platform's
+    // own", from platform_services.hpp; tests pass fakes. All three are
+    // separate because a test usually wants to script one of them and let
+    // the others stand still.
+    std::shared_ptr<AudioDevices> devices;
+    // Who is playing sound. Null: the platform's own session monitor.
+    std::shared_ptr<SessionMonitor> sessions;
+    // What is full-screen in front. Null: the platform's own, which on
+    // Wayland is one that reports it cannot tell.
+    std::shared_ptr<Foreground> foreground;
+    // Split (two objects, one per channel) rather than mono, for every
+    // application unless told otherwise per application; and how far
+    // either side of the placed position the pair sits, in room widths.
+    bool split_by_default = false;
+    double split_spread = 0.15;
+    // The width taps open at until the first probe; after each probe the
+    // engine follows the null sink's shared-mode channel count (2, 6 or 8),
+    // so a surround-capable application rendering 7.1 into the driver
+    // reaches the bed by channel rather than as a stereo fold.
+    std::uint16_t tap_channels = 2;
+};
+
+struct AppStatus {
+    AppId app = 0;
+    std::string name;
+    std::string image_path;
+    std::string description;  // the executable's own name for itself, or empty
+    bool active = false;
+    bool has_window = false;  // owns a visible top-level window (see AppSession)
+    bool packaged = false;    // a packaged app, whose window belongs to a host
+    bool has_session = true;  // false: running, listed, nothing to tap (greyed)
+    bool tapped = false;
+    bool fullscreen = false;
+    std::optional<int> slot;  // positioned slot (the first of `width`), or nullopt: in the bed
+    int width = 1;            // 2: split, a left and a right object
+    ac3::oba::Position position{0.5, 0.5, 0.0};
+    // A split pair's two objects: at the standard spread either side of
+    // `position` until one is placed on its own, after which `pair_custom`
+    // is true and these are wherever they were put.
+    ac3::oba::Position left{0.5, 0.5, 0.0};
+    ac3::oba::Position right{0.5, 0.5, 0.0};
+    bool pair_custom = false;
+    double size = 0.0;        // the object's extent, 0 (a point) to 1
+    float level_dbfs = -120.0F;
+};
+
+struct EngineStatus {
+    bool running = false;
+    std::vector<AppStatus> apps;
+    OutputMode mode = OutputMode::kNone;
+    std::string endpoint_name;
+    std::string output_reason;
+    std::vector<EndpointFacts> endpoints;  // what the output stage last probed
+    std::string signing;
+    bool objects_enabled = false;
+    std::uint64_t frames_encoded = 0;
+    std::uint64_t starved_reads = 0;
+    std::uint64_t underruns = 0;
+    double last_frame_ms = 0.0;  // wall time of the last loop iteration: paced by the taps, so it swings around the frame period
+    double encode_ms = 0.0;      // the encoder's own time for that frame
+    double worst_frame_ms = 0.0;
+    std::string last_error;
+    std::uint16_t tap_channels = 0;  // the width every tap is open at
+    bool codec_bypassed = false;     // the last unit took the raw path
+    double tap_backlog_ms = 0.0;     // the deepest tap's unread audio: latency the taps add
+    double sink_queue_ms = 0.0;      // the PCM sink's queue: latency the output adds
+    std::uint64_t catchups = 0;      // frames dropped to keep the sink queue bounded
+};
+
+class Engine {
+public:
+    explicit Engine(EngineConfig config);
+    ~Engine();
+    Engine(const Engine&) = delete;
+    Engine& operator=(const Engine&) = delete;
+
+    [[nodiscard]] std::expected<void, std::string> start();
+    void stop();
+
+    // Commands, safe from any thread; applied at the next frame boundary.
+    void position(AppId app, ac3::oba::Position where);
+    void unposition(AppId app);
+    // Two objects (one per channel) or one for this application.
+    void set_split(AppId app, bool split);
+    // Place one object of a split pair (side 0 left, 1 right) on its own;
+    // the pair is then custom until reset_pair.
+    void position_side(AppId app, int side, ac3::oba::Position where);
+    void reset_pair(AppId app);
+    // The object's extent, 0 (a point) to 1 (the whole room), clamped.
+    void set_size(AppId app, double size);
+    void pin(std::optional<OutputMode> mode);
+    // The endpoint to hear it on (by id; empty for the automatic choice).
+    void prefer_endpoint(std::string id);
+    void set_bypass(bool on);
+    void reprobe();
+    // Loads (or, with an empty path, re-resolves from the environment) the
+    // signing key and rebuilds the encoder, since objects-or-nothing is
+    // decided at construction.
+    void load_signing_key(std::string path);
+    void clear_signing_key();
+
+    [[nodiscard]] EngineStatus status() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+}  // namespace ac3::crucible

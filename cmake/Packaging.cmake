@@ -246,15 +246,15 @@ endif()
 # CMAKE_CROSSCOMPILING branch for why that is the chosen trade).
 set(CPACK_COMPONENTS_ALL runtime library libruntime)
 
-# The Windows Desktop Atmos Demo (roadmap UX11) as a fourth component, and so
+# The Windows AC3Forge Crucible (roadmap UX11) as a fourth component, and so
 # its own archive rather than part of the runtime one: it is Windows-only, it
 # carries a second Qt deployment of its own, and its null-sink driver is still
 # test-signed, so someone downloading ac3cli/ac3gui should not be handed it.
 # Added only when it was actually built, since CPack would otherwise package
 # an empty component; kept out of the NSIS installer for now by
 # cmake/CPackProjectConfig.cmake, which is where that choice is explained.
-if(AC3FORGE_BUILD_WINDEMO AND WIN32)
-    list(APPEND CPACK_COMPONENTS_ALL windemo)
+if(AC3FORGE_BUILD_CRUCIBLE AND WIN32)
+    list(APPEND CPACK_COMPONENTS_ALL crucible)
 endif()
 
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
@@ -324,10 +324,10 @@ set(CPACK_PACKAGE_FILE_NAME
     "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-${CPACK_SYSTEM_NAME}")
 
 set(CPACK_ARCHIVE_RUNTIME_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
-# Named for what it is rather than taking CPack's "-windemo" suffix on the
+# Named for what it is rather than taking CPack's "-crucible" suffix on the
 # base name, the same reasoning as the dev group's override below.
-set(CPACK_ARCHIVE_WINDEMO_FILE_NAME
-    "ac3forge-desktop-atmos-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
+set(CPACK_ARCHIVE_CRUCIBLE_FILE_NAME
+    "ac3forge-crucible-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
 set(CPACK_ARCHIVE_DEV_FILE_NAME "ac3forge-dev-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
 
 include(CPack)

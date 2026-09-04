@@ -2297,7 +2297,8 @@ builds and test-signs the driver itself from the WDK's NuGet packages. The drive
 PortCls to ACX the same day, before attestation signing is paid for, and is verified on both
 tiers there (`docs/platforms/windows-driver-acx.md`). The
 bitstream modes still wait on DR9's receiver. Design and phase record in
-`docs/platforms/windows-demo.md`.
+`docs/platforms/windows-demo.md`. Renamed to **AC3Forge Crucible** and made cross-platform by
+UX12 on 2026-09-04; the names in this record are the ones it shipped with.
 <details markdown="1">
 <summary>Full record</summary>
 

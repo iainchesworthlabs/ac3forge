@@ -1,5 +1,14 @@
 # Windows (Desktop Atmos Demo)
 
+!!! info "Renamed: this application is now AC3Forge Crucible"
+    This page is the design and phase record of the Windows demo, kept under the names it was
+    built with (`ac3desk`, `ac3::windemo`, `apps/windows/`). The application was promoted to a
+    cross-platform product on 2026-09-04 and renamed: it is now **AC3Forge Crucible**,
+    `ac3crucible`, `ac3::crucible`, under `apps/crucible/`. For what it is today, and for the
+    Linux and macOS work, see [the promotion plan](../crucible/promotion.md) and roadmap UX12.
+    Only the null-sink driver keeps its old names, under `apps/windows/driver/`, until
+    attestation signing lands.
+
 !!! note "Status: built, one item open"
     Phases 1 to 5 landed 2026-09-03 (roadmap UX11): the library taps and watcher, the engine
     and its console runner, the `ac3desk` window, the null-sink driver verified in a throwaway

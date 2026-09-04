@@ -135,7 +135,7 @@ add_compile_options("${AC3_FP_CONTRACT_FLAG}")
 # ---------------------------------------------------------------------------
 option(AC3FORGE_BUILD_CLI "Build the ac3cli command-line application" ON)
 option(AC3FORGE_BUILD_GUI "Build the Qt6 Quick GUI application" ON)
-option(AC3FORGE_BUILD_WINDEMO "Build the Windows Desktop Atmos Demo (roadmap UX11; Windows only)" OFF)
+option(AC3FORGE_BUILD_CRUCIBLE "Build the Windows AC3Forge Crucible (roadmap UX11; Windows only)" OFF)
 option(AC3FORGE_BUILD_TESTS "Build the unit test suite" ON)
 # Catch2 is the only build-time dependency. Turn this off to insist it comes
 # from a package manager instead of the network (see tests/CMakeLists.txt).
@@ -441,12 +441,12 @@ if(AC3FORGE_BUILD_GUI)
     add_subdirectory(apps/gui)
 endif()
 
-# The Windows Desktop Atmos Demo (roadmap UX11, docs/platforms/windows-demo.md).
+# The Windows AC3Forge Crucible (roadmap UX11, docs/platforms/windows-demo.md).
 # In-tree like the GUI rather than wrapping the root the way the Android app
 # does, because it shares this toolchain; Windows-only because its platform
-# layer is WASAPI, though its engine core is tested everywhere (tests/windemo).
-if(AC3FORGE_BUILD_WINDEMO AND WIN32)
-    add_subdirectory(apps/windows)
+# layer is WASAPI, though its engine core is tested everywhere (tests/crucible).
+if(AC3FORGE_BUILD_CRUCIBLE AND WIN32)
+    add_subdirectory(apps/crucible)
 endif()
 
 if(AC3FORGE_BUILD_TESTS)

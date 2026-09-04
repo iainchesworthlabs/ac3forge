@@ -105,7 +105,8 @@ The demo was built with the seam in it, which is why this is a promotion rather 
 (`platform/windows/wasapi_devices.cpp`, 146 lines) forwards to `ac3::audio`. The fakes in
 `tests/windemo/fake_devices.hpp` script endpoints and record submissions, so the frame loop,
 the five output routes, the bypass fold and a mid-stream mode switch already run in a plain
-Catch2 process on a Linux CI leg that has no audio hardware. Sixty-eight cases run there today.
+Catch2 process on a Linux CI leg that has no audio hardware. Seventy-two cases run there today,
+with five more driving the window itself where Qt is present.
 
 So the Linux and macOS work is: implement that same factory over PipeWire and over CoreAudio.
 The engine above it does not change.
@@ -188,25 +189,73 @@ The rename, mechanically and completely: `apps/windows/` to `apps/crucible/`, `a
 the `desk`/`windemo` ctest labels to `crucible`, `ac3desk_*.ts` to `ac3crucible_*.ts`, the CPack
 component and its archive name, and `tools/ci/check_windemo_package.py` with them.
 
-**Exit:** all 68 cases green under the new labels; the package check passes against a local
-`cpack`; no occurrence of `windemo`, `ac3desk` or "Desktop Atmos" outside the CHANGELOG and this
-page's history. The driver subtree's own naming is held back — see
+**Exit:** all cases green under the new labels; the package check passes against a local
+`cpack`; no occurrence of `windemo`, `ac3desk` or "Desktop Atmos" outside the CHANGELOG, the
+records, and the driver subtree. The driver's own naming is held back — see
 [Coordination](#coordination-with-the-driver-signing-session).
+
+!!! success "Done 2026-09-04"
+    The tree moved (`apps/windows/{engine,runner,ui,translations,spikes}` to `apps/crucible/`,
+    `tests/windemo/` to `tests/crucible/`), the namespace with it (`ac3::windemo` to
+    `ac3::crucible`, and the window's own `ac3::desk` to `ac3::crucible::ui`), the binaries
+    became `ac3crucible` and `ac3crucible-run`, and the option, CPack component, archive name,
+    coverage script, CI matrix flag and ctest labels (`windemo` and `desk` to `crucible` and
+    `crucible-ui`) followed. Baseline before: 72 `windemo` plus 5 `desk`, full suite green.
+    After: 72 `crucible` plus 5 `crucible-ui`, full suite green in 134 s.
+
+    Three things the rename turned up. **The settings store is not where the application name
+    said it was**: the window sets `setApplicationName("Desktop Atmos")` but the controller
+    builds its `QSettings` with the four-argument constructor and the application name
+    `DesktopAtmos`, no space — so a migration keyed to the displayed name would have quietly
+    lost every signing-key path and endpoint choice. The migration in `ui/main.cpp` uses the
+    four-argument form for the same reason the controller does, which also makes it a no-op
+    under the QML tests' INI isolation. **The About box credited the wrong sample**: it named
+    Microsoft's Simple Audio Sample, true of the PortCls miniport but not of the ACX driver
+    that replaced it on 2026-09-04; corrected to the AudioCodec ACX sample, which is what the
+    driver's own README and version resource say. And **`.github/` was invisible to the first
+    sweep**, because the exclusion list held `.git` and `'.github'.startswith('.git')`; the
+    workflow was rewritten in a second pass.
 
 ### Phase 2: the seams
 
 Extract `SessionMonitor`, `Foreground`, `DefaultDevice` and `VirtualDevice` as interfaces beside
 `AudioDevices`, move the Windows implementations behind them, and add fakes for each to
-`tests/crucible/`.
+`tests/crucible/`. `platform_services.hpp` gains one factory per seam, one
+`platform/<os>/` definition each, and `wasapi_devices()` is renamed
+`platform_audio_devices()` with it, so nothing above the seam names an operating system.
 
-**Exit:** `engine.cpp`, `runner/main.cpp` and the UI controller include no `platform/<os>/`
-header; the engine, the controller and their tests build and run on a Linux CI leg; the four new
-fakes are exercised by at least one case each.
+The fourth seam is a bigger change than the other three and is taken separately, as **Phase 2b**.
+`SessionMonitor`, `Foreground` and `DefaultDevice` are pure relocations: the Windows code moves
+behind an interface and the callers dereference a pointer instead of calling a free function,
+with no change to what anything displays. `VirtualDevice` is not. The UI currently shows
+`testSigningOn`, `memoryIntegrityOn` and `codeIntegrityKnown` as properties of their own, and
+those are facts about a Windows kernel that have no counterpart on either other platform — Linux
+loads a module and macOS has no silent device at all. Generalising the seam therefore means
+changing what the Settings page shows, not merely where it comes from: the three booleans
+collapse into `SilentDeviceState`'s `blocker` and `detail` text, and the QML and its tests move
+with them.
+
+**Exit (2a):** `engine.cpp` and `runner/main.cpp` include no `platform/<os>/` header; the engine
+and its tests build and run on a Linux CI leg; the three new fakes are exercised by at least one
+case each.
+
+**Exit (2b):** the UI controller's *header* includes no `platform/<os>/` header, which is the
+coupling that stops it compiling anywhere else; the Settings page reads `SilentDeviceState`
+rather than three Windows booleans; the QML tests move with it.
 
 ### Phase 3: library, Linux
 
 `Capture::start_process_loopback` and `DeviceWatcher` in the PipeWire backend; `DeviceWatcher`
 in the ALSA backend where it is expressible; the corrected capability strings everywhere.
+
+The mechanism, checked against PipeWire's own documentation rather than assumed: a capture is a
+`pw_stream` in `PW_DIRECTION_INPUT` whose properties carry `PW_KEY_TARGET_OBJECT` set to the
+target node's `PW_KEY_OBJECT_SERIAL` (or its `PW_KEY_NODE_NAME`), connected with
+`PW_STREAM_FLAG_AUTOCONNECT`. Targeting an application's own output node is the per-application
+tap; `PW_KEY_STREAM_CAPTURE_SINK` set to `"true"` is the whole-sink monitor variant, which is
+the ordinary loopback this backend already wants elsewhere. There is a shipped reference for
+the per-application case — OBS's `obs-pipewire-audio-capture` plugin does exactly this — so the
+question for this phase is fitting it to `Capture`'s existing shape, not whether it can be done.
 
 **Exit:** `audio_backend()` reports `process_loopback` and `device_watch` on PipeWire; the
 backend contract test exercises both without touching a device, as it does on Windows; builds
@@ -214,9 +263,11 @@ clean in the WSL2 loop with `-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=O
 
 ### Phase 4: Linux platform half
 
-`platform/linux/`: `pipewire_devices()` behind `AudioDevices`, the registry session monitor, the
-default-sink move and restore, null-sink create and tear-down, and application icons from
-`.desktop` entries and the icon theme. The foreground full-screen check is X11-only and refuses
+`platform/linux/`: `pipewire_devices()` behind `AudioDevices`; the session monitor over the
+PipeWire registry, where a stream node already carries `application.name` and
+`application.process.id`, so the process-tree walk Windows needs has no counterpart here; the
+default-sink move and restore through the `default.audio.sink` metadata key; null-sink create
+and tear-down; and application icons from `.desktop` entries and the icon theme. The foreground full-screen check is X11-only and refuses
 cleanly under Wayland, which has no way for one client to ask about another's windows — a real
 gap, stated in the UI rather than worked around.
 
@@ -240,9 +291,19 @@ be run**; see below.
 ### Phase 6: product qualities
 
 First-run explanation of what the application is about to do to the sound settings; a log export
-that carries no key material; settings migration from the demo's keys; a review pass over the
-six mechanically translated languages; third-party licence notices per platform; and an
-accessibility pass over a UI that has only ever been driven with a mouse.
+that carries no key material; a review pass over the six mechanically translated languages;
+third-party licence notices per platform; and an accessibility pass over a UI that has only ever
+been driven with a mouse.
+
+Settings migration is done early, in Phase 1, because the rename moves the store: the demo kept
+its settings under `ac3forge/DesktopAtmos` and the product keeps them under `ac3forge/Crucible`,
+so without a copy on first run a machine that ran the demo would silently lose its signing-key
+path, endpoint choice and appearance.
+
+One licence notice is already wrong and is corrected with them: the About box credits the driver
+to Microsoft's Simple Audio Sample, which was true of the PortCls miniport but not of the ACX
+driver that replaced it on 2026-09-04. The driver's own README and version resource say
+AudioCodec ACX sample; the window is the one place that still says otherwise.
 
 ### Phase 7: docs
 

@@ -85,7 +85,7 @@ on a 100 ns clock value (QPC converted, in the driver), reports the position at 
 at exactly the nominal rate, says how many packets are owed and when the next completes, and
 never runs backwards, including across a pause, a resume long afterwards, or a timer that
 fires late (a debugger break, a suspended guest), where it owes every missed packet once and
-does not slide the schedule. `tests/windemo/test_nullsink_position.cpp` drives it with
+does not slide the schedule. `tests/crucible/test_nullsink_position.cpp` drives it with
 synthetic clock values under the repository's coverage preset, which is the nearest thing to
 measured coverage a kernel driver can have (kernel code cannot be instrumented with public
 tooling; the plan page says so at length).

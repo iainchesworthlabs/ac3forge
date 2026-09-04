@@ -49,7 +49,7 @@ if(AC3FORGE_ENABLE_COVERAGE)
         # profile runtime has to be named explicitly (it lives in clang's
         # resource directory); and there is no -fno-inline spelling here, a
         # Debug build's /Od already keeps functions intact. Read the result
-        # with tools/checks/coverage_windemo.ps1 (LLVM_PROFILE_FILE,
+        # with tools/checks/coverage_crucible.ps1 (LLVM_PROFILE_FILE,
         # llvm-profdata merge, llvm-cov report).
         # /Od /Ob0 after the release base's /O2 (the last flag wins): the
         # preset is release-based because clang_rt.profile is built against
