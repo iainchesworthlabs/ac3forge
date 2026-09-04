@@ -59,6 +59,11 @@ ac3forge 0.5.0-beta.1
   target:  Windows x86_64 (MSVC 1951)
 ```
 
+A build from past the tag says so in the headline, as semver build metadata: `ac3forge
+0.10.0-beta.1+100` is a hundred commits past `v0.10.0-beta.1` (the `release:` line carries
+git's own describe of it), so it is not mistaken for the tagged release. A tree with
+uncommitted changes adds a `state: dirty` line.
+
 `--version` (or its `-v` alias) is a flag, not one of the thirty-nine commands — it's handled
 before argument parsing and exits immediately. So are `--help` and `-h`, which print the named
 command's own help (or the full listing when no command was named).

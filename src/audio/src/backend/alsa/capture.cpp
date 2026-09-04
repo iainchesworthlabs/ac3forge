@@ -194,6 +194,9 @@ std::string_view describe(CaptureError error) {
         case CaptureError::kFormatUnsupported:
             return "the device offers no sample format this backend can read";
         case CaptureError::kAlreadyRunning: return "capture is already running";
+        case CaptureError::kProcessLoopbackUnavailable:
+            return "per-process loopback capture is not available on ALSA (no per-application tap; PipeWire would be the route)";
+        case CaptureError::kProcessNotFound: return "no process has the requested id";
     }
     return "unknown capture error";
 }
@@ -442,6 +445,19 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
     });
 
     return {};
+}
+
+// Roadmap UX11's per-process tap is a Windows 10 build 20348+ WASAPI
+// activation; nothing here has an equivalent, so the answer is a constant.
+bool process_loopback_available() {
+    return false;
+}
+
+std::expected<void, CaptureError> Capture::start_process_loopback(std::uint32_t,
+                                                                 ProcessLoopbackMode,
+                                                                 ProcessLoopbackFormat,
+                                                                 std::size_t) {
+    return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
 }
 
 }  // namespace ac3::audio

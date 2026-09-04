@@ -25,6 +25,12 @@ const AudioBackend& audio_backend() {
         .spatial = {.available = false,
                    .reason = "this build has no spatial backend: "
                              "ISpatialAudioObjectRenderStream is a Windows-only API"},
+        .process_loopback = {.available = false,
+                             .reason = "per-process loopback capture is a Windows 10 build "
+                                       "20348+ WASAPI feature (AUDIOCLIENT_ACTIVATION_TYPE_"
+                                       "PROCESS_LOOPBACK); no other backend has an equivalent"},
+                .device_watch = {.available = false,
+                         .reason = "no device-notification backend: libasound has no endpoint-change API, so this would be a udev listener, which is not implemented"},
     };
     return kBackend;
 }

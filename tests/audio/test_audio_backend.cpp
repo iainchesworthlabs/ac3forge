@@ -4,6 +4,7 @@
 
 #include "ac3/audio/capture.hpp"
 #include "ac3/audio/audio_backend.hpp"
+#include "ac3/audio/device_watcher.hpp"
 #include "ac3/audio/monitor.hpp"
 #include "ac3/audio/passthrough.hpp"
 #include "ac3/audio/spatial.hpp"
@@ -34,7 +35,8 @@ TEST_CASE("audio_backend reports a reason exactly when a capability is missing",
     const auto& backend = ac3::audio::audio_backend();
 
     for (const auto& capability :
-         {backend.capture, backend.passthrough, backend.monitor, backend.spatial}) {
+         {backend.capture, backend.passthrough, backend.monitor, backend.spatial,
+          backend.process_loopback, backend.device_watch}) {
         if (capability.available) {
             // Nothing to excuse, so nothing to say.
             CHECK(capability.reason.empty());
@@ -161,10 +163,89 @@ TEST_CASE("every capture error describes itself", "[audio-backend][concurrency]"
     using ac3::audio::CaptureError;
     for (const auto error : {CaptureError::kNoBackend, CaptureError::kComFailure,
                              CaptureError::kDeviceNotFound, CaptureError::kFormatUnsupported,
-                             CaptureError::kAlreadyRunning}) {
+                             CaptureError::kAlreadyRunning,
+                             CaptureError::kProcessLoopbackUnavailable,
+                             CaptureError::kProcessNotFound}) {
         const std::string_view text = ac3::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown capture error");
+    }
+}
+
+TEST_CASE("process loopback refusals agree with the reported capability",
+          "[audio-backend][concurrency]") {
+    // Roadmap UX11. Two reports of the same fact have to agree, and the one
+    // refusal that reaches no device - process id 0, which no process ever
+    // has - has to come back with the right code on every platform: "there
+    // is no such tap here" where there is none, "no such process" where
+    // there is. A real process id is never tried: that would open a tap on
+    // a developer's machine and start a capture thread.
+    using ac3::audio::CaptureError;
+    const auto& capability = ac3::audio::audio_backend().process_loopback;
+    CHECK(capability.available == ac3::audio::process_loopback_available());
+
+    ac3::audio::Capture capture;
+    const auto result = capture.start_process_loopback(0);
+    REQUIRE_FALSE(result.has_value());
+    if (capability.available) {
+        CHECK(result.error() == CaptureError::kProcessNotFound);
+    } else {
+        // posix/android have no capture backend at all; alsa/pipewire/macos
+        // have one without a per-process tap. Both are honest answers.
+        CHECK((result.error() == CaptureError::kNoBackend ||
+               result.error() == CaptureError::kProcessLoopbackUnavailable));
+    }
+    CHECK_FALSE(capture.running());
+    CHECK(capture.stats().frames_captured == 0);
+}
+
+TEST_CASE("every device watch error describes itself", "[audio-backend][concurrency]") {
+    using ac3::audio::DeviceWatchError;
+    for (const auto error : {DeviceWatchError::kNoBackend, DeviceWatchError::kComFailure,
+                             DeviceWatchError::kAlreadyRunning}) {
+        const std::string_view text = ac3::audio::describe(error);
+        CHECK_FALSE(text.empty());
+        CHECK(text != "unknown device watch error");
+    }
+}
+
+TEST_CASE("a device watcher that was never started reports so", "[audio-backend][concurrency]") {
+    ac3::audio::DeviceWatcher watcher;
+    CHECK_FALSE(watcher.running());
+    CHECK(watcher.stats().events_delivered == 0);
+    watcher.stop();  // harmless when not running
+    CHECK_FALSE(watcher.running());
+}
+
+TEST_CASE("device watching agrees with the reported capability",
+          "[audio-backend][concurrency]") {
+    // Registering for endpoint notifications needs no endpoint - a machine
+    // with no sound card at all (a CI runner, a container) can still
+    // register and simply never hear anything - so unlike the spatial probe
+    // above this one CAN be exercised for real wherever the backend exists:
+    // start, confirm it is running, refuse a second start, stop, and be
+    // stopped. Nothing here opens a device or makes a sound.
+    using ac3::audio::DeviceWatchError;
+    const auto& capability = ac3::audio::audio_backend().device_watch;
+
+    ac3::audio::DeviceWatcher watcher;
+    const auto started = watcher.start([](const ac3::audio::DeviceChangeEvent&) {});
+    if (capability.available) {
+        REQUIRE(started.has_value());
+        CHECK(watcher.running());
+        const auto again = watcher.start([](const ac3::audio::DeviceChangeEvent&) {});
+        REQUIRE_FALSE(again.has_value());
+        CHECK(again.error() == DeviceWatchError::kAlreadyRunning);
+        watcher.stop();
+        CHECK_FALSE(watcher.running());
+        // And it can go round again: stop() left nothing behind.
+        REQUIRE(watcher.start([](const ac3::audio::DeviceChangeEvent&) {}).has_value());
+        watcher.stop();
+        CHECK_FALSE(watcher.running());
+    } else {
+        REQUIRE_FALSE(started.has_value());
+        CHECK(started.error() == DeviceWatchError::kNoBackend);
+        CHECK_FALSE(watcher.running());
     }
 }
 

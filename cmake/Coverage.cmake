@@ -39,7 +39,43 @@ add_library(ac3_coverage INTERFACE)
 add_library(ac3::coverage ALIAS ac3_coverage)
 
 if(AC3FORGE_ENABLE_COVERAGE)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        # clang-cl (the config-windows-llvm-coverage preset): LLVM's own
+        # source-based coverage rather than gcov, because that is what
+        # clang-cl supports and because llvm-cov reports BRANCH coverage,
+        # which the Windows-only code (apps/windows) has no other way of
+        # getting. Two things differ from the GCC arm: the link step is
+        # MSVC-style and never goes through the compiler driver, so the
+        # profile runtime has to be named explicitly (it lives in clang's
+        # resource directory); and there is no -fno-inline spelling here, a
+        # Debug build's /Od already keeps functions intact. Read the result
+        # with tools/checks/coverage_windemo.ps1 (LLVM_PROFILE_FILE,
+        # llvm-profdata merge, llvm-cov report).
+        # /Od /Ob0 after the release base's /O2 (the last flag wins): the
+        # preset is release-based because clang_rt.profile is built against
+        # the release CRT and a /MDd binary dies in the profile writer at
+        # exit, but attribution wants unoptimised code, as the GCC arm's
+        # Debug build gives it for free.
+        target_compile_options(ac3_coverage INTERFACE
+            -fprofile-instr-generate -fcoverage-mapping /Od /Ob0)
+        execute_process(
+            COMMAND "${CMAKE_CXX_COMPILER}" -print-resource-dir
+            OUTPUT_VARIABLE AC3_CLANG_RESOURCE_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+        file(TO_CMAKE_PATH "${AC3_CLANG_RESOURCE_DIR}" AC3_CLANG_RESOURCE_DIR)
+        find_library(AC3_CLANG_PROFILE_RUNTIME
+            NAMES clang_rt.profile-x86_64 clang_rt.profile-aarch64
+            PATHS "${AC3_CLANG_RESOURCE_DIR}/lib/windows"
+            NO_DEFAULT_PATH)
+        if(NOT AC3_CLANG_PROFILE_RUNTIME)
+            message(FATAL_ERROR
+                "AC3FORGE_ENABLE_COVERAGE with clang-cl needs the profile runtime "
+                "(clang_rt.profile-*.lib) under ${AC3_CLANG_RESOURCE_DIR}/lib/windows; "
+                "it was not found.")
+        endif()
+        target_link_libraries(ac3_coverage INTERFACE "${AC3_CLANG_PROFILE_RUNTIME}")
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         # -fno-inline keeps line/branch attribution accurate for a Debug
         # build's already-unoptimized code; --coverage covers both -fprofile-
         # arcs and -ftest-coverage plus linking the gcov runtime.

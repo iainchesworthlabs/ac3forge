@@ -692,6 +692,28 @@ or both). On macOS capture is input-only: no loopback endpoint is ever enumerate
 `start()` refuses `DeviceKind::kLoopback` outright rather than silently opening a microphone.
 This is what backs `ac3cli record`/`live` and the GUI's live-session tab.
 
+A third way in, `Capture::start_process_loopback(pid, mode, format)` (roadmap UX11), taps what
+one process and its children render and nothing else, whichever endpoint they render to —
+Windows 10 build 20348+'s process-loopback activation, and the piece the
+[Windows Desktop Atmos Demo](../platforms/windows-demo.md) is built on. It differs from an
+endpoint loopback in three ways worth knowing before relying on it: the caller states the
+format (there is no endpoint whose mixer format could be asked for; 48 kHz float stereo is the
+default, eight channels is honoured); a muted audio session taps as silence, because the tap sits
+after session volume; and a tap outlives its process, delivering zeros, so "the process stopped
+playing" has to come from the audio session list rather than from the capture. Refusals are
+`kProcessLoopbackUnavailable` (no such tap on this platform or this Windows build —
+`process_loopback_available()` and `audio_backend().process_loopback` say so up front) and
+`kProcessNotFound`, which the library checks itself because the OS does not.
+
+`ac3/audio/device_watcher.hpp`. `DeviceWatcher` (roadmap UX11) delivers endpoint
+added/removed/state-changed and default-changed events on a callback — Windows'
+`IMMNotificationClient`, one event per physical change (the console role only; Windows would
+otherwise report every default change three times) — so an application that follows the sink can
+re-probe when something is plugged or unplugged instead of polling `enumerate_render_devices()`.
+The callback runs on a platform thread under the watcher's own lock, which is what lets
+`stop()` promise no callback is in flight when it returns; do the minimum there and never stop
+the watcher from inside it. Every non-Windows backend refuses `start()` with `kNoBackend`.
+
 ## Metering: `ac3::analysis`
 
 `ac3/analysis/levels.hpp`. Peak/RMS metering with console ballistics, plus the Gerzon energy

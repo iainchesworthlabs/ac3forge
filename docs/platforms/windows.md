@@ -97,6 +97,46 @@ is deliberately explicit about the difference.
     documented public API was found that hands the source data back. `play` falls back to the
     same `IsFormatSupported` probe here, exactly as it always has.
 
+### Per-process loopback and device notifications (roadmap UX11)
+
+Two more WASAPI paths, both added for the [Windows Desktop Atmos Demo](windows-demo.md) and
+both Windows-only in the backend tree:
+
+- **`Capture::start_process_loopback(pid, mode, format)`** — `ActivateAudioInterfaceAsync`
+  with `AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`, which captures what one process tree
+  renders and nothing else, whichever endpoint it renders to. Needs Windows 10 build 20348 or
+  later; `process_loopback_available()` asks the kernel (`RtlGetVersion`, not the manifest-bound
+  `GetVersionEx`) and `audio_backend().process_loopback` reports the same answer. A
+  process-loopback client has no `GetMixFormat`, so the caller states the format and the engine
+  converts — 48 kHz float at two or eight channels is confirmed. The tap is polled and
+  silence-filled exactly like endpoint loopback, because a quiet process delivers no packets.
+  The library refuses a process id nobody owns (`kProcessNotFound`) because the OS does not: such
+  a tap activates and delivers zeros forever, as does a tap whose process has since exited.
+- **`DeviceWatcher`** — `IMMNotificationClient` registered with the MMDevice enumerator on a
+  worker thread that owns the COM apartment. Default-changed events are delivered for the
+  console role only (the one every sink in this tree opens; the other two roles would report
+  the same change twice more), and property-value changes (a volume nudge, a rename) are
+  dropped as noise. The listener is hand-rolled `IUnknown` rather than a WRL `RuntimeClass`,
+  for the same include-order reason `capture.cpp` spells its GUIDs out by hand.
+
+!!! note "Both confirmed on the development workstation, 2026-09-03"
+    Through the raw WASAPI spike first (`apps/windows/spikes/README.md`, S1: sixteen taps at
+    once, exact separation, the mute and exclusive-mode hazards) and then through these library
+    entry points themselves (`s1_library_tap`), on Windows 11 build 26200. Not yet exercised on
+    a hosted CI runner beyond the device-free contract in `tests/audio/test_audio_backend.cpp`,
+    which does start and stop a real watcher wherever the backend exists.
+
+`MonitorSink::start` also takes a `low_latency` flag, added for the demo's one-block mode: it
+asks `IAudioClient3::GetSharedModeEnginePeriod` for the engine's smallest shared-mode period
+for the stream's format and opens with `InitializeSharedAudioStream` at that, falling back to
+the default period where the interface is missing or the engine refuses the format at that
+size; the other backends take the flag and ignore it. On the workstation's Realtek endpoint
+it changes nothing, and the spike's `period_probe` (`apps/windows/spikes/s5_latency/`) says
+why: the engine answers 480 frames, 10 ms, for the default, fundamental, minimum and maximum
+period alike, for the demo's float format and for the mix format both. `IAudioClient`'s
+"minimum 3 ms" device period is the exclusive-mode floor, not a shared-mode offer. A device
+that offers 2.7 ms will get it; this one does not.
+
 ### Passthrough capture
 
 The reverse direction — a WASAPI endpoint *delivering* IEC 61937 rather than PCM, which is what

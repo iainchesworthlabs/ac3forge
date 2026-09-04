@@ -66,6 +66,15 @@ if (Test-Path $appsRoot) {
 
 $files = Get-ChildItem -Path $scanRoots -Recurse -File -Include '*.h', '*.hpp', '*.cpp', '*.cc', '*.cxx', '*.inl'
 
+# apps/windows/driver/ is Microsoft's Simple Audio Sample under its own MS-PL
+# licence (see its README): a separate kernel-mode work that shares no code
+# with the rest of the tree, kept as close to the sample as possible so its
+# cuts read as a diff. It is written the way Windows drivers are written,
+# include guards and all, and the rule this check holds is about ac3forge's
+# own code selecting platforms in CMake - so the sample is left out.
+$driverRoot = Join-Path $appsRoot 'windows\driver'
+$files = $files | Where-Object { -not $_.FullName.StartsWith($driverRoot, [System.StringComparison]::OrdinalIgnoreCase) }
+
 $violations = @()
 foreach ($file in $files) {
     # Per-file stack tracking ONLY whether each currently-open conditional is

@@ -38,6 +38,8 @@ constexpr IID kIidMmDeviceEnumerator = {  // {a95664d2-9614-4f35-a746-de8db63617
     0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
 constexpr IID kIidAudioClient = {  // {1cb9ad4c-dbfa-4c32-b178-c2f568a703b2}
     0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2}};
+constexpr IID kIidAudioClient3 = {  // {7ed4ee07-8e67-4cd4-8c1a-2b7a5987ad42}
+    0x7ed4ee07, 0x8e67, 0x4cd4, {0x8c, 0x1a, 0x2b, 0x7a, 0x59, 0x87, 0xad, 0x42}};
 constexpr IID kIidAudioRenderClient = {  // {f294acfc-3146-4483-a7bf-addca7c260e2}
     0xf294acfc, 0x3146, 0x4483, {0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2}};
 
@@ -177,7 +179,7 @@ void MonitorSink::stop() {
 std::expected<void, MonitorError> MonitorSink::start(const std::string& device_id,
                                                       std::uint32_t sample_rate,
                                                       std::uint16_t channels,
-                                                      std::uint32_t channel_mask) {
+                                                      std::uint32_t channel_mask, bool low_latency) {
     if (running()) {
         return std::unexpected(MonitorError::kAlreadyRunning);
     }
@@ -237,8 +239,31 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
         return std::unexpected(MonitorError::kComFailure);
     }
 
-    HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                                    default_period, 0, &format.Format, nullptr);
+    // Low latency: IAudioClient3's shared-mode engine period, the smallest
+    // the engine offers for this format (a Windows 10 feature; the
+    // interface is missing on older engines and the call refuses formats
+    // the engine cannot run at that size), else the ordinary initialise at
+    // the default period. Whichever succeeds, the rest is the same stream.
+    HRESULT hr = E_FAIL;
+    if (low_latency) {
+        ComPtr<IAudioClient3> client3;
+        if (SUCCEEDED(client->QueryInterface(kIidAudioClient3, &client3))) {
+            UINT32 default_frames = 0;
+            UINT32 fundamental_frames = 0;
+            UINT32 minimum_frames = 0;
+            UINT32 maximum_frames = 0;
+            if (SUCCEEDED(client3->GetSharedModeEnginePeriod(&format.Format, &default_frames, &fundamental_frames,
+                                                             &minimum_frames, &maximum_frames)) &&
+                minimum_frames > 0) {
+                hr = client3->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, minimum_frames,
+                                                          &format.Format, nullptr);
+            }
+        }
+    }
+    if (FAILED(hr)) {
+        hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                                default_period, 0, &format.Format, nullptr);
+    }
     if (FAILED(hr)) {
         return std::unexpected(MonitorError::kComFailure);
     }

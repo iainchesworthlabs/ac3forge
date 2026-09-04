@@ -21,7 +21,7 @@ cut, just moved out of the way of a first read.
 | VX — Verification and oracles | 19 | 2 | 1 |
 | PF — Performance and portability | 8 | 0 | 0 |
 | AP — Library surface, bindings and v1.0 | 9 | 1 | 2 |
-| UX — Applications | 8 | 0 | 2 |
+| UX — Applications | 9 | 0 | 1 |
 | DR — Distribution, release engineering and hardware | 5 | 1 | 3 |
 
 ## Where this starts from
@@ -2286,6 +2286,103 @@ at real-time cadence, with the same round-trip preview. Playwright covers all of
 hard right must out-carry the left channel — and drives a session through the page UI). The
 canvas drag-by-pointer itself and real microphone hardware remain manual-only checks — see
 `wasm.md`'s "Not yet verified" note.
+</details>
+
+**UX11 (XL)** — Desktop Atmos Demo for Windows: the PC's applications as Atmos objects. Landed
+2026-09-03 through Phase 5: `ac3windemo` and `ac3desk` (six languages), the `Ac3ForgeNullSink`
+driver verified in a guest under Driver Verifier and KASAN, split per application, the 3D room
+and object size. Phase 6's CI landed 2026-09-04: both Windows legs build and test the demo, the
+MSVC leg packages it as `ac3forge-desktop-atmos-*-win64.zip`, and a `windows-driver` job
+builds and test-signs the driver itself from the WDK's NuGet packages. The driver moved from
+PortCls to ACX the same day, before attestation signing is paid for, and is verified on both
+tiers there (`docs/platforms/windows-driver-acx.md`). The
+bitstream modes still wait on DR9's receiver. Design and phase record in
+`docs/platforms/windows-demo.md`.
+<details markdown="1">
+<summary>Full record</summary>
+
+A tray-resident Qt Quick app under `apps/windows/` that installs a virtual null-sink render
+device the way FxSound does, taps every playing application individually through Windows 11
+process loopback capture, lets the user drag each one to a room position, and streams the result
+live as E-AC-3 JOC over HDMI (`PassthroughSink`), falling back to AC-3 5.1 with the positions
+panned (`BedRenderer`), to decoded PCM surround (`MonitorSink`), or to decoded objects through
+Windows Spatial Sound on headphones (`SpatialObjectSink`), switching on device arrival and
+removal. Unpositioned and full-screen-foreground applications form the bed. Library additions
+are two Windows-backend files (a per-process loopback capture kind, a render-device watcher)
+with `kNoBackend` twins elsewhere; everything else is app-level. The driver is a separately
+licensed (MS-PL) derivative of Microsoft's ACX AudioCodec sample, test-signed first,
+attestation-signed later.
+Phase 0 is four spikes, one of which is DR9's Windows row: exclusive-mode bitstream against a
+real receiver from the workstation, waiting on an HDMI cable. Headphone and PCM modes decode
+what was encoded
+rather than bypassing the codec, with a bypass switch so the difference can be shown. S1 ran on
+2026-09-03 (`apps/windows/spikes/`): sixteen taps separate exactly at 48 kHz float, a tap
+opened before the process plays picks it up, applications on an idle virtual endpoint are
+tapped identically while another endpoint is held exclusively, session mute silences a tap, and
+an exclusive open on an endpoint with live shared streams is refused and kills them. S4 the same
+day: fifteen objects plus the per-frame fold and mix at p99 1.8 ms of the 32 ms frame; the
+one-block low-latency frame at 0.7 ms of 5.3 ms but refusing below roughly 1.5 Mb/s. Phase 1
+(library) landed next: `Capture::start_process_loopback` and `DeviceWatcher` in the Windows
+backend, `kNoBackend`/`kProcessLoopbackUnavailable` twins everywhere else, two new
+`AudioBackend` capabilities, and the backend contract test extended to cover both without
+touching a device. Phase 2's pure half followed (`apps/windows/engine/`, namespace
+`ac3::windemo`, `option(AC3FORGE_BUILD_WINDEMO)` default OFF): the slot plan (ten positioned
+plus a five-slot speaker-pinned bed, since `AtmosEncoder` has no bed input), the bed mixer and
+mono fold, placement smoothing, and the output-mode policy carrying the S1 rule; all four
+compile into `ac3tests` on every platform (`tests/windemo/`, 37 cases then; all six files,
+the tap pool and output stage included, 59 cases today). Then the Windows half
+and the frame loop: a process-tree session monitor (which leaves the engine's own output
+session out), the tap pool, the output stage with its five routes, the signing hook, the
+engine, and `ac3windemo`, a console runner that met the phase's exit criterion short of a
+receiver: positions on stdin, an application tapped and moved between a slot and the bed,
+real-time cadence, decoded stereo out. Bitstream and spatial modes await hardware. Phase 3
+followed the same day: `ac3desk`, the Qt Quick window (module `Ac3ForgeDesk`), built to a
+design canvas after a human-factors pass; it shares the GUI's Theme and rail components by
+configure-time rewrite rather than copy, its `LanguageManager` (now taking a translation
+basename) and its six-language set, mechanically translated, following the Windows locale
+with an override in Settings. Verified by window captures in four languages. Phase 4's driver
+is built, installed and verified in a VMware guest: `apps/windows/driver/`, cut to one
+7.1/48 kHz render endpoint that discards what it is given ("Speakers (Desktop Atmos)",
+`ROOT\Ac3ForgeNullSink`), test-signed with `inf2cat` and `infverif` clean; loading it needs
+test signing on and memory integrity off. So it was installed and exercised in a throwaway
+VMware guest (`apps/windows/driver-vm/`, Windows 11 Pro 25H2, build 26200): the endpoint
+appears, takes the default role and renders, and `Verify-Driver.ps1` runs the same install
+under Driver Verifier and the KMDF framework verifier and, with `-Kasan`, on a KASAN kernel,
+where a throwaway build with a deliberate one-past-the-end pool read proves the sanitizer
+live (`0x50` under special pool, `0x1F2 KASAN_ILLEGAL_ACCESS` with KASAN alone). It began as
+Microsoft's Simple Audio Sample, a PortCls/WaveRT miniport, and was **ported to ACX** on
+2026-09-04 after a review of whether it was the right kind of thing at all
+(the plan and record: `docs/platforms/windows-driver-acx.md`): ACX 1.1 on KMDF, derived from
+the AudioCodec sample, about 1,900 lines in place of 9,700, on the framework Microsoft
+recommends for new audio drivers and as a pure WDF driver, so Driver Verifier's DDI
+compliance checking - which a PortCls miniport cannot pass - and its code-integrity checks
+are part of the run. Nothing the demo or the scripts see changed. Its position and timing
+simulation is now a kernel-free header with nine Catch2 cases of its own, which is as close
+to measured coverage as kernel code gets; a failed device start records the call that failed
+under its service key; `install.ps1` and `remove.ps1` create and remove the device through
+SetupAPI and `pnputil`, needing nothing beyond Windows. Both tiers are clean on the ACX
+driver: Code Analysis at the driver rule set with no defects, CodeQL `mustfix` and
+`recommended` with no waivers, the DVL, and the dynamic exercise with 132 of 132 special-pool
+allocations accounted for and no bugcheck - which caught one real bug on its first run, paged
+stream code holding a spin lock (`0xD1`). Phase 5's fast follows all landed on 2026-09-03: test remediation
+(`ac3desk_qmltests`, five Qt Quick Test suites; an `AudioDevices` seam with fakes in
+`tests/windemo/` so the tap pool and output stage run under Catch2; a clang-cl arm in
+`cmake/Coverage.cmake`, the `config-windows-llvm-coverage` preset and
+`tools/checks/coverage_windemo.ps1`, first figures 72% of lines and 60% of branches over
+`apps/windows`); spike S5's end-to-end latency (about 127 ms tap to tap in normal mode and
+110 ms in low latency, 19 ms of it the measuring tap; `MonitorSink::start` gained
+`low_latency`, which asks IAudioClient3 for the engine's smallest shared-mode period, though
+the workstation's Realtek endpoint offers only 10 ms); split per application (a stereo
+application as a pair of objects either side of its position); the 3D room (Qt Quick 3D,
+when the kit has it); and per-application size, carried into the object's OAMD extent. Phase
+6 as of 2026-09-04: this record, the CHANGELOG entry and the plan page's rewrite are done,
+and so is CI - both Windows legs build the window, the runner and its Qt Quick Test suites
+and run the demo's tests, the MSVC leg packages
+`ac3forge-desktop-atmos-<version>-win64.zip` as a release asset of its own, and a
+GitHub-hosted `windows-driver` job builds, test-signs and Code-Analyses the driver from the
+WDK's NuGet packages, uploading it as an artifact rather than a release asset while it is
+test-signed. Attestation signing through an EV certificate remains, and S2's bitstream run
+against a receiver still waits on the HDMI cable (DR9).
 </details>
 
 ### Considering

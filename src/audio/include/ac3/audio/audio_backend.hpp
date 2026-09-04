@@ -56,6 +56,18 @@ struct AudioBackend {
     // SpatialError::kNoSpatialFormat, exactly parallel to passthrough's
     // per-device kFormatRejected split.
     Capability spatial;
+    // Tapping one process's rendered audio on its own, whichever endpoint it
+    // renders to: Capture::start_process_loopback (roadmap UX11). Separate
+    // from `capture` because a platform with an ordinary loopback path can
+    // still lack a per-process one - and Windows itself does, before build
+    // 20348 - so this is the one report that depends on the machine the
+    // build is RUNNING on, not just the one it was compiled for. The same
+    // answer, as a bool, is process_loopback_available().
+    Capability process_loopback;
+    // Being told when an endpoint arrives, leaves, changes state or becomes
+    // the default, rather than polling for it: ac3::audio::DeviceWatcher
+    // (roadmap UX11).
+    Capability device_watch;
 };
 
 [[nodiscard]] const AudioBackend& audio_backend();

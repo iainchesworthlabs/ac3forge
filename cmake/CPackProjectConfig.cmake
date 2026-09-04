@@ -36,3 +36,17 @@ endif()
 if(CPACK_GENERATOR STREQUAL "DEB" OR CPACK_GENERATOR STREQUAL "RPM")
     set(CPACK_COMPONENTS_GROUPING IGNORE)
 endif()
+
+# NSIS: the Windows installer keeps carrying exactly what it carries today.
+# CPACK_NSIS_COMPONENT_INSTALL is off (see Packaging.cmake), which makes that
+# generator monolithic - it installs every component in CPACK_COMPONENTS_ALL
+# into one installer - so the Desktop Atmos Demo would otherwise land inside
+# the ac3cli/ac3gui installer the moment AC3FORGE_BUILD_WINDEMO is on for a
+# packaging build. It ships as its own archive instead while its driver is
+# test-signed and the demo is a demonstration rather than a product; the
+# intended end state is the opposite (the installer installs the demo and
+# its signed driver, and removes them on uninstall), and this is the one
+# line to delete when that lands.
+if(CPACK_GENERATOR STREQUAL "NSIS")
+    list(REMOVE_ITEM CPACK_COMPONENTS_ALL windemo)
+endif()

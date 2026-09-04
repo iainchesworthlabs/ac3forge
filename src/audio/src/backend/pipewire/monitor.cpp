@@ -193,7 +193,7 @@ void MonitorSink::stop() {
 std::expected<void, MonitorError> MonitorSink::start(const std::string& device_id,
                                                       std::uint32_t sample_rate,
                                                       std::uint16_t channels,
-                                                      std::uint32_t /*channel_mask*/) {
+                                                      std::uint32_t /*channel_mask*/, bool /*low_latency*/) {
     // channel_mask is a WASAPI speaker mask with no PipeWire counterpart -
     // see the ALSA backend's identical note on this parameter. Accepted and
     // ignored rather than removed, since the header is shared.

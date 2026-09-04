@@ -146,7 +146,7 @@ void MonitorSink::stop() {
 std::expected<void, MonitorError> MonitorSink::start(const std::string& device_id,
                                                       std::uint32_t sample_rate,
                                                       std::uint16_t channels,
-                                                      std::uint32_t /*channel_mask*/) {
+                                                      std::uint32_t /*channel_mask*/, bool /*low_latency*/) {
     // channel_mask is a WASAPI speaker mask with no HAL counterpart - a HAL
     // stream carries a channel COUNT and the driver's own documented
     // channel order, the same reason platform/alsa/monitor.cpp also accepts

@@ -25,7 +25,7 @@ MonitorSink::MonitorSink() : impl_(nullptr) {}
 MonitorSink::~MonitorSink() = default;
 
 std::expected<void, MonitorError> MonitorSink::start(const std::string&, std::uint32_t,
-                                                      std::uint16_t, std::uint32_t) {
+                                                      std::uint16_t, std::uint32_t, bool /*low_latency*/) {
     return std::unexpected(MonitorError::kNoBackend);
 }
 
