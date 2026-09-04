@@ -1052,11 +1052,26 @@ platform plugin, and the `QtQuick`/`QtQuick3D` QML modules. It runs in CI and ag
 `cpack` the same way. Verified on 2026-09-04 by extracting that archive somewhere clean and
 running the window from it: it starts, the room draws in 3D, and the signal path reads.
 
-Two things are deliberately not in CI. The driver is not built there: it needs the WDK or
-EWDK, which no runner image carries, and it is test-signed, so it stays a local build with its
-own analysis and VM verification (see "Analysis and verification" above). And the NSIS
-installer still carries exactly what it carried before - the demo is a separate download while
-its driver cannot load on a normal machine.
+The driver is built in CI too, since later the same day: `_build.yml`'s `windows-driver` job
+restores the WDK and SDK as NuGet packages (`apps/windows/driver/packages.config`, the same
+kit build number the EWDK carries) and builds and test-signs the package with MSBuild from
+the runner's own Visual Studio, which is where the two pieces the packages do not carry come
+from - the "Windows Driver Kit" component, meaning the `WindowsKernelModeDriver10.0` toolset,
+and the Spectre-mitigated libraries. That is why the job is GitHub-hosted rather than a leg
+of the `build` matrix: the self-hosted fleet has neither, and none of that matrix's steps
+(CMake, ctest, cpack, the gold-reference gate) mean anything for a `.sys`. It gates on the
+package being complete and on Code Analysis at the driver rule set reporting zero defects,
+the same bar `Analyze-Driver.ps1` holds locally, and uploads the result as the
+`ac3forge-nullsink-driver-testsigned` artifact. First run 2026-09-04: green in two and a half
+minutes, VS 2026 Enterprise with MSVC 14.51 on the image, five reports and no defects.
+CodeQL's driver pack and the DVL are not in the job - they need the CodeQL CLI and the
+`microsoft/windows-drivers` pack downloaded - and the dynamic tier cannot be: Driver Verifier
+and KASAN need the throwaway guest and a reboot. Both stay local, in
+`Analyze-Driver.ps1` and `driver-vm/`.
+
+One thing is still deliberately not in CI: the driver is not a release asset, and the NSIS
+installer carries exactly what it carried before - the demo is a separate download while its
+driver is test-signed and so cannot load on a normal machine.
 
 One item remains: the EV certificate and attestation step, after which the driver joins the
 package, the installer installs both, and the demo's Settings page loses its install buttons.

@@ -2291,9 +2291,11 @@ canvas drag-by-pointer itself and real microphone hardware remain manual-only ch
 **UX11 (XL)** — Desktop Atmos Demo for Windows: the PC's applications as Atmos objects. Landed
 2026-09-03 through Phase 5: `ac3windemo` and `ac3desk` (six languages), the `Ac3ForgeNullSink`
 driver verified in a guest under Driver Verifier and KASAN, split per application, the 3D room
-and object size. Phase 6's CI landed 2026-09-04 (both Windows legs build and test the demo, the
-MSVC leg packages it as `ac3forge-desktop-atmos-*-win64.zip`); before attestation signing the
-driver moves from PortCls to ACX, planned in `docs/platforms/windows-driver-acx.md`. The
+and object size. Phase 6's CI landed 2026-09-04: both Windows legs build and test the demo, the
+MSVC leg packages it as `ac3forge-desktop-atmos-*-win64.zip`, and a `windows-driver` job
+builds and test-signs the driver itself from the WDK's NuGet packages. The driver moved from
+PortCls to ACX the same day, before attestation signing is paid for, and is verified on both
+tiers there (`docs/platforms/windows-driver-acx.md`). The
 bitstream modes still wait on DR9's receiver. Design and phase record in
 `docs/platforms/windows-demo.md`.
 <details markdown="1">
@@ -2308,7 +2310,8 @@ Windows Spatial Sound on headphones (`SpatialObjectSink`), switching on device a
 removal. Unpositioned and full-screen-foreground applications form the bed. Library additions
 are two Windows-backend files (a per-process loopback capture kind, a render-device watcher)
 with `kNoBackend` twins elsewhere; everything else is app-level. The driver is a separately
-licensed (MS-PL) Simple Audio Sample derivative, test-signed first, attestation-signed later.
+licensed (MS-PL) derivative of Microsoft's ACX AudioCodec sample, test-signed first,
+attestation-signed later.
 Phase 0 is four spikes, one of which is DR9's Windows row: exclusive-mode bitstream against a
 real receiver from the workstation, waiting on an HDMI cable. Headphone and PCM modes decode
 what was encoded
@@ -2338,21 +2341,30 @@ design canvas after a human-factors pass; it shares the GUI's Theme and rail com
 configure-time rewrite rather than copy, its `LanguageManager` (now taking a translation
 basename) and its six-language set, mechanically translated, following the Windows locale
 with an override in Settings. Verified by window captures in four languages. Phase 4's driver
-is built, installed and verified in a VMware guest: `apps/windows/driver/`, Microsoft's Simple
-Audio Sample under its own MS-PL licence, cut to one 7.1/48 kHz render endpoint that discards
-what it is given
-("Speakers (Desktop Atmos)", `ROOT\Ac3ForgeNullSink`), test-signed under the Enterprise WDK
-with `inf2cat` and `infverif` clean; loading it needs test signing on and memory integrity off.
-So it was installed and exercised in a throwaway VMware guest (`apps/windows/driver-vm/`,
-Windows 11 Pro 25H2, build 26200): the endpoint appears, takes the default role and renders,
-and `Verify-Driver.ps1` runs the same install under Driver Verifier's standard checks plus the
-KMDF flags and the KMDF framework verifier (111 of 111 special-pool allocations accounted
-for, no bugcheck) and, with `-Kasan`, on a KASAN kernel, where a throwaway build with a
-deliberate one-past-the-end pool read proved the sanitizer live (`0x50` under special pool,
-`0x1F2 KASAN_ILLEGAL_ACCESS` with KASAN alone); the exercise reaches three concurrent streams,
-surprise removal under a live stream and a reinstall from scratch. The static tier
-(`Analyze-Driver.ps1`: Code Analysis with the driver rule set, CodeQL's `windows-drivers`
-pack, the DVL) is clean. Phase 5's fast follows all landed on 2026-09-03: test remediation
+is built, installed and verified in a VMware guest: `apps/windows/driver/`, cut to one
+7.1/48 kHz render endpoint that discards what it is given ("Speakers (Desktop Atmos)",
+`ROOT\Ac3ForgeNullSink`), test-signed with `inf2cat` and `infverif` clean; loading it needs
+test signing on and memory integrity off. So it was installed and exercised in a throwaway
+VMware guest (`apps/windows/driver-vm/`, Windows 11 Pro 25H2, build 26200): the endpoint
+appears, takes the default role and renders, and `Verify-Driver.ps1` runs the same install
+under Driver Verifier and the KMDF framework verifier and, with `-Kasan`, on a KASAN kernel,
+where a throwaway build with a deliberate one-past-the-end pool read proves the sanitizer
+live (`0x50` under special pool, `0x1F2 KASAN_ILLEGAL_ACCESS` with KASAN alone). It began as
+Microsoft's Simple Audio Sample, a PortCls/WaveRT miniport, and was **ported to ACX** on
+2026-09-04 after a review of whether it was the right kind of thing at all
+(the plan and record: `docs/platforms/windows-driver-acx.md`): ACX 1.1 on KMDF, derived from
+the AudioCodec sample, about 1,900 lines in place of 9,700, on the framework Microsoft
+recommends for new audio drivers and as a pure WDF driver, so Driver Verifier's DDI
+compliance checking - which a PortCls miniport cannot pass - and its code-integrity checks
+are part of the run. Nothing the demo or the scripts see changed. Its position and timing
+simulation is now a kernel-free header with nine Catch2 cases of its own, which is as close
+to measured coverage as kernel code gets; a failed device start records the call that failed
+under its service key; `install.ps1` and `remove.ps1` create and remove the device through
+SetupAPI and `pnputil`, needing nothing beyond Windows. Both tiers are clean on the ACX
+driver: Code Analysis at the driver rule set with no defects, CodeQL `mustfix` and
+`recommended` with no waivers, the DVL, and the dynamic exercise with 132 of 132 special-pool
+allocations accounted for and no bugcheck - which caught one real bug on its first run, paged
+stream code holding a spin lock (`0xD1`). Phase 5's fast follows all landed on 2026-09-03: test remediation
 (`ac3desk_qmltests`, five Qt Quick Test suites; an `AudioDevices` seam with fakes in
 `tests/windemo/` so the tap pool and output stage run under Catch2; a clang-cl arm in
 `cmake/Coverage.cmake`, the `config-windows-llvm-coverage` preset and
@@ -2363,10 +2375,14 @@ pack, the DVL) is clean. Phase 5's fast follows all landed on 2026-09-03: test r
 the workstation's Realtek endpoint offers only 10 ms); split per application (a stereo
 application as a pair of objects either side of its position); the 3D room (Qt Quick 3D,
 when the kit has it); and per-application size, carried into the object's OAMD extent. Phase
-6 as of 2026-09-03: this record, the CHANGELOG entry and the plan page's rewrite are done;
-the demo on the self-hosted Windows runners and attestation signing through an EV
-certificate remain, and S2's bitstream run against a receiver still waits on the HDMI cable
-(DR9).
+6 as of 2026-09-04: this record, the CHANGELOG entry and the plan page's rewrite are done,
+and so is CI - both Windows legs build the window, the runner and its Qt Quick Test suites
+and run the demo's tests, the MSVC leg packages
+`ac3forge-desktop-atmos-<version>-win64.zip` as a release asset of its own, and a
+GitHub-hosted `windows-driver` job builds, test-signs and Code-Analyses the driver from the
+WDK's NuGet packages, uploading it as an artifact rather than a release asset while it is
+test-signed. Attestation signing through an EV certificate remains, and S2's bitstream run
+against a receiver still waits on the HDMI cable (DR9).
 </details>
 
 ### Considering
