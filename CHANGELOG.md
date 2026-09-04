@@ -120,6 +120,16 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   gold-reference gate itself fails — because the 18 dB surround still cleared the scalar 17 dB.
   `tools/ci` gains a unit-test suite, run by `ci.yml`'s script-lint job alongside
   `tools/checks`.
+- **`ac3cli decode … bap-census=` silently wrote nothing for E-AC-3 input.** `run_decode_eac3`
+  wired the per-block trace in and accumulated it into the census for every access unit, but never
+  wrote the result — so the flag was accepted, the trace cost was paid, and no file appeared, with
+  exit status 0. The AC-3 path had always written it. That is the exact failure the writer's own
+  contract refuses (a census is evidence a CI check gates on, and a decode asked for one that
+  silently produces none leaves that check passing on a stale file from a previous run), and it
+  was reachable from the moment the option landed, since `BapCensus` has carried an
+  `Eac3AccessUnitTrace` overload — one that folds an access unit's substreams together by stream
+  index — from the start. Both paths now write at the same point in the sequence. Covered by a CLI
+  test over single- and multi-substream E-AC-3, with the AC-3 case alongside as a control.
 - Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte budget, so a
   short stream measured 6×/3×/2× its nominal bit rate — each shortened frame carried a
   full-length frame's bytes. CBR frames now take `frame_words`' documented per-block scaling,

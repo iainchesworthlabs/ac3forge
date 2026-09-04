@@ -3822,3 +3822,114 @@ TEST_CASE("cli: unspdif reads the carrier from stdin", "[cli][unspdif]") {
                                 std::istreambuf_iterator<char>{}};
     CHECK(got == expected);
 }
+
+// bap-census= is an E-AC-3 request as much as an AC-3 one. BapCensus carries
+// an observe() overload taking an Eac3AccessUnitTrace - one that deliberately
+// folds an access unit's substreams together by stream index - and
+// run_decode_eac3 wires the trace in and accumulates it per access unit. What
+// it did not do was WRITE the result: the flag was accepted, the per-block
+// trace cost was paid, and no file appeared, with exit status 0.
+//
+// That is precisely the failure write_bap_census's own comment refuses for the
+// AC-3 path ("a decode that was asked for it and silently produced none would
+// leave that check passing on a stale file from a previous run") - and it is
+// worse from a census, whose entire job is to be the evidence a gate trusts.
+// So the assertion here is not just that a file appeared but that it carries
+// counts: an empty document would satisfy fs::exists while telling a gate
+// nothing.
+TEST_CASE("bap-census= writes a populated census for E-AC-3 input, not only AC-3",
+          "[cli][decode][bap-census]") {
+    const auto dir = scratch_dir();
+
+    // The census schema is fixed and flat (BapCensus::to_json), so the first
+    // integer after a field's name is that field's value - enough to assert on
+    // without pulling a JSON parser into a CLI test. A missing field comes
+    // back absent rather than as zero, which keeps "counted nothing" and
+    // "never written" distinguishable; that difference is the whole point.
+    const auto field = [](const std::string& text,
+                          const std::string& name) -> std::optional<std::uint64_t> {
+        const auto key = "\"" + name + "\": ";
+        const auto at = text.find(key);
+        if (at == std::string::npos) {
+            return std::nullopt;
+        }
+        std::uint64_t value = 0;
+        const auto* const first = text.data() + at + key.size();
+        if (std::from_chars(first, text.data() + text.size(), value).ec != std::errc{}) {
+            return std::nullopt;
+        }
+        return value;
+    };
+
+    // "bins" is stream 0's, the first full-bandwidth channel - to_json emits
+    // the streams in order, so the first occurrence is the first stream's, and
+    // a stream that was observed at all has a non-zero bin total.
+    const auto check_populated = [&](const fs::path& census) {
+        REQUIRE(fs::exists(census));
+        const auto text = read_log(census);
+        INFO(text);
+        CHECK(field(text, "schema") == std::optional<std::uint64_t>{1});
+        const auto frames = field(text, "frames");
+        REQUIRE(frames.has_value());
+        CHECK(*frames > 0);
+        const auto bins = field(text, "bins");
+        REQUIRE(bins.has_value());
+        CHECK(*bins > 0);
+        const auto zero_bit_bins = field(text, "zero_bit_bins");
+        REQUIRE(zero_bit_bins.has_value());
+        CHECK(*zero_bit_bins <= *bins);
+    };
+
+    SECTION("a single-substream E-AC-3 decode") {
+        const auto ec3 = dir / "census_eac3.ec3";
+        const auto wav = dir / "census_eac3.wav";
+        const auto census = dir / "census_eac3.json";
+        const auto log = dir / "census_eac3.log";
+        fs::remove(census);
+        REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 448 1000 50", log) == 0);
+        const auto rc = run_cli("decode \"" + ec3.string() + "\" \"" + wav.string() +
+                                    "\" bap-census=\"" + census.string() + "\"",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        check_populated(census);
+    }
+
+    SECTION("an immersive programme, whose dependent substreams fold into one census") {
+        // 7.1.4 is an independent substream plus dependents, so this covers
+        // the branch that is E-AC-3's alone: observe(Eac3AccessUnitTrace)
+        // walking substreams() rather than a single frame's blocks. The
+        // folding is by stream index, so the document still reports one slot
+        // per coded stream and not one per substream.
+        const auto ec3 = dir / "census_eac3_714.ec3";
+        const auto wav = dir / "census_eac3_714.wav";
+        const auto census = dir / "census_eac3_714.json";
+        const auto log = dir / "census_eac3_714.log";
+        fs::remove(census);
+        REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 768 440 50 714", log) == 0);
+        const auto rc = run_cli("decode \"" + ec3.string() + "\" \"" + wav.string() +
+                                    "\" bap-census=\"" + census.string() + "\"",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        check_populated(census);
+    }
+
+    SECTION("the AC-3 path, which already worked - the two are meant to behave alike") {
+        // The control. Without it a regression that silenced BOTH paths would
+        // leave this test case failing with no indication that the flag, not
+        // the E-AC-3 wiring, was what broke.
+        const auto ac3 = dir / "census_ac3.ac3";
+        const auto wav = dir / "census_ac3.wav";
+        const auto census = dir / "census_ac3.json";
+        const auto log = dir / "census_ac3.log";
+        fs::remove(census);
+        REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 448 1000 50 stereo", log) == 0);
+        const auto rc = run_cli("decode \"" + ac3.string() + "\" \"" + wav.string() +
+                                    "\" bap-census=\"" + census.string() + "\"",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        check_populated(census);
+    }
+}
