@@ -2385,6 +2385,67 @@ test-signed. Attestation signing through an EV certificate remains, and S2's bit
 against a receiver still waits on the HDMI cable (DR9).
 </details>
 
+### In progress
+
+**UX12 (XL)** — Promote the Windows Desktop Atmos Demo to **AC3Forge Crucible**, a desktop
+product on Windows, Linux and macOS. Plan and phase record in `docs/crucible/promotion.md`.
+<details markdown="1">
+<summary>Full record</summary>
+
+UX11 shipped a Windows-only demo named after a trademark it does not own, documented as a
+footnote under Platform notes, with half its engine welded to `platform/windows/` headers.
+Promotion closes those four things.
+
+**The name.** `ac3desk` and "Desktop Atmos Speakers" become `ac3crucible` and "Crucible":
+namespace `ac3::crucible`, option `AC3FORGE_BUILD_CRUCIBLE`, ctest label `crucible`, and the
+CPack component with them. Dolby Atmos is a registered trademark, and using it to name a
+product and a system-wide audio *device* does not survive the move from demo to product.
+Describing the stream as Dolby Atmos where that is factually what it is stays. The endpoint
+name is the sharper of the two, since it is what appears in every user's sound settings, and
+it sits inside the package that attestation signing will sign — so it changes before that is
+paid for, not after.
+
+**The platform breadth.** The application needs four things from an operating system:
+enumerate what is playing, tap each application separately, silence its direct output, and
+bitstream the encoded result. Windows has all four (UX11). Linux through PipeWire has all four
+and needs no driver — the silent device is a `support.null-audio-sink` module load, so the
+signing problem that gates Windows does not exist there at all, and ALSA `iec958` passthrough
+is the one part of this project already confirmed against a real receiver (DR9's Linux row).
+macOS has all four from 14.2 and also needs no driver: `CATapDescription`'s
+`muteBehavior = .mutedWhenTapped` routes a process's audio through the tap instead of to the
+output device, which is the job the Windows null-sink driver exists to do — so no kernel
+extension, no AudioServerPlugIn and no BlackHole-style HAL plugin. Android breaks at silencing,
+since a device cannot be made the system output for other applications and
+`AudioPlaybackCapture` reaches only applications that opted in; a browser breaks at
+enumeration. Neither is a reduced version of this application and both stay out of scope, the
+Shield app already occupying the Android side of the project.
+
+**What is already portable.** `apps/windows/engine/audio_devices.hpp` is an abstract factory —
+`render_devices()` plus `BurstSink`, `PcmSink`, `ObjectSink` and `TapSource` — whose fakes
+already run 68 cases on a Linux CI leg with no audio hardware. Linux and macOS are therefore
+implementations of that same factory rather than a rewrite. Four couplings remain and become
+interfaces beside it: the session monitor and the foreground check in `engine.cpp`, the
+default device in the runner and in the UI controller, and the driver tools in the UI
+controller's *header*, which is the one that stops that controller compiling anywhere else.
+
+**Library additions.** `process_loopback` and `device_watch` for the PipeWire and CoreAudio
+backends, and `device_watch` for ALSA. One capability string is corrected whatever else lands:
+`process_loopback`'s reason on every non-Windows backend reads "no other backend has an
+equivalent", which stopped being true when PipeWire gained per-node capture and macOS shipped
+process taps in 14.2. `spatial` is the one capability with no cross-platform answer — neither
+Linux nor macOS exposes an OS object renderer a third party can hand Atmos objects to — so the
+headphone route decodes and folds on those platforms and the mode table loses its Headphones
+row. The roadmap's existing ruling against an in-repo binaural renderer is not reopened.
+
+**What this will not be able to claim.** No Mac has ever run the CoreAudio backend (DR9) and
+the tap's TCC consent prompt is keyed to code-signing identity and does not fire unsigned
+(DR6), so the macOS phase compiles on CI, unit-tests its device-free logic, and is otherwise
+unrunnable. Wayland gives a client no way to ask about another's windows, so the full-screen
+foreground rule is X11-only and refuses cleanly elsewhere. The Windows driver still loads only
+where test signing is on, and its own subtree is deliberately left un-renamed while signing is
+worked in a separate session.
+</details>
+
 ### Considering
 
 **UX7 (M)** — macOS loopback capture through Core Audio process/system taps. Blocked on a real

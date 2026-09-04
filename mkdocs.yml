@@ -124,6 +124,8 @@ nav:
       - Inspect objects: gui/inspect-objects.md
       - Open stream: gui/open-stream.md
       - Localisation: gui/localisation.md
+  - Crucible guide:
+      - Promotion plan: crucible/promotion.md
   - Performance & quality:
       - Overview: performance-quality.md
       - Performance trend: performance-trend.md
