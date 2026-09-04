@@ -6,6 +6,21 @@
 #   .\Deploy-Desk.ps1 -BuildDir D:\build            deploy and start
 #   .\Deploy-Desk.ps1 -BuildDir D:\build -Shot out.png -Page output
 #                                                   also capture a page inside the guest
+#   .\Deploy-Desk.ps1 -BuildDir D:\build -KeyFile C:\keys\atmos.key `
+#       -ExtraPages room,output,settings,room3d -ShotDir D:\shots `
+#       -Place 'Windows PowerShell=0.75,0.7,0.25'
+#                                                   capture several pages, signing key loaded,
+#                                                   one application placed in each
+#
+# -KeyFile copies the key to the guest (C:\Users\atmos\signing.key, never
+# written to this repo) and points ac3desk's own signing/keyPath setting at
+# it directly in the guest's registry, so every ac3desk process this script
+# starts loads it and Atmos mode shows. (AC3FORGE_SIGNING_KEY_FILE would be
+# the documented alternative, but runProgramInGuest has no reliable way to
+# set an env var for the process it launches on this guest - a cmd.exe /c
+# "set X=Y&& program" wrapper fails outright, even without the key: plain
+# `cmd.exe /c whoami` alone returns exit 1 through runProgramInGuest here.
+# The registry route sidesteps the launcher entirely.)
 #
 # The guest auto-logs in as "atmos" (autounattend.xml), so runProgramInGuest
 # -interactive lands on its desktop; the console is on VNC port 5951
@@ -22,7 +37,20 @@ param(
     # Visual Studio installs when not given.
     [string]$Redist = '',
     [string]$Shot = '',
-    [string]$Page = 'output'
+    [string]$Page = 'output',
+    # A signing key file to copy into the guest and load via the registry
+    # (see the header comment) for every capture and the final start.
+    [string]$KeyFile = '',
+    # Additional pages to capture beyond -Shot/-Page, one PNG per page under
+    # -ShotDir (defaults to the current directory).
+    [string[]]$ExtraPages = @(),
+    [string]$ShotDir = '.',
+    # name=x,y,z[,split] placements applied before every capture (not the
+    # final interactive start), passed straight through to ac3desk's own
+    # --place. See guest\Set-DefaultToNullSink.ps1 to also move the guest's
+    # default output to the driver before capturing, for shots where
+    # "applications play to" should read the real endpoint.
+    [string[]]$Place = @()
 )
 $ErrorActionPreference = 'Stop'
 $vmrun = Join-Path $Workstation 'vmrun.exe'
@@ -75,6 +103,23 @@ Write-Host 'copying the window and the VC++ runtime to the guest'
 & $vmrun @guest copyFileFromHostToGuest $vmx $zip 'C:\Users\atmos\ac3desk.zip' | Out-Null
 & $vmrun @guest copyFileFromHostToGuest $vmx $Redist 'C:\Users\atmos\vc_redist.x64.exe' | Out-Null
 
+$guestKeyPath = ''
+if ($KeyFile) {
+    if (-not (Test-Path $KeyFile)) { throw "no key file at $KeyFile" }
+    Write-Host 'copying the signing key to the guest (never written to this repo)'
+    $guestKeyPath = 'C:\Users\atmos\signing.key'
+    & $vmrun @guest copyFileFromHostToGuest $vmx $KeyFile $guestKeyPath | Out-Null
+    # ac3desk's QSettings organisation/application ("ac3forge"/"DesktopAtmos",
+    # set with the four-argument QSettings constructor in desk_controller.cpp -
+    # note no space, unlike the window's displayed app name) is where
+    # signing/keyPath lives on Windows: HKCU\Software\ac3forge\DesktopAtmos.
+    Invoke-Guest @"
+`$regPath = 'HKCU:\Software\ac3forge\DesktopAtmos\signing'
+New-Item -Path `$regPath -Force | Out-Null
+Set-ItemProperty -Path `$regPath -Name 'keyPath' -Value '$guestKeyPath'
+"@ 'setkey' | ForEach-Object { "  $_" }
+}
+
 Write-Host 'unpacking and installing the runtime'
 Invoke-Guest @'
 Get-Process ac3desk -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -86,11 +131,19 @@ $p = Start-Process -FilePath C:\Users\atmos\vc_redist.x64.exe -ArgumentList '/in
 "endpoints: " + ((Get-PnpDevice -Class AudioEndpoint | Where-Object Status -eq OK | Select-Object -ExpandProperty FriendlyName) -join ' | ')
 '@ 'deploy' | ForEach-Object { "  $_" }
 
-if ($Shot) {
-    Write-Host "capturing --page $Page in the guest"
-    & $vmrun @guest runProgramInGuest $vmx -interactive -activeWindow 'C:\Users\atmos\ac3desk\ac3desk.exe' '--shot' 'C:\Users\atmos\shot.png' '--page' $Page | Out-Null
-    & $vmrun @guest copyFileFromGuestToHost $vmx 'C:\Users\atmos\shot.png' $Shot | Out-Null
-    if (Test-Path $Shot) { "shot: $Shot" } else { 'shot: none' }
+function Capture([string]$page, [string]$outFile) {
+    Write-Host "capturing --page $page in the guest$(if ($guestKeyPath) { ' (signing key loaded)' })"
+    $placeArgs = $Place | ForEach-Object { '--place', $_ }
+    & $vmrun @guest runProgramInGuest $vmx -interactive -activeWindow 'C:\Users\atmos\ac3desk\ac3desk.exe' '--shot' 'C:\Users\atmos\shot.png' '--page' $page @placeArgs | Out-Null
+    & $vmrun @guest copyFileFromGuestToHost $vmx 'C:\Users\atmos\shot.png' $outFile | Out-Null
+    if (Test-Path $outFile) { "  shot: $outFile" } else { "  shot: none ($page)" }
+}
+
+if ($Shot) { Capture $Page $Shot }
+
+if ($ExtraPages) {
+    New-Item -ItemType Directory -Force $ShotDir | Out-Null
+    foreach ($page in $ExtraPages) { Capture $page (Join-Path $ShotDir "$page.png") }
 }
 
 Write-Host 'starting the window on the guest desktop'

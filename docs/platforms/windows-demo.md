@@ -1111,16 +1111,23 @@ how a development machine gets the driver, which is what the block does today.
 
 ## What it looks like
 
-Captured from the running window on the workstation on 2026-09-03 with three tone players
-standing in for applications (`ac3desk --page room --place Game=0.85,0.85,0.3 --place
-Music=0.2,0.25,0 --shot`): Game placed rear-right with height, Music front-left, Chat left in
-the bed, two idle applications alongside.
+The room, 3D room, output and settings shots below are captured from the throwaway
+driver-test VM (2026-09-04), with the driver installed and a signing key loaded, replacing
+earlier captures taken on the workstation against FxSound's stand-in endpoint with no key.
+They show what [Object signing](#object-signing) and
+[the driver](#the-driver-and-its-licence) sections above describe: the "Speakers (Desktop
+Atmos)" endpoint as the default, and the codec running with signed object metadata
+(E-AC-3 JOC, "objects on"). The room in French is still from the workstation, with tone
+players standing in for applications, since the driver and the language are independent of
+each other.
 
-![The room: plan and elevation, two applications placed, one in the bed](screenshots/windows-demo-room.png)
+![The room: a placed application with height, two idle applications in the bed, the real Desktop Atmos endpoint as the default and a signing key loaded](screenshots/windows-demo-room.png)
 
-![The Output page: the mode table, the endpoint probe and the codec path](screenshots/windows-demo-output.png)
+![The 3D room, same session: the placed application as an elevated sphere between the right and right-surround bed speakers](screenshots/windows-demo-room-3d-driver.png)
 
-![The Settings page: latency, codec, signing key, the virtual device and its driver, appearance, behaviour](screenshots/windows-demo-settings.png)
+![The Output page: the mode table, the endpoint probe and the codec path, with the signing key loaded and the codec running E-AC-3 JOC](screenshots/windows-demo-output.png)
+
+![The Settings page: the virtual output device confirmed installed and in use, the signing key loaded, latency, codec, appearance, behaviour](screenshots/windows-demo-settings.png)
 
 ![The room in French, one of the six mechanically translated languages](screenshots/windows-demo-room-fr.png)
 
