@@ -3933,3 +3933,69 @@ TEST_CASE("bap-census= writes a populated census for E-AC-3 input, not only AC-3
         check_populated(census);
     }
 }
+
+// The other half of the same defect. `decode` is the only command that builds
+// a census, but the option parser is effectively global - 88 keys, three of
+// them command-scoped - so `bap-census=` parsed for every command and then did
+// nothing on all but one. `qc … bap-census=out.json` exited 0 having written
+// no file, which is the same silent-no-output trap the E-AC-3 decode path had,
+// and it contradicts this parser's own contract: a key it cannot honour is an
+// error ("unknown option"), not a no-op.
+//
+// The commands below all decode or rewrite a stream, so a caller could
+// plausibly expect a census from any of them; three of them (qc, levels,
+// transcode) really do decode internally. That is the argument for refusing
+// the token rather than quietly accepting it - an option that means something
+// on one command and nothing on its neighbour is how this class of bug starts.
+TEST_CASE("bap-census= is refused by commands that cannot produce one",
+          "[cli][decode][bap-census]") {
+    const auto dir = scratch_dir();
+    const auto ec3 = dir / "census_scope.ec3";
+    const auto log = dir / "census_scope.log";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+
+    // Refused by name, and refused the same way any unrecognised key is - the
+    // point is that the caller is told, not that a particular wording appears.
+    const auto refuses = [&](const std::string& name, const std::string& args) {
+        const auto census = dir / ("census_scope_" + name + ".json");
+        const auto cmd_log = dir / ("census_scope_" + name + ".log");
+        fs::remove(census);
+        const auto rc =
+            run_cli(args + " bap-census=\"" + census.string() + "\"", cmd_log);
+        const auto text = read_log(cmd_log);
+        INFO(name << ":\n" << text);
+        CHECK(rc != 0);
+        CHECK(text.find("bap-census") != std::string::npos);
+        // The real assertion: no silent success, and nothing written.
+        CHECK_FALSE(fs::exists(census));
+    };
+
+    const auto in = "\"" + ec3.string() + "\"";
+    SECTION("commands that decode internally but keep no census") {
+        refuses("qc", "qc " + in);
+        refuses("levels", "levels " + in);
+        refuses("transcode", "transcode " + in + " \"" +
+                                 (dir / "census_scope_tc.ec3").string() + "\"");
+    }
+
+    SECTION("commands that never decode audio at all") {
+        refuses("probe", "probe " + in);
+        refuses("cut", "cut " + in + " \"" + (dir / "census_scope_cut.ec3").string() +
+                           "\" 0 1");
+        refuses("spdif", "spdif " + in + " \"" +
+                             (dir / "census_scope_spdif.wav").string() + "\"");
+    }
+
+    SECTION("decode itself still accepts it - the scoping refuses the others, "
+            "not the one command that implements it") {
+        const auto wav = dir / "census_scope_ok.wav";
+        const auto census = dir / "census_scope_ok.json";
+        fs::remove(census);
+        const auto rc = run_cli("decode " + in + " \"" + wav.string() +
+                                    "\" bap-census=\"" + census.string() + "\"",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        CHECK(fs::exists(census));
+    }
+}

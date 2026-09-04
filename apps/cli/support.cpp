@@ -727,7 +727,17 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
-        if (key == "bap-census") {
+        // Scoped to `decode`, which is the only command that builds a census -
+        // run_decode is reached from nowhere else, and the loudness commands
+        // run their own decode loop that never accumulates one. Unscoped, this
+        // key parsed for every command and then did nothing on all but one, so
+        // `qc … bap-census=x.json` exited 0 having written no file. That reads
+        // as a census of zero evidence rather than as the refusal it should be,
+        // and it is the same silent-no-output trap the E-AC-3 path had. Falling
+        // through instead hands the token to the unknown-option error below,
+        // which is what the rest of this parser already promises for a key it
+        // cannot honour.
+        if (key == "bap-census" && command == "decode") {
             // A path, not a flag: the census is a file a checker reads, and
             // making the caller name it keeps this out of stdout where the
             // decode's own status lines live.
