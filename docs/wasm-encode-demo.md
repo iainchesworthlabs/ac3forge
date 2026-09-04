@@ -23,16 +23,15 @@ makes.
 [Atmos object-authoring page](assets/wasm-encode-demo/atmos/index.html){ target="_blank" } — pan
 real audio objects around a room canvas and encode the result as E-AC-3 + JOC, live
 
-## What's real
+## What this demonstrates
 
-Everything: dropping a `.wav` decodes it through the browser's own `AudioContext`, encodes it
-frame by frame through the real `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder`, measures the same
-PCM with the real `ac3::meta::LoudnessMeter`, and evaluates it against
-[`ac3cli qc`](cli/commands.md)'s own five delivery presets
-(`ac3::meta::evaluate_qc_gate`) — a loud file genuinely fails every preset, a properly-mastered one
-genuinely passes the presets it meets. The round-trip preview decodes the bytes this page just
-produced through the existing [decode demo](wasm-demo.md)'s own module and plays them back — proof
-the encoded stream is real and decodable, not just "some bytes came out."
+Dropping a `.wav` decodes it through the browser's own `AudioContext`, encodes it frame by
+frame through `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder`, measures the same PCM with
+`ac3::meta::LoudnessMeter`, and evaluates it against [`ac3cli qc`](cli/commands.md)'s own five
+delivery presets (`ac3::meta::evaluate_qc_gate`): a loud file fails every preset, a
+properly-mastered one passes the presets it meets. The round-trip preview decodes the bytes
+this page just produced through the existing [decode demo](wasm-demo.md)'s own module and
+plays them back, so the encoded stream can be checked, not just assumed.
 
 ## Source and how it's built
 

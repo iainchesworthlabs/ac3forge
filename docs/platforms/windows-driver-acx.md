@@ -1,7 +1,7 @@
 # The null-sink driver on ACX: plan
 
 The Desktop Atmos Demo's silent output device ([windows-demo.md](windows-demo.md), "Routing:
-two problems, not one") is a kernel driver because Windows offers no other way to make an
+separation and silencing") is a kernel driver because Windows offers no other way to make an
 audio endpoint. The one in the tree today is derived from Microsoft's Simple Audio Sample: a
 PortCls/WaveRT miniport, about 9,700 lines of sample code kept so that a few dozen lines of
 ours can discard what they are given. It works, it is verified to the WDK's standard, and it

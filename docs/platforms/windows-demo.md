@@ -1,33 +1,37 @@
 # Windows (Desktop Atmos Demo)
 
-!!! note "Status: built, Phase 6 open"
-    Phases 1 to 5 of the plan below landed on 2026-09-03 (roadmap UX11): the library taps and
-    watcher, the engine and its console runner, the `ac3desk` window, the null-sink driver
-    verified in a throwaway guest, and the fast follows. Phase 6 is open: of its five items,
-    this page's rewrite from plan to record, the roadmap record and the CHANGELOG entry are
-    done by the documentation pass of 2026-09-03, and CI on the self-hosted Windows runners
-    and attestation signing remain. The page keeps the shape of
-    [the Android page](android.md): the design sections say what the app does, each phase
-    carries its progress record, and the
+!!! note "Status: built, one item open"
+    Phases 1 to 5 landed 2026-09-03 (roadmap UX11): the library taps and watcher, the engine
+    and its console runner, the `ac3desk` window, the null-sink driver verified in a throwaway
+    guest, and the fast follows. Phase 6 (docs, CI, release) is done except for one thing: the
+    driver ships **test-signed only** and will not load on a normal Windows machine yet. It
+    installs and runs in the CI-built package and in the throwaway VM used for verification,
+    where test signing is turned on; a machine with default settings refuses it. That closes
+    once an EV code-signing certificate and attestation submission are in place — see
+    [The driver, and its licence](#the-driver-and-its-licence) below.
+    The driver itself was rewritten on 2026-09-04, from a PortCls miniport to ACX (Microsoft's
+    current framework); see [its own page](windows-driver-acx.md) for that change.
+    The page keeps the shape of [the Android page](android.md): the design sections say what
+    the app does, each phase carries its progress record, and the
     [verification section](#what-has-and-has-not-been-verified) says what has been checked on
     real hardware and what has not.
 
-The Windows demo is a different animal from the Shield app. The Shield app plays one authored
-stream and lets a controller move one object. The Windows app, **Desktop Atmos Demo**
-(`apps/windows/`, working name), installs itself as the PC's output device the way FxSound does,
-takes every application that is playing sound, and lets the user drag each one to a position in
-the room. What comes out over HDMI is a live E-AC-3 JOC (Atmos) stream in which each application
-is an object at the position it was dragged to. Chrome playing a video can be put up and behind
-the seat, a game in the corner, a chat client at the left ear, and an AV receiver renders exactly
-that. A full-screen application becomes the bed.
+This is a demo app, not a shipping product. It works differently from the Shield app: the
+Shield app plays one authored stream and lets a controller move one object, while the Windows
+app, **Desktop Atmos Demo** (`apps/windows/`, working name), installs itself as the PC's output
+device the way FxSound does, takes every application that is playing sound, and lets the user
+drag each one to a position in the room. What comes out over HDMI is a live E-AC-3 JOC (Atmos)
+stream in which each application is an object at the position it was dragged to. Chrome playing
+a video can be put up and behind the seat, a game in the corner, a chat client at the left ear,
+and an AV receiver renders exactly that. A full-screen application becomes the bed.
 
-It is a joke app in the sense that nobody needs their spreadsheet to be overhead. It is a serious
-demo in the sense that it exercises, live and in real time, the parts of the library the Shield
-app does not: per-application capture, a dynamic object count, a headphone path, output
-hot-switching, and the Windows exclusive-mode bitstream path that
-[roadmap DR9](../roadmap.md) still lists as unconfirmed on real hardware.
+Nobody needs their spreadsheet audio to come from overhead; the point of building it is to
+exercise, live and in real time, parts of the library the Shield app does not: per-application
+capture, a dynamic object count, a headphone path, output hot-switching, and the Windows
+exclusive-mode bitstream path that [roadmap DR9](../roadmap.md) still lists as unconfirmed on
+real hardware.
 
-## The user story
+## How it works
 
 1. Install the app. Optionally install its virtual audio device, "Desktop Atmos Speakers".
 2. Pick "Desktop Atmos Speakers" as the Windows default output, or let the app do it with one
@@ -61,7 +65,7 @@ inventory the plan is built on, with the header each item lives in.
 | Shared-mode multichannel PCM sink | exists | `ac3::audio::MonitorSink`, `monitor.hpp` |
 | Windows Spatial Sound object sink (headphones) | exists, confirmed against a real spatial endpoint | `ac3::audio::SpatialObjectSink`, `spatial.hpp` |
 | Whole-endpoint WASAPI loopback capture | exists | `ac3::audio::Capture` with `DeviceKind::kLoopback`, `src/audio/src/backend/windows/capture.cpp` |
-| Decoder with §7.8 downmix for the honest headphone path | exists | `ac3::OutputStage`, `src/forge/include/ac3/decoder/output.hpp` |
+| Decoder with §7.8 downmix for the decoded headphone path | exists | `ac3::OutputStage`, `src/forge/include/ac3/decoder/output.hpp` |
 | Object signing hook pattern | exists, on Android | `apps/android/app/src/main/cpp/shield_signing_hook.hpp` |
 | Draggable room widget, plan plus elevation | exists, in the GUI's Live tab | `apps/gui/qml/Main.qml` (`liveRoom`), `SoundfieldView.qml` |
 | Reference live encode loop | exists, twice | `apps/cli/commands/live_audio.cpp` (`run_live`), `apps/android/.../live_cursor.cpp` |
@@ -77,10 +81,10 @@ Nothing in `src/forge/` changes. The library additions are two Windows-backend f
 `kNoBackend` twins in every other backend, per the
 [platform-tree convention](raspberry-pi.md#why-theres-no-raspberry-pi-specific-code).
 
-## Routing: two problems, not one
+## Routing: separation and silencing
 
-"Register as an output device and see every application's audio separately" is two separate
-problems on Windows, and it helps to keep them apart because they have different solutions.
+Registering as an output device and separating every application's audio are two different
+problems on Windows, with two different solutions.
 
 **Separation** is solved without a driver. Windows 11 (build 20348 and later) has process
 loopback capture: `ActivateAudioInterfaceAsync` with
@@ -153,7 +157,7 @@ rendered *from* the objects, and it knows nothing of OAMD's bed labels (those li
 no such field). So the demo's bed is five objects pinned to the L, R, C, Ls and Rs speaker
 positions with `snap` set, plus `lfe_send` for the LFE, and the bed mixer sums bed applications
 into those five. That leaves **10 slots for positioned applications**, not 15. It is still
-more than a desk needs, and it is honest about what the encoder does.
+more than a desk needs, and matches what the encoder actually does.
 
 **Mono per application** is the default. Each tap's channels are folded to one signal
 (a plain L+R sum for a stereo render; the §7.8 fold for a surround render) before it goes into

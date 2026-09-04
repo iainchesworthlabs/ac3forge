@@ -1,29 +1,30 @@
 # WebAssembly (browser demos and package)
 
-WASM support is not `ac3cli` ported to a browser — it is `ac3::forge` compiled to WebAssembly,
-reached three ways. Two small demo apps under **`apps/wasm/`** run it client-side in a static HTML
-page: a **decode** demo (roadmap F3) — load a real elementary stream, hear the decoded bed play
-through the Web Audio API, watch real per-channel energy on a speaker-ring visualization, and — for
-a stream carrying Atmos objects — watch each object's real decoded position (OAMD) move in a room
-view and solo its own real reconstructed audio (JOC) — and, as of roadmap UX6, an **encode** demo:
-drop a `.wav` file — mono, stereo, 5.1, or the wide E-AC-3 layouts 7.1/5.1.4/7.1.4 — or record
-live from the microphone, and get back a real AC-3/E-AC-3 elementary stream carrying a *measured*
-dialnorm, plus a real BS.1770 loudness/true-peak QC verdict against five delivery presets, and a
-round-trip preview through the decode module; a subdirectory of the same demo
-(`apps/wasm/atmos/`) is an **Atmos object-authoring page** — drag audio objects around a room
-canvas while the page encodes, each drag becoming that frame's OAMD placement in a real
-E-AC-3 + JOC stream. The third surface is **[`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)**,
-the `ac3forge-wasm-decoder` npm package
-(roadmap UX5) that turns the same decode path into a push-frame API, a realtime AudioWorklet
-pipeline, and an hls.js/MSE bridge — a reusable answer to the fact that **Chrome still cannot
-decode EC-3** ([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297)
-is open). The decode demo is a *consumer* of the package (see "What's reused, what's new" below),
-not a parallel implementation of it — see [js/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md)
-for the package's own API docs. The demos exist to prove the codec runs correctly outside a native
-process and to give the documentation site live demos (see [Live decode demo](../wasm-demo.md) and
-[Live encode demo](../wasm-encode-demo.md)) — not to be general-purpose in-browser tools. This page
-covers what is specific to WASM; for the core library and the desktop platforms, see
-[Building from source](../building.md) and the other pages in this section.
+WASM support is `ac3::forge` compiled to WebAssembly, reached three ways. Two small demo apps
+under **`apps/wasm/`** run it client-side in a static HTML page: a **decode** demo (roadmap F3)
+loads an elementary stream, plays the decoded bed through the Web Audio API, and shows
+per-channel energy on a speaker-ring visualization; for a stream carrying Atmos objects, each
+object's decoded position (OAMD) moves in a room view and its reconstructed audio (JOC) can be
+soloed. As of roadmap UX6, an **encode** demo drops a `.wav` file — mono, stereo, 5.1, or the
+wide E-AC-3 layouts 7.1/5.1.4/7.1.4 — or records live from the microphone, and returns an
+AC-3/E-AC-3 elementary stream carrying a measured dialnorm, a BS.1770 loudness/true-peak QC
+verdict against five delivery presets, and a round-trip preview through the decode module; a
+subdirectory of the same demo (`apps/wasm/atmos/`) is an **Atmos object-authoring page** — drag
+audio objects around a room canvas while the page encodes, each drag becoming that frame's OAMD
+placement in an E-AC-3 + JOC stream. The third surface is
+**[`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)**, the
+`ac3forge-wasm-decoder` npm package (roadmap UX5) that turns the same decode path into a
+push-frame API, a realtime AudioWorklet pipeline, and an hls.js/MSE bridge, answering the fact
+that **Chrome still cannot decode EC-3**
+([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297) is open).
+The decode demo consumes the package (see "What's reused, what's new" below) rather than
+reimplementing it — see [js/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md)
+for the package's own API docs. The demos exist to prove the codec runs correctly outside a
+native process and to give the documentation site live demos (see
+[Live decode demo](../wasm-demo.md) and [Live encode demo](../wasm-encode-demo.md)); they are
+not general-purpose in-browser tools. This page covers what is specific to WASM; for the core
+library and the desktop platforms, see [Building from source](../building.md) and the other
+pages in this section.
 
 ## Encode module
 
@@ -51,7 +52,7 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
   why the encode module needs no `pthreads`/`SharedArrayBuffer` — everything above runs on the main
   thread (or a plain `postMessage`-fed Worker) with room to spare, which also means a future
   real-time (microphone-capture) product is a plumbing problem, not a CPU one.
-- **QC is genuinely no new DSP.** `ac3::meta::LoudnessMeter` and `ac3::meta::evaluate_qc_gate`/
+- **QC needs no new DSP.** `ac3::meta::LoudnessMeter` and `ac3::meta::evaluate_qc_gate`/
   `qc_preset()` are the exact functions `ac3cli qc` calls — pure, third-party-dependency-free,
   streaming (`push()` per block). One real nuance: `integrated_lkfs()` is a gated, whole-programme
   measure (`std::nullopt` until BS.1770's absolute gate has seen enough), so the delivery-preset
@@ -267,45 +268,45 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
 
 ## What has and has not been verified
 
-!!! note "Verified in a real browser"
+!!! note "Verified in a browser"
     Both `cmake --preset config-wasm-emscripten` and the full desktop presets configure and build
     clean from the same source tree (confirmed repeatedly across this PR's history, including after
-    merging in the then-current integration branch and #169's own branch directly). A real
-    Chromium instance loading the built page — both standalone and embedded in the actual
-    `mkdocs build --strict`-built docs site — genuinely decodes a bundled 8-second, 3-object Atmos-in-DD+ fixture
+    merging in the then-current integration branch and #169's own branch directly). A Chromium
+    instance loading the built page — both standalone and embedded in the
+    `mkdocs build --strict`-built docs site — decodes a bundled 8-second, 3-object Atmos-in-DD+ fixture
     (`E-AC-3, 48000 Hz, 6 ch (L, C, R, Ls, Rs, LFE), 3 Atmos object(s), 8.0s`, matching what was
-    encoded), plays real audio with `AudioContext.currentTime` genuinely advancing, and paints a
-    speaker-ring visualization driven by real, time-varying per-channel RMS (confirmed non-degenerate
-    per channel, including a genuinely-silent LFE since nothing was routed to it) that changes with
+    encoded), plays audio with `AudioContext.currentTime` advancing, and paints a
+    speaker-ring visualization driven by time-varying per-channel RMS (confirmed non-degenerate
+    per channel, including a silent LFE since nothing was routed to it) that changes with
     playback position and responds to the seek bar.
 
-    **Object decode specifically**: the same object's decoded position genuinely differs between two
-    different playback timestamps (confirmed by direct comparison, not just "the code ran") and the
-    room-view canvas paints real, non-empty content from it. Each "Solo object N" button was confirmed
-    to switch playback to a buffer that (a) sample-for-sample matches `tanh()` of that specific
-    object's own `object_audio`, (b) differs from every other object's audio, and (c) differs from the
-    bed downmix — not just "some audio plays," the *correct* isolated object's audio plays.
+    **Object decode specifically**: the same object's decoded position differs between two
+    different playback timestamps, confirmed by direct comparison rather than just checking the
+    code ran, and the room-view canvas paints non-empty content from it. Each "Solo object N"
+    button was confirmed to switch playback to a buffer that (a) sample-for-sample matches
+    `tanh()` of that specific object's own `object_audio`, (b) differs from every other object's
+    audio, and (c) differs from the bed downmix: the isolated object plays, not just some audio.
 
-!!! note "Encode module, verified in a real browser"
-    A dropped multi-second WAV (a known tone at a known level) genuinely encodes through
-    the bound `Encoder`/`QcMeter` in a real Chromium tab: the produced byte count is real (not a canned
-    number), the QC verdict table's measured LUFS/true-peak values land where the known signal's
-    level predicts, and every delivery preset genuinely fails against a tone far louder than any
-    of their targets — proving the gate discriminates rather than always reading "pass". The
-    round-trip preview genuinely decodes the just-produced bytes through the decode module (not
-    the source audio replayed) and reports the right sample rate and channel count back.
+!!! note "Encode module, verified in a browser"
+    A dropped multi-second WAV (a known tone at a known level) encodes through
+    the bound `Encoder`/`QcMeter` in a Chromium tab: the produced byte count is not a canned
+    number, the QC verdict table's measured LUFS/true-peak values land where the known signal's
+    level predicts, and every delivery preset fails against a tone far louder than any
+    of their targets, showing the gate discriminates rather than always reading "pass". The
+    round-trip preview decodes the just-produced bytes through the decode module — not
+    the source audio replayed — and reports the right sample rate and channel count back.
 
 !!! note "Automated in CI (roadmap VX18a)"
     `apps/wasm/tests/` is a Playwright harness `build-wasm` now runs on every push, right after the
     demo artifact uploads: two projects, one per demo, each serving its own just-built directory.
-    `decode.spec.js` loads `index.html` in a real headless Chromium and drives the real published
+    `decode.spec.js` loads `index.html` in a headless Chromium and drives the published
     package (`js/`'s `decodeFile()` and `Ac3ForgeDecoderNode` — the same calls `demo.js` itself
-    makes) to decode the bundled fixture and assert on real values — `48000 Hz, 6 channels,
-    3 Atmos objects, 8.0s`, that the same object's decoded position genuinely differs between its
-    first and last frame, and — new for roadmap UX5 — that the AudioWorklet pipeline (a real Worker
-    doing the WASM decode, a real `SharedArrayBuffer` ring buffer, a real `AudioWorkletNode`)
-    produces genuinely non-silent decoded audio out an `OfflineAudioContext`, not just "the worker
-    didn't throw". `encode.spec.js` does the same for the encode module: encodes a real 997 Hz tone
+    makes) to decode the bundled fixture and assert on its values — `48000 Hz, 6 channels,
+    3 Atmos objects, 8.0s`, that the same object's decoded position differs between its
+    first and last frame, and — new for roadmap UX5 — that the AudioWorklet pipeline (a Worker
+    doing the WASM decode, a `SharedArrayBuffer` ring buffer, an `AudioWorkletNode`)
+    produces non-silent decoded audio out an `OfflineAudioContext` — not just that the worker
+    didn't throw. `encode.spec.js` does the same for the encode module: encodes a 997 Hz tone
     through the bound `Encoder`, measures it with `QcMeter`, asserts the true peak and every preset
     verdict land where that known signal predicts, and round-trips the result through the decode
     module. A regression in any of those numbers now fails CI rather than waiting for the next
@@ -315,8 +316,8 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     `decoder_bindings.cpp`'s rewrite (the old whole-file `Decoder` class replaced by
     `scanStream()`/`PushDecoder`) was built and linked clean, and both decode Playwright specs
     (the whole-file `decodeFile()` path and the new AudioWorklet pipeline) passed against that
-    real build, not just against source review. `js/`'s own `node:test` suite — the fMP4 box
-    walker against a real ffmpeg-remuxed fixture (every extracted sample landing exactly on an
+    build, not just against source review. `js/`'s own `node:test` suite — the fMP4 box
+    walker against an ffmpeg-remuxed fixture (every extracted sample landing exactly on an
     AC-3/E-AC-3 syncword), the ring buffer's wraparound/underrun/overrun arithmetic, and the
     `MediaSource`/`addSourceBuffer` shim's mechanics against a fake `MediaSource` stub — passed
     as well. None of this was CI at the time (local verification during development);
@@ -345,7 +346,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     it ships with.
 
     **The decode demo's realtime section's pacing** (`apps/wasm/demo.js`'s `setTimeout`-based push
-    loop, simulating a live feed from the bundled file) is a demo simplification that a genuinely
+    loop, simulating a live feed from the bundled file) is a demo simplification that a
     backgrounded browser tab can starve — Chrome throttles `setTimeout` heavily once a tab is
     hidden, while the (unthrottled) audio graph keeps consuming, which can read as a stuck
     "buffer underrun" status. This is specific to that synthetic pacing loop, not to the
