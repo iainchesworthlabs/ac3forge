@@ -27,6 +27,11 @@ inline constexpr std::string_view git_commit_full = "@AC3FORGE_GIT_COMMIT_FULL@"
 inline constexpr std::string_view git_describe = "@AC3FORGE_GIT_DESCRIBE@";
 inline constexpr std::string_view git_branch = "@AC3FORGE_GIT_BRANCH@";
 inline constexpr bool git_dirty = @AC3FORGE_GIT_DIRTY@;
+// Commits between the tag version_full came from and the built commit: 0
+// when built on the tag (or without git). version_details() appends it to
+// the headline as semver build metadata ("0.10.0-beta.1+100") so a build
+// from past a tag does not read as the tagged release.
+inline constexpr int git_commits_since_tag = @AC3FORGE_GIT_COMMITS_SINCE_TAG@;
 
 // OS/architecture/compiler this binary was built for, e.g. "Linux x86_64
 // (Clang 22.1.2)". Computed by src/forge/CMakeLists.txt from the toolchain

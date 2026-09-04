@@ -317,6 +317,16 @@ jobs:
             packageable: true
             release_package: true
             gold_reference: true
+            # The Desktop Atmos Demo (roadmap UX11, apps/windows): built and
+            # tested on both Windows legs, packaged on this one (the Package
+            # step's own condition already singles out windows-msvc), as its
+            # own archive - see cmake/Packaging.cmake's windemo component. The
+            # null-sink driver is NOT built on this leg: it needs the WDK,
+            # which the self-hosted fleet lacks, so it has its own
+            # GitHub-hosted job (windows-driver, below) that builds it from
+            # the WDK NuGet packages. Still test-signed only, so it stays out
+            # of the package until the EV certificate lands (Phase 6).
+            windemo: true
 
           - name: "Windows LLVM (clang-cl)"
             runner: ${{ needs.check-runners.outputs.windows_runner_2 }}
@@ -325,6 +335,11 @@ jobs:
             llvm: true
             packageable: true
             gold_reference: true
+            # Built and tested here too - clang-cl is stricter than MSVC about
+            # several things the demo's Qt and WASAPI code touches - but not
+            # packaged: this leg carries no release_package (see the Package
+            # step's condition).
+            windemo: true
 
           # ARM64 - GitHub's hosted windows-11-arm runner (roadmap DR8). Real
           # ARM64 hardware, not emulation. Deliberately NOT routed through
@@ -894,11 +909,21 @@ jobs:
       # project sharing this same "prebuilt Qt, never vcpkg" convention.
       # windows-msvc-arm64 is excluded: no gui: true on that leg (see its
       # matrix comment above), so there is no Qt kit to install for it here.
+      #
+      # modules: the Desktop Atmos Demo's room is drawn with Qt Quick 3D,
+      # which is not part of the base kit (aqtinstall calls it qtquick3d, and
+      # its own shader tooling qtshadertools - both present in the local
+      # C:/Qt/6.8.3/msvc2022_64 kit this pin matches). apps/windows/
+      # CMakeLists.txt treats Quick3D as optional and skips the 3D view with a
+      # warning when it is absent, so without these the packaged window would
+      # quietly ship with a 2D-only room and the ctest suite would exercise
+      # the skipped path instead of the real one.
       - name: Install Qt (prebuilt)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
         uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
         with:
           version: ${{ needs.toolchain-versions.outputs.qt_version }}
+          modules: qtquick3d qtshadertools
           cache: true
 
       # CMakePresets.json declares the project's real minimum (cmakeMinimumRequired);
@@ -1012,6 +1037,11 @@ jobs:
           if [ "${{ matrix.gui }}" = "true" ]; then
             extra_args+=(-DAC3FORGE_BUILD_GUI=ON)
           fi
+          # OFF by default in CMakeLists.txt (Windows-only, and a demo rather
+          # than part of the library), so the legs that want it ask here.
+          if [ "${{ matrix.windemo }}" = "true" ]; then
+            extra_args+=(-DAC3FORGE_BUILD_WINDEMO=ON)
+          fi
           if [ -n "$VERSION_TAG_INPUT" ]; then
             extra_args+=(-DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT")
           fi
@@ -1048,6 +1078,35 @@ jobs:
         env:
           AC3FORGE_REQUIRE_AVX2: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '' }}
         run: ctest --preset test-${{ matrix.preset }}
+
+      # The window is optional in CMake (Qt6 QUIET, and Quick3D optional
+      # inside that), which is right for a source build on a machine with no
+      # Qt kit and wrong here: this leg installed the kit on purpose, so a
+      # skipped ac3desk or a 2D-only room means that install broke rather
+      # than a deliberate choice - the same "failing loudly beats degrading
+      # quietly" reasoning as the NSIS assert further down.
+      - name: Assert the Desktop Atmos Demo was built (Windows)
+        if: matrix.windemo
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="build/config-${{ matrix.preset }}"
+          missing=0
+          for exe in ac3desk.exe ac3windemo.exe ac3desk_qmltests.exe; do
+            if [ ! -f "$build/bin/$exe" ]; then
+              echo "::error::$exe was not built - was Qt6 found? Check the configure log's warnings."
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+          # Quick3D resolves through find_package, so the cache is where its
+          # presence is recorded; a build without it still links, which is
+          # exactly why this is asserted rather than assumed.
+          if ! grep -q '^Qt6Quick3D_DIR' "$build/CMakeCache.txt"; then
+            echo "::error::Qt Quick 3D was not found, so the room's 3D view is missing from this build - the 'Install Qt (prebuilt)' step's modules list is what provides it"
+            exit 1
+          fi
+          ls -1 "$build/bin/ac3desk.exe" "$build/bin/ac3windemo.exe"
 
       # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
       # lightweight L4 SNR check from the project's original validation-
@@ -1391,6 +1450,27 @@ jobs:
             echo "::error::cpack produced no NSIS installer (.exe) - makensis is missing or cmake/Packaging.cmake's find_program() gate silently dropped NSIS again. Check the 'Install NSIS (Windows)' step and the configure log's warnings above."
             exit 1
           fi
+
+      # The demo's own archive (cmake/Packaging.cmake's windemo component).
+      # Without this the component could stop being packaged - a stale
+      # CPACK_COMPONENTS_ALL, a rename, the option not reaching cpack - and
+      # the only symptom would be a release quietly missing an asset.
+      - name: Assert the Desktop Atmos Demo was packaged (Windows)
+        if: matrix.windemo && matrix.release_package && (matrix.preset == 'windows-msvc' || inputs.do_package)
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(packages/ac3forge-desktop-atmos-*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-desktop-atmos-*.zip - the windemo component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake) or its install rules produced nothing (apps/windows/CMakeLists.txt)."
+            ls -1 packages/ || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${zips[@]}"
+          # A plausible archive with no Qt beside the window is the real
+          # failure mode here, not an empty one - see the script's own header.
+          python tools/ci/check_windemo_package.py "${zips[0]}"
 
       - name: Upload package artifacts
         if: >-
@@ -2781,6 +2861,99 @@ jobs:
       - name: cargo fmt --check
         working-directory: rust
         run: cargo fmt --check
+
+  # The Desktop Atmos Demo's null-sink driver (apps/windows/driver, roadmap
+  # UX11): an ACX/KMDF kernel driver, built and test-signed the way Microsoft's
+  # own driver-samples CI builds theirs - the WDK and SDK as NuGet packages
+  # (apps/windows/driver/packages.config) restored into the tree, MSBuild from
+  # the image's Visual Studio developer shell. GitHub's windows-latest image
+  # carries what the packages do not: the "Windows Driver Kit" VS component
+  # (the WindowsKernelModeDriver10.0 toolset) and the Spectre-mitigated
+  # libraries. Deliberately a GitHub-hosted job, not a `build` matrix leg: the
+  # self-hosted fleet has no WDK component, and none of the matrix's steps
+  # (CMake, ctest, cpack, the gold-reference gate) apply to a .sys.
+  #
+  # What it gates on: the package builds (sys, stamped inf, cat, and the
+  # build's own test certificate beside it), and Code Analysis at the WDK's
+  # driver rule set reports zero defects - the static tier of
+  # apps/windows/driver/Analyze-Driver.ps1 minus CodeQL and the DVL, which
+  # need the CodeQL CLI and the windows-drivers pack. The dynamic tier (Driver
+  # Verifier, KASAN) needs the throwaway guest and stays local
+  # (apps/windows/driver-vm). The package is uploaded as an artifact and is
+  # NOT a release asset: it is test-signed, so it loads only with test
+  # signing on, and shipping it waits on the EV certificate (Phase 6).
+  windows-driver:
+    name: Windows null-sink driver (WDK NuGet)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: apps/windows/driver
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Restore the WDK and SDK NuGet packages
+        run: nuget restore .\packages.config -PackagesDirectory .\packages -NonInteractive
+
+      - name: Build and test-sign the package
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw 'no Visual Studio with the C++ tools on this runner' }
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+          Set-Location "$env:GITHUB_WORKSPACE\apps\windows\driver"
+          Write-Host "Visual Studio: $vs"
+          Write-Host "MSVC toolset:  $env:VCToolsVersion"
+          msbuild .\Ac3ForgeNullSink.sln /p:Configuration=Release /p:Platform=x64 /t:Rebuild /m /v:m /nologo
+          if ($LASTEXITCODE -ne 0) { throw "msbuild failed ($LASTEXITCODE)" }
+          $package = Get-ChildItem -Recurse -Filter 'Ac3ForgeNullSink.inf' | Where-Object { $_.FullName -match 'Release\\package\\' } | Select-Object -First 1
+          if (-not $package) { throw 'no stamped INF under a Release\package directory' }
+          $dir = $package.Directory.FullName
+          foreach ($f in 'Ac3ForgeNullSink.sys', 'Ac3ForgeNullSink.inf', 'ac3forgenullsink.cat') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "package is missing $f" }
+          }
+          $cer = Get-ChildItem (Split-Path $dir) -Filter '*.cer' | Select-Object -First 1
+          if (-not $cer) { throw 'no test certificate beside the package' }
+          Get-ChildItem $dir | Format-Table Name, Length | Out-String | Write-Host
+          "AC3FORGE_DRIVER_PACKAGE=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "AC3FORGE_DRIVER_CERT=$($cer.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # The same rule set and the same "any defect fails" bar Analyze-Driver.ps1
+      # applies locally; the reports are the per-file *.nativecodeanalysis.xml
+      # the driver project writes.
+      - name: Code Analysis (DriverRecommendedRules)
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+          Set-Location "$env:GITHUB_WORKSPACE\apps\windows\driver"
+          $ruleset = (Get-ChildItem .\packages -Recurse -Filter 'DriverRecommendedRules.ruleset' | Select-Object -First 1).FullName
+          if (-not $ruleset) { throw 'DriverRecommendedRules.ruleset not found in the WDK package' }
+          Get-ChildItem .\Source -Recurse -Filter '*.nativecodeanalysis.xml' | Remove-Item -Force
+          msbuild .\Source\Main\Main.vcxproj /p:Configuration=Release /p:Platform=x64 /t:Rebuild /p:RunCodeAnalysis=true "/p:CodeAnalysisRuleSet=$ruleset" /p:CodeAnalysisTreatWarningsAsErrors=false /m /v:m /nologo
+          if ($LASTEXITCODE -ne 0) { throw "msbuild (Code Analysis) failed ($LASTEXITCODE)" }
+          $reports = Get-ChildItem .\Source -Recurse -Filter '*.nativecodeanalysis.xml'
+          $defects = 0
+          foreach ($r in $reports) { $defects += ([regex]::Matches((Get-Content $r.FullName -Raw), '<DEFECT>')).Count }
+          Write-Host "$($reports.Count) reports, $defects defects"
+          if ($reports.Count -eq 0) { throw 'Code Analysis produced no reports' }
+          if ($defects -gt 0) { throw "Code Analysis reported $defects defect(s); see the build log" }
+
+      - name: Upload the test-signed package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ac3forge-nullsink-driver-testsigned
+          path: |
+            ${{ env.AC3FORGE_DRIVER_PACKAGE }}
+            ${{ env.AC3FORGE_DRIVER_CERT }}
+          if-no-files-found: error
 
   # The minimum-footprint decoder profile (roadmap PF7, docs/building.md) built
   # for arm-none-eabi and run on QEMU's mps2-an385 - a Cortex-M3 with no

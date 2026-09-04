@@ -43,6 +43,7 @@ set(AC3FORGE_GIT_COMMIT_FULL "unknown")
 set(AC3FORGE_GIT_DESCRIBE "v${AC3FORGE_VERSION}")
 set(AC3FORGE_GIT_BRANCH "unknown")
 set(AC3FORGE_GIT_DIRTY "false")
+set(AC3FORGE_GIT_COMMITS_SINCE_TAG 0)
 
 if(DEFINED GIT_EXECUTABLE AND GIT_EXECUTABLE)
     execute_process(
@@ -74,6 +75,12 @@ if(DEFINED GIT_EXECUTABLE AND GIT_EXECUTABLE)
             RESULT_VARIABLE AC3FORGE_DESCRIBE_RESULT)
         if(AC3FORGE_DESCRIBE_RESULT EQUAL 0)
             set(AC3FORGE_GIT_DESCRIBE "${AC3FORGE_GIT_DESCRIBE_RAW}")
+            # How far past the tag this is ("v0.10.0-beta.1-100-gabcdef" is
+            # 100), so a headline can say 0.10.0-beta.1+100 rather than
+            # read as the tagged release itself. 0 on the tag.
+            if(AC3FORGE_GIT_DESCRIBE_RAW MATCHES "-([0-9]+)-g[0-9a-f]+$")
+                set(AC3FORGE_GIT_COMMITS_SINCE_TAG "${CMAKE_MATCH_1}")
+            endif()
         else()
             set(AC3FORGE_GIT_DESCRIBE "${AC3FORGE_GIT_COMMIT}")
         endif()

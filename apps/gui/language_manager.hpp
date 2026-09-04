@@ -28,7 +28,12 @@ class LanguageManager : public QObject {
 
 public:
     // `app` and `engine` must outlive this LanguageManager.
-    explicit LanguageManager(QGuiApplication& app, QQmlEngine& engine, QObject* parent = nullptr);
+    // `translation_basename` names the .qm files under :/i18n/ ("ac3gui" for
+    // the GUI; the Desktop Atmos Demo passes its own), so a second Qt app in
+    // this repository reuses this class rather than copying it.
+    explicit LanguageManager(QGuiApplication& app, QQmlEngine& engine,
+                             QString translation_basename = QStringLiteral("ac3gui"),
+                             QObject* parent = nullptr);
 
     // Installs the translators for the initial language - an AC3GUI_LOCALE
     // environment override first (the pseudo-locale QA fixture and the
@@ -55,6 +60,10 @@ public:
     // availableLanguages()'s codes - the pseudo-locale included, since it is
     // reached only through AC3GUI_LOCALE, never through this entry point.
     Q_INVOKABLE bool setLanguage(const QString& code);
+    // Forgets a saved override and follows the system locale again.
+    Q_INVOKABLE void useSystemLanguage();
+    // Whether a saved override is in force (false: following the system).
+    Q_INVOKABLE bool hasOverride() const;
 
 signals:
     void currentLanguageChanged();
@@ -68,4 +77,5 @@ private:
     QTranslator qt_translator_;
     QTranslator app_translator_;
     QString current_language_ = QStringLiteral("en");
+    QString translation_basename_;
 };

@@ -8,6 +8,7 @@
 #include <QVariantMap>
 
 #include <array>
+#include <utility>
 
 namespace {
 
@@ -83,8 +84,32 @@ constexpr auto kLatinFontFamily = "Archivo";
 
 }  // namespace
 
-LanguageManager::LanguageManager(QGuiApplication& app, QQmlEngine& engine, QObject* parent)
-    : QObject(parent), app_(app), engine_(engine) {}
+LanguageManager::LanguageManager(QGuiApplication& app, QQmlEngine& engine,
+                                 QString translation_basename, QObject* parent)
+    : QObject(parent),
+      app_(app),
+      engine_(engine),
+      translation_basename_(std::move(translation_basename)) {}
+
+void LanguageManager::useSystemLanguage() {
+    QSettings settings;
+    settings.remove(QLatin1String(kSettingsKey));
+    const QString system = language_for_locale(QLocale::system());
+    if (system == current_language_) {
+        return;
+    }
+    installTranslators(system);
+    app_.setLayoutDirection(QLocale(system).textDirection());
+    updateFontFamily(system);
+    current_language_ = system;
+    engine_.retranslate();
+    emit currentLanguageChanged();
+}
+
+bool LanguageManager::hasOverride() const {
+    const QSettings settings;
+    return is_supported(settings.value(QLatin1String(kSettingsKey)).toString());
+}
 
 void LanguageManager::applyInitialLanguage() {
     const QString env_override =
@@ -172,10 +197,11 @@ void LanguageManager::installTranslators(const QString& code) {
     // name this app itself generated (gen_pseudo_locale.py), never through
     // a system locale someone's OS actually reports.
     if (code == QLatin1String(kPseudoLocaleCode)) {
-        if (app_translator_.load(QStringLiteral(":/i18n/ac3gui_xx.qm"))) {
+        if (app_translator_.load(QStringLiteral(":/i18n/") + translation_basename_ + QStringLiteral("_xx.qm"))) {
             app_.installTranslator(&app_translator_);
         } else {
-            qWarning("LanguageManager::installTranslators: no ac3gui_xx.qm resource found");
+            qWarning("LanguageManager::installTranslators: no %s_xx.qm resource found",
+                     qUtf8Printable(translation_basename_));
         }
         return;
     }
@@ -187,11 +213,11 @@ void LanguageManager::installTranslators(const QString& code) {
         app_.installTranslator(&qt_translator_);
     }
 
-    if (app_translator_.load(QLocale(code), QStringLiteral("ac3gui"), QStringLiteral("_"),
+    if (app_translator_.load(QLocale(code), translation_basename_, QStringLiteral("_"),
                               QStringLiteral(":/i18n"))) {
         app_.installTranslator(&app_translator_);
     } else {
-        qWarning("LanguageManager::installTranslators: no ac3gui_%s.qm resource found",
-                 qUtf8Printable(code));
+        qWarning("LanguageManager::installTranslators: no %s_%s.qm resource found",
+                 qUtf8Printable(translation_basename_), qUtf8Printable(code));
     }
 }

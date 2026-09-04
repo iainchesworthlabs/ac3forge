@@ -14,6 +14,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- The Desktop Atmos Demo's silent output device, `Ac3ForgeNullSink`, is now an ACX (Audio
+  Class eXtensions) driver on KMDF, derived from Microsoft's AudioCodec sample, in place of
+  the PortCls/WaveRT miniport derived from the Simple Audio Sample: about 1,900 lines in
+  place of 9,700, on the framework Microsoft recommends for new audio drivers, with Driver
+  Verifier's DDI compliance and code-integrity checks now part of its verification. Nothing
+  the demo or the scripts see changes: the same hardware id, service, device description,
+  endpoint name ("Speakers (Desktop Atmos)"), 7.1/48 kHz format and discard-at-nominal-rate
+  behaviour. The position and timing simulation is now a kernel-free header with a test of
+  its own, a failed device start names the call that failed, and `install.ps1`/`remove.ps1`
+  create and remove the device through SetupAPI and `pnputil` rather than the WDK's
+  `devcon`, so they need nothing beyond Windows. The driver is now built, test-signed
+  and Code-Analysed in CI on every push, from the WDK's NuGet packages, and uploaded as
+  the `ac3forge-nullsink-driver-testsigned` artifact; it is still not a release asset.
 - **The gold-reference quality gate now has one SNR floor per channel, not one per fixture.**
   A 5.1 fixture's surround channels sit 35 dB below its front channels for a legitimate
   reason — A/52 §7.3.4 leaves the values a decoder substitutes for zero-bit bins unspecified,
@@ -35,6 +48,49 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- The Desktop Atmos Demo is built, tested and packaged in CI (roadmap UX11 phase 6): both
+  Windows legs build `ac3desk`/`ac3windemo` and run the demo's 68 tests, and the MSVC leg
+  packages `ac3forge-desktop-atmos-<version>-win64.zip` - the window, the runner, the
+  driver's install/remove scripts and a Qt runtime - as a release asset of its own. The
+  NSIS installer is unchanged: the demo stays a separate download while its null-sink
+  driver is test-signed only.
+- Per-process loopback capture and endpoint change notifications on Windows (roadmap UX11,
+  the library pieces of the Desktop Atmos Demo): `Capture::start_process_loopback`
+  taps what one process tree renders, whichever endpoint it renders to, at a caller-stated
+  format (Windows 10 build 20348+; `process_loopback_available()` and
+  `audio_backend().process_loopback` say whether this machine can), and `DeviceWatcher` delivers
+  endpoint added/removed/state-changed and default-changed events on a callback instead of
+  leaving an application to poll. Every other backend refuses both honestly rather than the API
+  disappearing. `AudioBackend` gains `process_loopback` and `device_watch` capabilities.
+- The Desktop Atmos Demo for Windows (roadmap UX11; `apps/windows/`,
+  `docs/platforms/windows-demo.md`), behind `option(AC3FORGE_BUILD_WINDEMO)` (default OFF,
+  Windows only): every application that is playing sound becomes an Atmos object the user
+  places in a room, streamed live as E-AC-3 JOC over HDMI, or as AC-3 5.1, decoded PCM
+  surround, Windows Spatial Sound objects or stereo when the endpoint cannot take it,
+  switching on device arrival and removal. `ac3windemo` is the console runner (positions on
+  stdin, a mode pin, the signing key, codec bypass, split, size and the default-output
+  switch); `ac3desk` is the Qt Quick window (module `Ac3ForgeDesk`, six languages, tray
+  residency, a 3D room where Qt Quick 3D exists, driver install and remove from Settings).
+  `apps/windows/driver/` is `Ac3ForgeNullSink`, the silent 7.1 render endpoint the demo makes
+  the default: a derivative of Microsoft's Simple Audio Sample under its own MS-PL licence,
+  separately licensed from the rest of the repository, test-signed and verified in a VMware
+  guest under Driver Verifier and KASAN (`apps/windows/driver-vm/`). The engine's pure
+  modules, tap pool and output stage are tested in `tests/windemo/` on every platform (the
+  WASAPI classes sit behind an `AudioDevices` seam with in-memory fakes), and `ac3desk`'s
+  pages by five Qt Quick Test suites.
+- `MonitorSink::start` takes a `low_latency` flag (default off): on Windows it asks
+  `IAudioClient3` for the engine's smallest shared-mode period for the stream's format and
+  opens at that, falling back to the default period where the interface is missing or the
+  engine refuses the format at that size; the other backends take the flag and ignore it.
+- The demo's engine flushes its taps when the output starts or switches, and bounds the PCM
+  sink's queue at two frames (never under 30 ms), dropping tap audio to half the bound when
+  it is exceeded, so a pipeline's start-up offset no longer becomes the session's latency;
+  the status reports tap backlog, sink queue and catch-ups.
+- Coverage on Windows: `cmake/Coverage.cmake` gains a clang-cl arm (`-fprofile-instr-generate
+  -fcoverage-mapping`), the `config-windows-llvm-coverage` preset (with its `build-` and
+  `test-` twins) builds the demo and the GUI under it, and `tools/checks/coverage_windemo.ps1`
+  runs the `windemo` and `desk` ctest labels and prints `llvm-cov`'s per-file line and branch
+  report over `apps/windows`.
 - Python completeness (roadmap AP6): new `ac3forge.containers` (Matroska/MP4/MPEG-TS mux and
   demux, with `build_codec_config_box()` for the `dac3`/`dec3` payload), `ac3forge.meta`
   (BS.1770 `LoudnessMeter`, the cited QC presets and `evaluate_qc_gate`) and
@@ -105,6 +161,21 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **The README's decode-accuracy badge disagreed with the page it links to.** Per-channel SNR
+  floors taught `docs/performance-quality.md`'s Decode accuracy card to pick a check by its
+  tightest per-channel *margin* and report the channel that owns it, but
+  `tools/ci/write_measurement_badges.py` kept the old scalar rule — pick by
+  `worst_db - threshold_db`, print `worst_db`. On one commit that left the badge reading
+  `18.3 dB SNR`, a dither-dominated surround sitting 1.3 dB clear of its floor, while the card
+  one click away read `58.1 dB SNR`, a front channel with 1.1 dB of margin and the check
+  genuinely closest to failing. Both numbers were correct; they answered different questions.
+  The badge now runs the card's computation, falling back to the scalar one for records written
+  before per-channel floors so a mixed history still compares on one scale. Its colour moved to
+  that same margin: `worst_db >= threshold_db` could not see a high-floor channel breaching, so
+  a centre channel dropping under its own 49 dB floor left the badge green — on a build the
+  gold-reference gate itself fails — because the 18 dB surround still cleared the scalar 17 dB.
+  `tools/ci` gains a unit-test suite, run by `ci.yml`'s script-lint job alongside
+  `tools/checks`.
 - **`bap-census=` was accepted by commands that cannot produce a census.** The option parser is
   effectively global — 88 keys, three of them command-scoped — so `qc`, `levels`, `transcode`,
   `probe`, `normalize`, `cut`, `spdif` and `mkv` all parsed the key and then did nothing with it,
@@ -157,6 +228,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   field holds a value A/52 reserves`, not `decode failed (code 3)`. `describe()` already existed for
   these; nine call sites across `decode`, `analysis` and `live` were not using it, which is what made
   the failure above unreadable from a CI log.
+
+### Changed
+
+- `ac3::version_details()` (and so `ac3cli --version` and the apps' About boxes) puts the
+  commits past the tag in the headline as semver build metadata: `ac3forge 0.10.0-beta.1+100`
+  rather than `ac3forge 0.10.0-beta.1`, which read as the tagged release. `version_full` is
+  unchanged; the new `git_commits_since_tag` constant carries the count (0 on a tag).
 
 ## [0.10.0-beta.1] - 2026-09-01
 

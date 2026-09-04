@@ -95,7 +95,7 @@ if(NOT WIN32 AND NOT LINUX AND NOT APPLE AND NOT ANDROID)
     message(FATAL_ERROR
         "ac3audio has no backend directory for this system. Add "
         "src/audio/src/backend/<backend>/{audio_backend,capture,passthrough,monitor,"
-        "sink_capabilities}.cpp - src/audio/src/backend/posix/ is the no-backend "
+        "sink_capabilities,spatial,device_watcher}.cpp - src/audio/src/backend/posix/ is the no-backend "
         "implementation and is a working starting point - then select it here.")
 endif()
 
@@ -107,7 +107,8 @@ if(WIN32)
             src/backend/windows/passthrough.cpp
             src/backend/windows/monitor.cpp
             src/backend/windows/sink_capabilities.cpp
-            src/backend/windows/spatial.cpp)
+            src/backend/windows/spatial.cpp
+            src/backend/windows/device_watcher.cpp)
 
     # How <windows.h> is to be configured wherever it is included: the lean
     # header set, and no min/max macros to collide with <algorithm>. Stated
@@ -115,8 +116,10 @@ if(WIN32)
     # drift apart and a third backend cannot forget.
     target_compile_definitions(ac3audio PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 
-    # WASAPI: COM for the device enumerator, MMCSS for capture-thread priority.
-    target_link_libraries(ac3audio PRIVATE ole32 avrt)
+    # WASAPI: COM for the device enumerator, MMCSS for capture-thread priority,
+    # and mmdevapi for ActivateAudioInterfaceAsync (the per-process loopback
+    # tap, roadmap UX11).
+    target_link_libraries(ac3audio PRIVATE ole32 avrt mmdevapi)
 
     set(AC3FORGE_AUDIO_BACKEND windows)
 endif(WIN32)
@@ -245,7 +248,8 @@ if(LINUX)
                 src/backend/alsa/monitor.cpp
                 src/backend/alsa/passthrough.cpp
                 src/backend/alsa/sink_capabilities.cpp
-                src/backend/alsa/spatial.cpp)
+                src/backend/alsa/spatial.cpp
+                src/backend/alsa/device_watcher.cpp)
         target_link_libraries(ac3audio PRIVATE ALSA::ALSA)
         set(AC3FORGE_AUDIO_BACKEND alsa)
         message(STATUS
@@ -259,7 +263,8 @@ if(LINUX)
                 src/backend/pipewire/monitor.cpp
                 src/backend/pipewire/passthrough.cpp
                 src/backend/pipewire/sink_capabilities.cpp
-                src/backend/pipewire/spatial.cpp)
+                src/backend/pipewire/spatial.cpp
+                src/backend/pipewire/device_watcher.cpp)
         target_link_libraries(ac3audio PRIVATE PkgConfig::PipeWire)
         set(AC3FORGE_AUDIO_BACKEND pipewire)
         message(STATUS
@@ -275,7 +280,8 @@ if(LINUX)
                 src/backend/posix/monitor.cpp
                 src/backend/posix/passthrough.cpp
                 src/backend/posix/sink_capabilities.cpp
-                src/backend/posix/spatial.cpp)
+                src/backend/posix/spatial.cpp
+                src/backend/posix/device_watcher.cpp)
         set(AC3FORGE_AUDIO_BACKEND posix)
         message(STATUS
             "Neither ALSA nor PipeWire headers were found; building without live capture, "
@@ -308,7 +314,8 @@ if(APPLE)
             src/backend/macos/passthrough.cpp
             src/backend/macos/monitor.cpp
             src/backend/macos/sink_capabilities.cpp
-            src/backend/macos/spatial.cpp)
+            src/backend/macos/spatial.cpp
+            src/backend/macos/device_watcher.cpp)
 
     # CoreAudio: the Audio HAL itself. CoreFoundation: CFStringRef, used
     # throughout coreaudio_support.hpp for every device's persistent UID and
@@ -346,7 +353,8 @@ if(ANDROID)
             src/backend/android/passthrough.cpp
             src/backend/android/monitor.cpp
             src/backend/android/sink_capabilities.cpp
-            src/backend/android/spatial.cpp)
+            src/backend/android/spatial.cpp
+            src/backend/android/device_watcher.cpp)
 
     # aaudio: monitor.cpp's native playback API. log: android/log.h, used
     # throughout the backend for diagnostics visible in `adb logcat`.

@@ -553,6 +553,18 @@ components instead of `runtime`) but is best-effort - see `package-macos-univers
 | macOS | arm64 + x86_64 (universal) | macos-llvm + macos-llvm-x64, merged by `package-macos-universal` | `.dmg` | `.zip`, best-effort (see above) |
 | Android (Shield) | arm64 (NDK) | build-android | `.apk` | none - Shield links `ac3::forge`/`ac3::audio` in-tree, it isn't a `find_package(ac3forge)` consumer |
 
+Windows x64 additionally ships the Desktop Atmos Demo as its own
+`ac3forge-desktop-atmos-*-win64.zip` (roadmap UX11,
+[docs/platforms/windows-demo.md](platforms/windows-demo.md)): the `windemo` CPack component -
+`ac3desk.exe`, the `ac3windemo` runner, the driver's install/remove scripts and a Qt runtime of
+its own - packaged by the same `windows-msvc` leg as the row above and picked up by
+`release.yml`'s existing `*.zip` glob. It is a separate download rather than part of the
+`runtime` component, and deliberately absent from the NSIS installer
+(`cmake/CPackProjectConfig.cmake` says why): its null-sink driver is test-signed only, so the
+demo needs a machine with test signing on to be useful, which is not something an `ac3cli`
+download should carry. When the EV certificate lands, the installer takes over installing the
+demo and its signed driver - one line in that file, and this paragraph, change together.
+
 Linux x86_64 also ships a self-contained `ac3gui` `.AppImage` (roadmap DR8), built by its own
 `linux-appimage` job rather than a `release_package: true` leg above - it isn't a CPack product
 at all, so it sits outside this table's "one canonical leg per OS/arch" framing, but it runs on

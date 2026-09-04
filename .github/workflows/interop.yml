@@ -16,11 +16,27 @@
 # gold-reference leg of _build.yml, on every push and pull request, with no
 # network access at all.
 #
-# The pull_request trigger is scoped to the harness's own files, so a change to
-# the pinned corpus, the floors, or the comparison tool is proved before it
-# lands rather than discovered by the next night's run. A decoder change does
-# not trigger it - that is what the schedule and the per-commit
-# external-baseline checks are for.
+# The pull_request trigger covers the harness's own files - so a change to the
+# pinned corpus, the floors, or the comparison tool is proved before it lands
+# rather than discovered by the next night's run - AND the decode path itself.
+#
+# That second half was added after a decoder defect sat on main for ten days
+# (PR #508). The reasoning it replaces was that a decoder change is already
+# covered per-commit by tests/golden/external-baseline, and for the streams in
+# that corpus it is. But every leg in it is a plain elementary stream - stereo
+# or 5.1, AC-3 or E-AC-3, generated from this repository's own source material
+# - so the substream layer had no per-commit coverage at all: no dependent
+# substream, no A/52 §E2.3.1.2 legacy core, no programme selection.
+# the_great_wall_7.1.eac3 below is the only stream in either corpus that
+# exercises it, and it cannot be moved to the per-commit side: the FATE samples
+# are copyrighted film excerpts that are deliberately never committed (see
+# verify_fate_interop.py), and this tree cannot encode a legacy core to stand in
+# for one - it cannot even encode that fixture's 3/1 acmod.
+#
+# The paths stay narrow deliberately. The vector kernels and the transforms can
+# change decoded output too, but proving that is the gold-reference gate's job,
+# which runs per-commit with no network at all. This one is here for the
+# bitstream-shape questions only real third-party encoder output can ask.
 #
 # Toolchain is ffmpeg-validate's, not a fuzzing job's: LLVM plus vcpkg plus the
 # exact pinned ubuntu:26.04 ffmpeg build, building the plain linux-llvm preset.
@@ -41,6 +57,13 @@ on:
       - 'tools/checks/verify_fate_interop.py'
       - 'tools/checks/compare_wav.py'
       - '.github/workflows/interop.yml'
+      # The decode path this gate drives. src/forge/src/decoder/ carries the
+      # framing (split_frames/split_access_units), the AC-3 FrameDecoder and
+      # the Annex E substream reader alike, so one pattern covers every layer
+      # the corpus reaches; decode.cpp is the entry point the script invokes.
+      - 'src/forge/src/decoder/**'
+      - 'src/forge/include/ac3/decoder/**'
+      - 'apps/cli/commands/decode.cpp'
   workflow_dispatch:
 
 concurrency:
@@ -97,6 +120,38 @@ jobs:
 
       - name: Build ac3cli
         run: cmake --build --preset build-linux-llvm --target ac3cli -- -k 0
+
+      # Eight samples fetched from a volunteer-run archive, on a job that now
+      # runs per pull request rather than nightly. Caching them keeps that from
+      # being eight downloads every time - including on a re-run, which
+      # previously refetched the lot, since RUNNER_TEMP does not survive a job.
+      #
+      # Keyed on verify_fate_interop.py because that file IS the corpus: the
+      # sample list and every SHA-256 pin live in it. Any re-pin therefore
+      # misses the cache and refetches, which is the required direction. It
+      # also misses on an unrelated edit to the same file (a floor, a note),
+      # and that is the intended trade - a digest of just the pins would need a
+      # step of its own to compute and could only ever save a rare refetch.
+      #
+      # Restoring a cache cannot weaken the gate: fetch_sample() re-hashes
+      # every file it finds on disk against the pin and refetches on a
+      # mismatch, so a truncated or tampered cache entry is repaired, never
+      # trusted. The pin is verified on a cache hit exactly as on a fresh
+      # download.
+      #
+      # That same re-hash is what makes the bare restore-keys prefix safe, and
+      # worth having: an inexact restore hands the job a corpus keyed to some
+      # earlier revision of the script, where a re-pinned sample no longer
+      # matches. It is refetched, individually, and every sample that did not
+      # change is reused - so changing one pin costs one download rather than
+      # eight, which is the whole point of caching a volunteer-run archive.
+      - name: Cache the pinned FATE corpus
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/fate-samples
+          key: fate-corpus-${{ hashFiles('tools/checks/verify_fate_interop.py') }}
+          restore-keys: |
+            fate-corpus-
 
       # The corpus lands under RUNNER_TEMP, never in the workspace: these are
       # excerpts of copyrighted films, and nothing should be able to sweep them

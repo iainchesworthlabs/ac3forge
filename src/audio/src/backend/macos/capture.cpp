@@ -144,6 +144,9 @@ std::string_view describe(CaptureError error) {
         case CaptureError::kFormatUnsupported:
             return "the device offers no sample format this backend can read";
         case CaptureError::kAlreadyRunning: return "capture is already running";
+        case CaptureError::kProcessLoopbackUnavailable:
+            return "per-process loopback capture on macOS is a Core Audio process tap (roadmap UX7), not implemented";
+        case CaptureError::kProcessNotFound: return "no process has the requested id";
     }
     return "unknown capture error";
 }
@@ -317,6 +320,19 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
     impl_->io_proc_id = proc_id;
     impl_->running.store(true, std::memory_order_release);
     return {};
+}
+
+// Roadmap UX11's per-process tap is a Windows 10 build 20348+ WASAPI
+// activation; nothing here has an equivalent, so the answer is a constant.
+bool process_loopback_available() {
+    return false;
+}
+
+std::expected<void, CaptureError> Capture::start_process_loopback(std::uint32_t,
+                                                                 ProcessLoopbackMode,
+                                                                 ProcessLoopbackFormat,
+                                                                 std::size_t) {
+    return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
 }
 
 }  // namespace ac3::audio

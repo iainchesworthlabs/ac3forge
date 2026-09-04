@@ -258,7 +258,7 @@ void MonitorSink::stop() {
 std::expected<void, MonitorError> MonitorSink::start(const std::string& device_id,
                                                      std::uint32_t sample_rate,
                                                      std::uint16_t channels,
-                                                     std::uint32_t /*channel_mask*/) {
+                                                     std::uint32_t /*channel_mask*/, bool /*low_latency*/) {
     // channel_mask is a WASAPI speaker mask and has no ALSA counterpart: an
     // ALSA PCM stream carries a channel COUNT and the convention that the
     // channels are in the order the card documents. It is accepted and ignored

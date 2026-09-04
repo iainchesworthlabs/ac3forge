@@ -478,9 +478,20 @@ jobs:
       # these tests deliberately import nothing that is not in the standard
       # library (same rule the scripts under test follow), so needing the
       # linter venv at all would be a sign one of them had grown a dependency.
+      #
+      # tools/ci is discovered separately rather than by starting at tools/:
+      # unittest only recurses into directories it can import, and neither of
+      # these is a package. Reporting what the gates measure is part of the
+      # same contract as running them - a badge that disagreed with the page it
+      # links to is what put a suite in tools/ci in the first place.
       - name: Oracle unit tests
         shell: bash
-        run: python3 -m unittest discover --start-directory tools/checks --pattern 'test_*.py' --verbose
+        run: |
+          set -euo pipefail
+          for suite in tools/checks tools/ci; do
+            printf '\n=== %s ===\n' "$suite"
+            python3 -m unittest discover --start-directory "$suite" --pattern 'test_*.py' --verbose
+          done
 
       # `git ls-files` rather than a hard-coded list of directories: a shell
       # script added anywhere in the tree is then linted the day it lands,

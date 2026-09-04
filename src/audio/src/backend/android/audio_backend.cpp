@@ -34,6 +34,12 @@ const AudioBackend& audio_backend() {
         .spatial = {.available = false,
                    .reason = "this build has no spatial backend: "
                              "ISpatialAudioObjectRenderStream is a Windows-only API"},
+        .process_loopback = {.available = false,
+                             .reason = "per-process loopback capture is a Windows 10 build "
+                                       "20348+ WASAPI feature (AUDIOCLIENT_ACTIVATION_TYPE_"
+                                       "PROCESS_LOOPBACK); no other backend has an equivalent"},
+                .device_watch = {.available = false,
+                         .reason = "no device-notification backend: the app this backend serves opens one HDMI output and waits for it itself (see live_cursor.cpp); nothing here needs the events yet"},
     };
     return kBackend;
 }
