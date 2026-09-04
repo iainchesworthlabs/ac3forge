@@ -286,6 +286,45 @@ question for this phase is fitting it to `Capture`'s existing shape, not whether
 backend contract test exercises both without touching a device, as it does on Windows; builds
 clean in the WSL2 loop with `-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON`.
 
+!!! success "Done 2026-09-05"
+    Both landed. `Capture::start_process_loopback()` walks the registry for the
+    `Stream/Output/Audio` node whose `application.process.id` matches — a value the daemon fills
+    in from the client's credentials, so it is the kernel's answer and not the client's claim —
+    and links a capture stream to it through `PW_KEY_TARGET_OBJECT`. `DeviceWatcher` turns the
+    registry's `global`/`global_remove` into added and removed, keeping an id-to-device-id map
+    because `global_remove` carries only the number; the default changing is not a registry
+    event at all, so it binds PipeWire's `default` metadata object and listens to its `property`
+    event, which is where `default.audio.sink` lives and how `wpctl` reads it.
+
+    Two refusals are deliberate rather than unfinished. `kExcludeProcessTree` has no counterpart
+    here: PipeWire links a stream to a target, and assembling "everything except this one" out
+    of the rest of the graph would mean following every node that came and went for the life of
+    the tap. And a process that owns no audio stream is `kProcessNotFound`, not a tap that
+    delivers silence for ever, which is what a stream linked to nothing does.
+
+    **Both capabilities are the machine's answer, not the build's**, and the contract test is
+    what forced that. It requires `audio_backend().process_loopback.available` to equal
+    `process_loopback_available()` on every platform. A hardcoded `true` would have disagreed on
+    any container or CI runner, where the library is built against libpipewire but no session
+    daemon is running — so the PipeWire table is computed once at first use, the way the Windows
+    one already is for its build-number check. The contract's device-watch case also gained a
+    second refusal: a backend can be unavailable because it was never built, or because the
+    session it needs is not running, and those are different facts.
+
+    One claim was corrected wherever it appeared: every non-Windows backend said per-process
+    loopback had "no other backend has an equivalent", which stopped being true when PipeWire
+    gained per-node capture and macOS shipped Core Audio process taps in 14.2.
+
+    `Capture::start()` and the new tap now share `Impl::connect_stream()`; only the target and
+    the format differed.
+
+    Verified by compiling and running on Linux, in the WSL2 Ubuntu 26.04 loop against
+    libpipewire-0.3 1.6.2 and GCC 15.2, with `-DAC3FORGE_WITH_ALSA=OFF
+    -DAC3FORGE_WITH_PIPEWIRE=ON`. **What that does not establish**: WSL2 has no PipeWire session,
+    so every path here took its "no session" arm. A tap actually delivering one application's
+    audio, and a watcher actually reporting a default change, wait on a desktop Linux session —
+    the Pi is the machine for it, and it is the same run DR9's PipeWire row needs.
+
 ### Phase 4: Linux platform half
 
 `platform/linux/`: `pipewire_devices()` behind `AudioDevices`; the session monitor over the
@@ -359,7 +398,7 @@ not.
 
 | Claim | Can it be verified | Blocker |
 |---|---|---|
-| Linux per-application tap and null sink | **yes**, on the Pi or a desktop Linux session | none |
+| Linux per-application tap and null sink | **yes**, on the Pi or a desktop Linux session | none; the code is in, the run is not |
 | Linux bitstream to a receiver over ALSA | **already confirmed**, 2026-08-20 | none |
 | Linux bitstream over PipeWire `iec958` | yes, with a WirePlumber codec rule | needs a session; DR9 |
 | Windows bitstream to a real receiver | not yet | an HDMI cable; DR9 |
@@ -367,6 +406,14 @@ not.
 | macOS anything, at runtime | **no** | no Mac has ever run this backend; DR9 |
 | macOS tap consent prompt | **no** | the prompt is keyed to code-signing identity and does not fire unsigned; DR6 |
 | Wayland full-screen foreground detection | **no**, by design | Wayland does not let a client ask about another's windows |
+
+Compiling on a second platform pays for itself before any of it runs. Phase 3 was written on
+Windows and built clean there; the first Linux build then rejected it three times, and each was
+a real defect rather than a dialect quarrel: a local that shadowed a member after a refactor
+(`-Wshadow`), a partial designated initialiser MSVC accepts and GCC does not
+(`-Wmissing-field-initializers`), and a capability that claimed to be available on machines
+where it could not be. Only the third would have reached a user, and none of the three was
+visible from the platform the code was written on.
 
 The macOS row is the one to hold in mind while reading Phase 5. The code can be written and
 compiled on CI, and its device-free logic can be unit tested, and none of that establishes that

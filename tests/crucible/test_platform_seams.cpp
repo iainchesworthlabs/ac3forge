@@ -130,7 +130,15 @@ TEST_CASE("the silent device seam describes a platform that needs none", "[cruci
     REQUIRE(status.log_tail.front() == "installed");
 
     SECTION("macOS needs no silent device") {
-        device.set_state({.needed = false});
+        // Every member named: GCC's -Werror=missing-field-initializers
+        // rejects a partial designated initialiser that MSVC accepts, and
+        // this file compiles on every platform.
+        device.set_state({.needed = false,
+                          .present = false,
+                          .in_use = false,
+                          .can_install = false,
+                          .blocker = {},
+                          .detail = {}});
         REQUIRE_FALSE(device.state({}).needed);
     }
 

@@ -187,6 +187,16 @@ struct Capture::Impl {
         }();
         return events;
     }
+
+    // The one place a capture stream is built. start() links to a device (or
+    // to a sink's monitor); start_process_loopback() links to one
+    // application's own output node. Everything else about the two - the
+    // thread loop, the ring, the format negotiation, the connect handshake
+    // and the unwind on every failure path - is identical, so it lives here
+    // once (roadmap UX12).
+    std::expected<void, CaptureError> connect_stream(const std::string& target, bool capture_sink,
+                                                     std::uint32_t rate, std::uint32_t channel_count,
+                                                     std::size_t ring_capacity_samples);
 };
 
 std::string_view describe(CaptureError error) {
@@ -282,65 +292,59 @@ void Capture::stop() {
     impl_->running.store(false, std::memory_order_release);
 }
 
-std::expected<void, CaptureError> Capture::start(const std::string& device_id, DeviceKind kind,
-                                                  std::size_t ring_capacity_samples) {
-    if (running()) {
-        return std::unexpected(CaptureError::kAlreadyRunning);
-    }
-
-    ac3::pipewire::ensure_initialized();
-
-    impl_->loop = ThreadLoop{pw_thread_loop_new("ac3audio-capture", nullptr)};
-    if (!impl_->loop) {
+std::expected<void, CaptureError> Capture::Impl::connect_stream(
+    const std::string& target, bool capture_sink, std::uint32_t rate, std::uint32_t channel_count,
+    std::size_t ring_capacity_samples) {
+    loop = ThreadLoop{pw_thread_loop_new("ac3audio-capture", nullptr)};
+    if (!loop) {
         return std::unexpected(CaptureError::kComFailure);
     }
-    if (pw_thread_loop_start(impl_->loop.get()) < 0) {
-        impl_->loop.reset();
+    if (pw_thread_loop_start(loop.get()) < 0) {
+        loop.reset();
         return std::unexpected(CaptureError::kComFailure);
     }
 
-    pw_thread_loop_lock(impl_->loop.get());
+    pw_thread_loop_lock(loop.get());
 
     // Everything Impl::process()/Impl::state_changed() might touch is set up
     // before pw_stream_connect() below, while the loop's lock is still held
     // by this thread - the earliest either callback can run is once that
     // call releases the lock (inside pw_thread_loop_timed_wait()), so there
     // is no window where they see a half-constructed Impl.
-    const bool loopback = kind == DeviceKind::kLoopback;
-    impl_->ring = std::make_unique<RingBuffer>(ring_capacity_samples);
-    impl_->sample_rate = kPreferredRate;
-    impl_->channels = static_cast<std::uint16_t>(kPreferredChannels);
-    impl_->frames_captured.store(0, std::memory_order_relaxed);
-    impl_->frames_silence.store(0, std::memory_order_relaxed);
-    impl_->started = std::chrono::steady_clock::now();
-    impl_->timeline_frames = 0;
-    impl_->loopback = loopback;
-    impl_->connect_state.store(ConnectState::kPending, std::memory_order_relaxed);
+    ring = std::make_unique<RingBuffer>(ring_capacity_samples);
+    sample_rate = rate;
+    channels = static_cast<std::uint16_t>(channel_count);
+    frames_captured.store(0, std::memory_order_relaxed);
+    frames_silence.store(0, std::memory_order_relaxed);
+    started = std::chrono::steady_clock::now();
+    timeline_frames = 0;
+    loopback = capture_sink;
+    connect_state.store(ConnectState::kPending, std::memory_order_relaxed);
 
     pw_properties* props = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY,
                                               "Capture", PW_KEY_MEDIA_ROLE, "Production", nullptr);
-    if (!device_id.empty()) {
-        pw_properties_set(props, PW_KEY_TARGET_OBJECT, device_id.c_str());
+    if (!target.empty()) {
+        pw_properties_set(props, PW_KEY_TARGET_OBJECT, target.c_str());
     }
-    if (loopback) {
+    if (capture_sink) {
         pw_properties_set(props, PW_KEY_STREAM_CAPTURE_SINK, "true");
     }
 
-    Stream stream{pw_stream_new_simple(pw_thread_loop_get_loop(impl_->loop.get()),
+    Stream new_stream{pw_stream_new_simple(pw_thread_loop_get_loop(loop.get()),
                                         "ac3forge capture", props, &Impl::stream_events(),
-                                        impl_.get())};
-    if (!stream) {
-        pw_thread_loop_unlock(impl_->loop.get());
-        impl_->ring.reset();
-        pw_thread_loop_stop(impl_->loop.get());
-        impl_->loop.reset();
+                                        this)};
+    if (!new_stream) {
+        pw_thread_loop_unlock(loop.get());
+        ring.reset();
+        pw_thread_loop_stop(loop.get());
+        loop.reset();
         return std::unexpected(CaptureError::kComFailure);
     }
 
     spa_audio_info_raw info{};
     info.format = SPA_AUDIO_FORMAT_F32;
-    info.channels = kPreferredChannels;
-    info.rate = kPreferredRate;
+    info.channels = channel_count;
+    info.rate = rate;
 
     std::array<std::uint8_t, 1024> pod_buffer{};
     spa_pod_builder builder{};
@@ -356,44 +360,103 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
     const auto flags = static_cast<pw_stream_flags>(PW_STREAM_FLAG_AUTOCONNECT |
                                                       PW_STREAM_FLAG_MAP_BUFFERS |
                                                       PW_STREAM_FLAG_RT_PROCESS);
-    if (pw_stream_connect(stream.get(), PW_DIRECTION_INPUT, PW_ID_ANY, flags, params, 1) < 0) {
-        pw_thread_loop_unlock(impl_->loop.get());
-        stream.reset();
-        impl_->ring.reset();
-        pw_thread_loop_stop(impl_->loop.get());
-        impl_->loop.reset();
+    if (pw_stream_connect(new_stream.get(), PW_DIRECTION_INPUT, PW_ID_ANY, flags, params, 1) < 0) {
+        pw_thread_loop_unlock(loop.get());
+        new_stream.reset();
+        ring.reset();
+        pw_thread_loop_stop(loop.get());
+        loop.reset();
         return std::unexpected(CaptureError::kComFailure);
     }
 
-    impl_->stream = std::move(stream);
-    const bool ready = wait_for_connect(impl_->loop.get(), impl_->connect_state);
+    stream = std::move(new_stream);
+    const bool ready = wait_for_connect(loop.get(), connect_state);
 
     if (!ready) {
-        pw_thread_loop_unlock(impl_->loop.get());
-        impl_->stream.reset();
-        impl_->ring.reset();
-        pw_thread_loop_stop(impl_->loop.get());
-        impl_->loop.reset();
+        pw_thread_loop_unlock(loop.get());
+        new_stream.reset();
+        ring.reset();
+        pw_thread_loop_stop(loop.get());
+        loop.reset();
         return std::unexpected(CaptureError::kDeviceNotFound);
     }
 
-    pw_thread_loop_unlock(impl_->loop.get());
+    pw_thread_loop_unlock(loop.get());
 
-    impl_->running.store(true, std::memory_order_release);
+    running.store(true, std::memory_order_release);
     return {};
 }
 
-// Roadmap UX11's per-process tap is a Windows 10 build 20348+ WASAPI
-// activation; nothing here has an equivalent, so the answer is a constant.
-bool process_loopback_available() {
-    return false;
+std::expected<void, CaptureError> Capture::start(const std::string& device_id, DeviceKind kind,
+                                                  std::size_t ring_capacity_samples) {
+    if (running()) {
+        return std::unexpected(CaptureError::kAlreadyRunning);
+    }
+    ac3::pipewire::ensure_initialized();
+    return impl_->connect_stream(device_id, kind == DeviceKind::kLoopback, kPreferredRate,
+                                 kPreferredChannels, ring_capacity_samples);
 }
 
-std::expected<void, CaptureError> Capture::start_process_loopback(std::uint32_t,
-                                                                 ProcessLoopbackMode,
-                                                                 ProcessLoopbackFormat,
-                                                                 std::size_t) {
-    return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
+// Per-process capture on PipeWire is linking a capture stream to one
+// application's own output node instead of to a device (roadmap UX12). That
+// needs a session to ask, and nothing else: no kernel version test, no
+// driver, no elevation. So the answer is whether a session is reachable
+// right now, which is the same question this returns on Windows - can this
+// machine, not this build, do it.
+//
+// The walk is the one enumerate_devices() already does. It is not free, but
+// this is a capability query a caller makes once before deciding whether to
+// offer the feature, not something on a frame path.
+bool process_loopback_available() {
+    // A session with no nodes in it yet is still a session that can be
+    // tapped once something starts playing, so what is looked for is the
+    // session, not any particular node - hence a visitor that does nothing.
+    return ac3::pipewire::for_each_audio_node([](std::uint32_t, const spa_dict&) {});
+}
+
+std::expected<void, CaptureError> Capture::start_process_loopback(
+    std::uint32_t process_id, ProcessLoopbackMode mode, ProcessLoopbackFormat format,
+    std::size_t ring_capacity_samples) {
+    if (running()) {
+        return std::unexpected(CaptureError::kAlreadyRunning);
+    }
+    // PipeWire links a stream to a target; there is no "everything except
+    // this one" link, and building it out of the rest of the graph would
+    // mean following every node that came and went for the life of the tap.
+    // Windows' exclude mode has no counterpart here, and saying so is better
+    // than a tap that quietly captured the wrong thing.
+    if (mode == ProcessLoopbackMode::kExcludeProcessTree) {
+        return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
+    }
+
+    ac3::pipewire::ensure_initialized();
+
+    // Which node to link to. An application can own several streams; the
+    // first is taken, which is the same choice the Windows backend makes by
+    // tapping the process tree rather than one stream.
+    std::string target;
+    const bool session = ac3::pipewire::for_each_audio_node(
+        [&target, process_id](std::uint32_t, const spa_dict& props) {
+            if (!target.empty() || !ac3::pipewire::is_output_stream(props)) {
+                return;
+            }
+            if (ac3::pipewire::node_process_id(props) == process_id) {
+                target = ac3::pipewire::node_target(props);
+            }
+        });
+    if (!session) {
+        return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
+    }
+    if (target.empty()) {
+        // Either no such process, or it owns no audio stream. Both mean the
+        // same thing to a caller: there is nothing to tap. Checked here
+        // because a stream linked to nothing delivers silence forever.
+        return std::unexpected(CaptureError::kProcessNotFound);
+    }
+
+    return impl_->connect_stream(target, /*capture_sink=*/false, format.sample_rate,
+                                 static_cast<std::uint32_t>(format.channels),
+                                 ring_capacity_samples);
 }
 
 }  // namespace ac3::audio

@@ -8,6 +8,8 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <charconv>
+#include <string>
 #include <string_view>
 
 #include "ac3/audio/passthrough.hpp"
@@ -200,6 +202,54 @@ bool for_each_audio_node(Visitor&& visit) {
     if (const char* description = spa_dict_lookup(&props, PW_KEY_NODE_DESCRIPTION);
         description != nullptr && description[0] != '\0') {
         return description;
+    }
+    return node_id(props);
+}
+
+// An application's own playback stream, as opposed to a device node.
+// PipeWire gives every client stream a media.class of Stream/Output/Audio
+// and tags it with the client's process id and name, which is what makes a
+// per-process tap possible here without any of the machinery Windows needs
+// (roadmap UX12). A sink's monitor carries the whole mix; this is one
+// application on its own.
+[[nodiscard]] inline bool is_output_stream(const spa_dict& props) {
+    const char* class_name = spa_dict_lookup(&props, PW_KEY_MEDIA_CLASS);
+    return class_name != nullptr && std::string_view{class_name} == "Stream/Output/Audio";
+}
+
+// The process that owns a stream node, or 0 when the node does not say.
+// PipeWire fills application.process.id in from the client's credentials,
+// so it is the kernel's answer rather than the client's claim.
+[[nodiscard]] inline std::uint32_t node_process_id(const spa_dict& props) {
+    const char* pid = spa_dict_lookup(&props, PW_KEY_APP_PROCESS_ID);
+    if (pid == nullptr) {
+        return 0;
+    }
+    std::uint32_t value = 0;
+    const auto* first = pid;
+    const auto* last = pid + std::char_traits<char>::length(pid);
+    const auto result = std::from_chars(first, last, value);
+    return result.ec == std::errc{} ? value : 0;
+}
+
+// What a human would call the application behind a stream node.
+[[nodiscard]] inline std::string node_application_name(const spa_dict& props) {
+    if (const char* name = spa_dict_lookup(&props, PW_KEY_APP_NAME);
+        name != nullptr && name[0] != '\0') {
+        return name;
+    }
+    return node_id(props);
+}
+
+// What to hand PW_KEY_TARGET_OBJECT to link to this node. object.serial is
+// preferred over node.name for an application's stream: two instances of the
+// same program share a node.name, and the serial is unique for the life of
+// the graph. Falls back to node.name, which is what pw_stream_connect()
+// documents and what the device paths in this backend already use.
+[[nodiscard]] inline std::string node_target(const spa_dict& props) {
+    if (const char* serial = spa_dict_lookup(&props, PW_KEY_OBJECT_SERIAL);
+        serial != nullptr && serial[0] != '\0') {
+        return serial;
     }
     return node_id(props);
 }
