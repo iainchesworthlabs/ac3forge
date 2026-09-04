@@ -375,6 +375,46 @@ places one, and encodes; the signal path renders with the null sink as the defau
     I/O. Consistent, but worth naming, since the library otherwise keeps PipeWire entirely to
     itself.
 
+!!! success "Done 2026-09-05: the engine runs on Linux"
+    All four seams are written, `apps/crucible` builds on Linux, and `ac3crucible-run` starts,
+    runs its frame loop at the 32 ms cadence and answers `status` and `list`. On a machine with
+    no PipeWire session everything degrades by saying so: "no render endpoint can carry any
+    mode", no signing key, no applications. The root guard is now
+    `WIN32 OR (UNIX AND NOT APPLE)`; macOS is excluded until Phase 5 gives it a platform half,
+    rather than being allowed to configure and then fail to link.
+
+    Two decisions were taken rather than deferred, both stated in the code:
+
+    **The full-screen check does not take libX11.** Wayland gives a client no way to ask which
+    window is full-screen — that is its security model, not a gap, and no portal exposes it — so
+    X11 would be a dependency for a rule that half of Linux desktops can never honour. The Linux
+    `Foreground` refuses on both and says which of the two reasons applies. Reporting "nothing is
+    full-screen" instead would have been a different and wrong claim: the engine would quietly
+    stop pinning a full-screen game to the bed and nobody would be told why. X11 stays a purely
+    additive follow-up, which is what `ForegroundSupport` exists to allow.
+
+    **The silent device is ephemeral, and better for it.** It is a `libpipewire-module-adapter`
+    node loaded on the application's own connection with `object.linger=false`, so it exists
+    exactly as long as Crucible runs and is gone when it exits. Windows leaves an installed
+    driver and an endpoint behind until somebody uninstalls them; on Linux a person who tries
+    Crucible and quits has their machine back as they found it, and `remove()` is not an
+    uninstall because there is nothing to uninstall. The UI wording for that block should follow
+    the difference rather than assume the Windows shape.
+
+    One thing the Linux session monitor drops on purpose. Windows groups audio sessions by
+    process tree, because a browser renders its audio from a utility process under the browser;
+    PipeWire tags every stream with the client's own `application.process.id` from its
+    credentials, so an application is one process id and the walk has no counterpart. What goes
+    with it is Windows' `has_window` test — there is no portable way to ask on Linux and no way
+    at all under Wayland — so anything with an audio stream is listed. A background process that
+    plays sound is rare on a desktop, and listing one is a smaller error than hiding a real
+    application.
+
+    **What this does not establish**: WSL2 has no PipeWire session, so none of the four seams has
+    yet done its real work. No tap has carried an application's audio, no default has been moved,
+    no null-sink module has been loaded. All of that needs a desktop Linux session, and it is the
+    same run DR9's PipeWire row waits on.
+
 ### Phase 5: macOS
 
 The library half is an Objective-C++ translation unit — `CATapDescription` has no C entry point —

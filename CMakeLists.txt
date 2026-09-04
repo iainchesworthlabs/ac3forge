@@ -441,11 +441,13 @@ if(AC3FORGE_BUILD_GUI)
     add_subdirectory(apps/gui)
 endif()
 
-# The Windows AC3Forge Crucible (roadmap UX11, docs/platforms/windows-demo.md).
+# AC3Forge Crucible (roadmap UX11 and UX12, docs/crucible/promotion.md).
 # In-tree like the GUI rather than wrapping the root the way the Android app
-# does, because it shares this toolchain; Windows-only because its platform
-# layer is WASAPI, though its engine core is tested everywhere (tests/crucible).
-if(AC3FORGE_BUILD_CRUCIBLE AND WIN32)
+# does, because it shares this toolchain. Windows and Linux have platform
+# halves under apps/crucible/engine/platform/; macOS does not yet, so it is
+# excluded here rather than failing to link. The engine core is tested
+# everywhere regardless (tests/crucible).
+if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR (UNIX AND NOT APPLE)))
     add_subdirectory(apps/crucible)
 endif()
 

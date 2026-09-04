@@ -31,9 +31,12 @@ target_link_libraries(ac3crucible_engine
     PRIVATE ac3::warnings ac3::coverage)
 
 # The platform half, selected the way apps/cli/CMakeLists.txt selects its
-# platform/ directory. This whole directory is already WIN32-only (the root
-# CMakeLists.txt's guard), so the branch has one arm today; it is a branch so
-# that a second platform is a directory, not a conditional in a source file.
+# platform/ directory: a platform is a directory, never a conditional inside
+# a source file. Two arms now (roadmap UX12) - Windows over COM and WASAPI,
+# Linux over PipeWire. The application talks to PipeWire directly here for
+# the same reason it talks to COM directly on Windows: session enumeration,
+# the default device and the silent device are demo policy rather than audio
+# I/O, and ac3::audio deliberately does not carry them.
 if(WIN32)
     target_sources(ac3crucible_engine PRIVATE
         engine/platform/windows/session_monitor.cpp
@@ -45,6 +48,20 @@ if(WIN32)
     # COM for the session manager and policy config, the shell for the
     # full-screen query and the Settings fallback.
     target_link_libraries(ac3crucible_engine PRIVATE ole32 shell32 user32 version)
+elseif(UNIX AND NOT APPLE)
+    target_sources(ac3crucible_engine PRIVATE
+        engine/platform/linux/session_monitor.cpp
+        engine/platform/linux/default_device.cpp
+        engine/platform/linux/foreground.cpp
+        engine/platform/linux/virtual_device.cpp)
+    # The library's own PipeWire helpers (for_each_audio_node, the node
+    # property readers) are reused rather than reimplemented, so this needs
+    # both that private header's directory and libpipewire itself.
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(AC3CRUCIBLE_PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
+    target_include_directories(ac3crucible_engine
+        PRIVATE "${CMAKE_SOURCE_DIR}/src/audio/src/backend/pipewire")
+    target_link_libraries(ac3crucible_engine PRIVATE PkgConfig::AC3CRUCIBLE_PIPEWIRE)
 target_include_directories(ac3crucible_engine PUBLIC
     "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
 endif()
