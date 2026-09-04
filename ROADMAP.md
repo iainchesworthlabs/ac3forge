@@ -2389,13 +2389,15 @@ against a receiver still waits on the HDMI cable (DR9).
 ### In progress
 
 **UX12 (XL)** — Promote the Windows Desktop Atmos Demo to **AC3Forge Crucible**, a desktop
-product on Windows, Linux and macOS. Phases 1 to 4 landed 2026-09-05: the rename, all four
-platform seams, PipeWire per-application capture and device notifications, and a Linux platform
-half over which `ac3crucible-run` builds and runs. Windows stays green throughout; the Linux
-work is compiled and run but not yet exercised against a PipeWire session, which is the same run
-DR9's PipeWire row waits on. Remaining: macOS (Phase 5, compile-only — blocked on DR6's
-certificates and DR9's absent Mac), product qualities, docs, CI and hardware verification. Plan
-and phase record in `docs/crucible/promotion.md`.
+product on Windows, Linux and macOS. Landed 2026-09-05: the rename; all four platform seams;
+PipeWire per-application capture and device notifications; a Linux platform half; a Linux CI
+pass; and a user guide under `docs/crucible/`. **Verified on the Pi** against a live PipeWire
+session — the tap captures a real application, the silent device is a real graph node, the
+watcher sees it come and go — a run that found five defects no build could, two of them
+pre-existing in the library's PipeWire backend. Still open: a bitstream to a receiver from
+PipeWire (DR9's row, now on Crucible's critical path since it cannot use ALSA), macOS
+(compile-only; blocked on DR6 and DR9), the window on Linux, packaging, and the product-quality
+pass. Plan and phase record in `docs/crucible/promotion.md`.
 <details markdown="1">
 <summary>Full record</summary>
 

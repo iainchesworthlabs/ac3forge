@@ -99,7 +99,7 @@ is deliberately explicit about the difference.
 
 ### Per-process loopback and device notifications (roadmap UX11)
 
-Two more WASAPI paths, both added for the [AC3Forge Crucible](windows-demo.md) and
+Two more WASAPI paths, both added for the [AC3Forge Crucible](../crucible/index.md) and
 both Windows-only in the backend tree:
 
 - **`Capture::start_process_loopback(pid, mode, format)`** — `ActivateAudioInterfaceAsync`

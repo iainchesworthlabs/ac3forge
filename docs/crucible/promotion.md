@@ -547,12 +547,47 @@ design and phase record, retitled and cross-linked rather than deleted, the way 
 keeps its records. `mkdocs.yml` gains a "Crucible guide" section beside "CLI reference" and
 "GUI guide"; the three desktop platform pages link into it instead of owning it.
 
+!!! success "Done 2026-09-05, first cut"
+    `docs/crucible/` is a guide now, not a plan: [What it is](index.md),
+    [Install and first run](install.md), [The signal path](signal-path.md) and
+    [Troubleshooting](troubleshooting.md), with this page kept beside them as the record. The nav
+    carries all five under "Crucible guide", and the demo page's entry under Platform notes is
+    relabelled as the record it is. `windows.md` links to the guide instead of the demo page, and
+    `linux.md` gained the one thing a Linux reader has to know before anything else — that
+    Crucible cannot use the backend that page otherwise recommends.
+
+    Every claim in the guide is one this work verified or one the demo's record verified; the
+    platform table on the index says "not yet confirmed" where that is the truth, and the Linux
+    build command in the install page was run before it was written down. Not yet written: the
+    room, output modes and settings pages the GUI guide's shape would want — those describe the
+    window, and the window exists on one platform, so they wait for the pass that reviews it as
+    a product rather than the demo it was.
+
 ### Phase 8: CI and packaging
 
 Build, test and package on three platforms: the existing Windows legs, the Linux GCC and LLVM
 legs with a Qt kit, and the two macOS legs feeding the universal merge. The package check
 generalises to all three layouts. Installer work is per platform — NSIS exists, `.dmg` exists,
 Linux gets AppImage and `.deb` alongside the GUI's.
+
+!!! success "Done 2026-09-05, for Linux"
+    One extra pass inside the "Linux LLVM (clang)" leg builds the Linux platform half against
+    PipeWire and asserts the runner binary exists — the same "extra pass, not a matrix entry"
+    shape the ALSA fallback step uses. That leg and not a GCC one, because the GCC legs carry
+    `alsa_fallback`, whose assertion (disabling ALSA falls back to posix) is only true while no
+    PipeWire headers are installed, and this pass installs them.
+
+    It deliberately runs no tests, and the reason is worth keeping. The `crucible` ctest label
+    drives the engine over the fakes and links the platform-services *stub*, not the Linux half
+    this pass exists to build, and every other Linux leg runs it already. An earlier draft ran
+    that label without building `ac3tests`; `catch_discover_tests` registers cases at build
+    time, so nothing matched, and `ctest` exits 0 when nothing matches. **It passed without
+    running a single case.** What replaced it is an assertion on the binary, checked both ways:
+    against a real build, and against the binary moved aside.
+
+    Not done: Windows packaging is unchanged (the driver is still test-signed, so the archive
+    stays separate), there is no Linux package or installer for Crucible yet, and macOS has
+    nothing to build.
 
 ### Phase 9: verification
 

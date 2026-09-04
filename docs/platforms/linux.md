@@ -107,6 +107,16 @@ ALSA still comes first](../building.md#why-alsa-still-comes-first).
     this is a real, current gap, not a minor caveat — and whether a given output accepts a
     bitstream is per-device anyway; `ac3cli outputs` probes each one and reports what it finds.
 
+## AC3Forge Crucible needs PipeWire, not ALSA
+
+[Crucible](../crucible/index.md) taps each application separately, and ALSA has no
+per-application concept at all — so it is the one part of this project that cannot use the
+backend this page otherwise recommends. Building it against ALSA is refused at configure time.
+
+That trade is uncomfortable and worth stating here rather than only there: forcing PipeWire gives
+up the passthrough path confirmed against a real receiver (ALSA `iec958`, on the Pi) for the one
+that is not. See [the plan](../crucible/promotion.md#alsa-or-pipewire).
+
 ## Reading a sink's own EDID/ELD (roadmap UX9)
 
 `ac3cli play`, given a `device_index`, asks the sink what it actually accepts before committing
