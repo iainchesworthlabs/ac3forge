@@ -21,9 +21,9 @@ lives, and they are one click away.
 EVERY THRESHOLD IS BORROWED, never invented here - the same rule
 docs/performance-quality.md's status cards follow, and for the same reason: a
 badge that shows amber on a healthy build is worse than no badge. Real time is
-1x by definition, accuracy compares against each record's own threshold_db,
-and memory uses the 4 KiB steady-state retention line
-append_memory_history.py already warns at.
+1x by definition, accuracy compares each channel against its own floor from
+that record's thresholds_db, and memory uses the 4 KiB steady-state retention
+line append_memory_history.py already warns at.
 
 stdlib-only (json/argparse/pathlib), matching every other script here.
 """
@@ -92,16 +92,63 @@ def speed_badge(rows):
                  GREEN if times >= 1 else AMBER)
 
 
+def _headroom_db(rec):
+    """How much room a record's tightest channel has over its own floor.
+
+    tightest_headroom_db arrived with per-channel floors; records written
+    before that carry only worst_db and a scalar threshold_db, and fall back to
+    exactly the old computation rather than being dropped from the comparison.
+    """
+    headroom = rec.get("tightest_headroom_db")
+    if isinstance(headroom, (int, float)):
+        return headroom
+    return rec["worst_db"] - rec["threshold_db"]
+
+
 def accuracy_badge(rows):
-    """Worst-case decode SNR, against its own gate."""
+    """The tightest per-channel SNR margin, reported as that channel's own SNR.
+
+    Mirrors qualityCard() in docs/performance-quality.md, which is the page
+    this badge links to: a reader who clicks through must not land on a
+    different number than the one they clicked. Both pick by MARGIN and report
+    the channel that owns it.
+
+    Each check is gated per CHANNEL, so the number that matters is the smallest
+    per-channel margin, which is NOT the same thing as the lowest SNR. A 58 dB
+    centre channel 6 dB above a 52 dB floor is closer to failing than a 22 dB
+    surround 6 dB above a 16 dB floor - and the surround is the one this badge
+    used to report, every single time, because it reported the lowest number
+    rather than the tightest one.
+    """
     scored = [r for r in rows
               if isinstance(r.get("worst_db"), (int, float))
               and isinstance(r.get("threshold_db"), (int, float))]
     if not scored:
         return badge("decode accuracy", "no data", GREY)
-    tight = min(scored, key=lambda r: r["worst_db"] - r["threshold_db"])
-    return badge("decode accuracy", f"{tight['worst_db']:.1f} dB SNR",
-                 GREEN if tight["worst_db"] >= tight["threshold_db"] else AMBER)
+
+    tight = min(scored, key=_headroom_db)
+    headroom = _headroom_db(tight)
+
+    # The tightest channel's own SNR when per-channel floors are recorded, so
+    # the badge shows what the linked card shows. Unlike JavaScript, an
+    # out-of-range index raises here and a negative one silently wraps, so the
+    # recorded index is bounds-checked rather than trusted.
+    thresholds = tight.get("thresholds_db")
+    channels = tight.get("channels_db")
+    value = tight["worst_db"]
+    if isinstance(thresholds, list) and isinstance(channels, list) and channels:
+        i = tight.get("tightest_channel")
+        if not isinstance(i, int) or not 0 <= i < len(channels):
+            i = 0
+        value = channels[i]
+
+    # Coloured on the margin, not on worst_db >= threshold_db: the scalar test
+    # cannot see a per-channel breach. Against floors [42, 47, 49, 81, 17, 17],
+    # a centre channel falling to 48 dB is below its own 49 dB floor while the
+    # 18 dB surround still clears the scalar 17 - green on a build the gate
+    # itself fails.
+    return badge("decode accuracy", f"{value:.1f} dB SNR",
+                 GREEN if headroom >= 0 else AMBER)
 
 
 def memory_badge(rows):

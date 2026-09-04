@@ -105,6 +105,21 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **The README's decode-accuracy badge disagreed with the page it links to.** Per-channel SNR
+  floors taught `docs/performance-quality.md`'s Decode accuracy card to pick a check by its
+  tightest per-channel *margin* and report the channel that owns it, but
+  `tools/ci/write_measurement_badges.py` kept the old scalar rule — pick by
+  `worst_db - threshold_db`, print `worst_db`. On one commit that left the badge reading
+  `18.3 dB SNR`, a dither-dominated surround sitting 1.3 dB clear of its floor, while the card
+  one click away read `58.1 dB SNR`, a front channel with 1.1 dB of margin and the check
+  genuinely closest to failing. Both numbers were correct; they answered different questions.
+  The badge now runs the card's computation, falling back to the scalar one for records written
+  before per-channel floors so a mixed history still compares on one scale. Its colour moved to
+  that same margin: `worst_db >= threshold_db` could not see a high-floor channel breaching, so
+  a centre channel dropping under its own 49 dB floor left the badge green — on a build the
+  gold-reference gate itself fails — because the 18 dB surround still cleared the scalar 17 dB.
+  `tools/ci` gains a unit-test suite, run by `ci.yml`'s script-lint job alongside
+  `tools/checks`.
 - Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte budget, so a
   short stream measured 6×/3×/2× its nominal bit rate — each shortened frame carried a
   full-length frame's bytes. CBR frames now take `frame_words`' documented per-block scaling,
