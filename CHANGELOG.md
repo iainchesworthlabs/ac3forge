@@ -161,6 +161,21 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **The README's decode-accuracy badge disagreed with the page it links to.** Per-channel SNR
+  floors taught `docs/performance-quality.md`'s Decode accuracy card to pick a check by its
+  tightest per-channel *margin* and report the channel that owns it, but
+  `tools/ci/write_measurement_badges.py` kept the old scalar rule — pick by
+  `worst_db - threshold_db`, print `worst_db`. On one commit that left the badge reading
+  `18.3 dB SNR`, a dither-dominated surround sitting 1.3 dB clear of its floor, while the card
+  one click away read `58.1 dB SNR`, a front channel with 1.1 dB of margin and the check
+  genuinely closest to failing. Both numbers were correct; they answered different questions.
+  The badge now runs the card's computation, falling back to the scalar one for records written
+  before per-channel floors so a mixed history still compares on one scale. Its colour moved to
+  that same margin: `worst_db >= threshold_db` could not see a high-floor channel breaching, so
+  a centre channel dropping under its own 49 dB floor left the badge green — on a build the
+  gold-reference gate itself fails — because the 18 dB surround still cleared the scalar 17 dB.
+  `tools/ci` gains a unit-test suite, run by `ci.yml`'s script-lint job alongside
+  `tools/checks`.
 - **`ac3cli decode … bap-census=` silently wrote nothing for E-AC-3 input.** `run_decode_eac3`
   wired the per-block trace in and accumulated it into the census for every access unit, but never
   wrote the result — so the flag was accepted, the trace cost was paid, and no file appeared, with
