@@ -167,7 +167,40 @@ became false and is corrected as part of this work whatever else lands.
 | `monitor` | yes | yes | yes | yes | yes | no |
 | `spatial` | yes | **no, and no plan** | no | **no, and no plan** | no | no |
 | `process_loopback` | yes | **Phase 3** | no, no per-app concept | **Phase 5** | no | no |
-| `device_watch` | yes | **Phase 3** | **Phase 3** | **Phase 5** | no | no |
+| `device_watch` | yes | **Phase 3** | no, would be a udev listener | **Phase 5** | no | no |
+
+### ALSA or PipeWire
+
+`ac3audio` compiles **exactly one** backend, and on Linux that is ALSA whenever both sets of
+headers are present — which is most desktops, and the Raspberry Pi this project verifies on.
+That default is right for the library, whose discriminating feature is passthrough: ALSA
+expresses the IEC 60958 non-audio bit as arguments on a device name and works the moment the
+hardware does, while a PipeWire sink only offers a compressed codec once WirePlumber's
+`iec958Codecs` has been populated, which the library cannot do on a caller's behalf
+([Why ALSA still comes first](../building.md#why-alsa-still-comes-first)).
+
+It is the wrong default for **Crucible**, and not by a little. The application's whole premise is
+tapping each application separately, and ALSA has no per-application concept — its
+`process_loopback` is a flat no rather than a gap waiting to be filled. So Crucible on Linux is
+a PipeWire build or it is nothing.
+
+Two consequences follow, and both are uncomfortable enough to be worth stating rather than
+discovering.
+
+**A default build would be silently broken.** The Linux platform half talks to PipeWire directly,
+independently of which backend the library chose, so on an ALSA build the application would still
+enumerate applications, still draw them in the room, still move the default device — and never
+capture a single one of them, because `Capture::start_process_loopback()` would refuse. That is a
+worse failure than not building at all, so `apps/crucible/CMakeLists.txt` makes it a configure
+error naming the two flags that fix it.
+
+**Crucible on Linux inherits the passthrough path that is *not* confirmed.** The Pi's August run
+against a real Atmos receiver — every stream shape locked and identified, zero underruns — was
+ALSA. Forcing PipeWire trades that for a path this project has never once seen work against
+hardware, and which additionally needs a WirePlumber codec rule the user has to supply. So
+DR9's PipeWire row is not a gap adjacent to this work; it is **on Crucible's critical path on
+Linux**, and the first hardware run has to answer it. Until it does, the honest position is that
+Crucible can tap applications on Linux and may have nowhere to send the result.
 
 `spatial` is the one capability with no cross-platform answer. `SpatialObjectSink` wraps
 Windows' `ISpatialAudioObjectRenderStream`; neither Linux nor macOS exposes an OS object

@@ -49,6 +49,25 @@ if(WIN32)
     # full-screen query and the Settings fallback.
     target_link_libraries(ac3crucible_engine PRIVATE ole32 shell32 user32 version)
 elseif(UNIX AND NOT APPLE)
+    # Crucible needs a per-application tap, and on Linux only the PipeWire
+    # backend has one - ALSA has no per-application concept at all, which is
+    # why its process_loopback capability is a flat no rather than a gap.
+    # ac3audio compiles exactly one backend, and ALSA wins when both sets of
+    # headers are present (docs/building.md, "Why ALSA still comes first"), so
+    # a machine with libasound2-dev installed - a Raspberry Pi, most desktops -
+    # would otherwise configure a Crucible that can list applications and never
+    # capture one. That is a worse outcome than refusing, so refuse, and say
+    # which flags fix it.
+    if(NOT AC3FORGE_AUDIO_BACKEND STREQUAL "pipewire")
+        message(FATAL_ERROR
+            "AC3FORGE_BUILD_CRUCIBLE=ON needs the PipeWire audio backend on Linux, but "
+            "ac3audio selected '${AC3FORGE_AUDIO_BACKEND}'. Crucible taps each application "
+            "separately and only PipeWire can do that. Reconfigure with "
+            "-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON, or turn the application "
+            "off with -DAC3FORGE_BUILD_CRUCIBLE=OFF. Note that this trades away the "
+            "passthrough path confirmed against a real receiver (ALSA iec958) for one that "
+            "is not yet - see docs/crucible/promotion.md, \"ALSA or PipeWire\".")
+    endif()
     target_sources(ac3crucible_engine PRIVATE
         engine/platform/linux/session_monitor.cpp
         engine/platform/linux/default_device.cpp
