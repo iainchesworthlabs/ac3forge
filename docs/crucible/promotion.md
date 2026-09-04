@@ -241,7 +241,32 @@ case each.
 
 **Exit (2b):** the UI controller's *header* includes no `platform/<os>/` header, which is the
 coupling that stops it compiling anywhere else; the Settings page reads `SilentDeviceState`
-rather than three Windows booleans; the QML tests move with it.
+rather than three Windows booleans; the QML tests move with them.
+
+!!! success "Done 2026-09-04"
+    All four seams are in. Nothing in `apps/crucible/` above `engine/platform/` names an
+    operating system: `platform_services.hpp` hands back an `AudioDevices`, a `SessionMonitor`,
+    a `Foreground`, a `DefaultDevice` and a `VirtualDevice`, one `platform/<os>/` definition
+    each, and `tests/crucible/platform_services_stub.cpp` answers inertly where no platform half
+    is built.
+
+    2b was the one that changed the window rather than only its plumbing. `SettingsPage.qml` had
+    been composing the Windows advice itself out of `testSigningOn`, `memoryIntegrityOn` and
+    `codeIntegrityKnown` — "turn test signing on (`bcdedit /set testsigning on`, then restart)
+    and turn memory integrity off ..." — a sentence with no counterpart on either other
+    platform. It is composed in `WindowsVirtualDevice` now, where those facts are read, and the
+    view prints `silentDeviceBlocker`. A platform with nothing in the way sends an empty
+    blocker; one that needs no silent device at all sends `needed = false` and the Settings
+    block hides itself, which is what macOS will do.
+
+    Two smaller decisions. `SilentDeviceQuery` carries the two facts that come from
+    `DefaultDevice` — whether a matching endpoint exists and whether it is the default — rather
+    than having `VirtualDevice` enumerate endpoints a second time. And `set_package_dir()`
+    defaults to a no-op, so the two platforms that do not install from a built package need not
+    implement it.
+
+    Full suite green: 82 `crucible` cases, and all five `crucible-ui` QML suites, which are the
+    ones this phase put at risk.
 
 ### Phase 3: library, Linux
 

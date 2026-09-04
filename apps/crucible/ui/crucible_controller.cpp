@@ -18,7 +18,6 @@
 
 #include "output_policy.hpp"
 #include "platform_services.hpp"
-#include "platform/windows/driver_tools.hpp"
 
 namespace {
 
@@ -85,7 +84,8 @@ CrucibleController::CrucibleController(QObject* parent)
     // settings for a whole afternoon. This one honours the default format,
     // so the tests' isolation (an INI file in a temporary directory) holds.
     : QObject(parent),
-      default_device_(platform_default_device()),
+      default_device_(ac3::crucible::platform_default_device()),
+      virtual_device_(ac3::crucible::platform_virtual_device()),
       settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"), QStringLiteral("Crucible")) {
     poll_timer_.setInterval(kPollMs);
     connect(&poll_timer_, &QTimer::timeout, this, &CrucibleController::poll);
@@ -698,88 +698,78 @@ void CrucibleController::setDriverDir(const QString& dir) {
     refreshDriver();
 }
 
-QString CrucibleController::driver_log_path() const {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    QDir().mkpath(base);
-    return QDir::toNativeSeparators(QDir(base).filePath(QStringLiteral("driver-%1.log").arg(driver_verb_)));
+QString CrucibleController::silentDeviceBlocker() const {
+    return from_utf8(silent_state_.blocker);
+}
+
+QStringList CrucibleController::silentDeviceDetail() const {
+    QStringList lines;
+    for (const auto& line : silent_state_.detail) {
+        lines.push_back(from_utf8(line));
+    }
+    return lines;
 }
 
 void CrucibleController::refreshDriver() {
-    const QDir dir(driverDir());
-    const bool found = dir.exists(QStringLiteral("install.ps1")) && dir.exists(QStringLiteral("remove.ps1")) &&
-                       dir.exists(QStringLiteral("Package/x64/Release/package/Ac3ForgeNullSink.inf"));
-    driver_package_found_ = found;
-    code_integrity_ = ac3::crucible::code_integrity_state();
-    emit driverChanged();
-}
-
-void CrucibleController::run_driver_script(const QString& script, const QString& verb) {
-    if (driver_process_.running()) {
-        return;
-    }
-    // The buttons are disabled without a package, but the invokable is
-    // reachable regardless and an elevation prompt for a script that is
-    // not there helps nobody.
-    if (!driver_package_found_) {
-        driver_message_ = tr("no driver package under %1").arg(driverDir());
-        emit driverChanged();
-        return;
-    }
-    driver_verb_ = verb;
-    const QDir dir(driverDir());
-    const QString script_path = QDir::toNativeSeparators(dir.filePath(script));
-    const QString package = QDir::toNativeSeparators(dir.filePath(QStringLiteral("Package/x64/Release/package")));
-    const QString log = driver_log_path();
-    QFile::remove(log);
-    // One -Command so the script's output lands in a transcript this can
-    // read back; the window itself is hidden. Paths are single-quoted for
-    // PowerShell; the whole command is one argument to powershell.exe. The
-    // scripts need nothing beyond Windows (the device is made through
-    // SetupAPI), so no tool path travels with the call.
-    const QString command =
-        QStringLiteral("Start-Transcript -Path '%1' | Out-Null; try { & '%2' -PackageDir '%3'; $code = 0 } "
-                       "catch { Write-Host $_; $code = 1 }; Stop-Transcript | Out-Null; exit $code")
-            .arg(log, script_path, package);
-    const QString arguments = QStringLiteral("-NoProfile -ExecutionPolicy Bypass -Command \"%1\"").arg(command);
-    auto started = ac3::crucible::ElevatedProcess::start(L"powershell.exe", arguments.toStdWString());
-    if (!started) {
-        driver_message_ = from_utf8(started.error());
-        emit driverChanged();
-        return;
-    }
-    driver_process_ = std::move(*started);
-    driver_message_ = verb == QLatin1String("install") ? tr("installing, answer the elevation prompt ...")
-                                                        : tr("removing, answer the elevation prompt ...");
-    driver_timer_.start();
+    // Whether a silent endpoint exists, and whether it is the default, are
+    // DefaultDevice's answers; the platform's own facts about installing one
+    // come from VirtualDevice. Asking each for what it knows keeps the
+    // Windows-only reasoning (test signing, memory integrity, a built
+    // package) out of this file and out of the QML.
+    virtual_device_->set_package_dir(driverDir().toStdString());
+    const ac3::crucible::SilentDeviceQuery query{
+        .endpoint_present = null_sink_present_,
+        .endpoint_is_default = defaultIsNullSink()};
+    silent_state_ = virtual_device_->state(query);
     emit driverChanged();
 }
 
 void CrucibleController::installDriver() {
-    run_driver_script(QStringLiteral("install.ps1"), QStringLiteral("install"));
+    driver_verb_ = QStringLiteral("install");
+    if (const auto started = virtual_device_->install(); !started) {
+        driver_message_ = from_utf8(started.error());
+        emit driverChanged();
+        return;
+    }
+    driver_busy_ = true;
+    driver_message_ = tr("installing, answer the elevation prompt ...");
+    driver_timer_.start();
+    emit driverChanged();
 }
 
 void CrucibleController::removeDriver() {
-    run_driver_script(QStringLiteral("remove.ps1"), QStringLiteral("remove"));
+    driver_verb_ = QStringLiteral("remove");
+    if (const auto started = virtual_device_->remove(); !started) {
+        driver_message_ = from_utf8(started.error());
+        emit driverChanged();
+        return;
+    }
+    driver_busy_ = true;
+    driver_message_ = tr("removing, answer the elevation prompt ...");
+    driver_timer_.start();
+    emit driverChanged();
 }
 
 void CrucibleController::poll_driver() {
-    const auto code = driver_process_.poll();
-    if (!code) {
+    const auto status = virtual_device_->action_status();
+    if (status.running || !status.exit_code) {
         return;
     }
     driver_timer_.stop();
-    const auto tail = ac3::crucible::transcript_tail(driver_log_path().toStdWString(), 3);
+    driver_busy_ = false;
     QStringList lines;
-    for (const auto& line : tail) {
+    for (const auto& line : status.log_tail) {
         lines.push_back(from_utf8(line));
     }
-    const QString detail = lines.isEmpty() ? QString() : QStringLiteral("\n") + lines.join(QStringLiteral("\n"));
-    if (*code == 0) {
+    const QString detail =
+        lines.isEmpty() ? QString() : QStringLiteral("\n") + lines.join(QStringLiteral("\n"));
+    if (*status.exit_code == 0) {
         driver_message_ = (driver_verb_ == QLatin1String("install") ? tr("installed") : tr("removed")) + detail;
     } else {
-        driver_message_ = tr("%1 failed (exit code %2)").arg(driver_verb_).arg(*code) + detail;
+        driver_message_ = tr("%1 failed (exit code %2)").arg(driver_verb_).arg(*status.exit_code) + detail;
     }
     // Endpoints appear a moment after the device does.
+    refreshDefault();
     refreshDriver();
     reprobe();
 }

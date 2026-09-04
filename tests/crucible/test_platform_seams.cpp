@@ -113,12 +113,14 @@ TEST_CASE("the silent device seam describes a platform that needs none", "[cruci
                       .can_install = true,
                       .blocker = "test signing is off",
                       .detail = {"the package is built"}});
-    auto state = device.state("Speakers (Realtek)");
+    auto state = device.state({.endpoint_present = false, .endpoint_is_default = false});
     REQUIRE(state.needed);
     REQUIRE_FALSE(state.present);
     REQUIRE(state.can_install);
     REQUIRE(state.blocker == "test signing is off");
-    REQUIRE(device.last_default_name() == "Speakers (Realtek)");
+    REQUIRE_FALSE(device.last_query().endpoint_present);
+    device.set_package_dir("D:/pkg");
+    REQUIRE(device.package_dir() == "D:/pkg");
 
     REQUIRE(device.install().has_value());
     REQUIRE(device.installs() == 1);
@@ -129,7 +131,7 @@ TEST_CASE("the silent device seam describes a platform that needs none", "[cruci
 
     SECTION("macOS needs no silent device") {
         device.set_state({.needed = false});
-        REQUIRE_FALSE(device.state("anything").needed);
+        REQUIRE_FALSE(device.state({}).needed);
     }
 
     SECTION("an install that cannot start is a reason") {

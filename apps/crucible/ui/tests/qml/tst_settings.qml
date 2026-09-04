@@ -84,9 +84,16 @@ TestCase {
     }
 
     function test_driverBlockReadsTheMachine() {
-        // The kernel answers SystemCodeIntegrityInformation on every
-        // supported Windows; the values themselves are the machine's.
-        verify(CrucibleController.codeIntegrityKnown);
+        // The silent device is a real thing on this platform, so the block
+        // shows at all. On macOS it would not: the taps mute each
+        // application where they tap it and there is no device to install.
+        verify(CrucibleController.silentDeviceNeeded);
+        // The blocker is the platform's own sentence and is empty when
+        // nothing is in the way, so its content is the machine's business
+        // and not this test's - what matters is that it is a string the
+        // view can show and that the detail lines came through.
+        verify(typeof CrucibleController.silentDeviceBlocker === "string");
+        verify(CrucibleController.silentDeviceDetail.length > 0);
         // The default folder is the source tree's driver/, which holds the
         // scripts; whether a built package is there depends on the machine,
         // and the property says which.

@@ -16,7 +16,8 @@
 // output stage and the tap pool ask of the library's WASAPI classes is
 // behind these interfaces: enumerate and probe render endpoints, open one
 // of three kinds of sink on an endpoint, open a per-process tap. The
-// production implementation (platform/windows/wasapi_devices.cpp) forwards
+// production implementation for each platform (platform/<os>/, behind
+// platform_audio_devices() in platform_services.hpp) forwards
 // to ac3::audio; tests/crucible/fake_devices.hpp scripts endpoints and
 // records what was submitted, so the frame loop, the five routes, the
 // bypass fold and a mode switch mid-stream run in a plain Catch2 process

@@ -1,11 +1,15 @@
 #include "driver_tools.hpp"
 
+#include "platform_services.hpp"
+
 #include <windows.h>
 
 #include <shellapi.h>
 #include <winternl.h>
 
+#include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -165,6 +169,139 @@ std::vector<std::string> transcript_tail(std::wstring_view path, std::size_t max
         }
     }
     return kept;
+}
+
+namespace {
+
+// The Windows answer to the engine's VirtualDevice seam
+// (engine/virtual_device.hpp): the silent device is a kernel driver, and
+// everything about test signing, memory integrity, elevated PowerShell and
+// the built package is here rather than in the window. What reaches the UI
+// is SilentDeviceState's plain text, which the other platforms fill in with
+// their own facts - a module load on Linux, nothing at all on macOS.
+class WindowsVirtualDevice final : public VirtualDevice {
+public:
+    void set_package_dir(std::string_view dir) override { package_dir_ = dir; }
+
+    SilentDeviceState state(const SilentDeviceQuery& query) override {
+        SilentDeviceState out;
+        out.needed = true;
+        out.present = query.endpoint_present;
+        out.in_use = query.endpoint_is_default;
+        out.can_install = package_complete();
+        const auto integrity = code_integrity_state();
+        if (!out.present) {
+            // Only worth saying while there is no device: once it is there it
+            // plainly loaded, whatever the kernel reports.
+            if (!integrity.known) {
+                out.blocker = "could not read the kernel's code-integrity state";
+            } else if (!integrity.test_signing || integrity.hvci) {
+                out.blocker = "this machine will not load a test-signed driver: ";
+                if (!integrity.test_signing) {
+                    out.blocker += "turn test signing on (bcdedit /set testsigning on, then restart)";
+                }
+                if (!integrity.test_signing && integrity.hvci) {
+                    out.blocker += " and ";
+                }
+                if (integrity.hvci) {
+                    out.blocker +=
+                        "turn memory integrity off (Windows Security, Core isolation, then restart)";
+                }
+            } else if (!out.can_install) {
+                out.blocker = "no built driver package to install";
+            }
+        }
+        out.detail.push_back(out.can_install ? "a built package is in " + package_dir_
+                                             : "no built package in " + package_dir_);
+        return out;
+    }
+
+    std::expected<void, std::string> install() override { return run("install.ps1", "install"); }
+    std::expected<void, std::string> remove() override { return run("remove.ps1", "remove"); }
+
+    DeviceActionStatus action_status() override {
+        DeviceActionStatus out;
+        if (!process_.running()) {
+            out.running = false;
+            return out;
+        }
+        const auto code = process_.poll();
+        if (!code) {
+            out.running = true;
+            return out;
+        }
+        out.running = false;
+        out.exit_code = code;
+        out.log_tail = transcript_tail(log_path(), 3);
+        return out;
+    }
+
+private:
+    [[nodiscard]] bool package_complete() const {
+        if (package_dir_.empty()) {
+            return false;
+        }
+        const std::filesystem::path dir(package_dir_);
+        std::error_code ec;
+        return std::filesystem::exists(dir / "install.ps1", ec) &&
+               std::filesystem::exists(dir / "remove.ps1", ec) &&
+               std::filesystem::exists(
+                   dir / "Package" / "x64" / "Release" / "package" / "Ac3ForgeNullSink.inf", ec);
+    }
+
+    // %LOCALAPPDATA%\ac3forge\driver-<verb>.log. The engine library has no Qt,
+    // so this is the environment rather than QStandardPaths.
+    [[nodiscard]] std::wstring log_path() const {
+        wchar_t base[MAX_PATH] = {};
+        const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
+        std::filesystem::path dir = (n > 0 && n < MAX_PATH) ? std::filesystem::path(base)
+                                                            : std::filesystem::temp_directory_path();
+        dir /= L"ac3forge";
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        return (dir / (L"driver-" + std::wstring(verb_.begin(), verb_.end()) + L".log")).wstring();
+    }
+
+    std::expected<void, std::string> run(std::string_view script, std::string_view verb) {
+        if (process_.running()) {
+            return std::unexpected("an install or remove is already running");
+        }
+        if (!package_complete()) {
+            return std::unexpected("no driver package under " + package_dir_);
+        }
+        verb_ = verb;
+        const std::filesystem::path dir(package_dir_);
+        const auto script_path = (dir / script).wstring();
+        const auto package = (dir / "Package" / "x64" / "Release" / "package").wstring();
+        const auto log = log_path();
+        std::error_code ec;
+        std::filesystem::remove(log, ec);
+        // One -Command so the script's output lands in a transcript this can
+        // read back; the window itself is hidden. Paths are single-quoted for
+        // PowerShell; the whole command is one argument to powershell.exe.
+        std::wstring command = L"Start-Transcript -Path '" + log + L"' | Out-Null; try { & '" +
+                               script_path + L"' -PackageDir '" + package +
+                               L"'; $code = 0 } catch { Write-Host $_; $code = 1 }; "
+                               L"Stop-Transcript | Out-Null; exit $code";
+        const std::wstring arguments =
+            L"-NoProfile -ExecutionPolicy Bypass -Command \"" + command + L"\"";
+        auto started = ElevatedProcess::start(L"powershell.exe", arguments);
+        if (!started) {
+            return std::unexpected(started.error());
+        }
+        process_ = std::move(*started);
+        return {};
+    }
+
+    std::string package_dir_;
+    std::string verb_ = "install";
+    ElevatedProcess process_;
+};
+
+}  // namespace
+
+std::shared_ptr<VirtualDevice> platform_virtual_device() {
+    return std::make_shared<WindowsVirtualDevice>();
 }
 
 }  // namespace ac3::crucible

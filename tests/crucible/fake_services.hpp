@@ -206,16 +206,26 @@ public:
         return removes_;
     }
 
-    // The default endpoint name the caller passed last, so a test can check
-    // the state query is asked about the right device.
-    [[nodiscard]] std::string last_default_name() const {
+    // The query the caller passed last, so a test can check the seam is
+    // asked about the right device.
+    [[nodiscard]] SilentDeviceQuery last_query() const {
         const std::lock_guard lock(mutex_);
-        return last_default_name_;
+        return last_query_;
     }
 
-    SilentDeviceState state(std::string_view default_endpoint_name) override {
+    [[nodiscard]] std::string package_dir() const {
         const std::lock_guard lock(mutex_);
-        last_default_name_ = std::string(default_endpoint_name);
+        return package_dir_;
+    }
+
+    void set_package_dir(std::string_view dir) override {
+        const std::lock_guard lock(mutex_);
+        package_dir_ = dir;
+    }
+
+    SilentDeviceState state(const SilentDeviceQuery& query) override {
+        const std::lock_guard lock(mutex_);
+        last_query_ = query;
         return state_;
     }
 
@@ -249,7 +259,8 @@ private:
     SilentDeviceState state_;
     DeviceActionStatus action_;
     std::string install_refusal_;
-    std::string last_default_name_;
+    SilentDeviceQuery last_query_;
+    std::string package_dir_;
     std::size_t installs_ = 0;
     std::size_t removes_ = 0;
 };

@@ -69,14 +69,28 @@ struct DeviceActionStatus {
     std::vector<std::string> log_tail;
 };
 
+// What the caller already knows when it asks. Enumerating endpoints is
+// DefaultDevice's job, not this one's, so the two facts that come from there
+// are passed in rather than looked up twice - and a platform whose silent
+// device is not an endpoint at all (macOS, which has none) can ignore them.
+struct SilentDeviceQuery {
+    // An endpoint matching the silent device's name exists.
+    bool endpoint_present = false;
+    // ...and it is the system default, so applications are playing into it.
+    bool endpoint_is_default = false;
+};
+
 class VirtualDevice {
 public:
     virtual ~VirtualDevice() = default;
 
-    // Cheap enough for the UI's poll; `default_endpoint_name` is what the
-    // application currently sees as the system default, so `in_use` can be
-    // answered without a second enumeration.
-    [[nodiscard]] virtual SilentDeviceState state(std::string_view default_endpoint_name) = 0;
+    // Where a platform that installs from a built package should look. A
+    // no-op where the concept does not apply: Linux loads a module and macOS
+    // needs no device, so neither has a package directory.
+    virtual void set_package_dir(std::string_view) {}
+
+    // Cheap enough for the UI's poll.
+    [[nodiscard]] virtual SilentDeviceState state(const SilentDeviceQuery& query) = 0;
 
     // Starts an install or a remove. Returns a one-line reason when it could
     // not be started at all (no package, refused prompt, unsupported here).

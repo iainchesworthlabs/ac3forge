@@ -54,7 +54,7 @@ public:
 
 class NoVirtualDevice final : public VirtualDevice {
 public:
-    SilentDeviceState state(std::string_view) override {
+    SilentDeviceState state(const SilentDeviceQuery&) override {
         return {.needed = false,
                 .present = false,
                 .in_use = false,

@@ -103,6 +103,7 @@ Flickable {
                 // the source-build tools (the folder, install, remove) live
                 // under Advanced rather than in the way.
                 Card {
+                    visible: CrucibleController.silentDeviceNeeded
                     ColumnLayout {
                         spacing: Theme.space2
                         StatusRow {
@@ -113,17 +114,17 @@ Flickable {
                             ok: CrucibleController.defaultIsNullSink
                             text: CrucibleController.defaultIsNullSink ? qsTr("Applications play to it: it is the Windows default output.") : qsTr("Applications do not play to it yet: the Windows default output is %1. Send them there from the Room or Signal path page.").arg(CrucibleController.defaultOutputName.length ? CrucibleController.defaultOutputName : qsTr("not set"))
                         }
+                        // What stands in the way, in the platform's own words.
+                        // The sentence is composed where the facts are - test
+                        // signing and memory integrity on Windows, a module
+                        // load elsewhere - so this view does not have to know
+                        // which platform it is running on.
                         StatusRow {
                             visible: !CrucibleController.nullSinkPresent
-                            ok: CrucibleController.codeIntegrityKnown && CrucibleController.testSigningOn && !CrucibleController.memoryIntegrityOn
-                            text: !CrucibleController.codeIntegrityKnown ? qsTr("Could not read the kernel's code-integrity state.")
-                                : (CrucibleController.testSigningOn && !CrucibleController.memoryIntegrityOn
-                                    ? qsTr("This machine can load the test-signed driver: test signing is on and memory integrity is off.")
-                                    : qsTr("This machine cannot load the test-signed driver yet: ")
-                                      + (CrucibleController.testSigningOn ? "" : qsTr("turn test signing on (bcdedit /set testsigning on, then restart)"))
-                                      + (!CrucibleController.testSigningOn && CrucibleController.memoryIntegrityOn ? qsTr(" and ") : "")
-                                      + (CrucibleController.memoryIntegrityOn ? qsTr("turn memory integrity off (Windows Security, Core isolation, then restart)") : "")
-                                      + ".")
+                            ok: CrucibleController.silentDeviceBlocker.length === 0
+                            text: CrucibleController.silentDeviceBlocker.length > 0
+                                ? CrucibleController.silentDeviceBlocker
+                                : qsTr("This machine can load the silent device.")
                         }
                         Note {
                             visible: !CrucibleController.nullSinkPresent

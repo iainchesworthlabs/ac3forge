@@ -14,7 +14,9 @@
 #include "app_entry.hpp"
 #include "engine.hpp"
 #include "default_device.hpp"
-#include "platform/windows/driver_tools.hpp"
+#include <QStringList>
+
+#include "virtual_device.hpp"
 
 // The one object QML talks to: the engine's status, republished as
 // properties a few times a second, and its commands, as invokables
@@ -97,9 +99,13 @@ class CrucibleController : public QObject {
     Q_PROPERTY(bool driverPackageFound READ driverPackageFound NOTIFY driverChanged)
     Q_PROPERTY(bool driverBusy READ driverBusy NOTIFY driverChanged)
     Q_PROPERTY(QString driverMessage READ driverMessage NOTIFY driverChanged)
-    Q_PROPERTY(bool testSigningOn READ testSigningOn NOTIFY driverChanged)
-    Q_PROPERTY(bool memoryIntegrityOn READ memoryIntegrityOn NOTIFY driverChanged)
-    Q_PROPERTY(bool codeIntegrityKnown READ codeIntegrityKnown NOTIFY driverChanged)
+    // What stands between this machine and a silent device, in the
+    // platform's own words: "turn test signing on ..." on Windows, a module
+    // load's error on Linux, nothing at all on macOS, which needs no device.
+    // Empty when nothing is in the way.
+    Q_PROPERTY(QString silentDeviceBlocker READ silentDeviceBlocker NOTIFY driverChanged)
+    Q_PROPERTY(QStringList silentDeviceDetail READ silentDeviceDetail NOTIFY driverChanged)
+    Q_PROPERTY(bool silentDeviceNeeded READ silentDeviceNeeded NOTIFY driverChanged)
     // Whether this build carries the room's 3D view (Qt Quick 3D found at
     // configure time; the page hides its toggle otherwise).
     Q_PROPERTY(bool has3D READ has3D CONSTANT)
@@ -163,12 +169,12 @@ public:
 
     [[nodiscard]] QString driverDir() const;
     void setDriverDir(const QString& dir);
-    [[nodiscard]] bool driverPackageFound() const { return driver_package_found_; }
-    [[nodiscard]] bool driverBusy() const { return driver_process_.running(); }
+    [[nodiscard]] bool driverPackageFound() const { return silent_state_.can_install; }
+    [[nodiscard]] bool driverBusy() const { return driver_busy_; }
     [[nodiscard]] QString driverMessage() const { return driver_message_; }
-    [[nodiscard]] bool testSigningOn() const { return code_integrity_.test_signing; }
-    [[nodiscard]] bool memoryIntegrityOn() const { return code_integrity_.hvci; }
-    [[nodiscard]] bool codeIntegrityKnown() const { return code_integrity_.known; }
+    [[nodiscard]] QString silentDeviceBlocker() const;
+    [[nodiscard]] QStringList silentDeviceDetail() const;
+    [[nodiscard]] bool silentDeviceNeeded() const { return silent_state_.needed; }
     [[nodiscard]] static bool has3D() { return AC3DESK_QUICK3D != 0; }
     // Make any probed endpoint the Windows default output (the same policy
     // call the silent-device switch uses), by its endpoint id.
@@ -218,14 +224,13 @@ private:
     void restart_engine();
     [[nodiscard]] ac3::crucible::EngineConfig engine_config() const;
     void emit_restored_default();
-    void run_driver_script(const QString& script, const QString& verb);
     void poll_driver();
-    [[nodiscard]] QString driver_log_path() const;
 
-    // The system default output, behind the engine's seam. The driver
-    // tools above are still this directory's Windows-only header: that
-    // is Phase 2b (docs/crucible/promotion.md).
-    std::shared_ptr<DefaultDevice> default_device_;
+    // The machine, behind the engine's seams: the system default output
+    // and the silent device applications play into. Both are resolved
+    // from platform_services.hpp, so nothing in this file names an
+    // operating system (docs/crucible/promotion.md, Phase 2).
+    std::shared_ptr<ac3::crucible::DefaultDevice> default_device_;
     QSettings settings_;
     std::unique_ptr<ac3::crucible::Engine> engine_;
     QTimer poll_timer_;
@@ -247,10 +252,10 @@ private:
     bool null_sink_present_ = false;
     std::uint64_t last_endpoint_stamp_ = 0;
 
-    ac3::crucible::ElevatedProcess driver_process_;
+    std::shared_ptr<ac3::crucible::VirtualDevice> virtual_device_;
     QTimer driver_timer_;
-    ac3::crucible::CodeIntegrityState code_integrity_;
-    bool driver_package_found_ = false;
+    ac3::crucible::SilentDeviceState silent_state_;
+    bool driver_busy_ = false;
     QString driver_message_;
     QString driver_verb_;
 };
