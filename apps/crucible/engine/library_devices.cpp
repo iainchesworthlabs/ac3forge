@@ -13,7 +13,18 @@
 
 // The production AudioDevices: each interface forwards to the ac3::audio
 // class of the same shape, and error enums become the library's own
-// one-line descriptions. Windows-only, this directory only.
+// one-line descriptions.
+//
+// This is the one platform service that is not per-platform. It began under
+// platform/windows/ as wasapi_devices.cpp, but it names no Windows API at
+// all - PassthroughSink, MonitorSink, SpatialObjectSink and Capture are the
+// library's own cross-platform classes, and enumerate_render_devices() and
+// probe_spatial_capability() answer for whatever backend was built. So every
+// platform gets this same file, and a platform that cannot do one of these
+// gets the refusal from the library rather than from here: a Linux build has
+// no spatial backend, so the object sink simply fails to start and the
+// output policy never chooses the headphone route (docs/crucible/promotion.md,
+// Phase 4).
 
 namespace ac3::crucible {
 

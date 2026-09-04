@@ -338,6 +338,43 @@ gap, stated in the UI rather than worked around.
 **Exit:** `ac3crucible` builds and starts on Linux; the console runner taps two applications,
 places one, and encodes; the signal path renders with the null sink as the default.
 
+!!! note "Started 2026-09-05: the AudioDevices half is done, the four seams are not"
+    Phase 4 turned out to be smaller than this plan assumed, because one of the five services
+    was never platform-specific in the first place. `platform/windows/wasapi_devices.cpp` named
+    no Windows API at all: `PassthroughSink`, `MonitorSink`, `SpatialObjectSink` and `Capture`
+    are the library's own cross-platform classes, and `enumerate_render_devices()` and
+    `probe_spatial_capability()` answer for whichever backend was built. So it moves up to
+    `engine/library_devices.cpp` and every platform gets it, rather than each writing a twin.
+    A platform that cannot do one of these gets the refusal from the library: a Linux build has
+    no spatial backend, so the object sink fails to start and the output policy never chooses
+    the headphone route.
+
+    **What Phase 4 still needs**, all four under `platform/linux/`, and each with a decision in
+    it rather than only work:
+
+    - **`SessionMonitor`** — a registry walk for `Stream/Output/Audio` nodes, which
+      `pipewire_support.hpp` now has the helpers for (`is_output_stream`, `node_process_id`,
+      `node_application_name`). The closest to ready. Windows groups sessions by process tree
+      because a browser's audio comes from a utility process; PipeWire tags each stream with the
+      client's own pid, so that walk has no counterpart here and the grouping question needs
+      re-answering rather than porting.
+    - **`DefaultDevice`** — endpoints come from the library's own
+      `enumerate_render_devices()`; reading and writing the default is the `default.audio.sink`
+      metadata key, which means a metadata write from the application rather than a read-only
+      registry walk.
+    - **`Foreground`** — X11 can answer through `_NET_WM_STATE_FULLSCREEN`, at the cost of a
+      libX11 dependency; Wayland cannot answer at all. The `ForegroundSupport` reason field
+      exists for exactly this, so the honest first cut refuses on both and X11 is a follow-up.
+    - **`VirtualDevice`** — loading and unloading a `support.null-audio-sink` module.
+      No driver, no signing, no elevation, but it is a module load from inside the application
+      rather than anything the library already does.
+
+    The application also gains a direct PipeWire dependency on Linux for three of those four,
+    which is the same shape Windows already has: the app talks to COM and WASAPI itself for
+    session enumeration and the default device, because those are demo policy rather than audio
+    I/O. Consistent, but worth naming, since the library otherwise keeps PipeWire entirely to
+    itself.
+
 ### Phase 5: macOS
 
 The library half is an Objective-C++ translation unit — `CATapDescription` has no C entry point —

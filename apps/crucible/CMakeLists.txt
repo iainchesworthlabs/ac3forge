@@ -18,6 +18,7 @@ add_library(ac3crucible_engine STATIC
     engine/tap_pool.cpp
     engine/output_stage.cpp
     engine/signing_hook.cpp
+    engine/library_devices.cpp
     engine/engine.cpp)
 add_library(ac3::crucible_engine ALIAS ac3crucible_engine)
 target_include_directories(ac3crucible_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/engine")
@@ -39,7 +40,6 @@ if(WIN32)
         engine/platform/windows/default_device.cpp
         engine/platform/windows/driver_tools.cpp
         engine/platform/windows/driver_tools.hpp
-        engine/platform/windows/wasapi_devices.cpp
         engine/platform/windows/foreground.cpp)
     target_compile_definitions(ac3crucible_engine PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
     # COM for the session manager and policy config, the shell for the
