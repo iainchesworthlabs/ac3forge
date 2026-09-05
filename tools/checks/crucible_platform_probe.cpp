@@ -25,13 +25,20 @@
 //       build-pw/apps/crucible/libac3crucible_engine.a
 //       build-pw/src/audio/libac3audio.a build-pw/src/forge/libac3forge_static.a
 //       build-pw/src/signing/libac3signing_static.a
-//       $(pkg-config --libs libpipewire-0.3) -lpthread
+//       $(pkg-config --libs libpipewire-0.3) $(pkg-config --libs xcb) -lpthread
+//
+//   ($(pkg-config --libs xcb) is for an engine built with libxcb, the X11
+//   full-screen reader; a build configured without it links nothing extra.)
 //
 //   crucible_platform_probe [seconds-to-watch]
 
+#include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <initializer_list>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -121,10 +128,55 @@ int main(int argc, char** argv) {
     }
 
     rule("foreground");
+    // The three variables the Linux Foreground classifies the seat from
+    // (engine/platform/linux/display_session.hpp), as this process sees them.
+    for (const char* name : {"XDG_SESSION_TYPE", "WAYLAND_DISPLAY", "DISPLAY"}) {
+        const char* value = std::getenv(name);
+        std::printf("  %-17s '%s'\n", name, value == nullptr ? "" : value);
+    }
     const auto foreground = ac3::crucible::platform_foreground();
+    // The X11 Foreground connects on its first read, so read once before
+    // asking support(); the engine does the same on its monitor thread.
+    (void)foreground->fullscreen_pid();
     const auto support = foreground->support();
     std::printf("  available: %s\n", support.available ? "yes" : "no");
     std::printf("  reason:    %s\n", std::string(support.reason).c_str());
+    if (support.available) {
+        // A timeline: the pid every 500 ms for the watch period, printed on
+        // change and matched the way the engine matches it (engine.cpp,
+        // refresh_sessions): the application's own pid, or any pid in its
+        // session tree. Make something full-screen while it runs; wmctrl -r
+        // <name> -b add,fullscreen / remove,fullscreen toggles it by hand.
+        std::printf("  watching %d s; make an application with sound full-screen\n", watch_seconds);
+        const auto watch_from = std::chrono::steady_clock::now();
+        std::optional<std::uint32_t> last;
+        bool first = true;
+        while (std::chrono::steady_clock::now() - watch_from < std::chrono::seconds(watch_seconds)) {
+            const auto pid = foreground->fullscreen_pid();
+            if (first || pid != last) {
+                const double t =
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - watch_from).count();
+                if (!pid) {
+                    std::printf("  t=%.1fs  none\n", t);
+                } else {
+                    const auto now_apps = sessions->refresh();
+                    const auto match = std::ranges::find_if(now_apps, [&pid](const auto& app) {
+                        return app.app == *pid ||
+                               std::ranges::find(app.session_pids, *pid) != app.session_pids.end();
+                    });
+                    if (match == now_apps.end()) {
+                        std::printf("  t=%.1fs  full-screen pid %u -> no session\n", t, *pid);
+                    } else {
+                        std::printf("  t=%.1fs  full-screen pid %u -> session pid %u (%s)\n", t, *pid,
+                                    match->app, match->name.c_str());
+                    }
+                }
+                last = pid;
+                first = false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+    }
 
     rule("silent device: create and remove");
     const auto silent = ac3::crucible::platform_virtual_device();

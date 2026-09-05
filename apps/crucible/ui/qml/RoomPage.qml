@@ -77,9 +77,15 @@ Item {
                     font.pixelSize: Theme.fontSmall
                     wrapMode: Text.WordWrap
                 }
+                // The full-screen rule, or the platform's reason it is off
+                // here; the reason is the controller's, so no platform is
+                // named in this file.
                 Text {
+                    objectName: "fullscreenRuleNote"
                     Layout.fillWidth: true
-                    text: qsTr("Full-screen applications stay in the bed; the lock lifts when they leave full-screen.")
+                    text: CrucibleController.fullscreenRuleReason.length > 0
+                        ? qsTr("The full-screen rule is off here: %1.").arg(CrucibleController.fullscreenRuleReason)
+                        : qsTr("Full-screen applications stay in the bed; the lock lifts when they leave full-screen.")
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSmall
                     wrapMode: Text.WordWrap

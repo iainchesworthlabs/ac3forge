@@ -61,8 +61,10 @@ DD+ 5.1 to Atmos.
 It went full-screen. The full-screen application in front is always the bed — a full-screen game
 rendering 7.1 *is* the bed — and the icon shows a lock to say why.
 
-Not on Linux: the rule is off there, because no Wayland client can ask which window is
-full-screen.
+On Linux the rule is on under X11, where Crucible reads the active window's `_NET_WM_STATE` and
+`_NET_WM_PID`, and off under Wayland, because no Wayland client can ask which window is
+full-screen. The Room page's note says which applies; a build configured without libxcb says so
+there too.
 
 ## The two dots for one application will not move apart
 

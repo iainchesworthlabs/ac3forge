@@ -54,6 +54,12 @@ class CrucibleController : public QObject {
     Q_PROPERTY(int bedCount READ bedCount NOTIFY appsChanged)
     Q_PROPERTY(int tapChannels READ tapChannels NOTIFY stateChanged)
     Q_PROPERTY(bool codecBypassed READ codecBypassed NOTIFY stateChanged)
+    // The full-screen rule: whether this platform can say what is full-screen
+    // and, when it cannot, the engine's one-line reason. Both false/empty
+    // while the engine is stopped, so the Room page states the rule until it
+    // knows better.
+    Q_PROPERTY(bool fullscreenRuleAvailable READ fullscreenRuleAvailable NOTIFY stateChanged)
+    Q_PROPERTY(QString fullscreenRuleReason READ fullscreenRuleReason NOTIFY stateChanged)
 
     // --- settings -----------------------------------------------------------
     Q_PROPERTY(QString pinned READ pinned WRITE setPinned NOTIFY settingsChanged)
@@ -141,6 +147,8 @@ public:
     [[nodiscard]] int bedCount() const { return bed_; }
     [[nodiscard]] int tapChannels() const { return tap_channels_; }
     [[nodiscard]] bool codecBypassed() const { return codec_bypassed_; }
+    [[nodiscard]] bool fullscreenRuleAvailable() const { return fullscreen_rule_; }
+    [[nodiscard]] QString fullscreenRuleReason() const { return fullscreen_reason_; }
 
     [[nodiscard]] QString pinned() const;
     void setPinned(const QString& mode);
@@ -254,6 +262,8 @@ private:
     int placed_ = 0, bed_ = 0, sounding_ = 0;
     int tap_channels_ = 0;
     bool codec_bypassed_ = false;
+    bool fullscreen_rule_ = false;
+    QString fullscreen_reason_;
 
     QString default_name_, previous_default_name_, default_message_;
     std::string previous_default_id_;

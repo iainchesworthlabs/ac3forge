@@ -74,6 +74,11 @@ struct Engine::Impl {
     std::jthread session_thread;
     std::mutex session_mutex;
     std::vector<AppSession> latest_sessions;
+    // The foreground's answer, read on the monitor's thread in the same
+    // pass as the list: an X server round trip has no place on the frame
+    // thread, and the Windows shell calls ride along so one rule holds on
+    // every platform.
+    std::optional<std::uint32_t> latest_fullscreen_pid;
     bool sessions_fresh = false;
     // The probe's thread, the same shape as the monitor's: it runs the slow
     // enumeration and leaves the facts here; the frame loop applies them at
@@ -175,12 +180,14 @@ struct Engine::Impl {
     // new list.
     void refresh_sessions() {
         std::vector<AppSession> apps;
+        std::optional<std::uint32_t> fullscreen_pid;
         {
             const std::lock_guard<std::mutex> lock(session_mutex);
             if (!sessions_fresh) {
                 return;
             }
             apps = std::move(latest_sessions);
+            fullscreen_pid = latest_fullscreen_pid;
             sessions_fresh = false;
         }
         AC3_ZONE_SCOPED_N("take sessions");
@@ -222,11 +229,13 @@ struct Engine::Impl {
         }
         taps.sync(ids);
 
-        // The full-screen rule: the foreground pid may be a window process
-        // rather than the one with the session, so match it against every
-        // pid in each application's tree that we know about.
+        // The full-screen rule. The pid was read on the monitor's thread in
+        // the same pass as this list, so it is matched against the processes
+        // that existed at that instant; and it may be a window process
+        // rather than the one with the session, so every pid in each
+        // application's tree counts.
         std::optional<AppId> fullscreen;
-        if (const auto pid = foreground->fullscreen_pid()) {
+        if (const auto pid = fullscreen_pid) {
             for (const auto& [id, app] : known) {
                 if (id == *pid || std::ranges::find(app.session_pids, *pid) != app.session_pids.end()) {
                     fullscreen = id;
@@ -355,6 +364,13 @@ struct Engine::Impl {
         s.starved_reads = starved;
         s.worst_frame_ms = worst_ms;
         s.encode_ms = snapshot.encode_ms;
+        {
+            // Whether the full-screen rule can apply here and, when it
+            // cannot, why; the Room page prints the reason beside the rule.
+            const auto rule = foreground->support();
+            s.fullscreen_rule_available = rule.available;
+            s.fullscreen_rule_reason = std::string{rule.reason};
+        }
         const std::lock_guard<std::mutex> lock(mutex);
         s.last_frame_ms = snapshot.last_frame_ms;
         s.last_error = snapshot.last_error;
@@ -389,9 +405,18 @@ struct Engine::Impl {
                     AC3_ZONE_SCOPED_N("session monitor");
                     apps = sessions->refresh(keep);
                 }
+                // The foreground in the same pass: what is in front of the
+                // processes just listed. On X11 this is a server round trip,
+                // which is why it is here and not on the frame thread.
+                std::optional<std::uint32_t> fullscreen_pid;
+                {
+                    AC3_ZONE_SCOPED_N("foreground");
+                    fullscreen_pid = foreground->fullscreen_pid();
+                }
                 {
                     const std::lock_guard<std::mutex> lock(session_mutex);
                     latest_sessions = std::move(apps);
+                    latest_fullscreen_pid = fullscreen_pid;
                     sessions_fresh = true;
                 }
                 for (int i = 0; i < 10 && !monitor_stop.stop_requested(); ++i) {

@@ -81,6 +81,36 @@ elseif(UNIX AND NOT APPLE)
     target_include_directories(ac3crucible_engine
         PRIVATE "${CMAKE_SOURCE_DIR}/src/audio/src/backend/pipewire")
     target_link_libraries(ac3crucible_engine PRIVATE PkgConfig::AC3CRUCIBLE_PIPEWIRE)
+    # X11 full-screen detection (docs/crucible/promotion.md, Phase 4's X11
+    # addendum). libxcb, not libX11: thread-safe, no global error handler,
+    # and already on every machine that runs Qt's xcb platform plugin, so
+    # the .deb's shlibdeps add nothing new. Optional the way the audio
+    # backends are (src/audio/CMakeLists.txt): AUTO takes it when the
+    # headers are there, ON demands them, OFF leaves it out. Without it the
+    # Foreground says so at runtime and the rule is off; exactly one of the
+    # two readers is compiled, the same rule as a platform directory.
+    set(AC3FORGE_CRUCIBLE_X11 "AUTO" CACHE STRING
+        "Crucible's X11 full-screen check: AUTO uses libxcb when found, ON requires it, OFF never builds it")
+    set_property(CACHE AC3FORGE_CRUCIBLE_X11 PROPERTY STRINGS AUTO ON OFF)
+    if(AC3FORGE_CRUCIBLE_X11 STREQUAL "OFF")
+        set(AC3CRUCIBLE_XCB_FOUND FALSE)
+    elseif(AC3FORGE_CRUCIBLE_X11 STREQUAL "ON")
+        pkg_check_modules(AC3CRUCIBLE_XCB REQUIRED IMPORTED_TARGET xcb)
+    else()
+        pkg_check_modules(AC3CRUCIBLE_XCB QUIET IMPORTED_TARGET xcb)
+    endif()
+    target_sources(ac3crucible_engine PRIVATE engine/platform/linux/x11_foreground.cpp)
+    if(AC3CRUCIBLE_XCB_FOUND)
+        target_sources(ac3crucible_engine PRIVATE engine/platform/linux/xcb_window_reader.cpp)
+        target_link_libraries(ac3crucible_engine PRIVATE PkgConfig::AC3CRUCIBLE_XCB)
+        set(AC3FORGE_CRUCIBLE_X11_BACKEND xcb PARENT_SCOPE)
+    else()
+        target_sources(ac3crucible_engine PRIVATE engine/platform/linux/no_xcb_window_reader.cpp)
+        set(AC3FORGE_CRUCIBLE_X11_BACKEND none PARENT_SCOPE)
+        message(STATUS "libxcb not found: Crucible's X11 full-screen check is left out "
+                       "(libxcb1-dev on Debian/Ubuntu, libxcb-devel on Fedora; "
+                       "-DAC3FORGE_CRUCIBLE_X11=OFF silences this)")
+    endif()
 endif()
 # The profiling header pair, on every platform: the engine loop and the
 # controller carry Tracy zones whichever platform half is compiled in. This

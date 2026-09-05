@@ -1398,7 +1398,10 @@ jobs:
           if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
           export DEBIAN_FRONTEND=noninteractive
           $SUDO apt-get update -qq
-          # libpipewire for the engine, dpkg-dev for the .deb's shlibdeps,
+          # libpipewire for the engine, libxcb for its X11 full-screen check
+          # (apps/crucible/CMakeLists.txt, AC3FORGE_CRUCIBLE_X11; asserted on
+          # below, since AUTO would quietly leave it out), dpkg-dev for the
+          # .deb's shlibdeps,
           # and distro Qt for the window and its Qt Quick tests - the same
           # apt Qt the GUI leg above uses (cmake/FindQt6.cmake, never vcpkg).
           # apps/crucible/CMakeLists.txt asks for Qt 6.5; the fleet's
@@ -1410,7 +1413,7 @@ jobs:
           # for the tray, Quick 3D for the room, QtTest for the suite):
           # without them the window builds and every test fails at import.
           $SUDO apt-get install -y -qq --no-install-recommends \
-            libpipewire-0.3-dev dpkg-dev \
+            libpipewire-0.3-dev libxcb1-dev dpkg-dev \
             qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
             qt6-l10n-tools qt6-tools-dev qt6-quick3d-dev qt6-shadertools-dev \
             qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
@@ -1425,6 +1428,10 @@ jobs:
           grep -q 'Audio backend  : pipewire' /tmp/crucible-configure.log || {
             echo "::error::Crucible was configured but the PipeWire backend was not selected; \
           apps/crucible/CMakeLists.txt should have refused this build"
+            exit 1
+          }
+          grep -q 'Crucible X11   : xcb' /tmp/crucible-configure.log || {
+            echo "::error::libxcb1-dev is installed but the X11 full-screen check was not configured"
             exit 1
           }
           cmake --build build/crucible --target ac3crucible_engine ac3crucible-run -- -k 0

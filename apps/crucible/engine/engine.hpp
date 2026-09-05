@@ -101,6 +101,8 @@ struct EngineStatus {
     std::string last_error;
     std::uint16_t tap_channels = 0;  // the width every tap is open at
     bool codec_bypassed = false;     // the last unit took the raw path
+    bool fullscreen_rule_available = false;  // the platform can say what is full-screen
+    std::string fullscreen_rule_reason;      // empty when available; else one line for the UI
     double tap_backlog_ms = 0.0;     // the deepest tap's unread audio: latency the taps add
     double sink_queue_ms = 0.0;      // the PCM sink's queue: latency the output adds
     std::uint64_t catchups = 0;      // frames dropped to keep the sink queue bounded
