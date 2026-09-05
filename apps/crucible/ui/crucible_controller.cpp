@@ -76,6 +76,27 @@ std::optional<OutputMode> mode_from_key(const QString& key) {
     return std::nullopt;
 }
 
+// The pin the engine is given, which is the stored one unless this build
+// cannot reach it. Only headphones can be out of reach that way: it hands
+// decoded objects to the platform's own object renderer, and
+// ac3::audio::audio_backend().spatial.available is true only on the Windows
+// backend. Where it is false the policy refuses that mode on every endpoint
+// anyway - library_devices.cpp never sets EndpointFacts::spatial, because
+// probe_spatial_capability() answers kNoBackend - and says so in a sentence
+// written for a platform this is not (output_policy.cpp's describe() and its
+// pinned-mode fallback both name Windows Spatial Sound). The Output page does
+// not offer the entry there either, so this catches only a store that already
+// held it - one carried over, or edited by hand. The setting itself is left as
+// it was found: reading a pin is not the moment to rewrite someone's settings,
+// and the same store on a machine that has the renderer still gets the pin.
+std::optional<OutputMode> engine_pin(const QString& key) {
+    const auto mode = mode_from_key(key);
+    if (mode == OutputMode::kHeadphones && !ac3::audio::audio_backend().spatial.available) {
+        return std::nullopt;
+    }
+    return mode;
+}
+
 QString short_mode_name(OutputMode mode) {
     switch (mode) {
         case OutputMode::kAtmos: return CrucibleController::tr("Atmos");
@@ -145,7 +166,7 @@ ac3::crucible::EngineConfig CrucibleController::engine_config() const {
     config.bypass_codec = bypassCodec();
     config.split_by_default = splitStereo();
     config.bitrate_kbps = static_cast<std::uint32_t>(std::max(0, bitrate()));
-    config.pinned = mode_from_key(pinned());
+    config.pinned = engine_pin(pinned());
     config.preferred_endpoint_id = preferredEndpoint().toStdString();
     config.diagnostics = &log_;
     // One Foreground for the process, not two: this object reads support()
@@ -425,7 +446,7 @@ void CrucibleController::setPinned(const QString& mode) {
     settings_.setValue(QStringLiteral("output/pinned"), mode);
     log_.note("setting output/pinned = " + mode.toStdString());
     if (engine_) {
-        engine_->pin(mode_from_key(mode));
+        engine_->pin(engine_pin(mode));
     }
     settings_.sync();  // survive a hard exit
     emit settingsChanged();
@@ -470,6 +491,19 @@ bool CrucibleController::trayAvailable() {
 
 QString CrucibleController::trayAbsentReason() {
     return ac3::crucible::ui::tray_absent_reason();
+}
+
+bool CrucibleController::spatialAvailable() {
+    return ac3::audio::audio_backend().spatial.available;
+}
+
+QString CrucibleController::spatialAbsentReason() {
+    const auto& spatial = ac3::audio::audio_backend().spatial;
+    // A string_view over a literal in the backend's own file, so there is
+    // nothing to own here; empty where the renderer is there.
+    return spatial.available ? QString{}
+                             : QString::fromUtf8(spatial.reason.data(),
+                                                 static_cast<qsizetype>(spatial.reason.size()));
 }
 
 QString CrucibleController::listingRule() const {

@@ -201,7 +201,20 @@ public:
         if (!out.present) {
             // Only worth saying while there is no device: once it is there it
             // plainly loaded, whatever the kernel reports.
-            if (!integrity.known) {
+            //
+            // The missing package comes first, ahead of the signing advice,
+            // because it is the case a packaged copy is always in: the zip
+            // carries install.ps1 and remove.ps1 but no driver for them to
+            // install (tools/ci/check_crucible_package.py asserts that), so
+            // package_complete() is false on every download. Advice to turn
+            // test signing on and memory integrity off costs two machine-wide
+            // settings and a reboot each and would leave Install driver greyed
+            // exactly as it was, since the button follows can_install and not
+            // the kernel's code-integrity state. Once a package is in the
+            // folder, the order below is the order to act in.
+            if (!out.can_install) {
+                out.blocker = "no built driver package to install";
+            } else if (!integrity.known) {
                 out.blocker = "could not read the kernel's code-integrity state";
             } else if (!integrity.test_signing || integrity.hvci) {
                 out.blocker = "this machine will not load a test-signed driver: ";
@@ -215,8 +228,6 @@ public:
                     out.blocker +=
                         "turn memory integrity off (Windows Security, Core isolation, then restart)";
                 }
-            } else if (!out.can_install) {
-                out.blocker = "no built driver package to install";
             }
         }
         out.detail.push_back(out.can_install ? "a built package is in " + package_dir_

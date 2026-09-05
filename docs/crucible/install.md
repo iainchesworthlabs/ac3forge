@@ -9,37 +9,54 @@ twice. It works differently on each platform, and on one of them there is nothin
 
 `ac3forge-crucible-<version>-win64.zip`, from the releases page. It carries the window, the
 console runner, its own Qt runtime, the driver's install and remove scripts, the third-party
-notices (`NOTICES.txt`) and the licence (`LICENSE.txt`). Unpack it somewhere and run
-`ac3crucible.exe`. About > Licences… shows the same notices from inside the window.
+notices (`NOTICES.txt`) and the licence (`LICENSE.txt`). It does not carry the driver those
+scripts install — the next section says why, and what that means before you change any security
+setting. Unpack it somewhere and run `ac3crucible.exe`. About > Licences… shows the same notices
+from inside the window.
 
 It is a separate download from the main `ac3forge` package, and stays one while its driver is
 test-signed.
 
 ### The silent device
 
-Crucible needs a virtual output device that discards what it is given. Today that driver is
-**test-signed**, which means it loads only on a machine that has test signing on and memory
-integrity off. On a normal machine it will not load, and the Settings page says so with the two
-commands that change it.
+Crucible needs a virtual output device that discards what it is given. On Windows that is a
+kernel driver, and **the download does not carry it**. The zip has the driver's install and
+remove scripts, because the Settings page runs them; the driver they install is not in it. That
+driver is **test-signed**, so it would not load on a normal machine, and shipping it waits on an
+EV certificate and an attestation submission.
+
+So on a packaged copy there is nothing to install. **Install driver** is greyed, and the note
+beside it says there is no built driver package in the driver folder. Turning test signing on
+will not change that, so leave both security settings where they are unless you have built the
+driver yourself.
+
+Building it takes a checkout and the WDK: `apps/windows/driver` holds the sources, the solution
+and the install and remove scripts, and the build writes its package underneath. Crucible run
+from that same checkout already looks there; a packaged copy has to be pointed at it under
+Settings → Advanced → Driver folder. With a package in that folder, **Install driver** un-greys
+and runs the package's install script elevated. A test-signed driver then loads only on a machine
+that has test signing on and memory integrity off, which is what the Settings page asks for once
+a package is in the folder and the device still is not there:
 
 ```
 bcdedit /set testsigning on
 ```
 then restart. Memory integrity is under Windows Security → Device security → Core isolation.
 
-Both are machine-wide security settings. Turning them off to run a demo driver is a real
-trade, and the honest position is that it is what a development machine does — not something to
-ask of a machine you care about. This goes away when the driver is attestation-signed: it will
-then install with the application and need neither setting.
+Both are machine-wide security settings, and turning them off is what a development machine
+does rather than something to ask of a machine you care about. All of this goes away when the
+driver is attestation-signed: it will then travel in the package, install with the application,
+and need neither setting.
 
-With test signing on, the Settings page's **Install driver** button runs the package's script
-elevated. "Speakers (Desktop Atmos)" then appears in your sound settings.
+With the driver installed, "Speakers (Desktop Atmos)" appears in your sound settings.
+Crucible's Settings page then shows the silent device as present.
 
 ### Without the driver
 
-Crucible still runs. Taps, placements and every output mode work; you will simply hear the direct
-mix as well, because applications are still playing to a device you can hear. Two ways around it
-short of installing the driver:
+This is where a packaged copy starts, and where it stays until the driver is signed. Crucible
+still runs: taps, placements and every output mode work; you will hear the direct mix as well,
+because applications are still playing to a device you can hear. Two ways around it short of
+building and installing the driver:
 
 - make some endpoint you cannot hear the default — a monitor with no speakers, an idle virtual
   cable, a muted device — and point Crucible's silent-device filter at it under Settings →

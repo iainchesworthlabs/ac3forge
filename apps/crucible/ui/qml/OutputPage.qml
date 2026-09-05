@@ -35,7 +35,7 @@ Flickable {
         }
         Text {
             Layout.fillWidth: true
-            text: qsTr("Every application plays into the Windows default output. With the silent Desktop Atmos device as that default, nothing is heard from it; this app taps each application there, places it in the room, encodes the scene, and sends the result to the endpoint the pin and the hardware choose. That endpoint is the only thing you hear.")
+            text: qsTr("Every application plays into the system default output. With the silent \"%1\" device as that default, nothing is heard from it; this app taps each application there, places it in the room, encodes the scene, and sends the result to the endpoint the pin and the hardware choose. That endpoint is the only thing you hear.").arg(CrucibleController.nullSinkName)
             color: Theme.textMuted
             font.pixelSize: Theme.fontSmall
             wrapMode: Text.WordWrap
@@ -74,17 +74,33 @@ Flickable {
                         Accessible.name: qsTr("Pin")
                         Layout.fillWidth: true
                         implicitHeight: Math.max(30, pinText.implicitHeight + 10)
+                        // Every mode the policy can choose, less any this build
+                        // cannot reach. Headphones hands decoded objects to the
+                        // platform's own object renderer, and
+                        // CrucibleController.spatialAvailable says whether this
+                        // build has one; where it does not, the policy refuses
+                        // that mode on every endpoint, so offering it would be
+                        // offering a choice that always falls back. Dropped
+                        // rather than shown greyed, because a dropdown lists
+                        // what can be chosen and the window already drops a
+                        // control a build cannot carry (RoomPage.qml's 3D
+                        // switch, on CrucibleController.has3D); sync() below is
+                        // already written for a stored pin with no entry, and
+                        // the reason is printed under the box.
                         model: [
                             { label: qsTr("Automatic · best the hardware can carry"), value: "auto" },
                             { label: qsTr("Atmos"), value: "atmos" },
                             { label: qsTr("Dolby Digital Plus 5.1"), value: "ddplus" },
                             { label: qsTr("Dolby Digital 5.1"), value: "dd" },
                             { label: qsTr("PCM surround"), value: "pcm" },
-                            { label: qsTr("Headphones (Windows Spatial Sound)"), value: "headphones" },
+                            { label: qsTr("Headphones · spatial sound"), value: "headphones" },
                             { label: qsTr("Stereo"), value: "stereo" }]
+                            .filter(function(mode) { return mode.value !== "headphones" || CrucibleController.spatialAvailable; })
                         textRole: "label"
                         valueRole: "value"
-                        // Never blank: an unknown or empty pin reads as automatic.
+                        // Never blank: an unknown or empty pin reads as
+                        // automatic, which is also what a pin whose entry this
+                        // platform does not carry reads as.
                         function sync() { const i = indexOfValue(CrucibleController.pinned); currentIndex = i < 0 ? 0 : i; }
                         Component.onCompleted: sync()
                         onModelChanged: sync()
@@ -105,6 +121,20 @@ Flickable {
                         }
                     }
                     Text { Layout.fillWidth: true; text: qsTr("A pin holds as long as some endpoint can carry it, then falls back and says why."); color: Theme.textMuted; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }
+                    // Why the list is one shorter here. The backend's own
+                    // sentence, printed as it is written - the way the tray's
+                    // absent reason and the silent device's blocker are - so
+                    // that no line in this file has to name the operating
+                    // system that does have an object renderer.
+                    Text {
+                        objectName: "spatialAbsentNote"
+                        Layout.fillWidth: true
+                        visible: CrucibleController.spatialAbsentReason.length > 0
+                        text: qsTr("No headphones entry here — %1.").arg(CrucibleController.spatialAbsentReason)
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
         }
@@ -117,7 +147,7 @@ Flickable {
         }
         Text {
             Layout.fillWidth: true
-            text: qsTr("What the probe found on each render endpoint. \"Hear it here\" chooses one: it gets the best mode it can carry, the pin when it can, and \"Automatic\" hands the choice back (the best endpoint for the best mode, a receiver first). \"Send applications here\" is the other stage, the Windows default: on a real device you would hear every application directly, so the silent device is the one to send them to.")
+            text: qsTr("What the probe found on each render endpoint. \"Hear it here\" chooses one: it gets the best mode it can carry, the pin when it can, and \"Automatic\" hands the choice back (the best endpoint for the best mode, a receiver first). \"Send applications here\" is the other stage, the system default: on a real device you would hear every application directly, so the silent device is the one to send them to.")
             color: Theme.textMuted
             font.pixelSize: Theme.fontSmall
             wrapMode: Text.WordWrap
@@ -254,8 +284,8 @@ Flickable {
                             Layout.fillWidth: true
                             textFormat: Text.StyledText
                             text: CrucibleController.defaultIsNullSink
-                                ? qsTr("Applications play to <b>%1</b>, the Windows default output and the silent device: nothing is heard from it, and this app taps each application there.").arg(CrucibleController.defaultOutputName)
-                                : qsTr("Applications play to <b>%1</b>, the Windows default output, which is a real device: you hear each application directly as well as through this app, and a receiver on it cannot be opened exclusively while they do.").arg(CrucibleController.defaultOutputName.length ? CrucibleController.defaultOutputName : qsTr("nothing"))
+                                ? qsTr("Applications play to <b>%1</b>, the system default output and the silent device: nothing is heard from it, and this app taps each application there.").arg(CrucibleController.defaultOutputName)
+                                : qsTr("Applications play to <b>%1</b>, the system default output, which is a real device: you hear each application directly as well as through this app, and a receiver on it cannot be opened exclusively while they do.").arg(CrucibleController.defaultOutputName.length ? CrucibleController.defaultOutputName : qsTr("nothing"))
                             color: Theme.text
                             font.pixelSize: Theme.fontBody
                             wrapMode: Text.WordWrap
