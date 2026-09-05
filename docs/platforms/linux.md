@@ -117,11 +117,12 @@ configured, is in [Why ALSA still comes first](../building.md#why-alsa-still-com
     format only on a sink whose `iec958.codecs` lists it, because the connect alone said yes on a
     headphone jack.
 
-## AC3Forge Crucible needs PipeWire, not ALSA
+## Crucible requires PipeWire
 
-[Crucible](../crucible/index.md) taps each application separately, and ALSA has no
-per-application concept at all — so it is the one part of this project that cannot use the
-backend this page otherwise recommends. Building it against ALSA is refused at configure time.
+Everything above is the library's ALSA and PipeWire backends, which `ac3cli` and `ac3gui`
+([Forge](../forge/index.md)) both use. [Crucible](../crucible/index.md), the third member of the
+family, is the exception: it taps each application separately, ALSA has no per-application
+concept at all, and building Crucible against ALSA is refused at configure time.
 
 That trade is uncomfortable and worth stating here rather than only there: forcing PipeWire gives
 up the passthrough path confirmed against a real receiver (ALSA `iec958`, on the Pi) for the one

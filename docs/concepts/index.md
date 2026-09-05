@@ -75,3 +75,8 @@ existing tooling.
 - [Object signing](object-signing.md) — the keyed EMDF protection tag a licensed decoder checks
   before reconstructing objects, why the algorithm is in-tree but the key isn't, and how to turn
   it on.
+
+Once the formats make sense, [Capabilities](../library/capabilities.md) says which parts of them
+this project implements, and the three members that use it are the library itself,
+[Forge](../forge/index.md) (`ac3cli` and `ac3gui`) and [Crucible](../crucible/index.md), which
+encodes a desktop's own applications as objects in real time.

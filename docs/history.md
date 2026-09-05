@@ -3,8 +3,10 @@
 How the codec was built, in the order it was built. This is a record of what was implemented
 and what evidence closed each step, kept out of the README because a landing page is not a
 development log. Nothing here supersedes the current [capability and limitation
-tables](https://github.com/iainchesworthlabs/ac3forge/blob/main/README.md#what-it-does) — where the two disagree, the README is right and this file
-is stale.
+tables](library/capabilities.md), which
+[CONTRIBUTING.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#documentation)
+names, with [Validation](verification.md), as the authority on what the project can and cannot
+do. Where this file disagrees with those pages, they are current and this file is stale.
 
 Milestone numbering is as it was used during development. Milestone 4 was folded into 5.
 
@@ -198,7 +200,7 @@ screenshot.
 Everything above decodes; this is what makes it *play* right. An AV receiver reads exactly
 these bits to set level, compress dynamics and fold down, and until this point they were all
 zero. `dynrng`, `compr`, a measured `dialnorm`, and the downmix levels — see the
-[capability table](index.md#metadata) for what each one does here.
+[capability table](library/capabilities.md#metadata) for what each one does here.
 
 Verified against the oracle rather than against the bits alone: `tools/checks/check_drc.py` runs 22
 checks in which a decode that *applies* the metadata is compared against one that ignores it
