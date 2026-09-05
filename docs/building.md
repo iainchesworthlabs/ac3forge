@@ -492,11 +492,15 @@ PipeWire has its own real, current, native mechanism for the same thing —
 aspirational API surface; `src/audio/src/backend/pipewire/passthrough.cpp`'s own header comment cites a
 real shipped client (Kodi's PipeWire passthrough support) that negotiates exactly this way. What
 it does not have is ALSA's "just works": a PipeWire sink only offers a compressed codec once its
-`iec958Codecs` control has been populated by the session manager (a WirePlumber ALSA-monitor
-rule, or a one-off `pw-cli` call) — configuration this library has no portable way to perform on
-a caller's behalf. On a stock desktop where nobody has touched that setting, every PipeWire sink
-honestly has no compressed codec enabled, even though the exact same hardware is reachable
-directly through ALSA underneath the very PipeWire daemon that's running.
+`iec958.codecs` property has been populated by the session manager. WirePlumber does that on its
+own, from the display's EDID: on 2026-09-05 a stock Raspberry Pi OS desktop that nobody had
+configured brought its HDMI sink up with `[PCM, DTS, AC3, EAC3, TrueHD, DTS-HD]` the moment an
+Atmos receiver was on the cable, and this library's PipeWire backend then streamed E-AC-3 bursts
+to it. What remains configuration — a WirePlumber ALSA-monitor rule, or a one-off `pw-cli`
+call — is the sink that advertises nothing, or a session manager that does not read EDID, and
+that this library has no portable way to perform on a caller's behalf. The precedence below is
+about that remainder, and about the fact that the exact same hardware is reachable directly
+through ALSA underneath the very PipeWire daemon that's running.
 
 That is why ALSA keeps first precedence in `src/audio/CMakeLists.txt` whenever both are found,
 rather than PipeWire winning by default for being the modern norm on most current desktops:

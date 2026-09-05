@@ -93,14 +93,34 @@ cmake --preset config-linux-gcc -B build/crucible -DAC3FORGE_BUILD_CRUCIBLE=ON -
 Note what that trades: ALSA's `iec958` passthrough is the path confirmed against a real receiver,
 and PipeWire's is not. See [the plan](promotion.md#alsa-or-pipewire).
 
-## Linux: no compressed format is offered on any endpoint
+## Linux: the receiver is plugged in and on, but there is no HDMI sink
 
-A PipeWire sink only advertises a compressed codec once WirePlumber's `iec958Codecs` has been
-populated for it, and that is configuration Crucible cannot do on your behalf. Without it, every
-bitstream mode probes as unavailable and Crucible falls back to PCM or stereo.
+The kernel sees it and PipeWire does not. `wpctl status` lists only the headphone jack; the
+HDMI card shows profiles `off` and `pro-audio` and switching to either creates nothing; and
+`journalctl --user -u wireplumber` has a line like *"Failed to create alsa_output…hdmi…:
+Object activation aborted: PipeWire proxy destroyed"*.
 
-This is an open gap rather than a solved one — see
-[Linux → Audio backend](../platforms/linux.md#audio-backend-alsa-or-pipewire).
+That is WirePlumber's hot-plug handling failing after a long uptime, and it was the first
+thing the Raspberry Pi did when its receiver came on after three weeks. Restart the user
+services:
+
+```bash
+systemctl --user restart pipewire pipewire-pulse wireplumber
+```
+
+The proper `hdmi-stereo` profile then appears, with `iec958.codecs` on the sink read from
+the receiver's own EDID — for an Atmos receiver, `[PCM, DTS, AC3, EAC3, TrueHD, DTS-HD]`.
+Nothing needs configuring by hand on a receiver that advertises its codecs; the earlier
+belief that a `iec958Codecs` rule had to be written for WirePlumber turned out not to apply
+to one that does.
+
+## Linux: an endpoint that cannot carry a bitstream is offered one
+
+It should not be. Crucible offers AC-3 or E-AC-3 on a sink only when that sink's
+`iec958.codecs` lists the codec — WirePlumber's judgement from the display's EDID — and never
+on the strength of a connect alone, because PipeWire's adapter will accept an IEC 958 stream
+on an analogue jack and render the bursts as noise. If you see a bitstream mode on a
+headphone jack, that gate has been bypassed; report it.
 
 ## Getting more out of it
 

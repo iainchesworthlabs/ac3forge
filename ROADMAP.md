@@ -2390,14 +2390,19 @@ against a receiver still waits on the HDMI cable (DR9).
 
 **UX12 (XL)** — Promote the Windows Desktop Atmos Demo to **AC3Forge Crucible**, a desktop
 product on Windows, Linux and macOS. Landed 2026-09-05: the rename; all four platform seams;
-PipeWire per-application capture and device notifications; a Linux platform half; a Linux CI
-pass; and a user guide under `docs/crucible/`. **Verified on the Pi** against a live PipeWire
-session — the tap captures a real application, the silent device is a real graph node, the
-watcher sees it come and go — a run that found five defects no build could, two of them
-pre-existing in the library's PipeWire backend. Still open: a bitstream to a receiver from
-PipeWire (DR9's row, now on Crucible's critical path since it cannot use ALSA), macOS
-(compile-only; blocked on DR6 and DR9), the window on Linux, packaging, and the product-quality
-pass. Plan and phase record in `docs/crucible/promotion.md`.
+PipeWire per-application capture and device notifications; a Linux platform half; the window
+on Linux with its Qt Quick suite passing there; a Linux package (`ac3forge-crucible` tarball
+and `.deb`, not yet a release asset); a Linux CI pass that builds, tests and packages the
+window; a settings page worded by the platform rather than by Windows; and a user guide under
+`docs/crucible/`. **Verified on the Pi** against a live PipeWire session — the tap captures a
+real application, the silent device is a real graph node, the watcher sees it come and go, and
+the passthrough offers a bitstream on the HDMI sink and refuses it on the headphone jack, from
+the codecs WirePlumber reads off the receiver's EDID — runs that found defects no build could,
+several pre-existing in the library's PipeWire backend. E-AC-3 bursts have reached the
+receiver's sink from PipeWire; whether the receiver locked is not yet read off its display.
+Still open: that reading (DR9's row, on Crucible's critical path since it cannot use ALSA),
+macOS (compile-only; blocked on DR6 and DR9), the Linux package as a release asset, and the
+product-quality pass. Plan and phase record in `docs/crucible/promotion.md`.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2646,10 +2651,21 @@ WASAPI exclusive and PipeWire remain unconfirmed; CoreAudio is blocked on real M
 - **Windows/WASAPI exclusive: unconfirmed** — only a Realtek analogue endpoint has been tried.
   The receiver exists now: cable the workstation's HDMI (or a USB S/PDIF for the AC-3 half)
   and run the Pi page's stream matrix (S, hardware).
-- **PipeWire: unconfirmed** — it has only ever seen "no session" on WSL2. Raspberry Pi OS ships
-  PipeWire: build with ALSA off, write down the WirePlumber `iec958` codec rule a user needs
-  (the most the library can do about `iec958Codecs`), run the same matrix (M). Plus a PipeWire
-  CI leg mirroring `alsa_fallback` — no workflow mentions PipeWire today (S).
+- **PipeWire: bursts delivered, lock unread** — as of 2026-09-05 the backend has run against a
+  real session on the Pi (Pi OS 13, PipeWire 1.4.2): `enumerate_render_devices()` found the
+  receiver's HDMI sink with `iec958.codecs = [PCM,DTS,AC3,EAC3,TrueHD,DTS-HD]` set by WirePlumber
+  from the ELD, and `PassthroughSink` streamed 824 E-AC-3 bursts to it over 25 s
+  (`tools/checks/passthrough_probe.cpp`). What is still unread is the receiver's own display
+  during that stream, which is the only thing that says it locked. Three things the run changed:
+  the connect-probe alone was a false positive (it said yes on the analogue jack), so both
+  enumeration and `start()`'s auto-pick are now gated on the node's `iec958.codecs`; the probe
+  deadlocked on every successful connect (stream destroyed before the loop stopped); and
+  WirePlumber's hot-plug activation had silently failed after a long uptime and needed a
+  restart before any HDMI sink existed at all. The `iec958Codecs` rule turned out not to be
+  needed on a receiver that advertises its codecs — WirePlumber reads them from the EDID. A
+  PipeWire CI pass now exists on the Linux LLVM leg (roadmap UX12): it builds Crucible's
+  engine, runner and window, runs the PipeWire contract tests and the window's Qt Quick suite
+  headless, and packages the Linux tarball and `.deb`.
 - **CoreAudio: blocked** — CI-only, no Mac has ever run it. Also outstanding: a Pi 5 and a
   second Android TV device.
 </details>

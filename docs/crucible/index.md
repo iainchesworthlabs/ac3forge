@@ -10,9 +10,10 @@ does to the sounds on a desk.
 
 !!! note "Status: Windows works; Linux is new; macOS is not built yet"
     The application began as a Windows demo (roadmap UX11) and was promoted to a product on
-    2026-09-04 (roadmap UX12). Windows is the mature platform. The Linux half is new, and its
-    per-application capture and silent device are confirmed on real hardware, but nothing has
-    yet sent a bitstream to a receiver from it. macOS has a design and no implementation.
+    2026-09-04 (roadmap UX12). Windows is the mature platform. The Linux half is new: its
+    per-application capture, silent device and window are confirmed on real hardware, and its
+    bitstream path has reached a receiver's HDMI sink, with the receiver's own lock still to be
+    read off its display. macOS has a design and no implementation.
     [Where each platform stands](#where-each-platform-stands) is exact about this, and
     [the promotion plan](promotion.md) carries the full record.
 
@@ -53,21 +54,24 @@ differently, and [Install and first run](install.md) is mostly about that differ
 |---|---|---|---|
 | Enumerate and tap | yes | yes, confirmed on hardware | designed, not built |
 | Silence | a signed driver, [see below](#the-silent-device) | a PipeWire node, nothing to install | the tap mutes; no device needed |
-| Bitstream to a receiver | not yet confirmed | **not yet confirmed** | not built |
-| The window | yes | engine and console runner only | no |
+| Bitstream to a receiver | not yet confirmed | bursts reach the HDMI sink; receiver lock not yet confirmed | not built |
+| The window | yes | yes, headless-verified on the Pi | no |
 
-**Windows** is the platform the application was built on and the only one with the window, the
-room, and the tray. Its silent device is a kernel driver that is **test-signed only** today: it
+**Windows** is the platform the application was built on and the one with the longest record:
+the room, the tray, the driver. Its silent device is a kernel driver that is **test-signed only** today: it
 loads on a machine with test signing turned on, and refuses on a normal one. That closes when an
 EV certificate and attestation submission are in place.
 
-**Linux** has the engine, the console runner, and all four platform services over PipeWire. Its
-per-application tap, session list, default-device control and silent device are confirmed against
-a live session on real hardware. Two things it does not have: the Qt window, and any evidence
-that a PipeWire sink will carry a bitstream to a receiver — which matters more than it sounds,
-because Crucible **cannot** use the ALSA backend (no per-application tap), so it is forced onto
-the one passthrough path this project has not confirmed. [The plan](promotion.md#alsa-or-pipewire)
-is blunt about that.
+**Linux** has the engine, the console runner, the window, and all four platform services over
+PipeWire. Its per-application tap, session list, default-device control and silent device are
+confirmed against a live session on real hardware, and the window builds and renders there. The
+library's PipeWire backend has streamed E-AC-3 bursts to a real HDMI sink with an Atmos receiver
+on the end of it; whether the receiver locked is the receiver's display's to say, and that reading
+is still open. It matters more than it sounds, because Crucible **cannot** use the ALSA backend
+(no per-application tap), so it is forced onto the one passthrough path this project had not
+confirmed before. [The plan](promotion.md#alsa-or-pipewire) is blunt about that. What the Linux
+window still lacks: application icons (the monogram stands in), and the full-screen rule, which
+Wayland cannot answer.
 
 **macOS** needs no driver — its process taps can mute an application where they tap it, which is
 the job the Windows driver exists to do — but nothing is implemented. It is blocked on a Mac to

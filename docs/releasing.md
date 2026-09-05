@@ -553,17 +553,36 @@ components instead of `runtime`) but is best-effort - see `package-macos-univers
 | macOS | arm64 + x86_64 (universal) | macos-llvm + macos-llvm-x64, merged by `package-macos-universal` | `.dmg` | `.zip`, best-effort (see above) |
 | Android (Shield) | arm64 (NDK) | build-android | `.apk` | none - Shield links `ac3::forge`/`ac3::audio` in-tree, it isn't a `find_package(ac3forge)` consumer |
 
-Windows x64 additionally ships the AC3Forge Crucible as its own
-`ac3forge-crucible-*-win64.zip` (roadmap UX11,
-[docs/platforms/windows-demo.md](platforms/windows-demo.md)): the `crucible` CPack component -
-`ac3crucible.exe`, the `ac3crucible-run` runner, the driver's install/remove scripts and a Qt runtime of
-its own - packaged by the same `windows-msvc` leg as the row above and picked up by
-`release.yml`'s existing `*.zip` glob. It is a separate download rather than part of the
-`runtime` component, and deliberately absent from the NSIS installer
+Windows x64 additionally ships AC3Forge Crucible as its own
+`ac3forge-crucible-*-win64.zip` (roadmap UX12, [the Crucible guide](crucible/index.md)): the
+`crucible` CPack component - `ac3crucible.exe`, the `ac3crucible-run` runner, the driver's
+install/remove scripts and a Qt runtime of its own - packaged by the same `windows-msvc` leg as
+the row above and picked up by `release.yml`'s existing `*.zip` glob. It is a separate download
+rather than part of the `runtime` component, and deliberately absent from the NSIS installer
 (`cmake/CPackProjectConfig.cmake` says why): its null-sink driver is test-signed only, so the
-demo needs a machine with test signing on to be useful, which is not something an `ac3cli`
-download should carry. When the EV certificate lands, the installer takes over installing the
-demo and its signed driver - one line in that file, and this paragraph, change together.
+application needs a machine with test signing on to be useful, which is not something an
+`ac3cli` download should carry. When the EV certificate lands, the installer takes over
+installing the application and its signed driver - one line in that file, and this paragraph,
+change together. `tools/ci/check_crucible_package.py` guards the archive's shape in CI and
+against a local `cpack`.
+
+Linux ships the same component as `ac3forge-crucible-*-Linux-<arch>.tar.gz` and, where
+`dpkg-deb` and `rpmbuild` exist, as the `ac3forge-crucible` `.deb` and `.rpm` (named the way
+those tools name things, `ac3forge-crucible_<version>_<arch>.deb`): `ac3crucible`,
+`ac3crucible-run`, the freedesktop launcher, the AppStream record and the icon in the hicolor
+theme, and nothing else - no Qt (the system's own loader finds it), and no driver scripts,
+because Linux needs no driver. The `.deb` depends on `pipewire` and a session manager
+(`wireplumber | pipewire-media-session`) explicitly, since those are running services rather
+than libraries shlibdeps could see; everything else it depends on is resolved from the binary.
+Two things to know. The component is packaged only from a PipeWire build, which is the only
+build Crucible accepts on Linux ([why](crucible/promotion.md#alsa-or-pipewire)), so the
+existing Linux release legs - which build ALSA - do not produce it; the Linux LLVM leg's
+Crucible pass builds the platform half but does not yet package it, and that is the next step
+for this table. And the `.deb`'s one-line synopsis is the library's, not Crucible's: CPack's
+DEB generator headlines every component's package with the project summary and offers no
+per-component override that takes effect, so `apt show ac3forge-crucible` opens with
+"Clean-room AC-3 encoder" and says what the package actually is on the next line. The same
+check script reads the tarball's layout, and refuses one that carries a PowerShell script.
 
 Linux x86_64 also ships a self-contained `ac3gui` `.AppImage` (roadmap DR8), built by its own
 `linux-appimage` job rather than a `release_package: true` leg above - it isn't a CPack product

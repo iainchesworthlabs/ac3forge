@@ -498,14 +498,122 @@ places one, and encodes; the signal path renders with the null sink as the defau
     present, and nothing existed. A second, independent observer of the same fact — the watcher —
     is what made the difference between believing it and knowing it.
 
-    **What this still does not establish.** The Pi's HDMI is unplugged (both connectors read
-    `disconnected`, so WirePlumber has both `vc4hdmi` cards' profiles Off and only the analogue
-    jack has a sink), and the receiver is off. So nothing here says a PipeWire sink will carry an
-    E-AC-3 bitstream to a receiver — DR9's PipeWire row is untouched, and it remains
-    [on Crucible's critical path on Linux](#alsa-or-pipewire). Worth knowing before that run: the
-    Pi's own checkout sits on `bugfix/vc4-hdmi-device-classification`, whose HEAD is "classify
-    vc4-hdmi PCMs by card name, not just PCM name" — HDMI audio classification on this exact
-    hardware has bitten someone once already.
+    **Later the same night the receiver came on**, and the second half of the run followed.
+
+    The kernel saw it at once — `HDMI-A-1: connected`, ELD `monitor_name: AV Receiver`, SADs
+    for AC-3 (6 ch), E-AC-3 (8 ch), TrueHD, DTS-HD — and PipeWire did not. WirePlumber had been
+    running since 17 August; its hot-plug activation died with "Object activation aborted:
+    PipeWire proxy destroyed", `wpctl set-profile` changed nothing, and the card offered only
+    `off` and `pro-audio`. A restart of the user's PipeWire services fixed it instantly: the
+    proper `hdmi-stereo` profile appeared with `iec958.codecs = [PCM, DTS, AC3, EAC3, TrueHD,
+    DTS-HD]` read from the ELD. So the WirePlumber `iec958Codecs` rule this project expected a
+    user to write is not needed on a receiver that advertises its codecs; what is needed is a
+    session manager that has not been up for three weeks. (A guess along the way — that
+    `vc4-hdmi`'s ALSA format being only `IEC958_SUBFRAME_LE` was the cause — was wrong, and is
+    recorded so it is not made twice.)
+
+    Then the library's own probe, `enumerate_render_devices()`, against the real graph:
+
+    ```
+    *alsa_output.platform-fe00b840.mailbox.stereo-fallback ac3=YES eac3=YES  "Built-in Audio Stereo"
+     alsa_output.platform-fef00700.hdmi.hdmi-stereo         ac3=YES eac3=YES  "Digital Stereo (HDMI)"
+    ```
+
+    The second line is DR9's PipeWire row answered. The first line is a **false positive**: a
+    3.5 mm headphone jack cannot carry a bitstream, and the probe said it could, because the
+    connect it makes is accepted by PipeWire's adapter, which would render the bursts as PCM
+    noise. Crucible's output policy would have chosen it. Both enumeration and `start()`'s
+    auto-pick are now gated on the node's `iec958.codecs`, which is WirePlumber's judgement from
+    the sink's own ELD, and the jack — which has none — is never probed.
+
+    `tools/checks/passthrough_probe.cpp` then streamed the 5.1 E-AC-3 fixture to the HDMI sink
+    for 25 s: 824 IEC 61937 bursts over 11 loops, 0 dropped. **Whether the receiver locked is the
+    receiver's display's to say**, and that reading is the one thing this record still lacks.
+
+    **The window, on Linux.** With Quick 3D, Shader Tools and Linguist Tools installed from apt,
+    `ac3crucible` built on the Pi (6.1 MB, aarch64) after one platform split — the application
+    icon provider asks the Windows shell for an executable's icon and is the only Windows-only
+    file in the UI; its Linux twin returns none and the monogram shows. Rendered headless with
+    `--shot`, the room, both views, the three-station signal path and the status bar all drew,
+    with the encoder at **9.56 ms per frame** on the Pi 4B and zero underruns. The screenshot is
+    what exposed the next four defects, which no log had:
+
+    1. **Station 1 said "install the Desktop Atmos driver" and station 2 was labelled "DESKTOP
+       ATMOS".** The silent device's name lived in the window as a default rather than in the
+       platform that owns it. `VirtualDevice` now carries `device_name()` and
+       `how_to_get_one()` — "Desktop Atmos" and the driver advice on Windows, "Crucible (silent)"
+       and "Crucible creates it" on Linux — and station 2 is simply Crucible.
+    2. **The applications rail listed "ac3forge probe."** Crucible's own probe streams are
+       PipeWire streams like any other. Windows never lists another instance of this program;
+       the Linux session monitor now skips its own pid.
+    3. **The tray was absent, with "Qt Labs Platform requires Qt Widgets".** `Qt.labs.platform`'s
+       tray is `QSystemTrayIcon` underneath, a Widgets class; Windows tolerated a
+       `QGuiApplication` because its native menu needs no widgets, Linux refused. It is a
+       `QApplication` now, on every platform.
+    4. **The first frame took 7.1 s** (`worst 7121.5 ms` in the status bar). The output probe ran
+       on the frame thread, and on PipeWire every answer is a real connect with a 2 s timeout —
+       instant on Windows, seconds here. `OutputStage::reprobe()` is now `enumerate()`, which any
+       thread may run, plus `apply()`, which starts and stops sinks and stays on the frame
+       thread; the engine runs the first on a probe thread of its own, the same shape as its
+       session-monitor thread, and applies the facts at the next frame boundary.
+
+    Two more from the same run's logs. Every `stop()` destroyed its stream *after* stopping the
+    loop, which is the right order, but without the loop lock held, which PipeWire's context
+    check still wants — "called from wrong context" on every teardown. And the Linux silent
+    device's teardown never destroyed its node proxy before the core, which is "impl_ext_end_proxy:
+    Device or resource busy". Both fixed; the `rendered` statistic, which had read 0 through a
+    run that plainly played because each callback asks for less than one burst and integer
+    division per callback rounds to nothing, now accumulates bytes and counts whole bursts.
+
+    **Re-verified on the Pi after these fixes**, 2026-09-05: enumeration reads the headphone jack as `ac3=no eac3=no` and the HDMI sink as `ac3=YES eac3=YES`, from the bound node info rather than the registry dictionary; the window renders with 0 wrong-context warnings and a worst frame of 59 ms; and its own Qt Quick suite passes there (the next section).
+
+    What the Linux window still lacks, and says so: application icons, and the full-screen
+    rule that Wayland cannot answer. Worth knowing before the next hardware run: the Pi's own
+    checkout sits on `bugfix/vc4-hdmi-device-classification` — HDMI audio classification on
+    this exact hardware has bitten the ALSA backend once already.
+
+    **The window's own tests, on Linux — and what they found.** The Qt Quick suite ran on the
+    Pi for the first time: four of five passed and the settings suite failed twice, both on the
+    same line of thinking. The settings page asserted that pointing the driver folder at a
+    place that does not exist means there is no package to install — true on Windows, and
+    meaningless on a platform with no package, where the application makes the silent device
+    itself and "found" is the platform's word for "can make one". The page was Windows-shaped
+    in four places besides: it said applications play into "the Windows default output", named
+    "the Desktop Atmos driver" in its own prose, offered a driver folder and `install.ps1`
+    advice under Advanced, and labelled its buttons Install driver and Remove driver. The seam
+    had the fact (`set_package_dir()` is a no-op on Linux) and nothing told the window, so
+    `VirtualDevice` now says it outright — `from_package()`, true on Windows, false on Linux —
+    and the page is worded by it: the two-stage note names whatever the platform calls the
+    device, the folder and its notes exist only where a package does, and Linux reads Create
+    device and Remove device. The tests now open Advanced and assert the shape on both
+    platforms rather than skipping one. That took a second lesson: a Qt Quick `TestCase` item
+    is invisible by design, an Item's `visible` reads the *effective* value, so nothing
+    parented to the test case can ever be seen — the earlier tests only ever read `enabled`
+    and `text` and never noticed. The page under test is parented to the window's root item.
+    On the Pi, after the fix, all five suites pass — language, output, room (35 s), settings (17 s: seven passed, one skipped by name) and shell — the suite Windows runs in six seconds.
+
+    **Packaging on Linux, from the Pi.** The first `cpack` there died in Qt's own deploy
+    script, which `qt_generate_deploy_qml_app_script` runs at install time: on Linux it copies
+    the distribution's QML plugins into the package and then fails to rewrite an RPATH they
+    never had. WSL2 never reached it, having no Qt. The script is Windows and macOS only now —
+    Linux ships no Qt, the loader finds the system's — and the `crucible` component packages
+    alone from a build that has built nothing else (`cpack -D CPACK_COMPONENTS_ALL=crucible`;
+    the runtime component's install rules want a `libac3forge.so` the Pi never built).
+    `ac3crucible` links the library statically, so the package is self-contained apart from
+    Qt and PipeWire, which `dpkg-shlibdeps` resolves from the binary:
+    `ac3forge-crucible-0.0.0-dev-Linux-aarch64.tar.gz`: 16 entries, 7 MB unpacked, 2.8 MB compressed; `check_crucible_package.py` passes, and not one entry under `qml/`.
+    `ac3forge-crucible_0.0.0_arm64.deb` (2.8 MB): Package `ac3forge-crucible`, Section sound, Depends `pipewire, wireplumber | pipewire-media-session` plus what shlibdeps read off the binary — libpipewire-0.3, Qt 6 Core/Gui/Qml/Quick/QuickControls2/Widgets, libstdc++6 — and six files: the two binaries, the launcher, the AppStream record and the two icons.
+
+    **CI, the Linux half.** The Linux LLVM leg's Crucible pass no longer stops at the runner.
+    It installs distro Qt the way the GUI leg does, builds the window and its test binary,
+    runs the engine's Catch2 tags and the PipeWire backend's contract tests in that tree — the
+    only place they run on PipeWire — then the Qt Quick suite headless with `--no-tests=error`,
+    packages the component, runs `check_crucible_package.py` on the tarball and checks the
+    `.deb`'s name, and uploads both as a run artifact (not a release asset: the release legs
+    build against ALSA and cannot produce it, which is the next step for `docs/releasing.md`'s
+    table). The fleet's Linux image is Ubuntu 26.04 with Qt 6.10; when `decide-runner` falls
+    back to GitHub's 24.04 and its Qt 6.4, below the window's 6.5, the step warns by name and
+    skips the window half rather than fail the leg for something unrelated to the change.
 
 ### Phase 5: macOS
 

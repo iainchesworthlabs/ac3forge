@@ -14,6 +14,43 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **The Desktop Atmos Demo is now AC3Forge Crucible** (roadmap UX12; `apps/crucible/`, the
+  [Crucible guide](docs/crucible/index.md)): a desktop application rather than a Windows
+  demo, with the same idea - every application that is playing sound becomes an Atmos
+  object the user places in a room, streamed live as E-AC-3 JOC or AC-3, or as PCM
+  surround or stereo when the endpoint cannot take a bitstream. `ac3desk`/`ac3windemo`
+  are `ac3crucible`/`ac3crucible-run`; the option is `AC3FORGE_BUILD_CRUCIBLE`; settings
+  migrate from `ac3forge/DesktopAtmos` on first launch; the Windows package is
+  `ac3forge-crucible-<version>-win64.zip`. Everything the application asks of the operating
+  system - which applications are playing, which window is in front, what the default
+  output is, and a silent device for applications to play into - now goes through four
+  platform seams under `apps/crucible/engine/`, with one implementation per platform
+  directory and no `#ifdef`s, and the same engine, room and signal-path tests run against
+  fakes of them on every platform. The Windows null-sink driver stays in
+  `apps/windows/driver/` under its own name until it is signed.
+- **Crucible runs on Linux, on PipeWire** (verified on a Raspberry Pi 4B with an Atmos
+  receiver on HDMI, 2026-09-05). Applications are tapped one at a time through PipeWire's
+  per-stream target, the silent device is a `support.null-audio-sink` node the application
+  creates and removes itself (no driver, nothing installed), the default sink moves through
+  the `default` metadata as `wpctl set-default` does, and the front window is read from the
+  X11 active window or, under Wayland, reported as unavailable with the reason. Linux
+  needs the PipeWire backend: a Crucible build against ALSA is refused at configure time,
+  since ALSA has no per-application streams to tap. The window builds and its Qt Quick
+  tests pass on Linux; the `crucible` CPack component produces an
+  `ac3forge-crucible-<version>-Linux-<arch>.tar.gz` and an `ac3forge-crucible` `.deb`
+  (depending on `pipewire` and a session manager, carrying no Qt of its own), though
+  releases do not ship it yet because the release legs build against ALSA. Settings on
+  Linux say "Create device" where Windows says "Install driver", and show no driver folder.
+- The PipeWire backend's passthrough now offers AC-3 and E-AC-3 on a sink only when the
+  sink's `iec958.codecs` lists them - the session manager's reading of the display's EDID -
+  and never on the strength of a successful connect, which PipeWire's adapter grants to a
+  headphone jack as readily as to a receiver. Reading that property means binding each
+  sink for its node info; the registry's property dictionary is a subset that never carries
+  it, which is how the first gate on the Pi rejected the very receiver it was written for.
+  `Capture::start_process_loopback` works on PipeWire (one application's output streams,
+  found by joining stream nodes to their client's `pipewire.sec.pid`), refusing the
+  exclude-process-tree mode ALSA and PipeWire cannot express, and `DeviceWatcher` reports
+  default-sink changes from the `default` metadata object.
 - The Desktop Atmos Demo's silent output device, `Ac3ForgeNullSink`, is now an ACX (Audio
   Class eXtensions) driver on KMDF, derived from Microsoft's AudioCodec sample, in place of
   the PortCls/WaveRT miniport derived from the Simple Audio Sample: about 1,900 lines in

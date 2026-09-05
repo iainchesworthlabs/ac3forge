@@ -75,13 +75,18 @@ hardware exists.
 
 PipeWire has its own real, current, native mechanism for the same bit — `SPA_MEDIA_SUBTYPE_
 iec958`, confirmed against a real shipped client (Kodi's own PipeWire passthrough support), not
-assumed from memory. What it lacks is ALSA's "just works": a PipeWire sink only offers a
-compressed codec once its `iec958Codecs` control has been populated by the session manager,
-configuration this library cannot perform on a caller's behalf. That gap — not a capability gap
-— is why ALSA keeps first precedence whenever both are found, rather than PipeWire winning by
-default for being the modern norm on most current desktops. The full reasoning, and the explicit
-override for a machine where PipeWire's compressed codecs genuinely are configured, is in [Why
-ALSA still comes first](../building.md#why-alsa-still-comes-first).
+assumed from memory, and since 2026-09-05 against this project's own Raspberry Pi and its
+receiver. What it lacks is ALSA's "just works": a PipeWire sink only offers a compressed codec
+once its `iec958.codecs` property has been populated by the session manager. WirePlumber does
+populate it, from the display's own EDID, so on a receiver that advertises its codecs nothing
+needs configuring by hand — the Pi's Atmos receiver came up with
+`[PCM, DTS, AC3, EAC3, TrueHD, DTS-HD]` set on its HDMI sink unprompted. On a sink that
+advertises nothing, or under a session manager that does not read EDID, the codec list is still
+configuration this library cannot perform on a caller's behalf. That dependence on the session
+manager — not a capability gap — is why ALSA keeps first precedence whenever both are found,
+rather than PipeWire winning by default for being the modern norm on most current desktops. The
+full reasoning, and the explicit override for a machine where PipeWire's compressed codecs are
+configured, is in [Why ALSA still comes first](../building.md#why-alsa-still-comes-first).
 
 ### What has and has not been verified
 
@@ -103,9 +108,14 @@ ALSA still comes first](../building.md#why-alsa-still-comes-first).
     [Raspberry Pi → Live HDMI passthrough to a real
     receiver](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) for a Pi 4B bitstreaming
     every AC-3/E-AC-3/Atmos shape tried to a real Atmos-capable AVR over HDMI, correctly
-    identified every time. PipeWire remains unconfirmed against real hardware on any platform —
-    this is a real, current gap, not a minor caveat — and whether a given output accepts a
-    bitstream is per-device anyway; `ac3cli outputs` probes each one and reports what it finds.
+    identified every time. PipeWire has now met real hardware once, on the same Pi, on 2026-09-05: the backend
+    enumerated the receiver's HDMI sink with its compressed codecs set by WirePlumber from the
+    EDID, and streamed E-AC-3 bursts to it. The receiver's own lock is still to be read off its
+    display, so this is "delivered" rather than "confirmed" — see roadmap DR9 for what that run
+    found and fixed. Whether a given output accepts a bitstream is per-device anyway; `ac3cli
+    outputs` probes each one and reports what it finds, and since that run it reports a bitstream
+    format only on a sink whose `iec958.codecs` lists it, because the connect alone said yes on a
+    headphone jack.
 
 ## AC3Forge Crucible needs PipeWire, not ALSA
 
