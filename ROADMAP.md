@@ -1433,6 +1433,33 @@ analysis engine. The APK build and the emulator tests stay in `build-android`, a
 `security-events: write` came back off all three permission blocks with the scan.
 </details>
 
+**VX23 (S)** — SonarCloud (SonarQube Cloud) as a fourth analysis engine, nightly against
+`main`.
+<details markdown="1">
+<summary>Full record</summary>
+
+`.github/workflows/sonarcloud.yml` at 02:35 UTC, alongside the other three nightlies. It is
+the maintainability and duplication view - cognitive complexity, duplicated blocks, coverage
+on new code - rather than a fourth defect scanner, which is the one thing CodeQL, PREfast and
+clang-tidy between them do not report. Free because this repository is public; SonarQube
+Cloud charges for C and C++ on private ones.
+
+No build-wrapper, unlike the sibling repo's job: `CMAKE_EXPORT_COMPILE_COMMANDS` is already
+on and the clang-tidy leg has consumed that compile database since it existed, so
+`sonar.cfamily.compile-commands` reads the same file. Builds `config-linux-gcc-coverage`, so
+one configure gives the compile database, the test binaries and the gcov instrumentation
+that feeds `sonar.coverageReportPaths`. Pinned to GitHub-hosted and never routed to the
+fleet: the CFamily analyser needs more than the fleet guests' 12 GB on a large changeset
+(measured on the sibling), and 16 GB hosted is the smallest shape that works.
+
+A `preflight` job checks for `SONAR_TOKEN` and skips the scan with a notice when it is
+absent, so the nightly does not fail - and open an issue - every night over a setup step
+that has not been taken. Setup is in `docs/ci-self-hosted-runners.md` "SonarCloud setup";
+the organisation is `iainchesworthlabs`, which is NOT the sibling's `iainchesworth`. Two
+unknowns will show up in the first run's log: whether the scan action runs cleanly inside
+this repo's `ubuntu:26.04` container, and whether the CFamily analyser accepts GCC 16.
+</details>
+
 **VX22 (S)** — CLI tests for the container commands, client-side coverage which library-level
 tests never touched.
 <details markdown="1">

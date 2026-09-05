@@ -160,15 +160,18 @@ this repo has deliberately moved away from.
 
 ## Nightly analysis and other visible-only scanners
 
-`codeql.yml` and `msvc-analysis.yml` (MSVC Code Analysis, `/analyze`) run
-nightly against `main` - 02:17 and 02:23 UTC, see
-`docs/ci-self-hosted-runners.md` "Nightly analysis window" - and neither
-reports on a PR at all. Their alerts land in **Security → Code scanning**
-against `refs/heads/main`; because nothing reliably notifies anyone about a
-new default-branch alert, each workflow's `surface` job fails on alerts created
-since the previous nightly and opens or refreshes a `nightly-analysis`
-issue (one per engine, via `.github/actions/report-nightly-failure`). Close
-the issue once the findings are fixed or dismissed with a justification.
+`codeql.yml`, `msvc-analysis.yml` (MSVC Code Analysis, `/analyze`),
+`static-analysis.yml` (clang-tidy) and `sonarcloud.yml` run nightly against
+`main` - 02:17 to 02:35 UTC, see `docs/ci-self-hosted-runners.md` "Nightly
+analysis window" - and none of them reports on a PR at all. The first three
+put their alerts in **Security → Code scanning** against `refs/heads/main`;
+because nothing reliably notifies anyone about a new default-branch alert,
+each workflow fails on findings since the previous nightly and opens or
+refreshes a `nightly-analysis` issue (one per engine, via
+`.github/actions/report-nightly-failure`). Close the issue once the findings
+are fixed or dismissed with a justification. SonarCloud is the exception to
+the Security-tab part: its findings live in its own dashboard, and what fails
+the job is its quality gate on new code.
 
 `osv-scanner.yml`, `zizmor.yml` and `scorecard.yml` upload SARIF to
 **Security → Code scanning** but don't fail PR checks - triage their alerts
