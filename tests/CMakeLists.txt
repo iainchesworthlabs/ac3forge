@@ -441,12 +441,14 @@ target_sources(ac3tests PRIVATE
     crucible/test_output_stage.cpp
     crucible/test_nullsink_position.cpp
     crucible/test_platform_seams.cpp
+    crucible/test_diagnostics.cpp
     crucible/platform_services_stub.cpp
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/placement.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_policy.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/tap_pool.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/diagnostics.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp")
 # The null-sink driver's position clock (apps/windows/driver/Source/Main/
 # position.h) is a header with no kernel dependencies, kept that way so the

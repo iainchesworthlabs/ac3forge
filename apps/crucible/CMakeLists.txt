@@ -19,6 +19,7 @@ add_library(ac3crucible_engine STATIC
     engine/output_stage.cpp
     engine/signing_hook.cpp
     engine/library_devices.cpp
+    engine/diagnostics.cpp
     engine/engine.cpp)
 add_library(ac3::crucible_engine ALIAS ac3crucible_engine)
 target_include_directories(ac3crucible_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/engine")

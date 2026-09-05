@@ -18,6 +18,9 @@
 
 #include "virtual_device.hpp"
 
+#include "diagnostics.hpp"
+#include "foreground.hpp"
+
 // The one object QML talks to: the engine's status, republished as
 // properties a few times a second, and its commands, as invokables
 // (docs/platforms/windows-demo.md, "UI"). Settings persist through
@@ -116,6 +119,9 @@ class CrucibleController : public QObject {
     // Whether this build carries the room's 3D view (Qt Quick 3D found at
     // configure time; the page hides its toggle otherwise).
     Q_PROPERTY(bool has3D READ has3D CONSTANT)
+    // The outcome of the last diagnostics export, for the Settings page
+    // (docs/crucible/troubleshooting.md, "Saving a diagnostics file").
+    Q_PROPERTY(QString diagnosticsMessage READ diagnosticsMessage NOTIFY diagnosticsChanged)
 
 public:
     explicit CrucibleController(QObject* parent = nullptr);
@@ -219,6 +225,16 @@ public:
     Q_INVOKABLE void openSoundSettings();
     Q_INVOKABLE void refreshDefault();
 
+    // The diagnostics file: the report as text, composed from named facts
+    // and never from the signing key, its path or an environment value
+    // (diagnostics.hpp says how that is held); a suggested file: URL in the
+    // Documents folder; and the export itself, which writes UTF-8 with LF
+    // line endings and reports through diagnosticsMessage.
+    [[nodiscard]] QString diagnosticsMessage() const { return diagnostics_message_; }
+    Q_INVOKABLE QString diagnosticsReport() const;
+    Q_INVOKABLE QString suggestedDiagnosticsFile() const;
+    Q_INVOKABLE bool exportDiagnostics(const QString& fileUrl);
+
 signals:
     void stateChanged();
     void appsChanged();
@@ -227,6 +243,7 @@ signals:
     void settingsChanged();
     void defaultChanged();
     void driverChanged();
+    void diagnosticsChanged();
 
 private:
     void poll();
@@ -234,6 +251,8 @@ private:
     [[nodiscard]] ac3::crucible::EngineConfig engine_config() const;
     void emit_restored_default();
     void poll_driver();
+    [[nodiscard]] ac3::crucible::ReportFacts build_report_facts() const;
+    [[nodiscard]] ac3::crucible::Secrets secrets() const;
 
     // The machine, behind the engine's seams: the system default output
     // and the silent device applications play into. Both are resolved
@@ -267,4 +286,12 @@ private:
     bool driver_busy_ = false;
     QString driver_message_;
     QString driver_verb_;
+
+    // The process-wide note ring (diagnostics.hpp) the engine, the window's
+    // message handler and this controller share: a reference, since it
+    // outlives everything including this object. The full-screen seam is
+    // held for its support() line in the report only.
+    ac3::crucible::DiagnosticLog& log_;
+    std::shared_ptr<ac3::crucible::Foreground> foreground_;
+    QString diagnostics_message_;
 };

@@ -11,10 +11,12 @@
 #include <QApplication>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QMessageLogContext>
 #include <QVariant>
 #include <QVariantMap>
 
 #include "crucible_controller.hpp"
+#include "diagnostics.hpp"
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QtQml>
@@ -67,6 +69,30 @@ void migrate_demo_settings() {
     current.sync();
 }
 
+// Qt's own messages - this file's --shot and --place lines, a QML warning,
+// a font that failed to register - into the diagnostics ring
+// (engine/diagnostics.hpp), so a saved report carries them: on a
+// WIN32_EXECUTABLE they otherwise reach only an attached debugger. Debug
+// output is left out; it is Qt's own chatter and the ring holds 512 lines.
+// The handler runs on whatever thread emitted the message, possibly during
+// teardown, so it converts the string, hands it to note() (which takes the
+// ring's lock and returns) and chains to the handler that was there before;
+// nothing in it may itself log, since that would recurse.
+QtMessageHandler g_previous_handler = nullptr;
+
+void forward_to_diagnostics(QtMsgType type, const QMessageLogContext& context, const QString& message) {
+    if (type != QtDebugMsg) {
+        const char* level = type == QtInfoMsg       ? "info: "
+                            : type == QtWarningMsg  ? "warning: "
+                            : type == QtCriticalMsg ? "critical: "
+                                                    : "fatal: ";
+        ac3::crucible::process_diagnostics().note(level + message.toStdString());
+    }
+    if (g_previous_handler != nullptr) {
+        g_previous_handler(type, context, message);
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -85,6 +111,10 @@ int main(int argc, char** argv) {
     // tolerated the narrower application object because its native menu
     // path needs no widgets; Linux refused it and the tray was absent.
     QApplication app(argc, argv);
+    // The ring exists from here, so its clock starts with the window and
+    // every later message lands in it.
+    ac3::crucible::process_diagnostics().note("ac3crucible started");
+    g_previous_handler = qInstallMessageHandler(forward_to_diagnostics);
     QGuiApplication::setApplicationName(QStringLiteral("Crucible"));
     QGuiApplication::setOrganizationName(QStringLiteral("ac3forge"));
     migrate_demo_settings();

@@ -7,16 +7,23 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <functional>
 #include <mutex>
+#include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "ac3/audio/device_watcher.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/signing/signing_key.hpp"
 #include "bed_mixer.hpp"
+#include "diagnostics.hpp"
+#include "output_policy.hpp"
 #include "output_stage.hpp"
 #include "placement.hpp"
 #include "platform_services.hpp"
@@ -111,6 +118,11 @@ struct Engine::Impl {
     std::uint64_t starved = 0;
     double tap_backlog_ms = 0.0;
     std::uint64_t catchups = 0;
+    // Diagnostics: applications whose tap refused to open, noted once each
+    // rather than once per refresh; and whether the encoder is refusing
+    // frames, noted on the transition only.
+    std::unordered_set<AppId> tap_refused;
+    bool encode_refusing = false;
 
     explicit Impl(EngineConfig c)
         : config(std::move(c)),
@@ -124,11 +136,51 @@ struct Engine::Impl {
         commands.push_back(std::move(command));
     }
 
+    // One line into the diagnostics ring (diagnostics.hpp), when there is
+    // one. Every caller is a transition or is rate-limited: the frame loop
+    // never pays for a note per frame. Nothing that names the key file -
+    // signing_status, signing.source(), the configured path - may be passed
+    // here.
+    void note(std::string_view line) {
+        if (config.diagnostics != nullptr) {
+            config.diagnostics->note(line);
+        }
+    }
+
+    [[nodiscard]] std::uint32_t bitrate_kbps() const {
+        return config.bitrate_kbps != 0 ? config.bitrate_kbps : (config.low_latency ? 1536U : 448U);
+    }
+
+    // The signing outcome as a sentence that names no file.
+    [[nodiscard]] std::string signing_note() const {
+        switch (signing.source_kind()) {
+            case SigningHook::Source::kFile: return "signing: objects on (key from a file)";
+            case SigningHook::Source::kEnvironment: return "signing: objects on (key from the environment)";
+            case SigningHook::Source::kNone: break;
+        }
+        if (const auto failure = signing.failure()) {
+            switch (*failure) {
+                case ac3::signing::KeyErrorKind::kUnreadable:
+                    return "signing: key not loaded (unreadable), 5.1 bed only";
+                case ac3::signing::KeyErrorKind::kMalformed:
+                    return "signing: key not loaded (malformed), 5.1 bed only";
+                case ac3::signing::KeyErrorKind::kEmpty:
+                    return "signing: key not loaded (empty), 5.1 bed only";
+                case ac3::signing::KeyErrorKind::kAbsent: break;
+            }
+        }
+        return "signing: no key, 5.1 bed only";
+    }
+
+    [[nodiscard]] std::string name_of(AppId app) const {
+        const auto it = known.find(app);
+        return it == known.end() ? std::string("unknown") : it->second.name;
+    }
+
     void build_encoder() {
         ac3::oba::AtmosConfig atmos;
         atmos.numblkscod = config.low_latency ? 0 : 3;
-        atmos.bitrate_kbps =
-            config.bitrate_kbps != 0 ? config.bitrate_kbps : (config.low_latency ? 1536U : 448U);
+        atmos.bitrate_kbps = bitrate_kbps();
         atmos.emit_object_metadata = signing.available();
         encoder = std::make_unique<ac3::oba::AtmosEncoder>(atmos, kObjectSlots);
         const int blocks = config.low_latency ? 1 : ac3::kBlocksPerFrame;
@@ -220,7 +272,14 @@ struct Engine::Impl {
             sizes.erase(app);
             levels.erase(app);
         }
-        taps.sync(ids);
+        for (const AppId app : taps.sync(ids)) {
+            if (tap_refused.insert(app).second) {
+                note("tap refused for app " + std::to_string(app) + " (" + name_of(app) + ")");
+            }
+        }
+        // Once the tap opens, or the application leaves, the refusal is over
+        // and a later one is worth a note again.
+        std::erase_if(tap_refused, [this](AppId app) { return taps.has(app) || !known.contains(app); });
 
         // The full-screen rule: the foreground pid may be a window process
         // rather than the one with the session, so match it against every
@@ -371,9 +430,17 @@ struct Engine::Impl {
             .preferred_endpoint_id = config.preferred_endpoint_id});
         signing_status = signing.load(config.signing_key_path);
         build_encoder();
-        std::ignore = watcher.start([this](const ac3::audio::DeviceChangeEvent&) {
-            want_reprobe.store(true, std::memory_order_release);
-        });
+        note("engine started: " + std::to_string(config.low_latency ? 1 : ac3::kBlocksPerFrame) + "-block frames, " +
+             std::to_string(bitrate_kbps()) + " kb/s, taps " + std::to_string(taps.channels()) + "ch");
+        note(signing_note());
+        // Without the watcher, endpoint changes reach the loop only through
+        // reprobe(): worth knowing on a platform whose watcher is a flat no.
+        if (const auto watching = watcher.start([this](const ac3::audio::DeviceChangeEvent&) {
+                want_reprobe.store(true, std::memory_order_release);
+            });
+            !watching) {
+            note(std::string("device watcher unavailable: ") + std::string(ac3::audio::describe(watching.error())));
+        }
 
         // The session monitor, on its own thread, for as long as the loop
         // runs (the guard joins it on the way out).
@@ -463,6 +530,9 @@ struct Engine::Impl {
                         // A sink took time to open; what the taps gathered
                         // meanwhile would sit in its queue for good.
                         taps.flush();
+                        const auto& applied = output->status();
+                        note("output: " + std::string(describe(applied.mode)) + " on \"" + applied.endpoint_name +
+                             "\" - " + applied.reason);
                     }
                 }
             }
@@ -485,6 +555,10 @@ struct Engine::Impl {
                         to_drop -= std::min(to_drop, frames_per);
                     }
                     ++catchups;
+                    if (catchups == 1 || catchups % 100 == 0) {
+                        note("sink queue catch-up #" + std::to_string(catchups) + ": dropped " +
+                             std::to_string(queued - bound / 2) + " sample frames");
+                    }
                 }
             }
             if (taps.size() == 0) {
@@ -529,10 +603,15 @@ struct Engine::Impl {
                                          std::chrono::steady_clock::now() - encode_start)
                                          .count();
             if (!unit) {
+                if (!encode_refusing) {
+                    encode_refusing = true;
+                    note("encoder refused a frame");
+                }
                 const std::lock_guard<std::mutex> lock(mutex);
                 snapshot.last_error = "encode_frame refused a frame";
                 continue;
             }
+            encode_refusing = false;
             unit_bytes = std::move(unit->bytes);
             if (signing.available()) {
                 std::ignore = signing.sign(unit_bytes);
@@ -568,6 +647,13 @@ struct Engine::Impl {
         watcher.stop();
         output->stop();
         taps.sync({});
+        {
+            std::array<char, 32> worst{};
+            std::snprintf(worst.data(), worst.size(), "%.1f", worst_ms);
+            note("engine stopped after " + std::to_string(frames_encoded) + " frames, worst " + worst.data() +
+                 " ms, " + std::to_string(output->status().underruns) + " underruns, " + std::to_string(starved) +
+                 " starved reads, " + std::to_string(catchups) + " catch-ups");
+        }
     }
 };
 
@@ -691,6 +777,7 @@ void Engine::reprobe() {
 void Engine::load_signing_key(std::string path) {
     impl_->post([this, path = std::move(path)] {
         impl_->signing_status = impl_->signing.load(path);
+        impl_->note(impl_->signing_note());
         impl_->build_encoder();
         impl_->want_reprobe.store(true, std::memory_order_release);
     });
@@ -700,6 +787,7 @@ void Engine::clear_signing_key() {
     impl_->post([this] {
         impl_->signing.clear();
         impl_->signing_status = "signing key cleared: objects off, streaming the 5.1 bed only";
+        impl_->note("signing: key cleared, 5.1 bed only");
         impl_->build_encoder();
         impl_->want_reprobe.store(true, std::memory_order_release);
     });

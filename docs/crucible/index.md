@@ -113,8 +113,9 @@ graceful fallback. So with no key, Crucible sets no object metadata and streams 
 placements still pan within the bed, but height does nothing.
 
 The key is resolved at runtime, from a path in Settings or the same environment variables
-`ac3cli` reads. It is never built in, never shipped in a package, and never written to a log.
-See [Object signing](../concepts/object-signing.md).
+`ac3cli` reads. It is never built in, never shipped in a package, and never written to a log;
+the [diagnostics file](troubleshooting.md#saving-a-diagnostics-file) withholds both the key and
+the path to it. See [Object signing](../concepts/object-signing.md).
 
 ## Where to go next
 

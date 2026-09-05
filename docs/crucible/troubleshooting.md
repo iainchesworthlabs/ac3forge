@@ -122,6 +122,39 @@ on the strength of a connect alone, because PipeWire's adapter will accept an IE
 on an analogue jack and render the bursts as noise. If you see a bitstream mode on a
 headphone jack, that gate has been bypassed; report it.
 
+## Saving a diagnostics file
+
+Settings, block 07 (DIAGNOSTICS), "Save diagnostics…" writes a plain-text file for a bug
+report. The dialog suggests `crucible-diagnostics-<date>-<time>.txt` in your Documents folder,
+and once the file is written the page says where it went.
+
+The file holds, in this order: the version and build; the platform (OS, kernel, CPU, Qt, the
+audio backend's capabilities, and whether the full-screen rule can work here); how the signing
+key was obtained, without saying where it is; the engine's counters, including the catch-ups,
+tap backlog and sink queue that the window does not show; the endpoints the last probe found
+and what each accepts; the applications the engine lists, by name and description; the two
+devices of [the signal path](signal-path.md) and the last silent-device action; this
+application's settings; and the last 512 messages the application and its engine left, oldest
+first, stamped in seconds since the log began.
+
+It withholds the signing key, the path to the key file (whether chosen in Settings or given
+through `AC3FORGE_SIGNING_KEY_FILE`), the value of `AC3FORGE_SIGNING_KEY`, the value of every
+other environment variable, and the executable paths of the applications listed. The report is
+composed from named fields, and none of them is the key or its path; the settings section is a
+fixed list of keys, with anything under `signing/` written as `<withheld>`; and the finished text
+is scrubbed of every spelling of the key path and of the inline key value, in case one arrived
+through a message. Two tests hold that rule, one over the renderer and one over the window.
+
+It does name your audio devices and their ids, the applications that are running, the OS
+version, and on Windows the folder the driver package lives in. Read it before attaching it to
+an issue.
+
+Two limits. Only the last 512 messages are kept, so save the file soon after the fault. The
+scrub matches the key path wherever it occurs, so a key file at a very short path withholds
+that prefix everywhere it appears, which costs some of the report's usefulness and none of its
+safety. The audio daemon's own output (PipeWire's log on Linux) is a separate thing and is not
+captured here.
+
 ## Getting more out of it
 
 The console runner's `status` line reports the frame's own time beside the loop's cadence,

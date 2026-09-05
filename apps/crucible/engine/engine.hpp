@@ -24,6 +24,8 @@
 
 namespace ac3::crucible {
 
+class DiagnosticLog;  // diagnostics.hpp, which includes this header
+
 struct EngineConfig {
     // Still "Desktop Atmos", not "Crucible": this matches the endpoint the
     // driver actually advertises, and apps/windows/driver/ keeps its device
@@ -57,6 +59,10 @@ struct EngineConfig {
     // so a surround-capable application rendering 7.1 into the driver
     // reaches the bed by channel rather than as a stereo fold.
     std::uint16_t tap_channels = 2;
+    // Where the engine leaves one-line notes about what changed and what
+    // refused (diagnostics.hpp); null means nowhere. Non-owning: the
+    // controller's log outlives every engine it builds.
+    DiagnosticLog* diagnostics = nullptr;
 };
 
 struct AppStatus {

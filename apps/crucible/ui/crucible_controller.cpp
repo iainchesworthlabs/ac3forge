@@ -12,10 +12,22 @@
 #include <QUrl>
 #include <QVariantMap>
 
+#include <QByteArray>
+#include <QDateTime>
+#include <QGuiApplication>
+#include <QIODevice>
+#include <QLocale>
+#include <QSaveFile>
+#include <QSysInfo>
+#include <QtGlobal>
+
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <string>
 
+#include "ac3/audio/audio_backend.hpp"
+#include "diagnostics.hpp"
 #include "output_policy.hpp"
 #include "platform_services.hpp"
 
@@ -86,7 +98,9 @@ CrucibleController::CrucibleController(QObject* parent)
     : QObject(parent),
       default_device_(ac3::crucible::platform_default_device()),
       virtual_device_(ac3::crucible::platform_virtual_device()),
-      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"), QStringLiteral("Crucible")) {
+      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"), QStringLiteral("Crucible")),
+      log_(ac3::crucible::process_diagnostics()),
+      foreground_(ac3::crucible::platform_foreground()) {
     poll_timer_.setInterval(kPollMs);
     connect(&poll_timer_, &QTimer::timeout, this, &CrucibleController::poll);
     driver_timer_.setInterval(250);
@@ -110,6 +124,7 @@ ac3::crucible::EngineConfig CrucibleController::engine_config() const {
     config.bitrate_kbps = static_cast<std::uint32_t>(std::max(0, bitrate()));
     config.pinned = mode_from_key(pinned());
     config.preferred_endpoint_id = preferredEndpoint().toStdString();
+    config.diagnostics = &log_;
     return config;
 }
 
@@ -120,6 +135,7 @@ void CrucibleController::start() {
     engine_ = std::make_unique<ac3::crucible::Engine>(engine_config());
     if (const auto started = engine_->start(); !started) {
         last_error_ = from_utf8(started.error());
+        log_.note("engine start refused: " + started.error());
         engine_.reset();
         emit stateChanged();
         return;
@@ -132,6 +148,7 @@ void CrucibleController::start() {
 void CrucibleController::stop() {
     poll_timer_.stop();
     if (engine_) {
+        log_.note("engine stop requested");
         engine_->stop();
         engine_.reset();
     }
@@ -311,6 +328,7 @@ void CrucibleController::setPinned(const QString& mode) {
         return;
     }
     settings_.setValue(QStringLiteral("output/pinned"), mode);
+    log_.note("setting output/pinned = " + mode.toStdString());
     if (engine_) {
         engine_->pin(mode_from_key(mode));
     }
@@ -327,6 +345,7 @@ void CrucibleController::setPreferredEndpoint(const QString& id) {
         return;
     }
     settings_.setValue(QStringLiteral("output/endpoint"), id);
+    log_.note("setting output/endpoint = " + (id.isEmpty() ? std::string("(automatic)") : id.toStdString()));
     if (engine_) {
         engine_->prefer_endpoint(id.toStdString());
     }
@@ -363,6 +382,7 @@ void CrucibleController::setNullSinkName(const QString& name) {
         return;
     }
     settings_.setValue(QStringLiteral("output/nullSinkName"), name);
+    log_.note("setting output/nullSinkName = " + name.toStdString());
     settings_.sync();  // survive a hard exit
     emit settingsChanged();
     restart_engine();
@@ -378,6 +398,7 @@ void CrucibleController::setLowLatency(bool on) {
         return;
     }
     settings_.setValue(QStringLiteral("codec/lowLatency"), on);
+    log_.note(on ? "setting codec/lowLatency = on" : "setting codec/lowLatency = off");
     settings_.sync();  // survive a hard exit
     emit settingsChanged();
     restart_engine();
@@ -392,6 +413,7 @@ void CrucibleController::setBypassCodec(bool on) {
         return;
     }
     settings_.setValue(QStringLiteral("codec/bypass"), on);
+    log_.note(on ? "setting codec/bypass = on" : "setting codec/bypass = off");
     if (engine_) {
         engine_->set_bypass(on);
     }
@@ -408,6 +430,7 @@ void CrucibleController::setSplitStereo(bool on) {
         return;
     }
     settings_.setValue(QStringLiteral("codec/splitStereo"), on);
+    log_.note(on ? "setting codec/splitStereo = on" : "setting codec/splitStereo = off");
     settings_.sync();  // survive a hard exit
     emit settingsChanged();
     // The default applies to applications the engine meets from now on;
@@ -424,6 +447,7 @@ void CrucibleController::setBitrate(int kbps) {
         return;
     }
     settings_.setValue(QStringLiteral("codec/bitrate"), kbps);
+    log_.note("setting codec/bitrate = " + std::to_string(kbps));
     settings_.sync();  // survive a hard exit
     emit settingsChanged();
     restart_engine();
@@ -529,11 +553,13 @@ QString CrucibleController::versionDetails() const {
 void CrucibleController::setDefaultOutput(const QString& id) {
     if (const auto ok = default_device_->set_default(id.toStdString()); !ok) {
         default_message_ = from_utf8(ok.error());
+        log_.note("default output move refused: " + ok.error());
         emit defaultChanged();
         return;
     }
     default_message_.clear();
     refreshDefault();
+    log_.note("default output moved to \"" + default_name_.toStdString() + "\"");
 }
 
 bool CrucibleController::moveDefaultOnLaunch() const {
@@ -601,6 +627,8 @@ void CrucibleController::loadKey(const QString& path) {
         local = url.toLocalFile();
     }
     settings_.setValue(QStringLiteral("signing/keyPath"), QDir::toNativeSeparators(local));
+    // The path itself never reaches the log (diagnostics.hpp).
+    log_.note("signing key file chosen (path withheld)");
     if (engine_) {
         engine_->load_signing_key(local.toStdString());
     }
@@ -610,6 +638,7 @@ void CrucibleController::loadKey(const QString& path) {
 
 void CrucibleController::clearKey() {
     settings_.remove(QStringLiteral("signing/keyPath"));
+    log_.note("signing key cleared");
     if (engine_) {
         engine_->clear_signing_key();
     }
@@ -643,6 +672,7 @@ void CrucibleController::moveDefaultToNullSink() {
     const auto id = default_device_->find_endpoint(nullSinkName().toStdString());
     if (id.empty()) {
         default_message_ = QStringLiteral("No render endpoint named like \"%1\" exists; install the virtual device or name it in Settings.").arg(nullSinkName());
+        log_.note("default output move refused: no endpoint named like \"" + nullSinkName().toStdString() + "\"");
         emit defaultChanged();
         return;
     }
@@ -650,29 +680,42 @@ void CrucibleController::moveDefaultToNullSink() {
     if (current != id) {
         previous_default_id_ = current;
     }
+    bool moved = false;
     if (const auto ok = default_device_->set_default(id); !ok) {
         default_message_ = from_utf8(ok.error());
+        log_.note("default output move refused: " + ok.error());
         default_device_->open_sound_settings();
     } else {
         default_message_.clear();
+        moved = true;
     }
     refreshDefault();
+    if (moved) {
+        log_.note("default output moved to \"" + default_name_.toStdString() + "\"");
+    }
     reprobe();
 }
 
 void CrucibleController::restoreDefault() {
     if (previous_default_id_.empty()) {
         default_message_ = QStringLiteral("There is no previous default to restore.");
+        log_.note("default output restore refused: no previous default");
         emit defaultChanged();
         return;
     }
+    bool moved = false;
     if (const auto ok = default_device_->set_default(previous_default_id_); !ok) {
         default_message_ = from_utf8(ok.error());
+        log_.note("default output restore refused: " + ok.error());
         default_device_->open_sound_settings();
     } else {
         default_message_.clear();
+        moved = true;
     }
     refreshDefault();
+    if (moved) {
+        log_.note("default output restored to \"" + default_name_.toStdString() + "\"");
+    }
     reprobe();
 }
 
@@ -740,11 +783,13 @@ void CrucibleController::installDriver() {
     driver_verb_ = QStringLiteral("install");
     if (const auto started = virtual_device_->install(); !started) {
         driver_message_ = from_utf8(started.error());
+        log_.note("silent device install refused: " + started.error());
         emit driverChanged();
         return;
     }
     driver_busy_ = true;
     driver_message_ = tr("installing, answer the elevation prompt ...");
+    log_.note("silent device install started");
     driver_timer_.start();
     emit driverChanged();
 }
@@ -753,11 +798,13 @@ void CrucibleController::removeDriver() {
     driver_verb_ = QStringLiteral("remove");
     if (const auto started = virtual_device_->remove(); !started) {
         driver_message_ = from_utf8(started.error());
+        log_.note("silent device remove refused: " + started.error());
         emit driverChanged();
         return;
     }
     driver_busy_ = true;
     driver_message_ = tr("removing, answer the elevation prompt ...");
+    log_.note("silent device remove started");
     driver_timer_.start();
     emit driverChanged();
 }
@@ -777,11 +824,182 @@ void CrucibleController::poll_driver() {
         lines.isEmpty() ? QString() : QStringLiteral("\n") + lines.join(QStringLiteral("\n"));
     if (*status.exit_code == 0) {
         driver_message_ = (driver_verb_ == QLatin1String("install") ? tr("installed") : tr("removed")) + detail;
+        log_.note("silent device " + driver_verb_.toStdString() + ": " +
+                  (driver_verb_ == QLatin1String("install") ? "installed" : "removed"));
     } else {
         driver_message_ = tr("%1 failed (exit code %2)").arg(driver_verb_).arg(*status.exit_code) + detail;
+        log_.note("silent device " + driver_verb_.toStdString() + " failed (exit code " +
+                  std::to_string(*status.exit_code) + ")");
+    }
+    // The transcript's tail, as the page shows it (the platform has already
+    // dropped the transcript's user and machine header lines).
+    for (const auto& line : status.log_tail) {
+        log_.note("  action: " + line);
     }
     // Endpoints appear a moment after the device does.
     refreshDefault();
     refreshDriver();
     reprobe();
+}
+
+// --- diagnostics ------------------------------------------------------------
+//
+// The rule (diagnostics.hpp): the report is composed from named fields; the
+// key, its path and the environment's values have none; the settings are a
+// fixed list rather than settings_.allKeys(); and every spelling of the key
+// path and of the inline key value is scrubbed from the finished text.
+
+ac3::crucible::Secrets CrucibleController::secrets() const {
+    ac3::crucible::Secrets out;
+    auto add = [&out](const QString& value) {
+        if (!value.isEmpty()) {
+            out.strings.push_back(value.toStdString());
+        }
+    };
+    // A path in every spelling it could arrive in.
+    auto add_path = [&add](const QString& path) {
+        add(path);
+        add(QDir::fromNativeSeparators(path));
+        add(QDir::toNativeSeparators(path));
+        if (!path.isEmpty()) {
+            const QString canonical = QFileInfo(path).canonicalFilePath();
+            add(canonical);
+            add(QDir::toNativeSeparators(canonical));
+        }
+    };
+    add_path(keyPath());
+    add_path(qEnvironmentVariable("AC3FORGE_SIGNING_KEY_FILE"));
+    add(qEnvironmentVariable("AC3FORGE_SIGNING_KEY"));
+    return out;
+}
+
+ac3::crucible::ReportFacts CrucibleController::build_report_facts() const {
+    using ac3::crucible::KeySource;
+    ac3::crucible::ReportFacts facts;
+    facts.written_at = QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toStdString();
+    const auto started_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(log_.started_at().time_since_epoch()).count();
+    facts.log_started_at =
+        QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(started_ms)).toString(Qt::ISODateWithMs).toStdString();
+    facts.version = ac3::version_details();
+
+    auto platform_row = [&facts](const char* name, const QString& value) {
+        facts.platform.emplace_back(name, value.toStdString());
+    };
+    platform_row("os", QSysInfo::prettyProductName());
+    platform_row("kernel", QSysInfo::kernelType() + QLatin1Char(' ') + QSysInfo::kernelVersion());
+    platform_row("cpu", QSysInfo::currentCpuArchitecture());
+    platform_row("qt", QString::fromLatin1(qVersion()) + QStringLiteral(" (built against ") +
+                           QString::fromLatin1(QT_VERSION_STR) + QLatin1Char(')'));
+    platform_row("qpa", QGuiApplication::platformName());
+    platform_row("locale", QLocale::system().name());
+    // One named, harmless variable (ui/main.cpp sets it); the environment is
+    // never enumerated.
+    platform_row("render loop", qEnvironmentVariable("QSG_RENDER_LOOP"));
+    platform_row("3d room", has3D() ? QStringLiteral("built") : QStringLiteral("not built"));
+    const auto& backend = ac3::audio::audio_backend();
+    auto capability_row = [&facts](const char* name, const ac3::audio::Capability& capability) {
+        facts.platform.emplace_back(name, capability.available ? std::string("yes")
+                                                               : "no: " + std::string(capability.reason));
+    };
+    capability_row("audio capture", backend.capture);
+    capability_row("audio passthrough", backend.passthrough);
+    capability_row("audio monitor", backend.monitor);
+    capability_row("audio spatial", backend.spatial);
+    capability_row("process loopback", backend.process_loopback);
+    capability_row("device watch", backend.device_watch);
+
+    // Whether the variables are set is read; their values never are.
+    const bool env_key_file = qEnvironmentVariableIsSet("AC3FORGE_SIGNING_KEY_FILE");
+    const bool env_key_inline = qEnvironmentVariableIsSet("AC3FORGE_SIGNING_KEY");
+    facts.signing.objects_enabled = objects_enabled_;
+    facts.signing.env_key_file_set = env_key_file;
+    facts.signing.env_key_inline_set = env_key_inline;
+    facts.signing.source = !keyPath().isEmpty() ? KeySource::kFile
+                           : env_key_file       ? KeySource::kEnvironmentFile
+                           : env_key_inline     ? KeySource::kEnvironmentInline
+                                                : KeySource::kNone;
+
+    facts.render_endpoints = default_device_->endpoints();
+    facts.default_is_silent = default_is_null_sink_;
+    facts.previous_default_name = previous_default_name_.toStdString();
+    facts.moves_default = default_device_->moves_default();
+    facts.default_message = default_message_.toStdString();
+
+    facts.silent_device_name = virtual_device_->device_name();
+    facts.silent_from_package = virtual_device_->from_package();
+    facts.silent_advice = virtual_device_->how_to_get_one();
+    facts.silent = silent_state_;
+    facts.driver_dir = driverDir().toStdString();
+    facts.driver_message = driver_message_.toStdString();
+    const auto support = foreground_->support();
+    facts.foreground_available = support.available;
+    facts.foreground_reason = std::string(support.reason);
+
+    // The fixed list, read through the same getters (and defaults) the page
+    // uses. signing/keyPath is written as withheld by the renderer whatever
+    // arrives here; what arrives is whether a file is chosen at all.
+    auto setting = [&facts](const char* key, const QString& value) {
+        facts.settings.emplace_back(key, value.toStdString());
+    };
+    auto flag = [](bool on) { return on ? QStringLiteral("yes") : QStringLiteral("no"); };
+    setting("output/pinned", pinned());
+    setting("output/endpoint", preferredEndpoint());
+    setting("output/nullSinkName", nullSinkName());
+    setting("codec/lowLatency", flag(lowLatency()));
+    setting("codec/bypass", flag(bypassCodec()));
+    setting("codec/splitStereo", flag(splitStereo()));
+    setting("codec/bitrate", QString::number(bitrate()));
+    setting("appearance/theme", theme());
+    setting("appearance/palette", palette());
+    setting("appearance/roomView", roomView());
+    setting("appearance/roomLayout", roomLayout());
+    setting("behaviour/keepRunningWhenClosed", flag(keepRunningWhenClosed()));
+    setting("behaviour/moveDefaultOnLaunch", flag(moveDefaultOnLaunch()));
+    setting("behaviour/showBackgroundApps", flag(showBackgroundApps()));
+    setting("behaviour/showSilentApps", flag(showSilentApps()));
+    setting("driver/dir", driverDir());
+    setting("signing/keyPath", keyPath().isEmpty() ? QStringLiteral("none") : QStringLiteral("a file is chosen"));
+    return facts;
+}
+
+QString CrucibleController::diagnosticsReport() const {
+    const auto status = engine_ ? engine_->status() : ac3::crucible::EngineStatus{};
+    return QString::fromStdString(ac3::crucible::render_report(build_report_facts(), status, log_, secrets()));
+}
+
+QString CrucibleController::suggestedDiagnosticsFile() const {
+    QString folder = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (folder.isEmpty()) {
+        folder = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    }
+    const QString name = QStringLiteral("crucible-diagnostics-") +
+                         QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")) +
+                         QStringLiteral(".txt");
+    return QUrl::fromLocalFile(QDir(folder).filePath(name)).toString();
+}
+
+bool CrucibleController::exportDiagnostics(const QString& fileUrl) {
+    // The GUI's rule for a dialog's answer: a file: URL becomes a local
+    // path, anything else is taken as one already.
+    const QUrl url(fileUrl);
+    const QString path = url.isLocalFile() ? url.toLocalFile() : fileUrl;
+    const QString shown = QDir::toNativeSeparators(path);
+    // UTF-8 with LF line endings on every platform: written as bytes, not
+    // through a text-mode translation.
+    const QByteArray report = diagnosticsReport().toUtf8();
+    QSaveFile file(path);
+    bool ok = file.open(QIODevice::WriteOnly);
+    if (ok) {
+        ok = file.write(report) == static_cast<qint64>(report.size()) && file.commit();
+    }
+    if (ok) {
+        diagnostics_message_ = tr("saved to %1").arg(shown);
+        log_.note("diagnostics saved");
+    } else {
+        diagnostics_message_ = tr("could not write %1: %2").arg(shown, file.errorString());
+        log_.note("diagnostics export failed: " + file.errorString().toStdString());
+    }
+    emit diagnosticsChanged();
+    return ok;
 }
