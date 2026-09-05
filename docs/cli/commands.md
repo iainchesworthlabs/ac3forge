@@ -3,7 +3,7 @@
 The command list from the usage text — copied from a build of `ac3cli`, not retyped:
 
 ```text
-ac3forge — clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder
+Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder
 
 Usage:
   ac3cli --version    print version and git provenance, then exit
