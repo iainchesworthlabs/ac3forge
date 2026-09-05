@@ -450,7 +450,6 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_policy.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/tap_pool.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/diagnostics.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp")
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/ui/desktop_entries.cpp")
 # The null-sink driver's position clock (apps/windows/driver/Source/Main/
