@@ -1302,18 +1302,19 @@ a human.
 </details>
 
 **VX14 (S)** — Lint and scan the non-C++ code — `ruff`/`shellcheck`/`actionlint`, plus CodeQL
-for Python and JS/TS. `java-kotlin` needs a real Gradle build, carried forward as VX21.
+for Python and JS/TS. `java-kotlin` needs a real Gradle build, done separately as VX21.
 <details markdown="1">
 <summary>Full record</summary>
 
 A `script-lint` job runs `ruff` over every `.py` file (curated rule set in `ruff.toml`),
 `shellcheck` over `git ls-files '*.sh'` and `actionlint` over the workflows, all three
 hash-pinned in `requirements/requirements-lint.txt`. `codeql.yml` is now a language matrix
-with `python` and `javascript-typescript` alongside `cpp`. `java-kotlin` is NOT included:
-CodeQL's Kotlin extractor has no buildless mode, so `build-mode: none` extracted nothing and
-ended as a configuration error on a measured dispatch run — enabling it needs JDK 17, the
-pinned NDK and Gradle, i.e. a CodeQL step inside `_build.yml`'s existing `build-android` job
-rather than a leg of its own. Carried forward as **VX21** below.
+with `python` and `javascript-typescript` alongside `cpp`. `java-kotlin` was not included at
+the time: CodeQL's Kotlin extractor has no buildless mode, so `build-mode: none` extracted
+nothing and ended as a configuration error on a measured dispatch run — enabling it needs
+JDK 17, the pinned NDK and Gradle. Split out as **VX21** below, which first put it inside
+`_build.yml`'s `build-android` job and then, when the analysis engines moved to a nightly,
+gave it a leg of its own here after all.
 </details>
 
 **VX15 (M)** — Coverage floors for `apps/cli` and `python/`, gated at 40/34% against a
@@ -1408,21 +1409,28 @@ workflow attaches the bundle beside the SBOM and attestations. Hashes are per-to
 VX11/VX12; the source material stays synthetic until VX7.
 </details>
 
-**VX21 (S)** — CodeQL for `java-kotlin`, wired into the existing Android build job instead of
-a standalone leg.
+**VX21 (S)** — CodeQL for `java-kotlin`: first inside the existing Android build job, now a
+nightly leg of its own.
 <details markdown="1">
 <summary>Full record</summary>
 
-As a step inside `_build.yml`'s existing `build-android` job rather than a leg in
-`codeql.yml`. The extractor needs a real Gradle build (measured: `build-mode: none` extracts
-nothing from a 100%-Kotlin app and fails as a configuration error), and that job already
-provisions JDK 17, the pinned NDK and the signing key material. `init`/`analyze` (the same
-pinned `codeql-action` SHA `codeql.yml` uses) now bracket `build-android`'s existing
-`assembleDebug` step, `languages: java-kotlin`, `build-mode: manual` — no separate build
-invocation, the job's own debug build already is one. Needed `security-events: write` raised
-on `build-android`'s job permissions and on both reusable-workflow callers (`ci.yml`'s
-`build-and-test`, `release.yml`'s `build-packages`) — a callee job cannot request a permission
-its caller did not grant, and neither call site passed it before. Split out of VX14.
+Landed first as a step inside `_build.yml`'s existing `build-android` job rather than a leg
+in `codeql.yml`. The extractor needs a real Gradle build (measured: `build-mode: none`
+extracts nothing from a 100%-Kotlin app and fails as a configuration error), and that job
+already provisioned JDK 17, the pinned NDK and the signing key material, so `init`/`analyze`
+bracketed its existing `assembleDebug` step at no extra build cost. That needed
+`security-events: write` raised on `build-android`'s job permissions and on both
+reusable-workflow callers (`ci.yml`'s `build-and-test`, `release.yml`'s `build-packages`) — a
+callee job cannot request a permission its caller did not grant. Split out of VX14.
+
+Moved to `codeql.yml`'s nightly matrix in 2026-09, when the analysis engines came off the
+per-PR path. In `build-android` it was an analysis engine inside a required check: a CodeQL
+failure failed that job, `build-and-test` and then `CI Status`. The leg now stands up JDK 17
+and the pinned NDK itself and runs its own `assembleDebug` to trace, pinned to the hosted
+image for the preinstalled Android SDK — about seven hosted minutes a night to rebuild a
+debug APK the per-PR job also builds, which is the price of not gating a pull request on an
+analysis engine. The APK build and the emulator tests stay in `build-android`, and
+`security-events: write` came back off all three permission blocks with the scan.
 </details>
 
 **VX22 (S)** — CLI tests for the container commands, client-side coverage which library-level

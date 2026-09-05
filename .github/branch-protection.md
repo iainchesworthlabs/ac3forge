@@ -140,16 +140,17 @@ alerts) was created 2026-08-24 to block merges on new scanner findings,
 analysis workflows moved to a nightly schedule. Why it was disabled: a
 `code_scanning` rule waits for every analysis category the target branch has
 previously seen, and `main` carries four CodeQL categories - `cpp`,
-`python`, `javascript-typescript` and `java-kotlin` - of which the last is
-produced only by `_build.yml`'s `build-android` job, which `ci.yml` gates
-behind `changes.outputs.code == 'true'`; `codeql.yml` and
-`msvc-analysis.yml` also `paths-ignore`d docs at the time. A docs-only PR
+`python`, `javascript-typescript` and `java-kotlin` - and at the time the
+last of those was produced only by `_build.yml`'s `build-android` job,
+which `ci.yml` gates behind `changes.outputs.code == 'true'`; `codeql.yml`
+and `msvc-analysis.yml` also `paths-ignore`d docs then. A docs-only PR
 therefore could never satisfy the rule and sat un-mergeable forever: no
 docs-only PR merged between the ruleset's creation and its disabling.
 
-Why it must not come back: since 2026-09 the `cpp`, `python` and
-`javascript-typescript` CodeQL categories and the PREfast analysis are
-produced only by nightly runs on `refs/heads/main`, never on a PR merge
+Why it must not come back: since 2026-09 every CodeQL category - `cpp`,
+`python`, `javascript-typescript` and `java-kotlin`, the last having moved
+out of `build-android` into the nightly matrix - and the PREfast analysis
+are produced only by nightly runs on `refs/heads/main`, never on a PR merge
 commit or a merge-queue ref. A `code_scanning` rule would wait for an
 analysis of the PR merge commit in every category `main` has ever seen, so
 re-creating it would block every PR - docs-only or not - on "Code scanning

@@ -31,7 +31,11 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   self-hosted runner-minutes per CI event (~20 Linux, ~35 Windows) and every merge paid it
   three times, on a fleet shared with another repository whose jobs were queued in the same
   minute; the cost is that a finding now lands on `main` and is reported the next morning
-  rather than annotating the pull request that introduced it.
+  rather than annotating the pull request that introduced it. The java-kotlin CodeQL scan
+  moved with them, out of the Android build job in `_build.yml` (where a scanner failure
+  failed a required check) and into the nightly matrix as a leg of its own; the APK build and
+  the emulator tests stay where they were, and `security-events: write` came off
+  `build-android` and both of its callers.
 - The ABI gate no longer runs on merge-queue entries. The pull-request run already produced
   the merge-base comparison the job exists for; a `merge_group` run takes the
   release-relative view instead (HEAD against the latest `v*` tag), which the push to `main`

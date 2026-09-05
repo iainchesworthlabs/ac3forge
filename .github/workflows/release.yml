@@ -209,12 +209,11 @@ jobs:
     # `if:`, so the ceiling still has to be raised or this call is rejected
     # outright before any job starts. actions: read is the same story for
     # check-runners - see ci.yml's identical override and
-    # docs/ci-self-hosted-runners.md. security-events: write is the same story
-    # for build-android's java-kotlin CodeQL analyze step.
+    # docs/ci-self-hosted-runners.md. No security-events since 2026-09, when
+    # build-android's java-kotlin CodeQL scan moved to codeql.yml's nightly.
     permissions:
       contents: write
       actions: read
-      security-events: write
     with:
       do_package: true
       # Full history + tags: GitVersionDerivation.cmake's `git describe` needs
