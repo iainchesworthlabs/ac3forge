@@ -102,6 +102,8 @@ TestCase {
         verify(report.indexOf("# engine") >= 0, report);
         // The status line that names the key file never reaches the report.
         verify(report.indexOf("loaded from") < 0, report);
+    }
+
     function test_stopNeverTouchesTheDefault() {
         // quit() restores the default output this application moved and then
         // ends the process, which no test can call. The invariant it rests

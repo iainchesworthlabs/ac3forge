@@ -426,6 +426,67 @@ places one, and encodes; the signal path renders with the null sink as the defau
     stop pinning a full-screen game to the bed and nobody would be told why. X11 stays a purely
     additive follow-up, which is what `ForegroundSupport` exists to allow.
 
+!!! success "Done 2026-09-05: X11 full-screen detection"
+    The follow-up the previous block left open is taken. The Linux `Foreground` answers under
+    X11 and refuses, with the reason, everywhere else; the window, the runner and the probe
+    now print that reason instead of only the docs saying it. Four decisions, each stated in
+    the code:
+
+    **libxcb, linked directly through pkg-config, optional.** `ac3crucible_engine` has no Qt,
+    and the runner and the probe link it, so Qt's native interface was never reachable from
+    where `Foreground` lives; and even in the window it hands over an `xcb_connection_t*`
+    whose property reads are libxcb calls anyway. libxcb is thread-safe without
+    `XInitThreads`, returns `BadWindow` as a per-request reply rather than through a
+    process-global handler, and is already on every machine that runs Qt's xcb platform
+    plugin, so the `.deb`'s shlibdeps gain nothing new. `AC3FORGE_CRUCIBLE_X11` (AUTO/ON/OFF)
+    follows the audio backends' shape; exactly one of `xcb_window_reader.cpp` and
+    `no_xcb_window_reader.cpp` is compiled, and the second says at runtime that the build
+    has no X11 support. The configure summary prints `Crucible X11   : xcb|none` and the
+    Linux Crucible CI leg asserts `xcb`.
+
+    **The read moved onto the session-monitor thread, on every platform.** `fullscreen_pid()`
+    is called exactly once in `engine.cpp`, beside `sessions->refresh()`, and the pid is
+    handed across `session_mutex` with the list it is matched against, so the frame loop
+    never waits on a server round trip and the match is against the processes that existed
+    at that instant. The Windows calls have no thread affinity and ride along unchanged.
+
+    **The seat's own word wins in both directions.** `display_session.hpp` classifies from
+    `XDG_SESSION_TYPE` first, then `WAYLAND_DISPLAY` or a `wayland-*` socket, then `DISPLAY`;
+    an explicit `x11` beats a stale compositor socket (and is how a nested Xephyr on the Pi's
+    Wayland seat is told it is X11), Wayland keeps its refusal even with Xwayland's `DISPLAY`
+    set, and neither variable at all is a third reason, "no graphical session", rather than
+    the wrong X11 one an ssh login used to get.
+
+    **`_NET_WM_PID` validated by `WM_CLIENT_MACHINE`; XRes is the follow-up.** A client in a
+    pid namespace (Flatpak, Snap) reports a namespace pid, which matches nothing: a false
+    negative, the same as before. `xcb-res` with `XCB_RES_CLIENT_ID_MASK_LOCAL_CLIENT_PID`
+    removes it and is named in the reader's header rather than taken now.
+
+    The Linux session monitor's `session_pids` now carries the stream's pid and every
+    same-executable ancestor of it (`process_tree.hpp`, the twin of the Windows `root_of()`
+    walk, sixteen hops at most), so a browser's window process matches its audio process
+    while a full-screen terminal never pins the player it launched; `app` stays the stream
+    pid because the tap targets it exactly. `EngineStatus` gained `fullscreen_rule_available`
+    and `fullscreen_rule_reason`; the Room note (`fullscreenRuleNote`) reads "The full-screen
+    rule is off here: ..." when there is a reason and states the rule otherwise.
+
+    Tested without a display: `[crucible][x11]` cases over a fake reader hold the
+    pid-only-while-full-screen rule, the first-use connect and its 20-read retry cadence, a
+    lost display and its recovery, the classification table and the ancestor walk; the Room
+    note has a Qt Quick case that takes the available branch on Windows and the no-display
+    reason on the Linux leg.
+
+    [Hardware, to be recorded by the integrator after the Pi run: the Xephyr recipe
+    (`Xephyr :2`, `openbox`, `mpv --fs`; `DISPLAY=:2 XDG_SESSION_TYPE=x11 WAYLAND_DISPLAY=
+    /tmp/probe 20`) - the WM, the `full-screen pid -> session pid (mpv)` line, `none` after
+    `wmctrl -r mpv -b remove,fullscreen`, and `none` for a full-screen xterm running
+    pw-play; the unchanged Wayland refusal on the normal session; optionally the window in a
+    real X11 session.]
+
+Table under "What this plan cannot verify" (keep the Wayland row; add):
+
+| X11 full-screen detection | yes, in an X11 session or a nested Xephyr on the Pi | none |
+
     **The silent device is ephemeral, and better for it.** It is a `libpipewire-module-adapter`
     node loaded on the application's own connection with `object.linger=false`, so it exists
     exactly as long as Crucible runs and is gone when it exits. Windows leaves an installed
@@ -645,6 +706,121 @@ One licence notice is already wrong and is corrected with them: the About box cr
 to Microsoft's Simple Audio Sample, which was true of the PortCls miniport but not of the ACX
 driver that replaced it on 2026-09-04. The driver's own README and version resource say
 AudioCodec ACX sample; the window is the one place that still says otherwise.
+
+!!! success "Done 2026-09-05: first-run explanation and restore-on-quit"
+    `FirstRunDialog.qml` opens once over a fresh settings store, one event-loop turn after
+    `Main.qml`'s `Component.onCompleted`, and says what Crucible does to the sound settings
+    before it does it. Every sentence that names the silent device or how this platform gets
+    one comes from the controller's seams (`nullSinkName`, `silentDeviceAdvice`,
+    `silentDeviceBlocker`, `silentDeviceFromPackage`, `silentDeviceNeeded` and a new
+    `movesDefault` over `DefaultDevice::moves_default()`), so the QML carries no platform word
+    and the same file says the macOS-shaped thing (nothing in the sound settings changes) where
+    the default never moves. Three ways out - Send applications, Not now, Open Settings - and a
+    tick that is `behaviour/moveDefaultOnLaunch`; every way out, Escape included, writes
+    `firstRun/acknowledgedVersion`, an int against `kFirstRunVersion`, so the endpoint rename
+    after driver signing can show it once more. On the one launch it has not been seen, the
+    launch-time automatic move waits behind the dialog; a profile migrated from the demo (now
+    marked `migration/fromDesktopAtmos` by `migrate_demo_settings()`) sees it once too, with a
+    sentence saying the settings were carried over. `--shot` runs suppress it;
+    `--page firstrun` captures it.
+
+    Two corrections rode along. The restore on quit that `SettingsPage`, `SignalPath`,
+    `install.md`, `signal-path.md` and this page's own Phase 1 record promised was implemented
+    only in the console runner: `CrucibleController::quit()` (tray Quit, and the window's close
+    with keep-running off) now restores the previous default when Crucible itself moved it
+    (`moved_default_by_us_`), `QCoreApplication::aboutToQuit` runs the same idempotent restore,
+    and `stop()` still never touches the default, so the QML suites' `stop()` calls cannot move
+    a developer's output. And on Linux `moveDefaultToNullSink()` creates the node first where
+    the application makes the silent device itself, so the seam's "Crucible creates it when you
+    send applications to it" is what happens and the three Send buttons are enabled while
+    `silentDeviceCanCreate`. Tests: `tst_firstrun.qml` (nine cases, none presses Send),
+    additions to `tst_settings.qml`, `tst_shell.qml` and `test_platform_seams.cpp`. Not done:
+    the six `.ts` files still need the central lupdate pass for the FirstRunDialog context, and
+    the Linux create-on-send wait needs a Pi run to confirm the node is found within its
+    bounded 500 ms.
+!!! success "Done 2026-09-05"
+    The log export. A Qt-free module, `apps/crucible/engine/diagnostics.{hpp,cpp}`, holds a
+    thread-safe ring of the last 512 one-line notes and a renderer over named fields. The
+    engine, the controller and a Qt message handler in `ui/main.cpp` write to one process-wide
+    ring: engine start and stop with their counters, the signing outcome as a sentence that
+    names no file, the device watcher's refusal, each output change with its reason, tap
+    refusals once per application, encode refusals on the transition, catch-ups every
+    hundredth, setting changes, default-output moves and silent-device actions. Settings
+    block 07 saves the report as `crucible-diagnostics-<date>-<time>.txt` through a save
+    dialog; the file carries the version and platform (with the audio backend's capabilities
+    and whether the full-screen rule can work), the signing facts, the engine's counters
+    including the catch-ups, tap backlog and sink queue the window never showed, the
+    endpoints, the applications by name and description, the two devices of the signal path,
+    a whitelisted settings list and the recent messages.
+
+    Redaction is structural first: `EngineStatus::signing` (which names the key file for the
+    Settings page) and `AppStatus::image_path` are never read, the settings are a fixed list
+    with anything under `signing/` written as withheld, and the environment is never
+    enumerated. Then the finished text is scrubbed of every spelling of the key path and of
+    the inline `AC3FORGE_SIGNING_KEY` value, for lines that arrived through the message ring.
+    `tests/crucible/test_diagnostics.cpp` holds the rule over the renderer on every CI leg and
+    `tst_settings.qml` holds it over the window with a chosen key file; `tst_shell.qml` checks
+    the engine's own notes reach the report and the status line that names the file never
+    does. `SigningHook` gained `source_kind()` and `failure()` so the engine can say how the
+    key was obtained without saying where it is. Not captured, and the troubleshooting page
+    says so: PipeWire's own stderr output and the decoder's AP11 events.
+!!! success "Done 2026-09-05: third-party licence notices per platform"
+    Every Crucible package now carries a `NOTICES.txt` written for it, and the About box's
+    Licences… button shows the same text. The file is generated at configure time by
+    `cmake/Notices.cmake` from `apps/crucible/notices/`: shared fragments, a component list per
+    platform directory (`platform/windows/`, `platform/linux/` - the same selection rule as
+    `engine/platform/`, so no fragment, QML or C++ file names an operating system), verbatim
+    licence texts under `licences/`, and the versions CMake already holds (`Qt6_VERSION`, the
+    `{fmt}` and PipeWire versions, `PROJECT_VERSION_FULL`). The Qt Quick 3D and Tracy sections
+    are inserted by the same build facts that gate `Room3DView.qml` and `ac3::tracy`. A missing
+    fragment, a missing licence file or an unreplaced `{{TOKEN}}` fails configure by name.
+
+    The Windows zip carries `NOTICES.txt` and `LICENSE.txt` at its root: the bundled Qt modules,
+    the LGPL-3 text with the relinking statement and the download.qt.io source location for the
+    exact version, the third-party code inside the Qt libraries transcribed from the 6.8.3 kit's
+    SPDX documents, the five runtime files windeployqt places (Mesa llvmpipe under the MIT, the
+    DirectX Shader Compiler under the NCSA licence, three Microsoft redistributables under their
+    own terms), `{fmt}`, the OFL 1.1 with the Archivo and Noto copyright lines, and the
+    Ac3ForgeNullSink driver's MS-PL for the three scripts the package carries. The Linux tarball
+    and `.deb` carry theirs under `share/doc/ac3forge-crucible/` with `LICENSE.txt` and once more
+    as `copyright`, the name Debian tools look for: built against the system Qt, linking
+    libpipewire-0.3, `{fmt}`, the fonts. The same file is embedded as `:/notices/NOTICES.txt` and
+    read by `CrucibleController.licenceNotices`, so the dialog cannot say something the package
+    does not; `--page licences` captures it.
+
+    One finding to keep: the kit's SBOM concludes Qt Quick 3D, Quick3DRuntimeRender and
+    Quick3DUtils as "Commercial OR GPL-3.0-only", where every other module is also offered under
+    the LGPL-3. The About box had said LGPL for all of Qt. A GPL-3.0-or-later application
+    satisfies that, and the notices say so, but a Windows build with the 3D room is a GPL-3
+    combined work; any later plan to offer Crucible under other terms, or through a store that
+    refuses the GPL, would have to drop or replace the 3D view. The driver credit is corrected
+    with the rest: the notices and the About box say AudioCodec ACX sample, and
+    `apps/windows/driver/README.md` records that the three scripts travel into the package under
+    that directory's terms.
+
+    `tools/ci/check_crucible_package.py` reads the notices as well as the archive's names: each
+    platform's required and forbidden phrases, a filled Qt version, and on Windows the Qt Quick
+    3D section present exactly when `qml/QtQuick3D/` shipped; `tools/ci/test_check_crucible_package.py`
+    pins those rules, and `tst_about.qml` holds the embedded text to `silentDeviceFromPackage`
+    and `has3D` and opens the dialog from About. Not done here: the Windows zip still carries
+    Qt6Test, Qt6QuickTest and `qml/QtTest`, which the deploy picked up from the test QML; the
+    notices list them until the deploy is narrowed.
+
+!!! note "Still open in Phase 6"
+    Two of the five items are not done. The **review of the six mechanically translated
+    languages** is a pass of its own: the catalogues are two commits stale against the source,
+    fifteen current strings have no entry and sixty-five rename-era entries sit as vanished, and
+    the window has no `LayoutMirroring` root, so Arabic, Hebrew and Yiddish flip their text and
+    keep a left-to-right layout. The **accessibility pass** has not started: nothing in the
+    window is a tab stop, there is no focus indicator, the room's objects cannot be placed from
+    the keyboard, and the light palettes fail the AA contrast floor for muted text. Both are
+    planned against readings of the code; the translation gate lands last, after every item that
+    adds a string.
+
+    Three things wait on a machine rather than on work here: the Linux create-on-send wait needs
+    a Pi run to confirm the node appears inside it, the application icons need the Pi to say
+    which rung each application hits, and no screen reader has been run against the window on
+    any platform.
 
 ### Phase 7: docs
 

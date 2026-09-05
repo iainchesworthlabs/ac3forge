@@ -32,8 +32,7 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   receiver on HDMI, 2026-09-05). Applications are tapped one at a time through PipeWire's
   per-stream target, the silent device is a `support.null-audio-sink` node the application
   creates and removes itself (no driver, nothing installed), the default sink moves through
-  the `default` metadata as `wpctl set-default` does, and the front window is read from the
-  X11 active window or, under Wayland, reported as unavailable with the reason. Linux
+  the `default` metadata as `wpctl set-default` does, and the front window is read from the X11 active window through libxcb (`_NET_ACTIVE_WINDOW`, `_NET_WM_STATE`, `_NET_WM_PID`, matched against each application's process tree on the engine's session-monitor thread; `AC3FORGE_CRUCIBLE_X11`, AUTO/ON/OFF, takes `libxcb1-dev` when it is there) or, under Wayland, without a display, or in a build without libxcb, reported as off with the reason, which the Room page, `ac3crucible-run status` and the platform probe print. Linux
   needs the PipeWire backend: a Crucible build against ALSA is refused at configure time,
   since ALSA has no per-application streams to tap. The window builds and its Qt Quick
   tests pass on Linux; the `crucible` CPack component produces an
@@ -84,6 +83,42 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   how sharply these gates can see.
 
 ### Added
+
+- **Crucible explains itself on first run, and puts the default output back on quit**
+  (`apps/crucible/`): the first launch opens a dialog that says what Crucible does to the sound
+  settings before it does it, naming the silent device the platform uses, saying the default
+  output will move to it and be restored on quit, and offering Send now, Not now or Open
+  Settings, with a tick that makes the move automatic on every launch; it is shown once per user
+  (a store carried over from the Desktop Atmos demo sees it once too) and a `--shot` capture
+  suppresses it unless `--page firstrun` asks for it. Quitting from the tray, or closing the
+  window with "Keep running in the tray" off, now restores the previous default output when
+  Crucible moved it, which four places already promised. On Linux, Send applications creates the
+  "Crucible (silent)" node in the same press when it is not there yet.
+- **Crucible saves a diagnostics file** (Settings, "Save diagnostics…";
+  [Troubleshooting](docs/crucible/troubleshooting.md#saving-a-diagnostics-file)): a text
+  file with the version and platform, how the signing key was obtained, the engine's counters
+  (the catch-ups, tap backlog and sink queue included, which the window did not show), the
+  endpoints the last probe found, the applications by name and description, the two devices
+  of the signal path, the settings and the last 512 messages the application and its engine
+  left. It never carries the signing key, the path to the key file or the value of any
+  environment variable: the `signing/` settings are written as withheld and the finished text
+  is scrubbed of every spelling of the key path and of the inline key value.
+- **Every Crucible package carries its third-party notices, and About has a Licences view**
+  (`apps/crucible/notices/`, `cmake/Notices.cmake`). `NOTICES.txt` is generated per platform at
+  configure time from shared fragments and a component list per platform directory, with the
+  versions CMake already holds: the Windows zip's copy names the bundled Qt modules, reproduces
+  the LGPL-3 text with the relinking statement and the download.qt.io source location, lists the
+  third-party code inside the Qt libraries from the kit's SBOM, credits the Mesa, DirectX Shader
+  Compiler and Microsoft runtime files the deploy places, and reproduces the MS-PL for the driver
+  scripts; the Linux tarball and `.deb` carry theirs under `share/doc/ac3forge-crucible/` (with
+  `LICENSE.txt` and the Debian `copyright` alias), naming the system Qt and PipeWire instead.
+  Both name `{fmt}` and reproduce the OFL 1.1 with the Archivo and Noto copyright lines, and a
+  build with the room's 3D view states that Qt Quick 3D is used under the GPL-3, which is what
+  Qt's SBOM records for it (the About box had said LGPL for all of Qt). The same file is
+  embedded and shown by About > Licences… (`--page licences` captures it), so the window and
+  the package cannot disagree; `tools/ci/check_crucible_package.py` reads the file and refuses a
+  package whose notices were written for the other platform or whose Qt Quick 3D section
+  disagrees with what shipped.
 
 - The Desktop Atmos Demo is built, tested and packaged in CI (roadmap UX11 phase 6): both
   Windows legs build `ac3desk`/`ac3windemo` and run the demo's 68 tests, and the MSVC leg

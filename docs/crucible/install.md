@@ -183,6 +183,7 @@ Point Settings at a key file, or set the same environment variable `ac3cli` read
 export AC3FORGE_SIGNING_KEY_FILE=/path/to/key
 ```
 
-Crucible stores the *path* by default, never the key material. On Windows you may optionally have
-it keep the bytes protected with DPAPI, readable only by the same user on the same machine.
-Plaintext key material never reaches a settings file, a log, or a crash dump.
+Crucible stores the *path*, never the key material. Plaintext key material never reaches a
+settings file, a log or a crash dump, and the diagnostics file Settings can save carries neither
+the key nor the path to it (see
+[Saving a diagnostics file](troubleshooting.md#saving-a-diagnostics-file)).
