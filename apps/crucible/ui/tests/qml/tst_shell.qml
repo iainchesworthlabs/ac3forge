@@ -74,4 +74,23 @@ TestCase {
         tryCompare(window, "visible", false);
         // The engine is left running for the tray; stop() is cleanup's job.
     }
+
+    function test_diagnosticsReportCarriesTheEngine() {
+        const window = createTemporaryObject(shell, testCase);
+        verify(window);
+        tryCompare(window, "visible", true);
+        verify(CrucibleController.running || CrucibleController.lastError.length > 0,
+               "running=" + CrucibleController.running + " lastError=" + CrucibleController.lastError);
+        // The engine's first notes come from its own thread a moment after
+        // start() returns.
+        tryVerify(function() {
+            const report = CrucibleController.diagnosticsReport();
+            return report.indexOf("engine started:") >= 0 || report.indexOf("engine start refused:") >= 0;
+        }, 5000);
+        const report = CrucibleController.diagnosticsReport();
+        verify(report.indexOf("# engine") >= 0, report);
+        verify(report.indexOf("signing: ") >= 0, "no signing note: " + report);
+        // The status line that names the key file never reaches the report.
+        verify(report.indexOf("loaded from") < 0, report);
+    }
 }

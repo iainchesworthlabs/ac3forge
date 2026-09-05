@@ -23,6 +23,16 @@ Flickable {
         title: qsTr("Choose the signing key")
         onAccepted: CrucibleController.loadKey(selectedFile.toString())
     }
+    // Where the diagnostics file goes. selectedFile is set before open(), so
+    // the suggested name and folder appear in the dialog.
+    FileDialog {
+        id: diagnosticsDialog
+        title: qsTr("Save diagnostics")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "txt"
+        nameFilters: [qsTr("Text files (*.txt)"), qsTr("All files (*)")]
+        onAccepted: CrucibleController.exportDiagnostics(selectedFile.toString())
+    }
 
     // A labelled row: a fixed label, a field, and a note that wraps.
     component SettingRow: RowLayout {
@@ -395,6 +405,22 @@ Flickable {
                     checked: CrucibleController.showBackgroundApps
                     onToggled: function(on) { CrucibleController.showBackgroundApps = on; }
                 }
+            }
+
+            // A text file for a bug report. What it holds and what it
+            // withholds is the controller's business (diagnostics.hpp); the
+            // note says both so the person reads it before attaching it.
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.space3
+                RailBlock { ordinal: "07"; label: qsTr("DIAGNOSTICS"); Layout.fillWidth: true; Layout.fillHeight: false }
+                Note { text: qsTr("A text file for a bug report: the version and platform, the engine's counters, the endpoints the probe found, the two devices of the signal path, this app's settings and its recent messages. It does not carry the signing key, the path to it, or any environment variable's value; it does name your audio devices and running applications, so read it before you attach it.") }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: Theme.space2
+                    CrucibleButton { objectName: "exportDiagnosticsButton"; text: qsTr("Save diagnostics…"); onClicked: { diagnosticsDialog.selectedFile = CrucibleController.suggestedDiagnosticsFile(); diagnosticsDialog.open(); } }
+                }
+                Note { objectName: "diagnosticsMessage"; visible: CrucibleController.diagnosticsMessage.length > 0; text: CrucibleController.diagnosticsMessage }
             }
         }
     }

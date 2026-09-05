@@ -1,5 +1,8 @@
 import QtQuick
 import QtTest
+// The platform module Main.qml already imports, so its StandardPaths is
+// deployed beside the window wherever the window is; QtCore's would not be.
+import Qt.labs.platform as Platform
 
 import Ac3ForgeCrucible
 
@@ -167,6 +170,59 @@ TestCase {
             compare(remove.text, "Remove device");
             compare(install.enabled, CrucibleController.driverPackageFound && !CrucibleController.driverBusy);
         }
+    }
+
+    function test_diagnosticsReportWithholdsTheKeyPath() {
+        // A chosen key file: the path is remembered (in the store) and the
+        // report says so without carrying it in any spelling, nor the file's
+        // own name.
+        CrucibleController.loadKey(Qt.resolvedUrl("tst_settings.qml").toString());
+        verify(CrucibleController.keyPath.length > 0);
+        const report = CrucibleController.diagnosticsReport();
+        verify(report.indexOf(CrucibleController.keyPath) < 0, "the native path is in the report");
+        verify(report.indexOf(CrucibleController.keyPath.replace(/\\/g, "/")) < 0, "the forward-slash path is in the report");
+        verify(report.indexOf("tst_settings.qml") < 0, "the key file's name is in the report");
+        verify(report.indexOf("signing/keyPath = <withheld>") >= 0, report);
+        verify(report.indexOf("key source: a file chosen in Settings (path withheld)") >= 0, report);
+        verify(report.indexOf("output/pinned = auto") >= 0, report);
+        verify(report.indexOf("# platform") >= 0, report);
+        verify(report.indexOf("# recent messages") >= 0, report);
+        verify(report.indexOf("signing key file chosen (path withheld)") >= 0, report);
+    }
+
+    function test_exportWritesAFile() {
+        // The system temporary folder as a file: URL, whichever form the
+        // platform module hands back.
+        let base = String(Platform.StandardPaths.writableLocation(Platform.StandardPaths.TempLocation));
+        if (base.indexOf("file:") !== 0)
+            base = "file://" + (base.indexOf("/") === 0 ? "" : "/") + base;
+        const url = base + "/crucible-test-diagnostics.txt";
+        verify(CrucibleController.exportDiagnostics(url), CrucibleController.diagnosticsMessage);
+        verify(CrucibleController.diagnosticsMessage.indexOf("saved to") === 0, CrucibleController.diagnosticsMessage);
+        const suggested = CrucibleController.suggestedDiagnosticsFile();
+        verify(suggested.indexOf("file:") === 0, suggested);
+        verify(suggested.indexOf("crucible-diagnostics-") > 0, suggested);
+        verify(suggested.endsWith(".txt"), suggested);
+        // A folder that does not exist is refused with a reason.
+        verify(!CrucibleController.exportDiagnostics("file:///no/such/dir/x.txt"));
+        verify(CrucibleController.diagnosticsMessage.indexOf("could not write") === 0, CrucibleController.diagnosticsMessage);
+    }
+
+    function test_pageCarriesTheDiagnosticsButton() {
+        // Parented to the window's root item for the reason
+        // test_pageShowsTheDriverStateAndFolder gives.
+        const page = createTemporaryObject(settingsPage, testCase.parent);
+        verify(page);
+        waitForRendering(page);
+        const button = findChild(page, "exportDiagnosticsButton");
+        verify(button, "the export button carries objectName exportDiagnosticsButton");
+        verify(button.enabled);
+        compare(button.text, "Save diagnostics…");
+        const message = findChild(page, "diagnosticsMessage");
+        verify(message, "the outcome note carries objectName diagnosticsMessage");
+        // Shown only once an export has run; whether one has depends on
+        // which tests ran before this one in the same process.
+        compare(message.visible, CrucibleController.diagnosticsMessage.length > 0);
     }
 
     Component { id: spyComponent; SignalSpy {} }

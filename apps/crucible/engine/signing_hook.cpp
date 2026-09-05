@@ -21,6 +21,7 @@ std::string SigningHook::load(std::string_view explicit_path) {
     auto loaded = ac3::signing::load_signing_key(explicit_path);
     if (!loaded) {
         clear();
+        failure_ = loaded.error().kind;
         switch (loaded.error().kind) {
             case ac3::signing::KeyErrorKind::kAbsent:
                 source_.clear();
@@ -33,12 +34,16 @@ std::string SigningHook::load(std::string_view explicit_path) {
     }
     impl_->key = std::move(*loaded);
     source_ = explicit_path.empty() ? "environment" : std::string(explicit_path);
+    kind_ = explicit_path.empty() ? Source::kEnvironment : Source::kFile;
+    failure_.reset();
     return "signing key loaded from " + source_ + ": object container will be signed";
 }
 
 void SigningHook::clear() {
     impl_->key = ac3::signing::SigningKey{};
     source_.clear();
+    kind_ = Source::kNone;
+    failure_.reset();
 }
 
 bool SigningHook::available() const {
