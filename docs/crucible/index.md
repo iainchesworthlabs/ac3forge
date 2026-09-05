@@ -124,5 +124,6 @@ the path to it. See [Object signing](../concepts/object-signing.md).
 - [Install and first run](install.md) — per platform, including what to do about the silent device
 - [The signal path](signal-path.md) — the two devices Crucible depends on, and why they are two
 - [Keyboard and screen readers](accessibility.md) — the key map, the focus order, and what is announced
+- [Languages](localisation.md) — the seven the window ships in, and what changes when one reads right to left
 - [Troubleshooting](troubleshooting.md) — when you hear nothing, or hear everything twice
 - [The promotion plan](promotion.md) — the design record, phase by phase, and what is unverified

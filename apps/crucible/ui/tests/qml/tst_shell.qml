@@ -2,12 +2,17 @@ import QtQuick
 import QtTest
 
 import Ac3ForgeCrucible
+import Ac3ForgeCrucibleLanguage
 
 // The window itself: it comes up, switches pages, applies the persisted
 // theme, and closing it hides rather than quits while "keep running in the
 // tray" is on. Main.qml's Component.onCompleted starts the engine; on a
 // machine with no audio endpoint that start refuses and the status strip
 // says so, which is a state the shell has to render too.
+//
+// The last two cases are the window's right-to-left half: the header
+// follows the layout direction the language sets, and the room plan does
+// not, because it is a map of a room rather than a row of controls.
 TestCase {
     id: testCase
     name: "Shell"
@@ -28,6 +33,11 @@ TestCase {
 
     function cleanup() {
         CrucibleController.stop();
+        // A case that switched language leaves the rest of the suite in
+        // English, whatever order they run in.
+        if (LanguageManager.currentLanguage !== "en") {
+            LanguageManager.setLanguage("en");
+        }
     }
 
     function test_windowOpensOnTheRoomAndSwitchesPages() {
@@ -102,6 +112,43 @@ TestCase {
         verify(report.indexOf("# engine") >= 0, report);
         // The status line that names the key file never reaches the report.
         verify(report.indexOf("loaded from") < 0, report);
+    }
+
+    function test_rightToLeftMirrorsTheHeader() {
+        // Arabic sets the application layout direction, and the window
+        // root's LayoutMirroring turns that into the arrangement: the
+        // title is the first thing in the header row, so it sits at the
+        // right edge under Arabic and at the left edge under English.
+        verify(LanguageManager.setLanguage("ar"));
+        const window = createTemporaryObject(shell, testCase);
+        verify(window);
+        tryCompare(window, "visible", true);
+        const title = findChild(window, "titleText");
+        verify(title, "the header title");
+        tryVerify(function() { return title.mapToItem(null, 0, 0).x > window.width / 2; }, 3000,
+                  "the header title did not move to the right half under Arabic");
+        verify(LanguageManager.setLanguage("en"));
+        tryVerify(function() { return title.mapToItem(null, 0, 0).x < window.width / 2; }, 3000,
+                  "the header title did not come back to the left half under English");
+    }
+
+    function test_roomPlanKeepsLeftOnTheLeft() {
+        // The plan is a picture of a room: L is where the left speaker
+        // is, and mirroring the window must not move it, whatever
+        // direction the language reads in.
+        CrucibleController.roomView = "2d";
+        verify(LanguageManager.setLanguage("he"));
+        const window = createTemporaryObject(shell, testCase);
+        verify(window);
+        tryCompare(window, "visible", true);
+        compare(window.page, "room");
+        const plan = findChild(window, "roomPlan");
+        verify(plan, "the room plan");
+        const speaker = findChild(plan, "speaker-L");
+        verify(speaker, "the plan's L speaker");
+        tryVerify(function() { return speaker.mapToItem(plan, 0, 0).x < plan.width / 3; }, 3000,
+                  "the L speaker left the left third of the plan under Hebrew");
+        verify(LanguageManager.setLanguage("en"));
     }
 
     function test_stopNeverTouchesTheDefault() {

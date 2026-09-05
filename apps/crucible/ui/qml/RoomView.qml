@@ -71,12 +71,26 @@ Item {
 
             // Speakers, plan only: the bed's five positions.
             Repeater {
+                // The five bed speakers. `key` is what the item is called
+                // whatever the language is; `label` is what is drawn, and
+                // the standard abbreviations stay as they are in every
+                // language a translator does not have an established set
+                // of its own for.
                 model: root.elevation ? [] : [
-                    { label: qsTr("L"), px: 0.15, py: 0.10 }, { label: qsTr("R"), px: 0.85, py: 0.10 }, { label: qsTr("C"), px: 0.50, py: 0.08 },
-                    { label: qsTr("Ls"), px: 0.15, py: 0.87 }, { label: qsTr("Rs"), px: 0.85, py: 0.87 }]
+                    //: Speaker abbreviation: left. Keep the standard abbreviation.
+                    { key: "L", label: qsTr("L"), px: 0.15, py: 0.10 },
+                    //: Speaker abbreviation: right. Keep the standard abbreviation.
+                    { key: "R", label: qsTr("R"), px: 0.85, py: 0.10 },
+                    //: Speaker abbreviation: centre. Keep the standard abbreviation.
+                    { key: "C", label: qsTr("C"), px: 0.50, py: 0.08 },
+                    //: Speaker abbreviation: left surround. Keep the standard abbreviation.
+                    { key: "Ls", label: qsTr("Ls"), px: 0.15, py: 0.87 },
+                    //: Speaker abbreviation: right surround. Keep the standard abbreviation.
+                    { key: "Rs", label: qsTr("Rs"), px: 0.85, py: 0.87 }]
                 delegate: Item {
                     id: speaker
                     required property var modelData
+                    objectName: "speaker-" + speaker.modelData.key
                     x: field.width * modelData.px
                     y: field.height * modelData.py
                     // "L" alone reads as a letter; a reader is told what it

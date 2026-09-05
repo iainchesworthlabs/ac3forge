@@ -259,6 +259,12 @@ target_compile_definitions(ac3tests
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
 
+# crucible/test_translations.cpp reads the Crucible's six Qt Linguist
+# catalogues as files (no Qt in this target), on the same reasoning: a
+# source-tree path, because ctest runs the binary from the build tree.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_CRUCIBLE_TS_DIR=\"${CMAKE_SOURCE_DIR}/apps/crucible/translations\"")
+
 # Where every test that writes a file writes it. Each such file's own scratch_dir()
 # helper appends its own leaf name under here, so the artefacts stay separated by
 # subject the way their old per-subject temp directories were.
@@ -444,6 +450,7 @@ target_sources(ac3tests PRIVATE
     crucible/test_platform_seams.cpp
     crucible/test_diagnostics.cpp
     crucible/test_desktop_entries.cpp
+    crucible/test_translations.cpp
     crucible/platform_services_stub.cpp
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"

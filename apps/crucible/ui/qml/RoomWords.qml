@@ -19,16 +19,33 @@ QtObject {
     // Height and the left-right half are dropped when they say nothing -
     // ear level, and the middle third of the room - so what is left is what
     // is worth hearing.
+    //
+    // Each step frames the one before it rather than joining a word to it:
+    // the depth is a phrase, the side and the height are sentences with a
+    // %1 in them, so a language that puts height last or reads the room
+    // right to left can order the whole line as it needs to.
     function describe(x, y, z) {
-        const centred = x >= 0.35 && x <= 0.65;
-        const side = x < 0.35 ? qsTr("left") : qsTr("right");
+        //: Where something is in the room, as a screen reader hears it
         const depth = y < 0.35 ? qsTr("in front of you")
                     : y > 0.65 ? qsTr("behind you")
                     : qsTr("beside you");
-        const height = z > 0.3 ? qsTr("up") : z < -0.3 ? qsTr("low") : "";
-        return [height, depth, centred ? "" : qsTr("to the %1").arg(side)]
-            .filter(function(part) { return part.length > 0; })
-            .join(", ");
+        let placed = depth;
+        if (x < 0.35) {
+            //: %1 is where it is ("in front of you"); this adds which side of the room it is on
+            placed = qsTr("%1, to the left").arg(depth);
+        } else if (x > 0.65) {
+            //: %1 is where it is ("in front of you"); this adds which side of the room it is on
+            placed = qsTr("%1, to the right").arg(depth);
+        }
+        if (z > 0.3) {
+            //: %1 is a position ("in front of you, to the left"); this adds that it is above ear level
+            return qsTr("up, %1").arg(placed);
+        }
+        if (z < -0.3) {
+            //: %1 is a position ("in front of you, to the left"); this adds that it is below ear level
+            return qsTr("low, %1").arg(placed);
+        }
+        return placed;
     }
 
     // The same position as figures, labelled: "x 0.50 · y 0.50 · z +0.00".
