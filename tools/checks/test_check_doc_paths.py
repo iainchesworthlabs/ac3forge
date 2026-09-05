@@ -6,10 +6,11 @@ shellcheck and actionlint and nothing else.
 
 Each test builds a small temporary tree and runs the check over it, so the
 cases are the rules the script's header states: a good relative link passes, a
-missing target fails and names file:line, an anchor-only link passes, a glob
-literal is skipped and reported as such rather than failing, and each of the
-four shapes the literal check declines to judge is declined for its own stated
-reason.
+missing target fails and names file:line, an anchor-only link passes,
+ROADMAP.md's inverted rule fails a relative link even when its target exists, a
+glob literal is skipped and reported as such rather than failing, and each of
+the four shapes the literal check declines to judge is declined for its own
+stated reason.
 
 Run: python3 -m unittest discover -s tools/checks -p 'test_*.py'
 """
@@ -65,13 +66,21 @@ class MarkdownLinks(unittest.TestCase):
         report = check_doc_paths.check_tree(self.root)
         self.assertEqual(report.problems, [])
 
-    def test_roadmap_is_skipped_as_dual_context(self) -> None:
+    def test_roadmap_absolute_urls_and_anchors_pass(self) -> None:
         """Its links are absolute URLs because it is also a docs-site snippet."""
-        _write(self.root, "ROADMAP.md", "[broken](nowhere.md)\n")
+        _write(self.root, "ROADMAP.md", "[a](https://x.test/y) and [b](#a-section)\n")
         _write(self.root, "docs/roadmap.md", '--8<-- "ROADMAP.md"\n')
         report = check_doc_paths.check_tree(self.root)
         self.assertEqual(report.problems, [])
-        self.assertTrue(any(entry.startswith("ROADMAP.md:") for entry in report.skipped))
+        self.assertEqual(report.checked, 2)
+
+    def test_roadmap_relative_link_fails_even_when_it_resolves(self) -> None:
+        """The rule is the link's form, not whether the target happens to exist."""
+        _write(self.root, "ROADMAP.md", "ok\n[here](docs/target.md)\n")
+        report = check_doc_paths.check_tree(self.root)
+        self.assertEqual(len(report.problems), 1)
+        self.assertIn("ROADMAP.md:2:", report.problems[0])
+        self.assertIn("must be an absolute URL", report.problems[0])
 
 
 class PathLiterals(unittest.TestCase):

@@ -161,6 +161,8 @@ and where the raw-pointer boundaries are, the per-access-unit resource limits, a
 
 ```
 cmake/          toolchains, Qt/CPack/sanitizer/coverage modules, vcpkg triplet overlays
+assets/         the app-icon source: one procedural mark, plus a hand-authored SVG for the
+                WASM favicon; every .ico/.icns/.png/mipmap in the tree is generated from it
 src/forge/      ac3::forge — the whole codec, GUI-free
 src/capi/       ac3forge_c — a plain-C11 surface over the encode/decode core, for bindings and
                 callers that do not link C++23
@@ -201,6 +203,8 @@ tools/          Python: table/fixture generators and the published conformance v
                 (checks/), independent reference implementations (references/),
                 CI-only orchestration - trend appenders, the codec matrix, the
                 FFmpeg quality race (ci/)
+requirements/   pip-compile --generate-hashes locks for the CI Python jobs: lint, coverage,
+                docs, ffmpeg-validate and the wheel tests
 packaging/      vcpkg port, winget manifest, Conan recipe (staged, pending upstream submission);
                 Homebrew formula/cask (published to the live homebrew-ac3forge tap)
 docs/           the site source — see Documentation below

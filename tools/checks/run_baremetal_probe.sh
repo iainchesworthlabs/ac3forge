@@ -42,9 +42,8 @@ fi
 # src/forge/src/verify/eac3_mirror.cpp, both correctly added to
 # src/forge/minimal.cmake's source list) - between when 354,060/400,000 were
 # first measured and when the PR actually merged. The image had already
-# reached 412,516 bytes at that
-# point; nobody re-measured before merging. See docs/performance-trend.md's
-# footprint table for the current breakdown.
+# reached 412,516 bytes at that point; nobody re-measured before merging.
+# See docs/performance-trend.md's footprint table for the current breakdown.
 : "${AC3FORGE_MAX_IMAGE_BYTES:=465000}"
 : "${AC3FORGE_MAX_HEAP_BYTES:=300000}"
 # Allocations per frame in the steady state, whichever codec is worse. The

@@ -12,14 +12,14 @@ runnable the same way locally:
     CONTRIBUTING.md, SECURITY.md and CHANGELOG.md resolves to a file or a
     directory. Anchors are stripped, http(s)/mailto targets are skipped, and
     links inside fenced code blocks and inline code spans are ignored (they
-    are examples of the syntax, not links). ROADMAP.md is skipped on purpose,
-    and says so in the run's output: it is read both on GitHub and as a
-    snippet included into docs/roadmap.md, so its links must be absolute URLs
-    (docs/roadmap.md states that rule) and a relative-link check would be
-    wrong in one of the two places.
+    are examples of the syntax, not links). ROADMAP.md is held to the opposite
+    rule: it is read both on GitHub and as a snippet included into
+    docs/roadmap.md, so a relative link there can only resolve from one of the
+    two places. Every link in it must be an absolute http(s) URL or a bare
+    #anchor (docs/roadmap.md states that rule), and anything else fails.
 
 (b) Every path literal starting docs/, apps/, src/ or tools/ inside
-    .github/workflows/*.yml, cmake/*.cmake, CMakePresets.json and
+    .github/workflows/*.yml, cmake/**/*.cmake, CMakePresets.json and
     tools/**/*.{py,sh,ps1} names something that exists. Conservative on
     purpose. A token has to start at a word boundary, contain a slash and end
     at whitespace, a quote or a bracket; a trailing #anchor is a section
@@ -53,12 +53,14 @@ from urllib.parse import unquote
 
 MARKDOWN_GLOBS = ("docs/**/*.md",)
 MARKDOWN_FILES = ("README.md", "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md", "ROADMAP.md")
-MARKDOWN_SKIP = {
-    "ROADMAP.md": "included into docs/roadmap.md as a snippet, so its links are absolute URLs",
+# Files whose links must be absolute rather than resolvable from this tree,
+# with the reason the inverted rule applies to them.
+ABSOLUTE_LINKS_ONLY = {
+    "ROADMAP.md": "also a snippet in docs/roadmap.md, where a relative link cannot resolve",
 }
 LITERAL_GLOBS = (
     ".github/workflows/*.yml",
-    "cmake/*.cmake",
+    "cmake/**/*.cmake",
     "CMakePresets.json",
     "tools/**/*.py",
     "tools/**/*.sh",
@@ -87,6 +89,7 @@ REFERENCE_LINK = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)")
 CODE_SPAN = re.compile(r"`[^`\n]*`")
 FENCE = re.compile(r"^ {0,3}(```|~~~)")
 SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:")
+HTTP_URL = re.compile(r"^https?://", re.IGNORECASE)
 
 # A token starts at a word boundary (so the docs/ inside a URL's /blob/main/docs/
 # is not one), and ends at whitespace, a quote, a bracket or a punctuation mark
@@ -175,6 +178,18 @@ def link_targets(lines: list[str]) -> list[tuple[int, str]]:
     return targets
 
 
+def check_absolute_links(path: Path, root: Path, reason: str, report: Report) -> None:
+    """The inverted rule: every link is an absolute http(s) URL or a bare #anchor."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    where = _display(path, root)
+    for number, raw in link_targets(lines):
+        target = raw.strip("<>")
+        report.checked += 1
+        if HTTP_URL.match(target) or target.startswith("#"):
+            continue
+        report.problems.append(f"{where}:{number}: link must be an absolute URL ({reason}): {raw}")
+
+
 def check_markdown(path: Path, root: Path, report: Report) -> None:
     lines = path.read_text(encoding="utf-8").splitlines()
     where = _display(path, root)
@@ -228,9 +243,9 @@ def check_tree(root: Path) -> Report:
     report = Report()
     patterns = ignore_patterns(root)
     for path in markdown_files(root):
-        reason = MARKDOWN_SKIP.get(_display(path, root))
+        reason = ABSOLUTE_LINKS_ONLY.get(_display(path, root))
         if reason:
-            report.skipped.append(f"{_display(path, root)}: whole file ({reason})")
+            check_absolute_links(path, root, reason, report)
             continue
         check_markdown(path, root, report)
     for path in literal_files(root):

@@ -20,8 +20,10 @@
 #   .\tools\checks\coverage_crucible.ps1 -BuildDir <build dir>
 #
 # Gates: none yet. The first measured figures go into
-# docs/platforms/windows-demo.md; floors follow once they are stable, the
-# way coverage_report.sh gates the library.
+# docs/crucible/promotion.md, beside the rest of the promotion's phase
+# record; docs/platforms/windows-demo.md keeps the history the product grew
+# from. Floors follow once the figures are stable, the way
+# coverage_report.sh gates the library.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$BuildDir,

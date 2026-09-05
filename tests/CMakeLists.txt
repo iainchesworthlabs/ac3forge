@@ -427,11 +427,12 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 # WASAPI classes behind an interface they are plain C++ over the library's
 # codec, packer and decoder, and tests/crucible/fake_devices.hpp stands in
 # for the machine. platform_audio_devices() itself is declared in
-# platform_services.hpp and defined in apps/crucible/engine/
-# library_devices.cpp, which this target does not compile; these tests never call it, and
-# the one place the stage would (a null `devices` in its config) is a path
-# the tests do not take, so the reference resolves to the stub below on
-# every platform and to the real thing in the app.
+# platform_services.hpp and defined in
+# apps/crucible/engine/library_devices.cpp, which this target does not
+# compile; these tests never call it, and the one place the stage would
+# (a null `devices` in its config) is a path the tests do not take, so the
+# reference resolves to the stub below on every platform and to the real
+# thing in the app.
 target_sources(ac3tests PRIVATE
     crucible/test_slots.cpp
     crucible/test_bed_mixer.cpp
