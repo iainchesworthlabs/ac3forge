@@ -628,8 +628,10 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
 
     **Re-verified on the Pi after these fixes**, 2026-09-05: enumeration reads the headphone jack as `ac3=no eac3=no` and the HDMI sink as `ac3=YES eac3=YES`, from the bound node info rather than the registry dictionary; the window renders with 0 wrong-context warnings and a worst frame of 59 ms; and its own Qt Quick suite passes there (the next section).
 
-    What the Linux window still lacks, and says so: application icons, and the full-screen
-    rule that Wayland cannot answer. Worth knowing before the next hardware run: the Pi's own
+    What the Linux window lacked when this was written - application icons and the full-screen
+    rule - both landed in Phase 6: icons come from the icon theme and the `.desktop` entries,
+    and the rule is answered under X11 and refused, with the reason, under Wayland. Worth
+    knowing before the next hardware run: the Pi's own
     checkout sits on `bugfix/vc4-hdmi-device-classification` — HDMI audio classification on
     this exact hardware has bitten the ALSA backend once already.
 
@@ -894,6 +896,8 @@ not.
 | macOS anything, at runtime | **no** | no Mac has ever run this backend; DR9 |
 | macOS tap consent prompt | **no** | the prompt is keyed to code-signing identity and does not fire unsigned; DR6 |
 | Wayland full-screen foreground detection | **no**, by design | Wayland does not let a client ask about another's windows |
+| X11 full-screen foreground detection | yes, in an X11 session or a nested Xephyr on the Pi | none |
+| Linux application icons, per application | yes, on a desktop with applications playing | needs the Pi; which rung each hits is machine-dependent |
 
 Compiling on a second platform pays for itself before any of it runs. Phase 3 was written on
 Windows and built clean there; the first Linux build then rejected it three times, and each was

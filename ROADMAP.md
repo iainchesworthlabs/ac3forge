@@ -2400,9 +2400,16 @@ the passthrough offers a bitstream on the HDMI sink and refuses it on the headph
 the codecs WirePlumber reads off the receiver's EDID — runs that found defects no build could,
 several pre-existing in the library's PipeWire backend. E-AC-3 bursts have reached the
 receiver's sink from PipeWire; whether the receiver locked is not yet read off its display.
-Still open: that reading (DR9's row, on Crucible's critical path since it cannot use ALSA),
-macOS (compile-only; blocked on DR6 and DR9), the Linux package as a release asset, and the
-product-quality pass. Plan and phase record in `docs/crucible/promotion.md`.
+Most of the product-quality pass (Phase 6) landed the same day: a first-run explanation of what
+Crucible does to the sound settings, and the restore on quit that four places already promised;
+a diagnostics file that carries neither the signing key nor the path to it; third-party licence
+notices generated per platform, with a Licences view over About; the full-screen rule answered
+under X11 through libxcb and refused with its reason elsewhere; and application icons on Linux
+from the icon theme and the `.desktop` entries. Still open: the receiver's own reading (DR9's
+row, on Crucible's critical path since it cannot use ALSA), macOS (compile-only; blocked on DR6
+and DR9), the Linux package as a release asset, and the last two Phase 6 items - the review of
+the six mechanically translated languages and the accessibility pass. Plan and phase record in
+`docs/crucible/promotion.md`.
 <details markdown="1">
 <summary>Full record</summary>
 
