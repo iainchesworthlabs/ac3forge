@@ -29,7 +29,14 @@ Rectangle {
 
     // A full-screen application cannot leave the bed, so its chip is not a
     // tab stop: Tab walks what can be acted on.
-    activeFocusOnTab: !root.app.fullscreen
+    // The same rule as the disabled controls: an application that goes
+    // full-screen cannot leave the bed, so its chip leaves the tab chain, and
+    // Qt will not take it out while it still holds the focus. Derived rather
+    // than watched on the entry's own signal, so this holds for whatever
+    // object supplies `app`.
+    readonly property bool tabbable: !root.app.fullscreen
+    onTabbableChanged: if (!root.tabbable && root.activeFocus) root.focus = false;
+    activeFocusOnTab: root.tabbable
     Keys.onPressed: function(event) {
         if (root.app.fullscreen) {
             return;

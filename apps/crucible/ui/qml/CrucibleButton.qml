@@ -27,6 +27,11 @@ Rectangle {
     // A tab stop while it can be pressed, and Space or Return presses it -
     // the two keys every desktop uses on a button. A disabled button is
     // skipped by Tab and ignores both.
+    // Qt refuses to take an item out of the tab chain while it is the active
+    // focus item, so a control that is disabled under the keyboard would keep
+    // both the focus and its place in the chain - the person's next Tab would
+    // start from something they can no longer use. Hand the focus back first.
+    onEnabledChanged: if (!root.enabled && root.activeFocus) root.focus = false;
     activeFocusOnTab: root.enabled
     Keys.onPressed: function(event) {
         if (!root.enabled) {
