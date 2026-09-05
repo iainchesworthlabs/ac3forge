@@ -1,5 +1,6 @@
 #include "tray_support.hpp"
 
+#include <QObject>
 #include <QSystemTrayIcon>
 
 // Windows: the notification area, which the window has used since the demo.

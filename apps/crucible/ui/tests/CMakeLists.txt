@@ -19,17 +19,23 @@ qt_add_executable(ac3crucible_qmltests
     ui/crucible_controller.hpp
     ui/app_entry.hpp
     ui/app_icon_provider.hpp
+    ui/tray_support.hpp
     ../gui/system_theme.cpp
     ../gui/system_theme.hpp
     ../gui/language_manager.cpp
     ../gui/language_manager.hpp)
-# The icon provider is per platform, the same way the window's own target
-# selects it (apps/crucible/CMakeLists.txt): this target embeds the same
-# sources and has to make the same choice.
+# The icon provider and the tray answer are per platform, the same way the
+# window's own target selects them (apps/crucible/CMakeLists.txt): this target
+# embeds the same sources and has to make the same choice. Every file listed
+# under ui/platform/ there belongs here too - the controller is compiled into
+# this binary, so a seam this target does not choose is an unresolved symbol
+# at link time and nothing sooner.
 if(WIN32)
-    target_sources(ac3crucible_qmltests PRIVATE ui/platform/windows/app_icon_provider.cpp)
+    target_sources(ac3crucible_qmltests PRIVATE ui/platform/windows/app_icon_provider.cpp
+                                                ui/platform/windows/tray_support.cpp)
 elseif(LINUX)
-    target_sources(ac3crucible_qmltests PRIVATE ui/platform/linux/app_icon_provider.cpp)
+    target_sources(ac3crucible_qmltests PRIVATE ui/platform/linux/app_icon_provider.cpp
+                                                ui/platform/linux/tray_support.cpp)
     target_sources(ac3crucible_qmltests PRIVATE ui/desktop_entries.cpp ui/desktop_entries.hpp)
 endif()
 
@@ -63,7 +69,8 @@ target_compile_definitions(ac3crucible_qmltests PRIVATE WIN32_LEAN_AND_MEAN NOMI
 target_link_libraries(ac3crucible_qmltests PRIVATE
     ac3::crucible_engine
     ac3::coverage
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickTest ${AC3DESK_QUICK3D_LIB})
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickTest Qt6::Widgets
+    ${AC3DESK_QUICK3D_LIB})
 if(Qt6Svg_FOUND)
     target_link_libraries(ac3crucible_qmltests PRIVATE ${AC3DESK_SVG_LIB})
 endif()
