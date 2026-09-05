@@ -25,7 +25,7 @@
 # library+CLI only, no Qt app: the GUI adds nothing CodeQL needs to see and
 # config-linux-gcc already defaults AC3FORGE_BUILD_GUI off (see
 # CMakePresets.json), so this is the same build ci.yml's static-analysis
-# (clang-tidy) job already proves clean.
+# (clang-tidy) nightly already proves clean.
 #
 # The other two legs (roadmap VX14) cover code the C++ leg never saw: ~30
 # Python files (the oracles and CI gates under tools/, plus the python/
@@ -51,7 +51,7 @@
 # here - left as follow-up work rather than shipped as a permanently red
 # matrix entry.
 #
-# Complements platform-macros (no-#ifdef rule), static-analysis (clang-tidy)
+# Complements platform-macros (no-#ifdef rule), static-analysis.yml (clang-tidy)
 # and script-lint (ruff/shellcheck/actionlint) in ci.yml: those catch
 # style/portability issues, CodeQL finds actual security-relevant defects
 # (buffer overflow, use-after-free, tainted data flow) and publishes them to

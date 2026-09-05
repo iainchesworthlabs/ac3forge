@@ -9,14 +9,14 @@ Windows) that means every leg, and the per-leg fan-out only reappears as gracefu
 degradation when most of the fleet is genuinely gone (one surviving runner takes one leg,
 the rest overflow to GitHub-hosted). macOS and the arm64 legs always stay on GitHub-hosted
 runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
-(Detect changes, Static Analysis, FFmpeg Validate, ADM Module, ABI diff, Performance vs
+(Detect changes, FFmpeg Validate, ADM Module, ABI diff, Performance vs
 merge base, and the cheap gate jobs) route the same way through its
 `check-runner` job, the Windows wheel leg routes through a decider of its own in
 `wheels.yml`, and `_build.yml`'s standalone containerised build-footprint job rides the
 matrix fan-out as leg 5 - so one queue entry can put up to three Windows consumers (two
 build legs, the wheel leg) onto the 7-runner Windows fleet at once. The nightly analysis
-workflows (`codeql.yml`, `msvc-analysis.yml`) have deciders of their own too, but run
-against `main` once a night rather than per queue entry - see
+workflows (`codeql.yml`, `msvc-analysis.yml`, `static-analysis.yml`) have deciders of their
+own too, but run against `main` once a night rather than per queue entry - see
 [Nightly analysis window](#nightly-analysis-window). Several jobs stay on GitHub-hosted deliberately: Coverage (see its
 own comment in `ci.yml` for the undiagnosed shutdown-signal failure); build-wasm /
 build-android / build-rust (they run bare and lean on toolchains the hosted image
@@ -26,8 +26,9 @@ needs pwsh, which the fleet's Linux image does not ship - see the job's own comm
 `ci.yml`); and the wheels workflow's Linux and macOS legs (the fleet's Python has no pip,
 which `cibuildwheel` needs before it can do anything - see `wheels.yml`'s own comment).
 
-Control-plane jobs - the `check-runner`/`check-runners` deciders in `ci.yml`, `_build.yml`
-and `codeql.yml`, `_toolchain-versions.yml`'s `resolve`, and the `CI Status` aggregator -
+Control-plane jobs - the `check-runner`/`check-runners` deciders in `ci.yml`, `_build.yml`,
+`codeql.yml` and `static-analysis.yml`, `_toolchain-versions.yml`'s `resolve`, and the
+`CI Status` aggregator -
 route separately, via the repository variable `CONTROL_RUNNER_JSON` (a runner-label JSON
 array, e.g. `["self-hosted","Linux","X64"]`; unset means `ubuntu-latest`). These are
 seconds-long jobs that everything else waits on, and leaving them on the shared hosted pool
@@ -160,12 +161,13 @@ today, plus per-PR and push runs; the move into 04:xx has not been made yet).
 |---|---|---|---|
 | 02:17 | ac3forge | `codeql.yml` (C++ on self-hosted Linux ~9 min; Python/JS ~2 min) | Linux |
 | 02:23 | ac3forge | `msvc-analysis.yml` (PREfast, ~35 min) | Windows |
+| 02:29 | ac3forge | `static-analysis.yml` (clang-tidy, ~8 min) | Linux |
 | 03:17 | ac3forge | `fuzz.yml` nightly jobs | none (hosted) |
 | 04:43 | ac3forge | `interop.yml` | none (hosted) |
 | Mon 03:45 / 03:50 / 04:00 | ac3forge | `osv-scanner.yml` / `zizmor.yml` / `scorecard.yml` | none (hosted) |
 | Tue 21:42 / 22:17 / 22:27 / 22:37 | aqualink-automate | `automated-codescanning.yml` (CodeQL and MSVC on the `big` runners; SonarCloud hosted) / trivy / osv / scorecard - weekly today; code scanning is to move to 04:07, the minute that repo picked | Linux big, Windows big |
 
-Minutes 02:29 and 02:35 are held for further analysis engines if any move into this window.
+Minute 02:35 is held for a further analysis engine if one moves into this window.
 When either repo adds or moves a cron that touches the fleet, update this table and the copy
 kept in [iainchesworthlabs/ci-runners](https://github.com/iainchesworthlabs/ci-runners).
 

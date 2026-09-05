@@ -47,7 +47,7 @@ your use is your problem to assess, not something this project resolves.
 above shows the current one, and [CHANGELOG.md](CHANGELOG.md) records what each contains. CI
 requires Windows (MSVC, clang-cl), Linux (GCC and Clang, x64 and arm64) and macOS (Homebrew
 LLVM) — CLI and GUI alike on every platform — plus an
-ASan+UBSan leg, clang-tidy static analysis, a coverage gate over the library, a per-platform
+ASan+UBSan leg, a coverage gate over the library, a per-platform
 gold-reference quality gate, dedicated Linux FFmpeg- and ADM-validation legs, and a required
 Android build leg for the Shield TV demo app under `apps/android/`. See
 [docs/building.md](docs/building.md#verified-configuration) for exact toolchain versions and
