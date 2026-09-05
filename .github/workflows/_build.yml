@@ -1517,11 +1517,15 @@ jobs:
       # Not a release asset yet - the release legs build against ALSA and
       # cannot produce this - but a person can take the tarball or .deb
       # from the run. Empty on the Qt-too-old skip above, on purpose.
+      # packages-*, because that is the pattern release.yml downloads
+      # (release.yml's "pattern: packages-*"). Under the old name the Linux
+      # Crucible package was built and checked on every run and then collected
+      # by nothing, so a release could not carry it however green the leg was.
       - name: Upload the AC3Forge Crucible Linux package
         if: matrix.crucible && runner.os == 'Linux'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ac3forge-crucible-linux-${{ matrix.preset }}
+          name: packages-crucible-${{ matrix.preset }}
           path: |
             build/crucible/packages/ac3forge-crucible-*.tar.gz
             build/crucible/packages/ac3forge-crucible_*.deb

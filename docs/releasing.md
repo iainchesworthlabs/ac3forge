@@ -579,9 +579,10 @@ theme, and under `share/doc/ac3forge-crucible/` the notices (`NOTICES.txt`, once
 than libraries shlibdeps could see; everything else it depends on is resolved from the binary.
 Two things to know. The component is packaged only from a PipeWire build, which is the only
 build Crucible accepts on Linux ([why](crucible/promotion.md#alsa-or-pipewire)), so the
-existing Linux release legs - which build ALSA - do not produce it; the Linux LLVM leg's
-Crucible pass builds the platform half but does not yet package it, and that is the next step
-for this table. And the `.deb`'s one-line synopsis is the library's, not Crucible's: CPack's
+existing Linux release legs - which build ALSA - do not produce it. The Linux LLVM leg's
+Crucible pass does build and package it, and uploads it as `packages-crucible-<preset>`, which
+is the pattern `release.yml` collects; what stands between that and a release asset is only
+that the leg is not a `release_package` one. And the `.deb`'s one-line synopsis is the library's, not Crucible's: CPack's
 DEB generator headlines every component's package with the project summary and offers no
 per-component override that takes effect, so `apt show ac3forge-crucible` opens with
 "Clean-room AC-3 encoder" and says what the package actually is on the next line. The same
@@ -646,7 +647,9 @@ its own - and from there it is signed, checksummed, SBOM'd and attested exactly 
 See [Conformance vectors](conformance-vectors.md) for what is in it and how a decoder implementer
 uses it.
 
-No leg is `experimental: true` any more (see `ci.yml`'s status table), so all five package
+One leg is still `experimental: true`, `windows-msvc-arm64` on its own runner label
+(`_build.yml`'s matrix comment says why), and it carries `release_package: true` as well: its
+packages ship, and a failure there fails the leg like any other. The other four package
 for real rather than best-effort - a packaging failure on any of them blocks the release the
 same as a build or test failure would. Every package - end-user or library - gets a `.sha512`
 (`CPACK_PACKAGE_CHECKSUM` in `cmake/Packaging.cmake`), an aggregate `SHA512SUMS` manifest,
@@ -787,9 +790,9 @@ or delete the existing tag first if it was created in error:
 `git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z`.
 
 **No package for a platform in the release** - that leg's `build-packages` job failed for real.
-No leg is `experimental: true` any more (see [What gets published](#what-gets-published) above),
-so a missing package is a genuine failure to investigate, not an expected gap for a
-not-yet-promoted leg - check the run's `build-packages` job.
+Every packaging leg, `windows-msvc-arm64` included, carries `release_package: true` (see
+[What gets published](#what-gets-published) above), so a missing package is a failure to
+investigate rather than an expected gap - check the run's `build-packages` job.
 
 ## What's deliberately not here
 

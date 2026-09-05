@@ -577,6 +577,17 @@ every one was taken as recommended on 2026-09-05, so the recommendation is the d
 13. **Before the first Crucible tag.** The `packages-*` artifact name; `M.m.p` in every filename;
     the experimental claim reconciled. **Recommend all three now**. Cost: three edits and a table
     row.
+
+    *Taken 2026-09-05, with one part refused on inspection.* The artifact is now
+    `packages-crucible-<preset>`, which `release.yml` collects, and the experimental sentences
+    in `docs/releasing.md` now say what `_build.yml` does: `windows-msvc-arm64` is experimental
+    and ships. The filename unification was examined and **not** made. Two archives carry
+    `PROJECT_VERSION_FULL` (`crucible`, `dev`) and the runtime carries `M.m.p`, and neither can
+    take the other's style: the runtime's is what the Homebrew cask's URL is built from
+    (`packaging/homebrew/Casks/ac3gui.rb` downloads `ac3forge-<M.m.p>-Darwin.dmg`), while
+    dropping the prerelease suffix from the other two would make `0.10.0-beta.1` and
+    `0.10.0-beta.2` produce the same filename. The two styles are therefore deliberate, and
+    this page is where that is written down.
 14. **The driver at signing time.** Strings, artifact name and substring only, ids kept; the move
     optional and in the same change. **Recommend that**. Cost: the endpoint name is frozen once
     attestation is paid for, so this lands first and once.
