@@ -1437,6 +1437,13 @@ jobs:
             echo "::error::libxcb1-dev is installed but the X11 full-screen check was not configured"
             exit 1
           }
+          # The same shape for the third optional dependency: qt6-svg-dev is
+          # installed above, so the "not found" line means the window would
+          # ship with SVG-only application icons falling back to monograms.
+          ! grep -q 'Qt SVG not found' /tmp/crucible-configure.log || {
+            echo "::error::qt6-svg-dev is installed but Qt SVG was not found; SVG-only application icons would show the monogram"
+            exit 1
+          }
           cmake --build build/crucible --target ac3crucible_engine ac3crucible-run -- -k 0
           # Assert the runner was actually produced. CMake treats the
           # application as optional and degrades quietly, so "the build
