@@ -588,8 +588,44 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     the sink's own ELD, and the jack — which has none — is never probed.
 
     `tools/checks/passthrough_probe.cpp` then streamed the 5.1 E-AC-3 fixture to the HDMI sink
-    for 25 s: 824 IEC 61937 bursts over 11 loops, 0 dropped. **Whether the receiver locked is the
-    receiver's display's to say**, and that reading is the one thing this record still lacks.
+    for 25 s: 824 IEC 61937 bursts over 11 loops, 0 dropped. Whether the receiver locked is the
+    receiver's display's to say, and that evening it was not read.
+
+!!! success "The receiver's own answer, 2026-09-05 22:20 and 22:22"
+
+    Read off the receiver's front panel by Iain, standing at it, which is the only place this
+    answer exists. Both runs went to `alsa_output.platform-fef00700.hdmi.hdmi-stereo`, the sink
+    whose `iec958.codecs` WirePlumber had filled from the receiver's own EDID; the analogue jack
+    beside it reported `ac3=no eac3=no` throughout, which is the gate working.
+
+    **A pre-encoded 5.1 stream: the receiver read "5.1 DD+".** `passthrough_probe` packed the
+    `reference_51_eac3_448k_cplbndstrce0.ec3` fixture into IEC 61937 bursts for 90 s - 2,856
+    bursts over 37 loops, 2,813 rendered, 162 underruns while the machine was also compiling.
+    No encoder and no signing key are in that path: it reads a file and submits frames. **This
+    closes DR9's PipeWire row.** A bitstream from this library, over PipeWire, reaches a real
+    receiver and is decoded.
+
+    **Crucible's own engine with objects: the receiver read "Atmos/DD+", at 7.1.**
+    `ac3crucible-run
+    --key /home/iain/atmos.key --pin atmos`, with one application playing and placed at
+    (0.8, 0.3, 0.6) rather than left in the bed. The runner reported `signing key loaded from
+    /home/iain/atmos.key: object container will be signed`, `objects=on`, and the mode
+    **`Atmos (E-AC-3 JOC over HDMI)`** on that sink; 1,652 frames, 0 underruns. So the whole
+    path holds on Linux: a live application tapped through PipeWire, encoded as E-AC-3 with a
+    JOC object layer, the object container signed, and a receiver that decodes it as Atmos.
+
+    The 7.1 in that reading is the receiver's, not the stream's: what leaves this machine is a
+    5.1 bed with an object layer above it, and the receiver renders those objects to the speakers
+    it has. That it reports a layout wider than the bed is the clearest evidence available from
+    the front panel that the object layer arrived and was used, rather than the bed being played
+    and the objects discarded.
+
+    Two things this still does not say. The display names the format and the layout, not where
+    each object was placed, so it is evidence of a valid Atmos bitstream rather than of correct
+    positioning - the library's rendered-layout checks are what speak to that. And
+    the worst frame in the Atmos run was 1,059 ms, which is the connect stall recorded above:
+    that binary predated the fix to the passthrough and monitor paths, and the measurement wants
+    taking again on a build that carries it.
 
     **The window, on Linux.** With Quick 3D, Shader Tools and Linguist Tools installed from apt,
     `ac3crucible` built on the Pi (6.1 MB, aarch64) after one platform split — the application
@@ -1009,7 +1045,7 @@ not.
 |---|---|---|
 | Linux per-application tap and null sink | **confirmed 2026-09-05** on the Pi | none |
 | Linux bitstream to a receiver over ALSA | **already confirmed**, 2026-08-20 | none |
-| Linux bitstream over PipeWire `iec958` | yes, with a WirePlumber codec rule | needs a session; DR9 |
+| Linux bitstream over PipeWire `iec958` | **confirmed 2026-09-05** - the receiver read "5.1 DD+", and "Atmos/DD+" at 7.1 with objects | none |
 | Windows bitstream to a real receiver | not yet | an HDMI cable; DR9 |
 | Windows driver on a normal machine | not yet | EV certificate and attestation; a separate session |
 | macOS anything, at runtime | **no** | no Mac has ever run this backend; DR9 |

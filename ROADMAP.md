@@ -2658,12 +2658,14 @@ WASAPI exclusive and PipeWire remain unconfirmed; CoreAudio is blocked on real M
 - **Windows/WASAPI exclusive: unconfirmed** — only a Realtek analogue endpoint has been tried.
   The receiver exists now: cable the workstation's HDMI (or a USB S/PDIF for the AC-3 half)
   and run the Pi page's stream matrix (S, hardware).
-- **PipeWire: bursts delivered, lock unread** — as of 2026-09-05 the backend has run against a
-  real session on the Pi (Pi OS 13, PipeWire 1.4.2): `enumerate_render_devices()` found the
-  receiver's HDMI sink with `iec958.codecs = [PCM,DTS,AC3,EAC3,TrueHD,DTS-HD]` set by WirePlumber
-  from the ELD, and `PassthroughSink` streamed 824 E-AC-3 bursts to it over 25 s
-  (`tools/checks/passthrough_probe.cpp`). What is still unread is the receiver's own display
-  during that stream, which is the only thing that says it locked. Three things the run changed:
+- **PipeWire: confirmed 2026-09-05** — the backend ran against a real session on the Pi (Pi OS
+  13, PipeWire 1.4.2): `enumerate_render_devices()` found the receiver's HDMI sink with
+  `iec958.codecs = [PCM,DTS,AC3,EAC3,TrueHD,DTS-HD]` set by WirePlumber from the ELD, and
+  `PassthroughSink` streamed E-AC-3 bursts to it. **The receiver's own display, the only thing
+  that says it locked, was read that evening: "5.1 DD+" for a pre-encoded 5.1 fixture, and
+  "Atmos/DD+" at 7.1 for AC3Forge Crucible's own engine encoding a live application as E-AC-3
+  JOC with a signed object container.** The 7.1 is the receiver rendering the object layer to
+  its own speakers; what leaves the machine is a 5.1 bed plus objects. Three things the run changed:
   the connect-probe alone was a false positive (it said yes on the analogue jack), so both
   enumeration and `start()`'s auto-pick are now gated on the node's `iec958.codecs`; the probe
   deadlocked on every successful connect (stream destroyed before the loop stopped); and

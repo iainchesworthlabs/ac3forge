@@ -40,6 +40,10 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   (depending on `pipewire` and a session manager, carrying no Qt of its own), though
   releases do not ship it yet because the release legs build against ALSA. Settings on
   Linux say "Create device" where Windows says "Install driver", and show no driver folder.
+  On 2026-09-05 the whole path was confirmed against a receiver: an application tapped through
+  PipeWire, encoded live as E-AC-3 with a JOC object layer and a signed object container, read
+  on the receiver's own front panel as "Atmos/DD+" rendered to its 7.1 speakers. A pre-encoded
+  5.1 stream through the same sink read "5.1 DD+".
 - The PipeWire backend's passthrough now offers AC-3 and E-AC-3 on a sink only when the
   sink's `iec958.codecs` lists them - the session manager's reading of the display's EDID -
   and never on the strength of a successful connect, which PipeWire's adapter grants to a
