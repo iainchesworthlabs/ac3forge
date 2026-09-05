@@ -9,12 +9,13 @@ import Ac3ForgeCrucible
 // as the ac3forge GUI's About, on this app's own theme.
 Dialog {
     id: root
+    objectName: "aboutDialog"
     // Licences...: Main.qml opens the LicencesDialog over this one.
     signal showLicences()
     modal: true
-    // A Popup honours CloseOnEscape only while it has active focus, and a
-    // hand-drawn CrucibleButton is not a tab stop, so without these two lines
-    // the dialog cannot be dismissed from the keyboard at all.
+    // A Popup honours CloseOnEscape only while it has active focus, so the
+    // dialog takes it as it opens; and Close is where a keyboard user wants
+    // to start, so it is what has it.
     focus: true
     onOpened: aboutCloseButton.forceActiveFocus()
     anchors.centerIn: parent
@@ -29,14 +30,14 @@ Dialog {
 
     component Kicker: Text {
         Layout.topMargin: Theme.space2
-        font.pixelSize: 10
+        font.pixelSize: Theme.fontMicro
         font.letterSpacing: 1.2
         color: Theme.textMuted
     }
     component Body: Text {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontSmall
         color: Theme.textMuted
         onLinkActivated: function(link) { Qt.openUrlExternally(link); }
     }
@@ -57,7 +58,7 @@ Dialog {
             ColumnLayout {
                 spacing: 2
                 Text { text: qsTr("AC3Forge Crucible"); color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: Theme.fontTitle; font.weight: Font.Bold }
-                Text { text: qsTr("your applications, placed in the room"); color: Theme.textMuted; font.pixelSize: 13 }
+                Text { text: qsTr("your applications, placed in the room"); color: Theme.textMuted; font.pixelSize: Theme.fontBody }
             }
         }
         Kicker { text: qsTr("WHAT IT DOES") }

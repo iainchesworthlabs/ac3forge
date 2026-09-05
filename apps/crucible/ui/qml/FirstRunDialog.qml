@@ -66,7 +66,7 @@ Dialog {
             spacing: Theme.space3
             Text {
                 text: step.ordinal
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontMono
                 font.family: Theme.monoFamily
                 color: Theme.accent700
                 Layout.alignment: Qt.AlignTop
@@ -75,15 +75,15 @@ Dialog {
                 id: extra
                 Layout.fillWidth: true
                 spacing: 2
-                Text { Layout.fillWidth: true; text: step.heading; wrapMode: Text.WordWrap; font.pixelSize: 15; font.weight: Font.DemiBold; color: Theme.text }
-                Text { Layout.fillWidth: true; text: step.body; wrapMode: Text.WordWrap; font.pixelSize: 12; color: Theme.neutral700 }
+                Text { Layout.fillWidth: true; text: step.heading; wrapMode: Text.WordWrap; font.pixelSize: Theme.fontHeading; font.weight: Font.DemiBold; color: Theme.text }
+                Text { Layout.fillWidth: true; text: step.body; wrapMode: Text.WordWrap; font.pixelSize: Theme.fontSmall; color: Theme.neutral700 }
             }
         }
     }
     component Detail: Text {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontSmall
         color: Theme.neutral700
     }
 
@@ -95,7 +95,7 @@ Dialog {
 
         Text {
             text: qsTr("FIRST RUN")
-            font.pixelSize: 10
+            font.pixelSize: Theme.fontMicro
             font.letterSpacing: 1.2
             color: Theme.accent700
         }

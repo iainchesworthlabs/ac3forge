@@ -13,7 +13,7 @@ Row {
     property var model: []
     property string currentValue: ""
     property int segHeight: 28
-    property int fontSize: 13
+    property int fontSize: Theme.fontBody
     // What this particular instance is choosing between - callers set this
     // to the same qsTr() text their own adjacent label already shows (e.g.
     // "Theme", "Controls tier"), never a second, hand-typed copy of it, so
@@ -27,6 +27,42 @@ Row {
 
     Accessible.role: Accessible.Grouping
     Accessible.name: root.accessibleName
+    Accessible.focusable: true
+
+    // One tab stop for the group, then the arrows choose within it - the
+    // way a radio group behaves everywhere else, and the reason the segments
+    // themselves report Accessible.RadioButton. Home and End take the first
+    // and the last; Left from the first wraps to the last, so a group of two
+    // toggles with either arrow.
+    activeFocusOnTab: true
+    function indexOfCurrentValue() {
+        for (let i = 0; i < root.model.length; ++i) {
+            if (root.model[i].value === root.currentValue) {
+                return i;
+            }
+        }
+        return -1;
+    }
+    Keys.onPressed: function(event) {
+        const count = root.model.length;
+        if (count === 0) {
+            return;
+        }
+        let index = root.indexOfCurrentValue();
+        if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
+            index = (index <= 0 ? count : index) - 1;
+        } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
+            index = (index + 1) % count;
+        } else if (event.key === Qt.Key_Home) {
+            index = 0;
+        } else if (event.key === Qt.Key_End) {
+            index = count - 1;
+        } else {
+            return;
+        }
+        root.selected(root.model[index].value);
+        event.accepted = true;
+    }
 
     Repeater {
         model: root.model
@@ -44,7 +80,9 @@ Row {
             // patch's own tests happen to click.
             objectName: "seg-" + modelData.value
 
-            height: root.segHeight
+            // The floor is the handoff's 28; a larger text size grows it
+            // rather than clipping the label inside it.
+            height: Math.max(root.segHeight, label.implicitHeight + 8)
             implicitWidth: label.implicitWidth + 18
             color: active ? Theme.accent : "transparent"
             border.color: Theme.divider
@@ -65,8 +103,23 @@ Row {
                 id: label
                 anchors.centerIn: parent
                 text: modelData.label
-                color: seg.active ? Theme.bg : Theme.text
+                color: seg.active ? Theme.accentText : Theme.text
                 font.pixelSize: root.fontSize
+            }
+
+            // Not a FocusRing: the focus belongs to the GROUP and the ring
+            // has to sit on whichever segment is current, which is a
+            // condition the shared component's parent-activeFocus default
+            // cannot express.
+            Rectangle {
+                objectName: "segFocusRing"
+                anchors.fill: parent
+                anchors.margins: -Theme.focusRingOffset
+                visible: root.activeFocus && seg.active
+                color: "transparent"
+                border.color: Theme.focusRing
+                border.width: Theme.focusRingWidth
+                z: 100
             }
 
             MouseArea {

@@ -27,6 +27,41 @@ Item {
     }
     readonly property var selected: appById(selectedApp)
 
+    function indexOfApp(id) {
+        const apps = CrucibleController.apps;
+        for (let i = 0; i < apps.length; ++i) if (apps[i].app === id) return i;
+        return -1;
+    }
+    // The list's current row and the page's selection are two views of one
+    // thing, and the selection is the one that decides. The row follows it
+    // and never the other way about, because the row is not always moved by
+    // a person: a ListView writes its own currentIndex back to 0 whenever
+    // the VALUE of its model changes, and the controller replaces the
+    // applications list on every poll where the membership or the
+    // sound-first order moved - an application starting, exiting, or merely
+    // going quiet. A row that led the selection would hand the room's arrow
+    // keys to whatever had just floated to the top of the rail.
+    //
+    // So: the arrow keys and a click set the selection, and anything else
+    // that moves the row is put back.
+    function syncListRow() {
+        const row = page.indexOfApp(page.selectedApp);
+        if (appList.currentIndex !== row) appList.currentIndex = row;
+    }
+    // Up and Down in the list, moving the selection rather than a cursor of
+    // the view's own that the selection would then have to chase.
+    function stepSelection(delta) {
+        const apps = CrucibleController.apps;
+        if (apps.length === 0) return;
+        const at = page.indexOfApp(page.selectedApp);
+        const row = at < 0
+            ? (delta > 0 ? 0 : apps.length - 1)
+            : Math.max(0, Math.min(apps.length - 1, at + delta));
+        page.selectedApp = apps[row].app;
+        appList.positionViewAtIndex(row, ListView.Contain);
+    }
+    onSelectedAppChanged: page.syncListRow()
+
     RowLayout {
         anchors.fill: parent
         spacing: 0
@@ -53,22 +88,71 @@ Item {
                         text: CrucibleController.apps.length === 0 ? qsTr("no applications") : CrucibleController.apps.length + qsTr(" applications · ") + CrucibleController.soundingCount + qsTr(" with sound")
                         color: Theme.textMuted
                         font.family: Theme.monoFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontMono
                     }
                 }
-                ListView {
+                // The applications, as a list the keyboard can walk: Up and
+                // Down choose one, Enter places it in the centre of the room
+                // and hands the keys to the room, where the arrows move it.
+                //
+                // The list sits inside a plain Item so the focus ring has
+                // somewhere to hang: a Flickable reparents its visual
+                // children into the content it scrolls, and a ring in there
+                // would scroll away with the rows.
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    clip: true
-                    spacing: 2
-                    model: CrucibleController.apps
-                    delegate: AppRow {
-                        required property var modelData
-                        width: ListView.view.width
-                        app: modelData
-                        selected: modelData.app === page.selectedApp
-                        onClicked: page.selectedApp = modelData.app
+                    ListView {
+                        id: appList
+                        objectName: "appList"
+                        anchors.fill: parent
+                        clip: true
+                        spacing: 2
+                        model: CrucibleController.apps
+                        activeFocusOnTab: true
+                        // The view's own cursor is off: page.stepSelection
+                        // moves the selection and syncListRow brings the row
+                        // to it, which is the only direction that survives
+                        // the model being replaced under the view.
+                        keyNavigationEnabled: false
+                        // Nothing is current until something is chosen: the
+                        // page opens with no selected application, as it did
+                        // when only a click could select one.
+                        currentIndex: -1
+                        Accessible.role: Accessible.List
+                        Accessible.name: qsTr("Applications")
+                        Accessible.focusable: true
+                        onCurrentIndexChanged: page.syncListRow()
+                        Keys.onPressed: function(event) {
+                            if (event.key === Qt.Key_Up) {
+                                page.stepSelection(-1);
+                                event.accepted = true;
+                                return;
+                            }
+                            if (event.key === Qt.Key_Down) {
+                                page.stepSelection(1);
+                                event.accepted = true;
+                                return;
+                            }
+                            if (event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter && event.key !== Qt.Key_Space) {
+                                return;
+                            }
+                            if (page.selected && page.selected.slot < 0 && !page.selected.fullscreen) {
+                                CrucibleController.position(page.selected.app, 0.5, 0.5, 0);
+                                A11y.announce(qsTr("%1 placed in the centre of the room").arg(page.selected.name));
+                            }
+                            roomKeys.forceActiveFocus();
+                            event.accepted = true;
+                        }
+                        delegate: AppRow {
+                            required property var modelData
+                            width: ListView.view.width
+                            app: modelData
+                            selected: modelData.app === page.selectedApp
+                            onClicked: { page.selectedApp = modelData.app; appList.forceActiveFocus(); }
+                        }
                     }
+                    FocusRing { active: appList.activeFocus }
                 }
                 Text {
                     Layout.fillWidth: true
@@ -121,7 +205,7 @@ Item {
                     Layout.fillHeight: false
                     label: qsTr("ROOM")
                     Layout.fillWidth: true
-                    Text { text: CrucibleController.placedCount + qsTr(" of 10 slots placed"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11 }
+                    Text { text: CrucibleController.placedCount + qsTr(" of 10 slots placed"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMono }
                 }
                 // Bed only: placement pans within 5.1, and height does nothing.
                 // Said here, where the placing happens, rather than left for
@@ -157,77 +241,95 @@ Item {
                         onSelected: function(value) { CrucibleController.roomView = value; page.threeD = value === "3d"; }
                     }
                 }
-                Loader {
-                    id: room3d
-                    objectName: "room3dLoader"
-                    visible: page.threeD
-                    // Once shown, kept loaded while hidden so the camera a person set
-                    // survives a visit to the plan views. Set for the initial
-                    // visibility too: the change handler does not fire for it, and
-                    // a window that opened in 3D lost its view on the first switch.
-                    property bool shown: false
-                    onVisibleChanged: if (visible) shown = true
-                    Component.onCompleted: if (visible) shown = true
-                    active: (page.threeD || shown) && CrucibleController.has3D
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: centre.sideBySide ? centre.viewSide * 2 + Theme.space6 : centre.viewSide
-                    Layout.preferredHeight: centre.viewSide + 22
-                    source: "Room3DView.qml"
-                    onLoaded: {
-                        item.caption = qsTr("Room (3D)");
-                        item.apps = Qt.binding(function() { return CrucibleController.apps; });
-                        item.selectedApp = Qt.binding(function() { return page.selectedApp; });
-                        item.select.connect(function(app) { page.selectedApp = app; });
-                        item.moved.connect(function(app, x, y, z) { CrucibleController.position(app, x, y, z); });
-                    }
-                }
-                GridLayout {
-                    visible: !page.threeD
-                    Layout.alignment: Qt.AlignHCenter
-                    columns: centre.sideBySide ? 2 : 1
-                    columnSpacing: Theme.space6
-                    rowSpacing: Theme.space4
-                    RoomView {
-                        id: plan
-                        Layout.preferredWidth: centre.viewSide
+                // The room, and the keys that move what is in it. Every view
+                // inside answers to the same arrows, so which picture is on
+                // screen changes nothing about the keyboard.
+                RoomKeys {
+                    id: roomKeys
+                    objectName: "roomKeys"
+                    Layout.fillWidth: true
+                    app: page.selected
+                    objectsEnabled: CrucibleController.objectsEnabled
+                    onMoved: function(app, x, y, z) { CrucibleController.position(app, x, y, z); }
+                    onPlaced: function(app) { CrucibleController.position(app, 0.5, 0.5, 0); }
+                    onReturned: function(app) { CrucibleController.unposition(app); }
+                    onResized: function(app, size) { CrucibleController.setSize(app, size); }
+                    onAnnounced: function(text) { A11y.announce(text); }
+
+                    Loader {
+                        id: room3d
+                        objectName: "room3dLoader"
+                        visible: page.threeD
+                        // Once shown, kept loaded while hidden so the camera a person set
+                        // survives a visit to the plan views. Set for the initial
+                        // visibility too: the change handler does not fire for it, and
+                        // a window that opened in 3D lost its view on the first switch.
+                        property bool shown: false
+                        onVisibleChanged: if (visible) shown = true
+                        Component.onCompleted: if (visible) shown = true
+                        active: (page.threeD || shown) && CrucibleController.has3D
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.preferredWidth: centre.sideBySide ? centre.viewSide * 2 + Theme.space6 : centre.viewSide
                         Layout.preferredHeight: centre.viewSide + 22
-                        Layout.alignment: Qt.AlignTop
-                        caption: qsTr("Plan (top-down)")
-                        hint: qsTr("drag to place")
-                        apps: CrucibleController.apps
-                        selectedApp: page.selectedApp
-                        onSelect: function(app) { page.selectedApp = app; }
-                        onMoved: function(app, x, y, z) { CrucibleController.position(app, x, y, z); }
-                        onMovedSide: function(app, side, x, y, z) { CrucibleController.positionSide(app, side, x, y, z); }
-                        onReturned: function(app) { CrucibleController.unposition(app); }
-                        onDropped: function(app, x, y) { CrucibleController.position(app, x, y, 0); page.selectedApp = app; }
+                        source: "Room3DView.qml"
+                        onLoaded: {
+                            item.caption = qsTr("Room (3D)");
+                            item.apps = Qt.binding(function() { return CrucibleController.apps; });
+                            item.selectedApp = Qt.binding(function() { return page.selectedApp; });
+                            item.select.connect(function(app) { page.selectedApp = app; roomKeys.forceActiveFocus(); });
+                            item.moved.connect(function(app, x, y, z) { CrucibleController.position(app, x, y, z); });
+                        }
                     }
-                    ColumnLayout {
-                        Layout.preferredWidth: centre.viewSide
-                        Layout.alignment: Qt.AlignTop
-                        spacing: Theme.space2
+                    GridLayout {
+                        visible: !page.threeD
+                        Layout.alignment: Qt.AlignHCenter
+                        columns: centre.sideBySide ? 2 : 1
+                        columnSpacing: Theme.space6
+                        rowSpacing: Theme.space4
                         RoomView {
-                            elevation: true
+                            id: plan
                             Layout.preferredWidth: centre.viewSide
-                            Layout.preferredHeight: Math.round(centre.viewSide * 0.425) + 22
-                            caption: qsTr("Elevation (side-on)")
-                            hint: CrucibleController.objectsEnabled ? qsTr("drag: depth + height") : qsTr("height: objects only")
-                            opacity: CrucibleController.objectsEnabled ? 1.0 : 0.55
+                            Layout.preferredHeight: centre.viewSide + 22
+                            Layout.alignment: Qt.AlignTop
+                            caption: qsTr("Plan (top-down)")
+                            hint: qsTr("drag to place")
                             apps: CrucibleController.apps
                             selectedApp: page.selectedApp
                             onSelect: function(app) { page.selectedApp = app; }
+                            onFocusRequested: roomKeys.forceActiveFocus()
                             onMoved: function(app, x, y, z) { CrucibleController.position(app, x, y, z); }
-                        onMovedSide: function(app, side, x, y, z) { CrucibleController.positionSide(app, side, x, y, z); }
+                            onMovedSide: function(app, side, x, y, z) { CrucibleController.positionSide(app, side, x, y, z); }
                             onReturned: function(app) { CrucibleController.unposition(app); }
-                            onDropped: function(app, x, y) { CrucibleController.position(app, 0.5, x, 1 - 2 * y); page.selectedApp = app; }
+                            onDropped: function(app, x, y) { CrucibleController.position(app, x, y, 0); page.selectedApp = app; }
                         }
-                        Text {
-                            Layout.fillWidth: true
-                            visible: !CrucibleController.objectsEnabled
-                            text: qsTr("Bed only: depth still pans front to rear; height is carried in object metadata, which is off.")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
+                        ColumnLayout {
+                            Layout.preferredWidth: centre.viewSide
+                            Layout.alignment: Qt.AlignTop
+                            spacing: Theme.space2
+                            RoomView {
+                                elevation: true
+                                Layout.preferredWidth: centre.viewSide
+                                Layout.preferredHeight: Math.round(centre.viewSide * 0.425) + 22
+                                caption: qsTr("Elevation (side-on)")
+                                hint: CrucibleController.objectsEnabled ? qsTr("drag: depth + height") : qsTr("height: objects only")
+                                opacity: CrucibleController.objectsEnabled ? 1.0 : 0.55
+                                apps: CrucibleController.apps
+                                selectedApp: page.selectedApp
+                                onSelect: function(app) { page.selectedApp = app; }
+                                onFocusRequested: roomKeys.forceActiveFocus()
+                                onMoved: function(app, x, y, z) { CrucibleController.position(app, x, y, z); }
+                                onMovedSide: function(app, side, x, y, z) { CrucibleController.positionSide(app, side, x, y, z); }
+                                onReturned: function(app) { CrucibleController.unposition(app); }
+                                onDropped: function(app, x, y) { CrucibleController.position(app, 0.5, x, 1 - 2 * y); page.selectedApp = app; }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: !CrucibleController.objectsEnabled
+                                text: qsTr("Bed only: depth still pans front to rear; height is carried in object metadata, which is off.")
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontSmall
+                                wrapMode: Text.WordWrap
+                            }
                         }
                     }
                 }
@@ -246,44 +348,55 @@ Item {
                         spacing: Theme.space2
                         RowLayout {
                             spacing: Theme.space2
-                            Text { text: page.selected ? page.selected.name : ""; color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: 15; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.maximumWidth: 260 }
+                            Text { text: page.selected ? page.selected.name : ""; color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: Theme.fontHeading; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.maximumWidth: 260 }
                             Text {
                                 Layout.fillWidth: true
-                                text: page.selected ? (page.selected.slot >= 0
-                                    ? qsTr("slot ") + (page.selected.slot + 1) + " · x " + page.selected.x.toFixed(2) + " · y " + page.selected.y.toFixed(2) + " · z " + (page.selected.z >= 0 ? "+" : "") + page.selected.z.toFixed(2)
-                                    : qsTr("in the bed")) : ""
+                                text: !page.selected ? ""
+                                    : page.selected.slot >= 0
+                                        ? RoomWords.placement(page.selected) + " · " + RoomWords.coords(page.selected.x, page.selected.y, page.selected.z)
+                                        : RoomWords.placement(page.selected)
                                 color: Theme.textMuted
                                 font.family: Theme.monoFamily
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 elide: Text.ElideRight
                             }
                         }
                         Flow {
                             Layout.fillWidth: true
                             spacing: Theme.space2
+                            // Every button on this card acts on the selected
+                            // application, which the card's heading says and
+                            // a reader would otherwise have to remember: the
+                            // description carries the name to each of them.
                             CrucibleButton {
+                                objectName: "placeButton"
                                 text: page.selected && page.selected.slot >= 0 ? qsTr("Send to bed") : qsTr("Place in the room")
                                 enabled: page.selected !== null && !(page.selected.fullscreen)
+                                Accessible.description: page.selected ? qsTr("for %1").arg(page.selected.name) : ""
                                 onClicked: {
                                     if (page.selected.slot >= 0) CrucibleController.unposition(page.selected.app);
                                     else CrucibleController.position(page.selected.app, 0.5, 0.5, 0);
                                 }
                             }
                             CrucibleButton {
+                                objectName: "centreButton"
                                 text: qsTr("Centre")
                                 enabled: page.selected !== null && page.selected.slot >= 0
+                                Accessible.description: page.selected ? qsTr("for %1").arg(page.selected.name) : ""
                                 onClicked: CrucibleController.position(page.selected.app, 0.5, 0.5, 0)
                             }
                             CrucibleButton {
                                 objectName: "splitButton"
                                 text: page.selected && page.selected.width === 2 ? qsTr("Mono") : qsTr("Split")
                                 enabled: page.selected !== null
+                                Accessible.description: page.selected ? qsTr("for %1").arg(page.selected.name) : ""
                                 onClicked: CrucibleController.setSplit(page.selected.app, page.selected.width !== 2)
                             }
                             CrucibleButton {
                                 objectName: "standardStereoButton"
                                 text: qsTr("Standard stereo")
                                 visible: page.selected !== null && page.selected.width === 2 && page.selected.pairCustom
+                                Accessible.description: page.selected ? qsTr("for %1").arg(page.selected.name) : ""
                                 onClicked: CrucibleController.resetPair(page.selected.app)
                             }
                         }
@@ -291,7 +404,7 @@ Item {
                         Flow {
                             Layout.fillWidth: true
                             spacing: Theme.space2
-                            Text { height: 26; verticalAlignment: Text.AlignVCenter; text: qsTr("Put"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall }
+                            Text { height: Math.max(26, implicitHeight); verticalAlignment: Text.AlignVCenter; text: qsTr("Put"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall }
                             Repeater {
                                 model: [
                                     { label: qsTr("in front"), x: 0.5, y: 0.1, z: 0.0 },
@@ -305,15 +418,17 @@ Item {
                                     { label: qsTr("rear right"), x: 0.85, y: 0.85, z: 0.0 }]
                                 delegate: CrucibleButton {
                                     required property var modelData
+                                    objectName: "put-" + modelData.x + "-" + modelData.y + "-" + modelData.z
                                     text: modelData.label
                                     enabled: page.selected !== null && !(page.selected.fullscreen)
+                                    Accessible.description: page.selected ? qsTr("put %1 %2").arg(page.selected.name).arg(modelData.label) : ""
                                     onClicked: { CrucibleController.position(page.selected.app, modelData.x, modelData.y, modelData.z); }
                                 }
                             }
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: page.selected ? (page.selected.fullscreen ? qsTr("full-screen: stays in the bed") : (page.selected.slot >= 0 ? page.describe(page.selected) : "")) : ""
+                            text: page.selected ? (page.selected.fullscreen ? qsTr("full-screen: stays in the bed") : (page.selected.slot >= 0 ? RoomWords.describe(page.selected.x, page.selected.y, page.selected.z) : "")) : ""
                             visible: text.length > 0
                             color: Theme.textMuted
                             font.pixelSize: Theme.fontSmall
@@ -321,7 +436,7 @@ Item {
                         }
                         RowLayout {
                             spacing: Theme.space3
-                            Text { text: qsTr("Size"); color: Theme.text; font.pixelSize: 13 }
+                            Text { text: qsTr("Size"); color: Theme.text; font.pixelSize: Theme.fontBody }
                             Rectangle {
                                 id: sizeTrack
                                 objectName: "sizeSlider"
@@ -330,6 +445,14 @@ Item {
                                 color: "transparent"
                                 opacity: CrucibleController.objectsEnabled ? 1.0 : 0.55
                                 readonly property real value: page.selected ? page.selected.size : 0
+                                // Read by name, not by these being anything
+                                // in particular: QAccessibleQuickItem's value
+                                // interface looks for value/minimumValue/
+                                // maximumValue/stepSize on the item, which is
+                                // how a hand-drawn track reports a range.
+                                readonly property real minimumValue: 0
+                                readonly property real maximumValue: 1
+                                readonly property real stepSize: 0.05
                                 Rectangle { y: 6; width: parent.width; height: 2; color: Theme.divider }
                                 Rectangle { y: 6; width: parent.width * sizeTrack.value; height: 2; color: Theme.accent }
                                 Rectangle { x: parent.width * sizeTrack.value - 5; y: 2; width: 10; height: 10; radius: 5; color: Theme.accent }
@@ -338,13 +461,32 @@ Item {
                                     enabled: page.selected !== null
                                     cursorShape: Qt.PointingHandCursor
                                     function apply(mouse) { CrucibleController.setSize(page.selected.app, Math.max(0, Math.min(1, mouse.x / width))); }
-                                    onPressed: function(mouse) { apply(mouse); }
+                                    onPressed: function(mouse) { sizeTrack.forceActiveFocus(); apply(mouse); }
                                     onPositionChanged: function(mouse) { if (mouse.buttons & Qt.LeftButton) apply(mouse); }
                                 }
                                 Accessible.role: Accessible.Slider
                                 Accessible.name: qsTr("Object size")
+                                Accessible.focusable: true
+                                Accessible.description: page.selected
+                                    ? (page.selected.size === 0 ? qsTr("point") : qsTr("%1%").arg(Math.round(page.selected.size * 100)))
+                                    : ""
+                                activeFocusOnTab: page.selected !== null
+                                function step(by) {
+                                    if (!page.selected) return;
+                                    CrucibleController.setSize(page.selected.app, Math.max(0, Math.min(1, sizeTrack.value + by)));
+                                }
+                                Keys.onPressed: function(event) {
+                                    const by = (event.modifiers & Qt.ShiftModifier) ? 0.01 : sizeTrack.stepSize;
+                                    if (event.key === Qt.Key_Left || event.key === Qt.Key_Down) sizeTrack.step(-by);
+                                    else if (event.key === Qt.Key_Right || event.key === Qt.Key_Up) sizeTrack.step(by);
+                                    else if (event.key === Qt.Key_Home) { if (page.selected) CrucibleController.setSize(page.selected.app, 0); }
+                                    else if (event.key === Qt.Key_End) { if (page.selected) CrucibleController.setSize(page.selected.app, 1); }
+                                    else return;
+                                    event.accepted = true;
+                                }
+                                FocusRing {}
                             }
-                            Text { text: page.selected ? (page.selected.size === 0 ? qsTr("point") : Math.round(page.selected.size * 100) + "%") : ""; color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11 }
+                            Text { text: page.selected ? (page.selected.size === 0 ? qsTr("point") : Math.round(page.selected.size * 100) + "%") : ""; color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMono }
                             Text {
                                 Layout.fillWidth: true
                                 text: CrucibleController.objectsEnabled ? qsTr("extent the receiver's renderer spreads the object over; the bed hears a point") : qsTr("object metadata: no effect while the stream is bed only")
@@ -360,7 +502,7 @@ Item {
                     Layout.fillHeight: false
                     label: qsTr("BED")
                     Layout.fillWidth: true
-                    Text { text: qsTr("unplaced applications, mixed to the 5.1 bed"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11 }
+                    Text { text: qsTr("unplaced applications, mixed to the 5.1 bed"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMono }
                 }
                 Rectangle {
                     Layout.fillWidth: true
@@ -380,10 +522,19 @@ Item {
                                 visible: modelData.slot < 0
                                 app: modelData
                                 onClicked: page.selectedApp = modelData.app
+                                // Enter on a chip is the keyboard's drag: it
+                                // lands in the centre of the room and the
+                                // keys follow it there.
+                                onPlace: {
+                                    CrucibleController.position(modelData.app, 0.5, 0.5, 0);
+                                    page.selectedApp = modelData.app;
+                                    roomKeys.forceActiveFocus();
+                                    A11y.announce(qsTr("%1 placed in the centre of the room").arg(modelData.name));
+                                }
                             }
                         }
                         Text {
-                            height: 34
+                            height: Math.max(34, implicitHeight)
                             width: Math.min(implicitWidth, bedFlow.width - Theme.space2)
                             verticalAlignment: Text.AlignVCenter
                             leftPadding: Theme.space2
@@ -419,7 +570,7 @@ Item {
                     label: qsTr("SIGNAL PATH")
                     Layout.fillWidth: true
                     Layout.fillHeight: false
-                    Text { Layout.fillWidth: true; text: qsTr("applications → this app → what you hear"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11; elide: Text.ElideRight }
+                    Text { Layout.fillWidth: true; text: qsTr("applications → this app → what you hear"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMono; elide: Text.ElideRight }
                 }
                 SignalPath {
                     Layout.fillWidth: true
@@ -427,18 +578,14 @@ Item {
                     onOpenOutput: page.openOutput()
                 }
                 RailBlock { ordinal: "05"; label: qsTr("SIGNING"); Layout.fillWidth: true; Layout.fillHeight: false }
-                Text { Layout.fillWidth: true; text: CrucibleController.objectsEnabled ? qsTr("key loaded · objects on") : qsTr("no key · 5.1 bed only"); color: Theme.text; font.pixelSize: 13; elide: Text.ElideRight }
-                Text { Layout.fillWidth: true; text: CrucibleController.keyPath.length ? CrucibleController.keyPath : qsTr("load one in Settings"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: 11; elide: Text.ElideMiddle }
+                Text { Layout.fillWidth: true; text: CrucibleController.objectsEnabled ? qsTr("key loaded · objects on") : qsTr("no key · 5.1 bed only"); color: Theme.text; font.pixelSize: Theme.fontBody; elide: Text.ElideRight }
+                Text { Layout.fillWidth: true; text: CrucibleController.keyPath.length ? CrucibleController.keyPath : qsTr("load one in Settings"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMono; elide: Text.ElideMiddle }
                 Item { Layout.fillHeight: true }
             }
         }
     }
 
-    // A plain-words reading of a position, for the selected card.
-    function describe(app) {
-        const lr = app.x < 0.35 ? qsTr("left") : app.x > 0.65 ? qsTr("right") : qsTr("centre");
-        const fb = app.y < 0.35 ? qsTr("in front of you") : app.y > 0.65 ? qsTr("behind you") : qsTr("beside you");
-        const ud = app.z > 0.3 ? qsTr("up") : app.z < -0.3 ? qsTr("low") : "";
-        return [ud, fb, lr === "centre" ? "" : qsTr("to the ") + lr].filter(s => s.length).join(", ");
-    }
+    // A position in words used to be spelled out here, and again in the
+    // rows, and a third time for a reader. It is RoomWords.describe now, and
+    // every one of them says the same thing.
 }

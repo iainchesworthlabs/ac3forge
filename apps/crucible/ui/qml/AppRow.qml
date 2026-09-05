@@ -13,14 +13,22 @@ Rectangle {
     signal clicked()
     readonly property bool placed: app.slot >= 0
     readonly property string detail: placed
-        ? (app.width === 2 ? qsTr("slots ") + (app.slot + 1) + "+" + (app.slot + 2) : qsTr("slot ") + (app.slot + 1)) + " · " + app.x.toFixed(2) + ", " + app.y.toFixed(2) + ", " + (app.z >= 0 ? "+" : "") + app.z.toFixed(2)
+        ? RoomWords.placement(app) + " · " + RoomWords.numbers(app.x, app.y, app.z)
         : qsTr("bed") + (app.fullscreen ? qsTr(" · full-screen") : "") + (app.silent ? qsTr(" · no audio") : (app.active ? "" : qsTr(" · idle"))) + (app.tapped || app.silent ? "" : qsTr(" · no tap")) + (app.background ? qsTr(" · background") : "")
     implicitHeight: row.implicitHeight + Theme.space4
     color: selected ? Theme.neutral100 : "transparent"
     border.color: selected ? Theme.accent : "transparent"
     border.width: 1
+    // The name is what the row IS; where it sits is what a reader wants
+    // next, and whether this is the chosen one. The level is deliberately
+    // not here: it changes every 60 ms and would fire a name-changed event
+    // at that rate for every row in the list.
     Accessible.role: Accessible.ListItem
-    Accessible.name: app.name + ", " + detail
+    Accessible.name: root.app.name
+    Accessible.description: root.detail
+    Accessible.selected: root.selected
+    Accessible.focusable: true
+    Accessible.onPressAction: root.clicked()
     RowLayout {
         id: row
         anchors.fill: parent
@@ -56,7 +64,7 @@ Rectangle {
                         text: root.app.fullscreen ? qsTr("full-screen") : qsTr("placed")
                         color: Theme.textMuted
                         font.family: Theme.monoFamily
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontMicro
                         font.letterSpacing: 0.5
                     }
                 }
@@ -65,7 +73,7 @@ Rectangle {
                 text: root.detail
                 color: Theme.textMuted
                 font.family: Theme.monoFamily
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontMono
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }

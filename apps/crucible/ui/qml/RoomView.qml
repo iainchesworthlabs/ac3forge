@@ -25,6 +25,9 @@ Item {
     property string caption: ""
     property string hint: ""
     signal select(int app)
+    // A press in the field is where a keyboard session continues from, so
+    // the page moves focus to the room's key scope when one lands.
+    signal focusRequested()
     signal moved(int app, double x, double y, double z)
     signal movedSide(int app, int side, double x, double y, double z)
     signal returned(int app)
@@ -39,8 +42,8 @@ Item {
         RowLayout {
             id: heading
             Layout.fillWidth: true
-            Text { text: root.caption; color: Theme.textMuted; font.pixelSize: 11; font.letterSpacing: 1; font.capitalization: Font.AllUppercase; elide: Text.ElideRight; Layout.fillWidth: true }
-            Text { text: root.hint; color: Theme.textMuted; font.pixelSize: 11 }
+            Text { text: root.caption; color: Theme.textMuted; font.pixelSize: Theme.fontMono; font.letterSpacing: 1; font.capitalization: Font.AllUppercase; elide: Text.ElideRight; Layout.fillWidth: true }
+            Text { text: root.hint; color: Theme.textMuted; font.pixelSize: Theme.fontMono }
         }
         Rectangle {
             id: field
@@ -50,14 +53,21 @@ Item {
             border.color: dropArea.containsDrag ? Theme.accent : Theme.divider
             border.width: 1
 
-            // Crosshair and axis labels.
+            // The picture as a whole, so a reader announces which room view
+            // it is about to walk into.
+            Accessible.role: Accessible.Grouping
+            Accessible.name: root.caption
+
+            // Crosshair and axis labels. The labels are text, so they take
+            // textMuted rather than neutral500, which came to 2.6:1 against
+            // the field in the light palettes.
             Rectangle { visible: !root.elevation; x: parent.width / 2; y: 0; width: 1; height: parent.height; color: Theme.neutral300 }
             Rectangle { x: 0; y: parent.height / 2; width: parent.width; height: 1; color: Theme.neutral300 }
-            Text { x: 8; y: 6; text: root.elevation ? qsTr("ceiling") : qsTr("front"); color: Theme.neutral500; font.pixelSize: 11 }
-            Text { x: 8; y: parent.height - 18; text: root.elevation ? qsTr("floor") : qsTr("rear"); color: Theme.neutral500; font.pixelSize: 11 }
-            Text { visible: root.elevation; x: 8; y: parent.height / 2 - 14; text: qsTr("ear level"); color: Theme.neutral500; font.pixelSize: 11 }
-            Text { visible: root.elevation; x: 60; y: parent.height - 18; text: qsTr("front"); color: Theme.neutral500; font.pixelSize: 11 }
-            Text { visible: root.elevation; x: parent.width - 34; y: parent.height - 18; text: qsTr("rear"); color: Theme.neutral500; font.pixelSize: 11 }
+            Text { x: 8; y: 6; text: root.elevation ? qsTr("ceiling") : qsTr("front"); color: Theme.textMuted; font.pixelSize: Theme.fontMono }
+            Text { x: 8; y: parent.height - 18; text: root.elevation ? qsTr("floor") : qsTr("rear"); color: Theme.textMuted; font.pixelSize: Theme.fontMono }
+            Text { visible: root.elevation; x: 8; y: parent.height / 2 - 14; text: qsTr("ear level"); color: Theme.textMuted; font.pixelSize: Theme.fontMono }
+            Text { visible: root.elevation; x: 60; y: parent.height - 18; text: qsTr("front"); color: Theme.textMuted; font.pixelSize: Theme.fontMono }
+            Text { visible: root.elevation; x: parent.width - 34; y: parent.height - 18; text: qsTr("rear"); color: Theme.textMuted; font.pixelSize: Theme.fontMono }
 
             // Speakers, plan only: the bed's five positions.
             Repeater {
@@ -65,11 +75,16 @@ Item {
                     { label: qsTr("L"), px: 0.15, py: 0.10 }, { label: qsTr("R"), px: 0.85, py: 0.10 }, { label: qsTr("C"), px: 0.50, py: 0.08 },
                     { label: qsTr("Ls"), px: 0.15, py: 0.87 }, { label: qsTr("Rs"), px: 0.85, py: 0.87 }]
                 delegate: Item {
+                    id: speaker
                     required property var modelData
                     x: field.width * modelData.px
                     y: field.height * modelData.py
+                    // "L" alone reads as a letter; a reader is told what it
+                    // stands for instead.
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: qsTr("%1 speaker").arg(speaker.modelData.label)
                     Rectangle { x: -5; y: -5; width: 10; height: 10; color: "transparent"; border.color: Theme.neutral500; border.width: 1 }
-                    Text { anchors.horizontalCenter: parent.left; y: 8; text: modelData.label; color: Theme.neutral500; font.family: Theme.monoFamily; font.pixelSize: 10 }
+                    Text { anchors.horizontalCenter: parent.left; y: 8; text: speaker.modelData.label; color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMicro; Accessible.ignored: true }
                 }
             }
             // The listener.
@@ -91,6 +106,19 @@ Item {
                     readonly property bool placed: app.slot >= 0
                     readonly property bool selected: app.app === root.selectedApp
                     visible: placed
+                    objectName: "marker-" + marker.app.app
+                    // What a reader gets instead of the bare name the label
+                    // used to be: what it is, where it is in words and in
+                    // figures, whether it is the selected one, and an action
+                    // that selects it. All of it from the same live entry the
+                    // marker is drawn from, so the two cannot drift.
+                    Accessible.role: Accessible.Button
+                    Accessible.name: marker.app.name
+                    Accessible.description: RoomWords.describe(marker.app.x, marker.app.y, marker.app.z)
+                        + ", " + RoomWords.coords(marker.app.x, marker.app.y, marker.app.z)
+                        + (marker.app.width === 2 ? qsTr(", split pair") : "")
+                    Accessible.selected: marker.selected
+                    Accessible.onPressAction: root.select(marker.app.app)
                     // Where the engine has it, as fractions of the field, and
                     // the glided copy the marker draws from. The glide is on
                     // the fraction, not the pixels: the views sit in a hidden
@@ -202,7 +230,10 @@ Item {
                                 text: satellite.side === 0 ? "L" : "R"
                                 color: Theme.textMuted
                                 font.family: Theme.monoFamily
-                                font.pixelSize: 9
+                                font.pixelSize: Theme.fontFine
+                                // The marker above says whose pair this is;
+                                // a bare "L" on its own says nothing.
+                                Accessible.ignored: true
                             }
                             MouseArea {
                                 x: -8; y: -8; width: 16; height: 16
@@ -210,6 +241,7 @@ Item {
                                 preventStealing: true
                                 onPressed: {
                                     root.select(marker.app.app);
+                                    root.focusRequested();
                                     satellite.dragX = satellite.fieldX;
                                     satellite.dragY = satellite.fieldY;
                                     satellite.dragging = true;
@@ -251,7 +283,10 @@ Item {
                         text: marker.app.name
                         color: Theme.text
                         font.family: Theme.monoFamily
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontMono
+                        // The marker itself carries the name, with the
+                        // position and the action; this would say it twice.
+                        Accessible.ignored: true
                     }
                     Rectangle {
                         x: -14; y: -14; width: 28; height: 28
@@ -265,6 +300,7 @@ Item {
                         preventStealing: true
                         onPressed: function(mouse) {
                             root.select(marker.app.app);
+                            root.focusRequested();
                             marker.dragX = marker.x;
                             marker.dragY = marker.y;
                             marker.dragging = true;

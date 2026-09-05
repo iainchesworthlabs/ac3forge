@@ -104,7 +104,7 @@ the same key `wpctl set-default` writes, and restores your previous default on e
 
 The window builds and runs on Linux (`ac3crucible`), and so does `ac3crucible-run`, a console
 runner over the same engine that lists the applications it can see, takes positions, and reports
-which output it chose and why. Building the window needs Qt 6.5 or later with Quick, Quick
+which output it chose and why. Building the window needs Qt 6.8 or later with Quick, Quick
 Controls 2, Widgets and Linguist Tools; Quick 3D is optional and adds the 3D room, Qt SVG is
 optional and adds the SVG-only icons.
 

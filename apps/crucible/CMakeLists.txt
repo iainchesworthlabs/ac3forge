@@ -150,20 +150,25 @@ set_target_properties(ac3crucible-run PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMA
 # ---------------------------------------------------------------------------
 # Widgets is for the tray alone - Qt.labs.platform's SystemTrayIcon is
 # QSystemTrayIcon underneath - and is what lets it exist on Linux.
-find_package(Qt6 6.5 QUIET COMPONENTS Core Gui Widgets Qml Quick QuickControls2 LinguistTools)
+#
+# 6.8 is the floor because the window announces state changes to a screen
+# reader through Accessible.announce, which is Q_REVISION(6, 8)
+# (docs/crucible/accessibility.md). Every verified platform is already above
+# it: 6.8 on the Pi, 6.10 on Windows and on the CI fleet.
+find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Widgets Qml Quick QuickControls2 LinguistTools)
 if(NOT Qt6_FOUND)
     message(WARNING "Qt6 not found: the AC3Forge Crucible's window (ac3crucible) is skipped; "
                     "the engine and the ac3crucible-run runner still build.")
     # The runner still installs, with the notices for what it alone carries.
     include("${CMAKE_CURRENT_SOURCE_DIR}/notices/notices.cmake")
 else()
-    qt_standard_project_setup(REQUIRES 6.5)
+    qt_standard_project_setup(REQUIRES 6.8)
 
     # Qt Quick 3D is optional: the room's 3D picture (ui/qml/Room3DView.qml)
     # is built when the kit has it and the page hides its toggle when not.
     # The value reaches the controller as a compile-time constant, not a
     # conditional: CrucibleController::has3D() returns AC3DESK_QUICK3D.
-    find_package(Qt6 6.5 QUIET COMPONENTS Quick3D)
+    find_package(Qt6 6.8 QUIET COMPONENTS Quick3D)
     if(Qt6Quick3D_FOUND)
         set(AC3DESK_QUICK3D 1)
         set(AC3DESK_QUICK3D_LIB Qt6::Quick3D)
@@ -186,7 +191,7 @@ else()
     # svg image format and icon engine on Windows, and the .deb's shlibdeps
     # names libqt6svg6. Without it those applications show the monogram,
     # and the configure log says so.
-    find_package(Qt6 6.5 QUIET COMPONENTS Svg)
+    find_package(Qt6 6.8 QUIET COMPONENTS Svg)
     if(Qt6Svg_FOUND)
         set(AC3DESK_SVG_LIB Qt6::Svg)
     else()
@@ -194,7 +199,7 @@ else()
         message(STATUS "Qt SVG not found: SVG-only application icons show the monogram")
     endif()
 
-    set(AC3DESK_SHARED_QML Theme.qml Card.qml RailBlock.qml SegmentedControl.qml)
+    set(AC3DESK_SHARED_QML Theme.qml Card.qml RailBlock.qml SegmentedControl.qml FocusRing.qml)
     # Generated INTO the source tree (ignored by git, see ui/qml/shared/.gitignore)
     # rather than the build tree: the QML ahead-of-time compiler names its
     # cache files after the path relative to the source directory, and a
@@ -218,6 +223,9 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/Main.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/RoomPage.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/RoomView.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/RoomKeys.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/RoomWords.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/A11y.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/AppRow.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/BedChip.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/Monogram.qml"
@@ -237,6 +245,13 @@ else()
         set_source_files_properties("${qml_file}" PROPERTIES QT_RESOURCE_ALIAS "${qml_name}")
     endforeach()
     set_source_files_properties("${AC3DESK_SHARED_DIR}/Theme.qml"
+        PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+    # The room's words and the announcer are one-per-process the way the
+    # theme is: every view that says where something is, and everything that
+    # wants a sentence read out, reaches the same object.
+    set_source_files_properties(
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/RoomWords.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/A11y.qml"
         PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
     set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/tray.svg"
         PROPERTIES QT_RESOURCE_ALIAS "tray.svg")

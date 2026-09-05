@@ -27,7 +27,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "ac3/audio/audio_backend.hpp"
 #include "diagnostics.hpp"
@@ -148,8 +150,44 @@ ac3::crucible::EngineConfig CrucibleController::engine_config() const {
     // for the diagnostics report and the engine polls fullscreen_pid() on its
     // session thread, and on X11 a second instance would open a second
     // connection to the display server.
-    config.foreground = foreground_;
+    config.foreground = test_foreground_ ? test_foreground_ : foreground_;
+    // Null unless a harness called set_test_services(): the engine reads
+    // null as "this platform's own", which is what the window always gets.
+    config.sessions = test_sessions_;
+    config.devices = test_devices_;
     return config;
+}
+
+void CrucibleController::set_test_services(std::shared_ptr<ac3::crucible::SessionMonitor> sessions,
+                                           std::shared_ptr<ac3::crucible::AudioDevices> devices,
+                                           std::shared_ptr<ac3::crucible::Foreground> foreground,
+                                           std::shared_ptr<ac3::crucible::DefaultDevice> default_device,
+                                           std::shared_ptr<ac3::crucible::VirtualDevice> virtual_device) {
+    // The engine is built from these at start(), so an engine built over the
+    // machine has to go before the machine is swapped out from under it.
+    stop();
+    test_sessions_ = std::move(sessions);
+    test_devices_ = std::move(devices);
+    test_foreground_ = std::move(foreground);
+    // A null one puts the platform's own back, so a harness can hand the
+    // machine over for one case and give it back afterwards; these two are
+    // held rather than passed to the engine, and movesDefault and
+    // silentDeviceFromPackage are CONSTANT properties, so a swap that stuck
+    // would answer for every case that ran after it in the same process.
+    default_device_ = default_device ? std::move(default_device) : ac3::crucible::platform_default_device();
+    previous_default_id_ = default_device_->default_id();
+    // Nothing has been moved on a seam this object has only just met.
+    moved_default_by_us_ = false;
+    previous_default_name_.clear();
+    virtual_device_ = virtual_device ? std::move(virtual_device) : ac3::crucible::platform_virtual_device();
+    log_.note(test_sessions_ ? "platform seams replaced by a test harness"
+                             : "platform seams restored by a test harness");
+    refreshDefault();
+    refreshDriver();
+}
+
+void CrucibleController::note(const QString& line) {
+    log_.note(line.toStdString());
 }
 
 void CrucibleController::start() {
@@ -548,6 +586,22 @@ void CrucibleController::setRoomView(const QString& view) {
         return;
     }
     settings_.setValue(QStringLiteral("appearance/roomView"), wanted);
+    settings_.sync();  // survive a hard exit
+    emit settingsChanged();
+}
+
+QString CrucibleController::textScale() const {
+    const auto stored = settings_.value(QStringLiteral("appearance/textScale"), QStringLiteral("100")).toString();
+    static const QStringList known{QStringLiteral("system"), QStringLiteral("100"), QStringLiteral("125"),
+                                   QStringLiteral("150"), QStringLiteral("175")};
+    return known.contains(stored) ? stored : QStringLiteral("100");
+}
+
+void CrucibleController::setTextScale(const QString& scale) {
+    if (scale == textScale()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("appearance/textScale"), scale);
     settings_.sync();  // survive a hard exit
     emit settingsChanged();
 }
@@ -1068,6 +1122,7 @@ ac3::crucible::ReportFacts CrucibleController::build_report_facts() const {
     setting("appearance/palette", palette());
     setting("appearance/roomView", roomView());
     setting("appearance/roomLayout", roomLayout());
+    setting("appearance/textScale", textScale());
     setting("behaviour/keepRunningWhenClosed", flag(keepRunningWhenClosed()));
     setting("behaviour/moveDefaultOnLaunch", flag(moveDefaultOnLaunch()));
     setting("behaviour/showBackgroundApps", flag(showBackgroundApps()));
