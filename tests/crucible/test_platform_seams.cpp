@@ -4,6 +4,7 @@
 
 #include "fake_services.hpp"
 #include "platform_services.hpp"
+#include "virtual_device.hpp"
 
 // The platform seams (docs/crucible/promotion.md, Phase 2a). Two things are
 // worth holding here, and neither needs a device, a window manager or a

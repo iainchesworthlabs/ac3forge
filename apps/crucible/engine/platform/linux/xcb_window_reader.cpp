@@ -262,7 +262,10 @@ std::optional<X11ActiveWindow> XcbWindowReader::active_window() {
     // EWMH: _NET_WM_PID is meaningful only with WM_CLIENT_MACHINE naming this
     // host. A pid from another machine (an ssh -X client) matches nothing here
     // and could collide with a local one, so it is dropped.
-    if (out.pid && machine->value_len > 0 &&
+    // Only when this host has a name to compare: a failed gethostname() would
+    // otherwise drop every pid while support() still said the rule was on,
+    // which is the silent-wrong-answer foreground.hpp warns against.
+    if (out.pid && !host_.empty() && machine->value_len > 0 &&
         short_host(text_of(machine.get())) != short_host(host_)) {
         out.pid = std::nullopt;
     }

@@ -110,9 +110,11 @@ elseif(UNIX AND NOT APPLE)
     else()
         target_sources(ac3crucible_engine PRIVATE engine/platform/linux/no_xcb_window_reader.cpp)
         set(AC3FORGE_CRUCIBLE_X11_BACKEND none PARENT_SCOPE)
-        message(STATUS "libxcb not found: Crucible's X11 full-screen check is left out "
-                       "(libxcb1-dev on Debian/Ubuntu, libxcb-devel on Fedora; "
-                       "-DAC3FORGE_CRUCIBLE_X11=OFF silences this)")
+        if(AC3FORGE_CRUCIBLE_X11 STREQUAL "AUTO")
+            message(STATUS "libxcb not found: Crucible's X11 full-screen check is left out "
+                           "(libxcb1-dev on Debian/Ubuntu, libxcb-devel on Fedora; "
+                           "-DAC3FORGE_CRUCIBLE_X11=OFF silences this)")
+        endif()
     endif()
     # This platform's notices directory (notices/notices.cmake).
     set(AC3CRUCIBLE_PLATFORM_DIR linux)

@@ -163,6 +163,9 @@ public:
             app.active = false;
             app.has_window = true;
             app.has_session = false;
+            // The same ancestor list a sounding application carries, so the
+            // full-screen rule still matches one that has gone quiet.
+            app.session_pids = facts.tree;
             apps.emplace(pid, std::move(app));
         }
 

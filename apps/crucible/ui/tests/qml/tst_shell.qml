@@ -78,21 +78,28 @@ TestCase {
         // The engine is left running for the tray; stop() is cleanup's job.
     }
 
+    function starts(report) {
+        return report.split("engine started:").length - 1 + (report.split("engine start refused:").length - 1);
+    }
+
     function test_diagnosticsReportCarriesTheEngine() {
+        // The ring is process-wide and every suite here starts the engine, so
+        // an earlier test's notes would satisfy a bare indexOf. Count what is
+        // there first and wait for this engine to add its own.
+        const before = starts(CrucibleController.diagnosticsReport());
         const window = createTemporaryObject(shell, testCase);
         verify(window);
         tryCompare(window, "visible", true);
         verify(CrucibleController.running || CrucibleController.lastError.length > 0,
                "running=" + CrucibleController.running + " lastError=" + CrucibleController.lastError);
-        // The engine's first notes come from its own thread a moment after
-        // start() returns.
+        // The engine's notes come from its own thread a moment after start()
+        // returns, and the signing note follows the start note.
         tryVerify(function() {
             const report = CrucibleController.diagnosticsReport();
-            return report.indexOf("engine started:") >= 0 || report.indexOf("engine start refused:") >= 0;
+            return starts(report) > before && report.indexOf("signing: ") >= 0;
         }, 5000);
         const report = CrucibleController.diagnosticsReport();
         verify(report.indexOf("# engine") >= 0, report);
-        verify(report.indexOf("signing: ") >= 0, "no signing note: " + report);
         // The status line that names the key file never reaches the report.
         verify(report.indexOf("loaded from") < 0, report);
     function test_stopNeverTouchesTheDefault() {

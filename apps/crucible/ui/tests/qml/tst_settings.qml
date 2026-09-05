@@ -204,7 +204,9 @@ TestCase {
         let base = String(Platform.StandardPaths.writableLocation(Platform.StandardPaths.TempLocation));
         if (base.indexOf("file:") !== 0)
             base = "file://" + (base.indexOf("/") === 0 ? "" : "/") + base;
-        const url = base + "/crucible-test-diagnostics.txt";
+        // Unique per run: this host runs suites from several worktrees at
+        // once, and a fixed name in the shared temp folder collides.
+        const url = base + "/crucible-test-diagnostics-" + Date.now() + ".txt";
         verify(CrucibleController.exportDiagnostics(url), CrucibleController.diagnosticsMessage);
         verify(CrucibleController.diagnosticsMessage.indexOf("saved to") === 0, CrucibleController.diagnosticsMessage);
         const suggested = CrucibleController.suggestedDiagnosticsFile();
