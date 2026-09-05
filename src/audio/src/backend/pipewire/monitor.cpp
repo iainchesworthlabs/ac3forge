@@ -77,6 +77,14 @@ struct MonitorSink::Impl {
             impl.connect_state.compare_exchange_strong(expected, ConnectState::kReady);
         } else if (state == PW_STREAM_STATE_ERROR) {
             impl.connect_state.store(ConnectState::kError, std::memory_order_release);
+        } else {
+            return;  // still on its way; nobody is waiting for this one
+        }
+        // Wake the thread in wait_for_connect(). Without this the answer is
+        // set and nobody is told, so the waiter sleeps out its full
+        // one-second step - see capture.cpp's note and the measurement there.
+        if (impl.loop) {
+            pw_thread_loop_signal(impl.loop.get(), false);
         }
     }
 
@@ -184,6 +192,9 @@ bool MonitorSink::submit(std::span<const float> interleaved) {
 void MonitorSink::stop() {
     if (impl_->loop) {
         pw_thread_loop_stop(impl_->loop.get());
+        pw_thread_loop_lock(impl_->loop.get());
+        impl_->stream.reset();
+        pw_thread_loop_unlock(impl_->loop.get());
     }
     impl_->stream.reset();
     impl_->loop.reset();

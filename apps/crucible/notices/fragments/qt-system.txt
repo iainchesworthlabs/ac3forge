@@ -1,0 +1,12 @@
+Qt {{QT_VERSION}}
+------------------
+
+Built against Qt {{QT_VERSION}}. This package includes no Qt: ac3crucible
+loads the Qt 6 libraries and QML modules your distribution provides (the
+.deb declares them as dependencies), so the version that runs is the one
+installed on your machine. Those libraries are Copyright (C) The Qt
+Company Ltd. and other contributors, used under the GNU Lesser General
+Public License, version 3; the module for the room's 3D view, where this
+build carries it, is under the GNU General Public License, version 3, and
+has its own section below. Your distribution's Qt packages carry the
+licence texts and its source.

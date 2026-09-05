@@ -317,16 +317,16 @@ jobs:
             packageable: true
             release_package: true
             gold_reference: true
-            # The Desktop Atmos Demo (roadmap UX11, apps/windows): built and
+            # AC3Forge Crucible (roadmap UX11/UX12, apps/crucible): built and
             # tested on both Windows legs, packaged on this one (the Package
             # step's own condition already singles out windows-msvc), as its
-            # own archive - see cmake/Packaging.cmake's windemo component. The
+            # own archive - see cmake/Packaging.cmake's crucible component. The
             # null-sink driver is NOT built on this leg: it needs the WDK,
             # which the self-hosted fleet lacks, so it has its own
             # GitHub-hosted job (windows-driver, below) that builds it from
             # the WDK NuGet packages. Still test-signed only, so it stays out
             # of the package until the EV certificate lands (Phase 6).
-            windemo: true
+            crucible: true
 
           - name: "Windows LLVM (clang-cl)"
             runner: ${{ needs.check-runners.outputs.windows_runner_2 }}
@@ -339,7 +339,7 @@ jobs:
             # several things the demo's Qt and WASAPI code touches - but not
             # packaged: this leg carries no release_package (see the Package
             # step's condition).
-            windemo: true
+            crucible: true
 
           # ARM64 - GitHub's hosted windows-11-arm runner (roadmap DR8). Real
           # ARM64 hardware, not emulation. Deliberately NOT routed through
@@ -421,6 +421,13 @@ jobs:
             gui: true
             packageable: true
             gold_reference: true
+            # AC3Forge Crucible's Linux half (roadmap UX12). This leg and not
+            # a GCC one because the GCC legs carry alsa_fallback, which
+            # asserts that disabling ALSA falls back to posix - true only
+            # while no PipeWire headers are installed, and the Crucible pass
+            # below installs them. Keeping the two apart leaves that
+            # assertion meaning what it says.
+            crucible: true
 
           # arm64 - Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu
           # target (see docs/platforms/raspberry-pi.md). Real ARM hardware via
@@ -910,10 +917,10 @@ jobs:
       # windows-msvc-arm64 is excluded: no gui: true on that leg (see its
       # matrix comment above), so there is no Qt kit to install for it here.
       #
-      # modules: the Desktop Atmos Demo's room is drawn with Qt Quick 3D,
+      # modules: the AC3Forge Crucible's room is drawn with Qt Quick 3D,
       # which is not part of the base kit (aqtinstall calls it qtquick3d, and
       # its own shader tooling qtshadertools - both present in the local
-      # C:/Qt/6.8.3/msvc2022_64 kit this pin matches). apps/windows/
+      # C:/Qt/6.8.3/msvc2022_64 kit this pin matches). apps/crucible/
       # CMakeLists.txt treats Quick3D as optional and skips the 3D view with a
       # warning when it is absent, so without these the packaged window would
       # quietly ship with a 2D-only room and the ctest suite would exercise
@@ -1037,10 +1044,16 @@ jobs:
           if [ "${{ matrix.gui }}" = "true" ]; then
             extra_args+=(-DAC3FORGE_BUILD_GUI=ON)
           fi
-          # OFF by default in CMakeLists.txt (Windows-only, and a demo rather
-          # than part of the library), so the legs that want it ask here.
-          if [ "${{ matrix.windemo }}" = "true" ]; then
-            extra_args+=(-DAC3FORGE_BUILD_WINDEMO=ON)
+          # OFF by default in CMakeLists.txt, so the legs that want it ask
+          # here - and only on Windows. On Linux this tree selects the ALSA
+          # backend, which has no per-application concept at all, and
+          # apps/crucible/CMakeLists.txt refuses that combination by design
+          # rather than building a window that can list applications and
+          # never capture one. Crucible's Linux build is the dedicated pass
+          # further down, which installs the PipeWire headers and configures
+          # its own tree with -DAC3FORGE_WITH_ALSA=OFF.
+          if [ "${{ matrix.crucible }}" = "true" ] && [ "$RUNNER_OS" = "Windows" ]; then
+            extra_args+=(-DAC3FORGE_BUILD_CRUCIBLE=ON)
           fi
           if [ -n "$VERSION_TAG_INPUT" ]; then
             extra_args+=(-DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT")
@@ -1082,17 +1095,20 @@ jobs:
       # The window is optional in CMake (Qt6 QUIET, and Quick3D optional
       # inside that), which is right for a source build on a machine with no
       # Qt kit and wrong here: this leg installed the kit on purpose, so a
-      # skipped ac3desk or a 2D-only room means that install broke rather
+      # skipped ac3crucible or a 2D-only room means that install broke rather
       # than a deliberate choice - the same "failing loudly beats degrading
       # quietly" reasoning as the NSIS assert further down.
-      - name: Assert the Desktop Atmos Demo was built (Windows)
-        if: matrix.windemo
+      - name: Assert the AC3Forge Crucible was built (Windows)
+        # Windows only, as the name says: this looks in the matrix build
+        # tree, and on Linux that tree deliberately has no Crucible in it
+        # (see the Configure step above).
+        if: matrix.crucible && runner.os == 'Windows'
         shell: bash
         run: |
           set -euo pipefail
           build="build/config-${{ matrix.preset }}"
           missing=0
-          for exe in ac3desk.exe ac3windemo.exe ac3desk_qmltests.exe; do
+          for exe in ac3crucible.exe ac3crucible-run.exe ac3crucible_qmltests.exe; do
             if [ ! -f "$build/bin/$exe" ]; then
               echo "::error::$exe was not built - was Qt6 found? Check the configure log's warnings."
               missing=1
@@ -1106,7 +1122,7 @@ jobs:
             echo "::error::Qt Quick 3D was not found, so the room's 3D view is missing from this build - the 'Install Qt (prebuilt)' step's modules list is what provides it"
             exit 1
           fi
-          ls -1 "$build/bin/ac3desk.exe" "$build/bin/ac3windemo.exe"
+          ls -1 "$build/bin/ac3crucible.exe" "$build/bin/ac3crucible-run.exe"
 
       # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
       # lightweight L4 SNR check from the project's original validation-
@@ -1351,6 +1367,179 @@ jobs:
           cmake --build build/no-alsa -- -k 0
           ctest --test-dir build/no-alsa
 
+      # AC3Forge Crucible on Linux (roadmap UX12, docs/crucible/promotion.md).
+      # One extra pass inside this leg rather than a matrix entry, the same
+      # shape as the ALSA fallback above, because it needs a different audio
+      # backend rather than a different compiler.
+      #
+      # Crucible cannot use the ALSA backend at all - it exists to tap each
+      # application separately and ALSA has no per-application concept - so
+      # this forces PipeWire, which apps/crucible/CMakeLists.txt also
+      # requires and refuses to build without. libpipewire-0.3-dev is
+      # installed here and not in the container bootstrap on purpose: adding
+      # it globally would change what -DCMAKE_DISABLE_FIND_PACKAGE_ALSA falls
+      # back to on the GCC legs, whose assertion expects posix.
+      #
+      # What this covers is exactly one thing: the Linux platform half -
+      # engine/platform/linux/, over the PipeWire capture and device watcher -
+      # compiling and linking. It deliberately runs no tests.
+      #
+      # Running the `crucible` ctest label here would look like more coverage
+      # and be none. Those cases drive the engine over the fakes and link
+      # tests/crucible/platform_services_stub.cpp, not the Linux platform half
+      # this leg exists to build, and every other Linux leg already runs them.
+      # (Worse, an earlier version of this step ran that label without
+      # building ac3tests. catch_discover_tests registers cases at build time,
+      # so there were none to match - and ctest exits 0 when nothing matches.
+      # It passed without running anything.)
+      #
+      # What no CI runner can reach is behaviour against a live PipeWire
+      # session: there is no session, so every path takes its "no session"
+      # arm. That is checked by hand on hardware with
+      # tools/checks/crucible_platform_probe.cpp; the plan records what the
+      # first such run found, which was five defects this step would never
+      # have caught.
+      - name: Build AC3Forge Crucible (Linux, PipeWire)
+        if: matrix.crucible && runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
+          export DEBIAN_FRONTEND=noninteractive
+          $SUDO apt-get update -qq
+          # libpipewire for the engine, libxcb for its X11 full-screen check
+          # (apps/crucible/CMakeLists.txt, AC3FORGE_CRUCIBLE_X11; asserted on
+          # below, since AUTO would quietly leave it out), dpkg-dev for the
+          # .deb's shlibdeps,
+          # and distro Qt for the window and its Qt Quick tests - the same
+          # apt Qt the GUI leg above uses (cmake/FindQt6.cmake, never vcpkg).
+          # apps/crucible/CMakeLists.txt asks for Qt 6.8; the fleet's
+          # Ubuntu 26.04 image carries 6.10, and the check below says what
+          # happens on a runner that carries less. The qml6-module-* lines
+          # are the runtime modules the window's imports resolve to
+          # (QtQuick, Layouts, Controls and the Templates underneath them,
+          # Effects, Dialogs and the folder model it uses, Qt.labs.platform
+          # for the tray, Quick 3D for the room, QtTest for the suite):
+          # without them the window builds and every test fails at import.
+          # qt6-svg-dev is the optional Qt SVG the window links for icon
+          # themes whose application icons are SVG only.
+          $SUDO apt-get install -y -qq --no-install-recommends \
+            libpipewire-0.3-dev libxcb1-dev dpkg-dev \
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
+            qt6-l10n-tools qt6-tools-dev qt6-quick3d-dev qt6-shadertools-dev \
+            qt6-svg-dev \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
+            qml6-module-qtquick-layouts qml6-module-qtquick-window qml6-module-qtquick-effects \
+            qml6-module-qtquick-dialogs qml6-module-qt-labs-folderlistmodel \
+            qml6-module-qt-labs-platform qml6-module-qtqml-workerscript qml6-module-qtqml-models \
+            qml6-module-qtquick3d qml6-module-qttest
+          cmake --preset config-${{ matrix.preset }} -B build/crucible \
+            -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_BUILD_TESTS=ON \
+            -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON \
+            2>&1 | tee /tmp/crucible-configure.log
+          grep -q 'Audio backend  : pipewire' /tmp/crucible-configure.log || {
+            echo "::error::Crucible was configured but the PipeWire backend was not selected; \
+          apps/crucible/CMakeLists.txt should have refused this build"
+            exit 1
+          }
+          grep -q 'Crucible X11   : xcb' /tmp/crucible-configure.log || {
+            echo "::error::libxcb1-dev is installed but the X11 full-screen check was not configured"
+            exit 1
+          }
+          # The same shape for the third optional dependency: qt6-svg-dev is
+          # installed above, so the "not found" line means the window would
+          # ship with SVG-only application icons falling back to monograms.
+          ! grep -q 'Qt SVG not found' /tmp/crucible-configure.log || {
+            echo "::error::qt6-svg-dev is installed but Qt SVG was not found; SVG-only application icons would show the monogram"
+            exit 1
+          }
+          cmake --build build/crucible --target ac3crucible_engine ac3crucible-run -- -k 0
+          # Assert the runner was actually produced. CMake treats the
+          # application as optional and degrades quietly, so "the build
+          # succeeded" and "the thing got built" are different claims - the
+          # same reason the Windows legs assert on ac3crucible.exe.
+          test -x build/crucible/bin/ac3crucible-run || {
+            echo "::error::the Crucible build reported success but produced no ac3crucible-run"
+            exit 1
+          }
+
+          # The window. CMake warns and carries on when Qt is missing or too
+          # old; here that is only acceptable on a runner that cannot do
+          # better, and then loudly. This leg normally runs on the fleet
+          # (Ubuntu 26.04, Qt 6.10); when decide-runner falls back to
+          # GitHub's ubuntu-latest (24.04, Qt 6.4) the window cannot be
+          # built there, and a warning that names the reason beats a red
+          # leg for something unrelated to the change. With a new-enough Qt
+          # present, a missing window is a failure like any other.
+          QT_VER="$(qmake6 -query QT_VERSION 2>/dev/null || echo 0)"
+          if grep -q 'Qt6 not found' /tmp/crucible-configure.log; then
+            if dpkg --compare-versions "$QT_VER" lt 6.8; then
+              echo "::warning::Crucible window skipped on this runner: Qt $QT_VER is below the 6.8 apps/crucible/CMakeLists.txt needs (Accessible.announce, which the window uses to tell a screen reader what changed, is 6.8). The engine and runner were built; the window, its tests and its package were not exercised here."
+              exit 0
+            fi
+            echo "::error::the Crucible window was not configured although Qt $QT_VER is present: see the configure log above"
+            exit 1
+          fi
+          cmake --build build/crucible --target ac3crucible ac3crucible_qmltests ac3tests -- -k 0
+          test -x build/crucible/bin/ac3crucible || {
+            echo "::error::the Crucible build reported success but produced no ac3crucible"
+            exit 1
+          }
+
+          # Tests, in this tree, against this backend: the engine's own
+          # ([crucible] and [seams], on the fakes of the platform seams) and
+          # the PipeWire backend's contract ([audio-backend]), which no other
+          # leg runs on PipeWire; then the window's Qt Quick suite, headless.
+          # --no-tests=error, because a label with nothing behind it once
+          # passed a step like this having run nothing.
+          (cd build/crucible && ./bin/ac3tests "[crucible],[seams],[audio-backend]")
+          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+            ctest --test-dir build/crucible -L crucible-ui --no-tests=error --output-on-failure
+
+          # Package: the crucible component alone. The runtime component is
+          # the release legs' business and is not built here, and the
+          # component is a separate download everywhere anyway
+          # (docs/releasing.md). Then the same layout check the Windows leg
+          # runs on its zip, and the .deb's identity.
+          (cd build/crucible && cpack -B packages -D CPACK_COMPONENTS_ALL=crucible -G "TGZ;DEB")
+          shopt -s nullglob
+          tars=(build/crucible/packages/ac3forge-crucible-*.tar.gz)
+          if [ ${#tars[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-crucible-*.tar.gz - the crucible component did not reach CPACK_COMPONENTS_ALL on Linux (cmake/Packaging.cmake) or its install rules produced nothing (apps/crucible/CMakeLists.txt)."
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${tars[@]}"
+          python3 tools/ci/check_crucible_package.py "${tars[0]}"
+          debs=(build/crucible/packages/ac3forge-crucible_*.deb)
+          if [ ${#debs[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-crucible_*.deb (dpkg-deb is installed above; CPACK_DEBIAN_CRUCIBLE_FILE_NAME in cmake/Packaging.cmake names it DEB-DEFAULT style)"
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          dpkg-deb -I "${debs[0]}" | grep -E '^ (Package|Version|Section|Depends):'
+          dpkg-deb -I "${debs[0]}" | grep -q '^ Package: ac3forge-crucible$' || {
+            echo "::error::the Crucible .deb is not named ac3forge-crucible - CPACK_DEBIAN_CRUCIBLE_PACKAGE_NAME (cmake/Packaging.cmake) is not reaching the generator"
+            exit 1
+          }
+
+      # Not a release asset yet - the release legs build against ALSA and
+      # cannot produce this - but a person can take the tarball or .deb
+      # from the run. Empty on the Qt-too-old skip above, on purpose.
+      # packages-*, because that is the pattern release.yml downloads
+      # (release.yml's "pattern: packages-*"). Under the old name the Linux
+      # Crucible package was built and checked on every run and then collected
+      # by nothing, so a release could not carry it however green the leg was.
+      - name: Upload the AC3Forge Crucible Linux package
+        if: matrix.crucible && runner.os == 'Linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packages-crucible-${{ matrix.preset }}
+          path: |
+            build/crucible/packages/ac3forge-crucible-*.tar.gz
+            build/crucible/packages/ac3forge-crucible_*.deb
+          if-no-files-found: ignore
+
       # Proves BUILD_SHARED_LIBS=ON actually works before it ships in a real
       # release: ac3::forge_shared/matroska::matroska_shared existing and
       # configuring cleanly (already exercised by every leg's normal
@@ -1451,26 +1640,26 @@ jobs:
             exit 1
           fi
 
-      # The demo's own archive (cmake/Packaging.cmake's windemo component).
+      # The demo's own archive (cmake/Packaging.cmake's crucible component).
       # Without this the component could stop being packaged - a stale
       # CPACK_COMPONENTS_ALL, a rename, the option not reaching cpack - and
       # the only symptom would be a release quietly missing an asset.
-      - name: Assert the Desktop Atmos Demo was packaged (Windows)
-        if: matrix.windemo && matrix.release_package && (matrix.preset == 'windows-msvc' || inputs.do_package)
+      - name: Assert the AC3Forge Crucible was packaged (Windows)
+        if: matrix.crucible && matrix.release_package && (matrix.preset == 'windows-msvc' || inputs.do_package)
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
-          zips=(packages/ac3forge-desktop-atmos-*.zip)
+          zips=(packages/ac3forge-crucible-*.zip)
           if [ ${#zips[@]} -eq 0 ]; then
-            echo "::error::cpack produced no ac3forge-desktop-atmos-*.zip - the windemo component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake) or its install rules produced nothing (apps/windows/CMakeLists.txt)."
+            echo "::error::cpack produced no ac3forge-crucible-*.zip - the crucible component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake) or its install rules produced nothing (apps/crucible/CMakeLists.txt)."
             ls -1 packages/ || true
             exit 1
           fi
           printf 'packaged: %s\n' "${zips[@]}"
           # A plausible archive with no Qt beside the window is the real
           # failure mode here, not an empty one - see the script's own header.
-          python tools/ci/check_windemo_package.py "${zips[0]}"
+          python tools/ci/check_crucible_package.py "${zips[0]}"
 
       - name: Upload package artifacts
         if: >-
@@ -2841,7 +3030,7 @@ jobs:
         working-directory: rust
         run: cargo fmt --check
 
-  # The Desktop Atmos Demo's null-sink driver (apps/windows/driver, roadmap
+  # The AC3Forge Crucible's null-sink driver (apps/windows/driver, roadmap
   # UX11): an ACX/KMDF kernel driver, built and test-signed the way Microsoft's
   # own driver-samples CI builds theirs - the WDK and SDK as NuGet packages
   # (apps/windows/driver/packages.config) restored into the tree, MSBuild from

@@ -14,6 +14,7 @@ Every command here has been run on the configuration described under
 | Qt | 6.5+ prebuilt | GUI only. **Never from vcpkg** — see [Qt](#qt). |
 | ALSA (`libasound2-dev`) | any recent | Linux only, optional. Live capture/monitor/passthrough — see [Linux audio](#linux-audio). |
 | PipeWire (`libpipewire-0.3-dev`) | any recent | Linux only, optional, used only when ALSA is not — see [Linux audio](#linux-audio). |
+| libxcb (`libxcb1-dev`) | any recent | Linux only, optional, Crucible only (`AC3FORGE_BUILD_CRUCIBLE`). The full-screen rule on X11 — see `AC3FORGE_CRUCIBLE_X11` under [Options](#options). |
 | Python 3 + numpy | 3.11+ | Only for `tools/`; not part of the build. |
 | FFmpeg CLI | 8.x | Only for validation scripts; not part of the build. |
 
@@ -257,6 +258,7 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_ADM` | `OFF` | Build `ac3adm::ac3adm` (`src/ac3adm`), the standalone BW64/RF64 + ADM parser — see [ADM / BW64 reading](library/adm.md). Off by default, unlike every other library component: it vendors libbw64/libadm via `FetchContent`, and libadm needs several Boost header libraries, resolved separately via `-DVCPKG_MANIFEST_FEATURES=adm` (`vcpkg.json`'s `adm` feature) — turning this `ON` without also selecting that feature fails with a clear configure-time message rather than a bare "Boost not found". |
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
+| `AC3FORGE_CRUCIBLE_X11` | `AUTO` | Linux only, with `AC3FORGE_BUILD_CRUCIBLE`. `AUTO` compiles Crucible's X11 full-screen check over libxcb when `libxcb1-dev` is present; `ON` requires it; `OFF` never builds it. Without it the rule is off at runtime and the Room page says so. The configure summary prints `Crucible X11   : xcb` or `none`. |
 | `AC3FORGE_SIMD` | `auto` | Which `src/forge/src/internal/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from the *effective target* architecture (`CMAKE_SYSTEM_PROCESSOR`, or `CMAKE_OSX_ARCHITECTURES` where a macOS cross-build sets one) and falls back to `generic` everywhere else, including a macOS universal binary, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
 | `AC3FORGE_AVX2` | `ON` | x86_64 only. Compiles an AVX2 SIMD tier alongside the baseline SSE2 one, selected at *runtime* rather than at configure time. See [Runtime AVX2 dispatch](#runtime-avx2-dispatch). `OFF` (or a non-x86_64 target) yields a provably AVX2-free binary. |
 | `AC3FORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` preset above rather than by hand. |
@@ -492,11 +494,15 @@ PipeWire has its own real, current, native mechanism for the same thing —
 aspirational API surface; `src/audio/src/backend/pipewire/passthrough.cpp`'s own header comment cites a
 real shipped client (Kodi's PipeWire passthrough support) that negotiates exactly this way. What
 it does not have is ALSA's "just works": a PipeWire sink only offers a compressed codec once its
-`iec958Codecs` control has been populated by the session manager (a WirePlumber ALSA-monitor
-rule, or a one-off `pw-cli` call) — configuration this library has no portable way to perform on
-a caller's behalf. On a stock desktop where nobody has touched that setting, every PipeWire sink
-honestly has no compressed codec enabled, even though the exact same hardware is reachable
-directly through ALSA underneath the very PipeWire daemon that's running.
+`iec958.codecs` property has been populated by the session manager. WirePlumber does that on its
+own, from the display's EDID: on 2026-09-05 a stock Raspberry Pi OS desktop that nobody had
+configured brought its HDMI sink up with `[PCM, DTS, AC3, EAC3, TrueHD, DTS-HD]` the moment an
+Atmos receiver was on the cable, and this library's PipeWire backend then streamed E-AC-3 bursts
+to it. What remains configuration — a WirePlumber ALSA-monitor rule, or a one-off `pw-cli`
+call — is the sink that advertises nothing, or a session manager that does not read EDID, and
+that this library has no portable way to perform on a caller's behalf. The precedence below is
+about that remainder, and about the fact that the exact same hardware is reachable directly
+through ALSA underneath the very PipeWire daemon that's running.
 
 That is why ALSA keeps first precedence in `src/audio/CMakeLists.txt` whenever both are found,
 rather than PipeWire winning by default for being the modern norm on most current desktops:
@@ -714,8 +720,8 @@ layout/tool/metadata option space (see
 [gold-reference gate](#gold-reference-correctness-gate) below, which every leg runs against one
 fixed sample to check output *quality*; ffmpeg-validate instead checks that every option
 combination produces a *structurally correct* stream at all, plus a numeric fidelity floor for
-the Annex E tool combinations the one fixed gold-reference sample does not itself exercise. No
-leg remains experimental.
+the Annex E tool combinations the one fixed gold-reference sample does not itself exercise.
+One leg, `windows-msvc-arm64`, is still marked experimental, and still packages for release.
 
 The coverage job gates line and branch coverage per component, not as one blended
 number, using the same GCC 16 pin as the other Linux legs; the floor table, the measurement each

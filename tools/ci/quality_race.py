@@ -2305,7 +2305,7 @@ def race_fast_mdct(source, original):
 # been caught by once: a bit-allocation or bandwidth policy that looks like a
 # win on the synthetic fixtures needs re-measuring on material that is not
 # band-limited like they are, and before this there was nowhere to do that
-# except by hand (see src/lib/src/encoder/encoder.cpp's chbwcod comment, and
+# except by hand (see src/forge/src/encoder/encoder.cpp's chbwcod comment, and
 # tools/generators/gen_programme_fixtures.py for the measured spectra).
 MATERIALS = {"speech": SPEECH_FIXTURE, "music": MUSIC_FIXTURE}
 

@@ -277,9 +277,9 @@
       "name": "config-windows-llvm-coverage",
       "inherits": [ "release", "windows-llvm", "coverage", "core" ],
       "displayName": "Windows LLVM coverage (clang-cl, llvm-cov)",
-      "description": "The Windows counterpart of config-linux-gcc-coverage, for the code that only builds here: the Desktop Atmos Demo (apps/windows, docs/platforms/windows-demo.md) and the GUI. clang-cl's -fprofile-instr-generate/-fcoverage-mapping rather than gcov, read with tools/checks/coverage_windemo.ps1, which is how the demo gets line AND branch figures. Inherits the RELEASE base, not debug, on purpose: LLVM ships clang_rt.profile against the release CRT, and an instrumented /MDd binary runs to completion and then dies in the profile writer at exit (access violation, no profile written); cmake/Coverage.cmake's clang-cl arm turns optimisation off again (/Od /Ob0) so line and branch attribution stays exact. ADM stays off: vcpkg's adm feature is a Linux-leg concern and this preset exists for apps/windows.",
+      "description": "The Windows counterpart of config-linux-gcc-coverage, for AC3Forge Crucible's Windows half (apps/crucible, docs/crucible/index.md) and the GUI as built here. clang-cl's -fprofile-instr-generate/-fcoverage-mapping rather than gcov, read with tools/checks/coverage_crucible.ps1, which is how Crucible gets line AND branch figures. Inherits the RELEASE base, not debug, on purpose: LLVM ships clang_rt.profile against the release CRT, and an instrumented /MDd binary runs to completion and then dies in the profile writer at exit (access violation, no profile written); cmake/Coverage.cmake's clang-cl arm turns optimisation off again (/Od /Ob0) so line and branch attribution stays exact. ADM stays off: vcpkg's adm feature is a Linux-leg concern and this preset exists for apps/crucible.",
       "cacheVariables": {
-        "AC3FORGE_BUILD_WINDEMO": "ON",
+        "AC3FORGE_BUILD_CRUCIBLE": "ON",
         "AC3FORGE_BUILD_ADM": "OFF",
         "VCPKG_MANIFEST_FEATURES": ""
       }
@@ -577,9 +577,9 @@
     {
       "name": "test-windows-llvm-coverage",
       "configurePreset": "config-windows-llvm-coverage",
-      "displayName": "Windows LLVM coverage tests (windemo + desk labels)",
+      "displayName": "Windows LLVM coverage tests (crucible + crucible-ui labels)",
       "inherits": "test-base",
-      "filter": { "include": { "label": "windemo|desk" } }
+      "filter": { "include": { "label": "^crucible(-ui)?$" } }
     },
     {
       "name": "test-linux-gcc",

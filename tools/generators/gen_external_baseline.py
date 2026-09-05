@@ -39,7 +39,7 @@ channel (spectral extension only) and 64 is 32 (both).
 The three programme legs are the other half of the same problem: the first
 five are all 2.5-3 s of sin()/noise/FIR, which carries a flat noise plateau
 across its whole top octave and has already produced one measured, fake
-2.1 dB "win" (src/lib/src/encoder/encoder.cpp's chbwcod comment). See
+2.1 dB "win" (src/forge/src/encoder/encoder.cpp's chbwcod comment). See
 tools/generators/gen_programme_fixtures.py for the sources, licences and
 measured spectra. Those fixtures ship as FLAC and are materialised to WAV
 under build/ by quality_race.py's materialise_fixture(), which is what the

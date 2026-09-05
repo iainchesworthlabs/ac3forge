@@ -9,7 +9,7 @@
 <component type="desktop-application">
   <id>ac3gui.desktop</id>
   <name>ac3gui</name>
-  <summary>Clean-room AC-3 / E-AC-3 encoder, decoder and Dolby Atmos object-layer toolkit</summary>
+  <summary>Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 encoder, decoder and Dolby Atmos object-layer toolkit</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <description>

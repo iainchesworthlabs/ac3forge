@@ -1,0 +1,7 @@
+Tracy client {{TRACY_VERSION}}
+-------------------------------
+
+This is a profiling build: the Tracy profiler's client library, version
+{{TRACY_VERSION}}, is compiled into ac3crucible and ac3crucible-run.
+
+{{FILE:TRACY_BSD}}

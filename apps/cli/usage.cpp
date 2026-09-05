@@ -757,7 +757,8 @@ void print_command_index(std::span<const CommandInfo> commands) {
 }
 
 void print_usage(std::span<const CommandInfo> commands) {
-    fmt::println("ac3forge — clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder");
+    fmt::println("Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 (ATSC A/52) "
+                 "encoder/decoder");
     fmt::println("");
     print_command_index(commands);
     print_unavailable_reasons(commands);

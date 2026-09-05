@@ -2,7 +2,7 @@
 Type=Application
 Name=ac3gui
 GenericName=AC-3 / E-AC-3 Encoder
-Comment=Clean-room AC-3 / E-AC-3 encoder, decoder and Dolby Atmos object-layer toolkit
+Comment=Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 encoder, decoder and Dolby Atmos object-layer toolkit
 Exec=ac3gui %F
 Icon=ac3gui
 Terminal=false

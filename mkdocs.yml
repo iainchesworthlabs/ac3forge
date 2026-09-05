@@ -67,75 +67,90 @@ nav:
   - Getting started:
       - Quick start: quickstart.md
       - Building from source: building.md
-      - Platform notes:
-          - Windows: platforms/windows.md
-          - Linux: platforms/linux.md
-          - Raspberry Pi: platforms/raspberry-pi.md
-          - macOS: platforms/macos.md
-          - Android (NVIDIA Shield): platforms/android.md
-          - Windows (Desktop Atmos Demo): platforms/windows-demo.md
-          - Windows null-sink driver on ACX (plan): platforms/windows-driver-acx.md
-          - WebAssembly (browser demos): platforms/wasm.md
-  - Concepts:
-      - Overview: concepts/index.md
-      - AC-3 & E-AC-3: concepts/ac3-eac3.md
-      - Atmos & JOC: concepts/atmos-joc.md
-      - Object signing: concepts/object-signing.md
-  - Validation: verification.md
-  - Threat model: threat-model.md
-  - Conformance vectors: conformance-vectors.md
   - Library:
       - Conventions: library/index.md
-      - Example programs: library/examples.md
-      - Encoding AC-3: library/encoding-ac3.md
-      - Encoding E-AC-3: library/encoding-eac3.md
-      - Decoding: library/decoding.md
-      - Spatial & Atmos objects: library/spatial-and-atmos.md
-      - A worked scene — station broadcast: library/station-broadcast.md
-      - Channel plans & routing: library/channel-plans-and-routing.md
-      - Metadata: library/metadata.md
-      - Muxing & sinks: library/muxing-and-sinks.md
-      - File I/O: library/file-io.md
-      - IAB (SMPTE ST 2098-2) reading: library/iab.md
-      - ADM / BW64 reading: library/adm.md
-      - ADM → Atmos bridging: library/adm-bridge.md
-      - IAMF writing: library/iamf.md
-      - Measuring quality: library/quality.md
-      - Object signing: library/signing.md
-      - Header map: library/header-map.md
-      - API stability: library/api-stability.md
-      - C API: library/c-api.md
-      - Python bindings: library/python-api.md
-      - Rust bindings: library/rust-api.md
-  - CLI reference:
-      - Overview: cli/index.md
-      - Commands: cli/commands.md
-      - Options & grammars: cli/metadata-options.md
-  - GUI guide:
-      - Window layout: gui/index.md
-      - Loading a source: gui/loading-a-source.md
-      - Format & channels: gui/format-and-channels.md
-      - Objects & motion: gui/objects-and-motion.md
-      - Live capture & session: gui/live-session.md
-      - Multi-source & assignment: gui/source-assignment.md
-      - Coding tools: gui/coding-tools.md
-      - Metadata: gui/metadata.md
-      - QC a stream: gui/qc.md
-      - Inspect objects: gui/inspect-objects.md
-      - Open stream: gui/open-stream.md
-      - Localisation: gui/localisation.md
-  - Performance & quality:
-      - Overview: performance-quality.md
-      - Performance trend: performance-trend.md
-      - Quality trend: quality-trend.md
-      - Tool comparison trend: tool-comparison-trend.md
-      - Object quality trend: object-quality-trend.md
-      - Landscape: landscape.md
+      - Capabilities: library/capabilities.md
+      - Concepts:
+          - Overview: concepts/index.md
+          - AC-3 & E-AC-3: concepts/ac3-eac3.md
+          - Atmos & JOC: concepts/atmos-joc.md
+          - Object signing: concepts/object-signing.md
+      - Using the library:
+          - Example programs: library/examples.md
+          - Encoding AC-3: library/encoding-ac3.md
+          - Encoding E-AC-3: library/encoding-eac3.md
+          - Decoding: library/decoding.md
+          - Spatial & Atmos objects: library/spatial-and-atmos.md
+          - A worked scene — station broadcast: library/station-broadcast.md
+          - Channel plans & routing: library/channel-plans-and-routing.md
+          - Metadata: library/metadata.md
+          - Muxing & sinks: library/muxing-and-sinks.md
+          - File I/O: library/file-io.md
+          - IAB (SMPTE ST 2098-2) reading: library/iab.md
+          - ADM / BW64 reading: library/adm.md
+          - ADM → Atmos bridging: library/adm-bridge.md
+          - IAMF writing: library/iamf.md
+          - Measuring quality: library/quality.md
+          - Object signing: library/signing.md
+          - Header map: library/header-map.md
+          - API stability: library/api-stability.md
+      - Bindings:
+          - C API: library/c-api.md
+          - Python: library/python-api.md
+          - Rust: library/rust-api.md
+          - WebAssembly (npm): platforms/wasm.md
+      - Validation:
+          - How output is checked: verification.md
+          - Threat model: threat-model.md
+          - Conformance vectors: conformance-vectors.md
+      - Performance & quality:
+          - Overview: performance-quality.md
+          - Performance trend: performance-trend.md
+          - Quality trend: quality-trend.md
+          - Tool comparison trend: tool-comparison-trend.md
+          - Object quality trend: object-quality-trend.md
+          - Landscape: landscape.md
+      - Live demos:
+          - Decode in the browser: wasm-demo.md
+          - Encode in the browser: wasm-encode-demo.md
+  - Forge:
+      - What it is: forge/index.md
+      - CLI reference:
+          - Overview: cli/index.md
+          - Commands: cli/commands.md
+          - Options & grammars: cli/metadata-options.md
+      - GUI guide:
+          - Window layout: gui/index.md
+          - Loading a source: gui/loading-a-source.md
+          - Format & channels: gui/format-and-channels.md
+          - Objects & motion: gui/objects-and-motion.md
+          - Live capture & session: gui/live-session.md
+          - Multi-source & assignment: gui/source-assignment.md
+          - Coding tools: gui/coding-tools.md
+          - Metadata: gui/metadata.md
+          - QC a stream: gui/qc.md
+          - Inspect objects: gui/inspect-objects.md
+          - Open stream: gui/open-stream.md
+          - Localisation: gui/localisation.md
+  - Crucible:
+      - What it is: crucible/index.md
+      - Install & first run: crucible/install.md
+      - The signal path: crucible/signal-path.md
+      - Keyboard & screen readers: crucible/accessibility.md
+      - Troubleshooting: crucible/troubleshooting.md
+      - Promotion plan & record: crucible/promotion.md
+      - The Windows demo, the record: platforms/windows-demo.md
+      - The null-sink driver on ACX: platforms/windows-driver-acx.md
+  - Platforms:
+      - Windows: platforms/windows.md
+      - Linux: platforms/linux.md
+      - Raspberry Pi: platforms/raspberry-pi.md
+      - macOS: platforms/macos.md
+      - Android, the Shield demo: platforms/android.md
   - Project:
       - Contributing: contributing.md
       - Releasing: releasing.md
       - History: history.md
       - Roadmap: roadmap.md
-      - Live decode demo (WASM): wasm-demo.md
-      - Live encode demo (WASM): wasm-encode-demo.md
+      - The family recasting: family/recasting.md
       - Self-hosted CI runners: ci-self-hosted-runners.md

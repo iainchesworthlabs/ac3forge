@@ -565,17 +565,42 @@ components instead of `runtime`) but is best-effort - see `package-macos-univers
 | macOS | arm64 + x86_64 (universal) | macos-llvm + macos-llvm-x64, merged by `package-macos-universal` | `.dmg` | `.zip`, best-effort (see above) |
 | Android (Shield) | arm64 (NDK) | build-android | `.apk` | none - Shield links `ac3::forge`/`ac3::audio` in-tree, it isn't a `find_package(ac3forge)` consumer |
 
-Windows x64 additionally ships the Desktop Atmos Demo as its own
-`ac3forge-desktop-atmos-*-win64.zip` (roadmap UX11,
-[docs/platforms/windows-demo.md](platforms/windows-demo.md)): the `windemo` CPack component -
-`ac3desk.exe`, the `ac3windemo` runner, the driver's install/remove scripts and a Qt runtime of
-its own - packaged by the same `windows-msvc` leg as the row above and picked up by
-`release.yml`'s existing `*.zip` glob. It is a separate download rather than part of the
-`runtime` component, and deliberately absent from the NSIS installer
+Windows x64 additionally ships AC3Forge Crucible as its own
+`ac3forge-crucible-*-win64.zip` (roadmap UX12, [the Crucible guide](crucible/index.md)): the
+`crucible` CPack component - `ac3crucible.exe`, the `ac3crucible-run` runner, the driver's
+install/remove scripts, a Qt runtime of its own, and `NOTICES.txt` beside `LICENSE.txt` at the
+archive root (the third-party notices, generated per platform from `apps/crucible/notices/` at
+configure time) - packaged by the same `windows-msvc` leg as the row above and picked up by
+`release.yml`'s existing `*.zip` glob. It is a separate download
+rather than part of the `runtime` component, and deliberately absent from the NSIS installer
 (`cmake/CPackProjectConfig.cmake` says why): its null-sink driver is test-signed only, so the
-demo needs a machine with test signing on to be useful, which is not something an `ac3cli`
-download should carry. When the EV certificate lands, the installer takes over installing the
-demo and its signed driver - one line in that file, and this paragraph, change together.
+application needs a machine with test signing on to be useful, which is not something an
+`ac3cli` download should carry. When the EV certificate lands, the installer takes over
+installing the application and its signed driver - one line in that file, and this paragraph,
+change together. `tools/ci/check_crucible_package.py` guards the archive's shape in CI and
+against a local `cpack`.
+
+Linux ships the same component as `ac3forge-crucible-*-Linux-<arch>.tar.gz` and, where
+`dpkg-deb` and `rpmbuild` exist, as the `ac3forge-crucible` `.deb` and `.rpm` (named the way
+those tools name things, `ac3forge-crucible_<version>_<arch>.deb`): `ac3crucible`,
+`ac3crucible-run`, the freedesktop launcher, the AppStream record and the icon in the hicolor
+theme, and under `share/doc/ac3forge-crucible/` the notices (`NOTICES.txt`, once more as the
+`copyright` file a `.deb` is expected to carry) with `LICENSE.txt` - and nothing else: no Qt
+(the system's own loader finds it), and no driver scripts, because Linux needs no driver. The `.deb` depends on `pipewire` and a session manager
+(`wireplumber | pipewire-media-session`) explicitly, since those are running services rather
+than libraries shlibdeps could see; everything else it depends on is resolved from the binary.
+Two things to know. The component is packaged only from a PipeWire build, which is the only
+build Crucible accepts on Linux ([why](crucible/promotion.md#alsa-or-pipewire)), so the
+existing Linux release legs - which build ALSA - do not produce it. The Linux LLVM leg's
+Crucible pass does build and package it, and uploads it as `packages-crucible-<preset>`, which
+is the pattern `release.yml` collects; what stands between that and a release asset is only
+that the leg is not a `release_package` one. And the `.deb`'s one-line synopsis is the library's, not Crucible's: CPack's
+DEB generator headlines every component's package with the project summary and offers no
+per-component override that takes effect, so `apt show ac3forge-crucible` opens with
+"Clean-room AC-3 encoder" and says what the package actually is on the next line. The same
+check script reads the tarball's layout, and refuses one that carries a PowerShell script; on
+both platforms it also reads `NOTICES.txt` and refuses a notices file written for the other
+platform, or one whose Quick 3D section disagrees with what the archive ships.
 
 Linux x86_64 also ships a self-contained `ac3gui` `.AppImage` (roadmap DR8), built by its own
 `linux-appimage` job rather than a `release_package: true` leg above - it isn't a CPack product
@@ -634,7 +659,9 @@ its own - and from there it is signed, checksummed, SBOM'd and attested exactly 
 See [Conformance vectors](conformance-vectors.md) for what is in it and how a decoder implementer
 uses it.
 
-No leg is `experimental: true` any more (see `ci.yml`'s status table), so all five package
+One leg is still `experimental: true`, `windows-msvc-arm64` on its own runner label
+(`_build.yml`'s matrix comment says why), and it carries `release_package: true` as well: its
+packages ship, and a failure there fails the leg like any other. The other four package
 for real rather than best-effort - a packaging failure on any of them blocks the release the
 same as a build or test failure would. Every package - end-user or library - gets a `.sha512`
 (`CPACK_PACKAGE_CHECKSUM` in `cmake/Packaging.cmake`), an aggregate `SHA512SUMS` manifest,
@@ -775,9 +802,9 @@ or delete the existing tag first if it was created in error:
 `git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z`.
 
 **No package for a platform in the release** - that leg's `build-packages` job failed for real.
-No leg is `experimental: true` any more (see [What gets published](#what-gets-published) above),
-so a missing package is a genuine failure to investigate, not an expected gap for a
-not-yet-promoted leg - check the run's `build-packages` job.
+Every packaging leg, `windows-msvc-arm64` included, carries `release_package: true` (see
+[What gets published](#what-gets-published) above), so a missing package is a failure to
+investigate rather than an expected gap - check the run's `build-packages` job.
 
 ## What's deliberately not here
 

@@ -118,13 +118,14 @@ transmitted correction. The decision is per channel; the LFE is excluded, becaus
 The coupling channel is in scope like any full-bandwidth channel on both generations, and
 `cpldeltbae` is emitted as new information whenever it has segments to send. Coupling does not
 suppress the tool on E-AC-3 any more; two narrowings apply there instead. An AHT stream carries
-no corrections, on measured grounds rather than structural ones — see `docs/index.md`. And both
-encoders treat delta as a pure quality refinement: when its side-information cost would make an
-otherwise-fittable frame fail to fit, the corrections are dropped and the frame re-measured
-rather than refused. E-AC-3 goes further and fits the frame both ways, keeping the corrections
-only when they do not cost the frame composite SNR offset — they are re-sent once, in block 0,
-and retained by the other five blocks rather than repeated (§5.4.3.47's `deltbaie == 0` means
-retain outside block 0), since one exponent set covers the whole frame there.
+no corrections, on measured grounds rather than structural ones — see
+`docs/library/capabilities.md`. And both encoders treat delta as a pure quality refinement: when
+its side-information cost would make an otherwise-fittable frame fail to fit, the corrections
+are dropped and the frame re-measured rather than refused. E-AC-3 goes further and fits the
+frame both ways, keeping the corrections only when they do not cost the frame composite SNR
+offset — they are re-sent once, in block 0, and retained by the other five blocks rather than
+repeated (§5.4.3.47's `deltbaie == 0` means retain outside block 0), since one exponent set
+covers the whole frame there.
 
 ### Decision search
 

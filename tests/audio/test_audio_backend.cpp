@@ -243,8 +243,15 @@ TEST_CASE("device watching agrees with the reported capability",
         watcher.stop();
         CHECK_FALSE(watcher.running());
     } else {
+        // Two ways to be unavailable, and the error says which. A backend
+        // that was never built refuses with kNoBackend. PipeWire's is built
+        // but needs a session daemon to register with, so on a container or
+        // a CI runner with none it reports the platform refusal instead -
+        // which is the truthful answer, and why this accepts either
+        // (roadmap UX12).
         REQUIRE_FALSE(started.has_value());
-        CHECK(started.error() == DeviceWatchError::kNoBackend);
+        CHECK((started.error() == DeviceWatchError::kNoBackend ||
+               started.error() == DeviceWatchError::kComFailure));
         CHECK_FALSE(watcher.running());
     }
 }

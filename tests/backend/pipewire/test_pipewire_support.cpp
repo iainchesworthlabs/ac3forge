@@ -20,10 +20,12 @@
 // daemon or hardware needed to build one by hand.
 
 using ac3::pipewire::carrier_rate;
+using ac3::pipewire::client_api_is_relay;
 using ac3::pipewire::iec958_codec_for;
 using ac3::pipewire::is_audio_sink;
 using ac3::pipewire::is_audio_source;
 using ac3::pipewire::node_friendly_name;
+using ac3::pipewire::stream_owner_pid;
 using ac3::pipewire::node_id;
 using ac3::audio::BitstreamFormat;
 
@@ -106,4 +108,33 @@ TEST_CASE("a node's friendly name prefers node.description over node.name") {
     const spa_dict_item blank_description[] = {{PW_KEY_NODE_NAME, "alsa_output.raw"},
                                                 {PW_KEY_NODE_DESCRIPTION, ""}};
     CHECK(node_friendly_name(make_dict(blank_description, 2)) == "alsa_output.raw");
+}
+
+// The pid a stream belongs to. Getting this wrong is not a cosmetic loss:
+// pipewire-pulse carries every PulseAudio application on one socket, so
+// believing the socket credentials there lists all of them as a single
+// application called pipewire-pulse and points a per-process tap at a
+// process that plays nothing. Read off a Raspberry Pi 4B on 2026-09-05:
+// VLC's Client said pipewire.sec.pid 32005, which was pipewire-pulse's own
+// pid, while VLC was 49692 and said so in application.process.id.
+TEST_CASE("a client that reaches the daemon through a relay is named by what it claims") {
+    CHECK(client_api_is_relay("pipewire-pulse"));
+    CHECK(client_api_is_relay("jack"));
+    CHECK_FALSE(client_api_is_relay("pipewire"));
+    CHECK_FALSE(client_api_is_relay(nullptr));
+
+    // The relayed case: the credentials are pipewire-pulse's, the claim is
+    // the application's, and the application is the answer.
+    CHECK(stream_owner_pid(32005, 49692, true) == 49692);
+    // A direct client: the credentials cannot be forged, so they win even
+    // when the client claims something else.
+    CHECK(stream_owner_pid(47365, 1, false) == 47365);
+    CHECK(stream_owner_pid(47365, 47365, false) == 47365);
+    // No credentials at all: the claim is all there is.
+    CHECK(stream_owner_pid(0, 49692, false) == 49692);
+    // A relay whose client claimed nothing leaves the relay's pid, which is
+    // wrong but is not worse than the 0 that hides the stream entirely.
+    CHECK(stream_owner_pid(32005, 0, true) == 32005);
+    // Nothing to go on: nothing to tap.
+    CHECK(stream_owner_pid(0, 0, true) == 0);
 }

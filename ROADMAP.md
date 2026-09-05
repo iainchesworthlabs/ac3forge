@@ -21,7 +21,7 @@ cut, just moved out of the way of a first read.
 | VX — Verification and oracles | 19 | 2 | 1 |
 | PF — Performance and portability | 8 | 0 | 0 |
 | AP — Library surface, bindings and v1.0 | 9 | 1 | 2 |
-| UX — Applications | 9 | 0 | 1 |
+| UX — Applications | 9 | 1 | 2 |
 | DR — Distribution, release engineering and hardware | 5 | 1 | 3 |
 
 ## Where this starts from
@@ -2333,7 +2333,8 @@ builds and test-signs the driver itself from the WDK's NuGet packages. The drive
 PortCls to ACX the same day, before attestation signing is paid for, and is verified on both
 tiers there (`docs/platforms/windows-driver-acx.md`). The
 bitstream modes still wait on DR9's receiver. Design and phase record in
-`docs/platforms/windows-demo.md`.
+`docs/platforms/windows-demo.md`. Renamed to **AC3Forge Crucible** and made cross-platform by
+UX12 on 2026-09-04; the names in this record are the ones it shipped with.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2419,6 +2420,87 @@ GitHub-hosted `windows-driver` job builds, test-signs and Code-Analyses the driv
 WDK's NuGet packages, uploading it as an artifact rather than a release asset while it is
 test-signed. Attestation signing through an EV certificate remains, and S2's bitstream run
 against a receiver still waits on the HDMI cable (DR9).
+</details>
+
+### In progress
+
+**UX12 (XL)** — Promote the Windows Desktop Atmos Demo to **AC3Forge Crucible**, a desktop
+product on Windows, Linux and macOS. Landed 2026-09-05: the rename; all four platform seams;
+PipeWire per-application capture and device notifications; a Linux platform half; the window
+on Linux with its Qt Quick suite passing there; a Linux package (`ac3forge-crucible` tarball
+and `.deb`, not yet a release asset); a Linux CI pass that builds, tests and packages the
+window; a settings page worded by the platform rather than by Windows; and a user guide under
+`docs/crucible/`. **Verified on the Pi** against a live PipeWire session — the tap captures a
+real application, the silent device is a real graph node, the watcher sees it come and go, and
+the passthrough offers a bitstream on the HDMI sink and refuses it on the headphone jack, from
+the codecs WirePlumber reads off the receiver's EDID — runs that found defects no build could,
+several pre-existing in the library's PipeWire backend. E-AC-3 bursts have reached the
+receiver's sink from PipeWire; whether the receiver locked is not yet read off its display.
+Most of the product-quality pass (Phase 6) landed the same day: a first-run explanation of what
+Crucible does to the sound settings, and the restore on quit that four places already promised;
+a diagnostics file that carries neither the signing key nor the path to it; third-party licence
+notices generated per platform, with a Licences view over About; the full-screen rule answered
+under X11 through libxcb and refused with its reason elsewhere; and application icons on Linux
+from the icon theme and the `.desktop` entries. Still open: the receiver's own reading (DR9's
+row, on Crucible's critical path since it cannot use ALSA), macOS (compile-only; blocked on DR6
+and DR9), the Linux package as a release asset, and the last two Phase 6 items - the review of
+the six mechanically translated languages and the accessibility pass. Plan and phase record in
+`docs/crucible/promotion.md`.
+<details markdown="1">
+<summary>Full record</summary>
+
+UX11 shipped a Windows-only demo named after a trademark it does not own, documented as a
+footnote under Platform notes, with half its engine welded to `platform/windows/` headers.
+Promotion closes those four things.
+
+**The name.** `ac3desk` and "Desktop Atmos Speakers" become `ac3crucible` and "Crucible":
+namespace `ac3::crucible`, option `AC3FORGE_BUILD_CRUCIBLE`, ctest label `crucible`, and the
+CPack component with them. Dolby Atmos is a registered trademark, and using it to name a
+product and a system-wide audio *device* does not survive the move from demo to product.
+Describing the stream as Dolby Atmos where that is factually what it is stays. The endpoint
+name is the sharper of the two, since it is what appears in every user's sound settings, and
+it sits inside the package that attestation signing will sign — so it changes before that is
+paid for, not after.
+
+**The platform breadth.** The application needs four things from an operating system:
+enumerate what is playing, tap each application separately, silence its direct output, and
+bitstream the encoded result. Windows has all four (UX11). Linux through PipeWire has all four
+and needs no driver — the silent device is a `support.null-audio-sink` module load, so the
+signing problem that gates Windows does not exist there at all, and ALSA `iec958` passthrough
+is the one part of this project already confirmed against a real receiver (DR9's Linux row).
+macOS has all four from 14.2 and also needs no driver: `CATapDescription`'s
+`muteBehavior = .mutedWhenTapped` routes a process's audio through the tap instead of to the
+output device, which is the job the Windows null-sink driver exists to do — so no kernel
+extension, no AudioServerPlugIn and no BlackHole-style HAL plugin. Android breaks at silencing,
+since a device cannot be made the system output for other applications and
+`AudioPlaybackCapture` reaches only applications that opted in; a browser breaks at
+enumeration. Neither is a reduced version of this application and both stay out of scope, the
+Shield app already occupying the Android side of the project.
+
+**What is already portable.** `apps/windows/engine/audio_devices.hpp` is an abstract factory —
+`render_devices()` plus `BurstSink`, `PcmSink`, `ObjectSink` and `TapSource` — whose fakes
+already run 68 cases on a Linux CI leg with no audio hardware. Linux and macOS are therefore
+implementations of that same factory rather than a rewrite. Four couplings remain and become
+interfaces beside it: the session monitor and the foreground check in `engine.cpp`, the
+default device in the runner and in the UI controller, and the driver tools in the UI
+controller's *header*, which is the one that stops that controller compiling anywhere else.
+
+**Library additions.** `process_loopback` and `device_watch` for the PipeWire and CoreAudio
+backends, and `device_watch` for ALSA. One capability string is corrected whatever else lands:
+`process_loopback`'s reason on every non-Windows backend reads "no other backend has an
+equivalent", which stopped being true when PipeWire gained per-node capture and macOS shipped
+process taps in 14.2. `spatial` is the one capability with no cross-platform answer — neither
+Linux nor macOS exposes an OS object renderer a third party can hand Atmos objects to — so the
+headphone route decodes and folds on those platforms and the mode table loses its Headphones
+row. The roadmap's existing ruling against an in-repo binaural renderer is not reopened.
+
+**What this will not be able to claim.** No Mac has ever run the CoreAudio backend (DR9) and
+the tap's TCC consent prompt is keyed to code-signing identity and does not fire unsigned
+(DR6), so the macOS phase compiles on CI, unit-tests its device-free logic, and is otherwise
+unrunnable. Wayland gives a client no way to ask about another's windows, so the full-screen
+foreground rule is X11-only and refuses cleanly elsewhere. The Windows driver still loads only
+where test signing is on, and its own subtree is deliberately left un-renamed while signing is
+worked in a separate session.
 </details>
 
 ### Considering
@@ -2589,8 +2671,8 @@ Restated per sub-item now that all three have landed:
   its `depends_on arch: :arm64`. `macos-llvm-x64` went three consecutive clean real runs (two
   `release.yml` dry runs plus its own required PR CI, each including a real gold-reference pass)
   before its `experimental: true` came off, the same promotion bar `macos-llvm` itself was held
-  to; see [docs/platforms/macos.md](platforms/macos.md#universal-binaries-dr8) and
-  [docs/releasing.md](releasing.md#what-gets-published). Unplanned bonus: `macos-llvm-x64`'s
+  to; see [docs/platforms/macos.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/macos.md#universal-binaries-dr8) and
+  [docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md#what-gets-published). Unplanned bonus: `macos-llvm-x64`'s
   real gold-reference numbers (67.80/67.82/67.76 dB) turned out to be new evidence for VX11 —
   see that entry.
 </details>
@@ -2612,10 +2694,23 @@ WASAPI exclusive and PipeWire remain unconfirmed; CoreAudio is blocked on real M
 - **Windows/WASAPI exclusive: unconfirmed** — only a Realtek analogue endpoint has been tried.
   The receiver exists now: cable the workstation's HDMI (or a USB S/PDIF for the AC-3 half)
   and run the Pi page's stream matrix (S, hardware).
-- **PipeWire: unconfirmed** — it has only ever seen "no session" on WSL2. Raspberry Pi OS ships
-  PipeWire: build with ALSA off, write down the WirePlumber `iec958` codec rule a user needs
-  (the most the library can do about `iec958Codecs`), run the same matrix (M). Plus a PipeWire
-  CI leg mirroring `alsa_fallback` — no workflow mentions PipeWire today (S).
+- **PipeWire: confirmed 2026-09-05** — the backend ran against a real session on the Pi (Pi OS
+  13, PipeWire 1.4.2): `enumerate_render_devices()` found the receiver's HDMI sink with
+  `iec958.codecs = [PCM,DTS,AC3,EAC3,TrueHD,DTS-HD]` set by WirePlumber from the ELD, and
+  `PassthroughSink` streamed E-AC-3 bursts to it. **The receiver's own display, the only thing
+  that says it locked, was read that evening: "5.1 DD+" for a pre-encoded 5.1 fixture, and
+  "Atmos/DD+" at 7.1 for AC3Forge Crucible's own engine encoding a live application as E-AC-3
+  JOC with a signed object container.** The 7.1 is the receiver rendering the object layer to
+  its own speakers; what leaves the machine is a 5.1 bed plus objects. Three things the run changed:
+  the connect-probe alone was a false positive (it said yes on the analogue jack), so both
+  enumeration and `start()`'s auto-pick are now gated on the node's `iec958.codecs`; the probe
+  deadlocked on every successful connect (stream destroyed before the loop stopped); and
+  WirePlumber's hot-plug activation had silently failed after a long uptime and needed a
+  restart before any HDMI sink existed at all. The `iec958Codecs` rule turned out not to be
+  needed on a receiver that advertises its codecs — WirePlumber reads them from the EDID. A
+  PipeWire CI pass now exists on the Linux LLVM leg (roadmap UX12): it builds Crucible's
+  engine, runner and window, runs the PipeWire contract tests and the window's Qt Quick suite
+  headless, and packages the Linux tarball and `.deb`.
 - **CoreAudio: blocked** — CI-only, no Mac has ever run it. Also outstanding: a Pi 5 and a
   second Android TV device.
 </details>

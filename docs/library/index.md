@@ -1,5 +1,14 @@
 # Using ac3::forge
 
+!!! note "The name"
+    `ac3forge` and `ac3::forge` name **the library** and the family's identifiers — the CMake
+    project, the packages, the C++ namespace, the C symbol prefix. **Forge**, capitalised and
+    standing alone, names the `ac3cli` + `ac3gui` pair built on top of it
+    ([what Forge is](../forge/index.md)). "AC3Forge" is the family in prose, so its three members
+    read as the library, Forge and [Crucible](../crucible/index.md); every identifier stays
+    lowercase, and "AC3Forge Forge" is never written. `ac3cli --version` prints
+    `ac3forge <version>`, which is this library's version line.
+
 The public API is the headers under `src/forge/include/ac3/`. Link `ac3::forge`; link any of
 `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts` as well if you want a container writer,
 `ac3::signing` if you want to apply the EMDF object-signing tag (see [Object signing](signing.md)),

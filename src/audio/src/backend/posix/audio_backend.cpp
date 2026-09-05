@@ -39,9 +39,11 @@ const AudioBackend& audio_backend() {
                    .reason = "this build has no spatial backend: "
                              "ISpatialAudioObjectRenderStream is a Windows-only API"},
         .process_loopback = {.available = false,
-                             .reason = "per-process loopback capture is a Windows 10 build "
-                                       "20348+ WASAPI feature (AUDIOCLIENT_ACTIVATION_TYPE_"
-                                       "PROCESS_LOOPBACK); no other backend has an equivalent"},
+                             .reason = "per-process loopback capture needs a per-application tap "
+                                       "this backend does not have. The PipeWire backend links "
+                                       "a capture stream to one application node; Windows uses "
+                                       "AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK; macOS has "
+                                       "had Core Audio process taps since 14.2 (roadmap UX7)"},
                 .device_watch = {.available = false,
                          .reason = "no device-notification backend in this build: endpoint arrival, removal and default-change events are IMMNotificationClient on Windows only so far"},
     };

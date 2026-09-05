@@ -1,0 +1,8 @@
+# A fixture for tst_icons.qml and nothing else: its Exec names a launcher
+# no process is called, so only StartupWMClass can match it.
+[Desktop Entry]
+Type=Application
+Name=Crucible Fixture By WM Class
+Exec=/opt/x/launcher
+StartupWMClass=Crucible Fixture WM
+Icon=crucible-fixture-icon

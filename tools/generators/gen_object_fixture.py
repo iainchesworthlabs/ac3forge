@@ -55,8 +55,8 @@ DATA_RATE_KBPS = 448
 # L/C/R/Ls/Rs/LFE "SMPTE order" its 5.1 dee_ddp_encoder path documents. That is
 # not stated in `--morehelp input-format`; it was measured, by encoding a file
 # with one distinct tone per channel and identifying each reconstructed JOC
-# object by which tone dominates it (tools/checks/check_object_fixture.py runs
-# the same identification as a regression check).
+# object by which tone dominates it (tests/oba/test_dee_joc_fixture.cpp runs
+# the same identification over the committed fixture as a regression check).
 CHANNELS = [
     ("L", 220.0),
     ("R", 277.2),

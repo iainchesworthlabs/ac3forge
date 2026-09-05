@@ -84,4 +84,9 @@ for (int frame = 0; frame < 31; ++frame) {
 - [CLI reference](cli/index.md) — `ac3cli`, the thirty-nine-command front end, for encoding and
   decoding from the shell without writing any C++.
 - [GUI guide](gui/index.md) — `ac3gui`, the Qt Quick front end: file and live-capture encoding,
-  a plan view for placing objects, and channel-level metering.
+  a plan view for placing objects, and channel-level metering. With `ac3cli` it makes up
+  [Forge](forge/index.md), the page that also carries the three ways to install the pair
+  without building it.
+- [Crucible](crucible/index.md) — the desktop application for Windows and Linux that turns every
+  application playing sound into an Atmos object; it builds from this same tree with
+  `-DAC3FORGE_BUILD_CRUCIBLE=ON`, and [Install & first run](crucible/install.md) has the presets.

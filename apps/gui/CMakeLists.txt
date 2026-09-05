@@ -68,6 +68,7 @@ set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/ChannelMeter.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/SoundfieldView.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/SegmentedControl.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/FocusRing.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/LoudnessGroup.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/VbrPanel.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/GuidedWizard.qml"

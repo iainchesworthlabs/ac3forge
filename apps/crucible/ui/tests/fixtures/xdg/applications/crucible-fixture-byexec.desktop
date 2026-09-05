@@ -1,0 +1,7 @@
+# A fixture for tst_icons.qml and nothing else: matched by the Exec rung,
+# through an env prefix and a field code.
+[Desktop Entry]
+Type=Application
+Name=Crucible Fixture By Exec
+Exec=env FOO=1 crucible-fixture-byexec %U
+Icon=crucible-fixture-icon

@@ -129,7 +129,7 @@ html="$build_dir/coverage.html"
 # artifact glob would have to chase), and prints the whole-library summary.
 #
 # --gcov-ignore-parse-errors=suspicious_hits.warn: mdct.cpp's
-# ForwardCosTable-driven hot loop (src/core/mdct.cpp) trips a documented gcov
+# ForwardCosTable-driven hot loop (src/forge/src/core/mdct.cpp) trips a documented gcov
 # bug (gcc.gnu.org/bugzilla#68080, a false "suspicious hit value" on a tight
 # accumulation loop) that otherwise aborts gcovr outright rather than just
 # under/over-reporting that one line's count - gcovr's own error message

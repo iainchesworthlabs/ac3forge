@@ -110,7 +110,7 @@ public:
     // kProcessNotFound when no process has that id.
     //
     // Two things the tap does NOT do, both found the hard way
-    // (apps/windows/spikes/README.md, S1): it does not survive the
+    // (apps/crucible/spikes/README.md, S1): it does not survive the
     // process's audio session being muted - the tap sits after session
     // volume, so a muted session taps as silence - and it does not end when
     // the process does. A tap outlives its process delivering zeros, so a

@@ -22,12 +22,13 @@
 #
 #   - -fno-exceptions -fno-rtti. The codec's own error mechanism is
 #     std::expected throughout - it has no throw, no try and no catch of its
-#     own (tools/checks/check_minimal_decoder.py asserts that on the sources
-#     this profile compiles). What remains are the standard library's own
-#     throw sites, which with -fno-exceptions become calls to std::terminate:
-#     std::vector's length_error/bad_alloc. See docs/building.md's gap note -
-#     this profile removes the exception TABLES, it does not remove the
-#     allocation.
+#     own, and -fno-exceptions is what asserts it: a throw, try or catch in
+#     the sources this profile compiles fails this build, which the QEMU leg
+#     runs through tools/checks/run_baremetal_probe.sh. What remains are the
+#     standard library's own throw sites, which with -fno-exceptions become
+#     calls to std::terminate: std::vector's length_error/bad_alloc. See
+#     docs/building.md's gap note - this profile removes the exception TABLES,
+#     it does not remove the allocation.
 #
 #   - -ffunction-sections -fdata-sections, and --gc-sections when linking an
 #     executable, so an integrator linking a subset pays for a subset.

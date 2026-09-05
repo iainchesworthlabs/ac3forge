@@ -1,0 +1,6 @@
+Trademarks
+----------
+
+Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby
+Laboratories. AC3Forge is a clean-room implementation of published
+standards and is not affiliated with Dolby.

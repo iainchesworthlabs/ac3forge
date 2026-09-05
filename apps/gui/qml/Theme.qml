@@ -165,10 +165,13 @@ QtObject {
     readonly property color surface: _active.surface
     readonly property color text: _active.text
     readonly property color accent: _active.accent
-    // Text at 40% alpha, same recipe as the CSS token: always legible
+    // Text at 50% alpha, the same recipe as the CSS token: always legible
     // against whatever "text" resolves to this mode, because it IS that
-    // colour.
-    readonly property color divider: Qt.rgba(text.r, text.g, text.b, 0.4)
+    // colour. 50 rather than the CSS 40 because a control's border is what
+    // identifies the control, and 40 came to 2.4:1 against the background in
+    // the light palettes, under the 3:1 WCAG 1.4.11 asks of a control
+    // boundary; 50 reaches 3.1-3.2 light and 4.5 dark.
+    readonly property color divider: Qt.rgba(text.r, text.g, text.b, 0.5)
 
     readonly property color neutral100: _active.n100
     readonly property color neutral200: _active.n200
@@ -179,6 +182,45 @@ QtObject {
     readonly property color neutral700: _active.n700
     readonly property color neutral800: _active.n800
     readonly property color neutral900: _active.n900
+
+    // ---- contrast ----------------------------------------------------------
+    // WCAG 2.1 relative luminance and the contrast ratio between two tokens,
+    // so a token that has to be legible can be DERIVED from the palette
+    // rather than chosen per palette by hand and left to rot when a hex
+    // changes. The foreground is composited over the background first:
+    // textMuted and divider carry an alpha, and what a reader sees is the
+    // mix, not the colour it was mixed from - measuring the unmixed colour
+    // reports text-on-bg (about 15:1) for a token that actually reads at 5.
+    function luminance(c) {
+        function channel(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+        return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+    }
+    // The parameters are not called fg/bg: `bg` is a token of this object,
+    // and a parameter of that name would shadow it inside the function.
+    function contrast(foreground, background) {
+        const alpha = foreground.a;
+        const over = Qt.rgba(foreground.r * alpha + background.r * (1.0 - alpha),
+                             foreground.g * alpha + background.g * (1.0 - alpha),
+                             foreground.b * alpha + background.b * (1.0 - alpha), 1.0);
+        const first = luminance(over);
+        const second = luminance(background);
+        return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+    }
+
+    // The accent used as INK - error text, a warning sign, a message - rather
+    // than as a fill. The accent itself where it clears 4.5:1 against the
+    // background (both dark modes, ink light), the 700 rung where it does not
+    // (signal and console light, where the accent is a 3.8-4.2:1 red or
+    // amber). 700 is farther from the background in both modes by
+    // construction, so this never picks a colour that reads worse.
+    readonly property color accentInk: contrast(accent, bg) >= 4.5 ? accent : accent700
+    // The ring focus draws around whatever has it. accentInk clears 3:1
+    // (WCAG 1.4.11, non-text contrast) against bg and surface in every
+    // palette and both modes; the width and offset keep it outside the
+    // control's own 1 px border rather than replacing it.
+    readonly property color focusRing: accentInk
+    readonly property int focusRingWidth: 2
+    readonly property int focusRingOffset: 2
 
     readonly property color accent100: _active.a100
     readonly property color accent200: _active.a200
@@ -212,9 +254,21 @@ QtObject {
     readonly property int shadowBlurLg: 32
 
     // ---- type -----------------------------------------------------------
-    readonly property int fontTitle: 22
-    readonly property int fontNormal: 14
-    readonly property int fontSmall: 12
+    // Every size in the app comes from this scale, and the scale is
+    // multiplied by fontScale, which the shell sets from a setting (Crucible:
+    // Settings > Appearance > Text size, "System" reading the platform
+    // theme's own font size). A literal pixelSize in a view is a size that
+    // cannot follow the person's text-size setting, so there are none.
+    property real fontScale: 1.0
+    readonly property int fontTitle: Math.round(22 * fontScale)
+    readonly property int fontArrow: Math.round(18 * fontScale)
+    readonly property int fontHeading: Math.round(15 * fontScale)
+    readonly property int fontNormal: Math.round(14 * fontScale)
+    readonly property int fontBody: Math.round(13 * fontScale)
+    readonly property int fontSmall: Math.round(12 * fontScale)
+    readonly property int fontMono: Math.round(11 * fontScale)
+    readonly property int fontMicro: Math.round(10 * fontScale)
+    readonly property int fontFine: Math.round(9 * fontScale)
 
     // The handoff's faces, resolved against what this machine actually has:
     // Archivo (weight 800 headings) with the platform UI face as the
@@ -260,12 +314,19 @@ QtObject {
     readonly property color border: divider
     readonly property int gap: space3
     readonly property int pad: space4
-    // color-mix(in srgb, var(--color-text) 55%, transparent), the CSS
-    // ".text-muted" recipe.
-    readonly property color textMuted: Qt.rgba(text.r, text.g, text.b, 0.55)
-    // The colour drawn on an accent fill, e.g. a filled CLIP box's label -
-    // .btn-primary in the CSS pairs an accent background with bg-coloured text.
-    readonly property color accentText: bg
+    // The CSS ".text-muted" recipe was text at 55%, which composites to
+    // 3.6-3.7:1 against the background in the light palettes - under AA for
+    // the 10-13 px text it is used on nearly everywhere. 68% composites to
+    // 5.2:1 or better in every palette and both modes.
+    readonly property color textMuted: Qt.rgba(text.r, text.g, text.b, 0.68)
+    // The colour drawn on an accent fill, e.g. a primary button's label:
+    // whichever of the two ends of the palette reads better ON the accent.
+    // bg in the dark modes and in ink light (5.8-8.6:1); text in signal
+    // light, whose red carries a dark label better than a pale one. The
+    // accent fill is the design system's and is not darkened to suit the
+    // label, so in signal and console light this is the best available
+    // rather than a 4.5:1 pass - docs/crucible/accessibility.md says so.
+    readonly property color accentText: contrast(bg, accent) >= contrast(text, accent) ? bg : text
     // The new meter design (checkpoint 4) is a plain neutral-800 fill that
     // turns accent past -6 dBFS/clip, with no separate amber step - mapping
     // the old three-way ternary onto exactly those two colours now means

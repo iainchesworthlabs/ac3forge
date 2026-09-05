@@ -51,8 +51,29 @@ If you cannot cite where something came from, it does not go in.
 ## Repository layout
 
 **`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/forge` is
-the codec itself; `apps/{cli,gui,wasm,android}` are its consumers. Nothing under `src/` may
-depend on anything under `apps/`.
+the codec itself; `apps/{cli,gui,crucible,android,wasm,baremetal}` are its consumers, and
+`apps/common` is the code those consumers share, compiled straight in with no target of its own.
+`apps/windows` holds only Crucible's separately licensed null-sink driver and the guest VM it is
+verified in. Nothing under `src/` may depend on anything under `apps/`.
+
+**The tree holds three members of one family, and the directories say which is which.** `src/`
+other than `src/audio`, the bindings under `python/`, `js/` and `rust/`, and `examples/`,
+`fuzz/` and `apps/baremetal` are **the library** — `ac3forge` and `ac3::forge` name it, and
+those identifiers name the family's packages too. `apps/cli`, `apps/gui` and `apps/common` are
+**Forge**, the tooling pair, built and packaged as one thing. `apps/crucible`, with the driver
+in `apps/windows`, is **Crucible**. `apps/android` and `apps/wasm` are demonstrations of the
+library rather than members of their own. `src/audio`, `tests/`, `tools/`, `cmake/`, `packaging/`
+and the version line belong to the family and to no one member.
+[The family recasting](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/family/recasting.md)
+records what each member owns, down to the targets, packages and CI legs.
+
+**Three naming rules follow, and they govern prose as much as code.** `ac3forge` and
+`ac3::forge` name the library and the family's identifiers — the CMake project, the packages,
+the namespace, the C symbol prefix; **Forge**, capitalised and standing alone, names the
+`ac3cli` + `ac3gui` pair. "AC3Forge" is the family in prose, every identifier stays lowercase,
+and "AC3Forge Forge" is never written. `ac3cli --version` keeps printing `ac3forge <version>`
+(`src/forge/src/version.cpp`), because that is the library's version line and the published
+Homebrew formula's test asserts it.
 
 **The `ac3/` header prefix marks a dependency on `ac3::forge`, not just anything codec-adjacent.**
 A module installs its public headers under `include/ac3/<name>/` exactly when it depends on or
@@ -262,8 +283,8 @@ API, update the example — the build will tell you if you forget. Do not add a 
 docs that is not backed by a compiled file.
 
 If you add a capability or find a new limitation, the tables in
-[docs/index.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/index.md) ("What it
-does" / "What it does not do") and, for oracle coverage specifically,
+[docs/library/capabilities.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md)
+("What it does" / "What it does not do") and, for oracle coverage specifically,
 [docs/verification.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/verification.md)
 are the authority and must be updated with it. README.md's own summary of the same material
 should stay a summary, not grow back into a second copy. [docs/history.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/history.md) is a

@@ -1,6 +1,6 @@
 # The null-sink driver on ACX: plan
 
-The Desktop Atmos Demo's silent output device ([windows-demo.md](windows-demo.md), "Routing:
+AC3Forge Crucible's silent output device ([windows-demo.md](windows-demo.md), "Routing:
 separation and silencing") is a kernel driver because Windows offers no other way to make an
 audio endpoint. The one in the tree today is derived from Microsoft's Simple Audio Sample: a
 PortCls/WaveRT miniport, about 9,700 lines of sample code kept so that a few dozen lines of
@@ -201,7 +201,7 @@ starts where the current driver ended rather than rediscovering them.
   record notes that the timing simulation is the one piece of the driver that is ours and that
   it could be tested in user mode behind a seam. The port is the moment to do that: the
   position and timing simulation goes into a header with no kernel dependencies, the stream
-  engine calls it, and a `tests/windemo` case drives it with synthetic QPC values and checks the
+  engine calls it, and a `tests/crucible` case drives it with synthetic QPC values and checks the
   position advances at the nominal rate and never runs backwards. That is the one addition to
   scope this section makes.
 - **Harness lessons stand.** `runScriptInGuest` never returns when the guest bugchecks under
@@ -247,7 +247,7 @@ one is history. What each step found, in the order the plan gave them:
 2. **Parity.** The timing simulation was not carried across verbatim but lifted out: the
    PortCls stream's `GetPosition`/`UpdatePosition` (a QPC delta scaled to bytes per second
    at the nominal rate) is `PositionClock` in `position.h`, with no kernel dependencies, and
-   `tests/windemo/test_nullsink_position.cpp` pins it (nine cases: nothing moves before run,
+   `tests/crucible/test_nullsink_position.cpp` pins it (nine cases: nothing moves before run,
    exactly the nominal rate, never backwards, pause and resume continuous, stop to zero,
    completions as packets pass, a late timer owes each missed packet once without sliding
    the schedule, completions after a pause line up, an unconfigured packet size owes
