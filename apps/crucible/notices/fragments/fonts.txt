@@ -1,7 +1,7 @@
 Typefaces
 ---------
 
-The executable embeds the Archivo typeface (Regular, Medium, SemiBold and
+{{FONT_USER}} embeds the Archivo typeface (Regular, Medium, SemiBold and
 ExtraBold), Copyright 2020 The Archivo Project Authors
 (https://github.com/Omnibus-Type/Archivo), and Noto Sans Arabic and Noto
 Sans Hebrew, Copyright 2022 The Noto Project Authors

@@ -2,7 +2,8 @@
 # Notices.cmake
 #
 # ac3_generate_notices(<out-file>
-#     FRAGMENT_DIR <dir>       the directory holding <fragment>.txt files
+#     FRAGMENT_DIR <dir>...    directories holding <fragment>.txt files,
+#                              searched in the order given
 #     FRAGMENTS <name>...      which fragments, in the order they appear
 #     TOKENS <KEY=value>...    every {{KEY}} in the fragments becomes value
 #     FILES <NAME=path>...     every {{FILE:NAME}} becomes that file's text)
@@ -10,8 +11,20 @@
 # Assembles a third-party notices file at configure time from plain-text
 # fragments, so the one file a package installs and an application embeds
 # is written once, from the versions CMake already knows, rather than kept
-# by hand per platform. apps/crucible/notices/ is the first user; apps/gui
-# can call the same function with fragments of its own.
+# by hand per platform. apps/crucible/notices/ is the first user;
+# apps/notices/ (Forge - ac3cli and ac3gui) is the second.
+#
+# FRAGMENT_DIR takes more than one directory because those two callers share
+# text. A fragment that names no application - the typefaces, the trademark
+# line, and {fmt} once the binaries it is compiled into are a token - is the
+# same paragraph for both, and keeping two copies is how the two come to
+# disagree. So Forge lists its own fragment directory first and Crucible's
+# second: a name found in the earlier directory wins, and anything Forge has
+# no version of comes from the shared set. A fragment that describes what a
+# package CONTAINS is never shared this way - the Qt sections and the header
+# differ per application, and each caller keeps its own. If the shared ones
+# ever earn a family-level directory, this search path is what makes that a
+# move rather than a rewrite.
 #
 # Substitution is string(REPLACE) on {{TOKEN}} markers, deliberately not
 # configure_file(@ONLY): licence texts must stay byte-exact, and copyright
@@ -34,7 +47,7 @@
 # ---------------------------------------------------------------------------
 
 function(ac3_generate_notices out)
-    cmake_parse_arguments(PARSE_ARGV 1 N "" "FRAGMENT_DIR" "FRAGMENTS;TOKENS;FILES")
+    cmake_parse_arguments(PARSE_ARGV 1 N "" "" "FRAGMENT_DIR;FRAGMENTS;TOKENS;FILES")
     if(N_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "ac3_generate_notices: unexpected arguments: ${N_UNPARSED_ARGUMENTS}")
     endif()
@@ -45,13 +58,23 @@ function(ac3_generate_notices out)
         message(FATAL_ERROR "ac3_generate_notices: FRAGMENTS names no fragment for ${out}")
     endif()
 
-    # 1. The fragments, in order, one blank line between them.
+    # 1. The fragments, in order, one blank line between them. Each name is
+    #    resolved against the FRAGMENT_DIR list in order, first match wins, so
+    #    a caller carrying its own copy of a shared fragment overrides it.
     set(text "")
     foreach(fragment IN LISTS N_FRAGMENTS)
-        set(path "${N_FRAGMENT_DIR}/${fragment}.txt")
-        if(NOT EXISTS "${path}")
+        set(path "")
+        foreach(dir IN LISTS N_FRAGMENT_DIR)
+            if(EXISTS "${dir}/${fragment}.txt")
+                set(path "${dir}/${fragment}.txt")
+                break()
+            endif()
+        endforeach()
+        if(NOT path)
+            string(REPLACE ";" ", " searched "${N_FRAGMENT_DIR}")
             message(FATAL_ERROR
-                "notices: the fragment list names '${fragment}' but ${path} does not exist")
+                "notices: the fragment list names '${fragment}' but no ${fragment}.txt "
+                "exists in any of these directories: ${searched}")
         endif()
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${path}")
         file(READ "${path}" chunk)

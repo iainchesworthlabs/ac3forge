@@ -72,6 +72,15 @@ ac3_generate_notices("${AC3CRUCIBLE_NOTICES_FILE}"
         "VERSION=${PROJECT_VERSION_FULL}"
         "PLATFORM=${AC3CRUCIBLE_NOTICES_PLATFORM}"
         "LOCATION=${AC3CRUCIBLE_NOTICES_LOCATION}"
+        # Which binaries the shared fmt and fonts fragments are talking about.
+        # Those two name no application otherwise, so apps/notices/ (Forge)
+        # takes them verbatim through cmake/Notices.cmake's FRAGMENT_DIR search
+        # path and passes its own values here - see that module's header. The
+        # fonts one stays "The executable" rather than naming ac3crucible: this
+        # package has two binaries and only the window carries the faces, and
+        # the reader is holding the window.
+        "FMT_USERS=ac3crucible and ac3crucible-run"
+        "FONT_USER=The executable"
         "QT_VERSION=${Qt6_VERSION}"
         "QT_SERIES=${AC3CRUCIBLE_QT_SERIES}"
         "FMT_VERSION=${AC3CRUCIBLE_FMT_VERSION}"

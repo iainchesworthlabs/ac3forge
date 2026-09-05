@@ -488,6 +488,23 @@ if(AC3FORGE_MINIMAL_DECODER)
     add_subdirectory(apps/baremetal)
 endif()
 
+# Forge's own LICENSE.txt and NOTICES.txt, and the install() rules that put
+# them in the `runtime` component (apps/notices/notices.cmake). After both
+# application subdirectories, because it needs AC3FORGE_BUILD_GUI settled and
+# AC3FORGE_GUI_QT_VERSION exported; before include(Packaging), because CPack
+# packages the install rules it declares. Gated on the two applications
+# because every section of that file describes them: a library-only configure
+# would otherwise generate a notice naming binaries its packages do not
+# contain. The library components want notices of their own too - {fmt} is
+# compiled into the library as well as into the applications
+# (src/forge/CMakeLists.txt links ac3::fmt), so libac3forge0 and
+# libac3forge-dev still have the missing-copyright gap the runtime package
+# had until now - and that is separate work, over install rules in
+# cmake/InstallLibrary.cmake rather than these, not started here.
+if(AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_GUI)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/apps/notices/notices.cmake")
+endif()
+
 # After every target's install() rules (apps/cli, apps/gui) have been declared.
 # Nothing to package under AC3FORGE_MINIMAL_DECODER - no application is built
 # and nothing is installed (see include(InstallLibrary) above).

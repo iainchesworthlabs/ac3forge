@@ -20,3 +20,9 @@
 # the generator normalises line endings, and pinning the blobs to LF keeps
 # the checked-in bytes the same on every platform too.
 apps/crucible/notices/** text eol=lf
+
+# Forge's own notice fragments and platform files, read the same way by the
+# same generator (apps/notices/notices.cmake), pinned for the same reason.
+# Without this the tree above is LF on every checkout and this one is CRLF
+# on a Windows one, for two sets of files that are concatenated together.
+apps/notices/** text eol=lf
