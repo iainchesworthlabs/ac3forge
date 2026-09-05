@@ -35,6 +35,7 @@
 #include "diagnostics.hpp"
 #include "output_policy.hpp"
 #include "platform_services.hpp"
+#include "tray_support.hpp"
 
 namespace {
 
@@ -115,7 +116,8 @@ CrucibleController::CrucibleController(QObject* parent)
       virtual_device_(ac3::crucible::platform_virtual_device()),
       settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"), QStringLiteral("Crucible")),
       log_(ac3::crucible::process_diagnostics()),
-      foreground_(ac3::crucible::platform_foreground()) {
+      foreground_(ac3::crucible::platform_foreground()),
+      sessions_(ac3::crucible::platform_session_monitor()) {
     poll_timer_.setInterval(kPollMs);
     connect(&poll_timer_, &QTimer::timeout, this, &CrucibleController::poll);
     driver_timer_.setInterval(250);
@@ -151,9 +153,9 @@ ac3::crucible::EngineConfig CrucibleController::engine_config() const {
     // session thread, and on X11 a second instance would open a second
     // connection to the display server.
     config.foreground = test_foreground_ ? test_foreground_ : foreground_;
-    // Null unless a harness called set_test_services(): the engine reads
-    // null as "this platform's own", which is what the window always gets.
-    config.sessions = test_sessions_;
+    // The one this object holds, so the engine's list and the sentence on
+    // the room page describing it come from the same monitor.
+    config.sessions = test_sessions_ ? test_sessions_ : sessions_;
     config.devices = test_devices_;
     return config;
 }
@@ -460,6 +462,19 @@ QString CrucibleController::nullSinkName() const {
     return settings_.value(QStringLiteral("output/nullSinkName"),
                            from_utf8(virtual_device_->device_name()))
         .toString();
+}
+
+bool CrucibleController::trayAvailable() {
+    return ac3::crucible::ui::tray_is_published();
+}
+
+QString CrucibleController::trayAbsentReason() {
+    return ac3::crucible::ui::tray_absent_reason();
+}
+
+QString CrucibleController::listingRule() const {
+    const auto& monitor = test_sessions_ ? test_sessions_ : sessions_;
+    return monitor ? from_utf8(monitor->listing_rule()) : QString{};
 }
 
 QString CrucibleController::silentDeviceAdvice() const {

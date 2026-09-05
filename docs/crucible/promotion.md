@@ -714,6 +714,80 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     back to GitHub's 24.04 and its Qt 6.4, below the window's 6.8, the step warns by name and
     skips the window half rather than fail the leg for something unrelated to the change.
 
+    **The Pulse relay, and what a person sees of it.** Playing something on the Pi found two
+    things, one of them a bug with a wrong session list and a tap that captured nothing.
+
+    PipeWire records the process behind a client from the socket credentials, as
+    `pipewire.sec.pid` on the Client object, and that is the pid the session list and the tap
+    have used since Phase 4. It is the right answer only for a client that talks to the daemon
+    itself. An application using the PulseAudio API — VLC, Firefox, Chromium, Spotify, most of a
+    Debian desktop — reaches the daemon through `pipewire-pulse`, which owns the socket, so
+    every one of their Clients carries `pipewire-pulse`'s pid. Read off the Pi on 2026-09-05:
+    VLC's Client said 32005, which was `pipewire-pulse`; VLC was 49692. Believing it lists every
+    Pulse application as one entry named after the relay, and points a per-process tap at a
+    process that plays nothing.
+
+    The node says which it is. `client.api` is a registry key, `"pipewire-pulse"` there and
+    absent or `"pipewire"` for a direct client, and where it names a relay the pid that means
+    something is `application.process.id` — which `pipewire-pulse` copies from the Pulse
+    client's own proplist. That key is not in the registry subset, so those nodes are now bound
+    for their info at either identity depth: the tap needs the pid, and a wrong pid is not an
+    identity nicety. A graph with no Pulse application in it still costs the tap what it always
+    did, one round trip and no binds. `stream_owner_pid()` and `client_api_is_relay()` carry the
+    rule where a test with no session running can reach them.
+
+    The second thing is not a bug and cannot be fixed, only said. Windows keeps an audio session
+    while an application holds the device open, so a paused player stays in the list and greys;
+    PipeWire has a stream only while there is sound. On Linux applications therefore appear when
+    they start playing and leave when they stop, which is not what someone who has used the
+    Windows window expects, and the room page had Windows' sentence on it either way. That
+    sentence is now `SessionMonitor::listing_rule()`, one paragraph each from the two platforms,
+    the same pattern as `VirtualDevice::how_to_get_one()`. `troubleshooting.md` leads with it
+    under "An application is not in the list".
+
+    **The tray, and why Linux does not get one.** The window would not start on a real Linux
+    desktop. Every launch on the Pi died with `SIGBUS` on the main thread, inside `libQt6Gui`
+    reached from `libQt6DBus` delivering the panel's `GetLayout` call on the tray's
+    `com.canonical.dbusmenu` object. The faulting instruction is an `ldaxr` — a refcount — on a
+    pointer holding two AArch64 instruction words, so something is refcounting an object after
+    something else has written over it.
+
+    The first reading of it was wrong and is worth recording as such: the Pi's compositor is
+    labwc, which looked like a session with no host for a StatusNotifierItem, so the fix was
+    going to be Qt's own `available` question. It is not one. `wf-panel-pi` owns
+    `org.kde.StatusNotifierWatcher` on that session and Qt answers yes; the item registers, the
+    panel asks for the menu, and the process dies.
+
+    It is a race, so every single launch is evidence of nothing. Measured over ten launches per
+    arm, on the Pi, 2026-09-06:
+
+    | arm | survived |
+    |---|---|
+    | the window as it shipped | 0–2 of 10 |
+    | the same window, tray not published | 10 of 10 |
+    | a minimal Qt application, same tray, same menu, same session | 10 of 10 |
+
+    Ruled out, each over ten launches: the icon format (SVG and PNG die alike, and this system
+    ships no Qt 6 SVG icon engine at all — there is no `iconengines` directory); the menu's
+    contents, with every binding replaced by a literal; the application-icon provider and its
+    `QIcon::fromTheme` calls; Qt's accessibility bridge; the Qt Quick render loop, basic and
+    threaded; PipeWire's RTKit D-Bus client; the engine, which need not be running; the window's
+    header, footer, pages, dialogs and announcer, each removed in turn; and any symbol this
+    binary exports over one Qt resolves, of which there are none.
+
+    What is left is a timing window. The minimal application survives, so it is reached through
+    this window's shape; but removing any one of several unrelated QML blocks moves it, and a
+    `Qt.callLater` with an empty body is enough to bring it back, which is the signature of a
+    schedule rather than of a culprit in our own data. That is as far as bisection goes without
+    a sanitiser on a desktop of this kind, and that is the next step.
+
+    So the Linux build does not publish a tray. `ui/tray_support.hpp` is the seam, one file per
+    platform beside `ui/platform/<os>/app_icon_provider.cpp`: Windows asks Qt about the
+    notification area, Linux answers no and says why in a sentence the Settings page shows in
+    place of the "keep running in the tray" setting. `Main.qml` reads
+    `CrucibleController.trayAvailable` rather than Qt's `available`, and `onClosing` quits
+    instead of hiding a window with no way back to it.
+
 ### Phase 5: macOS
 
 The library half is an Objective-C++ translation unit — `CATapDescription` has no C entry point —

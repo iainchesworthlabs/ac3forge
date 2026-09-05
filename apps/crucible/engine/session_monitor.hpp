@@ -67,6 +67,15 @@ public:
     // no session and no window (the engine passes what is placed).
     [[nodiscard]] virtual std::vector<AppSession> refresh(
         const std::vector<std::uint32_t>& keep = {}) = 0;
+
+    // What the list above means, in one paragraph for the room page: which
+    // applications appear in it and when. The platforms disagree about that
+    // and a person can see the difference, so each says its own rather than
+    // the window asserting Windows' answer everywhere. Windows has a session
+    // for as long as an application holds the device open, so a paused
+    // player stays listed and greys; PipeWire has a stream only while there
+    // is sound, so an application appears when it starts playing.
+    [[nodiscard]] virtual std::string listing_rule() const = 0;
 };
 
 }  // namespace ac3::crucible

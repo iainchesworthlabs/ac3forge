@@ -36,6 +36,8 @@ public:
         apps_ = std::move(apps);
     }
 
+    [[nodiscard]] std::string listing_rule() const override { return "a fake list of applications"; }
+
     [[nodiscard]] std::size_t refreshes() const {
         const std::lock_guard lock(mutex_);
         return refreshes_;

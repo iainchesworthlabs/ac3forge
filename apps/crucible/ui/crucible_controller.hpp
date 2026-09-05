@@ -72,6 +72,10 @@ class CrucibleController : public QObject {
     // knows better.
     Q_PROPERTY(bool fullscreenRuleAvailable READ fullscreenRuleAvailable NOTIFY stateChanged)
     Q_PROPERTY(QString fullscreenRuleReason READ fullscreenRuleReason NOTIFY stateChanged)
+    // Which applications the room page lists and when, in the platform's own
+    // words (SessionMonitor::listing_rule). Windows and Linux do not answer
+    // the same, and a person watching the list notices.
+    Q_PROPERTY(QString listingRule READ listingRule NOTIFY stateChanged)
 
     // --- settings -----------------------------------------------------------
     Q_PROPERTY(QString pinned READ pinned WRITE setPinned NOTIFY settingsChanged)
@@ -166,6 +170,13 @@ class CrucibleController : public QObject {
     // Whether this build carries the room's 3D view (Qt Quick 3D found at
     // configure time; the page hides its toggle otherwise).
     Q_PROPERTY(bool has3D READ has3D CONSTANT)
+    // Whether the window publishes a tray icon here (ui/tray_support.hpp,
+    // and the platform file beside it for why Linux says no). Where it is
+    // false the tray is not created and closing the window quits, because
+    // hiding it would leave the engine running with no way back to it.
+    Q_PROPERTY(bool trayAvailable READ trayAvailable CONSTANT)
+    // Why, in the platform's own words. Empty where the tray is published.
+    Q_PROPERTY(QString trayAbsentReason READ trayAbsentReason CONSTANT)
     // The outcome of the last diagnostics export, for the Settings page
     // (docs/crucible/troubleshooting.md, "Saving a diagnostics file").
     Q_PROPERTY(QString diagnosticsMessage READ diagnosticsMessage NOTIFY diagnosticsChanged)
@@ -247,6 +258,9 @@ public:
     [[nodiscard]] bool silentDeviceFromPackage() const;
     [[nodiscard]] bool silentDeviceCanCreate() const;
     [[nodiscard]] static bool has3D() { return AC3DESK_QUICK3D != 0; }
+    [[nodiscard]] static bool trayAvailable();
+    [[nodiscard]] static QString trayAbsentReason();
+    [[nodiscard]] QString listingRule() const;
     // Make any probed endpoint the Windows default output (the same policy
     // call the silent-device switch uses), by its endpoint id.
     Q_INVOKABLE void setDefaultOutput(const QString& id);
@@ -390,6 +404,10 @@ private:
     // held for its support() line in the report only.
     ac3::crucible::DiagnosticLog& log_;
     std::shared_ptr<ac3::crucible::Foreground> foreground_;
+    // One SessionMonitor for the process, for the same reason: this object
+    // reads listing_rule() for the room page and the engine polls refresh()
+    // on its session thread.
+    std::shared_ptr<ac3::crucible::SessionMonitor> sessions_;
     QString diagnostics_message_;
 
     // Set only by set_test_services(); null in the shipped window, which is

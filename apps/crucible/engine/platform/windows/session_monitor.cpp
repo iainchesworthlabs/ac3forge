@@ -268,6 +268,15 @@ std::string friendly_name(IMMDevice* device) {
 // below this line and nothing above it knows they happened.
 class WindowsSessionMonitor final : public SessionMonitor {
 public:
+    // See SessionMonitor::listing_rule. A session outlives the sound on
+    // Windows, so an application with nothing to tap is listed and greyed
+    // rather than gone.
+    [[nodiscard]] std::string listing_rule() const override {
+        return "Every running application with a window is listed; one with nothing to "
+               "tap is greyed until it plays. A browser's windows and tabs share one "
+               "entry. A placed application stays placed while it runs.";
+    }
+
     std::vector<AppSession> refresh(const std::vector<std::uint32_t>& keep) override;
 
 private:

@@ -49,6 +49,15 @@
 // the obvious thing, matches nothing and yields an empty list for ever.
 // ac3::pipewire::output_stream_nodes() does the join.
 //
+// Those credentials name the application only where the application talks to
+// the daemon itself. An application using the PulseAudio API - which on a
+// desktop is most of them - reaches it through pipewire-pulse, and its
+// Client carries pipewire-pulse's pid, so believing the credentials there
+// collapses every one of them into a single entry named after the relay and
+// points the tap at a process that plays nothing. output_stream_nodes()
+// handles it and says how; what arrives here is one pid per application,
+// relayed or not.
+//
 // The icon's identity comes the same way. Neither application.icon-name nor
 // application.process.binary is on the registry dictionary a listener is
 // handed; both are on the node's info, and a Flatpak client's portal app id
@@ -56,6 +65,15 @@
 // for their info and hands the three back beside the pid. They are cached
 // here per process with the /proc facts, and back-filled when a later stream
 // from the same process carries what the first did not.
+//
+// One more thing differs, and it is visible rather than internal: an
+// application is here only while it is playing. Windows keeps an audio
+// session for as long as the application holds the device open, so a paused
+// media player stays in the list; PipeWire has no session, only a stream,
+// and a player that is not playing has no node in the graph at all. So
+// applications appear when they start making sound and leave when they stop,
+// and there is nothing to be done about it from this side. The empty list
+// says so (Room.qml) rather than leaving a person wondering.
 //
 // What is lost with it is Windows' `has_window` test, which asks the shell
 // whether some process in the tree owns a visible top-level window. There is
@@ -117,6 +135,15 @@ namespace {
 
 class LinuxSessionMonitor final : public SessionMonitor {
 public:
+    // See SessionMonitor::listing_rule, and this file's header comment for
+    // why the answer here is the shorter one.
+    [[nodiscard]] std::string listing_rule() const override {
+        return "An application is listed while it is playing: PipeWire gives it a stream "
+               "when it starts making sound and takes it away when it stops, so the list "
+               "follows the sound rather than the windows. A placed application keeps its "
+               "place while it runs, silent or not.";
+    }
+
     std::vector<AppSession> refresh(const std::vector<std::uint32_t>& keep) override {
         std::unordered_map<std::uint32_t, AppSession> apps;
 

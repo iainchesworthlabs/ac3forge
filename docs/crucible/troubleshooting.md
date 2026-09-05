@@ -48,10 +48,19 @@ DD+ 5.1 to Atmos.
 
 ## An application is not in the list
 
-- **It is not playing.** Crucible lists every running application with a window, but only ones
-  with an audio session are tapped. A silent one shows greyed and reads "no audio".
+- **On Linux, it is not playing.** This is the usual answer there and it is not a fault. Windows
+  keeps an audio session for as long as an application holds the output device open, so a paused
+  player stays in the list and greys out. PipeWire has no session, only a stream, and an
+  application that is not making sound has no stream in the graph for Crucible to find. So on
+  Linux applications appear when they start playing and leave when they stop. Press play and the
+  entry appears within half a second. Once you have placed it, it stays in the room while the
+  process lives, silence and all, which is the point of placing it. The room page says which of
+  the two rules your build follows.
+- **On Windows, it is not playing.** Crucible lists every running application with a window, but
+  only ones with an audio session are tapped. A silent one shows greyed and reads "no audio".
 - **It is a background process.** Anything without a visible window is hidden unless the Behaviour
-  setting shows it. It is still in the bed either way.
+  setting shows it. It is still in the bed either way. Windows only: there is no way to ask which
+  processes own a window under Wayland, so the Linux build has nothing to hide.
 - **On Linux, it plays through something Crucible cannot attribute.** The process behind a stream
   comes from PipeWire's Client object; a stream the daemon cannot attribute to a process is
   skipped, because there is nothing to tap.
@@ -123,6 +132,18 @@ It should not be. Crucible offers AC-3 or E-AC-3 on a sink only when that sink's
 on the strength of a connect alone, because PipeWire's adapter will accept an IEC 958 stream
 on an analogue jack and render the bursts as noise. If you see a bitstream mode on a
 headphone jack, that gate has been bypassed; report it.
+
+## Linux: there is no tray icon
+
+There is none to find. The window publishes a tray icon on Windows and not on Linux, and the
+"Keep running in the tray when the window is closed" setting is greyed out there with the reason
+on it. Closing the window quits, and the engine stops with it.
+
+This is a defect rather than a decision about what Linux users want. Publishing a
+StatusNotifierItem from this window kills the process on the desktops it has been tried on: the
+Raspberry Pi OS desktop took it down on nine or ten launches out of ten, inside Qt's own D-Bus
+delivery, before the window had drawn a frame. `docs/crucible/promotion.md` carries the
+measurements and what has been ruled out.
 
 ## Saving a diagnostics file
 

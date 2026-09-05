@@ -30,6 +30,9 @@ public:
 class NoSessions final : public SessionMonitor {
 public:
     std::vector<AppSession> refresh(const std::vector<std::uint32_t>&) override { return {}; }
+    [[nodiscard]] std::string listing_rule() const override {
+        return "This build cannot see which applications are playing.";
+    }
 };
 
 class NoForeground final : public Foreground {

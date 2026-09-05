@@ -435,9 +435,16 @@ Flickable {
                     onToggled: function(on) { CrucibleController.moveDefaultOnLaunch = on; }
                 }
                 CrucibleCheck {
+                    objectName: "keepRunningCheck"
                     Layout.fillWidth: true
                     text: qsTr("Keep running in the tray when the window is closed")
-                    checked: CrucibleController.keepRunningWhenClosed
+                    // Without a tray there is nowhere to keep the window,
+                    // and it would be gone with no way back, so the choice
+                    // is not offered and closing quits. The reason is the
+                    // platform's own sentence (ui/tray_support.hpp).
+                    enabled: CrucibleController.trayAvailable
+                    note: CrucibleController.trayAbsentReason
+                    checked: CrucibleController.keepRunningWhenClosed && CrucibleController.trayAvailable
                     onToggled: function(on) { CrucibleController.keepRunningWhenClosed = on; }
                 }
                 CrucibleCheck {

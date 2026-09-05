@@ -89,7 +89,11 @@ ApplicationWindow {
     Shortcut { sequence: StandardKey.HelpContents; onActivated: about.open() }
 
     onClosing: function(close) {
-        if (CrucibleController.keepRunningWhenClosed) {
+        // Hiding is only kind where the tray can bring it back. On a desktop
+        // with no tray the window would vanish with the engine still running
+        // and no way to reach it, so closing means quitting there whatever
+        // the setting says.
+        if (CrucibleController.keepRunningWhenClosed && CrucibleController.trayAvailable) {
             close.accepted = false;
             window.hide();
         } else {
@@ -386,8 +390,13 @@ ApplicationWindow {
 
     // --- tray -----------------------------------------------------------------
     Platform.SystemTrayIcon {
+        // Only where the platform publishes one (ui/tray_support.hpp, and
+        // the file beside it for the Linux answer). Not Qt's own `available`,
+        // which asks about the desktop rather than about this build: the
+        // Raspberry Pi's own desktop has a StatusNotifier host and answers
+        // yes, and publishing an item there takes the window down with it.
         id: tray
-        visible: true
+        visible: CrucibleController.trayAvailable
         icon.source: "qrc:/qt/qml/Ac3ForgeCrucible/tray.svg"
         tooltip: qsTr("Crucible") + " · " + CrucibleController.modeName + (CrucibleController.endpointName.length ? " · " + CrucibleController.endpointName : "")
         onActivated: function(reason) {

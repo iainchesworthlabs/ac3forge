@@ -156,7 +156,10 @@ Item {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("Every running application with a window is listed; one with nothing to tap is greyed until it plays. A browser's windows and tabs share one entry. A placed application stays placed while it runs.")
+                    // Worded by the platform: what is in this list, and when,
+                    // is not the same on Windows and on Linux
+                    // (SessionMonitor::listing_rule).
+                    text: CrucibleController.listingRule
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSmall
                     wrapMode: Text.WordWrap

@@ -264,6 +264,7 @@ struct StreamIdentity {
     std::string icon_name;     // application.icon-name: a freedesktop icon-theme name
     std::string binary;        // application.process.binary: the executable's basename
     std::string app_id;        // pipewire.access.portal.app_id (a Flatpak id), else application.id
+    std::uint32_t claimed_pid = 0;   // application.process.id: the pid the client says it has
 };
 
 // Fills `into` from an info dictionary, keeping what is already there
@@ -282,6 +283,40 @@ inline void read_stream_identity(const spa_dict& props, StreamIdentity& into) {
     if (into.app_id.empty()) {
         take(PW_KEY_APP_ID, into.app_id);
     }
+    if (const std::uint32_t claimed = dict_u32(props, PW_KEY_APP_PROCESS_ID); claimed != 0) {
+        into.claimed_pid = claimed;
+    }
+}
+
+// Whether the client that made a node speaks to the daemon through a relay,
+// from the node's client.api property.
+//
+// A client talking to the daemon itself sets nothing here, or "pipewire". A
+// PulseAudio client reaches it through pipewire-pulse, which sets
+// "pipewire-pulse"; that process owns the socket, so the Client's
+// credentials describe pipewire-pulse and not the application. Anything else
+// unrecognised is treated as a relay too, which costs a bind and is the safe
+// way round: believing a relay's pid mixes every application it carries into
+// one, while binding a direct client's node changes nothing about the answer.
+[[nodiscard]] inline bool client_api_is_relay(const char* api) {
+    return api != nullptr && std::string_view{api} != "pipewire";
+}
+
+// Which process a stream belongs to, from the two pids that describe it:
+// what the daemon read from the socket credentials, and what the client said
+// about itself in application.process.id.
+//
+// The credentials win, because they cannot be forged - except where they
+// name a relay carrying many applications, where they are the same pid for
+// all of them and therefore useless, and except where there are none. The
+// claimed pid is the answer in both of those cases, and 0 when there is
+// nothing to go on: a stream nobody can attribute is one nothing can tap.
+[[nodiscard]] inline std::uint32_t stream_owner_pid(std::uint32_t credentials_pid,
+                                                    std::uint32_t claimed_pid, bool relayed) {
+    if ((relayed || credentials_pid == 0) && claimed_pid != 0) {
+        return claimed_pid;
+    }
+    return credentials_pid;
 }
 
 // One application's playback stream, with the process behind it.
@@ -289,7 +324,7 @@ struct OutputStreamNode {
     std::uint32_t id = 0;      // the registry global id
     std::string target;        // what PW_KEY_TARGET_OBJECT accepts for it
     std::string application;   // application.name, for a person to read
-    std::uint32_t pid = 0;     // the process that owns the owning client
+    std::uint32_t pid = 0;     // the process that plays the sound (see the relay note below)
     std::string icon_name;     // application.icon-name, or empty (see StreamIdentity)
     std::string binary;        // application.process.binary, or empty
     std::string app_id;        // the portal app id (Flatpak) or application.id, or empty
@@ -306,9 +341,29 @@ struct OutputStreamNode {
 // so a tap keyed on it never finds a process and a session list is always
 // empty. Both happened, and neither shows up without a real session to walk.
 //
-// Of the two pids the Client carries, pipewire.sec.pid is the daemon's own,
-// taken from the socket credentials, while application.process.id is whatever
-// the client said. The first is preferred and the second is the fallback.
+// Of the two pids the Client carries, pipewire.sec.pid is the one the daemon
+// took from the socket credentials, while application.process.id is whatever
+// the client said about itself. The credentials are the better answer right
+// up until the socket belongs to a **relay**, and on a desktop it usually
+// does: pipewire-pulse speaks the PulseAudio protocol on one side and the
+// native one on the other, so every application that uses the Pulse API -
+// VLC, Firefox, Chromium, Spotify, most of a Debian desktop - reaches the
+// daemon through that one process, and every one of their Clients carries
+// pipewire-pulse's pid. Taking it at face value gives a session list with a
+// single entry called pipewire-pulse however many applications are playing,
+// and a per-process tap that matches none of them. Measured on a Raspberry
+// Pi 4B, 2026-09-05: VLC's Client said pipewire.sec.pid 32005, which was
+// pipewire-pulse; VLC itself was 49692.
+//
+// The relay says so on each node it creates: client.api, a registry key, is
+// "pipewire-pulse" there and absent or "pipewire" for a native client. Where
+// it names a relay the credentials describe the relay rather than the
+// application, and application.process.id - which pipewire-pulse copies from
+// the Pulse client's own proplist - is the pid that means something. That
+// key is not in the registry subset either, so those nodes are bound for
+// their info whatever identity depth the caller asked for: a wrong pid is
+// not an identity nicety, it is the difference between a tap that works and
+// one that captures silence.
 //
 // The icon identity is the second thing the registry dictionary lacks (see
 // StreamIdentity), so this is a bind-for-info walk in the shape of
@@ -327,11 +382,14 @@ struct OutputStreamNode {
 // its own and does not care; the tap does, because Capture::
 // start_process_loopback calls this from the engine's frame thread, where a
 // second is thirty dropped frames. So the identity is asked for rather than
-// assumed: kRegistryOnly, the default, is the walk this function was before
-// any of it - no binds, one round trip - and only the session monitor, which
-// needs an icon name, asks for kWithInfo.
+// assumed: kRegistryOnly, the default, binds nothing it does not have to -
+// only the relayed nodes above, and only because their pid is wrong without
+// it - and the session monitor, which needs an icon name for every stream,
+// asks for kWithInfo. A graph with no Pulse application in it costs
+// kRegistryOnly exactly what it always did: one round trip, no binds.
 enum class StreamIdentityDepth : std::uint8_t {
-    kRegistryOnly,  // names, target and pid; icon_name, binary and app_id stay empty
+    kRegistryOnly,  // names, target and pid; the identity fields are filled only
+                    // for relayed streams, which are bound anyway for their pid
     kWithInfo,      // additionally bind each node and client for the identity on their info
 };
 
@@ -373,6 +431,7 @@ enum class StreamIdentityDepth : std::uint8_t {
         std::string target;
         std::string application;
         std::uint32_t client_id = 0;
+        bool relayed = false;         // client.api names a relay: trust the claimed pid
         BoundNode* bound = nullptr;   // null when the bind failed
     };
     struct State {
@@ -384,9 +443,10 @@ enum class StreamIdentityDepth : std::uint8_t {
         std::vector<std::unique_ptr<BoundNode>> nodes;
         std::unordered_map<std::uint32_t, std::unique_ptr<BoundClient>> clients;
         int pending = 0;
+        bool bound_any = false;   // something was bound, so info events are coming
         bool completed = false;   // the sync this loop waits for came back
         bool failed = false;      // the core reported an error: the walk is over
-    } state{registry.get(), loop.get(), depth, {}, {}, {}, {}, 0, false, false};
+    } state{registry.get(), loop.get(), depth, {}, {}, {}, {}, 0, false, false, false};
 
     spa_hook registry_listener{};
     pw_registry_events registry_events{};
@@ -428,6 +488,7 @@ enum class StreamIdentityDepth : std::uint8_t {
             };
             pw_proxy_add_object_listener(client_proxy, &client_bound->listener,
                                          &client_bound->events, client_bound.get());
+            self->bound_any = true;
             self->clients.emplace(global_id, std::move(client_bound));
             return;
         }
@@ -438,6 +499,11 @@ enum class StreamIdentityDepth : std::uint8_t {
         const char* name = spa_dict_lookup(props, PW_KEY_APP_NAME);
         const char* serial = spa_dict_lookup(props, PW_KEY_OBJECT_SERIAL);
         const char* node_name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
+        // Which protocol the owning client speaks. Absent, or "pipewire",
+        // for one talking to the daemon itself; anything else - in practice
+        // "pipewire-pulse" - is a relay, and its Client's credentials name
+        // the relay rather than the application.
+        const bool relayed = client_api_is_relay(spa_dict_lookup(props, "client.api"));
         Pending stream{.id = global_id,
                        .target = serial != nullptr    ? serial
                                  : node_name != nullptr ? node_name
@@ -446,11 +512,12 @@ enum class StreamIdentityDepth : std::uint8_t {
                                       : node_name != nullptr ? node_name
                                                              : std::string{},
                        .client_id = dict_u32(*props, PW_KEY_CLIENT_ID),
+                       .relayed = relayed,
                        .bound = nullptr};
-        // And the bind, whose failure costs only the identity. Skipped
-        // entirely when the caller asked for the registry facts alone.
+        // And the bind, whose failure costs the identity - and, for a
+        // relayed stream, the only pid that names the application.
         auto* node_proxy =
-            self->depth == StreamIdentityDepth::kRegistryOnly
+            self->depth == StreamIdentityDepth::kRegistryOnly && !relayed
                 ? nullptr
                 : static_cast<pw_proxy*>(
                       pw_registry_bind(self->registry, global_id, type, PW_VERSION_NODE, 0));
@@ -468,6 +535,7 @@ enum class StreamIdentityDepth : std::uint8_t {
             pw_proxy_add_object_listener(node_proxy, &node_bound->listener,
                                          &node_bound->events, node_bound.get());
             stream.bound = node_bound.get();
+            self->bound_any = true;
             self->nodes.push_back(std::move(node_bound));
         }
         self->streams.push_back(std::move(stream));
@@ -502,9 +570,10 @@ enum class StreamIdentityDepth : std::uint8_t {
     state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
     pw_main_loop_run(loop.get());
     const bool listed = state.completed && !state.failed;
-    if (listed && depth == StreamIdentityDepth::kWithInfo) {
+    if (listed && state.bound_any) {
         // Second: the info events those binds asked for. There are none to
-        // wait for when nothing was bound, and the round trip is the cost.
+        // wait for when nothing was bound - a kRegistryOnly walk of a graph
+        // with no relayed stream in it - and the round trip is the cost.
         state.completed = false;
         state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
         pw_main_loop_run(loop.get());
@@ -532,13 +601,19 @@ enum class StreamIdentityDepth : std::uint8_t {
                 if (identity.app_id.empty()) {
                     identity.app_id = theirs.app_id;
                 }
+                if (identity.claimed_pid == 0) {
+                    identity.claimed_pid = theirs.claimed_pid;
+                }
             }
+            const std::uint32_t pid = stream_owner_pid(
+                found == state.client_pids.end() ? 0 : found->second, identity.claimed_pid,
+                stream.relayed);
             out.push_back({.id = stream.id,
                            .target = std::move(stream.target),
                            .application = identity.application.empty()
                                               ? std::move(stream.application)
                                               : std::move(identity.application),
-                           .pid = found == state.client_pids.end() ? 0 : found->second,
+                           .pid = pid,
                            .icon_name = std::move(identity.icon_name),
                            .binary = std::move(identity.binary),
                            .app_id = std::move(identity.app_id)});

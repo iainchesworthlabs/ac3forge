@@ -265,6 +265,7 @@ else()
         ../gui/language_manager.cpp
         ../gui/language_manager.hpp
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_icon_provider.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/tray_support.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_entry.hpp"
     )
     # The application-icon provider is the one part of the window that talks
@@ -275,9 +276,11 @@ else()
     # Qt-free reader for those entries (ui/desktop_entries.cpp) is compiled
     # here beside it and into ac3tests on every platform.
     if(WIN32)
-        target_sources(ac3crucible PRIVATE ui/platform/windows/app_icon_provider.cpp)
+        target_sources(ac3crucible PRIVATE ui/platform/windows/app_icon_provider.cpp
+                                           ui/platform/windows/tray_support.cpp)
     elseif(LINUX)
-        target_sources(ac3crucible PRIVATE ui/platform/linux/app_icon_provider.cpp)
+        target_sources(ac3crucible PRIVATE ui/platform/linux/app_icon_provider.cpp
+                                           ui/platform/linux/tray_support.cpp)
         target_sources(ac3crucible PRIVATE ui/desktop_entries.cpp ui/desktop_entries.hpp)
     endif()
     qt_add_qml_module(ac3crucible

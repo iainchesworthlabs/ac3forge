@@ -275,6 +275,31 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **Crucible listed every PulseAudio application on Linux as one entry, and could tap none of
+  them** (`src/audio/src/backend/pipewire/pipewire_support.hpp`). PipeWire records the process
+  behind a client from the socket credentials, and the session list and the per-process tap both
+  read that. It names the application only where the application talks to the daemon itself: one
+  using the PulseAudio API - VLC, Firefox, Chromium, most of a desktop - reaches it through
+  `pipewire-pulse`, whose pid every one of their clients then carries. Read off a Raspberry Pi
+  4B: VLC's client said pid 32005, which was `pipewire-pulse`; VLC was 49692. A stream whose
+  `client.api` names a relay is now bound for the `application.process.id` on its info, which is
+  the pid that means something, and `stream_owner_pid()` carries the rule with a test on it. A
+  graph with no PulseAudio application in it costs the tap what it always did.
+
+- **Crucible could not start on a Linux desktop with a system tray** (`apps/crucible/ui/`).
+  Publishing a StatusNotifierItem took the process down with `SIGBUS` inside Qt's own D-Bus
+  delivery, before the window drew a frame, on nine or ten launches out of ten on the Raspberry
+  Pi OS desktop. The Linux build no longer publishes a tray icon: `ui/tray_support.hpp` is a
+  platform seam like the icon provider beside it, the Settings page shows the platform's reason
+  where the "keep running in the tray" setting used to be, and closing the window quits. The
+  measurements and what has been ruled out are in `docs/crucible/promotion.md`.
+
+- **The room page described Windows' application list on Linux.** Windows keeps an audio session
+  while an application holds the device open, so a paused player stays listed and greys;
+  PipeWire has a stream only while there is sound, so on Linux applications appear when they
+  start playing and leave when they stop. The sentence is now `SessionMonitor::listing_rule()`,
+  one paragraph from each platform, and `docs/crucible/troubleshooting.md` leads with it.
+
 - **The README's decode-accuracy badge disagreed with the page it links to.** Per-channel SNR
   floors taught `docs/performance-quality.md`'s Decode accuracy card to pick a check by its
   tightest per-channel *margin* and report the channel that owns it, but
