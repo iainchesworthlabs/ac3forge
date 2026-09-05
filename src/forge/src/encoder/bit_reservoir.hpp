@@ -172,8 +172,11 @@ class AbrController {
         if (clipped && error > 0.0) {
             return;
         }
+        // Assign the optional rather than through it: `*opt = v` is only
+        // defined while the optional is engaged, so it silently depends on
+        // the `if (!operating_)` guard above staying where it is.
         *operating_ += kGain * error;
-        *operating_ = std::clamp(*operating_, 0.0, static_cast<double>(kMaxComposite));
+        operating_ = std::clamp(*operating_, 0.0, static_cast<double>(kMaxComposite));
     }
 
    private:
