@@ -45,9 +45,6 @@ concurrency:
   group: sonarcloud-nightly
   cancel-in-progress: false
 
-permissions:
-  contents: read
-
 jobs:
   # Single source of truth for the vcpkg pin this build resolves against -
   # the same reusable workflow ci.yml's own jobs call.
@@ -69,6 +66,11 @@ jobs:
   preflight:
     name: Check SonarCloud is configured
     runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Every job here states its own permissions rather than inheriting a
+    # workflow-level block, so that widening one job never silently widens the
+    # others. This one reads nothing and writes nothing; it only looks at
+    # whether a secret is non-empty.
+    permissions: {}
     outputs:
       configured: ${{ steps.check.outputs.configured }}
     steps:
@@ -135,8 +137,15 @@ jobs:
           # comment about cache-entry immutability.
           cache-key-suffix: adm
 
+      # --only-binary :all: so a source distribution's setup.py never runs:
+      # requirements-coverage.txt is a pip-compile --generate-hashes lock and
+      # every package in it publishes wheels, so nothing needs building.
+      # A block scalar, not a plain one: `:all:` followed by a space reads as a
+      # YAML mapping key and will not parse.
       - name: Install gcovr
-        run: pip install --quiet --break-system-packages --require-hashes -r requirements/requirements-coverage.txt
+        run: |
+          pip install --quiet --break-system-packages --only-binary :all: \
+            --require-hashes -r requirements/requirements-coverage.txt
 
       # config-linux-gcc-coverage, the preset ci.yml's coverage job uses: a
       # debug, gcov-instrumented build of the library, the CLI and the test
