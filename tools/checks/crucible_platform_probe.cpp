@@ -13,6 +13,20 @@
 // output, because that would interrupt whatever the person at the machine is
 // listening to.
 //
+// Not a CMake target: built by hand on the machine with the session, against
+// a PipeWire build of the library and the engine in build-pw/. One command,
+// wrapped here; as run on the Raspberry Pi:
+//
+//   g++ -std=c++23 -O1 -o /tmp/probe tools/checks/crucible_platform_probe.cpp
+//       -Isrc/audio/include -Isrc/forge/include -Ibuild-pw/src/forge/generated
+//       -Isrc/signing/include -Ibuild-pw/src/signing/generated
+//       -Iapps/crucible/engine $(pkg-config --cflags libpipewire-0.3)
+//       -DAC3FORGE_STATIC_DEFINE -DAC3SIGNING_STATIC_DEFINE
+//       build-pw/apps/crucible/libac3crucible_engine.a
+//       build-pw/src/audio/libac3audio.a build-pw/src/forge/libac3forge_static.a
+//       build-pw/src/signing/libac3signing_static.a
+//       $(pkg-config --libs libpipewire-0.3) -lpthread
+//
 //   crucible_platform_probe [seconds-to-watch]
 
 #include <chrono>

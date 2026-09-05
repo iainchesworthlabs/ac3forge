@@ -346,4 +346,126 @@ struct OutputStreamNode {
     return node_id(props);
 }
 
+// An Audio/Sink node with the properties only its *info* carries.
+//
+// What a registry listener is handed for a node is the global's property
+// dictionary, and that is a subset - eleven keys on a real sink: names,
+// class, serial, the owning client and device, priorities. Everything the
+// session manager sets on the node afterwards, iec958.codecs among them,
+// lives on the node's info and reaches a client only by binding the node
+// and listening for its info event. pw-dump and wpctl inspect show the
+// info; a registry walk never sees it, which is how a gate on
+// iec958.codecs came to reject every sink on the first machine with one.
+struct SinkInfo {
+    std::uint32_t id = 0;      // registry global id
+    std::string name;          // node.name, this backend's device id
+    std::string description;   // node.description, else node.name
+    std::string codecs;        // iec958.codecs, verbatim, or empty
+};
+
+// Every Audio/Sink in the graph with its info properties. Two round trips:
+// the registry walk binds each sink as it appears, and a second sync waits
+// for the info events those binds provoke. Returns an empty list when there
+// is no session to ask.
+[[nodiscard]] inline std::vector<SinkInfo> audio_sinks_with_info() {
+    ensure_initialized();
+
+    MainLoop loop{pw_main_loop_new(nullptr)};
+    if (!loop) {
+        return {};
+    }
+    Context context{pw_context_new(pw_main_loop_get_loop(loop.get()), nullptr, 0)};
+    if (!context) {
+        return {};
+    }
+    Core core{pw_context_connect(context.get(), nullptr, 0)};
+    if (!core) {
+        return {};
+    }
+    Registry registry{pw_core_get_registry(core.get(), PW_VERSION_REGISTRY, 0)};
+    if (!registry) {
+        return {};
+    }
+
+    struct Bound {
+        pw_proxy* proxy = nullptr;
+        spa_hook listener{};
+        pw_node_events events{};
+        SinkInfo info;
+    };
+    struct State {
+        pw_registry* registry = nullptr;
+        pw_main_loop* loop = nullptr;
+        std::vector<std::unique_ptr<Bound>> bound;
+        int pending = 0;
+    } state{registry.get(), loop.get(), {}, 0};
+
+    spa_hook registry_listener{};
+    pw_registry_events registry_events{};
+    registry_events.version = PW_VERSION_REGISTRY_EVENTS;
+    registry_events.global = [](void* data, std::uint32_t id, std::uint32_t, const char* type,
+                                std::uint32_t, const spa_dict* props) {
+        auto* self = static_cast<State*>(data);
+        if (type == nullptr || props == nullptr || std::string_view{type} != PW_TYPE_INTERFACE_Node) {
+            return;
+        }
+        if (!is_audio_sink(*props)) {
+            return;
+        }
+        auto* proxy = static_cast<pw_proxy*>(
+            pw_registry_bind(self->registry, id, type, PW_VERSION_NODE, 0));
+        if (proxy == nullptr) {
+            return;
+        }
+        auto bound = std::make_unique<Bound>();
+        bound->proxy = proxy;
+        bound->info.id = id;
+        bound->info.name = node_id(*props);
+        bound->info.description = node_friendly_name(*props);
+        bound->events.version = PW_VERSION_NODE_EVENTS;
+        bound->events.info = [](void* bound_data, const pw_node_info* info) {
+            auto* b = static_cast<Bound*>(bound_data);
+            if (info == nullptr || info->props == nullptr) {
+                return;
+            }
+            if (const char* codecs = spa_dict_lookup(info->props, "iec958.codecs");
+                codecs != nullptr) {
+                b->info.codecs = codecs;
+            }
+        };
+        pw_proxy_add_object_listener(proxy, &bound->listener, &bound->events, bound.get());
+        self->bound.push_back(std::move(bound));
+    };
+    pw_registry_add_listener(registry.get(), &registry_listener, &registry_events, &state);
+
+    spa_hook core_listener{};
+    pw_core_events core_events{};
+    core_events.version = PW_VERSION_CORE_EVENTS;
+    core_events.done = [](void* data, std::uint32_t id, int seq) {
+        auto* self = static_cast<State*>(data);
+        if (id == PW_ID_CORE && seq == self->pending) {
+            pw_main_loop_quit(self->loop);
+        }
+    };
+    pw_core_add_listener(core.get(), &core_listener, &core_events, &state);
+
+    // First: every existing global, binding the sinks as they arrive.
+    state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
+    pw_main_loop_run(loop.get());
+    // Second: the info events those binds asked for.
+    state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
+    pw_main_loop_run(loop.get());
+
+    std::vector<SinkInfo> out;
+    out.reserve(state.bound.size());
+    for (auto& b : state.bound) {
+        spa_hook_remove(&b->listener);
+        pw_proxy_destroy(b->proxy);
+        out.push_back(std::move(b->info));
+    }
+    spa_hook_remove(&core_listener);
+    spa_hook_remove(&registry_listener);
+    return out;
+}
+
 }  // namespace ac3::pipewire

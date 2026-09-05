@@ -54,6 +54,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -160,7 +161,9 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
         0) {
         pw_thread_loop_unlock(loop.get());
         pw_thread_loop_stop(loop.get());
+        pw_thread_loop_lock(loop.get());
         stream.reset();
+        pw_thread_loop_unlock(loop.get());
         return false;
     }
 
@@ -171,7 +174,9 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
     // deadlocked here: pw_stream_destroy() ran from the wrong context, and
     // the pw_thread_loop_stop() that followed never returned.
     pw_thread_loop_stop(loop.get());
+    pw_thread_loop_lock(loop.get());
     stream.reset();
+    pw_thread_loop_unlock(loop.get());
     return ready;
 }
 
@@ -216,18 +221,47 @@ bool probe_exclusive_pcm(const std::string& node_id, std::uint32_t sample_rate) 
     return probe_connect(node_id, params, 1, kProbeTimeoutSeconds);
 }
 
-std::vector<std::pair<std::string, std::string>> candidate_sinks() {
-    std::vector<std::pair<std::string, std::string>> candidates;  // (id, friendly name)
-    ac3::pipewire::for_each_audio_node([&candidates](std::uint32_t, const spa_dict& props) {
-        if (!ac3::pipewire::is_audio_sink(props)) {
-            return;
+// A sink, with the compressed codecs the session manager has enabled on it.
+// `iec958.codecs` is what WirePlumber writes onto a node after reading the
+// display's ELD - `["PCM","AC3","EAC3",...]` - and it is the only honest
+// answer to "can this sink carry a bitstream". Absent or empty, it cannot.
+struct CandidateSink {
+    std::string id;
+    std::string name;
+    bool codec_ac3 = false;
+    bool codec_eac3 = false;
+};
+
+std::vector<CandidateSink> candidate_sinks() {
+    std::vector<CandidateSink> candidates;
+    for (auto& sink : ac3::pipewire::audio_sinks_with_info()) {
+        if (sink.name.empty()) {
+            continue;
         }
-        auto id = ac3::pipewire::node_id(props);
-        if (id.empty()) {
-            return;
-        }
-        candidates.emplace_back(std::move(id), ac3::pipewire::node_friendly_name(props));
-    });
+        CandidateSink candidate{.id = std::move(sink.name), .name = std::move(sink.description)};
+        // iec958.codecs is a JSON array of names, quoted or bare depending on
+        // who serialised it. Match each name as a token, bounded by anything
+        // that is not part of one, so "AC3" is not found inside "EAC3".
+        const std::string_view list{sink.codecs};
+        const auto has = [&list](std::string_view name) {
+            std::size_t at = 0;
+            while ((at = list.find(name, at)) != std::string_view::npos) {
+                const bool start_ok =
+                    at == 0 || !std::isalnum(static_cast<unsigned char>(list[at - 1]));
+                const std::size_t stop = at + name.size();
+                const bool end_ok =
+                    stop >= list.size() || !std::isalnum(static_cast<unsigned char>(list[stop]));
+                if (start_ok && end_ok) {
+                    return true;
+                }
+                at = stop;
+            }
+            return false;
+        };
+        candidate.codec_ac3 = has("AC3");
+        candidate.codec_eac3 = has("EAC3");
+        candidates.push_back(std::move(candidate));
+    }
     return candidates;
 }
 
@@ -257,14 +291,25 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
     std::uint32_t sample_rate) {
     std::vector<RenderDeviceInfo> devices;
 
-    for (const auto& [id, name] : candidate_sinks()) {
+    for (const auto& sink : candidate_sinks()) {
+        // The connect probe alone is not enough, and the first machine with a
+        // real session showed why: PipeWire's adapter accepted an IEC 958
+        // AC-3 stream on the analogue headphone jack, which cannot carry a
+        // bitstream, and reported it as a passthrough-capable output. The
+        // adapter accepts the format and would render the bursts as PCM
+        // noise. So the codec has to be enabled on the node first - that is
+        // the session manager's judgement, from the sink's own ELD - and
+        // only then is the connect worth asking. A sink with no
+        // iec958.codecs at all is a plain PCM output and is never probed.
         RenderDeviceInfo info{
-            .id = id,
-            .name = name,
+            .id = sink.id,
+            .name = sink.name,
             .is_default = false,
-            .supports_ac3_passthrough = probe_iec958(id, BitstreamFormat::kAc3, sample_rate),
-            .supports_eac3_passthrough = probe_iec958(id, BitstreamFormat::kEac3, sample_rate),
-            .supports_exclusive_pcm = probe_exclusive_pcm(id, sample_rate),
+            .supports_ac3_passthrough =
+                sink.codec_ac3 && probe_iec958(sink.id, BitstreamFormat::kAc3, sample_rate),
+            .supports_eac3_passthrough =
+                sink.codec_eac3 && probe_iec958(sink.id, BitstreamFormat::kEac3, sample_rate),
+            .supports_exclusive_pcm = probe_exclusive_pcm(sink.id, sample_rate),
         };
         devices.push_back(std::move(info));
     }
@@ -290,6 +335,7 @@ struct PassthroughSink::Impl {
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
+    std::size_t rendered_bytes = 0;  // process() only: the partial burst carried over
     std::atomic<std::uint64_t> underruns{0};
 
     // See capture.cpp's Impl for the locking discipline this shares.
@@ -336,7 +382,15 @@ struct PassthroughSink::Impl {
             std::fill(out + got, out + byte_count, std::byte{0});
             impl.underruns.fetch_add(1, std::memory_order_relaxed);
         }
-        impl.rendered.fetch_add(got / impl.burst_bytes, std::memory_order_relaxed);
+        // A callback usually asks for less than one burst, so counting
+        // got / burst_bytes per callback rounds to zero every time and the
+        // stat read 0 through a run that plainly played. Bytes accumulate
+        // and a burst is counted each time a whole one has gone out.
+        impl.rendered_bytes += got;
+        while (impl.rendered_bytes >= impl.burst_bytes) {
+            impl.rendered_bytes -= impl.burst_bytes;
+            impl.rendered.fetch_add(1, std::memory_order_relaxed);
+        }
 
         spa_buf->datas[0].chunk->offset = 0;
         spa_buf->datas[0].chunk->stride = static_cast<std::int32_t>(kCarrierFrameBytes);
@@ -398,6 +452,9 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
 void PassthroughSink::stop() {
     if (impl_->loop) {
         pw_thread_loop_stop(impl_->loop.get());
+        pw_thread_loop_lock(impl_->loop.get());
+        impl_->stream.reset();
+        pw_thread_loop_unlock(impl_->loop.get());
     }
     impl_->stream.reset();
     impl_->loop.reset();
@@ -423,9 +480,14 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         if (candidates.empty()) {
             return std::unexpected(PassthroughError::kDeviceNotFound);
         }
-        for (const auto& [id, name] : candidates) {
-            if (probe_iec958(id, format_kind, sample_rate)) {
-                target = id;
+        // The same gate enumerate_render_devices() applies, for the same
+        // reason: the connect alone said yes on the headphone jack. A sink
+        // whose session manager has not enabled this codec is not asked.
+        for (const auto& sink : candidates) {
+            const bool enabled = format_kind == BitstreamFormat::kEac3 ? sink.codec_eac3
+                                                                        : sink.codec_ac3;
+            if (enabled && probe_iec958(sink.id, format_kind, sample_rate)) {
+                target = sink.id;
                 break;
             }
         }

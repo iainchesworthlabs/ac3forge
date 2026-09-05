@@ -286,6 +286,11 @@ RingBuffer* Capture::buffer() {
 void Capture::stop() {
     if (impl_->loop) {
         pw_thread_loop_stop(impl_->loop.get());
+        // Stopped, but the lock is still what PipeWire's context check wants
+        // held around a stream destroy from this thread.
+        pw_thread_loop_lock(impl_->loop.get());
+        impl_->stream.reset();
+        pw_thread_loop_unlock(impl_->loop.get());
     }
     impl_->stream.reset();
     impl_->loop.reset();

@@ -237,6 +237,7 @@ void DeviceWatcher::stop() {
     // Joins the loop's thread, so no callback can be in flight once this
     // returns - which is what the header promises the caller.
     pw_thread_loop_stop(impl_->loop.get());
+    pw_thread_loop_lock(impl_->loop.get());
     if (impl_->metadata != nullptr) {
         spa_hook_remove(&impl_->metadata_listener);
         pw_proxy_destroy(impl_->metadata);
@@ -247,6 +248,7 @@ void DeviceWatcher::stop() {
     }
     impl_->registry.reset();
     impl_->core.reset();
+    pw_thread_loop_unlock(impl_->loop.get());
     impl_->context.reset();
     impl_->loop.reset();
     impl_->nodes.clear();
