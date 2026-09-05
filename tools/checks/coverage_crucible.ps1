@@ -1,9 +1,19 @@
-# Line and branch coverage for the AC3Forge Crucible (apps/windows), the
+# Line and branch coverage for AC3Forge Crucible (apps/crucible), the
 # Windows counterpart of coverage_report.sh: runs the "crucible" (Catch2)
 # and "crucible-ui" (Qt Quick Test) ctest labels of a config-windows-llvm-coverage
 # build under LLVM_PROFILE_FILE, merges the profiles, and prints llvm-cov's
-# per-file report over apps/windows. Also writes an HTML report next to the
+# per-file report over apps/crucible. Also writes an HTML report next to the
 # build for browsing the uncovered lines.
+#
+# -Labels is a ctest label regex (ctest -L), and so is the coverage preset's
+# filter in CMakePresets.json (test-windows-llvm-coverage). Both default to
+# '^crucible(-ui)?$', naming the two labels this build carries: the Catch2
+# engine cases and the Qt Quick suites (apps/crucible/ui/tests/CMakeLists.txt
+# sets the second). Spelling both out keeps the Qt Quick half in the figure
+# however the regex is read - a bare 'crucible' only reaches 'crucible-ui'
+# because ctest matches a label anywhere in the string, and an anchored
+# reading of the same filter would drop five suites out of the number without
+# saying so.
 #
 #   cmake --preset config-windows-llvm-coverage
 #   cmake --build --preset build-windows-llvm-coverage
@@ -16,7 +26,7 @@
 param(
     [Parameter(Mandatory)][string]$BuildDir,
     [string]$Llvm = 'C:\Program Files\LLVM\bin',
-    [string]$Labels = 'crucible'
+    [string]$Labels = '^crucible(-ui)?$'
 )
 $ErrorActionPreference = 'Stop'
 $BuildDir = (Resolve-Path $BuildDir).Path
@@ -58,8 +68,8 @@ $objects = @()
 foreach ($b in $binaries[1..($binaries.Count - 1)]) { $objects += @('-object', $b) }
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$sources = Join-Path $root 'apps\windows'
-Write-Host "`nline / branch coverage over apps/windows ($Labels):`n"
+$sources = Join-Path $root 'apps\crucible'
+Write-Host "`nline / branch coverage over apps/crucible ($Labels):`n"
 & $cov report $binaries[0] @objects "-instr-profile=$merged" "-ignore-filename-regex=.*(tests|shared|_autogen|\.qt|driver)[\\/].*" $sources
 if ($LASTEXITCODE -ne 0) { throw "llvm-cov report failed ($LASTEXITCODE)" }
 

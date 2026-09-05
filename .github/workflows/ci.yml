@@ -493,6 +493,18 @@ jobs:
             python3 -m unittest discover --start-directory "$suite" --pattern 'test_*.py' --verbose
           done
 
+      # The paths the docs and the CI plumbing name: every relative Markdown
+      # link under docs/ and in the root pages, and every docs/, apps/, src/
+      # or tools/ literal in the workflows, the CMake modules and the scripts
+      # under tools/. A file that moves takes its README row, its workflow
+      # step and the comments that cite it along only when someone remembers;
+      # this makes forgetting a red job. Shapes it cannot judge (globs,
+      # placeholders) are printed as info, never failed - the script's own
+      # header has the rules. Its own suite runs in the step above.
+      - name: Doc and script paths
+        shell: bash
+        run: python3 tools/checks/check_doc_paths.py
+
       # `git ls-files` rather than a hard-coded list of directories: a shell
       # script added anywhere in the tree is then linted the day it lands,
       # instead of silently sitting outside the gate until someone remembers to

@@ -48,8 +48,10 @@ If you cannot cite where something came from, it does not go in.
 ## Repository layout
 
 **`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/forge` is
-the codec itself; `apps/{cli,gui,wasm,android}` are its consumers. Nothing under `src/` may
-depend on anything under `apps/`.
+the codec itself; `apps/{cli,gui,crucible,android,wasm,baremetal}` are its consumers, and
+`apps/common` is the code those consumers share, compiled straight in with no target of its own.
+`apps/windows` holds only Crucible's separately licensed null-sink driver and the guest VM it is
+verified in. Nothing under `src/` may depend on anything under `apps/`.
 
 **The `ac3/` header prefix marks a dependency on `ac3::forge`, not just anything codec-adjacent.**
 A module installs its public headers under `include/ac3/<name>/` exactly when it depends on or

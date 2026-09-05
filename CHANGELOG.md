@@ -1551,7 +1551,7 @@ CLI together with the entire library SDK.
   this project's own encoder; affected rows are marked `unverified` rather than scored.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.
 
 ## [0.4.0-beta.1] - 2026-08-14
 
@@ -1833,7 +1833,7 @@ dashboards, and Android release builds sign with a real keystore.
   this project's own encoder; affected rows are marked `unverified` rather than scored.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.
 
 ## [0.3.0-beta.1] - 2026-08-11
 
@@ -1933,7 +1933,7 @@ assignment, and a GUI tier split for first-time users through experts.
   Player — verified only by this project's own encoder/decoder round trip.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.
 
 ## [0.2.0-beta.1] - 2026-08-10
 
@@ -2028,4 +2028,4 @@ used during development as an independent oracle to check output against.
   Player — verified only by this project's own encoder/decoder round trip.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.

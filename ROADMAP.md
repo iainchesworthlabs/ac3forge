@@ -21,7 +21,7 @@ cut, just moved out of the way of a first read.
 | VX — Verification and oracles | 19 | 2 | 1 |
 | PF — Performance and portability | 8 | 0 | 0 |
 | AP — Library surface, bindings and v1.0 | 9 | 1 | 2 |
-| UX — Applications | 9 | 0 | 1 |
+| UX — Applications | 9 | 1 | 2 |
 | DR — Distribution, release engineering and hardware | 5 | 1 | 3 |
 
 ## Where this starts from
@@ -2628,8 +2628,8 @@ Restated per sub-item now that all three have landed:
   its `depends_on arch: :arm64`. `macos-llvm-x64` went three consecutive clean real runs (two
   `release.yml` dry runs plus its own required PR CI, each including a real gold-reference pass)
   before its `experimental: true` came off, the same promotion bar `macos-llvm` itself was held
-  to; see [docs/platforms/macos.md](platforms/macos.md#universal-binaries-dr8) and
-  [docs/releasing.md](releasing.md#what-gets-published). Unplanned bonus: `macos-llvm-x64`'s
+  to; see [docs/platforms/macos.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/macos.md#universal-binaries-dr8) and
+  [docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md#what-gets-published). Unplanned bonus: `macos-llvm-x64`'s
   real gold-reference numbers (67.80/67.82/67.76 dB) turned out to be new evidence for VX11 —
   see that entry.
 </details>

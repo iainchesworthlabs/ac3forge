@@ -629,7 +629,7 @@ run in [this PR](https://github.com/iainchesworthlabs/ac3forge); `build-footprin
 The table below was first measured early in PF6/PF7's own feature branch (PR #351). Several
 `develop` merges landed on that branch afterwards but before it merged to `main` — most
 significantly DC10's QMF-domain JOC reconstruction, which the decode path genuinely needs
-(`src/dsp/qmf.cpp` and `src/verify/eac3_mirror.cpp`, both correctly added to
+(`src/forge/src/dsp/qmf.cpp` and `src/forge/src/verify/eac3_mirror.cpp`, both correctly added to
 `src/forge/minimal.cmake`'s source list at the time, per that merge's own commit message), plus
 the PF3/PF4 FFT/IMDCT rewrite and DC1's decoder output stage — and nobody re-measured the table
 or the ceiling before merging. The image had already reached 412,516 bytes by then; the numbers
