@@ -170,6 +170,18 @@ TestCase {
             compare(install.enabled, false);
             compare(install.text, "Install driver");
             compare(remove.text, "Remove driver");
+            // With no package in that folder the note says what is missing,
+            // not what kind of copy this is. driverDir() finds the packaged
+            // scripts beside the executable, so a download reaches this
+            // branch as readily as a checkout does and the page cannot tell
+            // them apart; the old wording asserted a checkout and sent a
+            // packaged reader to bcdedit for a driver no download holds.
+            const driverNote = findChild(page, "driverPackageNote");
+            verify(driverNote, "the driver note carries objectName driverPackageNote");
+            if (!CrucibleController.nullSinkPresent) {
+                verify(driverNote.visible, "the note is shown while there is no silent device");
+                verify(driverNote.text.indexOf("This is a build from source") < 0, driverNote.text);
+            }
         } else {
             // The application's own device: no folder, and the buttons say
             // create and remove, not install.
