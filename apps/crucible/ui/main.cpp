@@ -3,8 +3,9 @@
 // only stands the QML up, applies the language, and offers one debugging
 // aid: `--shot <path.png>` grabs the window after it has settled and quits,
 // the way ac3gui's smoke modes do, so a headless check can see the screen;
-// `--page settings` (or output, room) picks the page it shows first, and
-// `--place Name=x,y,z` positions a listed application before the capture.
+// `--page settings` (or output, room; about or licences for that dialog over
+// the room) picks the page it shows first, and `--place Name=x,y,z` positions
+// a listed application before the capture.
 
 #include <QFont>
 #include <QFontDatabase>
@@ -157,10 +158,14 @@ int main(int argc, char** argv) {
         engine.rootObjects().first()->setProperty("roomThreeD", true);
         page = QStringLiteral("room");
     }
-    // `--page about` opens the About box over the Room page, for a capture.
+    // `--page about` opens the About box over the Room page, for a capture;
+    // `--page licences` opens the notices view the same way.
     if (page == QLatin1String("about")) {
         engine.rootObjects().first()->setProperty("page", QStringLiteral("room"));
         QMetaObject::invokeMethod(engine.rootObjects().first(), "openAbout");
+    } else if (page == QLatin1String("licences")) {
+        engine.rootObjects().first()->setProperty("page", QStringLiteral("room"));
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openLicences");
     } else if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
     }

@@ -39,6 +39,15 @@ qt_add_qml_module(ac3crucible_qmltests
     QML_FILES ${AC3DESK_QML_FILES}
     RESOURCES "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/tray.svg")
 
+# The notices resource too: CrucibleController::licenceNotices() reads
+# :/notices/NOTICES.txt, and tst_about.qml asserts what this build's copy
+# says, so this binary embeds the same file ac3crucible does. Without it the
+# property is the fallback sentence and that suite fails, by design.
+qt6_add_resources(ac3crucible_qmltests "ac3crucible_qmltests_notices"
+    PREFIX "/notices"
+    BASE "${CMAKE_CURRENT_BINARY_DIR}/notices"
+    FILES "${AC3CRUCIBLE_NOTICES_FILE}")
+
 target_include_directories(ac3crucible_qmltests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/ui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui")
 target_compile_definitions(ac3crucible_qmltests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX

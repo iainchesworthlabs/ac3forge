@@ -115,8 +115,14 @@ ApplicationWindow {
             }
         }
     }
-    AboutDialog { id: about }
+    AboutDialog { id: about; onShowLicences: licences.open() }
     function openAbout() { about.open(); }
+    // The notices this build ships, over About (the two stack) or on their
+    // own from `--page licences`; the aliases are for the tests.
+    LicencesDialog { id: licences }
+    function openLicences() { licences.open(); }
+    property alias aboutDialog: about
+    property alias licencesDialog: licences
 
     // --- pages ----------------------------------------------------------------
     StackLayout {

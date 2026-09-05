@@ -9,6 +9,8 @@ import Ac3ForgeCrucible
 // as the ac3forge GUI's About, on this app's own theme.
 Dialog {
     id: root
+    // Licences...: Main.qml opens the LicencesDialog over this one.
+    signal showLicences()
     modal: true
     anchors.centerIn: parent
     width: Math.min(560, parent ? parent.width - 60 : 560)
@@ -64,16 +66,13 @@ Dialog {
         }
         Kicker { text: qsTr("LICENCES") }
         Body {
-            text: qsTr("ac3forge and this application: see the LICENSE file in the repository. The Desktop Atmos null-sink driver is a separately licensed derivative of Microsoft's AudioCodec ACX sample (MS-PL); see apps/windows/driver/README.md. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.")
+            text: qsTr("AC3Forge Crucible and the ac3forge library are free software under the GNU General Public License, version 3 or later; the full text is LICENSE.txt in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.")
         }
+        // No component is named here: what this build carries from others
+        // differs by platform and by build, and the notices file generated
+        // for it (apps/crucible/notices/) is the one place that says.
         Body {
-            text: qsTr("Built on Qt 6, used under the GNU LGPL v3, and the {fmt} library (MIT). Profiling builds also carry the Tracy client (BSD 3-clause).")
-        }
-        // The faces this window renders in ship as resources, each under
-        // SIL OFL 1.1, which asks that the attribution travel with the
-        // font; the licence texts sit beside the files in apps/gui/fonts.
-        Body {
-            text: qsTr("Includes the Archivo typeface, and the Noto Sans Arabic and Noto Sans Hebrew typefaces for the languages Archivo does not cover, each licensed under the SIL Open Font License 1.1; the licence texts ship beside the fonts in apps/gui/fonts.")
+            text: qsTr("What this build carries from others - Qt, the {fmt} library, the Archivo and Noto Sans typefaces, and what the silent device needs on this platform - is listed with each licence under Licences; the same text ships in the package as NOTICES.txt.")
         }
         Body {
             Layout.topMargin: Theme.space2
@@ -84,6 +83,7 @@ Dialog {
         RowLayout {
             Layout.topMargin: Theme.space3
             Item { Layout.fillWidth: true }
+            CrucibleButton { objectName: "aboutLicencesButton"; text: qsTr("Licences…"); onClicked: root.showLicences() }
             CrucibleButton { text: qsTr("Close"); primary: true; onClicked: root.close() }
         }
     }

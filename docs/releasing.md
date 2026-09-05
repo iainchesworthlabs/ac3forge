@@ -556,8 +556,10 @@ components instead of `runtime`) but is best-effort - see `package-macos-univers
 Windows x64 additionally ships AC3Forge Crucible as its own
 `ac3forge-crucible-*-win64.zip` (roadmap UX12, [the Crucible guide](crucible/index.md)): the
 `crucible` CPack component - `ac3crucible.exe`, the `ac3crucible-run` runner, the driver's
-install/remove scripts and a Qt runtime of its own - packaged by the same `windows-msvc` leg as
-the row above and picked up by `release.yml`'s existing `*.zip` glob. It is a separate download
+install/remove scripts, a Qt runtime of its own, and `NOTICES.txt` beside `LICENSE.txt` at the
+archive root (the third-party notices, generated per platform from `apps/crucible/notices/` at
+configure time) - packaged by the same `windows-msvc` leg as the row above and picked up by
+`release.yml`'s existing `*.zip` glob. It is a separate download
 rather than part of the `runtime` component, and deliberately absent from the NSIS installer
 (`cmake/CPackProjectConfig.cmake` says why): its null-sink driver is test-signed only, so the
 application needs a machine with test signing on to be useful, which is not something an
@@ -570,8 +572,9 @@ Linux ships the same component as `ac3forge-crucible-*-Linux-<arch>.tar.gz` and,
 `dpkg-deb` and `rpmbuild` exist, as the `ac3forge-crucible` `.deb` and `.rpm` (named the way
 those tools name things, `ac3forge-crucible_<version>_<arch>.deb`): `ac3crucible`,
 `ac3crucible-run`, the freedesktop launcher, the AppStream record and the icon in the hicolor
-theme, and nothing else - no Qt (the system's own loader finds it), and no driver scripts,
-because Linux needs no driver. The `.deb` depends on `pipewire` and a session manager
+theme, and under `share/doc/ac3forge-crucible/` the notices (`NOTICES.txt`, once more as the
+`copyright` file a `.deb` is expected to carry) with `LICENSE.txt` - and nothing else: no Qt
+(the system's own loader finds it), and no driver scripts, because Linux needs no driver. The `.deb` depends on `pipewire` and a session manager
 (`wireplumber | pipewire-media-session`) explicitly, since those are running services rather
 than libraries shlibdeps could see; everything else it depends on is resolved from the binary.
 Two things to know. The component is packaged only from a PipeWire build, which is the only
@@ -582,7 +585,9 @@ for this table. And the `.deb`'s one-line synopsis is the library's, not Crucibl
 DEB generator headlines every component's package with the project summary and offers no
 per-component override that takes effect, so `apt show ac3forge-crucible` opens with
 "Clean-room AC-3 encoder" and says what the package actually is on the next line. The same
-check script reads the tarball's layout, and refuses one that carries a PowerShell script.
+check script reads the tarball's layout, and refuses one that carries a PowerShell script; on
+both platforms it also reads `NOTICES.txt` and refuses a notices file written for the other
+platform, or one whose Quick 3D section disagrees with what the archive ships.
 
 Linux x86_64 also ships a self-contained `ac3gui` `.AppImage` (roadmap DR8), built by its own
 `linux-appimage` job rather than a `release_package: true` leg above - it isn't a CPack product

@@ -22,10 +22,13 @@ MS-PL is a free licence but the FSF lists it as incompatible with the GPL, under
 of ac3forge is licensed. That is fine here because this driver is a separate work: a kernel-mode
 binary that shares no code with the GPL application, is not linked into it, and is reached only
 through public Windows APIs. The modifications in this directory are offered under the same
-MS-PL terms as the sample. Nothing in here is `#include`d, linked or copied anywhere else in the
-repository, and nothing from the rest of the repository is used here. (The one exception runs
-the other way: `position.h` has no kernel dependencies and the repository's test suite compiles
-it, under this directory's licence, to pin the timing down; see "The clock" below.)
+MS-PL terms as the sample. Nothing in here is `#include`d or linked anywhere else in the
+repository, and nothing from the rest of the repository is used here. Two things do cross the
+line, each under this directory's terms: the three PowerShell scripts `install.ps1`, `remove.ps1`
+and `NullSinkDevice.ps1`, which are this project's own and which `apps/crucible/CMakeLists.txt`
+installs into the Crucible package (the package's `NOTICES.txt` reproduces this licence and says
+so); and `position.h`, which has no kernel dependencies and which the repository's test suite
+compiles to pin the timing down (see "The clock" below).
 
 ## What the driver is, file by file
 
