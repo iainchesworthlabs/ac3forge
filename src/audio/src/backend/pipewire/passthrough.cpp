@@ -102,16 +102,28 @@ bool wait_for_connect(pw_thread_loop* loop, std::atomic<ConnectState>& state, in
 
 // The probe-only state callback: enumeration and the empty-device_id
 // candidate walk in start() both only need "did it settle", not the full
-// process()-wiring PassthroughSink::Impl carries - a plain atomic is enough
-// data for this one.
+// process()-wiring PassthroughSink::Impl carries. What it does need beside
+// the answer is the loop to wake, or wait_for_connect() below sleeps out its
+// whole one-second step for an answer that is already there - see
+// capture.cpp's note and the measurement there.
+struct ProbeState {
+    std::atomic<ConnectState> connect_state{ConnectState::kPending};
+    pw_thread_loop* loop = nullptr;
+};
+
 void on_probe_state_changed(void* data, pw_stream_state /*old_state*/, pw_stream_state state,
                              const char* /*error*/) {
-    auto& connect_state = *static_cast<std::atomic<ConnectState>*>(data);
+    auto& probe = *static_cast<ProbeState*>(data);
     if (state == PW_STREAM_STATE_STREAMING || state == PW_STREAM_STATE_PAUSED) {
         auto expected = ConnectState::kPending;
-        connect_state.compare_exchange_strong(expected, ConnectState::kReady);
+        probe.connect_state.compare_exchange_strong(expected, ConnectState::kReady);
     } else if (state == PW_STREAM_STATE_ERROR) {
-        connect_state.store(ConnectState::kError, std::memory_order_release);
+        probe.connect_state.store(ConnectState::kError, std::memory_order_release);
+    } else {
+        return;  // still on its way; nobody is waiting for this one
+    }
+    if (probe.loop != nullptr) {
+        pw_thread_loop_signal(probe.loop, false);
     }
 }
 
@@ -140,7 +152,7 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
     }
 
     pw_thread_loop_lock(loop.get());
-    std::atomic<ConnectState> state{ConnectState::kPending};
+    ProbeState probe{.connect_state = ConnectState::kPending, .loop = loop.get()};
 
     pw_properties* props =
         pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Playback",
@@ -148,7 +160,7 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
                            nullptr);
 
     Stream stream{pw_stream_new_simple(pw_thread_loop_get_loop(loop.get()), "ac3forge probe",
-                                        props, &probe_events(), &state)};
+                                        props, &probe_events(), &probe)};
     if (!stream) {
         pw_thread_loop_unlock(loop.get());
         pw_thread_loop_stop(loop.get());
@@ -167,7 +179,7 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
         return false;
     }
 
-    const bool ready = wait_for_connect(loop.get(), state, timeout_seconds);
+    const bool ready = wait_for_connect(loop.get(), probe.connect_state, timeout_seconds);
     pw_thread_loop_unlock(loop.get());
     // Stop before destroying, not after. Every successful probe reached this
     // line, and on the first machine with a real PipeWire session it
@@ -349,6 +361,14 @@ struct PassthroughSink::Impl {
             impl.connect_state.compare_exchange_strong(expected, ConnectState::kReady);
         } else if (state == PW_STREAM_STATE_ERROR) {
             impl.connect_state.store(ConnectState::kError, std::memory_order_release);
+        } else {
+            return;  // still on its way; nobody is waiting for this one
+        }
+        // Wake the thread in wait_for_connect(). Without this the answer is
+        // set and nobody is told, so the waiter sleeps out its full
+        // one-second step - see capture.cpp's note and the measurement there.
+        if (impl.loop) {
+            pw_thread_loop_signal(impl.loop.get(), false);
         }
     }
 
