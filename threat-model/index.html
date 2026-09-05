@@ -1,0 +1,3932 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A clean-room AC-3 / E-AC-3 / Dolby Atmos encoder and decoder in C++23">
+      
+      
+      
+        <link rel="canonical" href="https://iainchesworthlabs.github.io/ac3forge/threat-model/">
+      
+      
+        <link rel="prev" href="../verification/">
+      
+      
+        <link rel="next" href="../conformance-vectors/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Threat model - ac3forge</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#threat-model" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="ac3forge" class="md-header__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ac3forge
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Threat model
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../concepts/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../verification/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Validation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Threat model
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../conformance-vectors/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Conformance vectors
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../library/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Library
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../cli/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  CLI reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../gui/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  GUI guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../performance-quality/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance & quality
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../contributing/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Project
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="ac3forge" class="md-nav__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ac3forge
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform notes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform notes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platforms/windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platforms/linux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platforms/raspberry-pi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raspberry Pi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platforms/macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platforms/android/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Android (NVIDIA Shield)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platforms/windows-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Desktop Atmos Demo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platforms/windows-driver-acx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows null-sink driver on ACX (plan)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../platforms/wasm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebAssembly (browser demos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../concepts/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/ac3-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AC-3 & E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/atmos-joc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Atmos & JOC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/object-signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threat model
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threat model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#trust-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trust boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory-safety-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory-safety posture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#raw-pointer-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Raw-pointer boundaries
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Raw-pointer boundaries">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-c-api-ac3forge_cac3forgeh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The C API (ac3forge_c/ac3forge.h)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-_into-decode-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The _into decode forms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-wasm-bindings-and-the-jni-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The WASM bindings and the JNI bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource limits
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resource limits">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-hostile-frmsiz" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A hostile frmsiz
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#open-gaps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open gaps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adm-xml-and-bw64" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ADM XML and BW64
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#object-signing-is-authentication-not-integrity-of-the-stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object signing is authentication, not integrity of the stream
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#osc-live-position-input-has-no-authentication-or-encryption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OSC live-position input has no authentication or encryption
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-decode-failure-looks-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a decode failure looks like
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reporting-an-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reporting an issue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../conformance-vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conformance vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../library/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Library
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Example programs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/encoding-ac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/encoding-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/decoding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decoding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/spatial-and-atmos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spatial & Atmos objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/station-broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A worked scene — station broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/channel-plans-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channel plans & routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/muxing-and-sinks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Muxing & sinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/file-io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File I/O
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/iab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAB (SMPTE ST 2098-2) reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/adm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM / BW64 reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/adm-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM → Atmos bridging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/iamf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAMF writing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Measuring quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/header-map/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Header map
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/api-stability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API stability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/c-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../library/rust-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rust bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/metadata-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Options & grammars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../gui/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GUI guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_9" id="__nav_9_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GUI guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/loading-a-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loading a source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/format-and-channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format & channels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/objects-and-motion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Objects & motion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/live-session/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live capture & session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/source-assignment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-source & assignment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/coding-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/qc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QC a stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/inspect-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inspect objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/open-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gui/localisation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Localisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance & quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tool-comparison-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tool comparison trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../object-quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../landscape/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Landscape
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wasm-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live decode demo (WASM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wasm-encode-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live encode demo (WASM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ci-self-hosted-runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosted CI runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#trust-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trust boundary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory-safety-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory-safety posture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#raw-pointer-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Raw-pointer boundaries
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Raw-pointer boundaries">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-c-api-ac3forge_cac3forgeh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The C API (ac3forge_c/ac3forge.h)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-_into-decode-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The _into decode forms
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-wasm-bindings-and-the-jni-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The WASM bindings and the JNI bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource limits
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resource limits">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-hostile-frmsiz" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A hostile frmsiz
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#open-gaps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open gaps
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adm-xml-and-bw64" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ADM XML and BW64
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#object-signing-is-authentication-not-integrity-of-the-stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object signing is authentication, not integrity of the stream
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#osc-live-position-input-has-no-authentication-or-encryption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OSC live-position input has no authentication or encryption
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-decode-failure-looks-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a decode failure looks like
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reporting-an-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reporting an issue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="threat-model">Threat model<a class="headerlink" href="#threat-model" title="Permanent link">&para;</a></h1>
+<p>What this project assumes about the bytes it is handed, what it guarantees when those bytes are
+hostile, and what it does not. Written for someone deciding whether to link the decoder into a
+media server, a set-top box or a browser and point it at input from the internet.</p>
+<p>Nothing here is a promise of invulnerability. It is a statement of posture — where the trust
+boundary sits, what is checked, what is only structurally bounded, and where the gaps are — so
+that an embedder can reason about the remaining risk instead of guessing at it.</p>
+<p>The reporting process is in <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/SECURITY.md">SECURITY.md</a>;
+<a href="#reporting-an-issue">Reporting an issue</a> below adds what an embedder specifically should send.</p>
+<h2 id="trust-boundary">Trust boundary<a class="headerlink" href="#trust-boundary" title="Permanent link">&para;</a></h2>
+<p><strong>Untrusted.</strong> Everything on this list is treated as adversary-controlled. Each has a parser in
+this repository that must not crash, read out of bounds, or loop unboundedly on any input:</p>
+<table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Entry point</th>
+<th>Fuzzed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AC-3 elementary streams</td>
+<td><code>ac3::split_frames</code>, <code>ac3::FrameDecoder::decode_frame</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td>E-AC-3 elementary streams, including dependent substreams</td>
+<td><code>ac3::split_access_units</code>, <code>ac3::Eac3Decoder::decode_access_unit</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Format sniffing before any decoder commits</td>
+<td><code>ac3::io::scan</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td>EMDF containers in a skip field (§H.2.2)</td>
+<td><code>ac3::emdf::parse_container</code></td>
+<td>yes — <code>fuzz_emdf_parse</code>, plus indirectly through the E-AC-3 harnesses</td>
+</tr>
+<tr>
+<td>OAMD object metadata (TS 103 420 §5.5)</td>
+<td><code>ac3::oba::parse_payload</code></td>
+<td>yes — <code>fuzz_oamd_parse</code>, plus indirectly through the E-AC-3 harnesses</td>
+</tr>
+<tr>
+<td>JOC payloads (TS 103 420 §6)</td>
+<td><code>ac3::oba::joc::parse_payload</code></td>
+<td>yes — <code>fuzz_joc_parse</code>, plus indirectly through the E-AC-3 harnesses</td>
+</tr>
+<tr>
+<td>WAV / RIFF headers and PCM</td>
+<td><code>ac3::io::read_wav</code>, <code>ac3::io::WavStreamReader</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td>IEC 61937 bursts off an S/PDIF or HDMI capture</td>
+<td><code>ac3::iec61937::BurstReader</code></td>
+<td>yes — <code>fuzz_iec61937_unwrap</code></td>
+</tr>
+<tr>
+<td>ADM XML + BW64/RF64 (opt-in build)</td>
+<td><code>ac3adm::parse_bw64</code>, via vendored libadm/libbw64</td>
+<td><strong>opt-in only</strong> — <code>fuzz_adm_parse</code> exists but is built only under <code>AC3FORGE_BUILD_ADM</code>; see <a href="#adm-xml-and-bw64">ADM</a></td>
+</tr>
+<tr>
+<td>Object authenticity tags</td>
+<td><code>ac3::signing::verify_atmos_frame</code></td>
+<td>yes — <code>fuzz_signing_verify</code> (the key is part of the fuzzed input)</td>
+</tr>
+<tr>
+<td>Matroska/WebM containers</td>
+<td><code>matroska::demux</code>, <code>matroska::Reader</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td>MP4/ISOBMFF containers</td>
+<td><code>mp4::demux</code>, <code>mp4::Reader</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td>MPEG-TS containers</td>
+<td><code>mpegts::demux</code>, <code>mpegts::Reader</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td>OSC control packets (UDP), a live object-position source</td>
+<td><code>ac3::oba::parse_osc_packet</code></td>
+<td>yes — <code>fuzz_osc_parse</code>, part of <code>fuzz/run.sh</code>'s default target list alongside the other object/metadata-layer harnesses</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Trusted.</strong> These are the caller's own inputs, and a caller that gets them wrong is a bug in the
+caller, not an attack:</p>
+<ul>
+<li>Encoder configuration (<code>EncoderConfig</code>, <code>eac3::FrameConfig</code>, <code>AtmosEncoder</code> settings, the
+  <code>ac3cli</code> command line). Illegal combinations are rejected with a <code>FrameError</code>, but the values
+  are not assumed hostile.</li>
+<li>PCM handed to the encoder. Any float is legal audio; nothing about it can reach a decision the
+  bitstream syntax does not already bound.</li>
+<li>The signing key, if an operator supplies one. It is never generated, logged or written to disk
+  by this code (<code>ac3::signing::SigningKey</code> zeroizes on destruction).</li>
+<li>File paths, output destinations, and the caller-owned spans the <code>_into</code> decode forms write
+  through — see <a href="#raw-pointer-boundaries">Raw-pointer boundaries</a>.</li>
+</ul>
+<p><strong>No remaining undefended container.</strong> Matroska/WebM, MP4/ISOBMFF and MPEG-TS all had a reader
+land (roadmap <code>IO2</code>) and are in the untrusted table above; each container this project also
+writes now has a matching demuxer this project defends. An embedder demuxing a container format
+this project does not read — or write, such as a bare Ogg or ADTS wrapper — is still trusting
+<em>its own</em> demuxer, not this one.</p>
+<h2 id="memory-safety-posture">Memory-safety posture<a class="headerlink" href="#memory-safety-posture" title="Permanent link">&para;</a></h2>
+<p>The codec core is C++23 with no third-party dependencies. It is not a memory-safe language, so
+the posture is a set of specific properties rather than a language guarantee:</p>
+<ul>
+<li><strong>Bit reading cannot run off the end.</strong> <code>ac3::BitReader</code> is the single reader for every
+  bitstream in the project. Reading past the end sets a sticky <code>overflowed()</code> flag and yields
+  zeros rather than touching memory; parsers check the flag at a frame or payload boundary
+  instead of guarding each read. A truncated or hostile frame therefore decays into a
+  <code>DecodeError::kTruncated</code> rather than an over-read.</li>
+<li><strong>Every fallible path returns a value, not an exception.</strong> <code>std::expected&lt;T, DecodeError&gt;</code>
+  throughout. The codec core does not throw; the only exceptions that can escape it are
+  <code>std::bad_alloc</code> from an allocation it makes.</li>
+<li><strong>No owning raw pointers, no manual <code>new</code>/<code>delete</code>, no C string handling</strong> in the codec core.
+  Buffers are <code>std::vector</code>; borrowed views are <code>std::span</code> and <code>std::string_view</code>.</li>
+<li><strong>Indexed access is <code>std::span</code> and <code>std::vector</code>, which are bounds-checked only where the
+  standard library's own assertions are on</strong> — MSVC's <code>_STL_VERIFY</code> in a debug build, and
+  libstdc++/libc++ only under <code>_GLIBCXX_ASSERTIONS</code>/<code>_LIBCPP_HARDENING_MODE</code>, neither of which
+  this project sets. Of the CI legs only the two sanitizer ones are debug builds, and the
+  ASan + UBSan one is also the leg that runs the codec matrix, so an out-of-range index there
+  fails the job (the TSan leg is debug too, but runs only the <code>concurrency</code> label — see below).
+  Every other leg, and every shipped package, is a release build with no such net — which is why
+  the fuzzers run under ASan rather than relying on the library's own checks. (The WAV over-read
+  fixed alongside this document is exactly that story: caught by <code>_STL_VERIFY</code> in a debug build,
+  invisible in a release one.)</li>
+</ul>
+<p>What runs against it, continuously:</p>
+<ul>
+<li><strong>Fourteen libFuzzer harnesses</strong> under <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md"><code>fuzz/</code></a>,
+  built with ASan + UBSan and <code>-fno-sanitize-recover=all</code>. Twelve drive the entry points in the
+  table above for crashes and undefined behaviour — format sniffing (<code>fuzz_scan</code>), the three
+  container demuxers (<code>fuzz_matroska_demux</code>, <code>fuzz_mp4_demux</code>, <code>fuzz_mpegts_demux</code>), both
+  elementary-stream decoders (<code>fuzz_ac3_decode</code>, <code>fuzz_eac3_decode</code>), WAV (<code>fuzz_wav_read</code>),
+  IEC 61937 burst de-framing (<code>fuzz_iec61937_unwrap</code>), the three object/metadata parsers behind
+  the skip field (<code>fuzz_emdf_parse</code>, <code>fuzz_oamd_parse</code>, <code>fuzz_joc_parse</code>) and the signature
+  verifier (<code>fuzz_signing_verify</code>); two more (<code>fuzz_differential_ac3_decode</code>,
+  <code>fuzz_differential_eac3_decode</code>) decode the same mutated bytes with FFmpeg as well and diff the
+  PCM, so a <em>wrong</em> decode that does not crash is caught too. A fifteenth, <code>fuzz_adm_parse</code>, is
+  built only when <code>AC3FORGE_BUILD_ADM</code> is on — see <a href="#adm-xml-and-bw64">ADM</a>. <code>Fuzz Regress</code>
+  replays the checked-in seed and regression corpora on every push to <code>main</code> and every
+  pull request into it; <code>Fuzz Short</code> and <code>Fuzz Differential</code> add a bounded mutation budget on
+  pushes, and a nightly job goes deeper.</li>
+<li><strong>An ASan + UBSan CI leg</strong> that runs the full test suite and <code>tools/ci/run_codec_matrix.sh</code> —
+  every layout, every Annex E tool token, both Atmos container modes, the metadata options —
+  so the sanitizers see the real command paths rather than only unit tests.</li>
+<li><strong>A ThreadSanitizer leg</strong> (roadmap VX16). The codec core is single-threaded and holds no shared
+  state, but the audio layer's lock-free SPSC ring, silence watchdog and drift servo are shared
+  between a real-time callback thread and an encoder thread, and neither ASan nor UBSan can see a
+  race there — the two runtimes are also mutually exclusive, so it is a separate required leg
+  (<code>Linux LLVM TSan</code>, <code>_build.yml</code>; preset <code>linux-llvm-tsan</code>) rather than more entries on the one
+  above. It runs the <code>concurrency</code> ctest label only — <code>tests/audio/</code> plus
+  <code>tests/cli/test_cli_live.cpp</code>, 36 cases — because TSan's shadow memory makes everything several
+  times slower and the rest of the suite is single-threaded codec maths. <code>tsan.supp</code> at the
+  repository root holds the suppressions and is near-empty.</li>
+<li><strong>CodeQL</strong> on the <code>security-and-quality</code> suite, <strong>MSVC PREfast</strong> and <strong>clang-tidy</strong>, all run
+  nightly against <code>main</code> rather than per pull request; a run that finds something new opens a
+  <code>nightly-analysis</code> issue, and the alerts themselves are triaged in Security &gt; Code scanning.
+  <strong>SonarCloud</strong> runs in the same window for maintainability, duplication and coverage on new
+  code; its findings live in its own dashboard, not the Security tab. <strong>OSV scanning</strong>
+  (on pull requests, pushes to <code>main</code> and a weekly schedule) and <strong>OpenSSF Scorecard</strong> (pushes
+  to <code>main</code> and a weekly schedule) upload to the same tab.</li>
+</ul>
+<p>What is <em>not</em> covered by that leg: anything threaded that is not tagged <code>concurrency</code>. The label
+comes from the Catch2 tags themselves (<code>catch_discover_tests(... ADD_TAGS_AS_LABELS)</code>), so a race
+in code whose tests carry a different tag — or in a path with no test at all — is outside what
+TSan sees on every push, and adding a case to the leg means tagging it.</p>
+<p>Known history in this class: one real bug of exactly this shape has been found and fixed (commit
+<code>8386c8f</code> — a decoder that shifted by an unvalidated exponent and reached undefined behaviour on
+a malformed differential exponent chain). It was found by a manual adversarial audit; the fuzzers
+exist because that audit should not have been the thing that found it.</p>
+<h2 id="raw-pointer-boundaries">Raw-pointer boundaries<a class="headerlink" href="#raw-pointer-boundaries" title="Permanent link">&para;</a></h2>
+<p>Three surfaces cross out of C++ into a caller that the type system cannot help. Each has a
+contract the caller must keep; none of them validate it in a release build.</p>
+<h3 id="the-c-api-ac3forge_cac3forgeh">The C API (<code>ac3forge_c/ac3forge.h</code>)<a class="headerlink" href="#the-c-api-ac3forge_cac3forgeh" title="Permanent link">&para;</a></h3>
+<p>The safest of the three, by design. Every handle is opaque, every fallible call returns
+<code>ac3forge_status_t</code>, and <strong>nothing is returned through a caller-supplied buffer</strong> — a
+variable-length result is an owned handle read through accessors, so no caller has to predict a
+size. Every entry point is wrapped in a <code>noexcept</code> guard that turns <code>std::bad_alloc</code> into
+<code>AC3FORGE_ERROR_OUT_OF_MEMORY</code> and anything else into <code>AC3FORGE_ERROR_INTERNAL</code>, because letting
+a C++ exception unwind into a C (or Rust, or Python) frame is undefined behaviour.</p>
+<p>What the caller still owns:</p>
+<ul>
+<li><strong>Lifetime.</strong> Every <code>_create</code> needs its <code>_destroy</code>. Passing <code>NULL</code> to a <code>_destroy</code> is a no-op,
+  matching <code>free()</code>.</li>
+<li><strong>The <code>const uint8_t* frame</code> / <code>size_t frame_size</code> pair</strong> passed to
+  <code>ac3forge_decoder_decode_frame</code>. A size larger than the buffer is a caller bug this layer
+  cannot detect; the buffer must be valid for the whole call.</li>
+<li><strong>Accessor indices.</strong> <code>ac3forge_decoded_frame_channel_samples(frame, channel_index)</code> and
+  friends take an index the caller is expected to have read from
+  <code>ac3forge_decoded_frame_channel_count</code> first.</li>
+<li><strong>No ABI promise before v1.0.</strong> A newer ac3forge may need a recompile, not merely a relink.</li>
+</ul>
+<h3 id="the-_into-decode-forms">The <code>_into</code> decode forms<a class="headerlink" href="#the-_into-decode-forms" title="Permanent link">&para;</a></h3>
+<p><code>FrameDecoder::decode_frame_into</code> and <code>Eac3Decoder::decode_access_unit_into</code> write PCM into
+caller-owned planar spans instead of allocating. The span count and each span's length are
+checked by <code>assert</code> — which means they are checked in a debug build and <strong>not at all in a
+release build</strong>, where an undersized span is a buffer overflow in the caller's memory. The
+contract is on both functions' doc comments: one span per channel the frame codes (six covers
+every AC-3 layout, sixteen covers §E3.8.2's cap for E-AC-3), each holding <code>kSamplesPerFrame</code>
+floats. Use the allocating forms if the sizes are not statically obvious.</p>
+<h3 id="the-wasm-bindings-and-the-jni-bridge">The WASM bindings and the JNI bridge<a class="headerlink" href="#the-wasm-bindings-and-the-jni-bridge" title="Permanent link">&para;</a></h3>
+<p>The WASM decoder (<code>apps/wasm/decoder_bindings.cpp</code>) copies the JavaScript byte array into a
+<code>std::vector</code> before parsing, so the decode itself never reads JS-owned memory. What it hands
+<em>back</em> is a zero-copy <code>typed_memory_view</code> into the decoder instance's own buffers: those views
+are invalidated by the next <code>decode()</code> call or by the instance's destruction, and JavaScript
+holding one past that point reads freed WASM heap. The module is built with
+<code>ALLOW_MEMORY_GROWTH</code> under a 1 GiB <code>MAXIMUM_MEMORY</code> ceiling, which turns heap exhaustion into a
+catchable <code>std::bad_alloc</code> and a readable refusal instead of a dead tab.</p>
+<p>The Android JNI bridge (<code>apps/android/app/src/main/cpp/</code>) is demo-app scope: it returns strings
+through <code>NewStringUTF</code> and does not take byte arrays across the boundary, so it has no
+<code>GetByteArrayElements</code>-style pinned-buffer contract to get wrong. It is not part of the library's
+supported surface.</p>
+<h2 id="resource-limits">Resource limits<a class="headerlink" href="#resource-limits" title="Permanent link">&para;</a></h2>
+<p>The important structural property is that <strong>every per-access-unit allocation is bounded by a
+bitstream field of fixed width</strong>, so no single frame can be made to consume an unbounded amount
+of memory or time. Decode cost is linear in the number of access units, with a bounded cost per
+unit; there is no super-linear amplification and no recursive descent anywhere in the parsers.
+The OSC bundle walker (below) extends that same guarantee to network input rather than carving
+out an exception to it: arbitrarily nested bundles are walked with an explicit stack and a hard
+depth cap instead of function recursion, by construction rather than by convention.</p>
+<p>Enforced limits, and where they come from:</p>
+<table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th>Limit</th>
+<th>Enforced by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AC-3 syncframe</td>
+<td>3,840 bytes</td>
+<td>Table 5.18 (<code>frmsizecod</code> indexes a fixed table; 38–63 rejected as reserved)</td>
+</tr>
+<tr>
+<td>E-AC-3 syncframe</td>
+<td>4,096 bytes</td>
+<td><code>frmsiz</code> is 11 bits; <code>(frmsiz + 1) * 2</code></td>
+</tr>
+<tr>
+<td>E-AC-3 syncframe, lower bound</td>
+<td>6 bytes</td>
+<td>explicit refusal: a <code>frmsiz</code> that does not cover the header it was read from is <code>kInvalidStream</code>, not a short span someone reads past</td>
+</tr>
+<tr>
+<td>Coded channels per substream</td>
+<td>6 (5 full-bandwidth + LFE)</td>
+<td><code>acmod</code>/<code>lfeon</code> are 3 + 1 bits</td>
+</tr>
+<tr>
+<td>Rendered channels per access unit</td>
+<td>16</td>
+<td>§E3.8.2</td>
+</tr>
+<tr>
+<td>Substream identities held simultaneously</td>
+<td>32</td>
+<td><code>strmtyp</code> (2 bits) × <code>substreamid</code> (3 bits); a flat 32-slot array, states lazily allocated</td>
+</tr>
+<tr>
+<td>Overlap-add state per identity</td>
+<td>12 KiB</td>
+<td>6 channels × 256 doubles</td>
+</tr>
+<tr>
+<td>Samples per access unit</td>
+<td>1,536 per channel</td>
+<td><code>kSamplesPerFrame</code></td>
+</tr>
+<tr>
+<td>PCM per access unit</td>
+<td>96 KiB</td>
+<td>16 channels × 1,536 × <code>sizeof(float)</code></td>
+</tr>
+<tr>
+<td>EMDF skip field</td>
+<td>511 bytes</td>
+<td><code>skipl</code> is 9 bits</td>
+</tr>
+<tr>
+<td>EMDF payload</td>
+<td>bounded against the bits actually left before allocating</td>
+<td>explicit check in <code>parse_container</code> — a <code>variable_bits</code> size field could otherwise claim gigabytes from a few dozen bits of garbage</td>
+</tr>
+<tr>
+<td><code>addbsi</code></td>
+<td>64 bytes</td>
+<td><code>addbsil</code> is 6 bits</td>
+</tr>
+<tr>
+<td>OAMD objects</td>
+<td>32</td>
+<td><code>object_count_bits</code> is 5 bits; §5.5.2's escape for larger counts (<code>0x1F</code> plus a 7-bit extension) is refused rather than implemented</td>
+</tr>
+<tr>
+<td>JOC objects</td>
+<td>16</td>
+<td><code>kMaxObjects</code>, checked explicitly; TS 103 420 §8.3.2.2's own cap</td>
+</tr>
+<tr>
+<td>OSC receive buffer</td>
+<td>65,535 bytes</td>
+<td><code>LivePositionSource</code>'s <code>kRecvBufferSize</code>, sized above the 65,507-byte IPv4 maximum a UDP datagram can ever carry — UDP's own length field is 16 bits, so nothing legal is ever larger</td>
+</tr>
+<tr>
+<td>OSC bundle nesting</td>
+<td>8 levels</td>
+<td><code>parse_osc_packet</code>'s iterative bundle walk (<code>kMaxBundleDepth</code>); a bundle nested past the cap is dropped whole rather than descended into</td>
+</tr>
+<tr>
+<td>Live OSC per-object mailbox</td>
+<td>1 pending update per session object slot</td>
+<td><code>LivePositionSource</code>, sized once at construction from the same object-slot budget as "JOC objects" above (at most 15 dynamic objects; TS 103 420 §8.3.2.2 caps the total at 16 once the bed's LFE is counted)</td>
+</tr>
+<tr>
+<td>WASM demo heap</td>
+<td>1 GiB</td>
+<td><code>MAXIMUM_MEMORY</code>, with <code>std::bad_alloc</code> caught and reported</td>
+</tr>
+</tbody>
+</table>
+<h3 id="a-hostile-frmsiz">A hostile <code>frmsiz</code><a class="headerlink" href="#a-hostile-frmsiz" title="Permanent link">&para;</a></h3>
+<p>Worth spelling out because it is the field an attacker reaches for first. <code>frmsiz</code> says how long
+an E-AC-3 syncframe is, and callers index into the spans the splitter hands back:</p>
+<ul>
+<li>A <code>frmsiz</code> <strong>larger than the bytes remaining</strong> is <code>DecodeError::kTruncated</code>. The splitter never
+  returns a span that overruns the input.</li>
+<li>A <code>frmsiz</code> <strong>smaller than the six header bytes already read</strong> is <code>DecodeError::kInvalidStream</code> —
+  refused outright rather than becoming a short span a later parser reads past.</li>
+<li>A <code>frmsiz</code> that is <strong>merely wrong</strong> — self-consistent, but not where the next syncframe
+  actually is — desynchronises the split, and the following frame fails its sync-word check.
+  Nothing reads outside the input span in the meantime.</li>
+</ul>
+<p>The AC-3 equivalent is <code>frmsizecod</code>, which indexes a fixed table rather than carrying a length:
+values 38–63 are reserved and rejected, and <code>fscod == 3</code> is rejected, so the frame size is always
+one of 38 tabulated values.</p>
+<h3 id="open-gaps">Open gaps<a class="headerlink" href="#open-gaps" title="Permanent link">&para;</a></h3>
+<p><strong>No cap on stream length, and no streaming split.</strong> <code>ac3::io::scan</code>, <code>ac3::split_frames</code> and
+<code>ac3::split_access_units</code> take the whole elementary stream as one <code>std::span</code> and return one span
+per access unit. Peak memory is therefore <em>O(input size)</em> — the bytes themselves plus roughly 16
+bytes of index per access unit — and there is no limit at which the library refuses. <code>ac3cli</code>
+inherits this: it reads the encoded input fully into memory (it streams the <em>decoded</em> PCM out, so
+output is O(1)).</p>
+<p>This is deliberate rather than overlooked: what counts as "too large" is the embedder's policy,
+not the library's, and a hard cap in the library would break legitimate long-file use. The
+mitigation is on the caller:</p>
+<ul>
+<li>Bound the input before calling. A length limit, a container-level packet budget, or a memory
+  cgroup are all more appropriate than a constant compiled into a codec.</li>
+<li>Or drive the per-frame API directly. <code>FrameDecoder::decode_frame</code> and
+  <code>Eac3Decoder::decode_substream</code>/<code>decode_access_unit</code> each take one unit at a time, and the
+  <code>_into</code> forms write into caller-owned storage, so a caller that delimits units itself never
+  needs the whole stream resident.</li>
+</ul>
+<p><strong>No decode time bound.</strong> Nothing in the library measures or limits wall-clock time. Because
+per-unit cost is bounded and the parsers do not recurse or backtrack, total decode time is linear
+in input length — there is no input that makes a <em>single</em> frame slow. Watchdog the call if the
+threat is a peer feeding an endless stream; there is nothing to configure here.</p>
+<p><strong>Worst-case expansion ratio.</strong> A minimum-size access unit is 6 bytes and a maximum-size one
+produces 96 KiB of PCM, so the structural upper bound on decoded-bytes-per-input-byte is roughly
+16,000:1. That is an upper bound from field widths, not a measured achievable figure — a frame
+short enough to hit it does not carry enough bits to code channels at all, and overflows the bit
+reader into <code>kTruncated</code> first. Bound decoded <em>output</em>, not input bytes, if this matters.</p>
+<p><strong>A WAV file is read whole.</strong> <code>ac3::io::read_wav</code> reads its entire source into memory before
+parsing, so memory is O(file). <code>ac3::io::WavStreamReader</code> is the block-at-a-time alternative and
+reads only a fixed header window (a <code>data</code> chunk beyond that window is refused rather than
+searched for). A WAV may declare up to 65,535 channels; the per-channel vector overhead that
+implies (~1.5 MB) is not proportional to the file that declared it, though the sample data itself
+is still clamped to the bytes actually present.</p>
+<h3 id="adm-xml-and-bw64">ADM XML and BW64<a class="headerlink" href="#adm-xml-and-bw64" title="Permanent link">&para;</a></h3>
+<p><code>atmos-adm</code> and <code>ac3adm::</code> are <strong>off by default</strong> (<code>-DAC3FORGE_BUILD_ADM=ON</code>) and, unlike every
+other parser here, are not this project's own code: the XML and BW64/RF64 reading is vendored
+libadm and libbw64, plus Boost headers. That means:</p>
+<ul>
+<li><strong>The fuzz harness that covers this path is opt-in, not continuous.</strong> <code>fuzz_adm_parse</code> drives
+  <code>ac3adm::parse_bw64</code> over BW64 chunks plus an arbitrary XML document, but it is built only when
+  <code>AC3FORGE_BUILD_ADM</code> is on (<code>fuzz/run.sh</code> turns that on via <code>AC3FORGE_FUZZ_ADM=1</code>), and the one
+  CI job that runs it — <code>Fuzz ADM Nightly</code> — is schedule/dispatch-only and <code>continue-on-error</code>,
+  because a vcpkg restore plus the libbw64/libadm <code>FetchContent</code> pulls cost more than the mutation
+  budget and most of what the harness reaches is third-party code. It is not one of the fourteen
+  harnesses that run on every push. The resource limits above do not apply here either way: there
+  is no document-size cap, no entity-expansion limit and no element-count limit; an enormous or
+  deeply nested ADM document is bounded by nothing this project controls.</li>
+<li>The whole <code>axml</code> chunk is materialised as a string and re-parsed from an <code>istringstream</code>, so
+  memory is O(document).</li>
+<li>Parse and graph-resolution failures do surface as real diagnostics (<code>ac3adm::AdmError</code>,
+  <code>ac3::admbridge::BridgeError</code>, each with its own <code>describe()</code>) rather than a crash or a bare
+  non-zero exit.</li>
+</ul>
+<p><strong>Do not enable the ADM build for untrusted input.</strong> It exists to ingest professional master
+files an operator already trusts. Extending the threat model to cover it means putting the
+vendored parsers under the same every-push fuzzing the rest of the table gets, not a nightly
+advisory job, and deciding a document-size policy; neither has been done.</p>
+<h3 id="object-signing-is-authentication-not-integrity-of-the-stream">Object signing is authentication, not integrity of the stream<a class="headerlink" href="#object-signing-is-authentication-not-integrity-of-the-stream" title="Permanent link">&para;</a></h3>
+<p><code>ac3::signing::verify_atmos_frame</code>/<code>verify_atmos_stream</code> check an HMAC tag over the EMDF object
+container. This tells you the object metadata came from someone holding the key. It does <strong>not</strong>
+authenticate the audio, the bed, or anything outside the container, and a stream with no
+container at all has nothing to verify — see
+<a href="../concepts/object-signing/">Object signing</a>. Verification is opt-in
+(<code>ac3cli decode ... verify-objects</code>); a signed-but-unchecked stream decodes exactly like an
+unsigned one. This project ships no key.</p>
+<h3 id="osc-live-position-input-has-no-authentication-or-encryption">OSC live-position input has no authentication or encryption<a class="headerlink" href="#osc-live-position-input-has-no-authentication-or-encryption" title="Permanent link">&para;</a></h3>
+<p><code>positions=osc:&lt;port&gt;</code> (<code>ac3cli live mode=atmos</code>) and the GUI live room's "Drive objects from
+OSC" toggle open a plain UDP socket. OSC 1.0 has no authentication or encryption of its own, and
+this project adds neither: anyone who can reach the bound address and port can send
+<code>/object/&lt;n&gt;/xyz</code> and move that object, full stop. The source IP is not checked — UDP has no
+connection to check it against, and it is trivially spoofable regardless — so "only my
+show-control rig sent that" is never a guarantee this layer gives an operator.</p>
+<p>The default bind is loopback (<code>127.0.0.1</code>): a session accepts datagrams only from the machine
+running it unless the operator explicitly widens that — <code>positions=osc:any:&lt;port&gt;</code> on the CLI,
+or the GUI's "any interface" checkbox, both of which bind <code>0.0.0.0</code> instead. This is opt-in
+surface on top of opt-in surface: a session listens for OSC at all only when <code>positions=</code> (or
+the GUI toggle) is explicitly used, and listens on every interface only when that is explicitly
+widened too.</p>
+<p>What a successful spoof or injection buys an attacker is narrow. <code>ac3::oba::apply</code>
+(<code>src/forge/src/oba/scene_osc.cpp</code>) merges only position, gain and <code>lfe_send</code> onto an object's
+existing placement, or releases it back to its authored automation (<code>/object/&lt;n&gt;/release</code>) —
+there is no path from this input to encoder configuration, to the filesystem, or to anything
+outside the object placements themselves. The blast radius of a successful attack is "objects
+move to wherever the packet says," never a compromised process.</p>
+<h2 id="what-a-decode-failure-looks-like">What a decode failure looks like<a class="headerlink" href="#what-a-decode-failure-looks-like" title="Permanent link">&para;</a></h2>
+<p>Every decode entry point returns <code>std::expected&lt;..., DecodeError&gt;</code> and every error is one of six
+values: <code>kTruncated</code>, <code>kBadSyncWord</code>, <code>kBadCrc</code>, <code>kReservedValue</code>, <code>kUnsupported</code> (legal syntax
+this decoder declines to read) or <code>kInvalidStream</code>. <code>ac3::describe()</code> turns each into a sentence.
+There is no concealment mode: a frame that fails produces no audio, and a caller that wants
+concealment implements it above this layer.</p>
+<p>A refusal is not a rollback, though. The decoder's own state — overlap-add delay, the §7.3.4
+dither generator, JOC reconstruction — advances block by block as the frame is parsed, and a
+frame refused part-way through has already advanced it as far as it got. On an <code>_into</code> form the
+caller's spans are left in an unspecified state for the same reason. Neither is a memory-safety
+problem (nothing is read or written outside its own buffer), but a caller that needs a clean
+state after an error should construct a fresh decoder rather than continue with the one that
+refused.</p>
+<p>CRC is checked, on both generations: AC-3 checks <code>crc1</code> over the first 5/8 of the frame and
+<code>crc2</code> over the whole of it, E-AC-3 checks its single CRC over everything past the sync word.
+<code>kBadCrc</code> is a real refusal, not a warning.</p>
+<h2 id="reporting-an-issue">Reporting an issue<a class="headerlink" href="#reporting-an-issue" title="Permanent link">&para;</a></h2>
+<p>Use <a href="https://github.com/iainchesworthlabs/ac3forge/security/advisories/new">GitHub Security Advisories</a>,
+privately — the process and timelines are in
+<a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+<p>If you found it while embedding this library, the two things that speed up a fix most are:</p>
+<ol>
+<li><strong>The input.</strong> A stream, WAV or ADM file that reproduces it, however small. If it came out of
+   a fuzzer, the raw corpus file is ideal — it drops straight into
+   <code>fuzz/regressions/&lt;harness&gt;/</code> as a permanent regression case.</li>
+<li><strong>Which entry point you called</strong>, and whether you were using an allocating decode form or an
+   <code>_into</code> form with your own spans. Those have different contracts and a report that does not
+   say which one is in play can take a while to place.</li>
+</ol>
+<p>A sanitizer report (ASan/UBSan stack) is worth more than a description of the symptom, and the
+build that produced it (<code>ac3cli --version</code> prints version, commit and toolchain) says whether
+what you hit is already fixed.</p>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../verification/">Validation</a> — how output correctness is checked, and where the oracles run out</li>
+<li><a href="../conformance-vectors/">Conformance vectors</a> — the published stream set, and what it does and does not prove</li>
+<li><a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md"><code>fuzz/README.md</code></a> — the harnesses, the differential oracle and its agreement floor</li>
+<li><a href="../library/decoding/">Decoding</a> — the decode API this page describes the boundaries of</li>
+<li><a href="../library/c-api/">C API</a> — the ownership and error conventions in full</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

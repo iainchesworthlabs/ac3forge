@@ -1,0 +1,5036 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A clean-room AC-3 / E-AC-3 / Dolby Atmos encoder and decoder in C++23">
+      
+      
+      
+        <link rel="canonical" href="https://iainchesworthlabs.github.io/ac3forge/cli/metadata-options/">
+      
+      
+        <link rel="prev" href="../commands/">
+      
+      
+        <link rel="next" href="../../gui/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Options & grammars - ac3forge</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#options-grammars" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="ac3forge" class="md-header__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ac3forge
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Options & grammars
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../concepts/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../verification/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Validation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../threat-model/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Threat model
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../conformance-vectors/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Conformance vectors
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../library/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Library
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  CLI reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../gui/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  GUI guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance-quality/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance & quality
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Project
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="ac3forge" class="md-nav__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ac3forge
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform notes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform notes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/linux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/raspberry-pi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raspberry Pi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/android/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Android (NVIDIA Shield)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Desktop Atmos Demo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows-driver-acx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows null-sink driver on ACX (plan)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/wasm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebAssembly (browser demos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../concepts/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/ac3-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AC-3 & E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/atmos-joc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Atmos & JOC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/object-signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threat-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threat model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../conformance-vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conformance vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../library/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Library
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Example programs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/encoding-ac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/encoding-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/decoding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decoding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/spatial-and-atmos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spatial & Atmos objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/station-broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A worked scene — station broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/channel-plans-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channel plans & routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/muxing-and-sinks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Muxing & sinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/file-io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File I/O
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/iab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAB (SMPTE ST 2098-2) reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/adm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM / BW64 reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/adm-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM → Atmos bridging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/iamf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAMF writing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Measuring quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/header-map/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Header map
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/api-stability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API stability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/c-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/rust-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rust bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Options & grammars
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Options & grammars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#bit-stream-information-annexd-infomdat-and-the-service-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bit stream information: annexd, infomdat and the service fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#programme-mixing-e-ac-3-pgmscl-mixdef-paninfo-blkmixcfg" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Programme mixing (E-AC-3): pgmscl, mixdef, paninfo, blkmixcfg
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-tools-token-eac3-encode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tools: token (eac3-encode)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-vbr-token-eac3-encode-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The vbr token (eac3-encode only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-layout-grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The layout grammar
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#source-options-encodeeac3-encodeatmos-encode-src-map-and-offset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source options (encode/eac3-encode/atmos-encode): src=, map= and offset=
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recordlive-options-record-live-container-layout-codec-watchdog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Record/live options (record, live): container=, layout=, codec=, watchdog=
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Record/live options (record, live): container=, layout=, codec=, watchdog=">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        container=
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#layout-and-codec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        layout= and codec=
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#watchdog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        watchdog=
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#live-options-live-capture2-objects-downmix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live options (live): capture2=, objects=, downmix=
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Live options (live): capture2=, objects=, downmix=">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#capture2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        capture2=
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#objects-and-map-modeatmos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        objects= and map= (mode=atmos)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#downmix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        downmix=
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#play-options-play-follow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Play options (play): follow=
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Play options (play): follow=">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#follow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        follow=
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-options-every-command-quiet-verbose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common options (every command): quiet, verbose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exit codes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#programme-options-eac3-encode-programme2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Programme options (eac3-encode): programme2=
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#programme-options-decode-qc-levels-programme" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Programme options (decode, qc, levels): programme=
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stream-tool-options-transcode-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stream-tool options (transcode, metadata)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#qc-options-qc-preset-layout-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Qc options (qc): preset=, layout=, objects=
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Qc options (qc): preset=, layout=, objects=">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#specifications-deliberately-not-given-a-preset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Specifications deliberately not given a preset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#layoutbed-default-and-layoutrendered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        layout=bed (default) and layout=rendered
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#objectslayout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        objects=&lt;layout&gt;
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#probe-options-probe-json-detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Probe options (probe): json=, detail=
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Defaults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-encoder-accepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the encoder accepts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#command-specific-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command-specific notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../gui/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GUI guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_9" id="__nav_9_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GUI guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/loading-a-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loading a source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/format-and-channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format & channels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/objects-and-motion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Objects & motion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/live-session/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live capture & session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/source-assignment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-source & assignment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/coding-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/qc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QC a stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/inspect-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inspect objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/open-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/localisation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Localisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance & quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tool-comparison-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tool comparison trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../object-quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../landscape/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Landscape
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live decode demo (WASM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-encode-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live encode demo (WASM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ci-self-hosted-runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosted CI runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#bit-stream-information-annexd-infomdat-and-the-service-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bit stream information: annexd, infomdat and the service fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#programme-mixing-e-ac-3-pgmscl-mixdef-paninfo-blkmixcfg" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Programme mixing (E-AC-3): pgmscl, mixdef, paninfo, blkmixcfg
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-tools-token-eac3-encode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tools: token (eac3-encode)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-vbr-token-eac3-encode-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The vbr token (eac3-encode only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-layout-grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The layout grammar
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#source-options-encodeeac3-encodeatmos-encode-src-map-and-offset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source options (encode/eac3-encode/atmos-encode): src=, map= and offset=
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recordlive-options-record-live-container-layout-codec-watchdog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Record/live options (record, live): container=, layout=, codec=, watchdog=
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Record/live options (record, live): container=, layout=, codec=, watchdog=">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#container" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        container=
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#layout-and-codec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        layout= and codec=
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#watchdog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        watchdog=
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#live-options-live-capture2-objects-downmix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live options (live): capture2=, objects=, downmix=
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Live options (live): capture2=, objects=, downmix=">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#capture2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        capture2=
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#objects-and-map-modeatmos" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        objects= and map= (mode=atmos)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#downmix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        downmix=
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#play-options-play-follow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Play options (play): follow=
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Play options (play): follow=">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#follow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        follow=
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-options-every-command-quiet-verbose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common options (every command): quiet, verbose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exit codes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#programme-options-eac3-encode-programme2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Programme options (eac3-encode): programme2=
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#programme-options-decode-qc-levels-programme" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Programme options (decode, qc, levels): programme=
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stream-tool-options-transcode-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stream-tool options (transcode, metadata)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#qc-options-qc-preset-layout-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Qc options (qc): preset=, layout=, objects=
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Qc options (qc): preset=, layout=, objects=">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#specifications-deliberately-not-given-a-preset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Specifications deliberately not given a preset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#layoutbed-default-and-layoutrendered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        layout=bed (default) and layout=rendered
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#objectslayout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        objects=&lt;layout&gt;
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#probe-options-probe-json-detail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Probe options (probe): json=, detail=
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Defaults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-encoder-accepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the encoder accepts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#command-specific-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Command-specific notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="options-grammars">Options &amp; grammars<a class="headerlink" href="#options-grammars" title="Permanent link">&para;</a></h1>
+<p>Encoding commands in <a href="../commands/">Commands</a> take these after their positional arguments, in any
+order. Not every command honors every option, though the parser accepts them anywhere: <code>silence</code>
+takes none at all; <code>record</code> and <code>live mode=channels</code> build a real encoder plan, so they honor the
+whole metadata group below (<code>drc=</code>, <code>heavy</code>, <code>dialnorm=&lt;n&gt;</code>, <code>cmixlev=</code>/<code>surmixlev=</code> — which is
+also what their §7.8 fold-down uses — <code>mixmeta</code>, <code>lfemix=</code>, <code>dmixmod=</code>) alongside <code>fast-mdct=off</code>,
+<code>container=</code>/<code>fmp4-window=</code>, <code>layout=</code>, <code>codec=</code>, <code>watchdog=</code> and, <code>live</code> only, <code>capture2=</code>,
+<code>objects=</code>, <code>map=</code> and <code>downmix=</code>. <code>dialnorm=auto</code> is the one they refuse: it measures a whole
+programme before encoding it, and a live capture has not got one yet. <code>live mode=atmos</code> encodes
+the fixed TS 103 420 shape, so it takes <code>dialnorm=&lt;n&gt;</code> and <code>fast-mdct=off</code> from the group and
+nothing else. <code>atmos</code>, <code>atmos-path</code> and <code>atmos-encode</code> all apply <code>dialnorm=&lt;n&gt;</code>, <code>fast-mdct=off</code>,
+<code>joc-domain=</code>
+and the object-signing flags below, and <code>dialnorm=auto</code> is silently inert on <code>atmos</code>/<code>atmos-path</code>
+— of the three Atmos commands, only <code>atmos-encode</code> measures, and not when <code>src=</code>/<code>map=</code> are in play
+(an assembled object set has no single fixed layout to measure a whole-programme loudness
+against). Every command honors <code>quiet</code>, <code>verbose</code> and <code>--help</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>metadata options (any order, after the positional arguments):
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  drc=&lt;profile&gt;     §7.7.1 dynamic range control per block
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>                    film-standard | film-light | music-standard | music-light | speech
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  heavy             §7.7.2 heavy compression: a peak ceiling in the
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>                    mono downmix, at syncframe resolution
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  ceiling=&lt;dBFS&gt;    that ceiling (default -0.5)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  dialogue=&lt;dBFS&gt;   where heavy compression puts dialogue (default -20)
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  drc2=&lt;profile&gt;    Ch2&#39;s own DRC profile, layout 1+1 only (§7.7.1) - not
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>                    inherited from drc=, set both to compress both programmes alike
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  heavy2            Ch2&#39;s own heavy compression, layout 1+1 only (§7.7.2.2)
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  ceiling2=&lt;dBFS&gt;   that ceiling for Ch2 (default -0.5)
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  dialogue2=&lt;dBFS&gt;  where Ch2&#39;s heavy compression puts dialogue (default -20)
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  dialnorm=auto     measure BS.1770 loudness and derive dialnorm (§5.4.2.8)
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>  dialnorm=&lt;1..31&gt;  set it directly (default 31)
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>  dialnorm2=auto | &lt;1..31&gt;   Ch2&#39;s own dialnorm, layout 1+1 only (§5.4.2.16, default 31)
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>  cmixlev=-3|-4.5|-6      centre downmix level (Table 5.9)
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>  surmixlev=-3|-6|off     surround downmix level (Table 5.10)
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>  mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>  lfemix=&lt;0..31&gt;|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>  dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>  ltrtcmixlev=&lt;dB&gt;  Lt/Rt centre level, Table D2.3: +3|+1.5|0|-1.5|-3|-4.5|-6|off
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>  lorocmixlev=&lt;dB&gt;  Lo/Ro centre level, Table D2.5 (same eight values)
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>  ltrtsurmixlev=&lt;dB&gt;      Lt/Rt surround level, Table D2.4: -1.5|-3|-4.5|-6|off
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>                    (the three louder codes are reserved)
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>  lorosurmixlev=&lt;dB&gt;      Lo/Ro surround level, Table D2.6 (same five)
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>  annexd            AC-3 only: emit bsid 6, spending the two 14-bit timecod
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>                    fields on Annex D&#39;s xbsi1/xbsi2 instead (§D1)
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>  dsurexmod=none|off|ex|pliiz     Dolby Surround EX (Table D2.7)
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>  dheadphonmod=none|off|on        Dolby Headphone (Table D2.8)
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>  adconvtyp=standard|hdcd         A/D converter type (Table D2.9)
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>  encinfo           AC-3 Annex D: set the encoder&#39;s own reserved bit (§D2.3.1.12)
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>  infomdat          E-AC-3 only: emit the infomdat group (Table E1.2)
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>  bsmod=&lt;service&gt;   type of service, Table 5.7: cm | me | vi | hi | dialogue |
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>                    commentary | emergency | voiceover (or 0..7)
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>  dsurmod=none|off|on     Dolby Surround, 2/0 only (Table 5.11)
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>  mixlevel=&lt;dB SPL&gt; peak mixing level, 80..111 (§5.4.2.14)
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>  roomtyp=none|large|small        mixing room (Table 5.12)
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>  mixlevel2= / roomtyp2=  Ch2&#39;s own pair, layout 1+1 only (§5.4.2.22/23)
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>  langcod / langcod2      emit the reserved 0xFF language byte (§5.4.2.12); AC-3 only
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>  copyright         set copyrightb (§5.4.2.24; default clear)
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>  origbs=on|off     original bit stream vs. a copy (§5.4.2.25; default on)
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>  sourcefscod       E-AC-3: source sampled at twice fscod&#39;s rate (§E2.3.1.63)
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>  timecode=HH:MM:SS[:FF[.N]]      AC-3 bsid 8 only (§5.4.2.26-28)
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>  pgmscl=&lt;dB&gt;|mute  E-AC-3 programme scale factor, -50..+12 dB (§E2.3.1.13)
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>  pgmscl2=&lt;dB&gt;|mute Ch2&#39;s own, layout 1+1 only (§E2.3.1.15)
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>  extpgmscl=&lt;dB&gt;|mute     the external programme&#39;s (§E2.3.1.17)
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>  mixdef=none|premix|reserved|ext  mixing-parameter block (Table E2.6)
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>  premixcmp=&lt;sel&gt;:&lt;src&gt;:&lt;scale&gt;   dynrng|compr : external|local : 0..7
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>                    (§E2.3.1.19-21)
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>  mixdata=&lt;0..4095&gt; the twelve bits mixdef=reserved reserves (§E2.3.1.23)
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>  extmix=&lt;L&gt;,&lt;C&gt;,&lt;R&gt;,&lt;Ls&gt;,&lt;Rs&gt;,&lt;LFE&gt;[,&lt;dmix&gt;]   mixdef=ext external channel
+<a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>                    scale codes 0..15 (Table E2.8), &#39;off&#39; for a channel the
+<a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>                    external programme lacks
+<a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>  auxmix=&lt;a1&gt;,&lt;a2&gt;  mixdef=ext auxiliary channel scales, same codes
+<a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>  speechmix=&lt;d&gt;[,&lt;d1&gt;:&lt;att1&gt;[,&lt;d2&gt;:&lt;att2&gt;]]     mixdef=ext speech enhancement
+<a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>                    data (§E2.3.1.44-51)
+<a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>  paninfo=&lt;0..239&gt;[:&lt;0..63&gt;]      E-AC-3 pan position, 1.5 degree steps
+<a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a>                    clockwise from centre, mono/1+1 only (§E2.3.1.53-58)
+<a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>  paninfo2=         Ch2&#39;s own, layout 1+1 only
+<a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a>  blkmixcfg=&lt;b0,..,b5&gt;    E-AC-3 per-block mixing configuration, six 0..31
+<a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>                    words or &#39;-&#39; for a block that sends none (§E2.3.1.59-61)
+<a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>  couple            enable channel coupling - honored by &#39;encode&#39; and &#39;sine&#39; (&#39;sine&#39; can also
+<a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>                    spell it as a &#39;c&#39; layout suffix); E-AC-3 coupling is the tools argument&#39;s
+<a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a>                    cpl token instead
+<a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a>  keep-partial      encode/eac3-encode/atmos-encode: if the run fails partway, keep whatever
+<a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a>                    frames were already encoded (named beside the intended output as
+<a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a>                    &lt;name&gt;.partial.&lt;ext&gt;) instead of discarding them - off by default, matching
+<a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a>                    the GUI&#39;s own keep-partial-output preference
+<a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a>  fast-mdct=off     force the direct §8.2.3.2 forward MDCT instead of the default §7.9.4 fast
+<a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a>                    path (identical streams to within ~3e-12 max relative coefficient error;
+<a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a>                    the direct form is the validation oracle) - applies wherever this command
+<a id="__codelineno-0-75" name="__codelineno-0-75" href="#__codelineno-0-75"></a>                    encodes, incl. atmos/record/live/eac3-sine/eac3-encode; eac3-encode&#39;s
+<a id="__codelineno-0-76" name="__codelineno-0-76" href="#__codelineno-0-76"></a>                    [tools] positional can also reach this field via a bare nofastmdct token,
+<a id="__codelineno-0-77" name="__codelineno-0-77" href="#__codelineno-0-77"></a>                    which wins if both are given; bare fast-mdct (the old opt-in) is a no-op
+<a id="__codelineno-0-78" name="__codelineno-0-78" href="#__codelineno-0-78"></a>  fast-imdct=off    decode: force the direct §7.9.4 step-3 inverse instead of the default
+<a id="__codelineno-0-79" name="__codelineno-0-79" href="#__codelineno-0-79"></a>                    radix-4 FFT evaluation - the decode-side mirror of fast-mdct=off above,
+<a id="__codelineno-0-80" name="__codelineno-0-80" href="#__codelineno-0-80"></a>                    with the same relationship to its oracle (both codecs; bare fast-imdct,
+<a id="__codelineno-0-81" name="__codelineno-0-81" href="#__codelineno-0-81"></a>                    the old opt-in, is a no-op)
+<a id="__codelineno-0-82" name="__codelineno-0-82" href="#__codelineno-0-82"></a>  search=&lt;what&gt;     AC-3 encode (encode/sine) and E-AC-3 encode (eac3-encode/eac3-sine): choose
+<a id="__codelineno-0-83" name="__codelineno-0-83" href="#__codelineno-0-83"></a>                    §7.2.2&#39;s transmitted bit allocation parameters per frame, from the error a
+<a id="__codelineno-0-84" name="__codelineno-0-84" href="#__codelineno-0-84"></a>                    decoder will reconstruct, instead of taking the rate-derived defaults.
+<a id="__codelineno-0-85" name="__codelineno-0-85" href="#__codelineno-0-85"></a>                    distortion minimises that error; perceptual weights it by a tonality/masking
+<a id="__codelineno-0-86" name="__codelineno-0-86" href="#__codelineno-0-86"></a>                    model first. off (the default) keeps the fixed values every release before
+<a id="__codelineno-0-87" name="__codelineno-0-87" href="#__codelineno-0-87"></a>                    this emitted. E-AC-3 narrows it: CBR only (silently inert under vbr=),
+<a id="__codelineno-0-88" name="__codelineno-0-88" href="#__codelineno-0-88"></a>                    distortion only (perceptual parses and does nothing), AHT streams excluded
+<a id="__codelineno-0-89" name="__codelineno-0-89" href="#__codelineno-0-89"></a>                    from the measurement, and the candidates are dbpbcod - kAllocCodes&#39; 3
+<a id="__codelineno-0-90" name="__codelineno-0-90" href="#__codelineno-0-90"></a>                    against Table E1.4&#39;s 2 - crossed with Table 7.11&#39;s rate-adaptive fgaincod,
+<a id="__codelineno-0-91" name="__codelineno-0-91" href="#__codelineno-0-91"></a>                    which unlike AC-3&#39;s is not free (it opens the per-block fgaincode element)
+<a id="__codelineno-0-92" name="__codelineno-0-92" href="#__codelineno-0-92"></a>                    and so is scored after a refit rather than assumed. Costs encode time - see
+<a id="__codelineno-0-93" name="__codelineno-0-93" href="#__codelineno-0-93"></a>                    docs/library/quality.md for the measured figures
+<a id="__codelineno-0-94" name="__codelineno-0-94" href="#__codelineno-0-94"></a>  mode=reference    both switches above in one word: every transform this command runs falls
+<a id="__codelineno-0-95" name="__codelineno-0-95" href="#__codelineno-0-95"></a>                    back to the spec&#39;s own direct evaluation. mode=performance (the default
+<a id="__codelineno-0-96" name="__codelineno-0-96" href="#__codelineno-0-96"></a>                    state) names the fast paths. Tokens apply in order, so a later
+<a id="__codelineno-0-97" name="__codelineno-0-97" href="#__codelineno-0-97"></a>                    fast-mdct=off / fast-imdct=off still adjusts one half on its own
+<a id="__codelineno-0-98" name="__codelineno-0-98" href="#__codelineno-0-98"></a>  joc-domain=mdct   atmos*/decode: estimate and apply the JOC reconstruction matrix over 256
+<a id="__codelineno-0-99" name="__codelineno-0-99" href="#__codelineno-0-99"></a>                    MDCT bins instead of the default §7.1 64-band complex QMF - cheaper, ~5 dB
+<a id="__codelineno-0-100" name="__codelineno-0-100" href="#__codelineno-0-100"></a>                    worse per object, and not the domain a licensed decoder reconstructs in.
+<a id="__codelineno-0-101" name="__codelineno-0-101" href="#__codelineno-0-101"></a>                    Not part of mode= in either direction (=qmf names the default)
+<a id="__codelineno-0-102" name="__codelineno-0-102" href="#__codelineno-0-102"></a>  dither=off        pin §7.3.4 dithflag at 0 instead of deciding it per channel per block from
+<a id="__codelineno-0-103" name="__codelineno-0-103" href="#__codelineno-0-103"></a>                    content - the same reach as fast-mdct=off (encode/sine and the
+<a id="__codelineno-0-104" name="__codelineno-0-104" href="#__codelineno-0-104"></a>                    atmos/record/live session builders); eac3-encode&#39;s [tools] positional can
+<a id="__codelineno-0-105" name="__codelineno-0-105" href="#__codelineno-0-105"></a>                    also reach this field via a bare nodither token. Real dither values are
+<a id="__codelineno-0-106" name="__codelineno-0-106" href="#__codelineno-0-106"></a>                    decoder-defined (the spec&#39;s own &quot;any reasonably random sequence&quot;), so this
+<a id="__codelineno-0-107" name="__codelineno-0-107" href="#__codelineno-0-107"></a>                    is for a run that needs bit-for-bit agreement between two decoders of the
+<a id="__codelineno-0-108" name="__codelineno-0-108" href="#__codelineno-0-108"></a>                    same stream more than it needs dither&#39;s own perceptual benefit -
+<a id="__codelineno-0-109" name="__codelineno-0-109" href="#__codelineno-0-109"></a>                    tools/checks/verify_gold_reference.sh is the one caller that does
+<a id="__codelineno-0-110" name="__codelineno-0-110" href="#__codelineno-0-110"></a>  verify            eac3-encode: decode every access unit as it is encoded and diff the
+<a id="__codelineno-0-111" name="__codelineno-0-111" href="#__codelineno-0-111"></a>                    decoder&#39;s model against the encoder&#39;s own, refusing the run at the first
+<a id="__codelineno-0-112" name="__codelineno-0-112" href="#__codelineno-0-112"></a>                    disagreement - off by default, since it roughly doubles the work
+<a id="__codelineno-0-113" name="__codelineno-0-113" href="#__codelineno-0-113"></a>
+<a id="__codelineno-0-114" name="__codelineno-0-114" href="#__codelineno-0-114"></a>qc options (qc; any order, after the positional arguments):
+<a id="__codelineno-0-115" name="__codelineno-0-115" href="#__codelineno-0-115"></a>  preset=&lt;name&gt;     gate the measurement against a named delivery spec
+<a id="__codelineno-0-116" name="__codelineno-0-116" href="#__codelineno-0-116"></a>                    ebu-r128-s2 | atsc-a85 | atsc-a85-streaming | netflix | apple-music-atmos
+<a id="__codelineno-0-117" name="__codelineno-0-117" href="#__codelineno-0-117"></a>  preset=all        gate against every preset above
+<a id="__codelineno-0-118" name="__codelineno-0-118" href="#__codelineno-0-118"></a>                    omitted: measure and report only, no gate
+<a id="__codelineno-0-119" name="__codelineno-0-119" href="#__codelineno-0-119"></a>  layout=bed        the default - meter the independent substream&#39;s own
+<a id="__codelineno-0-120" name="__codelineno-0-120" href="#__codelineno-0-120"></a>                    Table 5.8 bed (BS.1770 Annex 1&#39;s basic algorithm)
+<a id="__codelineno-0-121" name="__codelineno-0-121" href="#__codelineno-0-121"></a>  layout=rendered   meter the whole assembled program instead, every
+<a id="__codelineno-0-122" name="__codelineno-0-122" href="#__codelineno-0-122"></a>                    dependent substream&#39;s height/wide/rear channels
+<a id="__codelineno-0-123" name="__codelineno-0-123" href="#__codelineno-0-123"></a>                    included (BS.1770-5 Annex 3&#39;s extended algorithm)
+<a id="__codelineno-0-124" name="__codelineno-0-124" href="#__codelineno-0-124"></a>  objects=&lt;layout&gt;  re-render dynamic objects by their own OAMD position
+<a id="__codelineno-0-125" name="__codelineno-0-125" href="#__codelineno-0-125"></a>                    onto &lt;layout&gt; (71|512|514|714) and meter that too
+<a id="__codelineno-0-126" name="__codelineno-0-126" href="#__codelineno-0-126"></a>                    (BS.1770-5 Annex 4); dynamic-object-only programmes
+<a id="__codelineno-0-127" name="__codelineno-0-127" href="#__codelineno-0-127"></a>                    only
+</code></pre></div>
+<p>For <code>decode</code>, <code>drc=&lt;scale&gt;</code> instead applies §7.7.1 partial compression (<code>0</code> = ignore, <code>1</code> = as
+encoded), and bare <code>heavy</code> prefers <code>compr</code> where the stream carries it — the decode-time meaning
+of these two tokens is deliberately the mirror of their encode-time meaning. Both apply to
+E-AC-3 decode too, matching the legacy AC-3 decoder — <code>.ec3</code> input no longer accepts and silently
+ignores them. <code>fast-imdct=off</code> and <code>mode=</code> select the inverse transform's evaluation and apply to
+both codecs' decode alike.</p>
+<p>See <a href="../../library/metadata/">Metadata</a> for what each of these fields actually is at the library
+level (<code>dynrng</code>, <code>compr</code>, <code>dialnorm</code>, downmix levels) — the CLI tokens above map directly onto
+that page's config fields.</p>
+<h2 id="bit-stream-information-annexd-infomdat-and-the-service-fields">Bit stream information: <code>annexd</code>, <code>infomdat</code> and the service fields<a class="headerlink" href="#bit-stream-information-annexd-infomdat-and-the-service-fields" title="Permanent link">&para;</a></h2>
+<p>Everything in this group is metadata a receiver reads <em>about</em> the programme; none of it changes
+an output sample. What it decides is whether that receiver can tell a complete main programme
+from an audio-description track, whether a stereo pair is a Dolby Surround matrix, and what
+acoustic level the mix was judged at.</p>
+<p>The two gate tokens exist because the two formats carry the group differently:</p>
+<ul>
+<li><strong><code>annexd</code></strong> (AC-3 only) writes <code>bsid</code> 6. AC-3's two 14-bit <code>timecod</code> fields have never been
+  applied for their originally anticipated purpose (§D1), so Annex D spends them on <code>xbsi1</code>
+  (<code>dmixmod</code> plus separate Lt/Rt and Lo/Ro centre and surround levels) and <code>xbsi2</code> (<code>dsurexmod</code>,
+  <code>dheadphonmod</code>, <code>adconvtyp</code>). It is implied by <code>dmixmod=</code>, by any of the four level tokens, and
+  by the three <code>xbsi2</code> tokens — so <code>ac3cli encode in.wav out.ac3 384 51 dmixmod=ltrt</code> writes a
+  <code>bsid</code>-6 stream without being asked twice. <code>timecode=</code> and <code>annexd</code> are refused together: they
+  are the same 28 bits.</li>
+<li><strong><code>infomdat</code></strong> (E-AC-3 only) opens Table E1.2's <code>infomdat</code> element. It is implied by every
+  informational token — <code>bsmod=</code>, <code>dsurmod=</code>, <code>dsurexmod=</code>, <code>dheadphonmod=</code>, <code>adconvtyp=</code>,
+  <code>mixlevel=</code>, <code>roomtyp=</code>, <code>copyright</code>, <code>origbs=</code>, <code>sourcefscod</code>. AC-3 needs no such gate: those
+  fields are unconditional in its own bsi.</li>
+</ul>
+<p>Fields the layout has no room for are simply not written, per the syntax: <code>dsurmod</code> and
+<code>dheadphonmod</code> exist only at 2/0, <code>dsurexmod</code> only at 2/2 and 3/2, <code>mixlevel2</code>/<code>roomtyp2</code>/
+<code>paninfo2</code>/<code>pgmscl2</code> only at 1+1. Setting one anyway is not an error — it just does not reach the
+wire, which is what lets one set of options describe a programme at any layout.</p>
+<p><code>langcod</code> is a presence flag rather than a value: §5.4.2.12 makes the byte a reserved <code>0xFF</code>, the
+language table it once indexed having been dropped in favour of the signalling layer's own
+ISO 639-2 code.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>ac3cli<span class="w"> </span>encode<span class="w"> </span><span class="k">in</span>.wav<span class="w"> </span>out.ac3<span class="w"> </span><span class="m">384</span><span class="w"> </span><span class="m">51</span><span class="w"> </span><span class="nv">bsmod</span><span class="o">=</span>vi<span class="w"> </span><span class="nv">mixlevel</span><span class="o">=</span><span class="m">105</span><span class="w"> </span><span class="nv">roomtyp</span><span class="o">=</span>large<span class="w"> </span>copyright<span class="w"> </span><span class="nv">dmixmod</span><span class="o">=</span>ltrt<span class="w"> </span><span class="nv">ltrtcmixlev</span><span class="o">=</span>-1.5<span class="w"> </span><span class="nv">dsurexmod</span><span class="o">=</span>ex<span class="w"> </span><span class="nv">adconvtyp</span><span class="o">=</span>hdcd
+</code></pre></div>
+<p>That is an AC-3 visually-impaired associated service, mixed at 105 dB SPL in a large X-curve
+room, copyright asserted, preferring an Lt/Rt downmix with the centre 1.5 dB down in it, flagged
+as Surround EX and captured through an HDCD converter — <code>bsid</code> 6, because the last three of those
+have nowhere else to go.</p>
+<h2 id="programme-mixing-e-ac-3-pgmscl-mixdef-paninfo-blkmixcfg">Programme mixing (E-AC-3): <code>pgmscl</code>, <code>mixdef</code>, <code>paninfo</code>, <code>blkmixcfg</code><a class="headerlink" href="#programme-mixing-e-ac-3-pgmscl-mixdef-paninfo-blkmixcfg" title="Permanent link">&para;</a></h2>
+<p>The <code>mixmeta</code> group's five downmix levels say how to fold <em>this</em> programme down. The tokens above
+say how to combine it with a <em>second</em> one — the audio-description or commentary service a
+receiver mixes against the main programme. §E2.3.1.17's "external program" is that second stream.
+The whole group is written only by the independent substream, since a dependent is part of
+someone else's programme and has no second one of its own to talk about.</p>
+<p><code>mixdef=</code> picks one of Table E2.6's four options and decides which of the tokens below are
+written: <code>premix</code> sends <code>premixcmp=</code> alone, <code>reserved</code> sends <code>mixdata=</code>'s twelve bits, and <code>ext</code>
+sends whichever of <code>extmix=</code>/<code>auxmix=</code>/<code>speechmix=</code> are given inside a length-prefixed block.
+Naming any of them turns <code>mixmeta</code> on.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>ac3cli<span class="w"> </span>eac3-encode<span class="w"> </span><span class="k">in</span>.wav<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">448</span><span class="w"> </span>none<span class="w"> </span><span class="m">51</span><span class="w"> </span><span class="nv">pgmscl</span><span class="o">=</span>-6<span class="w"> </span><span class="nv">extpgmscl</span><span class="o">=</span>+3<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="nv">mixdef</span><span class="o">=</span>ext<span class="w"> </span><span class="nv">premixcmp</span><span class="o">=</span>dynrng:external:0<span class="w"> </span><span class="nv">extmix</span><span class="o">=</span><span class="m">0</span>,2,0,off,off,15<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nv">blkmixcfg</span><span class="o">=</span><span class="m">3</span>,-,7,-,-,31<span class="w"> </span><span class="nv">bsmod</span><span class="o">=</span>commentary<span class="w"> </span><span class="nv">mixlevel</span><span class="o">=</span><span class="m">98</span><span class="w"> </span><span class="nv">roomtyp</span><span class="o">=</span>small
+</code></pre></div>
+<p>In <code>extmix=</code>, <code>off</code> means the external programme has <strong>no</strong> such channel (§E2.3.1.31's cleared
+flag), which is not the same as a scale factor of <code>0</code> — that is Table E2.8's −1 dB. <code>blkmixcfg=</code>
+takes one word per block with <code>-</code> for a block whose <code>blkmixcfginfoe</code> stays clear.</p>
+<p><code>decode</code> reports both groups back: any service, production, Surround or programme-mixing field
+the stream actually carries is printed under the <code>dynrng</code>/<code>compr</code> lines. A plain complete-main
+programme with none of them prints nothing extra.</p>
+<h2 id="the-tools-token-eac3-encode">The <code>tools:</code> token (<code>eac3-encode</code>)<a class="headerlink" href="#the-tools-token-eac3-encode" title="Permanent link">&para;</a></h2>
+<p>Annex E coding tools, <code>+</code>-joined:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>tools:  Annex E coding tools, &#39;+&#39;-joined — none | cpl | spx | aht | tpn |
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>        nofastmdct | nodither | numblkscod:N | all
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        (cpl:N / spx:N pin a band edge, aht:N the gain mode, ecpl selects
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        enhanced coupling instead of standard, tpn selects transient
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        pre-noise processing)
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        cpl:N / spx:N pin that tool&#39;s band edge (e.g. cpl:4+spx:5);
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        aht:N pins the GAQ mode — aht:0 is AHT with GAQ switched off;
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>        atten:N pins the SPX notch depth, noatten removes it;
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>        ecpl only takes effect alongside cpl (e.g. cpl+ecpl);
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>        nofastmdct forces the direct-form forward MDCT instead of the
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>        default §7.9.4 fast path, nodither pins dithflag at 0 instead of
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>        deciding it from content — neither is a coding tool (nothing in
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>        the bitstream&#39;s syntax changes either way), so &#39;none&#39; and &#39;all&#39;
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>        both leave them alone, and the older opt-in spelling &#39;fastmdct&#39;
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>        still parses as a no-op;
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>        numblkscod:N (0-3, default 3) shortens the syncframe to 1/2/3/6
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>        blocks (5.3/10.7/16/32 ms) — every substream of the access unit
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>        takes the same value, AHT is unavailable below 3 (Table E1.3 has
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>        no ahte bit there — combining it with aht/auto is refused up
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>        front, not silently dropped), and &#39;none&#39;/&#39;all&#39; leave it alone too
+</code></pre></div>
+<p>The tool set is the fourth positional argument, not an <code>=</code> option. Example:
+<code>ac3cli eac3-encode in.wav out.ec3 192 cpl+spx:5+aht:0</code> turns on coupling (auto band edge),
+spectral extension pinned to band 5, and AHT with GAQ off; <code>cpl+ecpl+tpn</code> in the same slot turns
+on enhanced coupling (auto band edge) and transient pre-noise processing together — <code>ecpl</code> and
+<code>tpn</code> are independent tools, not alternatives to each other or to <code>spx</code>/<code>aht</code>, so any
+combination the tools argument accepts is legal here. <code>all</code> does not currently imply <code>ecpl</code> or
+<code>tpn</code>; name them explicitly to get either.</p>
+<p><code>ac3cli eac3-encode in.wav out.ec3 192 cpl+numblkscod:1</code> couples and halves the syncframe to two
+blocks (10.7 ms) — useful where 32 ms of encode latency is too much (live monitoring, a
+round-trip over a network link) at the cost of the bsi/audfrm header repeating three times as
+often for the same audio, which comes straight out of the mantissas at a fixed bit rate.</p>
+<p>The <code>atmos*</code> encode commands take the same choice as a <code>numblkscod=N</code> key=value option rather
+than a tools token (they have no <code>[tools]</code> positional — the bed's coding tools are the object
+encoder's own business). The object layer scales with the frame: the OAMD update's
+<code>ramp_duration</code> covers exactly one shortened frame (Table 24 spells 1536 and 512 directly, 256
+through Table 25's ramp table, and a three-block frame's 768 as the 11-bit literal), and the JOC
+matrix interpolates across the frame's own QMF timeslots — four per block — instead of a fixed
+24. So objects update proportionally more often, at the same header-repetition cost as above
+plus a proportionally larger share of each frame spent on the OAMD/JOC container itself, which
+repeats per syncframe too.</p>
+<h2 id="the-vbr-token-eac3-encode-only">The <code>vbr</code> token (<code>eac3-encode</code> only)<a class="headerlink" href="#the-vbr-token-eac3-encode-only" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>vbr (eac3-encode only): off | q:0..1[,min:kbps][,max:kbps]
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>                            | avg:kbps[,win:frames][,min:kbps][,max:kbps] - E-AC-3 only
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>        quality is encoder-relative, not a fixed target — bit cost rises
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>        steeply above roughly half the range, so a high quality with no
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        max bound will often refuse real programme material outright;
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        bitrate_kbps still matters in vbr mode — it feeds the same
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        coupling/spx frequency defaults it always has, not a target rate
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        avg:kbps instead of q: is average-rate (ABR) mode: the encoder
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>        steers the SNR offset to hold that long-run average, with a
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>        sliding-window bit reservoir underneath it, so a quiet frame
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>        stays cheap and a busy one may cost more. It takes no quality —
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        that is the knob it exists to move — so q: and avg: are refused
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>        together. win:frames sets the window (32 frames by default,
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>        about a second at 48 kHz); min:/max: still bound each frame.
+</code></pre></div>
+<p>There are two rate controls here, named by the leading token.</p>
+<p><strong><code>q:</code> — plain VBR.</strong> <code>ac3cli eac3-encode in.wav out.ec3 192 none stereo q:0.4,max:320</code> encodes at
+quality 0.4, capped at 320 kbps whenever the content would otherwise ask for more; <code>bitrate_kbps</code>
+(192 here) still drives the coupling/spx band-edge defaults the way it always has, since VBR has
+no fixed target rate to hand them. What quality 0.4 actually costs, and whether it beats CBR at
+that cost, is measured in
+<a href="../../concepts/ac3-eac3/#e-ac-3-rate-control-what-vbr-and-abr-are-worth">E-AC-3 rate control: what VBR and ABR are worth</a>.</p>
+<p><strong><code>avg:</code> — average-rate (ABR).</strong> <code>ac3cli eac3-encode in.wav out.ec3 192 none stereo avg:192</code>
+delivers a stream that averages 192 kbps over the long run while each frame's size still follows
+the content. The encoder holds one SNR offset across frames and steers it — up while the stream is
+running under its target, down while it is over — with a sliding-window reservoir underneath as a
+hard ceiling, so no window of <code>win:</code> frames can overrun its pooled budget.</p>
+<p><code>avg:</code> takes no quality, and passing both (<code>q:0.5,avg:192</code>) is refused rather than one half
+silently winning: quality fixes the SNR offset, and moving that offset is the whole of what ABR
+does. The stream's first frame seeds the offset from its own budget search, so there is no
+starting value to supply.</p>
+<p><code>win:</code> sets the window in frames — 32 by default, about a second at 48 kHz. Shorter holds the
+average more tightly but gives the reservoir less to carry between a quiet passage and the loud
+one that could use its savings; longer does the opposite. <code>min:</code>/<code>max:</code> bound each individual
+frame and compose with the average, but a <code>min:</code> above the average (or a <code>max:</code> below it) makes
+the average unreachable by construction and is refused.</p>
+<p>Omit <code>vbr</code> (or pass <code>off</code>) for ordinary CBR — the default. AC-3 (<code>encode</code>) is CBR-only because
+<code>frmsizecod</code> indexes a fixed frame-size table; <code>eac3-silence</code> and <code>eac3-sine</code> are E-AC-3
+(<code>frmsiz</code>) and are CBR-only simply because their argument lists have no <code>vbr</code> slot.</p>
+<h2 id="the-layout-grammar">The <code>layout</code> grammar<a class="headerlink" href="#the-layout-grammar" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>layout: mono | stereo | 1+1 | 51 | 71 | 512 | 514 | 714
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>        AC-3 carries only mono | stereo | 1+1 | 51 — everything wider needs the dependent
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>        substreams that only E-AC-3 has.
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>        71 renders 8 speakers from 10 coded channels
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>        714 renders 12 speakers from 14 coded channels
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        For &#39;sine&#39; and &#39;eac3-sine&#39; each speaker gets its own tone; append
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>        &#39;c&#39; to a &#39;sine&#39; layout (stereoc, 51c) to enable channel coupling.
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>        For &#39;encode&#39; and &#39;eac3-encode&#39; it names the OUTPUT layout: a
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        source narrower than it leaves the channels it lacks silent, and
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>        a wider one folds down per §7.8 using cmixlev/surmixlev.
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>        [layout] also takes a comma-separated Table E2.5 location list
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>        instead of one of the names above, for anything Annex E allows
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>        that has no preset: e.g. L,C,R,LFE,Vhl,Vhr or L,C,R,LFE,LFE2,Vhc.
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>        AC-3 accepts one too, as long as it needs no dependent substream
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>        (e.g. L,R,Cs or L,C,R,Cs - Table 5.8 modes no preset names).
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>        Locations: L C R Ls Rs Lc Rc Lrs Rrs Cs Ts Lsd Rsd Lw Rw Vhl Vhr
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>        Vhc Lts Rts LFE2 LFE - a paired location (Lc/Rc, Lrs/Rrs, Lsd/Rsd,
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>        Lw/Rw, Vhl/Vhr, Lts/Rts) must be given both halves.
+</code></pre></div>
+<p><code>71</code> and <code>714</code> render fewer speakers than they code because, per §E3.8.2, a dependent
+substream's channels replace some of the bed's rather than adding to it — see
+<a href="../../library/encoding-eac3/">Wide layouts</a> for the encoder-side mechanics behind that.</p>
+<p><code>1+1</code> is not a speaker layout at all — two independent, single-channel programmes sharing one
+syncframe (§5.4.2's "1+1 dual mono") — so it's never inferred from a source's channel count the
+way <code>mono</code>/<code>stereo</code>/<code>51</code>/etc. are; it has to be named explicitly. <code>encode</code>/<code>eac3-encode</code> take its
+two channels either as one two-channel WAV (channel 0 = Ch1, channel 1 = Ch2) or as two mono WAV
+files (<code>in.wav</code> = Ch1, the trailing <code>in2.wav</code> positional = Ch2) — see <a href="../commands/">Commands</a> for
+both forms. <code>dialnorm2=</code>/<code>drc2=</code>/<code>heavy2</code> above set Ch2's own dialnorm/DRC/heavy compression;
+none of the three is inherited from Ch1's — a stream that wants both programmes treated alike sets
+both explicitly. <code>decode</code> writes Ch1/Ch2 back out in that same order, and <code>levels</code> names them
+<code>Ch1</code>/<code>Ch2</code> rather than a speaker position that would not apply.</p>
+<h2 id="source-options-encodeeac3-encodeatmos-encode-src-map-and-offset">Source options (<code>encode</code>/<code>eac3-encode</code>/<code>atmos-encode</code>): <code>src=</code>, <code>map=</code> and <code>offset=</code><a class="headerlink" href="#source-options-encodeeac3-encodeatmos-encode-src-map-and-offset" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>source options (encode/eac3-encode/atmos-encode/live; any order, after the positional
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>arguments):
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  src=&lt;path&gt;        an additional input source; repeat for more than one
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  map=&lt;spec&gt;        &lt;source&gt;.&lt;channel&gt;[-&lt;channel2&gt;]:&lt;dest&gt;[@&lt;trim&gt;][,...] - dest is a channel
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>                     name, obj, objm, p1, p2 or none; a channel range is only legal with obj,
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>                     objm or none, and folds to one mono object with objm; trim is an optional
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>                     signed dB gain in [-24,24] on dest, e.g. L@-3.5
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>                     once given, every loaded channel must appear - explicit &#39;none&#39; silences
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>                     the goes-nowhere warning without giving it anywhere to go
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>  offset=&lt;sourceIndex&gt;:&lt;seconds&gt;   leading silence ahead of that source&#39;s own channels
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>                     (seconds &gt;= 0), same 0-based numbering as src=
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>                     the programme is still as long as the longest one once every offset is
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>                     applied
+</code></pre></div>
+<p><code>src=</code> loads another WAV alongside <code>in.wav</code> (source index 0), in the order given — <code>src=a.wav
+src=b.wav</code> makes <code>a.wav</code> source 1 and <code>b.wav</code> source 2. Every source must share <code>in.wav</code>'s sample
+rate. On <code>live mode=atmos</code> the "sources" are the capture devices instead: source <code>0</code> is
+<code>capture_device</code>, source <code>1</code> is <code>capture2=</code> when present, and <code>map=</code> binds their channels to
+object slots rather than to file channels (see
+<a href="#objects-and-map-modeatmos"><code>objects=</code> and <code>map=</code></a>).</p>
+<p>With exactly one source (no <code>src=</code> at all), <code>map=</code> is not needed: the existing automatic
+single-source panning applies, byte-identical to a plain <code>ac3cli encode</code>/<code>eac3-encode</code> invocation
+that predates this option — omitting <code>map=</code> is defined to behave exactly as if <code>src=</code>/<code>map=</code> did
+not exist. With more than one source, <code>map=</code> becomes mandatory: automatic panning has no defined
+meaning across several files, so every loaded channel needs an explicit entry (or an explicit
+<code>none</code>) before the encode will run.</p>
+<p>Each <code>map=</code> entry is <code>&lt;source&gt;.&lt;channel&gt;:&lt;dest&gt;</code>, comma-separated, <code>&lt;channel&gt;</code> 0-indexed. A
+channel <em>range</em> (<code>&lt;channel&gt;-&lt;channel2&gt;</code>) is only legal when <code>&lt;dest&gt;</code> is <code>obj</code>, <code>objm</code> or <code>none</code> —
+a location or a programme names exactly one channel, so a range there would be ambiguous about
+which one it means. <code>objm</code> folds the whole range into ONE mono object (equal-weight sum, scaled by
+<code>1/n</code> so several full-range channels summed together don't clip past what one alone would) rather
+than one object per channel the way a plain <code>obj</code> range does. Two entries naming the same location,
+or more than one entry per dual-mono programme, is refused.</p>
+<p>The <code>obj</code>/<code>objm</code> destinations are real on the two object-capable commands (roadmap IO9):
+<code>atmos-encode</code> and <code>live mode=atmos</code> both assemble them. Each <code>obj</code> row becomes its own dynamic
+object; a contiguous <code>objm</code> range folds to a single mono object (equal-weight sum, scaled by
+<code>1/n</code>); the objects appear in <code>map=</code> order — every <code>obj</code> row first, in source-then-channel order,
+then each <code>objm</code> group. <code>atmos-encode</code> honours <code>src=</code>/<code>map=</code> the same way <code>encode</code>/<code>eac3-encode</code>
+do, so a GUI assignment is reproducible headlessly, which is the point of the two front ends
+sharing one grammar (see
+<a href="../../gui/source-assignment/">GUI → Multi-source &amp; assignment</a>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>ac3cli<span class="w"> </span>atmos-encode<span class="w"> </span>stems.wav<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">448</span><span class="w"> </span><span class="nv">src</span><span class="o">=</span>vo.wav<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="nv">map</span><span class="o">=</span><span class="m">0</span>.0:obj,0.1:obj@-3,0.2-3:objm,1.0:obj,1.1:none
+</code></pre></div>
+<p>On <code>encode</code>/<code>eac3-encode</code> they remain what they always were: those two commands have no object
+layer to put an object in, so the routing skips every non-location row (also true of a stray
+<code>p1</code>/<code>p2</code> row on a target that isn't dual mono) and audio mapped onto an object destination is
+discarded — not silently, though: both print a warning naming the source/channel and destination
+for each row that resolves to nothing.</p>
+<p>Any <code>&lt;dest&gt;</code> may carry an optional trailing <code>@&lt;trim&gt;</code> — a signed decibel gain in <code>[-24, 24]</code>,
+snapped to a tenth of a dB (<code>L@-3.5</code>, <code>obj@2</code>) — applied as linear gain wherever that channel's
+content reaches the stream: folded into the routing matrix for a bed position or a dual-mono
+programme, or, for <code>obj</code>/<code>objm</code>, into that object's own plane as it is assembled (by
+<code>atmos-encode</code>, <code>live mode=atmos</code> or the GUI — see the note above). Omitted (no <code>@</code>) means no
+trim, the same as an explicit <code>@0</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>ac3cli<span class="w"> </span>eac3-encode<span class="w"> </span>roundtrip-stereo.wav<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">384</span><span class="w"> </span>none<span class="w"> </span><span class="m">51</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span><span class="nv">src</span><span class="o">=</span>roundtrip-51.wav<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nv">map</span><span class="o">=</span><span class="m">0</span>.0:C,0.1:none,1.0:L,1.1:R@-3,1.2:none,1.3:LFE,1.4:Ls,1.5:Rs<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="nv">offset</span><span class="o">=</span><span class="m">1</span>:2.5
+</code></pre></div>
+<p><code>roundtrip-stereo.wav</code>'s left channel (source 0, channel 0) carries the centre; its right channel
+is explicitly silenced. <code>roundtrip-51.wav</code> (source 1) fills the rest, its right channel (<code>1.1</code>)
+trimmed 3 dB down, with its own centre channel (<code>1.2</code>) also sent nowhere so it doesn't collide
+with the first source's. <code>[vbr]</code> and <code>[in2.wav]</code> are both skippable here even though they come
+earlier in <code>eac3-encode</code>'s own positional order — the parser lifts option tokens (anything
+containing <code>=</code>, plus the known bare flags) out of the argument list wherever they appear, so the
+remaining positionals keep their places whether options are present or not.</p>
+<p><code>offset=1:2.5</code> delays <code>roundtrip-51.wav</code> (source 1) by 2.5 seconds of leading silence ahead of its
+own channels — every channel that source contributes shifts together, as when it starts, not what
+it contains. <code>offset=</code> applies as silence, not truncation: the programme's overall length grows to
+cover whichever source ends latest once every offset is applied, not just the longest source's own
+raw length, so a delayed source is never cut short to fit. <code>&lt;sourceIndex&gt;</code> uses the same numbering
+<code>src=</code> establishes (<code>0</code> is the primary positional file, <code>1..N</code> are <code>src=</code> in the order given), and
+works with a single source too — <code>ac3cli encode in.wav out.ac3 384 51 offset=0:2.5</code> needs no
+<code>src=</code>/<code>map=</code> at all. Omitting <code>offset=</code> for a source (or giving it <code>0</code> seconds) behaves exactly as
+it always has.</p>
+<p><code>dialnorm=auto</code>/<code>dialnorm2=auto</code> work alongside <code>src=</code>/<code>map=</code>: the whole programme is routed once
+as a measurement pre-pass — the same BS.1770-4 gated pass the single-file path runs, over what
+<code>map=</code> actually assembles (post-routing, post-trim), not each source's own raw channels — before
+the real encode loop routes it again to encode it. A <code>1+1</code> target measures Ch1/Ch2 independently,
+same as the single-file case; every other target gets one whole-programme measurement over the
+routed bed. A trim on <code>map=</code> (e.g. <code>L@-6</code>) is measured on the trimmed signal, since that is what
+actually reaches the stream.</p>
+<p>In the GUI, a full-bandwidth channel explicitly assigned onto <code>LFE</code>/<code>LFE2</code> is sent through a
+120 Hz low-pass rather than passed through untouched — an explicit assignment states raw content
+for that position, and a real subwoofer (and the LFE channel's own +10 dB mixing headroom)
+assumes it only ever carries deep bass. <code>ac3cli</code> does not filter: its <code>map=</code> routing is a pure
+gain matrix, so content mapped onto <code>LFE</code>/<code>LFE2</code> (e.g. <code>1.3:LFE</code> above) passes through
+unfiltered. Neither front end touches a source's own dedicated LFE channel reaching <code>LFE</code>
+through automatic single-source routing (no <code>src=</code>/<code>map=</code> at all) — that stays bit-exact, since
+nothing there claims full-bandwidth content belongs on that position.</p>
+<p>The GUI's own multi-source Format-tab table (<strong>Add source…</strong> plus a per-channel assignment field)
+is a direct front end over this same grammar — see
+<a href="../../gui/source-assignment/">GUI → Multi-source &amp; assignment</a>.</p>
+<h2 id="recordlive-options-record-live-container-layout-codec-watchdog">Record/live options (<code>record</code>, <code>live</code>): <code>container=</code>, <code>layout=</code>, <code>codec=</code>, <code>watchdog=</code><a class="headerlink" href="#recordlive-options-record-live-container-layout-codec-watchdog" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>record/live options (record, live; any order, after the positional arguments):
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  container=raw     the bare elementary stream (the default)
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  container=mkv     Matroska, written incrementally as the take runs
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>                    (container=matroska is an accepted alias)
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>  container=ts      an MPEG-2 Transport Stream, same DVB profile as &#39;ts&#39;
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>  container=spdif   an IEC 61937 WAV carrier, same bursts as &#39;spdif&#39;
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>  container=fmp4    a DIRECTORY of fragmented MP4/CMAF segments plus live
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>                    HLS playlists and a dynamic DASH MPD, updated as the
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>                    session runs - the output path names the folder
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>                    (container=cmaf is an accepted alias)
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>  fmp4-window=&lt;n&gt;   container=fmp4 only: keep only the last &lt;n&gt; segments in
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>                    the playlist/MPD (a rolling live window); 0, the
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>                    default, keeps every segment
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>  layout=&lt;name&gt;     the encoded layout (default stereo); anything wider
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>                    than AC-3 carries promotes the stream to E-AC-3
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>  codec=ac3|eac3    force the codec instead of deriving it from layout=
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>  watchdog=&lt;sec&gt;    stop the session if capture delivers nothing for this
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>                    long (default 3, 0 disables)
+</code></pre></div>
+<h3 id="container"><code>container=</code><a class="headerlink" href="#container" title="Permanent link">&para;</a></h3>
+<p>All five values write the take <strong>incrementally, as it is captured</strong> — the same <code>RecordingSink</code>
+the GUI's own takes go through (<code>apps/common/recording_sink.hpp</code>), shared verbatim between the two
+front ends rather than reimplemented. Two consequences worth stating: a take of any length costs
+one frame of memory rather than the whole session, and a crash an hour in leaves an hour of
+playable file rather than nothing.</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>What it writes</th>
+<th>Byte-identical to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>raw</code> (default)</td>
+<td>The bare <code>.ac3</code>/<code>.ec3</code> elementary stream</td>
+<td>the frames, concatenated</td>
+</tr>
+<tr>
+<td><code>mkv</code> (alias <code>matroska</code>)</td>
+<td>Matroska, via <code>matroska::Writer</code>'s unknown-size Segment</td>
+<td><code>mkv</code> over the same frames, modulo the streaming Segment header</td>
+</tr>
+<tr>
+<td><code>ts</code> (alias <code>mpegts</code>)</td>
+<td>MPEG-2 Transport Stream, DVB profile</td>
+<td><code>ts</code> over the same frames</td>
+</tr>
+<tr>
+<td><code>spdif</code></td>
+<td>IEC 61937 bursts inside a PCM16 WAV carrier</td>
+<td><code>spdif</code> over the same frames</td>
+</tr>
+<tr>
+<td><code>fmp4</code> (alias <code>cmaf</code>)</td>
+<td>A directory of fragmented MP4/CMAF segments plus HLS/DASH manifests, via <code>Fmp4FolderWriter</code> (<code>apps/common/fmp4_folder_writer.hpp</code>)</td>
+<td>see below</td>
+</tr>
+</tbody>
+</table>
+<p>Plain <code>mp4</code> is deliberately absent: <code>moov</code>/<code>stco</code> need every frame's final offset and the
+<code>dac3</code>/<code>dec3</code> box needs a bitstream scan, so it cannot be written before the take ends — the
+standalone <a href="../commands/#containers"><code>mp4</code> command</a> wraps an already-finished file instead.
+Fragmented MP4 has no such constraint, which is exactly why <code>container=fmp4</code> can stream
+incrementally like the other four. Any other value is refused rather than silently ignored, the
+same rule every option on this page follows.</p>
+<p><code>container=fmp4</code> (alias <code>container=cmaf</code>) is the same choice for fragmented MP4/CMAF, with one
+shape difference the format forces: the output path names a <strong>folder</strong>, not a file, because the
+container is a set of files. It is written incrementally — <code>init.mp4</code> at the first frame, a
+<code>segment*.m4s</code> each time a fragment closes, and <code>audio.m3u8</code>/<code>master.m3u8</code>/<code>manifest.mpd</code>
+rewritten alongside it — so the folder is a servable live origin <em>while the session is still
+running</em>: the playlist carries no <code>#EXT-X-ENDLIST</code> and the MPD is <code>type="dynamic"</code> with an
+<code>availabilityStartTime</code> until the session stops, at which point the trailing partial fragment is
+flushed and both close to their VOD/static forms. <code>live</code> never accumulates the take in memory on
+this path at all; <code>record</code>, which encodes to a fixed length up front, pushes its frames through
+the same writer so the two leave identical folders for the same take.</p>
+<p><code>fmp4-window=&lt;n&gt;</code> bounds what the manifests list to the last <em>n</em> segments — <code>#EXT-X-MEDIA-SEQUENCE</code>
+and the MPD's <code>@startNumber</code>/<code>SegmentTimeline</code> advance with the window, which is what a real
+origin deleting segments behind itself needs. The segments themselves are still written; only the
+manifests roll. RFC 8216 §6.2.2 wants a live playlist to hold at least three target durations of
+media, so an <code>&lt;n&gt;</code> below 3 is accepted but not something a player will enjoy. The default, 0,
+lists every segment — right for a session whose folder will be served whole afterwards.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>ac3cli<span class="w"> </span>record<span class="w"> </span>out.mkv<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">192</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="nv">container</span><span class="o">=</span>mkv
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>ac3cli<span class="w"> </span>record<span class="w"> </span>out.ts<span class="w">  </span><span class="m">30</span><span class="w"> </span><span class="m">448</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="nv">container</span><span class="o">=</span>ts<span class="w"> </span><span class="nv">layout</span><span class="o">=</span><span class="m">51</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>ac3cli<span class="w"> </span>live<span class="w"> </span>out.wav<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">448</span><span class="w"> </span>-2<span class="w"> </span>-2<span class="w"> </span>atmos<span class="w"> </span><span class="nv">container</span><span class="o">=</span>spdif
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>ac3cli<span class="w"> </span>live<span class="w"> </span>out.mkv<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">448</span><span class="w"> </span>-2<span class="w"> </span>-2<span class="w"> </span>atmos<span class="w"> </span><span class="nv">container</span><span class="o">=</span>mkv
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>ac3cli<span class="w"> </span>live<span class="w"> </span>out_dir<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">448</span><span class="w"> </span>-2<span class="w"> </span>-2<span class="w"> </span>atmos<span class="w"> </span><span class="nv">container</span><span class="o">=</span>fmp4<span class="w"> </span>fmp4-window<span class="o">=</span><span class="m">20</span>
+</code></pre></div>
+<h3 id="layout-and-codec"><code>layout=</code> and <code>codec=</code><a class="headerlink" href="#layout-and-codec" title="Permanent link">&para;</a></h3>
+<p><code>layout=</code> takes the same grammar as every other layout argument on this page — a named layout or a
+comma-separated Table E2.5 location list (see <a href="#the-layout-grammar">The <code>layout</code> grammar</a>) — and
+defaults to <code>stereo</code>, which is what <code>record</code> and <code>live mode=channels</code> encoded before they could be
+told otherwise. The captured channels are placed onto it <strong>by direction</strong>, not by index: a
+two-channel microphone recorded onto <code>51</code> fills L/R and leaves the rest silent, and a source wider
+than the target folds down per §7.8 using <code>cmixlev=</code>/<code>surmixlev=</code> — exactly what <code>encode</code> does with
+a file.</p>
+<p>The codec follows from the layout: anything wider than AC-3 can carry needs the dependent
+substreams only E-AC-3 has, so it promotes the stream automatically. <code>codec=eac3</code> forces E-AC-3 for
+a narrow layout too (for a receiver you want to exercise as Dolby Digital Plus); <code>codec=ac3</code>
+alongside a layout AC-3 cannot carry is refused with the layout named.</p>
+<p><code>layout=</code>/<code>codec=</code> describe a <strong>channel</strong> session. <code>live mode=atmos</code> always encodes the TS 103 420
+shape — a 5.1 E-AC-3 bed plus its object layer — so passing either alongside it is refused rather
+than silently ignored.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>ac3cli<span class="w"> </span>record<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">448</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="nv">layout</span><span class="o">=</span><span class="m">51</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>ac3cli<span class="w"> </span>record<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">384</span><span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="nv">layout</span><span class="o">=</span>stereo<span class="w"> </span><span class="nv">codec</span><span class="o">=</span>eac3
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>ac3cli<span class="w"> </span>live<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">448</span><span class="w"> </span>-1<span class="w"> </span>-1<span class="w"> </span>channels<span class="w"> </span><span class="nv">layout</span><span class="o">=</span><span class="m">714</span>
+</code></pre></div>
+<h3 id="watchdog"><code>watchdog=</code><a class="headerlink" href="#watchdog" title="Permanent link">&para;</a></h3>
+<p>A capture device that vanishes — unplugged, disabled, or torn down under the session — delivers
+nothing but zero-byte reads for as long as you let it, which a plain "wait for more samples" loop
+cannot tell from a device that is briefly starved. Without a watchdog the session just sits there
+looking healthy with no audio coming in. <code>watchdog=&lt;seconds&gt;</code> is how long that may go on before the
+session stops as a failure (default 3, matching the GUI's own
+<a href="../../gui/live-session/#device-drop-detection">device-drop detection</a>); <code>watchdog=0</code> turns it off
+for a device that legitimately goes quiet for longer.</p>
+<p>When it fires, everything already captured stays on disk — that is what streaming the take buys —
+and the command exits <code>5</code> (runtime), naming the device that stopped. <code>live capture2=</code> gets its own
+watchdog on the same timeout, so a dropped slave is reported as the slave.</p>
+<h2 id="live-options-live-capture2-objects-downmix">Live options (<code>live</code>): <code>capture2=</code>, <code>objects=</code>, <code>downmix=</code><a class="headerlink" href="#live-options-live-capture2-objects-downmix" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>live options (live; any order, after the positional arguments):
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>  capture2=&lt;index&gt;  a second capture device, clock-conformed to the first (see &#39;devices&#39;)
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>  objects=&lt;N&gt;       the object-slot budget for mode=atmos (1..15)
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>  downmix=off       refuse an AC-3-only passthrough endpoint instead of running
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>                    the parallel 5.1 AC-3 leg
+</code></pre></div>
+<h3 id="capture2"><code>capture2=</code><a class="headerlink" href="#capture2" title="Permanent link">&para;</a></h3>
+<p><code>capture2=&lt;index&gt;</code> names a second capture device — same 0-based numbering <code>devices</code> prints and the
+<code>capture_device</code> positional already uses — that joins the session alongside the master. The master
+(<code>capture_device</code>) still paces the session exactly as it always has: frame timing, target frame
+count and every other positional argument mean what they meant before this option existed.
+<code>capture2</code>'s own sample rate does not need to match the master's, only be a legal AC-3 rate itself
+(32, 44.1 or 48 kHz) — a drift-tracking resampler continuously conforms the slave's stream to the
+master's pacing, correcting both the nominal rate conversion and whatever free-running clock drift
+the two devices accumulate against each other. The slave's channels are appended after the
+master's own, at new, higher channel indices, in the same interleaved per-frame block that feeds
+the encoder — so a two-device <code>atmos</code> session simply has more capture channels to bind object slots
+to. The measured drift is printed once, in signed parts-per-million, when the session ends.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>ac3cli<span class="w"> </span>live<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">448</span><span class="w"> </span>-2<span class="w"> </span>-2<span class="w"> </span>atmos<span class="w"> </span><span class="nv">capture2</span><span class="o">=</span><span class="m">1</span>
+</code></pre></div>
+<p>Captures 30 seconds of Atmos-mode E-AC-3 from device 0 (the clock master) plus device 1
+(clock-conformed to device 0), no monitor or passthrough, writing <code>out.ec3</code>.</p>
+<h3 id="objects-and-map-modeatmos"><code>objects=</code> and <code>map=</code> (<code>mode=atmos</code>)<a class="headerlink" href="#objects-and-map-modeatmos" title="Permanent link">&para;</a></h3>
+<p>The object-slot budget is allocated <strong>once, at session start</strong>, and never changes: a decoder reads
+the object count from the first access unit's OAMD and does not re-read it, so a slot bound
+half-way through a session cannot be allowed to change how many objects the stream declares. That
+is the same rule the GUI's live object room follows — its <strong>Add object</strong> chips allocate against a
+fixed budget, and reassigning a chip rebinds a slot rather than creating one.</p>
+<p>Without either option, <code>live mode=atmos</code> allocates one slot per captured channel (capped at 15,
+since the bed's LFE is the 16th object and TS 103 420 §8.3.2.2 caps the total at 16) and binds them
+one-to-one — exactly what it always did. <code>objects=&lt;N&gt;</code> sets the budget explicitly; slots past the
+captured channel count are allocated but unbound, and carried silent.</p>
+<p><code>map=</code> binds capture channels to slots by name, using the same grammar <code>encode</code>/<code>eac3-encode</code> take
+for files (see <a href="#source-options-encodeeac3-encodeatmos-encode-src-map-and-offset">Source options</a>) with the
+capture devices as sources: source <code>0</code> is <code>capture_device</code>, source <code>1</code> is <code>capture2=</code> when present.
+<code>obj</code> makes a channel its own object; <code>objm</code> over a contiguous range folds it to one mono object;
+<code>none</code> leaves a channel out. Objects appear in <code>map=</code> order — every <code>obj</code> row first, then each
+<code>objm</code> group. A <code>@&lt;trim&gt;</code> on either is applied to that channel's contribution.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Four objects: capture channels 0 and 1 on their own, 2-3 folded to one, and</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="c1"># capture2&#39;s first channel as the fourth. Two more slots are allocated and left</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="c1"># silent, so the stream declares six objects throughout.</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>ac3cli<span class="w"> </span>live<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">60</span><span class="w"> </span><span class="m">448</span><span class="w"> </span>-2<span class="w"> </span>-2<span class="w"> </span>atmos<span class="w"> </span><span class="nv">capture2</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">objects</span><span class="o">=</span><span class="m">6</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="nv">map</span><span class="o">=</span><span class="m">0</span>.0:obj,0.1:obj@-3,0.2-0.3:objm,0.4:none,0.5:none,1.0:obj,1.1:none
+</code></pre></div>
+<p><code>map=</code> is refused on <code>mode=channels</code>: a channel session places its channels by direction onto
+<code>layout=</code>, and there are no object slots to bind. A budget smaller than what <code>map=</code> assigns is
+refused rather than silently truncated.</p>
+<h3 id="downmix"><code>downmix=</code><a class="headerlink" href="#downmix" title="Permanent link">&para;</a></h3>
+<p>When the session's stream needs E-AC-3 — an object session, or a channel layout wider than AC-3 can
+carry — but the chosen <code>passthrough_device</code> only bitstreams plain AC-3, <code>live</code> runs a <strong>parallel
+5.1 AC-3 leg</strong>: an independent AC-3 encode of the bed the main plan has already computed, sent to
+that receiver, while the file and the monitor still carry the full stream. The bed is already a
+self-sufficient fold-down of the whole programme, so there is no second §7.8 fold to compute; the
+receiver simply hears a capped downmix instead of a refusal. This is the CLI half of the GUI's
+<a href="../../gui/live-session/#parallel-downmix-receiver-leg">parallel downmix leg</a>.</p>
+<p><code>downmix=off</code> refuses instead — the plain "does not accept E-AC-3 over IEC 61937" warning and a
+file-only session, which is what <code>live</code> did before. A receiver that accepts neither format is a
+genuine refusal either way.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>ac3cli<span class="w"> </span>live<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">448</span><span class="w"> </span>-2<span class="w"> </span><span class="m">1</span><span class="w"> </span>channels<span class="w"> </span><span class="nv">layout</span><span class="o">=</span><span class="m">714</span><span class="w">      </span><span class="c1"># capped 5.1 AC-3 to receiver 1</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>ac3cli<span class="w"> </span>live<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="m">448</span><span class="w"> </span>-2<span class="w"> </span><span class="m">1</span><span class="w"> </span>channels<span class="w"> </span><span class="nv">layout</span><span class="o">=</span><span class="m">714</span><span class="w"> </span><span class="nv">downmix</span><span class="o">=</span>off
+</code></pre></div>
+<h2 id="play-options-play-follow">Play options (<code>play</code>): <code>follow=</code><a class="headerlink" href="#play-options-play-follow" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>play options (play; after the positional arguments):
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>  follow=off        refuse a sink that rejects the source format instead of
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>                    transcoding to AC-3 or falling back to decoded PCM
+</code></pre></div>
+<h3 id="follow"><code>follow=</code><a class="headerlink" href="#follow" title="Permanent link">&para;</a></h3>
+<p>Roadmap UX9. When <code>play</code> is given a <code>device_index</code>, it asks what that sink actually accepts —
+its own EDID/ELD-carried Short Audio Descriptors where a backend can read them (real today only
+on ALSA; see <a href="../../platforms/linux/">Linux</a>), the same live probe <code>outputs</code> uses everywhere
+else. By default (<code>follow=on</code>, the implicit default), a source format the sink rejects gets an
+automatic fallback:</p>
+<ul>
+<li>E-AC-3 on an AC-3-only sink is transcoded to AC-3 first (<code>transcode</code>, roadmap DC9, through a
+  temporary file — dialnorm, <code>compr</code> and the mix metadata carry across exactly as a direct
+  <code>ac3cli transcode</code> call would), then plays as AC-3. This is the "no 5.1 PCM over optical"
+  case: an optical link can carry compressed AC-3 but never multichannel PCM, so a 5.1 E-AC-3
+  source has no other way through.</li>
+<li>A sink that bitstreams neither format falls back to decoded PCM (<code>monitor</code>'s own §7.8-aware
+  path, so a wide programme is folded to the endpoint's real width rather than left to a
+  shared-mode mixer to average down however it sees fit).</li>
+</ul>
+<p><code>follow=off</code> disables both and restores the plain refusal <code>play</code> always gave — the escape hatch
+for a script that wants a hard failure rather than an automatic re-encode. The default endpoint
+(no <code>device_index</code> given) is unaffected either way: its capabilities were never probed before
+this option existed either, and it is taken at its word exactly as before.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>ac3cli<span class="w"> </span>play<span class="w"> </span>programme.ec3<span class="w"> </span><span class="m">2</span><span class="w">                </span><span class="c1"># follows the sink (the default)</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>ac3cli<span class="w"> </span>play<span class="w"> </span>programme.ec3<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="nv">follow</span><span class="o">=</span>off<span class="w">     </span><span class="c1"># the old plain refusal instead</span>
+</code></pre></div>
+<h2 id="common-options-every-command-quiet-verbose">Common options (every command): <code>quiet</code>, <code>verbose</code><a class="headerlink" href="#common-options-every-command-quiet-verbose" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>common options (every command; any order, after the positional arguments):
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  quiet             no status output at all - errors on stderr and, for a &#39;-&#39;
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>                    output, the payload on stdout. Nothing else is printed.
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>  verbose           print the stderr progress line whatever the run&#39;s length,
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>                    and name every source/routing decision as it is made.
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>  --help, -h        this command&#39;s own help
+</code></pre></div>
+<p><code>quiet</code> silences the <em>status</em> output — the meters, the routing summary, the <code>dialnorm=auto</code>
+measurement line, the "wrote N frames" summary — while leaving errors on stderr and, for a <code>-</code>
+output, the payload on stdout untouched. It does <strong>not</strong> silence a reporting command's report:
+<code>levels</code>, <code>loudness</code>, <code>qc</code>, <code>devices</code> and <code>outputs</code> print their answer regardless, because that
+answer is the command's output rather than commentary on it.</p>
+<p><code>verbose</code> turns the stderr progress line on whatever the run's length. Without either token, a run
+long enough to be worth watching (500 frames or access units — about 16 seconds of audio) prints
+that one line on stderr and nothing else new. It is always stderr, never stdout: a <code>-</code> output owns
+stdout, and a progress line in the middle of a piped elementary stream would corrupt whatever is
+reading it.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>ac3cli<span class="w"> </span>encode<span class="w"> </span><span class="k">in</span>.wav<span class="w"> </span>out.ac3<span class="w"> </span><span class="m">448</span><span class="w"> </span><span class="m">51</span><span class="w"> </span>quiet<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;encoded&quot;</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>ac3cli<span class="w"> </span>decode<span class="w"> </span>long.ec3<span class="w"> </span>-<span class="w"> </span>verbose<span class="w"> </span>&gt;<span class="w"> </span>out.wav
+</code></pre></div>
+<h2 id="exit-codes">Exit codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h2>
+<p>Every command returns one of eight codes, so a script can tell <em>why</em> something failed rather than
+only <em>that</em> it did. <code>ac3cli help exit-codes</code> prints the same table.</p>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Success.</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>Usage — a bad or missing argument, an unknown command or option, or a configuration the encoder cannot express (an illegal bitrate for a layout, more objects than a stream can carry). Retrying the same command line cannot help.</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>Input — unreadable, absent, or not a valid AC-3/E-AC-3/WAV/ADM file, or a stream that stopped decoding part-way.</td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td>Output — the destination could not be created, written or finalized.</td>
+</tr>
+<tr>
+<td><code>4</code></td>
+<td>Unavailable here — this build or this machine cannot run the command at all (no audio backend, no capture/render endpoint, an endpoint that refuses the format, a library this build was not configured with). The same command line may well succeed elsewhere.</td>
+</tr>
+<tr>
+<td><code>5</code></td>
+<td>Runtime — the run started and then failed for none of the above reasons: a capture device that stopped delivering audio (the <code>record</code>/<code>live</code> watchdog), a loudness measurement with nothing above the gate, a signing pass that could not complete.</td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td>A QC gate failed. Distinct from <code>2</code> so a CI step can tell "the stream is out of spec" (a result) from "<code>qc</code> could not read the file" (a fault).</td>
+</tr>
+<tr>
+<td><code>7</code></td>
+<td>Internal — an exception escaped a command. Never expected.</td>
+</tr>
+</tbody>
+</table>
+<p><code>qc</code>'s long-standing contract is unchanged: exit <code>0</code> only when the file decodes cleanly <strong>and</strong>
+every requested gate passes. What is new is the non-zero half being named.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>ac3cli<span class="w"> </span>qc<span class="w"> </span>out.ec3<span class="w"> </span><span class="nv">preset</span><span class="o">=</span>ebu-r128-s2
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="k">case</span><span class="w"> </span><span class="nv">$?</span><span class="w"> </span><span class="k">in</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">  </span><span class="m">0</span><span class="o">)</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;in spec&quot;</span><span class="w"> </span><span class="p">;;</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">  </span><span class="m">6</span><span class="o">)</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;out of spec&quot;</span><span class="w"> </span><span class="p">;;</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">  </span>*<span class="o">)</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;qc could not run&quot;</span><span class="w"> </span><span class="p">;;</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="k">esac</span>
+</code></pre></div>
+<h2 id="programme-options-eac3-encode-programme2">Programme options (<code>eac3-encode</code>): <code>programme2=</code><a class="headerlink" href="#programme-options-eac3-encode-programme2" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>programme options (eac3-encode; any order, after the positional arguments):
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>  programme2=&lt;path&gt; author a SECOND programme into the same stream, as a second independent
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>                    substream (§E2.3.1.2&#39;s I1)
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>  programme2-layout=&lt;name&gt;   its layout; omitted follows its own source
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>  programme2-bitrate=&lt;kbps&gt;  its own rate, spent ON TOP of the primary&#39;s; omitted is half
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>  programme2-dialnorm=&lt;1..31&gt;  its own dialnorm (§5.4.2.8, default 31)
+</code></pre></div>
+<p>A/52 Annex E allows eight <em>independent</em> substreams (I0–I7) in one elementary stream. That is a
+different thing from the dependent substreams a wide layout uses: a dependent extends one
+programme's soundfield, while a second independent substream is a whole second programme with its
+own layout, rate and level. Broadcast DD+ uses them for the services §5.4.2.2 names — a second
+language, an audio description, a commentary — so one stream carries the main mix and the
+alternatives, and a receiver plays one of them.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>ac3cli<span class="w"> </span>eac3-encode<span class="w"> </span>film51.wav<span class="w"> </span>out.ec3<span class="w"> </span><span class="m">448</span><span class="w"> </span>none<span class="w"> </span><span class="m">51</span><span class="w"> </span>off<span class="w">     </span><span class="nv">programme2</span><span class="o">=</span>commentary.wav<span class="w"> </span>programme2-layout<span class="o">=</span>mono<span class="w">     </span>programme2-bitrate<span class="o">=</span><span class="m">96</span><span class="w"> </span>programme2-dialnorm<span class="o">=</span><span class="m">20</span>
+</code></pre></div>
+<p>That writes I0 as 5.1 at 448 kbit/s and I1 as mono at 96 kbit/s, one access unit of each per
+frame period. The rates <strong>add</strong>: substreams share a frame period rather than a frame, so the file
+above runs at 544 kbit/s, not 448.</p>
+<p><code>programme2-dialnorm=</code> is deliberately not inherited from <code>dialnorm=</code>. A commentary or
+description track is levelled independently of the mix it plays against — that independence is
+the reason it is carried as a separate programme at all — so leaving it unset gives it the
+default 31 rather than quietly copying the main programme's measurement onto it.</p>
+<p>Not yet supported, and refused rather than ignored:</p>
+<ul>
+<li><code>programme2-layout=1+1</code>. 1+1 already carries two programmes in one substream, levelled by
+  <code>dialnorm</code>/<code>dialnorm2</code>; nesting it inside a second independent substream would mean three
+  programmes described two different ways with only one of the levels reachable. Use 1+1 on the
+  primary programme instead, or give <code>programme2</code> a layout of its own.</li>
+<li><code>programme2=</code> together with <code>src=</code>/<code>map=</code>. The multi-source router assigns channels to one
+  programme.</li>
+<li>Labelling a programme as a service (<code>bsmod</code>) or supplying the mixing metadata a receiver would
+  use to mix an associated service against the main one — that is roadmap <code>DC3</code>/<code>DC4</code>, and this
+  is the structural half.</li>
+</ul>
+<p>One thing worth knowing before shipping such a stream: <strong>FFmpeg refuses it outright</strong>, and not
+only the second programme — see
+<a href="../../verification/#where-the-oracles-dont-reach">Validation → Where the oracles don't reach</a>.</p>
+<h2 id="programme-options-decode-qc-levels-programme">Programme options (<code>decode</code>, <code>qc</code>, <code>levels</code>): <code>programme=</code><a class="headerlink" href="#programme-options-decode-qc-levels-programme" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>programme options (decode, qc, levels; any order, after the positional arguments):
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>  programme=&lt;0..7&gt;  which programme of a multi-programme stream to work on, by the §E2.3.1.2
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>                    substreamid of its independent substream; omitted takes the first the
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>                    stream carries
+</code></pre></div>
+<p>The decode-side half of <code>programme2=</code> above. All three commands work on exactly one programme —
+never a fold of several, since two programmes are alternatives rather than layers and mixing them
+would give a WAV that splices unrelated audio, or a loudness figure neither programme has.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>ac3cli<span class="w"> </span>decode<span class="w"> </span>out.ec3<span class="w"> </span>main.wav<span class="w">                </span><span class="c1"># programme 0</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>ac3cli<span class="w"> </span>decode<span class="w"> </span>out.ec3<span class="w"> </span>commentary.wav<span class="w"> </span><span class="nv">programme</span><span class="o">=</span><span class="m">1</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>ac3cli<span class="w"> </span>levels<span class="w"> </span>out.ec3<span class="w"> </span><span class="nv">programme</span><span class="o">=</span><span class="m">1</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>ac3cli<span class="w"> </span>qc<span class="w"> </span>out.ec3<span class="w"> </span><span class="nv">programme</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">preset</span><span class="o">=</span>atsc-a85
+</code></pre></div>
+<p>Omitting it takes the first programme the stream carries. When there is more than one, each
+command says which it picked and what else was there (<code>programme 0 of 2 (0, 1)</code>), so a
+multi-programme stream is never handled silently. Asking for a programme the stream does not
+carry is an error that lists the ones it does. Ignored for AC-3, which has no substream layer.</p>
+<h2 id="stream-tool-options-transcode-metadata">Stream-tool options (<code>transcode</code>, <code>metadata</code>)<a class="headerlink" href="#stream-tool-options-transcode-metadata" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Command</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>codec=ac3</code> / <code>codec=eac3</code></td>
+<td><code>transcode</code></td>
+<td>The output codec, when the output name's own suffix cannot say it — stdout (<code>-</code>), or a file named something other than <code>.ac3</code>/<code>.ec3</code>. Without it, an unrecognisable name is refused rather than guessed</td>
+</tr>
+<tr>
+<td><code>compr=&lt;dB&gt;</code></td>
+<td><code>metadata</code></td>
+<td>Stamp §7.7.2's compression word onto an existing stream, as the 8-bit wire value that gain implies</td>
+</tr>
+<tr>
+<td><code>compr2=&lt;dB&gt;</code></td>
+<td><code>metadata</code></td>
+<td>The same for Ch2 of a 1+1 dual-mono stream</td>
+</tr>
+<tr>
+<td><code>bsmod=&lt;0..7&gt;</code></td>
+<td><code>metadata</code></td>
+<td>Table 5.5's service type (0 = complete main, 1 = music and effects, 2 = visually impaired, …)</td>
+</tr>
+<tr>
+<td><code>dsurmod=&lt;0..3&gt;</code></td>
+<td><code>metadata</code></td>
+<td>Table 5.11's Dolby Surround mode. Coding mode 2/0 only — §5.4.2.7 transmits it nowhere else</td>
+</tr>
+</tbody>
+</table>
+<p><code>compr=</code>/<code>compr2=</code> round <strong>down</strong> to the nearest representable word, not to nearest: §7.7.2
+exists to give "an assured upper limit of instantaneous peak reproduced signal level", and a
+ceiling exceeded by half a step is not assured. That is the same rule
+<code>ac3::meta::encode_compr_at_most</code> applies on the encode side.</p>
+<p><code>compr=</code> is a different thing from the <code>heavy</code>/<code>ceiling=</code>/<code>dialogue=</code> group above. Those ask an
+<em>encoder</em> to derive a compression word from the signal it is coding; <code>compr=</code> names the word
+outright, because a metadata rewrite has no signal to derive from — only bits to overwrite, and
+only where the stream already carries a <code>compr</code> word. Asking for one where it does not is
+refused, not invented.</p>
+<p><code>dialnorm=</code> and <code>dialnorm2=</code> work on <code>metadata</code> too, but only with an explicit <code>1..31</code> value:
+<code>dialnorm=auto</code> needs a measurement, which is what <code>ac3cli normalize</code> is. On <code>transcode</code> they
+override the value carried from the source, and <code>dialnorm=auto</code> measures the <em>source</em> the same
+way an encode from a WAV would.</p>
+<h2 id="qc-options-qc-preset-layout-objects">Qc options (<code>qc</code>): <code>preset=</code>, <code>layout=</code>, <code>objects=</code><a class="headerlink" href="#qc-options-qc-preset-layout-objects" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>qc options (qc; any order, after the positional arguments):
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>  preset=&lt;name&gt;     gate the measurement against a named delivery spec
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>                    ebu-r128-s2 | atsc-a85 | atsc-a85-streaming | netflix | apple-music-atmos
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>  preset=all        gate against every preset above
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>                    omitted: measure and report only, no gate
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>  layout=bed        the default - meter the independent substream&#39;s own
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a>                    Table 5.8 bed (BS.1770 Annex 1&#39;s basic algorithm)
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a>  layout=rendered   meter the whole assembled program instead, every
+<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a>                    dependent substream&#39;s height/wide/rear channels
+<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a>                    included (BS.1770-5 Annex 3&#39;s extended algorithm)
+<a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a>  objects=&lt;layout&gt;  re-render dynamic objects by their own OAMD position
+<a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a>                    onto &lt;layout&gt; (71|512|514|714) and meter that too
+<a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a>                    (BS.1770-5 Annex 4); dynamic-object-only programmes
+<a id="__codelineno-25-14" name="__codelineno-25-14" href="#__codelineno-25-14"></a>                    only
+</code></pre></div>
+<p><code>preset=&lt;name&gt;</code> checks <code>qc</code>'s BS.1770-4 measurement against one named delivery-loudness gate instead of just
+reporting it; <code>preset=all</code> checks every one below in a single run. Each preset states a target integrated
+loudness, a symmetric tolerance around it (in LU) and a true-peak ceiling (a one-sided limit, never exceeded —
+not a tolerance band). The numbers are defined in <code>ac3::meta::qc_preset()</code>
+(<a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/src/forge/include/ac3/meta/qc.hpp"><code>ac3/meta/qc.hpp</code></a>), each
+read directly from its own primary source rather than recalled from memory:</p>
+<table>
+<thead>
+<tr>
+<th>Preset</th>
+<th>Loudness</th>
+<th>Max true peak</th>
+<th>Source (version, date)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ebu-r128-s2</code></td>
+<td>−23.0 LUFS ±1.0 LU</td>
+<td>−1.0 dBTP</td>
+<td>EBU R 128 s2 "Loudness in Streaming" (Geneva, <strong>November 2023, v3</strong>) recommendation (e) — programmes "should be streamed unchanged, that is at −23.0 LUFS" — which itself defers tolerance/true-peak to EBU R 128 (Geneva, <strong>November 2023, v5</strong>) recommendations (h) and (m)</td>
+</tr>
+<tr>
+<td><code>atsc-a85</code></td>
+<td>−24.0 LKFS ±2.0 dB</td>
+<td>−2.0 dBTP</td>
+<td>ATSC <strong>A/85:2026-07</strong> (approved <strong>8 July 2026</strong>) §6 "Target Loudness and True Peak Levels for Content Delivery or Exchange"</td>
+</tr>
+<tr>
+<td><code>atsc-a85-streaming</code></td>
+<td>−25.0 LKFS ±2.0 LU</td>
+<td>−2.0 dBTP</td>
+<td>ATSC <strong>A/85:2026-07</strong> (approved <strong>8 July 2026</strong>) Annex L.5 — "Selecting a Loudness value between −23 and −27 LKFS is recommended", restated in Annex M's Table M.1</td>
+</tr>
+<tr>
+<td><code>netflix</code></td>
+<td>−27.0 LKFS ±2.0 LU</td>
+<td>−2.0 dBTP</td>
+<td>Netflix "Sound Mix Specifications &amp; Best Practices" <strong>v1.6</strong>, Near-field Audio Prerequisites for Mix Facilities; Netflix "Dolby Atmos Home Mix Deliverable Requirements" <strong>v2.3</strong> states the same numbers for an Atmos deliverable</td>
+</tr>
+<tr>
+<td><code>apple-music-atmos</code></td>
+<td><strong>≤ −18.0 LKFS</strong> (a ceiling, not a band)</td>
+<td>−1.0 dBTP</td>
+<td>Apple "Immersive Audio Source Profile" (Apple Video and Audio Asset Guide), Dolby Atmos music deliverables — "should not exceed −18 LKFS measured as per ITU-R BS. 1770-4"</td>
+</tr>
+</tbody>
+</table>
+<p>Two of these need a word of explanation.</p>
+<p><code>atsc-a85-streaming</code> carries a <strong>band</strong>, not a point. Annex L.5 asks a streaming service to pick "only one
+specific and consistent Target Loudness" somewhere between −23 and −27 LKFS; −25.0 ±2.0 reproduces those two
+edges exactly. The −25.0 midpoint is an artefact of how this table is shaped and is <em>not</em> a level the Annex
+asks anyone to aim for — it names −23, −24 and −27 as the values real operators actually use.</p>
+<p><code>apple-music-atmos</code> is the one preset whose loudness figure is a <strong>ceiling</strong> rather than a band: Apple's clause
+is "should not exceed", so a quieter master is compliant however quiet it is. Gating that as a ±band would fail
+material the specification accepts, so <code>qc</code> prints it as <code>limit &lt;= -18.0 LKFS</code> and passes anything at or under
+it. True peak is always a ceiling, for every preset.</p>
+<h3 id="specifications-deliberately-not-given-a-preset">Specifications deliberately not given a preset<a class="headerlink" href="#specifications-deliberately-not-given-a-preset" title="Permanent link">&para;</a></h3>
+<p>Adding these would mean shipping a second name for a verdict already on offer, so they are documented here
+instead:</p>
+<ul>
+<li><strong>EBU R 128 s4</strong> "Loudness Normalisation of Cinematic Content" (November 2023). Recommendation (m) normalises
+  Programme Loudness to "a Target Level of −23.0 LUFS" and (l) repeats the −1 dBTP ceiling — numerically
+  identical to <code>ebu-r128-s2</code>. What s4 adds is recommendation (j), a Loudness-to-Dialogue Ratio not exceeding
+  5 LU; that is a Programme-minus-Dialogue figure, and <code>LoudnessMeter</code> has no dialogue gate, so the single
+  clause that would distinguish an s4 preset is also the one this meter cannot evaluate.</li>
+<li><strong>Netflix Dolby Atmos Home Mix Deliverable Requirements v2.3</strong>. Same three numbers as <code>netflix</code>. What it adds
+  is scope rather than numbers — "Loudness and peaks should be measured via a 5.1 rerender" — which is a
+  <code>layout=</code> choice, not a gate.</li>
+<li><strong>Amazon.</strong> Prime Video figures are widely repeated at −24 LKFS/−2 dBTP, but every source found for them is a
+  third-party summary and Amazon's own delivery specifications sit behind a partner portal. Nothing in this
+  table is cited to a document that was not read, so the row is absent rather than guessed — and −24/±2/−2
+  would in any case restate <code>atsc-a85</code>.</li>
+</ul>
+<h3 id="layoutbed-default-and-layoutrendered"><code>layout=bed</code> (default) and <code>layout=rendered</code><a class="headerlink" href="#layoutbed-default-and-layoutrendered" title="Permanent link">&para;</a></h3>
+<p><code>layout=</code> chooses <em>which soundfield</em> is metered, and with it which of BS.1770's two algorithms does the
+metering:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>What is measured</th>
+<th>Algorithm</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>layout=bed</code> (default)</td>
+<td>The independent substream's own Table 5.8 bed</td>
+<td>BS.1770 Annex 1's basic algorithm — Table 3 weights, keyed on <code>acmod</code></td>
+</tr>
+<tr>
+<td><code>layout=rendered</code></td>
+<td>The whole assembled program, every dependent substream's channels laid over the bed in Table E2.5 order</td>
+<td>BS.1770-5 (11/2023) Annex 3's extended algorithm — Table 4 weights, keyed on each channel's position</td>
+</tr>
+</tbody>
+</table>
+<p>The default is <code>bed</code>, which is what <code>qc</code> has always measured. On a stream that carries dependent substreams,
+<code>bed</code> now says so explicitly rather than silently reporting the 5.1 as if it were the whole programme:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>  layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>  note: this stream carries dependent substreams whose channels (height, wide, rear)
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>        are NOT in the figures above - layout=rendered measures them as well
+</code></pre></div>
+<p><code>layout=rendered</code> is what makes 7.1, 5.1.2, 5.1.4 and 7.1.4 measurable at all, since none of those channels is
+a member of Table 5.8. Annex 3's Table 4 weights a channel by where it sits: <strong>1.41 (+1.5 dB)</strong> for anything
+between 60° and 120° azimuth below 30° elevation, <strong>1.00</strong> everywhere else. Applied to Table E2.5's locations
+that gives:</p>
+<table>
+<thead>
+<tr>
+<th>Weight</th>
+<th>Locations</th>
+<th>BS.2051 label</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.41 (+1.5 dB)</td>
+<td><code>Ls</code> <code>Rs</code> <code>Lsd</code> <code>Rsd</code> <code>Lw</code> <code>Rw</code></td>
+<td>M±110, M±090, M±060</td>
+</tr>
+<tr>
+<td>1.00 (0 dB)</td>
+<td><code>L</code> <code>C</code> <code>R</code> <code>Lc</code> <code>Rc</code></td>
+<td>M+000, M±030, M±SC</td>
+</tr>
+<tr>
+<td>1.00 (0 dB)</td>
+<td><code>Lrs</code> <code>Rrs</code> <code>Cs</code></td>
+<td>M±135, M+180</td>
+</tr>
+<tr>
+<td>1.00 (0 dB)</td>
+<td><code>Vhl</code> <code>Vhr</code> <code>Vhc</code> <code>Lts</code> <code>Rts</code> <code>Ts</code></td>
+<td>every U/T position</td>
+</tr>
+<tr>
+<td>excluded</td>
+<td><code>LFE</code> <code>LFE2</code></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>Two results there are worth reading twice, because reasoning from the channel <em>names</em> gets both wrong: a 7.1
+layout's rear pair is <strong>not</strong> surround-weighted (M±135 is past the 120° edge), and <strong>no</strong> height channel is
+either (Table 4's elevation row simply does not cover the upper layer). The wides <em>are</em>, sitting exactly on the
+inclusive 60° edge.</p>
+<p>That first one is where other meters differ. ffmpeg's <code>ebur128</code>, probed one channel at a time, weights a 7.1
+layout's back surrounds at 1.41 just like its side surrounds — it generalises Annex 1's Table 3 by channel
+<em>name</em>, so anything called a surround gets +1.5 dB. Annex 3's Table 4 and Table 5 both put M±135 at 1.00, and
+<code>layout=rendered</code> follows the standard, so expect a 1.5 dB disagreement on exactly those two channels. On 5.1
+the two agree to within 0.02 dB, which is why <code>ebur128</code> is a good cross-check for <code>layout=bed</code> and not for
+<code>layout=rendered</code>.</p>
+<p>For a plain 5.1 stream the two algorithms are the same function — <code>Ls</code>/<code>Rs</code> are M±110, inside Table 4's +1.5 dB
+sector, which is where Annex 1's Table 3 got its 1.41 — so <code>layout=</code> changes nothing there. The one Table 5.8
+layout where they genuinely differ is 2/1 and 3/1: Annex 1 has no Table 3 entry for a lone surround and this
+meter reads it as the surround field collapsed to one channel (+1.5 dB), while Annex 3 sees Table E2.5's <code>Cs</code>,
+a rear centre at M+180, at unity.</p>
+<h3 id="objectslayout"><code>objects=&lt;layout&gt;</code><a class="headerlink" href="#objectslayout" title="Permanent link">&para;</a></h3>
+<p><code>layout=</code> above meters <em>channels</em> — the bed, or the whole assembled program with every dependent's channels
+laid over it. Neither sees a dynamic object's own position: this project's own encoder pans every object onto
+the flat 5.1 ring at encode time (<code>ac3::spatial::pan_room</code>'s own "a raised object folds onto the ring... at
+full level"), so an object authored directly overhead measures no differently from one on the ring — the bed
+a legacy 5.1 decoder plays has nowhere else to put it.</p>
+<p>ITU-R BS.1770-5 (11/2023) Annex 4 covers this: it defines no weighting table of its own, and instead says to
+render object-based (or combined channel- and object-based) audio to a real loudspeaker configuration first,
+then meter <em>that</em> through Annexes 1/3 — and to report which configuration and rendering algorithm did the
+rendering, since two reasonable choices can legitimately disagree by several LU (Annex 4's own worked example,
+its Table 6, does exactly that across renderers and layouts). <code>objects=&lt;layout&gt;</code> is that: it re-renders each
+dynamic object by its own OAMD position — including height — onto the named layout (<code>51</code>, <code>71</code>, <code>512</code>, <code>514</code>
+or <code>714</code>) via <code>ac3::spatial</code>'s direction-based panner (the same height-aware geometry <code>ac3::plan</code>'s
+layout-to-layout channel renderer uses internally), then meters the result through the Annex 3 algorithm
+<code>layout=rendered</code> already implements:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>$ ac3cli qc atmos.ec3 objects=514
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>  layout=bed  (BS.1770 Annex 1, Table 3 weights over the Table 5.8 bed)
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>  ...
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>  objects=5.1.4  (BS.1770-5 Annex 4: objects re-rendered by their own OAMD
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>  position, via ac3::spatial&#39;s direction panner, then Annex 3)
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>  objects: measured (BS.1770-4 gated / EBU Tech 3342 / BS.1770-4 Annex 2):
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>  ...
+</code></pre></div>
+<p><code>layout=</code>/<code>layout=rendered</code> and <code>objects=&lt;layout&gt;</code> are independent switches — <code>objects=</code> adds a third,
+separately-labelled report rather than replacing either of the other two.</p>
+<p>Restricted to a <strong>dynamic-object-only</strong> programme — the only shape <code>atmos-encode</code> produces, and what Dolby's
+own reference JOC test streams declare. For that shape the decoded bed already IS the objects' 5.1 VBAP fold
+(<code>oba/oamd.hpp</code>'s own comment: "the 5.1 downmix IS the objects' VBAP render"), so <code>objects=</code> starts every
+full-bandwidth target channel at silence and sums each object's own recovered audio
+(<code>DecodedAccessUnit::object_audio</code>) into it, rather than adding to a bed that already carries it and
+double-counting. A bed-and-objects programme — third-party content whose bed may carry independent,
+non-object material this decoder cannot separate back out — is refused rather than risk silently doubling or
+dropping content:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>$ ac3cli qc plain_channel_based.ec3 objects=514
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>error: programme 0 carries no dynamic-object-only OAMD - objects= needs OAMD dynamic
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>objects (try layout=rendered or layout=bed instead)
+</code></pre></div>
+<p>Omitting <code>preset=</code> entirely leaves <code>qc</code> in measure-and-report mode — every number is still printed, there is
+just no PASS/FAIL verdict and nothing to gate on. See <a href="../commands/#decoding-inspection">Commands → <code>qc</code></a> for the
+full report format and the exit-code convention this drives.</p>
+<h2 id="probe-options-probe-json-detail">Probe options (<code>probe</code>): <code>json=</code>, <code>detail=</code><a class="headerlink" href="#probe-options-probe-json-detail" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>probe options (probe; any order, after the positional arguments):
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>  json=1            emit the JSON document instead of the human table
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>                    (schema ac3forge.probe/1 - docs/cli/commands.md)
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>  detail=frames     add a per-access-unit dump: offsets, sizes, CRC,
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>                    substream headers and each frame&#39;s object layer
+<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a>  detail=blocks     the same, plus every block&#39;s coding tools and
+<a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a>                    exponent strategies - what a codec bug report needs
+</code></pre></div>
+<p><code>json=1</code> is a value token rather than a bare word (unlike <code>couple</code> or <code>heavy</code>) because <code>probe</code> is
+the first command here whose <em>output form</em> is a choice: <code>json=0</code> is accepted and means the table,
+so a script building its command line programmatically (<code>json=$want</code>) never has to omit the token
+to turn it off. The document it emits is a versioned contract — see
+<a href="../commands/#json-output-json1">Commands → <code>probe</code></a> for the schema, the compatibility rules and
+the units each field is in.</p>
+<p><code>detail=</code> is independent of <code>json=</code>: all four combinations work, and the two detail levels add to
+the stream summary rather than replacing it — the same summary comes out either way.</p>
+<table>
+<thead>
+<tr>
+<th><code>detail=</code></th>
+<th>What it adds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>(omitted)</em></td>
+<td>Nothing. The stream summary alone, which is what a pipeline or a CI gate wants</td>
+</tr>
+<tr>
+<td><code>frames</code></td>
+<td>One entry per access unit: byte offset, size, start time, and each syncframe's own header, CRC state, authenticity tag and object layer</td>
+</tr>
+<tr>
+<td><code>blocks</code></td>
+<td>The same, plus per syncframe: Table E1.3's frame-level tool gates, and per block which coding tools were in force and what exponent strategy each coded stream carried</td>
+</tr>
+</tbody>
+</table>
+<p>A dump of a long file is a lot of output, which is why neither is on by default — but it costs no
+extra memory, because each access unit is written as the walk reaches it rather than collected
+first. See <a href="../commands/#per-frame-and-per-block-detail">Commands → <code>probe</code></a> for what the block dump
+looks like and why it exists.</p>
+<h2 id="defaults">Defaults<a class="headerlink" href="#defaults" title="Permanent link">&para;</a></h2>
+<p>Optional positional arguments, when omitted:</p>
+<ul>
+<li><code>silence</code>, <code>sine</code>, <code>eac3-silence</code>, <code>eac3-sine</code> — 5 s at 192 kbps; the tone commands default to
+  1000 Hz at 50% amplitude, and the three that take <code>[layout]</code> default to <code>stereo</code>.</li>
+<li><code>orbit</code> — 8 s at 448 kbps, 4 s per orbit.</li>
+<li><code>atmos</code> — 8 s at 448 kbps, 4 objects, 6 s per orbit.</li>
+<li><code>record</code> — 5 s at 192 kbps from device 0.</li>
+<li><code>live</code> — 10 s at 192 kbps.</li>
+<li><code>play</code>, <code>monitor</code> — device <code>-1</code>, the default output.</li>
+<li><code>transcode</code> — 448 kbps, and the source's own layout (folded to 5.1 when AC-3 cannot code it).</li>
+<li><code>cut</code> — from 0 s to the end of the stream.</li>
+</ul>
+<h2 id="what-the-encoder-accepts">What the encoder accepts<a class="headerlink" href="#what-the-encoder-accepts" title="Permanent link">&para;</a></h2>
+<ul>
+<li>WAV sample rates: AC-3 takes 32, 44.1 or 48 kHz (Table 5.6); E-AC-3 additionally takes the
+  Annex E <code>fscod2</code> half rates 16, 22.05 and 24 kHz.</li>
+<li>The bit rate must be one of the 19 nominal AC-3 rates (Table 5.18), 32 through 640 kbps.</li>
+<li><code>record</code> (and <code>live mode=channels</code>) encodes onto <code>layout=</code> — <code>stereo</code> by default, anything up
+  to 7.1.4 — and places the endpoint's channels onto it by direction, not by index: a device
+  narrower than the layout leaves the rest silent, a wider one folds down per §7.8. See
+  <a href="#layout-and-codec"><code>layout=</code> and <code>codec=</code></a>.</li>
+<li>The Atmos commands take 1 to 15 objects — the bed's LFE is the 16th, and TS 103 420 §8.3.2.2
+  caps the total at 16.</li>
+</ul>
+<h2 id="command-specific-notes">Command-specific notes<a class="headerlink" href="#command-specific-notes" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><code>transcode</code>/<code>metadata</code>/<code>normalize</code>/<code>cut</code>/<code>cat</code></strong> work on an already-encoded stream rather
+  than on PCM — see <a href="../commands/#stream-tools-an-encoded-stream-in-an-encoded-stream-out">Commands → Stream tools</a>
+  for what each carries across and what it deliberately does not. Only <code>transcode</code> re-encodes.
+  Every metadata option above that a stream tool does not name is ignored by it, the same way
+  <code>mkv</code> ignores all of them.</li>
+<li><strong><code>mkv</code></strong> reads format, packet boundaries, sample rate and channel count from the bitstream
+  itself, so it cannot be told the wrong ones. E-AC-3 dependent substreams are grouped into their
+  access unit and counted as the channels they render.</li>
+<li><strong><code>spdif</code></strong> wraps an already-encoded AC-3 or E-AC-3 file's IEC 61937 bursts as a 2-channel
+  16-bit PCM WAV, playable bit-exactly (100% volume, no mixing) into an S/PDIF or HDMI output to
+  light up a receiver's Dolby Digital indicator. Detects AC-3 vs. E-AC-3 from the stream itself
+  (<code>bsid</code>); E-AC-3's carrier runs at four times the content sample rate (WASAPI's own
+  <code>make_eac3_format</code> convention), which is legal though unusual for a plain PCM16 file. The GUI's
+  S/PDIF container option is this same command, run automatically as the second half of a
+  two-command encode — see <a href="../../gui/format-and-channels/">GUI → Format &amp; channels</a>.</li>
+<li><strong><code>atmos</code></strong> encodes objects orbiting the room at different heights and rates as a 5.1 E-AC-3 bed
+  plus JOC + OAMD side data (TS 103 420); FFmpeg reports the result as "Dolby Digital Plus + Dolby
+  Atmos". <strong><code>atmos-encode</code></strong> does the same but makes each channel of a real source file an object
+  instead of synthesizing motion. Its optional <code>[paths.txt]</code> (same format <code>atmos-path</code> reads)
+  authors that motion instead of the default static, fanned-out placement — keyed by WAV channel
+  index, so an object index the file doesn't mention keeps its default placement unchanged.</li>
+<li><strong><code>atmos</code> mode</strong>: <code>objects</code> (default) writes the JOC+OAMD container; <code>bed51</code> omits it so the
+  5.1 bed still plays on a decoder that would otherwise refuse an object container it can't
+  validate, instead of falling back to the bed on its own. <code>bed51</code> drops the TS 103 420 §8.3.1
+  <code>addbsi</code> object marker with it, so a <code>bed51</code> stream reads as ordinary 5.1 E-AC-3 all the way
+  out: no <code>Atmos complexity</code> line from <code>scan</code>, no Atmos extension in the <code>dec3</code> box <code>fmp4</code>
+  builds, no <code>CHANNELS="&lt;N&gt;/JOC"</code> in its playlists, and no "+ Dolby Atmos" from FFmpeg. See
+  <a href="../../concepts/atmos-joc/">Atmos &amp; JOC</a> for why a decoder can tell the difference at all.</li>
+<li><strong><code>sign-objects</code></strong> (with <strong><code>signing-key=&lt;path&gt;</code></strong>): signs the object container's EMDF protection
+  tag so a validating decoder reconstructs the objects instead of playing the bed. Honored by all
+  three Atmos commands (<code>atmos</code>, <code>atmos-path</code>, <code>atmos-encode</code>). Off unless you pass both —
+  <code>sign-objects</code> alone with no key is an error. The key may also come from
+  <code>AC3FORGE_SIGNING_KEY_FILE</code> / <code>AC3FORGE_SIGNING_KEY</code> instead of <code>signing-key=</code>. The key is never
+  stored by the tool; the algorithm is in-tree but the key is yours to provision. Full details in
+  <a href="../../concepts/object-signing/">Object signing</a>.</li>
+<li><strong><code>fast-mdct=off</code></strong>: every encode runs the §7.9.4 fast forward MDCT by default (the quality
+  evidence that made it the default: ~3e-12 max relative coefficient error against the direct
+  form, 331 dB direct-vs-fast end-to-end SNR, 0.000 dB SNR delta against an independent oracle
+  at 192–448 kbps — see <code>tools/ci/quality_race.py fast-mdct</code>). <code>fast-mdct=off</code> forces the direct
+  §8.2.3.2 reference form — the validation oracle — wherever the command encodes, including the
+  <code>atmos*</code>, <code>record</code>, <code>live</code>, <code>eac3-sine</code> and <code>eac3-encode</code> (both its single-source and its
+  <code>src=</code>/<code>map=</code> multi-source path). <code>eac3-encode</code> also has a second spelling: the bare
+  <code>nofastmdct</code> token inside its <code>[tools]</code> positional argument reaches the same field, and wins
+  over <code>fast-mdct=off</code> if both are given on the same command line. Typing <code>tools=nofastmdct</code> as
+  if it were a trailing option does not parse, since any <code>=</code> token goes to the options parser,
+  which has no <code>tools</code> key. The fast MDCT is not a coding tool, so <code>none</code>/<code>all</code> leave it alone.
+  <code>eac3-silence</code> has no use for either spelling: it builds a silent access unit directly, with no
+  forward transform in the loop to choose a path for. The bare <code>fast-mdct</code> word and the
+  <code>fastmdct</code> tool token — the opt-in spellings from when this defaulted off — still parse and now
+  name what already happens.</li>
+<li><strong><code>fast-imdct=off</code></strong>: the decode-side mirror. <code>decode</code> runs §7.9.4 step 3 — the inverse
+  transform's one O(N²) part — through an FFT by default. The kernel
+  (<code>src/forge/src/core/fft_kernel.hpp</code>) is radix-4 throughout, ending on a single radix-2 stage
+  only where log2(P) is odd — P = 128 and P = 512, not P = 64. The quality evidence that made it
+  the default: 7.8e-14 max peak-normalized relative error against the direct evaluation at the
+  transform level, and over 180-second real-material decodes 214.9 dB SNR agreement for AC-3 /
+  284.7 dB for E-AC-3, with decodes 4.5–4.7× faster. <code>fast-imdct=off</code> forces the pseudocode's
+  own direct sum — the reference form, and the oracle the fast path's tests validate against.
+  Applies to both codecs; the <code>qc</code>, <code>levels</code> and playback decoders stay on the library default,
+  where a ~1e-12 difference cannot move a reported figure. Encoded output never depends on this
+  switch: the encoder's own internal inverse-transform uses are pinned to the direct form
+  regardless. The bare <code>fast-imdct</code> word — the opt-in spelling from when this defaulted off —
+  still parses and now names what already happens.</li>
+<li><strong><code>mode=performance|reference</code></strong>: the two switches above as one statement of intent.
+  <code>mode=reference</code> turns <strong>both</strong> fast paths off — the forward MDCT wherever the command encodes
+  and the step-3 inverse in <code>decode</code> — so the whole run uses the spec's own direct evaluations:
+  the forms the standard states, the forms every fast-path test validates against, and the forms
+  to reach for when two runs must agree bit-for-bit with the spec's stated arithmetic (comparing
+  against an external reference decoder sample-for-sample, regenerating validation fixtures,
+  chasing a suspected transform defect). <code>mode=performance</code> — the default state, so passing it
+  changes nothing — names the fast paths: same streams to within ~1e-12, encodes measurably
+  faster and decodes 4.5–4.7× faster. Tokens apply in order, so
+  <code>mode=reference fast-mdct=off</code> is redundant but harmless, and <code>mode=performance fast-imdct=off</code>
+  runs a fast encode with a reference decode. <code>eac3-encode</code>'s <code>[tools]</code> positional still wins
+  the forward-MDCT half if both are given, exactly as it does against <code>fast-mdct=off</code>.</li>
+<li><strong><code>joc-domain=qmf|mdct</code></strong>: which domain JOC's reconstruction matrix is estimated in (on
+  <code>atmos</code>, <code>atmos-path</code> and <code>atmos-encode</code>) and applied in (on <code>decode</code>). <code>qmf</code> — the default —
+  is TS 103 420 §7.1's 64-subband complex filterbank, which is what §6.6.6 describes and what a
+  licensed decoder runs. <code>mdct</code> selects the 256-bin MDCT approximation this project used before
+  it had a filterbank: cheaper on the encode side, but about 5 dB worse per object (22.8 dB
+  against 27.7–28.6 dB mean per-object SNR over four placements; 20.2 dB against 26.5 dB on
+  moving objects), and correct only against a decoder given the same token. Use it to reproduce
+  output from before 0.9.0, not for new material. Unlike <code>fast-mdct=off</code> / <code>fast-imdct=off</code> this
+  is <strong>not</strong> part of <code>mode=</code> in either direction: those two are the same answer computed two
+  ways, agreeing to ~1e-12, while these are different answers — see
+  <a href="../../concepts/atmos-joc/#which-domain-the-matrix-lives-in">Atmos &amp; JOC</a>. Note that the two
+  domains do not have the same latency, so a <code>decode</code> writing objects with <code>objects_dir=</code> gets
+  them 576 samples behind the bed under <code>qmf</code> and 256 behind under <code>mdct</code>.</li>
+<li><strong><code>verify</code></strong>: <code>eac3-encode</code> only. Runs the encoder/decoder mirror self-check (<code>ac3::verify</code>,
+  see <a href="../../verification/#six-independent-checks">Validation</a>) over every access unit the command
+  emits: each one is decoded with this project's own decoder as soon as it is encoded, and the
+  decoder's model of it — per-substream, per-block bit offsets, decoded exponents, <code>bap</code>, delta
+  correction, AHT gain mode and gains, and the coupling, enhanced-coupling and
+  spectral-extension coordinates — is diffed against the encoder's own. The first disagreement
+  refuses the run (exit 1) and names where the two sides parted company, down to the substream,
+  block, coded stream and bin:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>error: verify: the encoder and decoder disagree about access unit 0
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>frame 0 substream 0 block 2 channel 1: bap[10] encoder=8 decoder=9
+</code></pre></div>
+<p>A clean run prints one extra line beside the usual summary and writes exactly the stream it
+  would have written anyway — the check reads state the encoder already has and never steers a
+  decision. Off by default because it decodes everything it encodes, which roughly doubles the
+  work. What it buys is the class of defect a round trip cannot see: the two sides differing in
+  a way the audio survives. That matters most for <code>ecpl</code>, <code>tpn</code>, <code>fscod2</code> and <code>714</code>, which have
+  no external decoder to check against at all — see
+  <a href="../../verification/#where-the-oracles-dont-reach">Validation → where the oracles don't reach</a>.
+  <code>encode</code> (AC-3) has no equivalent token yet; its half of the same facility is library-only
+  (<code>ac3::verify::MirrorEncoder</code>).
+- <strong><code>keep-partial</code></strong>: <code>encode</code>, <code>eac3-encode</code> and <code>atmos-encode</code> refuse a frame that cannot fit the
+  configuration mid-run just as they always have, but with <code>keep-partial</code> given, whatever frames
+  were already encoded before that point are written to <code>&lt;name&gt;.partial.&lt;ext&gt;</code> (<code>out.ec3</code> →
+  <code>out.partial.ec3</code>) rather than discarded — the run still exits non-zero and prints the same
+  error either way, only what happens to the frames already produced changes. Off by default, the
+  same as every other bare token here; a plain invocation with no <code>keep-partial</code> behaves exactly
+  as it always has. Mirrors the GUI's own keep-partial-output preference (see
+  <a href="../../gui/#preferences">GUI → window layout</a>) rather than a separate idea — the same
+  <code>.partial.</code> naming either way, so a file produced by either front end is named alike.</p>
+<h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
+<p><a href="../../concepts/atmos-joc/">Concepts → Atmos &amp; JOC</a> if any of <code>JOC</code>, <code>OAMD</code>, or the object/bed
+relationship above are unfamiliar; <a href="../../library/spatial-and-atmos/">Spatial &amp; Atmos objects</a> for
+the library-level API these commands are thin wrappers over.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

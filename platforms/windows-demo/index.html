@@ -1,0 +1,5079 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A clean-room AC-3 / E-AC-3 / Dolby Atmos encoder and decoder in C++23">
+      
+      
+      
+        <link rel="canonical" href="https://iainchesworthlabs.github.io/ac3forge/platforms/windows-demo/">
+      
+      
+        <link rel="prev" href="../android/">
+      
+      
+        <link rel="next" href="../windows-driver-acx/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Windows (Desktop Atmos Demo) - ac3forge</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#windows-desktop-atmos-demo" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="ac3forge" class="md-header__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ac3forge
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Windows (Desktop Atmos Demo)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../concepts/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../verification/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Validation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../threat-model/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Threat model
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../conformance-vectors/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Conformance vectors
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../library/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Library
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../cli/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  CLI reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../gui/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  GUI guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance-quality/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance & quality
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Project
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="ac3forge" class="md-nav__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ac3forge
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform notes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform notes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../linux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../raspberry-pi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raspberry Pi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../android/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Android (NVIDIA Shield)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Desktop Atmos Demo)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Desktop Atmos Demo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#whats-reused-whats-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's reused, what's new
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#routing-separation-and-silencing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routing: separation and silencing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Routing: separation and silencing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-driver-free-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The driver-free mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rerouting-explicit-like-fxsound" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rerouting: explicit, like FxSound
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#objects-and-the-bed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Objects and the bed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-modes-and-hot-switching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output modes and hot switching
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Output modes and hot switching">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#low-latency-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Low-latency mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#object-signing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object signing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-driver-and-its-licence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The driver, and its licence
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-0-spikes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 0: spikes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-library-additions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: library additions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: UI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-4-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4: driver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-5-fast-follows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 5: fast follows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-application-review-2026-09-03" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The application review, 2026-09-03
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-6-docs-ci-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 6: docs, CI, release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-looks-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it looks like
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-has-and-has-not-been-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What has and has not been verified
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions-this-plan-does-not-settle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions this plan does not settle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deliberately-not-in-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deliberately not in scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../windows-driver-acx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows null-sink driver on ACX (plan)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wasm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebAssembly (browser demos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../concepts/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/ac3-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AC-3 & E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/atmos-joc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Atmos & JOC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/object-signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threat-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threat model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../conformance-vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conformance vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../library/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Library
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Example programs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/encoding-ac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/encoding-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/decoding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decoding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/spatial-and-atmos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spatial & Atmos objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/station-broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A worked scene — station broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/channel-plans-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channel plans & routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/muxing-and-sinks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Muxing & sinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/file-io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File I/O
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/iab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAB (SMPTE ST 2098-2) reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/adm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM / BW64 reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/adm-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM → Atmos bridging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/iamf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAMF writing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Measuring quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/header-map/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Header map
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/api-stability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API stability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/c-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/rust-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rust bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/metadata-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Options & grammars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../gui/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GUI guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_9" id="__nav_9_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GUI guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/loading-a-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loading a source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/format-and-channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format & channels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/objects-and-motion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Objects & motion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/live-session/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live capture & session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/source-assignment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-source & assignment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/coding-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/qc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QC a stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/inspect-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inspect objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/open-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/localisation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Localisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance & quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tool-comparison-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tool comparison trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../object-quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../landscape/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Landscape
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live decode demo (WASM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-encode-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live encode demo (WASM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ci-self-hosted-runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosted CI runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#whats-reused-whats-new" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's reused, what's new
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#routing-separation-and-silencing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routing: separation and silencing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Routing: separation and silencing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-driver-free-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The driver-free mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rerouting-explicit-like-fxsound" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rerouting: explicit, like FxSound
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#objects-and-the-bed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Objects and the bed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-modes-and-hot-switching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output modes and hot switching
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Output modes and hot switching">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#low-latency-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Low-latency mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#object-signing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object signing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-driver-and-its-licence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The driver, and its licence
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phases
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phases">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-0-spikes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 0: spikes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-library-additions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: library additions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: UI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-4-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4: driver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-5-fast-follows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 5: fast follows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-application-review-2026-09-03" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The application review, 2026-09-03
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-6-docs-ci-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 6: docs, CI, release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-looks-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it looks like
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-has-and-has-not-been-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What has and has not been verified
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions-this-plan-does-not-settle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions this plan does not settle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deliberately-not-in-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deliberately not in scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="windows-desktop-atmos-demo">Windows (Desktop Atmos Demo)<a class="headerlink" href="#windows-desktop-atmos-demo" title="Permanent link">&para;</a></h1>
+<div class="admonition note">
+<p class="admonition-title">Status: built, one item open</p>
+<p>Phases 1 to 5 landed 2026-09-03 (roadmap UX11): the library taps and watcher, the engine
+and its console runner, the <code>ac3desk</code> window, the null-sink driver verified in a throwaway
+guest, and the fast follows. Phase 6 (docs, CI, release) is done except for one thing: the
+driver ships <strong>test-signed only</strong> and will not load on a normal Windows machine yet. It
+installs and runs in the CI-built package and in the throwaway VM used for verification,
+where test signing is turned on; a machine with default settings refuses it. That closes
+once an EV code-signing certificate and attestation submission are in place — see
+<a href="#the-driver-and-its-licence">The driver, and its licence</a> below.
+The driver itself was rewritten on 2026-09-04, from a PortCls miniport to ACX (Microsoft's
+current framework); see <a href="../windows-driver-acx/">its own page</a> for that change.
+The page keeps the shape of <a href="../android/">the Android page</a>: the design sections say what
+the app does, each phase carries its progress record, and the
+<a href="#what-has-and-has-not-been-verified">verification section</a> says what has been checked on
+real hardware and what has not.</p>
+</div>
+<p>This is a demo app, not a shipping product. It works differently from the Shield app: the
+Shield app plays one authored stream and lets a controller move one object, while the Windows
+app, <strong>Desktop Atmos Demo</strong> (<code>apps/windows/</code>, working name), installs itself as the PC's output
+device the way FxSound does, takes every application that is playing sound, and lets the user
+drag each one to a position in the room. What comes out over HDMI is a live E-AC-3 JOC (Atmos)
+stream in which each application is an object at the position it was dragged to. Chrome playing
+a video can be put up and behind the seat, a game in the corner, a chat client at the left ear,
+and an AV receiver renders exactly that. A full-screen application becomes the bed.</p>
+<p>Nobody needs their spreadsheet audio to come from overhead; the point of building it is to
+exercise, live and in real time, parts of the library the Shield app does not: per-application
+capture, a dynamic object count, a headphone path, output hot-switching, and the Windows
+exclusive-mode bitstream path that <a href="../../roadmap/">roadmap DR9</a> still lists as unconfirmed on
+real hardware.</p>
+<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Install the app. Optionally install its virtual audio device, "Desktop Atmos Speakers".</li>
+<li>Pick "Desktop Atmos Speakers" as the Windows default output, or let the app do it with one
+   click. Every application now renders into a device that nobody hears.</li>
+<li>The app's room view shows an icon for every application that is currently making sound,
+   pulled from the same session list the Windows Volume Mixer uses. New applications appear
+   when they start playing; they leave when they stop.</li>
+<li>Drag an icon anywhere in the room, in plan and in elevation. That application is now a
+   dynamic object at that position. Drag it back to the centre tray, or press reset, and it
+   returns to the bed.</li>
+<li>Whatever the app is not told to position, and whichever application is full-screen in the
+   foreground, is mixed into the 5.1 bed.</li>
+<li>The output follows the hardware. An Atmos-capable receiver over HDMI gets E-AC-3 JOC with the
+   objects intact. A Dolby Digital receiver gets AC-3 5.1 with the positions panned onto the
+   ring. A TV or PCM-only sink gets decoded multichannel PCM. Headphones get the decoded objects
+   through Windows Spatial Sound. Plugging or unplugging HDMI switches modes without a restart.</li>
+<li>Minimise it and it lives in the tray.</li>
+</ol>
+<h2 id="whats-reused-whats-new">What's reused, what's new<a class="headerlink" href="#whats-reused-whats-new" title="Permanent link">&para;</a></h2>
+<p>The point of writing this down first is that almost the whole pipeline exists. The table is the
+inventory the plan is built on, with the header each item lives in.</p>
+<table>
+<thead>
+<tr>
+<th>Piece</th>
+<th>Status</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>E-AC-3 JOC encoder, 5.1 bed plus up to 15 dynamic objects, count fixed at construction</td>
+<td>exists</td>
+<td><code>ac3::oba::AtmosEncoder</code>, <code>src/forge/include/ac3/oba/atmos.hpp</code></td>
+</tr>
+<tr>
+<td>Live per-object placement surface the UI pushes into once per frame</td>
+<td>exists</td>
+<td><code>ac3::oba::SceneCursor</code>, <code>src/forge/include/ac3/oba/scene.hpp</code>; the three-call pattern is <code>examples/osc_object_control.cpp</code></td>
+</tr>
+<tr>
+<td>5.1 bed panner for the AC-3-only receiver case</td>
+<td>exists</td>
+<td><code>ac3::spatial::BedRenderer</code>, shown in <code>examples/spatial_objects.cpp</code></td>
+</tr>
+<tr>
+<td>IEC 61937 burst framing for AC-3 and E-AC-3</td>
+<td>exists</td>
+<td><code>ac3::iec61937</code>, <code>src/forge/include/ac3/iec61937/iec61937.hpp</code></td>
+</tr>
+<tr>
+<td>Exclusive-mode HDMI/S/PDIF bitstream sink, with a per-device format probe</td>
+<td>exists, unconfirmed on a real receiver on Windows</td>
+<td><code>ac3::audio::PassthroughSink</code>, <code>enumerate_render_devices()</code>, <code>src/audio/include/ac3/audio/passthrough.hpp</code></td>
+</tr>
+<tr>
+<td>Shared-mode multichannel PCM sink</td>
+<td>exists</td>
+<td><code>ac3::audio::MonitorSink</code>, <code>monitor.hpp</code></td>
+</tr>
+<tr>
+<td>Windows Spatial Sound object sink (headphones)</td>
+<td>exists, confirmed against a real spatial endpoint</td>
+<td><code>ac3::audio::SpatialObjectSink</code>, <code>spatial.hpp</code></td>
+</tr>
+<tr>
+<td>Whole-endpoint WASAPI loopback capture</td>
+<td>exists</td>
+<td><code>ac3::audio::Capture</code> with <code>DeviceKind::kLoopback</code>, <code>src/audio/src/backend/windows/capture.cpp</code></td>
+</tr>
+<tr>
+<td>Decoder with §7.8 downmix for the decoded headphone path</td>
+<td>exists</td>
+<td><code>ac3::OutputStage</code>, <code>src/forge/include/ac3/decoder/output.hpp</code></td>
+</tr>
+<tr>
+<td>Object signing hook pattern</td>
+<td>exists, on Android</td>
+<td><code>apps/android/app/src/main/cpp/shield_signing_hook.hpp</code></td>
+</tr>
+<tr>
+<td>Draggable room widget, plan plus elevation</td>
+<td>exists, in the GUI's Live tab</td>
+<td><code>apps/gui/qml/Main.qml</code> (<code>liveRoom</code>), <code>SoundfieldView.qml</code></td>
+</tr>
+<tr>
+<td>Reference live encode loop</td>
+<td>exists, twice</td>
+<td><code>apps/cli/commands/live_audio.cpp</code> (<code>run_live</code>), <code>apps/android/.../live_cursor.cpp</code></td>
+</tr>
+<tr>
+<td><strong>Per-process loopback capture</strong></td>
+<td><strong>landed</strong> (Phase 1)</td>
+<td><code>Capture::start_process_loopback</code>, Windows backend only, see <a href="#library-additions">Library additions</a></td>
+</tr>
+<tr>
+<td><strong>Render-device arrival and removal notifications</strong></td>
+<td><strong>landed</strong> (Phase 1)</td>
+<td><code>ac3::audio::DeviceWatcher</code>, Windows backend only</td>
+</tr>
+<tr>
+<td><strong>Audio session enumeration</strong> (who is playing, PID, name, icon)</td>
+<td><strong>new, app-level</strong></td>
+<td><code>apps/windows/</code></td>
+</tr>
+<tr>
+<td><strong>Virtual null-sink audio device</strong></td>
+<td><strong>new, separate driver project</strong></td>
+<td><code>apps/windows/driver/</code></td>
+</tr>
+<tr>
+<td><strong>Output-mode state machine with hot switching</strong></td>
+<td><strong>new, app-level</strong></td>
+<td><code>apps/windows/</code></td>
+</tr>
+<tr>
+<td><strong>Low-latency mode</strong></td>
+<td><strong>new, configuration of existing knobs</strong></td>
+<td><code>AtmosConfig::numblkscod</code>, capture buffer size</td>
+</tr>
+<tr>
+<td>Tray-resident Qt Quick UI</td>
+<td>new</td>
+<td><code>apps/windows/</code></td>
+</tr>
+</tbody>
+</table>
+<p>Nothing in <code>src/forge/</code> changes. The library additions are two Windows-backend files and their
+<code>kNoBackend</code> twins in every other backend, per the
+<a href="../raspberry-pi/#why-theres-no-raspberry-pi-specific-code">platform-tree convention</a>.</p>
+<h2 id="routing-separation-and-silencing">Routing: separation and silencing<a class="headerlink" href="#routing-separation-and-silencing" title="Permanent link">&para;</a></h2>
+<p>Registering as an output device and separating every application's audio are two different
+problems on Windows, with two different solutions.</p>
+<p><strong>Separation</strong> is solved without a driver. Windows 11 (build 20348 and later) has process
+loopback capture: <code>ActivateAudioInterfaceAsync</code> with
+<code>AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK</code> opens a capture stream that carries only what one
+process tree renders. One client per application, each on its own thread, each delivering that
+application's contribution to the mix in the endpoint's mix format. The Volume Mixer's session
+list (<code>IAudioSessionManager2</code> and friends) tells the app who is playing, with process ID,
+display name and icon, and raises a notification when a session appears or changes state.
+Granularity is the application, not the browser tab: Chrome renders all tabs from one utility
+process.</p>
+<p><strong>Silencing</strong> is the problem the driver solves. If the app taps Chrome and re-emits it over
+HDMI, Chrome also still plays out of whatever the default device is. Muting the session in the
+mixer mutes the tap as well, because the tap sits after session volume in the engine (S1
+confirmed it: the tap went silent within a second of the mute). Opening the default endpoint
+in exclusive mode while other applications are rendering to it is worse than useless: S1 found
+the open is refused with <code>AUDCLNT_E_DEVICE_IN_USE</code> and the applications' streams are invalidated
+anyway, so they stop playing and the taps deliver silence from then on. The clean
+answer is the one FxSound arrived at: a <strong>virtual render endpoint that discards what it is
+given</strong>. Make it the system default and every application renders into a device nobody hears,
+while the per-process taps pick each one off individually. The driver has no smarts at all. It
+is a null sink whose only job is to exist and to advertise a format.</p>
+<p>That format is the second thing the driver buys. It advertises <strong>7.1 at 48 kHz</strong>, so a game
+that can render surround does, and its tap arrives as eight channels that drop straight into the
+bed. Without the driver the taps arrive in whatever the user's real default device offers,
+usually stereo.</p>
+<h3 id="the-driver-free-mode">The driver-free mode<a class="headerlink" href="#the-driver-free-mode" title="Permanent link">&para;</a></h3>
+<p>The app must work, in a degraded way, with no driver installed, because driver installation
+is the highest-friction step and because CI will not have one. Driver-free mode means:</p>
+<ul>
+<li>the user picks any endpoint they cannot hear as the default (a monitor with no speakers, an
+  idle virtual cable, a muted device), or accepts hearing the direct mix as well;</li>
+<li>taps still work, positions still work, every output mode still works;</li>
+<li>the app says plainly, in the UI, why the direct mix is still audible and what fixes it.</li>
+</ul>
+<p>FxSound is installed on the development workstation. Its endpoint, "Speakers (FxSound Audio
+Enhancer)", is a production-signed virtual render device that goes nowhere when the FxSound
+application is not running. It is the development stand-in for our own driver until Phase 4.
+S1 used it to prove the whole model: applications rendering to it were tapped identically to
+applications on the real default, and with them there the workstation's Realtek endpoint could
+be taken in exclusive mode (<code>S_OK</code>) without the taps noticing.</p>
+<h3 id="rerouting-explicit-like-fxsound">Rerouting: explicit, like FxSound<a class="headerlink" href="#rerouting-explicit-like-fxsound" title="Permanent link">&para;</a></h3>
+<p>The undocumented per-application routing interface that EarTrumpet uses
+(<code>IAudioPolicyConfigFactory::SetPersistedDefaultAudioEndpoint</code>) is deliberately <strong>not</strong> used.
+The app changes the system default output, with a confirmation, and restores the previous
+default on exit. Windows has no documented API for that either: the route every
+default-switcher utility takes is the well-known <code>IPolicyConfig::SetDefaultEndpoint</code>, stable
+since Vista and used by FxSound, SoundSwitch and EarTrumpet alike. It is still unsupported, so
+the app treats it as a convenience with a fallback: if the call is refused, it opens the Sound
+settings page and asks the user to pick the device, and detects the change through the
+<code>DeviceWatcher</code>. Per-application rerouting would let the app work alongside a normal default
+device, but it is a second, less-travelled undocumented surface, and it is not what FxSound
+does. It stays on the list as a possible later phase.</p>
+<h2 id="objects-and-the-bed">Objects and the bed<a class="headerlink" href="#objects-and-the-bed" title="Permanent link">&para;</a></h2>
+<p>The encoder's object count is fixed when it is constructed, so the app allocates <strong>all 15
+dynamic slots at start</strong> and feeds silence to the idle ones, the same way the Shield app keeps
+three objects alive for every scene. An application being dragged out of the bed takes the
+lowest free slot; dragging it back frees the slot. Nothing is ever rebuilt mid-stream.</p>
+<p><strong>The bed is five of those slots.</strong> <code>AtmosEncoder</code> has no bed input of its own: its 5.1 bed is
+rendered <em>from</em> the objects, and it knows nothing of OAMD's bed labels (those live in
+<code>SceneObject::bed</code> for authoring and reach the wire, but the encoder's <code>ObjectPlacement</code> has
+no such field). So the demo's bed is five objects pinned to the L, R, C, Ls and Rs speaker
+positions with <code>snap</code> set, plus <code>lfe_send</code> for the LFE, and the bed mixer sums bed applications
+into those five. That leaves <strong>10 slots for positioned applications</strong>, not 15. It is still
+more than a desk needs, and matches what the encoder actually does.</p>
+<p><strong>Mono per application</strong> is the default. Each tap's channels are folded to one signal
+(a plain L+R sum for a stereo render; the §7.8 fold for a surround render) before it goes into
+its slot. That gives up to 10 positioned applications alongside the five-slot bed.
+The stretch, as a per-application user choice, is <strong>split</strong>: a stereo render becomes two
+objects placed either side of the application's position, and a surround render becomes a
+cluster. Split costs slots, so the slot allocator refuses when the budget would be exceeded and
+the UI says so.</p>
+<p><strong>What goes to the bed:</strong></p>
+<ul>
+<li>every application the user has not positioned;</li>
+<li>the foreground full-screen application, always, even if it was positioned, because a
+  full-screen game that renders 7.1 is the bed. The UI shows why its icon snapped back.</li>
+</ul>
+<p>Bed applications are mixed by the app, not by Windows, because the taps are per process and
+there is no "everything except these" tap (the exclude mode takes one process tree, not a
+list). A stereo bed application goes to the L and R bed slots; a 5.1 render maps one-to-one
+onto the five plus the LFE send; a 7.1 render folds the side and rear pairs into Ls and Rs.
+Total bed contributors are unbounded; total taps are one per playing session, and S1 ran
+sixteen at once without strain.</p>
+<p>Positions use the library's room coordinates (<code>ac3::oba::Position</code>): <code>x</code> from 0 at the left
+wall to 1 at the right, <code>y</code> from 0 at the front wall to 1 at the back, <code>z</code> from -1 at the floor
+to +1 at the ceiling. The seat is at the centre. The UI's plan view sets <code>x</code> and <code>y</code>; the
+elevation view sets <code>z</code>. Moves are pushed through <code>SceneCursor::push()</code> once per frame, and a
+drag is smoothed across a few frames because a 32 ms step in position is a click.</p>
+<h2 id="output-modes-and-hot-switching">Output modes and hot switching<a class="headerlink" href="#output-modes-and-hot-switching" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Chosen when</th>
+<th>What positions become</th>
+<th>What the sink is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Atmos</strong> (E-AC-3 JOC)</td>
+<td>a render endpoint accepts E-AC-3 in exclusive mode and a signing key is present</td>
+<td>objects, intact</td>
+<td><code>PassthroughSink</code>, E-AC-3 bursts</td>
+</tr>
+<tr>
+<td><strong>DD+ 5.1</strong> (E-AC-3, no object metadata)</td>
+<td>as above, no signing key</td>
+<td>panned onto the bed by <code>BedRenderer</code></td>
+<td><code>PassthroughSink</code>, E-AC-3 bursts</td>
+</tr>
+<tr>
+<td><strong>DD 5.1</strong> (AC-3)</td>
+<td>an endpoint accepts AC-3 but not E-AC-3</td>
+<td>panned onto the bed</td>
+<td><code>PassthroughSink</code>, AC-3 bursts</td>
+</tr>
+<tr>
+<td><strong>PCM surround</strong></td>
+<td>an endpoint offers 6 or 8 shared-mode channels and no bitstream format</td>
+<td>encoded, then decoded and rendered</td>
+<td><code>MonitorSink</code>, 5.1 or 7.1</td>
+</tr>
+<tr>
+<td><strong>Headphones</strong></td>
+<td>the default endpoint has a spatial format enabled (Windows Sonic, Dolby Atmos for Headphones, DTS Headphone:X)</td>
+<td>encoded, then decoded, objects handed to the OS renderer at their OAMD positions</td>
+<td><code>SpatialObjectSink</code></td>
+</tr>
+<tr>
+<td><strong>Stereo</strong></td>
+<td>nothing above applies</td>
+<td>encoded, then decoded, Lo/Ro fold</td>
+<td><code>MonitorSink</code>, 2 channels</td>
+</tr>
+</tbody>
+</table>
+<p>Detection on Windows is a live probe, not an EDID read: <code>enumerate_render_devices()</code> asks each
+endpoint whether it accepts AC-3 and E-AC-3 exclusive formats and how many shared-mode channels
+it has, and <code>probe_spatial_capability()</code> asks whether a spatial format is on. Windows does not
+expose EDID short audio descriptors to user mode, so <code>read_sink_capabilities()</code> keeps returning
+<code>kNoBackend</code> there and the demo does not pretend otherwise.</p>
+<p>Hot switching is driven by the new render-device notifications (<code>IMMNotificationClient</code>
+underneath): a device arriving or leaving, or the default changing, re-runs the probe and, if
+the best mode changed, fades the current sink down over one frame, stops it, starts the next,
+and fades up. The encoder keeps running through the switch; only the sink changes. The user can
+pin a mode to stop the app changing its mind.</p>
+<p>One rule the output stage must hold, from S1: <strong>the probe is safe, the open is not.</strong>
+<code>IsFormatSupported</code> in exclusive mode can be asked of any endpoint at any time, live streams or
+not. <code>Initialize</code> in exclusive mode on an endpoint that other applications are rendering to is
+refused and still invalidates their streams. So the app takes HDMI exclusively only after the
+default has been moved to the null sink and the session list confirms nothing is left on HDMI.</p>
+<p><strong>The headphone and PCM paths decode what was encoded.</strong> It would be less work and lower latency
+to hand the taps' PCM and positions straight to the spatial sink, but then those modes would
+never exercise the codec, and the demo would be making a claim about the encoder it cannot back.
+A codec-bypass switch on the Output page exists precisely so the difference can be
+demonstrated.</p>
+<h3 id="low-latency-mode">Low-latency mode<a class="headerlink" href="#low-latency-mode" title="Permanent link">&para;</a></h3>
+<p>The normal chain will sit somewhere around 150 to 200 ms behind the picture once a receiver has
+decoded it, which is a visible lip-sync error on a video. That is accepted for the joke, but a
+user-selectable <strong>low-latency mode</strong> trades the following, all existing knobs:</p>
+<table>
+<thead>
+<tr>
+<th>Knob</th>
+<th>Normal</th>
+<th>Low latency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>E-AC-3 frame (<code>AtmosConfig::numblkscod</code>)</td>
+<td>6 blocks, 32 ms</td>
+<td>1 block, 5.3 ms</td>
+</tr>
+<tr>
+<td>Capture buffer</td>
+<td>20 ms</td>
+<td>10 ms or the engine minimum</td>
+</tr>
+<tr>
+<td>Sink pre-roll</td>
+<td>two frames</td>
+<td>one frame</td>
+</tr>
+<tr>
+<td>Bitrate</td>
+<td>448 kb/s</td>
+<td>about 1.5 Mb/s, because 15 objects' metadata has to fit every 5.3 ms (S4 found 640 kb/s refused at 1 block, 1536 kb/s fine)</td>
+</tr>
+</tbody>
+</table>
+<p>The encoder's own object latency (832 samples in the QMF domain, about 17 ms) and the
+receiver's decode delay do not move. S4 showed the encoder itself is not the constraint in
+either mode. Phase 5 measures both chains end to end with a loopback capture and writes the
+numbers here; what is measured so far is the engine's own cadence on the workstation
+(2026-09-03, stereo decoded mode on the Realtek endpoint, taps on two idle applications,
+fifteen seconds each):</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Normal</th>
+<th>Low latency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Frames in 15 s</td>
+<td>464 (32.3 ms cadence)</td>
+<td>2792 (5.37 ms cadence)</td>
+</tr>
+<tr>
+<td>Worst frame</td>
+<td>86.9 ms, at start-up</td>
+<td>84.7 ms, at start-up</td>
+</tr>
+<tr>
+<td>Starved tap reads / sink underruns</td>
+<td>0 / 0</td>
+<td>0 / 0</td>
+</tr>
+</tbody>
+</table>
+<p>The one-block frame holds its cadence with the same zero-underrun margin as the six-block
+one; the start-up worst case is the first frame's device opens.</p>
+<p><strong>End to end, measured (2026-09-03, spike S5).</strong> <code>apps/windows/spikes/s5_latency</code> renders
+5 ms tone bursts on a pseudo-random schedule into the null sink from its own process, taps
+the runner's output by process loopback, and times both on the QPC clock (<code>IAudioClock</code> on the
+render side, the capture packet position on the tap side); <code>Measure-Latency.ps1</code> runs the
+four configurations. Workstation, FxSound's idle endpoint as the null sink, stereo decoded
+on the Realtek endpoint, 20 s and 77 bursts each:</p>
+<table>
+<thead>
+<tr>
+<th>Configuration</th>
+<th>Measured, tap to tap</th>
+<th>Less the measuring tap</th>
+<th>Sink queue</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Normal frames, codec in the loop</td>
+<td>127 ms (sd 0.0)</td>
+<td>about 108 ms</td>
+<td>32 ms</td>
+</tr>
+<tr>
+<td>Normal frames, bypass</td>
+<td>128 ms (sd 1.2)</td>
+<td>about 109 ms</td>
+<td>36 ms</td>
+</tr>
+<tr>
+<td>Low latency, codec in the loop</td>
+<td>110 ms (sd 4.8)</td>
+<td>about 91 ms</td>
+<td>12 ms</td>
+</tr>
+<tr>
+<td>Low latency, bypass</td>
+<td>110 ms (sd 3.5)</td>
+<td>about 91 ms</td>
+<td>22 ms</td>
+</tr>
+</tbody>
+</table>
+<p>The spike tapping itself, with no engine in between, measures the render-to-loopback path
+alone: 15 ms on the FxSound endpoint and 19 ms on Realtek, jitter-free. The "less the
+measuring tap" column subtracts the latter; what remains is the engine's own tap delivery
+(the same 15 ms, set by the OS), the frame, the decoder's one-unit hold-back in the codec
+rows, the sink's queue, and the shared-mode render engine.</p>
+<p>Two things the measurement changed in the engine. The taps are flushed when the output
+starts or switches: what they gathered while a sink was opening otherwise sat in the sink's
+one-second queue for the rest of the session, and the first runs showed both modes at 125 ms
+for that reason. And the sink's queue is bounded (two frames, never under 30 ms) with a
+catch-up that drops tap audio down to half the bound in one step; the status line carries the
+tap backlog, the sink queue and the catch-up count. The low-latency rows still show a few
+catch-ups per 20 s: the tap is paced by the null sink's clock and the sink by the Realtek
+endpoint's, and a one-block frame leaves little room between them. The remaining gap between
+the two modes is smaller than the frame arithmetic promised because the floor is the two
+process-loopback deliveries and the render engine, not the frame; the AVR row, when S2 runs,
+adds the receiver's decode on top of the codec rows.</p>
+<p>Where the rest can and cannot go. The encoder is not on the path: it takes 1 to 2 ms of a
+frame, and making it faster changes nothing measurable. Two of the terms are structural:
+the process-loopback delivery (about 15 ms, the OS's) and the frame itself (already one
+block in low-latency mode). One term looked movable and is not: reading the null-sink
+driver's own buffer instead of tapping processes would save the loopback delivery, but the
+audio engine mixes every application before anything reaches the driver, so that buffer
+holds the desktop's mix and cannot feed per-application placement; the taps are the price of
+the objects. The terms that do move are the sink's queue bound (two frames today, one is
+possible with the encode headroom S4 measured) and the render period: the monitor sink asks
+the audio engine for its smallest shared-mode period in low-latency mode (IAudioClient3,
+falling back to the default period where the engine refuses the format at that size).</p>
+<p>That second lever turned out to have no travel on this machine. <code>period_probe</code>, beside the
+spike, asks the endpoint what the engine offers: on the Realtek endpoint
+<code>GetSharedModeEnginePeriod</code> answers 480 frames for default, fundamental, minimum and maximum
+alike, 10 ms, with a 22 ms buffer, for the demo's float format and for the mix format both.
+<code>IAudioClient</code>'s "minimum 3 ms" is the exclusive-mode floor, not a shared-mode offer. The
+library keeps the path (a device that offers 2.7 ms will use it, and the fallback is the old
+behaviour), but the workstation's figures do not move for it. What remains on this endpoint
+is exclusive-mode PCM output, which the demo's configuration allows (S1 showed the Realtek
+endpoint can be taken exclusively while applications render into the null sink) and which
+would replace the 10 ms period and 22 ms buffer with the 3 ms the driver allows; that is a
+new sink in the library rather than a flag, and the next step if the figure matters.</p>
+<p>The queue bound was tried at one frame too. It bought nothing: the sink's queue holds the
+frame just submitted while the sink drains it, so its depth of about one frame is the
+pipeline's shape, not the bound's doing, and a one-frame bound was crossed at every submit
+and dropped audio twice a second. It is back at two. What the runs do show is a spread of
+about 15 ms between otherwise identical runs, which is the phase of the sink's 22 ms buffer
+and the tap's packets against the frame clock; the table's figures are one run each.</p>
+<p>None of the PCM-side terms exist on the demo's real target. The AVR path leaves through the
+exclusive-mode bitstream sink, with no shared-mode period, no engine buffer and no PCM
+queue: its latency is the tap delivery, the frame, the burst and the receiver's decode, and
+the receiver's decode is the one term that stays unknown until S2 runs.</p>
+<h2 id="object-signing">Object signing<a class="headerlink" href="#object-signing" title="Permanent link">&para;</a></h2>
+<p>The rule is the Shield app's, unchanged, and the reasons are in
+<a href="../../concepts/object-signing/">Object signing</a>: an unsigned-but-present object container is a
+hard refusal on a validating decoder, not a graceful fallback, so <strong>with no key the app sets
+<code>emit_object_metadata = false</code> and streams plain 5.1</strong>. The mode table above shows this as the
+difference between the Atmos and DD+ 5.1 rows.</p>
+<p>On the desktop the key is resolved <strong>at runtime</strong>, from an explicit path in settings or the
+same environment variables <code>ac3cli</code> reads (<code>AC3FORGE_SIGNING_KEY_FILE</code>, <code>AC3FORGE_SIGNING_KEY</code>),
+never from a file next to the executable and never
+from an installer. Nothing about the build changes with or without a key. The release job's
+"no key in the package" assertion carries over from Android to whatever packages this app.</p>
+<p>The user supplies the key once and the app remembers it across runs. What the settings store
+persists is the <strong>path</strong> to the key file by default; optionally the key bytes themselves,
+protected with DPAPI so only the same Windows user on the same machine can read them back,
+for a user who would rather not keep a key file lying around. Plaintext key material never
+lands in a settings file, a log, or a crash dump, and the settings screen shows only whether a
+key is loaded and where it came from. Changing or clearing the key restarts the encoder,
+because objects-or-nothing is decided at construction.</p>
+<h2 id="ui">UI<a class="headerlink" href="#ui" title="Permanent link">&para;</a></h2>
+<p>Qt Quick, module <code>Ac3ForgeDesk</code> (working name), sharing <code>Theme.qml</code> and the room widgets with
+the GUI rather than copying them. Screens:</p>
+<ul>
+<li><strong>Room</strong>: plan view and elevation view side by side, the same layout as the GUI's Live tab and
+  the Shield dashboard. Every playing application is an icon with a level ring. Unpositioned
+  icons sit in a tray at the bottom labelled "bed"; drag one in to position it, drag it back or
+  right-click reset to return it. The foreground full-screen application shows with a lock.</li>
+<li><strong>Output</strong>: what mode is active, which endpoint, why (the probe result in one line each), and
+  a pin. The default-device switch lives here with its confirmation.</li>
+<li><strong>Settings</strong>: six blocks, whose keys are <code>DeskController</code>'s in
+  <code>apps/windows/ui/desk_controller.cpp</code>. Latency (normal or low-latency frames,
+  <code>codec/lowLatency</code>). Codec (the bitrate, <code>codec/bitrate</code>, and the split-stereo default for
+  applications the engine meets from now on, <code>codec/splitStereo</code>). Signing key (the key
+  file's path, <code>signing/keyPath</code>; the <code>AC3FORGE_SIGNING_KEY_FILE</code> and <code>AC3FORGE_SIGNING_KEY</code>
+  variables are honoured when none is chosen). Virtual output device (what the kernel reports
+  about test signing and memory integrity, the driver folder, <code>driver/dir</code>, with the install,
+  remove and re-check buttons that run <code>install.ps1</code> and <code>remove.ps1</code> elevated, and the
+  silent device's name, <code>output/nullSinkName</code>). Appearance (theme, <code>appearance/theme</code>;
+  palette, <code>appearance/palette</code>; the room view, <code>appearance/roomView</code>; and the language
+  chooser, which is the GUI's <code>LanguageManager</code> on this app's translations, <code>language/code</code>,
+  with <code>AC3GUI_LOCALE</code> as the test override). Behaviour (move the default output to the
+  silent device on launch, <code>behaviour/moveDefaultOnLaunch</code>, and keep running in the tray when
+  the window is closed, <code>behaviour/keepRunningWhenClosed</code>). The codec-bypass switch is on the
+  Output page (<code>bypassCheck</code>, <code>codec/bypass</code>), beside the mode pin, not here.</li>
+<li><strong>Tray</strong>: minimise to tray, tray menu with output mode, pin, and quit. Closing the window
+  keeps the engine running; quitting restores the previous default device.</li>
+</ul>
+<p>The 3D room view (Qt Quick 3D, app icons floating in a wireframe room) is a fast follow after
+the 2D views work, not part of the first cut.</p>
+<h2 id="structure">Structure<a class="headerlink" href="#structure" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>apps/windows/
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  CMakeLists.txt                  in-tree, behind option(AC3FORGE_BUILD_WINDEMO) and if(WIN32)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  engine/                         headless, namespace ac3::windemo, no Qt
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    slots.{hpp,cpp}               the plan: 10 positioned + 5 bed slots, full-screen rule   [landed]
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    bed_mixer.{hpp,cpp}           stereo/5.1/7.1 taps -&gt; mono object or the 5 bed slots      [landed]
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    placement.{hpp,cpp}           UI targets -&gt; per-frame ObjectPlacement, smoothed          [landed]
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    output_policy.{hpp,cpp}       probe facts + pin -&gt; mode, endpoint, reason (the S1 rule)  [landed]
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    audio_devices.hpp             the AudioDevices seam: endpoints, sinks and taps as interfaces [landed]
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    tap_pool.{hpp,cpp}            one Capture::start_process_loopback per application  [landed]
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    output_stage.{hpp,cpp}        probe, policy, sink ownership, the five routes        [landed]
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    signing_hook.{hpp,cpp}        runtime key resolution, the Shield rule               [landed]
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    engine.{hpp,cpp}              the frame loop and the UI&#39;s command/status surface    [landed]
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    platform/windows/             the half that talks to Windows, this directory only
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>      session_monitor             IAudioSessionManager2 -&gt; applications by process tree [landed]
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>      default_device              read/move/restore the default output (IPolicyConfig) [landed]
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>      foreground                  SHQueryUserNotificationState + foreground window      [landed]
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>      wasapi_devices.cpp          the production AudioDevices over the library&#39;s WASAPI classes [landed]
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>      driver_tools.{hpp,cpp}      code-integrity state, the driver folder, elevated install/remove [landed]
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>  runner/main.cpp                 ac3windemo, the console runner (Phase 2&#39;s exit)       [landed]
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>  ui/                             ac3desk: main.cpp, desk_controller, qml/ (module Ac3ForgeDesk) [landed]
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    qml/shared/                   generated at configure time from apps/gui/qml, git-ignored
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>    tests/                        ac3desk_qmltests: five Qt Quick Test suites, ctest label desk [landed]
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>  translations/                   ac3desk_{fr,de,es,ar,he,yi}.ts, the GUI&#39;s language set    [landed]
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>  spikes/                         Phase 0 programs, kept as documented experiments
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>  driver/                         the null-sink driver, separately licensed (see below)
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>  driver-vm/                      the throwaway VMware guest: create, test and verify scripts
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>tests/windemo/                    Catch2, on every CI leg, ungated: the four pure modules, and the
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>                                  tap pool and output stage over the fakes (fake_devices.hpp,
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>                                  wasapi_devices_stub.cpp)
+</code></pre></div>
+<p>The pure modules, and the tap pool and output stage over the <code>AudioDevices</code> fakes, compile
+into <code>ac3tests</code> on every platform, the way <code>apps/common</code> does, so the rules the UI hangs on
+(the slot budget, what a full-screen application does, which output wins when) hold on a
+Linux CI leg that could never run the demo. The <code>platform/windows/</code> half builds only under
+the option.</p>
+<p>The library gains, in <code>src/audio</code>:</p>
+<ul>
+<li><strong><code>Capture::start_process_loopback(pid, mode, format)</code></strong>, implemented in
+  <code>src/audio/src/backend/windows/capture.cpp</code> with the activation-params route, sharing the
+  capture thread with the endpoint paths; every other backend refuses it with <code>kNoBackend</code> or
+  <code>kProcessLoopbackUnavailable</code>, and <code>process_loopback_available()</code> answers for the machine
+  rather than the build. <strong>Landed 2026-09-03.</strong></li>
+<li><strong><code>DeviceWatcher</code></strong> (<code>ac3/audio/device_watcher.hpp</code>), a new backend file in every
+  directory, delivering default-changed, added, removed and state-changed events on a
+  caller-supplied callback; non-Windows backends return <code>kNoBackend</code>. <strong>Landed 2026-09-03.</strong></li>
+<li>Both are reported by <code>audio_backend()</code> as <code>process_loopback</code> and <code>device_watch</code>, and the
+  backend contract test exercises both without touching a device (the watcher is actually
+  started and stopped wherever the backend exists, since registering needs no endpoint).</li>
+</ul>
+<p>Session enumeration, default-device switching and the foreground check are <strong>app-level</strong>, under
+<code>apps/windows/engine/</code>, because they are demo policy rather than audio I/O and because one of
+them touches policy-config COM interfaces that have no business in the library.</p>
+<p>Android wraps the repo root from its own Gradle build because Gradle owns that build. Here the
+toolchain is the same one the CLI and GUI use, so the demo is an in-tree option like the GUI,
+defaulting OFF, with the same pre-seeded <code>OFF</code> list for the targets it does not need.</p>
+<h3 id="the-driver-and-its-licence">The driver, and its licence<a class="headerlink" href="#the-driver-and-its-licence" title="Permanent link">&para;</a></h3>
+<p><code>apps/windows/driver/</code> is derived from Microsoft's AudioCodec ACX sample (until 2026-09-04,
+from the Simple Audio Sample, a PortCls/WaveRT miniport; the port is on
+<a href="../windows-driver-acx/">its own page</a>), cut down to one render endpoint that
+discards its input and advertises 7.1 at 48 kHz. The sample is licensed
+under the Microsoft Public License, which the FSF lists as free but <strong>not GPL-compatible</strong>. That
+is fine here because the driver is a separate work: a kernel-mode binary that shares no code
+with the GPL-3.0-or-later application and is only ever reached through public Windows APIs.
+The <code>driver/</code> subtree carries its own <code>LICENSE</code> (MS-PL, plus the project's modifications under
+the same terms) and its own <code>README</code> saying so, and nothing in it is <code>#include</code>d, linked, or
+copied anywhere else in the repository. FxSound's driver is AGPL and is not used or consulted.</p>
+<p>Signing has two stages, in order. First, <strong>test-signed on the development workstation</strong> with
+test-signing mode on and memory integrity off, installed with <code>pnputil</code>. Second, an EV
+code-signing certificate and a Partner Center account for <strong>attestation signing</strong>, so the
+driver loads on other people's machines with memory integrity on. The second stage gates the
+driver's presence in any published package; until then the package ships without it and the
+docs explain how to build and test-sign it locally.</p>
+<h2 id="phases">Phases<a class="headerlink" href="#phases" title="Permanent link">&para;</a></h2>
+<p>Each phase ends with something that runs, and each has a written exit criterion. Prerequisites
+that are the developer's to-do rather than code are listed where they bite.</p>
+<h3 id="phase-0-spikes">Phase 0: spikes<a class="headerlink" href="#phase-0-spikes" title="Permanent link">&para;</a></h3>
+<p>Throwaway console programs in <code>apps/windows/spikes/</code>, each answering one question, each
+leaving its answer in this page. None of it is reused as code.</p>
+<table>
+<thead>
+<tr>
+<th>Spike</th>
+<th>Question</th>
+<th>Exit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>S1 taps</strong></td>
+<td>Does process loopback work against N processes at once, what format arrives, does it keep delivering when the session is muted, when the app is routed to the FxSound endpoint, and when the default endpoint is held exclusively by us?</td>
+<td><strong>Done 2026-09-03</strong>, results in <code>apps/windows/spikes/README.md</code>: 16 taps separate exactly at 48 kHz float, mute kills a tap, the FxSound null-sink model works, exclusive on another endpoint is fine, exclusive on the apps' own endpoint is refused and destructive, the probe alone is harmless</td>
+</tr>
+<tr>
+<td><strong>S2 bitstream</strong></td>
+<td>Does <code>PassthroughSink</code> in E-AC-3 and AC-3 exclusive mode lock on a real Atmos receiver from this workstation? This is DR9's Windows row.</td>
+<td>the receiver's front panel reads DD+ Atmos, then DD, at zero underruns for a minute</td>
+</tr>
+<tr>
+<td><strong>S3 headphones</strong></td>
+<td>With Windows Sonic enabled on the Realtek endpoint, does encode then decode then <code>SpatialObjectSink</code> produce audible height and rear movement by ear?</td>
+<td>yes or no, and the measured round-trip latency</td>
+</tr>
+<tr>
+<td><strong>S4 throughput</strong></td>
+<td>Does a 15-object <code>AtmosEncoder</code> plus 16 taps plus the bed mix hold 32 ms cadence on this machine with margin?</td>
+<td><strong>Done 2026-09-03</strong>, results in <code>apps/windows/spikes/README.md</code>: p99 1.8 ms of the 32 ms budget in normal mode; the 1-block frame p99 0.7 ms of 5.3 ms, but needs at least about 1.5 Mb/s to carry 15 objects' metadata (640 kb/s is refused)</td>
+</tr>
+<tr>
+<td><strong>S5 latency</strong></td>
+<td>End to end, application to output, how far behind is each mode, and how much of it is the codec? Run under Phase 5, kept here with the others (<code>s5_latency.cpp</code>, <code>period_probe.cpp</code>, <code>Measure-Latency.ps1</code>)</td>
+<td><strong>Done 2026-09-03</strong>, results in <code>apps/windows/spikes/README.md</code> and under <a href="#low-latency-mode">Low-latency mode</a>: normal frames about 127 ms and low-latency about 110 ms tap to tap, of which 19 ms is the measuring tap itself; <code>period_probe</code> found the Realtek endpoint offers only a 10 ms shared-mode period, so the low-latency render period has no travel there</td>
+</tr>
+</tbody>
+</table>
+<p>Prerequisites: a long HDMI cable to the receiver (S2, the developer's to-do); Windows Sonic
+enabled on the headphone endpoint (S3). S3 and S4 do not wait for S2.</p>
+<h3 id="phase-1-library-additions">Phase 1: library additions<a class="headerlink" href="#phase-1-library-additions" title="Permanent link">&para;</a></h3>
+<p>The process-loopback capture entry point and the device watcher, both in the Windows backend
+with <code>kNoBackend</code> twins elsewhere, the device-free logic (parameter validation, refusal paths,
+watcher lifecycle) covered by the unconditional backend contract test rather than a new
+<code>tests/backend/windows/</code> directory, and <code>docs/platforms/windows.md</code> updated. Exit: a program
+tapping one process through the library and reading the tone back. <strong>Done 2026-09-03</strong>:
+<code>s1_library_tap</code> in the spikes tree reads the spawned player's tone through
+<code>start_process_loopback</code> at the expected level and frequency, refuses a process id nobody
+owns, and starts and stops a <code>DeviceWatcher</code>.</p>
+<h3 id="phase-2-engine">Phase 2: engine<a class="headerlink" href="#phase-2-engine" title="Permanent link">&para;</a></h3>
+<p><code>apps/windows/engine/</code>, headless. Session monitor, tap pool, slot allocator, bed mixer,
+placement, output stage with the mode state machine, signing hook, and the frame loop modelled
+on <code>run_live</code>. Everything that does not touch Windows is unit-tested on CTest; everything that
+does is behind an interface the tests can fake. Exit: a console runner that takes positions on
+stdin, streams Atmos to the receiver, and switches to headphones when HDMI is pulled.</p>
+<p><strong>Progress, 2026-09-03:</strong> the pure half landed first, with its tests (36 cases at the time,
+every platform; the same four modules hold 42 today): the slot plan with the full-screen rule
+and a waiting list for the eleventh application, the bed mixer and mono fold with the channel
+maps above, placement smoothing, and
+the output policy. The policy holds the S1 rule and one more the tests forced: shared-mode
+output on the endpoint applications render to (hearing the direct mix alongside ours) is
+chosen only when no other endpoint can carry anything at all. The Windows half and the frame
+loop are next.</p>
+<p><strong>Progress, later the same day:</strong> the rest of the engine and the console runner, <code>ac3windemo</code>.
+The session monitor groups sessions into applications by process tree (Chrome's audio utility
+process rolls up into chrome.exe) and leaves the engine's own process out, because a monitor
+sink's output is itself a session and the first smoke run tapped it. The tap pool keeps one
+process-loopback capture per application; the output stage owns whichever sink the policy
+chose and routes each access unit down one of five paths (E-AC-3 bursts, an AC-3 leg encoded
+from the encoder's own bed, decoded 5.1 PCM, decoded objects to Windows Spatial Sound, decoded
+Lo/Ro); the signing hook applies the Shield rule; the frame loop paces on the taps, folds each
+application into its slot, encodes, signs and submits, and republishes a status snapshot the
+UI will read. On the workstation, with a tone player rendering to the idle FxSound endpoint:
+the player was listed, tapped, moved into slot 0 on a <code>pos</code> command and back to the bed on
+<code>bed</code>, the stream ran at frame cadence with no starved reads and no underruns, and the
+decoded stereo fold played to a non-default endpoint. Headphone mode is a with-key mode (no
+key means no object container, so nothing for the spatial renderer to place). Not yet
+exercised: any bitstream mode (no receiver, and this workstation's HDMI endpoint accepts
+neither format), the spatial path (Windows Sonic is off here), and a real device-arrival
+switch. Fades on a mode switch are not written; the switch is a stop and a start.</p>
+<p>The runner's surface as it stands on 2026-09-03 (<code>apps/windows/runner/main.cpp</code>). Flags:
+<code>--null-sink SUBSTR</code> names the silent endpoint (default "Desktop Atmos"); <code>--key PATH</code> loads
+a signing key file, otherwise the <code>AC3FORGE_SIGNING_KEY_FILE</code> and <code>AC3FORGE_SIGNING_KEY</code>
+variables are read; <code>--pin MODE</code> starts pinned to one of <code>atmos</code>, <code>ddplus</code>, <code>dd</code>, <code>pcm</code>,
+<code>headphones</code> or <code>stereo</code>; <code>--low-latency</code> selects one-block frames; <code>--bitrate KBPS</code> fixes
+the bitrate (otherwise 448 kb/s, or 1536 in low latency); <code>--set-default SUBSTR</code> moves the
+system default output to that endpoint before starting and restores it on quit. The verbs
+on stdin, <code>&lt;app&gt;</code> being the id that <code>list</code> prints: <code>list</code>, <code>status</code>, <code>pos &lt;app&gt; x y z</code>,
+<code>bed &lt;app&gt;</code>, <code>pin &lt;mode&gt;|off</code>, <code>key &lt;path&gt;|none</code>, <code>bypass on|off</code>, <code>split &lt;app&gt; on|off</code>,
+<code>size &lt;app&gt; 0..1</code>, <code>probe</code>, <code>default &lt;substr&gt;|restore</code>, and <code>quit</code> or <code>exit</code>.</p>
+<h3 id="phase-3-ui">Phase 3: UI<a class="headerlink" href="#phase-3-ui" title="Permanent link">&para;</a></h3>
+<p>The Qt Quick shell, the room in plan and elevation, the bed tray, the output screen, settings,
+and tray residency. Exit: the user story above, minus the driver, works end to end.</p>
+<p><strong>Progress, 2026-09-03:</strong> built to the design canvas after a human-factors pass on it.
+<code>ac3desk</code> (<code>apps/windows/ui/</code>, QML module <code>Ac3ForgeDesk</code>) has the three pages, the tray icon
+with its output submenu and default-output switch, the status strip, and the capture aids
+borrowed from the GUI's smoke modes (<code>apps/windows/ui/main.cpp</code>): <code>--shot &lt;png&gt;</code> grabs the
+window once it has settled and quits, <code>--page room|output|settings|room3d</code> picks the page it
+shows first, and <code>--place Name=x,y,z[,split]</code> positions a listed application, as a pair with
+the suffix, before the capture. The GUI's Theme, Card, RailBlock and
+SegmentedControl are not copied: the demo's CMake rewrites each one's module import at
+configure time into an ignored directory and registers the result, so an edit to
+<code>apps/gui/qml/Theme.qml</code> reaches both apps. <code>DeskController</code> is a QML singleton that polls the
+engine's status snapshot a few times a second and republishes it as properties, and persists
+settings through QSettings under the GUI's organisation. Localisation shares the GUI's
+<code>LanguageManager</code> (given a translation basename so a second app can use it, and a way back to
+following the system locale) and the same six languages, mechanically translated for now, with
+Windows' locale as the default and a chooser in Settings. Verified by <code>--shot</code> captures in
+English, French, Arabic and Hebrew: layout, mirroring and the translations all render; the
+engine runs underneath and the room reflects the live session list. Not yet done: real
+Windows icons (monograms stand in); the 3D room and split-per-application landed under Phase
+5 below. The codec-bypass
+switch on the Output page is wired: with it on, headphones render the engine's own object
+slots where the encoder placed them (the bed's LFE as the one static channel), PCM surround
+takes the encoder's 5.1 bed by channel, and stereo takes an ITU-R BS.775 fold of it; the
+status bar and the runner's status line say which path the last frame took. Taps also
+follow the null sink's shared-mode width (2, 6 or 8 channels) after every probe, so a game
+rendering 7.1 into the driver reaches the bed by channel.</p>
+<h3 id="phase-4-driver">Phase 4: driver<a class="headerlink" href="#phase-4-driver" title="Permanent link">&para;</a></h3>
+<p>The SysVAD-derived null sink, test-signed, <code>pnputil</code> install and remove from the settings
+screen, driver-free mode still working when it is absent. Prerequisite: the Windows Driver Kit
+installed on <code>D:</code>. Exit: "Desktop Atmos Speakers" appears in Sound settings, becomes the
+default from the app, and the direct mix is silent.</p>
+<p><em>The record below is of the PortCls driver this phase produced. It was replaced on 2026-09-04
+by an ACX driver of the same names, format and behaviour, planned and recorded on
+<a href="../windows-driver-acx/">windows-driver-acx.md</a>; the harness, the two verification tiers and
+the lessons stand, and the parts of the record that were about PortCls (the stream-resource
+probe, DDI compliance being off) no longer apply.</em></p>
+<p><strong>Progress, 2026-09-03:</strong> built, and verified in the throwaway guest (Windows 11 Pro 25H2,
+build 26200): the package stages, the "Desktop Atmos" device and its "Speakers (Desktop
+Atmos)" endpoint appear, the service runs, the endpoint takes the default role through the
+same policy-config call the demo makes, WAV playback and speech synthesis render into it
+with no bugcheck, and <code>remove.ps1</code> takes the device and package out again. Not yet installed
+on the workstation, which still has test signing off and memory integrity on; the Settings
+screen says so. The base turned out to be Microsoft's
+<em>Simple Audio Sample</em> rather than SysVAD: the same WaveRT virtual-device machinery at a fifth
+of the size. <code>apps/windows/driver/</code> carries it under its own MS-PL <code>LICENSE</code> with a <code>README</code>
+that lists every cut: the mic-array endpoint, the tone generator and the file-saving path are
+gone, the speaker is 7.1 at 48 kHz, rendered data is discarded while the DMA position still
+advances at the nominal rate, and the INF is rewritten for one endpoint under the hardware id
+<code>ROOT\Ac3ForgeNullSink</code> with device description "Desktop Atmos", so Windows shows the endpoint
+as "Speakers (Desktop Atmos)", which is what the demo's default null-sink name matches. It
+builds under the Enterprise WDK (kit 10.0.28000, mounted from an ISO on <code>D:</code>, nothing installed
+on <code>C:</code>) to a test-signed package: <code>inf2cat</code>'s signability test passes, <code>infverif</code> reports the
+INF valid, and the build generates its own WDK test certificate. <code>install.ps1</code> and <code>remove.ps1</code>
+stage the package with <code>pnputil</code> and create or remove the root-enumerated device with the
+WDK's <code>devcon</code>. Loading it needs test signing on and memory integrity off, so its first runs
+happen in a throwaway VMware guest rather than on the workstation: <code>apps/windows/driver-vm/</code>
+creates a Windows 11 VM that installs itself unattended into exactly that state, snapshots
+it, installs the package from a virtual CD and reports devices, endpoints, the driver's
+service state and any bugcheck (a blue screen in the guest is a guest reboot, nothing more).
+The one input is a Windows 11 ISO from Microsoft. Two things stood between the scripts and a
+booting guest: a hand-written VMX needs the PCIe root ports (<code>pciBridge4</code> to <code>7</code>) or
+Workstation crashes at power-on with "No PCIe slot available for Ethernet0", and Microsoft's
+media stops at "Press any key to boot from CD or DVD" under EFI, so the scripts re-pack it
+once with the media's own <code>efisys_noprompt.bin</code>. Because <code>vmrun</code> cannot see the guest until
+Tools is installed, the console is exposed over Workstation's VNC server and a small RFB
+client (<code>guest_console.py</code>) takes screenshots and presses keys during Setup. The Settings
+screen's virtual-device block shows what the kernel reports about test signing and memory
+integrity, whether the driver folder holds the scripts and a built package, and runs
+<code>install.ps1</code> or <code>remove.ps1</code> elevated with the tail of their transcript as its status line;
+on the workstation, where neither prerequisite holds, it says so and the buttons do nothing
+harmful.</p>
+<p><strong>Driver quality, the WDK standard.</strong> A kernel driver is held to two tiers, both scripted.
+The static tier (<code>apps/windows/driver/Analyze-Driver.ps1</code>) is Code Analysis with the WDK's
+driver rule set, the successor to PREfast for Drivers; CodeQL with Microsoft's
+<code>windows-drivers</code> pack (the <code>mustfix</code> and <code>recommended</code> suites), which is what the kit now
+directs you to in place of the retired Static Driver Verifier; and <code>dvl.exe</code> for the Driver
+Verification Log the HLK Static Tools Logo test consumes. Its switches are <code>-BuildEnv</code> (the
+EWDK's <code>SetupBuildEnv.cmd</code>), <code>-CodeQL</code> (the CLI's path), <code>-RuleSet</code> (the Code Analysis rule
+set, <code>DriverRecommendedRules.ruleset</code> by default), <code>-Database</code> (where the CodeQL database is
+built), <code>-SkipCodeQL</code> and <code>-SkipDvl</code>. The Code Analysis run over the
+sample-derived source reported 157 defects, all now fixed: seventy uninitialised members
+given default initialisers, a loop over zero capture endpoints removed rather than suppressed,
+the template-parameter migration made best-effort instead of fatal to the endpoint, and the
+pool allocators masked to never request executable memory.</p>
+<p>One of those fixes had to be taken back, and it is the lesson of the exercise. C6387 pointed
+at the sample's port-class stream-resource probe, where <code>PcGetPhysicalDeviceObject</code> can leave
+the physical device object null; the first fix deleted the probe, on the reasoning that a null
+sink has no streaming resources to declare. That broke every device start:
+<code>CM_PROB_FAILED_START</code>, problem status <code>0xC000000D</code>. Bisecting the change file by file and
+then hunk by hunk against the guest showed the probe alone was responsible, and that it is not
+about the status the function returns, since a variant that removed the probe and forced a
+success return failed in the same way. Port class depends on that pass over
+<code>IPortClsStreamResourceManager</code> and its successor, so the probe stays and the rule is answered
+where it actually pointed: each probe is skipped when the device object is null, and the object
+rather than null is passed to <code>AddStreamResource</code>. The one finding left is the <code>ResourceSet</code>
+argument, annotated non-null but documented to take null for a thread resource, suppressed with
+that reason. The moral is narrow and worth keeping: in sample-derived kernel code an ignored
+status can be load-bearing, so re-install in the guest after every driver change rather than
+trusting that a static-analysis fix is inert. The
+dynamic tier (<code>apps/windows/driver-vm/Verify-Driver.ps1</code>) runs in the same throwaway guest:
+Driver Verifier with the standard checks plus the KMDF flags and the KMDF framework verifier,
+armed for the driver, then the driver installed and exercised (default endpoint, playback,
+device restarts idle and under a live stream, reinstall) and any bugcheck read back;
+<code>-Kasan</code> runs it against a KASAN-instrumented package on a KASAN kernel. Its other
+switches: <code>-Ddi</code> adds DDI compliance checking (off by default, below); <code>-NoVerifier</code> leaves
+Driver Verifier off and keeps the WDF verifier and, with <code>-Kasan</code>, the KASAN kernel, which
+the KASAN proof below needs; <code>-NoExercise</code> installs under the verifiers and reports without
+the exercise, to tell a start failure caused by the verifier from one caused by the exercise
+itself; <code>-ReportOnly</code> just reports; and <code>-VmDir</code>, <code>-Name</code> and <code>-Workstation</code> name the guest
+and the Workstation install. A violation bugchecks the guest, which is a guest reboot and a
+line in the report.</p>
+<p>The dynamic run is clean. With the verifiers armed the driver installs, the endpoint appears,
+it takes the default role and plays twelve system sounds and three spoken passages, survives
+three device restarts while idle and one under a live stream, and takes a reinstall on top.
+Special pool accounted for every allocation it made, 111 of 111, with none untagged, untracked
+or failed, and the loads and unloads balance. No bugcheck, no minidump. DDI compliance
+checking is off by default (<code>-Ddi</code> adds it): it targets pure WDF drivers, and this is a
+PortCls miniport that uses KMDF only for its entry. The exercise has since been widened to
+three streams open at once and a surprise removal of the device under a live stream followed
+by a reinstall from scratch; both run clean under the same checks.</p>
+<p><strong>KASAN, and the proof that it is live.</strong> The instrumented package is the solution built
+with <code>EnableKasan</code>, which the kit turns into <code>/fsanitize=kernel-address</code>; it is 80 KB
+against the ordinary 52 KB and imports the sanitizer's load, store and shadow routines from
+<code>ntoskrnl.exe</code>, so it can only load on a kernel that exports them. <code>Verify-Driver.ps1 -Kasan</code>
+sets the kernel's <code>KasanEnabled</code> switch, reboots, and runs the same exercise against it: the
+instrumented driver loads, the endpoint appears, and every step passes with no bugcheck. That
+alone does not show the checks were live rather than inert exports, so a throwaway build
+carries a deliberate one-past-the-end read of a 16-byte pool block at driver entry. Under
+Driver Verifier that build bugchecks with <code>0x50</code>, a page fault on a page-aligned address:
+special pool caught it on its guard page, first. With Driver Verifier off (<code>-NoVerifier</code>) and
+only the KASAN kernel, it bugchecks with <code>0x1F2</code>, <code>KASAN_ILLEGAL_ACCESS</code>, on the unaligned
+address one byte past the block, access size 1. The sanitizer is live and the shipped
+package passes it. That build is deleted after the proof and is never staged. The exercise
+also taught the harness to survive a bugcheck mid-step: <code>runScriptInGuest</code> never returns
+when the guest goes down under it, so each guest step now has a timeout, after which the
+script waits for the guest to come back and reads the bugcheck out of the event log.</p>
+<p><strong>Coverage, and what "covered" can mean here.</strong> Statement and branch coverage of the driver
+is not measured and is not attainable with public tooling: coverage instrumentation needs
+a profiling runtime in the code being measured, and there is none for kernel mode; the
+clang-cl and MSVC coverage builds the user-mode application uses cannot link into a driver,
+and Microsoft's own kernel coverage tooling is not public. What the dynamic tier gives is
+functional coverage of the driver's entry points, and it is worth being exact about it. It
+reaches PnP start, stop and remove, surprise removal with a stream open, stream creation, run
+and stop, three concurrent streams, the property handlers behind the default-role change and
+the format negotiation that playback performs, and reinstall over a live device. It does not
+reach sample-rate changes on the endpoint's format, power transitions, or driver unload with
+a stream open. Measured coverage of the driver's own logic would mean lifting the parts that
+are not PortCls plumbing (the stream position and timing simulation, the topology and
+property tables) behind a seam and testing them in user mode under the existing coverage
+preset; that is real work, sized separately if wanted.</p>
+<h3 id="phase-5-fast-follows">Phase 5: fast follows<a class="headerlink" href="#phase-5-fast-follows" title="Permanent link">&para;</a></h3>
+<p>In this order: test remediation, the end-to-end latency figure, split per application, the 3D
+room, and per-application width and size. Each is its own PR. All five landed on 2026-09-03;
+what follows records each.</p>
+<p><strong>Test remediation first.</strong> When Phase 5 began on 2026-09-03 the demo's automated tests were
+37 Catch2 cases over its four pure modules (slots, bed fold, placement smoothing, output
+policy; those four hold 42 today, after split and size). The engine loop, the output stage,
+the tap pool, the signing hook, the four Windows platform files, the controller and every
+QML file had no automated test, and no coverage figure existed: the repository's coverage
+gate is gcov on the Linux preset and the demo is Windows-only. Three steps, in this order:</p>
+<ol>
+<li><em>A Qt Quick Test target</em>, <code>ac3desk_qmltests</code>, built the way <code>ac3gui_qmltests</code> is: a second
+   embedding of the <code>Ac3ForgeDesk</code> module, the real <code>DeskController</code> (no parallel fake API,
+   the same rule the GUI's tests follow), an isolated <code>QSettings</code> store, one ctest entry per
+   <code>tst_*.qml</code>. Suites: the shell (page switching, status strip, tray behaviour on close),
+   Settings (every persisted setting round-trips through the controller; the driver block
+   reads the kernel state and the package folder), Output (mode pin, bypass), the room (the
+   session list with the engine stopped and, where a machine has an audio endpoint, running),
+   and the six languages. Tests that need the engine skip when <code>start()</code> refuses, so the
+   suite is meaningful on a machine with no audio device and complete on one with.</li>
+<li><em>Coverage on Windows.</em> <code>Coverage.cmake</code> gains a clang-cl arm (<code>-fprofile-instr-generate
+   -fcoverage-mapping</code>, the profile runtime linked explicitly because the MSVC-style link
+   step does not go through the compiler driver) and a <code>config-windows-llvm-coverage</code>
+   preset; <code>tools/checks/coverage_windemo.ps1</code> runs the <code>windemo</code> and <code>desk</code> ctest labels
+   under <code>LLVM_PROFILE_FILE</code>, merges with <code>llvm-profdata</code> and prints <code>llvm-cov report</code> over
+   <code>apps/windows</code>, which gives line and <em>branch</em> figures per file (OpenCppCoverage, the
+   MSVC alternative, reports lines only). The numbers go into this page and, once stable,
+   into per-component floors the way <code>coverage_report.sh</code> gates the library.</li>
+<li><em>Seams in the engine.</em> <code>OutputStage</code> and <code>TapPool</code> construct the library's WASAPI classes
+   directly, so the frame loop and the five routes cannot run without an audio device. A
+   small sink interface (open, submit, stop) and a capture-source interface behind the tap
+   pool, with the library classes as the production implementations and in-memory fakes in
+   <code>tests/windemo/</code>, let Catch2 drive the loop: taps in, access units and bed out, a mode
+   switch mid-stream, the bypass fold, the null-sink width change, a starved tap. The
+   platform files stay integration-tested by the guest.</li>
+</ol>
+<p>All three landed on 2026-09-03. <code>ac3desk_qmltests</code> runs five suites (shell, settings, output,
+room, language) under the <code>desk</code> label; <code>AudioDevices</code> (<code>engine/audio_devices.hpp</code>) is the
+seam, with <code>wasapi_devices.cpp</code> behind it in the app and <code>tests/windemo/fake_devices.hpp</code> in
+the tests, and the tap pool and output stage now compile into <code>ac3tests</code> on every platform
+(59 <code>windemo</code> cases today, 17 of them over the fakes in <code>test_tap_pool.cpp</code> and
+<code>test_output_stage.cpp</code>: the five routes with real access units, the bypass fold, a mode
+switch mid-stream, a sink that refuses, a full sink's underrun, a starved tap). The first
+measurement, <code>coverage_windemo.ps1</code> over the <code>config-windows-llvm-coverage</code> build with both
+labels, 57 ctest entries at the time (64 today: the 59 <code>windemo</code> cases and the five <code>desk</code>
+suites), all passing:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Lines</th>
+<th>Branches</th>
+<th>Note</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>engine/tap_pool.cpp</code></td>
+<td>100%</td>
+<td>100%</td>
+<td>fakes</td>
+</tr>
+<tr>
+<td><code>engine/slots.cpp</code></td>
+<td>98%</td>
+<td>93%</td>
+<td></td>
+</tr>
+<tr>
+<td><code>engine/placement.cpp</code></td>
+<td>100%</td>
+<td>83%</td>
+<td></td>
+</tr>
+<tr>
+<td><code>engine/output_policy.cpp</code></td>
+<td>93%</td>
+<td>86%</td>
+<td></td>
+</tr>
+<tr>
+<td><code>engine/engine.cpp</code></td>
+<td>79%</td>
+<td>68%</td>
+<td>the desk suites start the real engine</td>
+</tr>
+<tr>
+<td><code>engine/output_stage.cpp</code></td>
+<td>78%</td>
+<td>65%</td>
+<td>fakes; decoded-headphones and DD 5.1 error legs thin</td>
+</tr>
+<tr>
+<td><code>engine/bed_mixer.cpp</code></td>
+<td>77%</td>
+<td>83%</td>
+<td>the 4-channel and "anything else" folds</td>
+</tr>
+<tr>
+<td><code>ui/desk_controller.cpp</code></td>
+<td>73%</td>
+<td>59%</td>
+<td>the driver-install path is guarded, not run</td>
+</tr>
+<tr>
+<td><code>platform/windows/session_monitor.cpp</code></td>
+<td>81%</td>
+<td>61%</td>
+<td>live, through the desk suites</td>
+</tr>
+<tr>
+<td><code>platform/windows/default_device.cpp</code></td>
+<td>46%</td>
+<td>40%</td>
+<td>the set-default path is never taken in a test</td>
+</tr>
+<tr>
+<td><code>platform/windows/wasapi_devices.cpp</code></td>
+<td>59%</td>
+<td>40%</td>
+<td>the modes this machine cannot enter</td>
+</tr>
+<tr>
+<td><code>platform/windows/foreground.cpp</code></td>
+<td>35%</td>
+<td>33%</td>
+<td>no full-screen window in a test</td>
+</tr>
+<tr>
+<td><code>platform/windows/driver_tools.cpp</code></td>
+<td>14%</td>
+<td>4%</td>
+<td>elevation and transcripts need the guest</td>
+</tr>
+<tr>
+<td><code>engine/signing_hook.cpp</code></td>
+<td>63%</td>
+<td>30%</td>
+<td>no key in the tests</td>
+</tr>
+<tr>
+<td><code>ui/main.cpp</code></td>
+<td>0%</td>
+<td>0%</td>
+<td>the test binary has its own entry point</td>
+</tr>
+<tr>
+<td><strong>apps/windows total</strong></td>
+<td><strong>72%</strong></td>
+<td><strong>60%</strong></td>
+<td>2,227 lines, 1,004 branches</td>
+</tr>
+</tbody>
+</table>
+<p>The QML itself is outside these figures: llvm-cov sees compiled C++, and the five suites
+exercise the pages by driving them, not by instrumenting them. The thin rows are the ones
+whose remaining paths need the machine to be in a state a unit test cannot put it in (a key
+loaded, a full-screen game, an AVR, the elevation prompt); the guest run covers the driver
+path and the AVR spike will cover the bitstream modes live. Floors are the next step once a
+second measurement shows the numbers hold.</p>
+<p><strong>End-to-end latency, measured.</strong> The figure the plan promised is tap to speaker, not the
+engine's own cadence (which is recorded above). Method: a spike, <code>s5_latency</code>, plays a
+periodic click from a process of its own into the null sink while the engine runs in PCM
+surround or stereo on a real endpoint; a WASAPI loopback capture of that endpoint (the
+library's ordinary <code>Capture</code>) records what came out; cross-correlating the two gives the
+delay, and the same run with the codec bypass on isolates the codec's share. Repeated in
+normal and low-latency modes, on the workstation first and on the AVR path once S2 runs,
+where the receiver's decode delay is measured the same way through an analogue return or a
+microphone at the listening position. The four numbers (normal/low, codec/bypass) go in the
+low-latency table; the receiver figure is a fifth row when it exists.</p>
+<p><strong>Split per application.</strong> The stretch choice from the Q&amp;A: a stereo application becomes two
+objects, one per channel, instead of one mono fold. Design: <code>SlotAllocator</code> gains a per-app
+width (1 or 2 slots); a split app takes two consecutive positioned slots and is refused
+(stays in the bed, with a reason in the UI) when only one is free; the bed fold is unchanged
+for bed apps. Placement: the pair sits either side of the position the user places, at a
+user-adjustable spread (default 0.15 of the room width, clamped to the walls), so dragging
+moves the pair as one and the room draws a single icon with two small satellites. Tap width
+stays whatever the null sink is; a wider tap splits to its front pair. Engine: <code>fold_to_mono</code>
+gains a <code>fold_to_pair</code> sibling; <code>TapRead</code> is unchanged. UI: the Settings checkbox already on
+the page, which now actually enables it, plus a per-app "split" toggle on the app's row.
+Tests: the allocator's two-slot cases and refusal, the pair fold, and a QML test that the
+toggle reaches the controller.</p>
+<p><em>Landed 2026-09-03.</em> <code>SlotAllocator::set_width</code> takes two consecutive slots as one block (the
+lowest free pair) and gives both back; an application that cannot get a pair waits in the
+bed with its request remembered, and one that goes full-screen frees both. <code>fold_to_pair</code>
+passes stereo through and, for 5.1 and 7.1, gives each side its front, its surrounds at
+-3 dB and the shared centre at -3 dB, normalised like the mono fold. The engine places the
+pair either side of the placed position at the configured spread (0.15 of the room width,
+clamped to the walls) and reports the pair's centre as the application's position; the
+Settings checkbox is the default for applications the engine meets from now on, the room's
+selected-application panel has a Split/Mono button per application, and the runner takes
+<code>split &lt;app&gt; on|off</code>. One thing it found: a command naming an application before the first
+session refresh had listed it used to enter the plan at width 1 whatever the choice was;
+applications now enter the plan through one path that applies it.</p>
+<p><img alt="A split application: Music holds slots 2 and 3 as a pair at the placed position" src="../screenshots/windows-demo-room-split.png" /></p>
+<p>The plan view draws a split pair as the marker with two small satellites at the spread.</p>
+<p><strong>The 3D room, landed 2026-09-03.</strong> <code>Room3DView.qml</code> (Qt Quick 3D, built when the kit has
+it; the toggle is hidden otherwise and <code>DeskController.has3D</code> says which) shows the room from
+an orbiting camera: the floor and the wall line at ear level, the listener at the centre, the
+five bed speakers where the slot plan pins them, and every placed application as a sphere at
+its object position with a stem down to ear level, a split pair as two spheres. Drag orbits
+and the wheel zooms; placement stays in the plan and elevation views, which is the Q&amp;A's
+"2D first, 3D fast follow" reading. <code>ac3desk --page room3d</code> captures it.</p>
+<p><img alt="The 3D room: Music as a pair front-left, Game elevated at the rear right" src="../screenshots/windows-demo-room-3d.png" /></p>
+<p>The view choice persists (<code>appearance/roomView</code>), and the selected-application panel sits
+below the views so it serves both.</p>
+<p><strong>Per-application size, landed 2026-09-03.</strong> The selected-application panel has a size
+slider, 0 (a point) to 1 (the whole room), which the engine carries through the placement
+smoother (glided like position and gain, so a change does not step) into the object's
+isotropic extent in the OAMD payload (TS 103 420 §5.6.1.2). It reaches the receiver's
+renderer only: as <code>ObjectPlacement</code> documents, the encoder's own 5.1 bed render treats every
+object as a point, so a sized object is spread by the receiver and not twice. The runner
+takes <code>size &lt;app&gt; 0..1</code>; a placement case and a room-suite case cover it. Width per
+application is the split above.</p>
+<h3 id="the-application-review-2026-09-03">The application review, 2026-09-03<a class="headerlink" href="#the-application-review-2026-09-03" title="Permanent link">&para;</a></h3>
+<p>Iain ran the window for the first time and reviewed it live. What he found, and what it
+became, in his order.</p>
+<p>The rail showed monograms and executable stems and listed every process with an audio
+session, a virtual machine's backend and Windows' text-input host among them. It now shows
+each application's real icon (an image provider over the icon the shell keeps for its
+executable, the monogram kept for executables that have none, decided by comparing pixels
+with the shell's generic sheet) and the name the executable gives itself. A process is an
+application when some process in its tree owns a visible, titled, top-level window, or when
+it is a packaged app (whose windows belong to a host process); anything else, and anything
+under <code>Windows\SystemApps</code>, is background, hidden unless a Behaviour setting shows it, and
+in the bed either way. Another instance of this program is never listed.</p>
+<p>Resizing broke every page: content overflowed the window rather than reflowing, a wide
+window left a gap in the middle of the room, and the Settings page's two columns were sized
+by their content and came out lopsided. The pages now adapt. The rails keep a preferred
+width and give way a little; the room views scale between 240 and 560 px with the centre
+column and stack when it is narrow; the Output page's two-up rows go one-up below about
+900 px and its endpoint table folds its note column below 760; the Settings page's columns
+are balanced and go to one below 1000; button rows wrap, long names elide, the centre of the
+Room page scrolls when the window is short, and the window's minimum is 960 by 620.</p>
+<p>The Settings page's structure was unintuitive, the virtual-device block in particular. It is
+reordered by what is set up first on a new machine: the virtual output device, as a
+three-line status (is there a silent device; can this machine load a test-signed driver, and
+what to do if not; is there a package to install) with one action per state and the driver
+folder and silent-device filter behind an Advanced disclosure; then the signing key; then
+latency, codec, appearance and behaviour. The palette defaults to system. The language
+chooser re-selects from the language manager's own state after a retranslate rebuilds its
+model, which is why it had snapped back to System.</p>
+<p>Smaller findings, each fixed: the pin combo could read blank (it never does now); the
+endpoint table gave nothing to do (each row can be made the Windows default, through the
+same policy call the silent-device switch uses); the Output card's long endpoint name and
+the default-output buttons overflowed; the status strip's "frame" figure jittered between
+20 and 40 ms, which is the loop's wall-clock cadence paced by the taps' 10 ms packets and
+not the encoder's time, so the strip now shows the encoder's own time (about 1 to 2 ms)
+beside the cadence; there was no way to stop or start the engine (a Start/Stop sits beside
+its state); the window had no icon and no About box (both from the GUI app's assets and
+shape); the 3D room's orbit ran against the mouse, sat too far away, and drew only the 5.1
+bed speakers (it follows the mouse, frames the room, draws 5.1, 7.1 or 7.1.4 for reference,
+automatically 5.1 while the stream is bed-only and 7.1.4 once objects are on, and its
+objects can be picked and dragged across the floor, or up and down with Shift); the selected
+panel has placement presets (in front, behind, left, right, overhead, the four corners).</p>
+<p>Two findings were about what the window did not say. With no signing key the objects are
+off, so placing an application only pans it within the 5.1 bed and height and size do
+nothing, and nothing had told the person placing things so. The Room page now says it in a
+notice where the placing happens, and the elevation view is dimmed and captioned "height:
+objects only" in that state. And a split application showed two dots that could not be
+moved apart: each object of a pair is now a marker of its own, placed where it is dragged
+(the engine keeps the pair's centre between them, moves both when the centre moves, and
+"Standard stereo" puts them back at the spread).</p>
+<p>The defect behind the review's worst moment, the drag that lost its click, also explains the
+stutter Iain felt with the mouse over the window. The application list was a plain value
+list rebuilt on every 120 ms poll, and the level meters change on every poll, so every
+delegate in the rail, both room views, the bed tray and the 3D room was destroyed and
+recreated eight times a second, and a marker being dragged went with them. Each application
+is now a live object whose properties update in place, so delegates persist; the marker's
+own position and the engine's are separate properties, so a drag never breaks a binding;
+and the bed chip drags with Qt Quick's internal drag rather than the platform's, which had
+fought the chip's own mouse handling for the press.</p>
+<p>Tracy now runs through the demo as it does through the library: zones on the engine loop's
+stages (commands, session refresh, reprobe, taps, encode, submit) and the controller's poll,
+a frame mark per encoded frame, on the library's profiling header pair. A build with
+<code>AC3FORGE_ENABLE_TRACY=ON</code> and the <code>profiling</code> manifest feature carries the client and the
+capture and export tools; <code>tracy-capture</code> against the instrumented window under load gives
+the per-zone statistics the status strip can only hint at.</p>
+<p>The first capture (30 s, three tone players, 899 frames) said where the time went. The
+encoder took 1.4 ms per frame; the wait for the taps 28 ms (the frame's pacing); the
+controller's poll 1.6 ms. The session refresh ran on the frame thread every 500 ms and took
+48 ms on average and 217 ms at worst, between two frames: enumerating sessions and
+processes, walking every window, and reading each executable's version resource. That was
+the worst-frame figure and the cadence's swing. The monitor now runs on its own thread and
+the loop takes its latest list when one is fresh, and the facts about a process that never
+change are read once per pid. The same capture afterwards: worst frame 290 ms to 74 ms; the
+frame's minimum 1.2 ms to 24 ms, which means the loop no longer runs short and drops tap
+audio to catch up; session work on the frame thread 48 ms to 0.4 ms per refresh; the
+enumeration itself 42 ms, on its own thread.</p>
+<p>Two more findings from the second sitting. An application that fell silent vanished from the
+window, placement and all, because the list had only ever been the audio sessions; and Chrome
+did not appear until it had opened one. The list is now every running application: each
+process tree with a visible window is listed whether or not it has a session (Windows' own
+windowed hosts, <code>Windows\System32</code> and the Settings app, are not), sorted after the ones with
+sound, its icon desaturated and its line reading "no audio" until it plays, and a placed
+application stays listed and placed through a silent spell while its process lives, the
+engine passing the monitor the ids to keep. Only applications with a session are tapped. A
+Behaviour setting hides the silent ones again for a rail that shows just what is playing.
+And moving the window across the screen juddered, the frame a step behind the cursor, because
+Qt Quick's threaded render loop paints on its own thread while Windows' move loop drives the
+event thread; the window now uses the basic render loop (unless <code>QSG_RENDER_LOOP</code> says
+otherwise), which renders in step with that loop.</p>
+<p>The 3D room, on a third look: the speaker names read backwards. Each label was turned with
+its speaker to face the listener, so from the default view behind the room every label on
+the near side was mirrored and the side ones were edge-on. The names are now pills that
+face the camera at one size on screen whatever their distance, the height layer's in the
+accent. The height units were thin discs, invisible nearly level and in the dark palette's
+low neutrals; they are surface-mounted cans below a faint ceiling outline, in mid-tones that
+read on both palettes. And the floor stayed dark after a switch to the light palette because
+its grid is a canvas painted once; it repaints when the palette's colours change.
+A speaker's full name ("top rear left") shows on its pill while the mouse is over the
+unit or the pill, through the same pick the drags use, against one invisible plate per
+speaker that faces the camera, covers the unit and the pill with room to spare, widens
+while hovered so the full name stays inside it, and lets go a moment after the pointer
+leaves (a tight plate on each flickered at their edges and in the gap between them).
+The pills cost the drags: a press takes what the scene says is under the pointer, and
+with 2D items in the scene the nearest hit became a pill or a name, which comes back with
+no object at no distance, so a press on a card found nothing. A press now scans every hit
+for the nearest placed application's card, and a hover for the nearest bubble; unplaced
+applications' cards, which sit at the origin invisible but were still hit, are not
+pickable. A capture run (<code>--shot</code>) logs what a press at each placed card would find, which
+is how this was seen.</p>
+<p>Two first-time-only defects from the same sitting, both about the views' first showing.
+A marker in the plan views set off from the corner and glided to its place the first time
+they were shown: the views sit in a hidden layout while the 3D room shows, at no size until
+their first showing, and the glide meant for the engine's small steps animated the resize.
+The glide is now on the fraction of the field, not the pixels, so sizing the field moves a
+marker straight to its place and only the engine's own steps glide; on a release the glided
+copy is set to the drop point without a glide, which is also what used to need the
+"settling" state. And the camera a person had set in the 3D
+room reset on the first return from the plan views: the room is kept loaded while hidden
+once it has been shown, but the flag that says so was set only by a visibility change, which
+never fires for a window that opens in 3D, so the first switch away unloaded it.</p>
+<p>The About box linked a repository that does not exist (the checkout's directory name, not
+the remote's), and said nothing about the toolkit or the type. It now links
+github.com/iainchesworthlabs/ac3forge and attributes Qt 6 (LGPL v3), {fmt} (MIT), Tracy in
+profiling builds (BSD 3-clause), and the faces: the window now bundles the GUI app's Archivo
+and Noto Sans Arabic and Hebrew, each SIL OFL 1.1 with the licence texts beside the files,
+where before it fell back to whatever the machine had. The version block is what the library
+reports and is restamped every build: the version from the nearest tag, the describe with
+the commits since it, the commit, the branch, and "dirty" when the tree had uncommitted
+changes at build time. <code>--page about</code> captures the box.</p>
+<p>The finding that outlasted the others was about the two devices. The demo depends on two:
+the Windows default output, which must be the silent device so that applications play into
+it unheard and this app can tap them there; and the endpoint the pin and the hardware choose,
+which is the only thing a person hears. The window had called the second "Output" and the
+first "Default output", on three screens, and Iain took a long while to work out which was
+which and that they were two stages of one thing. Everything now says the path. A
+<code>SignalPath</code> component draws it as three numbered stations, "applications play to", "Desktop
+Atmos", "you hear it on", each with what it is set to, a warning sign and sentence when it is
+not what the path needs (a real device as the default; no silent device; the engine stopped),
+and the one action that fixes it. The Room rail stacks it in place of the two blocks; the
+Output page, renamed Signal path, opens with it side by side and names its sections by stage
+("what you hear it as", "endpoints, where you can hear it", "where applications play"); the
+endpoint table's "Make default" reads "Send applications here", which is what it does; the
+Settings block is "silent device, where applications play", its status lines carry a tick
+or a warning sign and one more line says whether applications play to it yet; and the header
+pill reads "apps → stereo · Acer X34 P", or "⚠ apps heard direct → …" while the default is a
+real device.</p>
+<p>Which raised the next question: with four endpoints listed, how does a person pick the one to
+hear it on? They could not. The pin chose a mode and the policy chose the endpoint for it, a
+receiver first. The policy now takes a chosen endpoint (<code>OutputPolicyInput::preferred_endpoint_id</code>,
+"Hear it here" on any row of the table, "Automatic" to hand the choice back, remembered as
+<code>output/endpoint</code>): it gets the best mode it can carry, the pinned mode first when it can
+carry that, never a bitstream mode while applications play to it, and the reason line says
+"you chose" and what that means. An endpoint that is absent, silent, or unable to carry
+anything leaves the automatic choice standing and the reason says so, the same way an
+infeasible pin does. The table's note column reads "you hear it here · your choice" or
+"· automatic", and the path's third station says which.</p>
+<p>The whole thing ran end to end in the driver-test VM on 2026-09-03: <code>Test-Driver.ps1</code> reverted
+the guest and installed the package ("Speakers (Desktop Atmos)" appeared, the service running,
+no bugcheck), then <code>Deploy-Desk.ps1</code> (new, beside it) pushed the window with its Qt runtime and
+the VC++ redistributable into the guest and started it on the desktop. The path read as it
+should: with the VMware HD Audio device as the default, the first station warned that
+applications were heard directly and offered the silent device; after the guest helper made
+"Speakers (Desktop Atmos)" the default, the warning cleared, the pill read "apps → stereo ·
+Speakers (High Definition Audio Device)", and the endpoint table listed the silent device as
+"never heard". One thing the guest's table showed to look into: the null sink's row reads no
+PCM channel count but a tick under spatial, which is the probe's answer for the driver's
+endpoint and may be the probe rather than the driver.</p>
+<p>Two smaller Settings findings from the same sitting. The signing key's empty field carried
+the environment variables' names as its placeholder text; they are a note under the block
+now, and the field says only that no file is chosen. And the driver block put the source
+build's tools (the folder, install, remove, whether a package is there) in front of what a
+person needs to know. It now leads with the two facts that matter, whether the silent
+device is installed and whether applications play to it, shows the test-signing state only
+while the device is missing, says in a sentence what to do (an installed copy of the
+application brings the driver with it; a source build points Advanced at a built package),
+and keeps the folder and the remove button under Advanced.</p>
+<h3 id="phase-6-docs-ci-release">Phase 6: docs, CI, release<a class="headerlink" href="#phase-6-docs-ci-release" title="Permanent link">&para;</a></h3>
+<p>Five items. The first three, this page rewritten from plan to record, the roadmap record and
+the CHANGELOG entry, are done by the documentation pass of 2026-09-03, the one the status
+note at the top describes.</p>
+<p>The fourth is done as of 2026-09-04: the demo is built, tested and packaged in CI. Both
+Windows legs of <code>_build.yml</code> carry <code>windemo: true</code>, which adds <code>-DAC3FORGE_BUILD_WINDEMO=ON</code>
+to their configure and so builds <code>ac3desk</code>, the <code>ac3windemo</code> runner and the window's Qt Quick
+Test suites, and runs them in the leg's existing <code>ctest</code> pass - the 68 <code>windemo</code> and <code>desk</code>
+cases, on the same runners as the library's own. Two things the legs assert rather than
+assume, because CMake treats both as optional and degrades quietly: that <code>ac3desk.exe</code> was
+built at all (a leg that installed a Qt kit on purpose and then skipped the window has a
+broken install, not a deliberate choice), and that Qt Quick 3D was found, since without it the
+room silently loses its 3D view. The kit those two need is not the base one: the "Install Qt
+(prebuilt)" step now asks for the <code>qtquick3d</code> and <code>qtshadertools</code> modules.</p>
+<p>The MSVC leg also packages it, as a CPack component of its own (<code>windemo</code>, in
+<code>cmake/Packaging.cmake</code>): <code>ac3forge-desktop-atmos-&lt;version&gt;-win64.zip</code>, holding the window,
+the runner, the driver's install and remove scripts, and its own Qt runtime - about 43 MB
+zipped, 104 MB unpacked. <code>release.yml</code> needs no change to ship it: its asset globs are by
+extension, so the archive travels with the rest, and <code>docs/releasing.md</code>'s table records it.
+<code>tools/ci/check_windemo_package.py</code> guards the failure mode that matters, which is not an
+empty archive but a plausible one with no Qt beside the window: it opens the zip and insists
+on the binaries, the driver scripts, the <code>qt.conf</code> that makes the layout resolve, the Windows
+platform plugin, and the <code>QtQuick</code>/<code>QtQuick3D</code> QML modules. It runs in CI and against a local
+<code>cpack</code> the same way. Verified on 2026-09-04 by extracting that archive somewhere clean and
+running the window from it: it starts, the room draws in 3D, and the signal path reads.</p>
+<p>The driver is built in CI too, since later the same day: <code>_build.yml</code>'s <code>windows-driver</code> job
+restores the WDK and SDK as NuGet packages (<code>apps/windows/driver/packages.config</code>, the same
+kit build number the EWDK carries) and builds and test-signs the package with MSBuild from
+the runner's own Visual Studio, which is where the two pieces the packages do not carry come
+from - the "Windows Driver Kit" component, meaning the <code>WindowsKernelModeDriver10.0</code> toolset,
+and the Spectre-mitigated libraries. That is why the job is GitHub-hosted rather than a leg
+of the <code>build</code> matrix: the self-hosted fleet has neither, and none of that matrix's steps
+(CMake, ctest, cpack, the gold-reference gate) mean anything for a <code>.sys</code>. It gates on the
+package being complete and on Code Analysis at the driver rule set reporting zero defects,
+the same bar <code>Analyze-Driver.ps1</code> holds locally, and uploads the result as the
+<code>ac3forge-nullsink-driver-testsigned</code> artifact. First run 2026-09-04: green in two and a half
+minutes, VS 2026 Enterprise with MSVC 14.51 on the image, five reports and no defects.
+CodeQL's driver pack and the DVL are not in the job - they need the CodeQL CLI and the
+<code>microsoft/windows-drivers</code> pack downloaded - and the dynamic tier cannot be: Driver Verifier
+and KASAN need the throwaway guest and a reboot. Both stay local, in
+<code>Analyze-Driver.ps1</code> and <code>driver-vm/</code>.</p>
+<p>One thing is still deliberately not in CI: the driver is not a release asset, and the NSIS
+installer carries exactly what it carried before - the demo is a separate download while its
+driver is test-signed and so cannot load on a normal machine.</p>
+<p>One item remains: the EV certificate and attestation step, after which the driver joins the
+package, the installer installs both, and the demo's Settings page loses its install buttons.</p>
+<p>Before that step is paid for, the driver changes framework. A review on 2026-09-04 of whether
+the null sink was the right thing, and the right kind of thing, concluded: a driver, yes
+(Windows has no user-mode way to make an endpoint, and the spikes closed every alternative);
+PortCls, no. Microsoft names PortCls "the current legacy model" and recommends ACX 1.1 for
+all new audio drivers; ACX runs from Windows 10 2004, below the floor the demo already has;
+an ACX driver is a pure KMDF driver, so the DDI compliance checking that cannot run against
+the PortCls miniport applies in full; and the current driver carries 9,700 lines of sample
+code for a job of a few hundred. The review also found three things in the current driver
+worth fixing whichever framework it is on: sample leftovers in the INF (<code>DRMLevel</code>,
+<code>PETrust</code>, the legacy <code>wdmaud</code> mappings), an install path that shells out to the WDK's
+<code>devcon</code> where <code>SwDeviceCreate</code> is the documented API, and HVCI compliance that is assumed
+rather than demonstrated because the verification guest runs with memory integrity off. The
+port, what it keeps, its steps and the findings from Phase 4 that carry into it are planned
+and recorded on <a href="../windows-driver-acx/">their own page</a>; it was made the same day. Signing
+waits for it, so it is paid once. The driver is built, test-signed and Code-Analysed in CI
+on every push (<code>_build.yml</code>'s <code>windows-driver</code> job, from the WDK's NuGet packages on
+GitHub's hosted image) and uploaded as an artifact; the dynamic tier stays in the guest.</p>
+<p>On how the driver reaches a machine once it is signed: with the installer, not from inside
+the window. The package installs the driver (<code>pnputil /add-driver /install</code> on the attested
+package, the device created through SetupAPI as <code>install.ps1</code> does now) and removes it
+on uninstall, so a person who installs the application has the silent device without a
+second step, and one who uninstalls it is not left with an orphan endpoint. The window then
+only reports the two facts above and offers to send applications to the device; its
+install and remove buttons stay as the source build's tools under Advanced. A signed driver
+also drops the test-signing and memory-integrity conditions, so that status line goes with
+it. Until the attestation step exists the in-window install of a test-signed package is
+how a development machine gets the driver, which is what the block does today.</p>
+<h2 id="what-it-looks-like">What it looks like<a class="headerlink" href="#what-it-looks-like" title="Permanent link">&para;</a></h2>
+<p>The room, 3D room, output and settings shots below are captured from the throwaway
+driver-test VM (2026-09-04), with the driver installed and a signing key loaded, replacing
+earlier captures taken on the workstation against FxSound's stand-in endpoint with no key.
+They show what <a href="#object-signing">Object signing</a> and
+<a href="#the-driver-and-its-licence">the driver</a> sections above describe: the "Speakers (Desktop
+Atmos)" endpoint as the default, and the codec running with signed object metadata
+(E-AC-3 JOC, "objects on"). The room in French is still from the workstation, with tone
+players standing in for applications, since the driver and the language are independent of
+each other.</p>
+<p><img alt="The room: a placed application with height, two idle applications in the bed, the real Desktop Atmos endpoint as the default and a signing key loaded" src="../screenshots/windows-demo-room.png" /></p>
+<p><img alt="The 3D room, same session: the placed application as an elevated sphere between the right and right-surround bed speakers" src="../screenshots/windows-demo-room-3d-driver.png" /></p>
+<p><img alt="The Output page: the mode table, the endpoint probe and the codec path, with the signing key loaded and the codec running E-AC-3 JOC" src="../screenshots/windows-demo-output.png" /></p>
+<p><img alt="The Settings page: the virtual output device confirmed installed and in use, the signing key loaded, latency, codec, appearance, behaviour" src="../screenshots/windows-demo-settings.png" /></p>
+<p><img alt="The room in French, one of the six mechanically translated languages" src="../screenshots/windows-demo-room-fr.png" /></p>
+<h2 id="what-has-and-has-not-been-verified">What has and has not been verified<a class="headerlink" href="#what-has-and-has-not-been-verified" title="Permanent link">&para;</a></h2>
+<div class="admonition note">
+<p class="admonition-title">S1 verified on the development workstation, 2026-09-03</p>
+<p>Process-loopback capture behaves as the plan needs: sixteen concurrent taps each read only
+their own process, at 48 kHz float, first packet within 20 ms; a tap opened before the
+process starts playing picks it up; applications rendering to the idle FxSound virtual
+endpoint are tapped identically; and with them there, the Realtek endpoint could be taken
+in exclusive mode without disturbing the taps. Two hazards confirmed: session mute silences
+the tap, and an exclusive open on an endpoint with live shared streams is refused <em>and</em>
+kills those streams. The full table is in <code>apps/windows/spikes/README.md</code>.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">S4 verified on the development workstation, 2026-09-03</p>
+<p>Fifteen objects, sixteen taps folded and mixed, encode and burst-wrap: p99 1.8 ms of the
+32 ms frame in normal mode, 0.7 ms of the 5.3 ms one-block frame. The one-block frame
+refuses below roughly 1.5 Mb/s because the object metadata no longer fits. Same file.</p>
+</div>
+<p>What the phase records above claim was checked on the workstation or in the guest, as each
+record says; the bitstream modes, the spatial path and a real device-arrival switch wait on
+hardware. When S2 runs, the "Windows/WASAPI exclusive: unconfirmed" line in roadmap DR9 and
+the warning in <a href="../windows/">Windows</a> are the first two things to change.</p>
+<h2 id="open-questions-this-plan-does-not-settle">Open questions this plan does not settle<a class="headerlink" href="#open-questions-this-plan-does-not-settle" title="Permanent link">&para;</a></h2>
+<ul>
+<li>How the app confirms every session has left HDMI before it opens HDMI exclusively, given
+  that a premature open kills the streams still there. The session list per endpoint is the
+  obvious answer; whether it updates fast enough after a default-device switch is not yet known.</li>
+<li>Whether the foreground full-screen check should use the shell's full-screen notification
+  (<code>SHQueryUserNotificationState</code>) or a window-rect comparison. Either is app-level; the
+  first is cheaper and the plan starts there.</li>
+<li>The app's real name. "Desktop Atmos Demo" and "Desktop Atmos Speakers" are placeholders.</li>
+</ul>
+<h2 id="deliberately-not-in-scope">Deliberately not in scope<a class="headerlink" href="#deliberately-not-in-scope" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Per-tab or per-stream separation inside one application.</li>
+<li>An in-repo HRTF or binaural renderer. The roadmap rules it out; the OS renders headphones.</li>
+<li>Per-application rerouting through undocumented policy interfaces.</li>
+<li>The Shield extras: scenes and tour, phone remote, path record, rumble. None of them earn
+  their place on a desk.</li>
+<li>Store distribution. The driver cannot ship through MSIX anyway.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

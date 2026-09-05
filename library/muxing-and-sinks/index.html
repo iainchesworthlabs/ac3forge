@@ -1,0 +1,4303 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A clean-room AC-3 / E-AC-3 / Dolby Atmos encoder and decoder in C++23">
+      
+      
+      
+        <link rel="canonical" href="https://iainchesworthlabs.github.io/ac3forge/library/muxing-and-sinks/">
+      
+      
+        <link rel="prev" href="../metadata/">
+      
+      
+        <link rel="next" href="../file-io/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Muxing & sinks - ac3forge</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#muxing-sinks" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="ac3forge" class="md-header__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ac3forge
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Muxing & sinks
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../concepts/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../verification/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Validation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../threat-model/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Threat model
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../conformance-vectors/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Conformance vectors
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Library
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../cli/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  CLI reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../gui/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  GUI guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance-quality/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance & quality
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Project
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="ac3forge" class="md-nav__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ac3forge
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform notes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform notes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/linux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/raspberry-pi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raspberry Pi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/android/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Android (NVIDIA Shield)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Desktop Atmos Demo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows-driver-acx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows null-sink driver on ACX (plan)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/wasm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebAssembly (browser demos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../concepts/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/ac3-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AC-3 & E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/atmos-joc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Atmos & JOC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/object-signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threat-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threat model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../conformance-vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conformance vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Library
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Example programs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encoding-ac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encoding-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decoding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decoding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spatial-and-atmos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spatial & Atmos objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../station-broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A worked scene — station broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channel-plans-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channel plans & routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Muxing & sinks
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Muxing & sinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#muxing-matroskamux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Muxing: matroska::mux
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Muxing: matroska::mux">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#incremental-muxing-matroskawriter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Incremental muxing: matroska::Writer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#demuxing-matroskademux-matroskareader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demuxing: matroska::demux, matroska::Reader
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#muxing-mp4mux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Muxing: mp4::mux
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Muxing: mp4::mux">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#demuxing-mp4demux-mp4reader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demuxing: mp4::demux, mp4::Reader
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#muxing-mpegtsmux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Muxing: mpegts::mux
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Muxing: mpegts::mux">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#demuxing-mpegtsdemux-mpegtsreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demuxing: mpegts::demux, mpegts::Reader
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fragmented-mp4cmaf-hlsdash-mp4fragment-mp4hlshpp-mp4dashhpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fragmented MP4/CMAF + HLS/DASH: mp4::fragment, mp4/hls.hpp, mp4/dash.hpp
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fragmented MP4/CMAF + HLS/DASH: mp4::fragment, mp4/hls.hpp, mp4/dash.hpp">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#atmosjoc-signalling-ceao-and-the-dash-descriptors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atmos/JOC signalling: ceao, and the DASH descriptors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#incremental-fragmenting-mp4fragmentwriter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Incremental fragmenting: mp4::FragmentWriter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#external-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#muxer-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Muxer errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#demuxer-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demuxer errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bitstream-sinks-ac3audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bitstream sinks (ac3::audio)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bitstream sinks (ac3::audio)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ac3iec61937-spdif-burst-packing-and-de-framing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ac3::iec61937 — S/PDIF burst packing and de-framing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ac3audiopassthroughsink-exclusive-mode-passthrough" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ac3::audio::PassthroughSink — exclusive-mode passthrough
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ac3audiosink_capabilities-reading-what-a-sink-says-it-accepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ac3::audio::sink_capabilities — reading what a sink says it accepts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ac3audiomonitorsink-shared-mode-monitor-playback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ac3::audio::MonitorSink — shared-mode monitor playback
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capture-ac3audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capture: ac3::audio
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metering-ac3analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metering: ac3::analysis
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../file-io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File I/O
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../iab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAB (SMPTE ST 2098-2) reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM / BW64 reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adm-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM → Atmos bridging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../iamf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAMF writing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Measuring quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../header-map/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Header map
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-stability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API stability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../c-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rust-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rust bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/metadata-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Options & grammars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../gui/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GUI guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_9" id="__nav_9_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GUI guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/loading-a-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loading a source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/format-and-channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format & channels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/objects-and-motion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Objects & motion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/live-session/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live capture & session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/source-assignment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-source & assignment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/coding-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/qc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QC a stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/inspect-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inspect objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/open-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/localisation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Localisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance & quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tool-comparison-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tool comparison trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../object-quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../landscape/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Landscape
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live decode demo (WASM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-encode-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live encode demo (WASM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ci-self-hosted-runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosted CI runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#muxing-matroskamux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Muxing: matroska::mux
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Muxing: matroska::mux">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#incremental-muxing-matroskawriter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Incremental muxing: matroska::Writer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#demuxing-matroskademux-matroskareader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demuxing: matroska::demux, matroska::Reader
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#muxing-mp4mux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Muxing: mp4::mux
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Muxing: mp4::mux">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#demuxing-mp4demux-mp4reader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demuxing: mp4::demux, mp4::Reader
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#muxing-mpegtsmux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Muxing: mpegts::mux
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Muxing: mpegts::mux">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#demuxing-mpegtsdemux-mpegtsreader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demuxing: mpegts::demux, mpegts::Reader
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fragmented-mp4cmaf-hlsdash-mp4fragment-mp4hlshpp-mp4dashhpp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fragmented MP4/CMAF + HLS/DASH: mp4::fragment, mp4/hls.hpp, mp4/dash.hpp
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fragmented MP4/CMAF + HLS/DASH: mp4::fragment, mp4/hls.hpp, mp4/dash.hpp">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#atmosjoc-signalling-ceao-and-the-dash-descriptors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atmos/JOC signalling: ceao, and the DASH descriptors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#incremental-fragmenting-mp4fragmentwriter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Incremental fragmenting: mp4::FragmentWriter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#external-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#muxer-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Muxer errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#demuxer-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demuxer errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bitstream-sinks-ac3audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bitstream sinks (ac3::audio)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bitstream sinks (ac3::audio)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ac3iec61937-spdif-burst-packing-and-de-framing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ac3::iec61937 — S/PDIF burst packing and de-framing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ac3audiopassthroughsink-exclusive-mode-passthrough" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ac3::audio::PassthroughSink — exclusive-mode passthrough
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ac3audiosink_capabilities-reading-what-a-sink-says-it-accepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ac3::audio::sink_capabilities — reading what a sink says it accepts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ac3audiomonitorsink-shared-mode-monitor-playback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ac3::audio::MonitorSink — shared-mode monitor playback
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capture-ac3audio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capture: ac3::audio
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metering-ac3analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metering: ac3::analysis
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="muxing-sinks">Muxing &amp; sinks<a class="headerlink" href="#muxing-sinks" title="Permanent link">&para;</a></h1>
+<h2 id="muxing-matroskamux">Muxing: <code>matroska::mux</code><a class="headerlink" href="#muxing-matroskamux" title="Permanent link">&para;</a></h2>
+<p><code>matroska/matroska.hpp</code>, library <code>matroska::matroska</code>. It links nothing from <code>ac3::forge</code> and
+takes frames as opaque bytes. Pairing it with <code>ac3::io::scan</code> is what keeps the track header
+honest.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1">// One Matroska frame per access unit. For E-AC-3 an access unit is the</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1">// independent substream plus its dependents, which is exactly what scan</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1">// groups — a player must receive them together.</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">byte</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">frames</span><span class="p">;</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">unit</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">access_units</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="n">frames</span><span class="p">.</span><span class="n">emplace_back</span><span class="p">(</span><span class="n">unit</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"> </span><span class="n">unit</span><span class="p">.</span><span class="n">end</span><span class="p">());</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">}</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="k">const</span><span class="w"> </span><span class="n">matroska</span><span class="o">::</span><span class="n">AudioTrack</span><span class="w"> </span><span class="n">track</span><span class="p">{</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="p">.</span><span class="n">codec_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">{</span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">kind</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">io</span><span class="o">::</span><span class="n">StreamKind</span><span class="o">::</span><span class="n">kAc3</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">                                </span><span class="o">?</span><span class="w"> </span><span class="n">matroska</span><span class="o">::</span><span class="n">kCodecAc3</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">                                </span><span class="o">:</span><span class="w"> </span><span class="n">matroska</span><span class="o">::</span><span class="n">kCodecEac3</span><span class="p">},</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="p">.</span><span class="n">sample_rate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">sample_rate_hz</span><span class="p">(</span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">sample_rate</span><span class="p">),</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="p">.</span><span class="n">channels</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">channels</span><span class="p">,</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="p">.</span><span class="n">samples_per_frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">kSamplesPerFrame</span><span class="p">,</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="p">};</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">matroska</span><span class="o">::</span><span class="n">mux</span><span class="p">(</span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">frames</span><span class="p">);</span>
+</code></pre></div>
+<p>Full program: <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_mkv.cpp"><code>examples/mux_mkv.cpp</code></a>.</p>
+<p><code>mux</code> returns the whole file as bytes and does no file I/O, which keeps it testable without a
+disk. It writes one audio track, one SimpleBlock per frame, clusters closed on a time budget,
+and Info with TimestampScale and Duration. No SeekHead, no Cues, no chapters, no tags — those
+matter for seeking in large files, not for playing back what this project produces.</p>
+<h3 id="incremental-muxing-matroskawriter">Incremental muxing: <code>matroska::Writer</code><a class="headerlink" href="#incremental-muxing-matroskawriter" title="Permanent link">&para;</a></h3>
+<p>Same header. The incremental counterpart to <code>mux</code>, for a session whose length is not known up
+front — a live capture, where <code>mux</code> cannot help: it needs every frame before it can compute
+anything. <code>Writer::create(track, options)</code> validates the track the same way <code>mux</code> does.
+<code>header()</code> holds the EBML header through Tracks, written exactly once; each <code>push(frame)</code>
+buffers into the current cluster and returns the bytes of whichever cluster just closed (empty
+on most calls); <code>finalize()</code> flushes the last partial cluster. Segment is written with EBML's
+reserved unknown-size pattern and Duration is omitted — the standard streamed-Matroska shape,
+which real players already handle. No more than one cluster's worth of frames is ever held, so
+a caller streaming the returned bytes to disk keeps memory bounded for a session of any length.
+This is what the GUI's live session records through.</p>
+<h3 id="demuxing-matroskademux-matroskareader">Demuxing: <code>matroska::demux</code>, <code>matroska::Reader</code><a class="headerlink" href="#demuxing-matroskademux-matroskareader" title="Permanent link">&para;</a></h3>
+<p><code>matroska/reader.hpp</code>, same library. The read side of the two above, and codec-blind in exactly
+the same way: it walks EBML, finds a track, and hands each frame back as opaque bytes. The one
+place it names a codec is auto-selection, which takes the first audio <code>TrackEntry</code> whose
+<code>CodecID</code> is <code>A_EAC3</code> or <code>A_AC3</code>; <code>ReadOptions::track_number</code> names any other track explicitly
+and accepts whatever <code>CodecID</code> it carries.</p>
+<p>Two shapes, mirroring the write side. <code>demux</code> is the batch one, and it is zero-copy — the frames
+it returns are spans into the buffer you passed it, the way <code>ac3::io::scan</code> already hands back
+access units:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">matroska</span><span class="o">::</span><span class="n">demux</span><span class="p">(</span><span class="n">file_bytes</span><span class="p">);</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">out</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">println</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;{}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">matroska</span><span class="o">::</span><span class="n">describe</span><span class="p">(</span><span class="n">out</span><span class="p">.</span><span class="n">error</span><span class="p">()));</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">}</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1">// out-&gt;frames are views into file_bytes, which must outlive them.</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">scanned</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">io</span><span class="o">::</span><span class="n">scan</span><span class="p">(</span><span class="cm">/* the elementary stream you write them to */</span><span class="p">);</span>
+</code></pre></div>
+<p><code>Reader</code> is the incremental one — <code>matroska::Writer</code>'s mirror image, for a file too big to hold.
+Frames arrive through a callback rather than a return value, so nothing accumulates: peak memory
+is one chunk plus one frame, never the file.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">matroska</span><span class="o">::</span><span class="n">Reader</span><span class="w"> </span><span class="n">reader</span><span class="p">{};</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">on_frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="p">](</span><span class="n">std</span><span class="o">::</span><span class="n">span</span><span class="o">&lt;</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">byte</span><span class="o">&gt;</span><span class="w"> </span><span class="n">frame</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">sink</span><span class="p">.</span><span class="n">push</span><span class="p">(</span><span class="n">frame</span><span class="p">);</span><span class="w"> </span><span class="p">};</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">chunk</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read_next_chunk</span><span class="p">();</span><span class="w"> </span><span class="o">!</span><span class="n">chunk</span><span class="p">.</span><span class="n">empty</span><span class="p">();</span><span class="w"> </span><span class="n">chunk</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read_next_chunk</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">reader</span><span class="p">.</span><span class="n">push</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span><span class="w"> </span><span class="n">on_frame</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">}</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">reader</span><span class="p">.</span><span class="n">finish</span><span class="p">(</span><span class="n">on_frame</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>The span handed to the callback is valid for that call only — it points into the reader's own
+buffer, which the next <code>push</code> reuses. Copy it there if you need to keep it. This is what
+<code>ac3cli demux</code> runs on, which is why a multi-gigabyte rip never lands in memory.</p>
+<p>What it reads beyond what this project writes, because a file from a disc rip or another muxer
+has it: all three lacing forms (Xiph, EBML, fixed-size), <code>BlockGroup</code>-wrapped <code>Block</code>s as well
+as <code>SimpleBlock</code>, several tracks, 32-bit as well as 64-bit <code>SamplingFrequency</code>, and clusters
+left at EBML's unknown size rather than only the Segment. A file truncated mid-cluster returns
+every whole frame before the cut rather than an error — that is how a live recording ends.</p>
+<p><strong>Untrusted input.</strong> Every length in an EBML file is self-declared, and a container arrives from
+a rip, a capture or a download rather than from this project's own writer. <code>ReadOptions</code> bounds
+the element size the reader will hold (16 MiB by default; anything larger that it does not need
+is skipped without ever being buffered), the frames one laced block may carry, the number of
+<code>TrackEntry</code> elements, and how deep masters may nest — the walker is iterative, so nothing an
+input declares can exhaust the call stack. <code>fuzz/fuzz_matroska_demux.cpp</code> drives both entry
+points with arbitrary bytes under ASan/UBSan.</p>
+<h2 id="muxing-mp4mux">Muxing: <code>mp4::mux</code><a class="headerlink" href="#muxing-mp4mux" title="Permanent link">&para;</a></h2>
+<p><code>mp4/mp4.hpp</code>, library <code>mp4::mp4</code>. Same shape as <code>matroska::matroska</code>: it links nothing from
+<code>ac3::forge</code> and takes frames as opaque bytes. The one place MP4 needs codec-specific bytes that
+Matroska's plain CodecID string does not is the sample entry's <code>dac3</code>/<code>dec3</code> configuration box
+(ETSI TS 102 366 Annex F) — so <code>mp4::AudioTrack::codec_config</code> carries that box's payload as
+opaque bytes too, built by <code>ac3::io::build_codec_config_box</code> (<code>ac3/io/dec3.hpp</code>) straight off
+whatever <code>ac3::io::scan</code> read out of the bitstream, fscod/bsid/bsmod/acmod/lfeon and, when the
+stream carries Dolby Atmos objects, the <code>flag_ec3_extension_type_a</code>/<code>complexity_index_type_a</code>
+extension (TS 103 420 §8.3.1/§8.3.2.2) alike.</p>
+<p>The same codec-blind contract carries <strong>AC-4</strong> (roadmap IM4): <code>codec_id = mp4::kCodecAc4</code>
+selects TS 103 190-2 Annex E.4's <code>ac-4</code> sample entry with a <code>dac4</code> configuration box, whose
+payload comes from <code>ac4::build_dac4()</code> off the stream's own parsed TOC — the AC-4 twin of
+<code>build_codec_config_box</code>, in <code>ac4::</code> where the codec knowledge lives. An ISOBMFF <code>ac-4</code>
+<em>sample</em> is the <code>raw_ac4_frame</code> alone (no sync word, no CRC), <code>samples_per_frame</code> comes from
+<code>ac4::samples_per_frame()</code> (Table 84 — the 1000/1001-family rates whose frame length
+alternates are refused, having no single answer), and because AC-4's RFC 6381 string is not
+its fourcc, <code>AudioTrack::rfc6381</code> carries <code>ac4::rfc6381_codec_string()</code>'s dotted form
+(<code>ac-4.02.01.00</code>) for the HLS/DASH manifests. MPEG-TS carriage is DVB-only — EN 300 468
+Annex D.7's extension descriptor <code>0x7F/0x15</code>, with an ISO 13818-1 §2.6.8 registration
+descriptor (<code>AC-4</code>) beside it for interop — and <code>mpegts::AudioCodec::kAc4</code> under the ATSC
+profile is refused rather than given an invented stream_type (A/342-2 is ATSC 3.0's
+ROUTE/MMT, not 13818-1).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1">// One MP4 sample per access unit. For E-AC-3 an access unit is the</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1">// independent substream plus its dependents, which is exactly what scan</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1">// groups — a player must receive them together.</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">byte</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">frames</span><span class="p">;</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">frames</span><span class="p">.</span><span class="n">reserve</span><span class="p">(</span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">access_units</span><span class="p">.</span><span class="n">size</span><span class="p">());</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">unit</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">access_units</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="n">frames</span><span class="p">.</span><span class="n">emplace_back</span><span class="p">(</span><span class="n">unit</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"> </span><span class="n">unit</span><span class="p">.</span><span class="n">end</span><span class="p">());</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="p">}</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="k">const</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">AudioTrack</span><span class="w"> </span><span class="n">track</span><span class="p">{</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">    </span><span class="p">.</span><span class="n">codec_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="p">{</span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">kind</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">io</span><span class="o">::</span><span class="n">StreamKind</span><span class="o">::</span><span class="n">kAc3</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">kCodecAc3</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">                                                                        </span><span class="o">:</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">kCodecEac3</span><span class="p">},</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">    </span><span class="p">.</span><span class="n">sample_rate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">sample_rate_hz</span><span class="p">(</span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">sample_rate</span><span class="p">),</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">    </span><span class="p">.</span><span class="n">channels</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">channels</span><span class="p">,</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">    </span><span class="p">.</span><span class="n">samples_per_frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">kSamplesPerFrame</span><span class="p">,</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">    </span><span class="c1">// The dac3/dec3 sample-entry box, built from the same scan result -</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">    </span><span class="c1">// see ac3/io/dec3.hpp for why this lives in ac3::io rather than in</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">    </span><span class="c1">// mp4::mp4 itself.</span>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="w">    </span><span class="p">.</span><span class="n">codec_config</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">io</span><span class="o">::</span><span class="n">build_codec_config_box</span><span class="p">(</span><span class="o">*</span><span class="n">scanned</span><span class="p">),</span>
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="p">};</span>
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">mux</span><span class="p">(</span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">frames</span><span class="p">);</span>
+</code></pre></div>
+<p>Full program: <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_mp4.cpp"><code>examples/mux_mp4.cpp</code></a>.</p>
+<p><code>mux</code> returns the whole file as bytes and does no file I/O, the same as <code>matroska::mux</code>. It
+writes <code>ftyp</code>/<code>moov</code>/<code>mdat</code> for one audio track, one sample per chunk, <code>stts</code>/<code>stsz</code>/<code>stco</code> built
+straight off the frame sizes handed in. No edit lists, no multiple tracks — those matter for
+large-file seeking and multi-track muxing, not for playing back what this project produces.</p>
+<p>Getting the <code>dec3</code>/<code>dac3</code> box right from the spec is the point: FFmpeg's MKV→MP4 remux path used
+to silently drop or mis-signal the Atmos extension
+(<a href="https://github.com/jellyfin/jellyfin-ffmpeg/issues/584">jellyfin-ffmpeg#584</a>, upstream
+<a href="https://trac.ffmpeg.org/ticket/9996">FFmpeg trac #9996</a>, since fixed) — building it from
+<code>ac3::io::scan</code>'s own read of the bitstream, rather than by copying another tool's output, is
+what this module avoided that bug by construction rather than by patching it after the fact, and
+still does for any FFmpeg build older than the fix.</p>
+<h3 id="demuxing-mp4demux-mp4reader">Demuxing: <code>mp4::demux</code>, <code>mp4::Reader</code><a class="headerlink" href="#demuxing-mp4demux-mp4reader" title="Permanent link">&para;</a></h3>
+<p><code>mp4/reader.hpp</code>, same library. The read side of both writers above, and the same shape the
+Matroska reader has: <code>demux</code> is batch and zero-copy (samples are spans into your buffer),
+<code>Reader</code> is incremental (samples arrive through a callback, peak memory is one chunk plus one
+sample).</p>
+<p>It reads both layouts, from either writer and from a real muxer: a plain <code>moov</code>/<code>mdat</code> file,
+walking <code>stsc</code>/<code>stsz</code>(or <code>stz2</code>)/<code>stco</code>(or <code>co64</code>) to turn the sample table into byte ranges, and
+a fragmented one, taking <code>mvex</code>/<code>trex</code>'s defaults plus every <code>moof</code>/<code>traf</code>/<code>tfhd</code>/<code>trun</code> that
+follows. A 64-bit <code>largesize</code> box header and an <code>mdat</code> declared to run to end-of-file both read
+normally, though neither writer here emits them.</p>
+<p><strong><code>moov</code> before <code>mdat</code>.</strong> <code>demux</code> can reach any offset, so it reads a file whose sample table sits
+either side of the media data. <code>Reader</code> cannot — locating a sample means seeking backwards, and a
+stream has nowhere to go back to — so a <code>moov</code>-last file reports <code>kMoovAfterMdat</code> rather than
+silently returning nothing. That is the layout a muxer leaves behind when it never rewrote the
+file for "faststart"; <code>mux()</code> and <code>fragment()</code> both write <code>moov</code> first, as does any web-optimised
+file.</p>
+<p><strong>The <code>dec3</code>/<code>dac3</code> box comes back parsed.</strong> <code>ReadTrack::codec_config</code> is a <code>CodecConfig</code>, the read
+twin of <a href="#muxing-mp4mux"><code>ac3::io::build_codec_config_box</code></a>: <code>fscod</code>, <code>bsid</code>, <code>bsmod</code>, <code>acmod</code>,
+<code>lfeon</code>, <code>bit_rate_code</code> or <code>data_rate_kbps</code>, <code>num_ind_sub</code>/<code>num_dep_sub</code>/<code>chan_loc</code>, and —
+crucially — TS 103 420's <code>flag_ec3_extension_type_a</code>/<code>complexity_index_type_a</code> as an
+<code>optional&lt;int&gt;</code>. That last field is the Atmos/JOC marker an FFmpeg remux is known to drop, and
+reading it back is what makes the repair case possible: demux a file, keep the complexity index,
+re-mux it with the signalling intact. The values are reported as raw syntax numbers rather than
+<code>ac3::</code> enums, because this module has no dependency on the codec library and no business
+deciding what <code>fscod</code> 0 means. <code>payload</code> keeps the bytes verbatim, so a caller remuxing into
+another container can hand them straight back.</p>
+<p>A <code>dec3</code> box that stops before the Atmos extension leaves <code>oba_complexity_index</code> empty rather
+than reporting a confident zero — the extension is a trailing addition, and a box written before
+TS 103 420 simply has nothing to say about it.</p>
+<p><strong>Untrusted input.</strong> An MP4's sample table is an <em>index</em>, which is a wider attack surface than
+Matroska's in-line framing: <code>stsc</code> names chunks, <code>stco</code> names absolute file offsets and <code>stsz</code>
+names sizes, all self-declared and all resolved against each other before a byte of audio is
+touched. <code>ReadOptions</code> bounds the box size the reader will hold, the sample and chunk counts
+(<code>max_samples</code> defaults to about 35 hours of access units), and the nesting depth; the walk is
+iterative. A chunk offset pointing past the end of the file drops that sample rather than
+failing the file — a truncated download is ordinary, and the samples that <em>are</em> present are all
+real. <code>fuzz/fuzz_mp4_demux.cpp</code> drives both entry points with arbitrary bytes.</p>
+<h2 id="muxing-mpegtsmux">Muxing: <code>mpegts::mux</code><a class="headerlink" href="#muxing-mpegtsmux" title="Permanent link">&para;</a></h2>
+<p><code>mpegts/mpegts.hpp</code>, library <code>mpegts::mpegts</code>. Same shape as <code>matroska::mux</code> above — it links
+nothing from <code>ac3::forge</code> beyond the AC-3/E-AC-3 choice it is told, and takes access units as
+opaque bytes.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1">// One PES-wrapped access unit per TS access unit. For E-AC-3 an access</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1">// unit is the independent substream plus its dependents, which is</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1">// exactly what scan groups — a player must receive them together.</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">byte</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">frames</span><span class="p">;</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">frames</span><span class="p">.</span><span class="n">reserve</span><span class="p">(</span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">access_units</span><span class="p">.</span><span class="n">size</span><span class="p">());</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">unit</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">access_units</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="n">frames</span><span class="p">.</span><span class="n">emplace_back</span><span class="p">(</span><span class="n">unit</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"> </span><span class="n">unit</span><span class="p">.</span><span class="n">end</span><span class="p">());</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="p">}</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="k">const</span><span class="w"> </span><span class="n">mpegts</span><span class="o">::</span><span class="n">AudioTrack</span><span class="w"> </span><span class="n">track</span><span class="p">{</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="p">.</span><span class="n">codec</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">kind</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">io</span><span class="o">::</span><span class="n">StreamKind</span><span class="o">::</span><span class="n">kAc3</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">mpegts</span><span class="o">::</span><span class="n">AudioCodec</span><span class="o">::</span><span class="n">kAc3</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">                                                         </span><span class="o">:</span><span class="w"> </span><span class="n">mpegts</span><span class="o">::</span><span class="n">AudioCodec</span><span class="o">::</span><span class="n">kEac3</span><span class="p">,</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span><span class="p">.</span><span class="n">sample_rate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">sample_rate_hz</span><span class="p">(</span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">sample_rate</span><span class="p">),</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span><span class="p">.</span><span class="n">channels</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">channels</span><span class="p">,</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">    </span><span class="p">.</span><span class="n">samples_per_frame</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">kSamplesPerFrame</span><span class="p">,</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">    </span><span class="c1">// What the PMT descriptor says about the service. Every field is a plain</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">    </span><span class="c1">// A/52 value ac3::io::scan already read off the bitstream.</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">    </span><span class="p">.</span><span class="n">service</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{.</span><span class="n">bsmod</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">bsmod</span><span class="p">,</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">                </span><span class="p">.</span><span class="n">bsmod_present</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">bsmod_present</span><span class="p">,</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">                </span><span class="p">.</span><span class="n">acmod</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">acmod</span><span class="p">),</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">                </span><span class="p">.</span><span class="n">lfe</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">lfe</span><span class="p">,</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">                </span><span class="p">.</span><span class="n">channels</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">channels</span><span class="p">,</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">                </span><span class="p">.</span><span class="n">bsid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">bsid</span><span class="p">,</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">                </span><span class="p">.</span><span class="n">dsurmod</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">dsurmod</span><span class="p">,</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">                </span><span class="p">.</span><span class="n">bit_rate_code</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">bit_rate_code</span><span class="p">,</span>
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">                </span><span class="p">.</span><span class="n">sample_rate_code</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">sample_rate</span><span class="p">),</span>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">                </span><span class="p">.</span><span class="n">mix_metadata</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">mix_metadata</span><span class="p">,</span>
+<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="w">                </span><span class="p">.</span><span class="n">independent_substreams</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">scanned</span><span class="o">-&gt;</span><span class="n">independent_substreams</span><span class="p">},</span>
+<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="p">};</span>
+<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>
+<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mpegts</span><span class="o">::</span><span class="n">mux</span><span class="p">(</span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">frames</span><span class="p">,</span>
+<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="w">                              </span><span class="p">{.</span><span class="n">profile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mpegts</span><span class="o">::</span><span class="n">BroadcastProfile</span><span class="o">::</span><span class="n">kAtsc</span><span class="p">});</span>
+</code></pre></div>
+<p>Full program: <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_ts.cpp"><code>examples/mux_ts.cpp</code></a>.</p>
+<p><code>mux</code> returns the whole 188-byte-aligned Transport Stream as bytes, no file I/O, same testability
+reasoning as <code>matroska::mux</code>. It writes a single program — one PAT, one PMT (repeated
+periodically so a receiver tuning in mid-stream doesn't wait for byte zero), and one PES-wrapped
+elementary stream carrying PCR every access unit. No video, no other elementary streams, no PID
+remapping: a general-purpose multiplexer is out of scope, this is enough for a player or
+<code>ffprobe</code> to recognize one AC-3/E-AC-3 programme.</p>
+<p><strong>Broadcast profile.</strong> Two standards register AC-3/E-AC-3 for MPEG-TS carriage — ATSC and DVB —
+with different, non-interoperable signalling, so a stream is written to satisfy one of them,
+never a bit of each. <code>MuxOptions::profile</code> picks which:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>kDvb</code> (default)</th>
+<th><code>kAtsc</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AC-3 <code>stream_type</code></td>
+<td><code>0x06</code>, PES private data</td>
+<td><code>0x81</code> (A/52 Annex A §A4.1)</td>
+</tr>
+<tr>
+<td>E-AC-3 <code>stream_type</code></td>
+<td><code>0x06</code></td>
+<td><code>0x87</code> (A/52 Annex G §G3.1)</td>
+</tr>
+<tr>
+<td>AC-3 descriptor</td>
+<td><code>AC3_descriptor</code>, tag <code>0x6A</code> (EN 300 468 Table D.6)</td>
+<td><code>AC-3_audio_stream_descriptor</code>, tag <code>0x81</code> (A/52 Table A4.1)</td>
+</tr>
+<tr>
+<td>E-AC-3 descriptor</td>
+<td><code>enhanced_AC-3_descriptor</code>, tag <code>0x7A</code> (Table D.7)</td>
+<td><code>E-AC-3_audio_descriptor</code>, tag <code>0xCC</code> (A/52 Table G.1)</td>
+</tr>
+<tr>
+<td>What identifies the stream</td>
+<td>the descriptor tag — DVB registers no <code>stream_type</code> of its own</td>
+<td>the <code>stream_type</code> — ATSC treats the descriptor as configuration detail</td>
+</tr>
+</tbody>
+</table>
+<p>Both descriptors describe the same service in different bit layouts, so a caller supplies the
+underlying A/52 field values once, as <code>mpegts::ServiceInfo</code>, and the module maps them onto
+whichever registry's tables the profile calls for — EN 300 468 Tables D.1–D.8, A/52 Tables
+A4.2–A4.6 and G.2–G.6. That mapping is descriptor syntax, which is this module's job; reading
+those values off the bitstream is <code>ac3::io::scan</code>'s, which is why <code>ServiceInfo</code> is plain
+integers and <code>mpegts::</code> still links nothing from <code>ac3::forge</code>.</p>
+<p><code>ac3::io::ScannedStream</code> supplies every one of them: <code>bsmod</code> (with <code>bsmod_present</code>, since
+Annex E only carries it inside <code>infomdate</code>), <code>acmod</code>, <code>lfe</code>, the rendered <code>channels</code>, <code>bsid</code>,
+<code>dsurmod</code>, <code>bit_rate_code</code>, <code>mix_metadata</code> for <code>mixinfoexists</code>, and <code>independent_substreams</code>
+with <code>associated_substreams</code> for the <code>substream1</code>–<code>3</code> fields. Two values are <em>not</em> in any
+bitstream, because they describe how services in a multiplex relate rather than what one stream
+contains — <code>mainid</code> and <code>asvc</code> — and those stay unset unless the caller supplies them
+(<code>ac3cli ts ... mainid=3</code>, <code>asvc=0x0A</code>). An unset optional field is omitted rather than
+zero-filled: a receiver already handles an absent one, where an invented main-service number
+links the wrong services.</p>
+<p>Two places where the standards' own tables cannot express something this project can read, and
+the field is omitted rather than approximated: A/52 Table G.5 reserves complete-main and
+emergency as <em>substream</em> service types, and Table G.6 reserves 1+1 as a substream channel mode,
+so an ATSC <code>substream1</code>–<code>3</code> field for such a substream is left out with its flag clear.</p>
+<h3 id="demuxing-mpegtsdemux-mpegtsreader">Demuxing: <code>mpegts::demux</code>, <code>mpegts::Reader</code><a class="headerlink" href="#demuxing-mpegtsdemux-mpegtsreader" title="Permanent link">&para;</a></h3>
+<p><code>mpegts/reader.hpp</code>, same library. The read side of <code>mpegts::mux</code>/<code>Writer</code>, codec-blind in the
+same sense: it locks to the packet grid, follows PAT to PMT to an elementary PID, reassembles
+PES, and hands the payloads back as opaque bytes.</p>
+<p><strong>What comes back is not the same shape as the sibling readers.</strong> A Matroska <code>SimpleBlock</code> and an
+MP4 sample each hold exactly one access unit, so <code>matroska::demux</code>/<code>mp4::demux</code> hand back access
+units. A PES packet makes no such promise — it may carry one, several, or (with the unbounded
+<code>PES_packet_length</code> form broadcast uses) a run ending only when the next one starts. So this
+reader hands back <strong>PES payloads</strong>, and what they concatenate to is the elementary stream:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mpegts</span><span class="o">::</span><span class="n">demux</span><span class="p">(</span><span class="n">file_bytes</span><span class="p">);</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">out</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="n">fmt</span><span class="o">::</span><span class="n">println</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;{}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">mpegts</span><span class="o">::</span><span class="n">describe</span><span class="p">(</span><span class="n">out</span><span class="p">.</span><span class="n">error</span><span class="p">()));</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">}</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">byte</span><span class="o">&gt;</span><span class="w"> </span><span class="n">elementary_stream</span><span class="p">;</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">payload</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">out</span><span class="o">-&gt;</span><span class="n">payloads</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="n">elementary_stream</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">elementary_stream</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span><span class="w"> </span><span class="n">payload</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"> </span><span class="n">payload</span><span class="p">.</span><span class="n">end</span><span class="p">());</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">}</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">scanned</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">io</span><span class="o">::</span><span class="n">scan</span><span class="p">(</span><span class="n">elementary_stream</span><span class="p">);</span>
+</code></pre></div>
+<p>This is exactly what <code>ac3::io::scan</code> wants, and re-framing PES payloads into access units is its
+job, not this module's — doing it here would mean this container-blind module knowing what an
+AC-3 syncframe is.</p>
+<p><strong>All three signalling forms</strong>, one more than the writer. <code>mux</code> chooses between DVB and ATSC
+through <code>MuxOptions::profile</code> (see above), and commits to one of them wholly. A reader has no
+such luxury: a third family of files names the codec through neither, using a
+<code>registration_descriptor</code>'s <code>'AC-3'</code>/<code>'EAC3'</code> <code>format_identifier</code> instead. All three are
+recognised on read, reported as <code>ReadStream::signalling</code> (<code>CodecSignalling::kAtscStreamType</code> /
+<code>kDvbDescriptor</code> / <code>kRegistrationDescriptor</code>) so a caller remuxing back out knows which it was.</p>
+<p><strong>Three packet grids</strong>, detected rather than assumed: 188 bytes (ISO/IEC 13818-1's own), 192
+(M2TS — a Blu-ray/AVCHD rip, each packet prefixed by a 4-byte arrival timestamp), and 204 (a
+capture that kept its Reed-Solomon parity). The grid is found by where the <code>0x47</code> sync byte
+repeats at a consistent stride, several packets in a row — a stray <code>0x47</code> in payload cannot fake
+that — which also means a capture that starts mid-packet (the normal way a transport stream is
+acquired: wherever the tuner happened to be) still locks on.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">mpegts</span><span class="o">::</span><span class="n">Reader</span><span class="w"> </span><span class="n">reader</span><span class="p">{};</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">on_payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="o">&amp;</span><span class="p">](</span><span class="n">std</span><span class="o">::</span><span class="n">span</span><span class="o">&lt;</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">byte</span><span class="o">&gt;</span><span class="w"> </span><span class="n">payload</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="n">elementary_stream</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">elementary_stream</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span><span class="w"> </span><span class="n">payload</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"> </span><span class="n">payload</span><span class="p">.</span><span class="n">end</span><span class="p">());</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="p">};</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">auto</span><span class="w"> </span><span class="n">chunk</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read_next_chunk</span><span class="p">();</span><span class="w"> </span><span class="o">!</span><span class="n">chunk</span><span class="p">.</span><span class="n">empty</span><span class="p">();</span><span class="w"> </span><span class="n">chunk</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read_next_chunk</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">reader</span><span class="p">.</span><span class="n">push</span><span class="p">(</span><span class="n">chunk</span><span class="p">,</span><span class="w"> </span><span class="n">on_payload</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="p">}</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">reader</span><span class="p">.</span><span class="n">finish</span><span class="p">(</span><span class="n">on_payload</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p><code>Reader::finish</code> takes the callback — unlike the Matroska and MP4 readers' — because it can
+genuinely still emit: the unbounded PES form ends only at the next
+<code>payload_unit_start_indicator</code> or at end of input, so the last payload of a capture is only
+complete here.</p>
+<p><strong>Untrusted input, and more so than the sibling formats.</strong> A transport stream is designed to be
+tuned into mid-flight and to survive bit errors, so "malformed" is the ordinary case here, not
+the exceptional one. Every PSI section's CRC-32 (the non-reflected CRC-32/MPEG-2 variant,
+self-checked against the standard test vector) is verified before the PAT/PMT it carries is
+believed — a bit-damaged PMT is thrown away rather than locking onto a wrong PID for the rest of
+the file. <code>ReadOptions</code> bounds the PES and PSI section sizes the reader will assemble (the
+unbounded PES form has no ceiling of its own otherwise) and how far it will search for the packet
+grid. <code>fuzz/fuzz_mpegts_demux.cpp</code> drives both entry points with arbitrary bytes — this is also
+the container reader most likely to find a genuine hang rather than a crash, since the sync
+search, section reassembly and PES reassembly are all loops a hostile stream can try to stall.</p>
+<h2 id="fragmented-mp4cmaf-hlsdash-mp4fragment-mp4hlshpp-mp4dashhpp">Fragmented MP4/CMAF + HLS/DASH: <code>mp4::fragment</code>, <code>mp4/hls.hpp</code>, <code>mp4/dash.hpp</code><a class="headerlink" href="#fragmented-mp4cmaf-hlsdash-mp4fragment-mp4hlshpp-mp4dashhpp" title="Permanent link">&para;</a></h2>
+<p>ROADMAP.md's A2, the streaming-delivery follow-up <code>mp4::mux</code>'s own header deliberately left for
+later: <code>mp4::fragment</code> lays out the same track and frames as <code>mux</code>, but as a fragmented movie
+(ISO/IEC 14496-12 §8.8's <code>moof</code>/<code>mfhd</code>/<code>traf</code>/<code>tfhd</code>/<code>tfdt</code>/<code>trun</code>) split into CMAF-shaped pieces
+(ISO/IEC 23000-19) — an initialization segment (<code>ftyp</code>+<code>moov</code>, whose one <code>trak</code> carries
+<code>mvex</code>/<code>trex</code> instead of a populated sample table, since a fragmented track's own <code>stbl</code>
+describes zero samples) plus one or more media segments (<code>styp</code>+<code>moof</code>+<code>mdat</code>, one per fragment).
+Same batch shape as <code>mux</code>: every frame is known up front, so real durations/timestamps are
+filled in throughout, including the track's total duration in <code>mvhd</code>/<code>tkhd</code>/<code>mdhd</code>.
+<a href="#incremental-fragmenting-mp4fragmentwriter"><code>mp4::FragmentWriter</code></a> below is the incremental form
+for a live session, and that total duration is the one thing the two disagree about.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">fragmented</span><span class="w"> </span><span class="o">=</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="n">mp4</span><span class="o">::</span><span class="n">fragment</span><span class="p">(</span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">frames</span><span class="p">,</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">FragmentOptions</span><span class="p">{.</span><span class="n">frames_per_fragment</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8</span><span class="p">});</span>
+</code></pre></div>
+<p><code>FragmentedOutput::init_segment</code> and <code>::media_segments</code> are exactly the files a packager or CDN
+origin wants (<code>init.mp4</code> plus <code>segment1.m4s</code>, <code>segment2.m4s</code>, ...) — see <code>ac3cli fmp4</code>, which
+writes them out that way alongside the manifests below.</p>
+<p><code>mp4/hls.hpp</code> and <code>mp4/dash.hpp</code> build HLS/DASH signaling for those same segments — one CMAF
+segment format, two manifest flavors, the entire point of CMAF:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">media_playlist</span><span class="w"> </span><span class="o">=</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span><span class="n">mp4</span><span class="o">::</span><span class="n">build_hls_media_playlist</span><span class="p">(</span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">fragmented</span><span class="o">-&gt;</span><span class="n">media_segments</span><span class="p">,</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">HlsOptions</span><span class="p">{});</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">master_playlist</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">build_hls_master_playlist</span><span class="p">(</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">fragmented</span><span class="o">-&gt;</span><span class="n">media_segments</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;audio.m3u8&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">HlsOptions</span><span class="p">{});</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">dash_snippet</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">build_dash_adaptation_set</span><span class="p">(</span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">fragmented</span><span class="o">-&gt;</span><span class="n">media_segments</span><span class="p">);</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">mpd</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">build_dash_mpd</span><span class="p">(</span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">fragmented</span><span class="o">-&gt;</span><span class="n">media_segments</span><span class="p">,</span><span class="w"> </span><span class="n">dash_snippet</span><span class="p">);</span>
+</code></pre></div>
+<p>A master playlist can carry more than one audio rendition in the same <code>#EXT-X-MEDIA</code> group,
+which is what an Atmos asset needs (see the paired-rendition note below):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">array</span><span class="o">&lt;</span><span class="n">mp4</span><span class="o">::</span><span class="n">HlsRendition</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="o">&gt;</span><span class="w"> </span><span class="n">renditions</span><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="n">mp4</span><span class="o">::</span><span class="n">HlsRendition</span><span class="p">{.</span><span class="n">track</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">joc_track</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">                      </span><span class="p">.</span><span class="n">segments</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">joc</span><span class="p">.</span><span class="n">media_segments</span><span class="p">,</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">                      </span><span class="p">.</span><span class="n">media_playlist_uri</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;audio.m3u8&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">                      </span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;Dolby Atmos&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">                      </span><span class="p">.</span><span class="n">channels_attribute</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;12/JOC&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">                      </span><span class="p">.</span><span class="n">is_default</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">},</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">    </span><span class="n">mp4</span><span class="o">::</span><span class="n">HlsRendition</span><span class="p">{.</span><span class="n">track</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">bed_track</span><span class="p">,</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">                      </span><span class="p">.</span><span class="n">segments</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">bed</span><span class="p">.</span><span class="n">media_segments</span><span class="p">,</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">                      </span><span class="p">.</span><span class="n">media_playlist_uri</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;bed51/audio.m3u8&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">                      </span><span class="p">.</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;5.1&quot;</span><span class="p">}};</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">master_playlist</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">build_hls_master_playlist</span><span class="p">(</span><span class="n">renditions</span><span class="p">);</span>
+</code></pre></div>
+<p>Full program: <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_fmp4.cpp"><code>examples/mux_fmp4.cpp</code></a>.</p>
+<p>Both manifest flavors get the <code>CODECS</code>/<code>codecs</code> attribute right: <code>mp4::hls_codec_string</code> (and
+<code>build_dash_adaptation_set</code> internally) use the bare <code>ac-3</code>/<code>ec-3</code> sample-entry fourcc unmodified
+as the RFC 6381 <code>'Codecs'</code> parameter — neither AC-3 nor E-AC-3 registers any of the
+dot-separated profile/level fields RFC 6381 §3 makes room for (unlike e.g. <code>avc1.640028</code>), which
+is confirmed against every real HLS manifest example
+<a href="https://developer.apple.com/documentation/http-live-streaming/hls-authoring-specification-for-apple-devices">Apple's HLS Authoring Specification for Apple
+Devices</a>
+shows. Dolby Digital Plus with Atmos objects additionally needs <code>CHANNELS="&lt;N&gt;/JOC"</code> on the HLS
+media rendition instead of a plain channel count, where N is the decodable object count
+(<code>ac3::io::ScannedStream::oba_complexity_index</code>, TS 103 420 §8.3.2's <code>complexity_index_type_a</code>)
+— reiterated, with a worked example (<code>CHANNELS="12/JOC"</code>), by <a href="https://ott.dolby.com/OnDelKits/DDP/Dolby_Digital_Plus_Online_Delivery_Kit_v1.5/Documentation/Content_Creation/SDM/help_files/topics/hls_c_hls_signal_atmos_ddp.html">Dolby's own Online Delivery Kit
+documentation</a>
+and shown verbatim in a real manifest (<code>CODECS="avc1.64001f,ec-3"</code> / <code>CHANNELS="12/JOC"</code>) by
+<a href="https://docs.aws.amazon.com/medialive/latest/ug/feature-dolbyatmos.html">AWS MediaLive's own HLS+Atmos
+documentation</a>. <code>mp4::</code>
+itself never reads that TS 103 420 object-layer syntax — <code>HlsOptions::channels_attribute</code> is
+opaque to it, the same way <code>AudioTrack::codec_config</code> is; <code>ac3cli fmp4</code> is the caller that
+already has <code>oba_complexity_index</code> (it read it to build the <code>dec3</code> box) and supplies the string.</p>
+<p><strong>The paired 5.1 rendition.</strong> Apple's authoring specification also asks that an Atmos rendition
+be accompanied by an equivalent 5.1 bitstream carrying <code>CHANNELS="6"</code> <em>in the same
+<code>#EXT-X-MEDIA</code> group</em>, so a client that cannot render the object layer selects the bed rather
+than the asset failing to play. Because JOC's bed already <em>is</em> the full mix, that companion
+needs no re-encode: <a href="../decoding/#object-layer-strip"><code>ac3::io::strip_objects</code></a> removes the
+object layer from the same stream and leaves bit-identical bed audio. <code>ac3cli fmp4 …
+fallback-51</code> writes both — the Atmos rendition where it always was, the stripped one under
+<code>bed51/</code>, and one master playlist listing both.</p>
+<p>The DASH snippet describes exact per-segment durations with a <code>SegmentTemplate</code>/<code>SegmentTimeline</code>
+(ISO/IEC 23009-1 §5.3.9.6) built from each segment's own duration, rather than one nominal
+<code>duration</code> attribute assumed constant — segments are constant-duration except (as usual) a
+possibly shorter final one, and a flat nominal duration is exactly what let a real player
+(FFmpeg's own <code>dash</code> demuxer, while writing this module) compute one too many segments from
+<code>mediaPresentationDuration</code> and request a segment number past the end.</p>
+<h3 id="atmosjoc-signalling-ceao-and-the-dash-descriptors">Atmos/JOC signalling: <code>ceao</code>, and the DASH descriptors<a class="headerlink" href="#atmosjoc-signalling-ceao-and-the-dash-descriptors" title="Permanent link">&para;</a></h3>
+<p><code>mp4/dash.hpp</code> used to say there was no established DASH convention to point at for JOC, unlike
+HLS's <code>CHANNELS="&lt;N&gt;/JOC"</code>. There is: DASH-IF IOP Part 8 v5.0.0 §5.3.2 names, for E-AC-3
+carrying JOC, the two SupplementalProperty descriptors
+<a href="https://www.etsi.org/deliver/etsi_ts/103400_103499/103420/01.02.01_60/ts_103420v010201p.pdf">ETSI TS 103 420</a>
+clause D.2 defines — <code>tag:dolby.com,2018:dash:EC3_ExtensionType:2018</code>, whose value "shall be the
+three character string JOC" (§D.2.2.1), and
+<code>tag:dolby.com,2018:dash:EC3_ExtensionComplexityIndex:2018</code>, whose value "shall be decimal
+representation of the eight-bit element <code>complexity_index_type_a</code> in the EC3SpecificBox"
+(§D.2.2.2). §5.3.3 adds that such a track "shall be constrained according to the CMAF specific
+requirements as provided in ETSI TS 103 420 Annex E", where §E.5 requires the <code>ceao</code> compatibility
+brand. <code>DashOptions::joc_complexity_index</code> writes the first pair;
+<code>FragmentOptions::object_audio_brand</code> adds <code>ceao</code> to the <code>ftyp</code> and every <code>styp</code> alongside the
+<code>iso6</code>/<code>cmfc</code> a fragmented CMAF track already declares (added, not substituted — §E.2 requires
+ISO/IEC 23000-19 conformance on top of the profile).</p>
+<p>The same §5.3.2 offers two AudioChannelConfiguration schemes for E-AC-3. With
+<code>DashOptions::dolby_channel_configuration</code> empty, the Representation carries
+<code>urn:mpeg:mpegB:cicp:ChannelConfiguration</code> with the track's channel count — what TS 103 420
+§D.2.3's own example MPD writes. Set it to the four hex digits TS 102 366 clause I.1.2.1 defines
+(the 16-bit channel-assignment word, left channel in the most significant bit, so 5.1 is <code>F801</code>)
+and it carries the Dolby scheme instead. <code>ac3::io::dash_channel_configuration</code> is the one place
+that word is derived, beside <code>build_codec_config_box</code> and for the same reason: which locations a
+stream carries is <code>acmod</code>/<code>lfeon</code>/<code>chanmap</code> syntax, and a manifest writer has no business
+re-deriving AC-3 semantics. <code>ac3cli fmp4</code>, the GUI and the live paths all supply it.</p>
+<p><code>FragmentOptions::object_audio_brand</code> and <code>DashOptions::joc_complexity_index</code> are caller-supplied
+for the same reason <code>HlsOptions::channels_attribute</code> is — <code>mp4::</code> never reads TS 103 420's object
+layer, and the caller that scanned <code>oba_complexity_index</code> off the bitstream to build the <code>dec3</code>
+box already has it.</p>
+<h3 id="incremental-fragmenting-mp4fragmentwriter">Incremental fragmenting: <code>mp4::FragmentWriter</code><a class="headerlink" href="#incremental-fragmenting-mp4fragmentwriter" title="Permanent link">&para;</a></h3>
+<p>Same header as <code>fragment</code>. The live counterpart, and <code>matroska::Writer</code>/<code>mpegts::Writer</code>'s
+sibling: <code>create(track, options)</code> validates exactly what <code>fragment</code> validates and leaves
+<code>init_segment()</code> ready to write once; each <code>push(frame)</code> buffers into the current fragment and
+returns the media segment that just <em>closed</em> (so one comes back every
+<code>frames_per_fragment</code>-th call, <code>std::nullopt</code> otherwise); <code>finalize()</code> flushes the trailing
+partial fragment. <code>tfdt</code> comes from a running decode time held on the writer, which is the only
+per-fragment state <code>fragment</code>'s own loop carries. Nothing beyond one fragment's frames and the
+playlist window is ever held.</p>
+<p><strong>The contract is byte-equality with the batch form</strong>, the same one <code>mpegts::Writer</code> holds itself
+to: for the same track, options and frames, the media segments this hands back are byte for byte
+the ones <code>fragment</code> would have built. The initialization segment differs in exactly one respect —
+<code>mvhd</code>/<code>tkhd</code>/<code>mdhd</code> carry duration 0, since a live session does not know its total (ISO/IEC
+14496-12 §8.8.2 provides <code>mehd</code> for the fragmented movie that <em>does</em>). That is the same
+concession <code>matroska::Writer</code> makes with EBML's unknown-size Segment and its omitted Duration.
+Both halves are asserted in <code>tests/containers/test_fmp4.cpp</code>, the init segment by patching the
+three duration fields back and then requiring full byte equality.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">auto</span><span class="w"> </span><span class="n">writer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">FragmentWriter</span><span class="o">::</span><span class="n">create</span><span class="p">(</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">FragmentOptions</span><span class="p">{.</span><span class="n">playlist_window_segments</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">20</span><span class="p">});</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">write</span><span class="p">(</span><span class="s">&quot;init.mp4&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">writer</span><span class="o">-&gt;</span><span class="n">init_segment</span><span class="p">());</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">frame</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">frames</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">closed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">writer</span><span class="o">-&gt;</span><span class="n">push</span><span class="p">(</span><span class="n">frame</span><span class="p">);</span><span class="w">          </span><span class="c1">// std::optional&lt;MediaSegment&gt;</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">closed</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">        </span><span class="n">write</span><span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">format</span><span class="p">(</span><span class="s">&quot;segment{}.m4s&quot;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">closed</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">sequence_number</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">closed</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">bytes</span><span class="p">);</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">        </span><span class="c1">// Rebuild the manifests from the rolling window each time a segment closes.</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">        </span><span class="n">write</span><span class="p">(</span><span class="s">&quot;audio.m3u8&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">mp4</span><span class="o">::</span><span class="n">build_hls_media_playlist</span><span class="p">(</span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">writer</span><span class="o">-&gt;</span><span class="n">window</span><span class="p">(),</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">                                                          </span><span class="n">mp4</span><span class="o">::</span><span class="n">HlsOptions</span><span class="p">{.</span><span class="n">vod</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">}));</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">        </span><span class="n">write</span><span class="p">(</span><span class="s">&quot;manifest.mpd&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="w">              </span><span class="n">mp4</span><span class="o">::</span><span class="n">build_dash_mpd</span><span class="p">(</span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">writer</span><span class="o">-&gt;</span><span class="n">window</span><span class="p">(),</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="w">                                  </span><span class="n">mp4</span><span class="o">::</span><span class="n">build_dash_adaptation_set</span><span class="p">(</span><span class="n">track</span><span class="p">,</span><span class="w"> </span><span class="n">writer</span><span class="o">-&gt;</span><span class="n">window</span><span class="p">()),</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">                                  </span><span class="n">mp4</span><span class="o">::</span><span class="n">MpdOptions</span><span class="p">{.</span><span class="n">is_static</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">,</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="w">                                                  </span><span class="p">.</span><span class="n">availability_start_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">now_iso8601</span><span class="p">()}));</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>window()</code> hands back <code>SegmentInfo</code> — a <code>MediaSegment</code>'s bookkeeping without its bytes, so a
+rolling window of hundreds of segments costs nothing to keep.
+<code>FragmentOptions::playlist_window_segments</code> bounds it (0, the default, keeps every segment). All
+three manifest builders take <code>SegmentInfo</code> spans, with <code>MediaSegment</code> overloads for batch
+callers.</p>
+<p>Live manifests differ from VOD ones only in what they omit and where they start.
+<code>HlsOptions::vod = false</code> drops <code>#EXT-X-PLAYLIST-TYPE:VOD</code> and <code>#EXT-X-ENDLIST</code>, leaving
+<code>#EXT-X-MEDIA-SEQUENCE</code> — always the first <em>listed</em> segment's number — to tell a player that
+segments have rolled off the front (RFC 8216 §6.2.2). On the DASH side <code>MpdOptions::is_static =
+false</code> writes <code>type="dynamic"</code> with <code>availabilityStartTime</code>, <code>minimumUpdatePeriod</code> and
+<code>timeShiftBufferDepth</code> and no <code>mediaPresentationDuration</code> — the attribute set TS 103 420 §D.2.3's
+own example MPD carries — and the SegmentTemplate's <code>@startNumber</code> and the SegmentTimeline's
+first <code>&lt;S t="…"&gt;</code> both come from the window rather than being assumed to be the start of the
+track. <code>mp4::</code> has no clock (no file I/O, no time), so the caller supplies the timestamp strings;
+that is also what keeps the manifests deterministic under test.</p>
+<p>This is what <code>ac3cli record</code>/<code>ac3cli live</code> with <code>container=fmp4</code> and the GUI's live session with
+<strong>fragmented MP4/CMAF</strong> selected write through: the directory is a servable live origin while the
+session runs, and a closed VOD one afterwards.</p>
+<h3 id="external-validation">External validation<a class="headerlink" href="#external-validation" title="Permanent link">&para;</a></h3>
+<p><code>mp4::fragment</code>'s ISOBMFF output and the HLS media playlist round-trip cleanly through FFmpeg's
+own strict decode (<code>ffmpeg -v error -xerror -err_detect crccheck+bitstream+buffer+explode</code>) —
+both the fragmented file (init segment concatenated with every media segment) and <code>audio.m3u8</code>
+read back the exact original frame count and duration. The same holds for what <code>FragmentWriter</code>
+streams, and for the DASH MPD: see <a href="../../verification/#where-the-oracles-dont-reach">Validation</a>
+for exactly what was and was not checked externally.</p>
+<h2 id="muxer-errors">Muxer errors<a class="headerlink" href="#muxer-errors" title="Permanent link">&para;</a></h2>
+<p>Every muxing entry point above returns <code>std::expected</code>, against a per-module <code>MuxError</code> enum
+with its own <code>describe()</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Enum</th>
+<th>Values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>matroska::MuxError</code></td>
+<td><code>kNoFrames</code>; <code>kInvalidTrack</code> (zero/negative channels or sample rate, or an empty codec id); <code>kFrameTooLarge</code> (a single frame beyond what one SimpleBlock can carry).</td>
+</tr>
+<tr>
+<td><code>mp4::MuxError</code></td>
+<td><code>kNoFrames</code>; <code>kInvalidTrack</code> (here: an unrecognised codec id — only <code>ac-3</code>/<code>ec-3</code> are legal — or no <code>codec_config</code> payload, besides the zero-channel/rate cases); <code>kFileTooLarge</code> — <code>mdat</code> would need a 64-bit chunk offset (<code>co64</code>), which this module doesn't write, so whole-file offsets are 32-bit; <code>kInvalidOptions</code> (e.g. <code>FragmentOptions::frames_per_fragment == 0</code>). <code>mp4::FragmentWriter::create</code> returns the same two refusals as <code>fragment</code>, but never <code>kNoFrames</code>: a live writer stopped before its first frame simply has nothing to flush.</td>
+</tr>
+<tr>
+<td><code>mpegts::MuxError</code></td>
+<td><code>kNoFrames</code> and <code>kInvalidTrack</code> as above; <code>kInvalidOptions</code> (PID collisions); <code>kFrameTooLarge</code> — one access unit too large for a PES packet's 16-bit length field.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="demuxer-errors">Demuxer errors<a class="headerlink" href="#demuxer-errors" title="Permanent link">&para;</a></h2>
+<p>Each module's <code>demux</code>/<code>Reader</code> returns <code>std::expected</code> against its own <code>DemuxError</code>, which has
+its own <code>describe()</code> overload beside <code>MuxError</code>'s:</p>
+<table>
+<thead>
+<tr>
+<th>Enum</th>
+<th>Values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mp4::DemuxError</code></td>
+<td><code>kNotIsobmff</code>; <code>kTruncated</code>; <code>kMalformed</code> (a box, sample table or fragment layout that cannot be parsed); <code>kNoAudioTrack</code>; <code>kLimitExceeded</code>; <code>kMoovAfterMdat</code> (<code>Reader</code> only — the sample table follows the data it indexes; use <code>demux</code>).</td>
+</tr>
+<tr>
+<td><code>matroska::DemuxError</code></td>
+<td><code>kNotMatroska</code> (no EBML header where one has to be); <code>kTruncated</code> (the input ends before any track was described — a cut <em>after</em> one is not an error, see above); <code>kMalformed</code> (a vint, element or block layout that cannot be parsed, including a lace whose declared sizes overrun its block); <code>kNoAudioTrack</code> (Tracks held nothing selectable, or the requested <code>track_number</code> is absent); <code>kLimitExceeded</code> (an element size or nesting depth beyond <code>ReadOptions</code>).</td>
+</tr>
+<tr>
+<td><code>mpegts::DemuxError</code></td>
+<td><code>kNotTransportStream</code> (no 188/192/204-byte sync grid found within <code>ReadOptions::max_sync_search_bytes</code>); <code>kNoProgramme</code> (no PAT, or no PMT for the programme it named — including one whose CRC failed); <code>kNoAudioStream</code> (the PMT held no AC-3/E-AC-3 elementary stream under any of the three signalling forms); <code>kMalformed</code> (a PES or section layout that cannot be parsed); <code>kLimitExceeded</code> (a PES packet or PSI section beyond <code>ReadOptions</code>).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="bitstream-sinks-ac3audio">Bitstream sinks (<code>ac3::audio</code>)<a class="headerlink" href="#bitstream-sinks-ac3audio" title="Permanent link">&para;</a></h2>
+<p>The pieces below are audio-hardware-facing rather than example-driven, so there's no compiled
+<code>examples/</code> program to excerpt — this is reference prose pointing at the relevant header, plus
+the platform and hardware-verification caveats <a href="../../verification/">Validation</a> states about
+each. All of them are gated by <code>ac3::audio::audio_backend()</code>
+(<code>ac3/audio/audio_backend.hpp</code>), which reports whether capture, monitor playback and
+passthrough are available on this build's platform, and why not when they aren't — this backs
+the CLI's <code>UNAVAILABLE HERE</code> messaging for <code>devices</code>, <code>record</code>, <code>monitor</code>, <code>live</code>, <code>outputs</code>
+and <code>play</code>.</p>
+<h3 id="ac3iec61937-spdif-burst-packing-and-de-framing"><code>ac3::iec61937</code> — S/PDIF burst packing and de-framing<a class="headerlink" href="#ac3iec61937-spdif-burst-packing-and-de-framing" title="Permanent link">&para;</a></h3>
+<p><code>ac3/iec61937/iec61937.hpp</code>. Packs AC-3 or E-AC-3 elementary-stream frames into IEC 61937 burst
+framing — the wrapper a compressed bitstream needs over PCM-shaped hardware/interfaces (S/PDIF,
+HDMI) so a receiver recognizes it as AC-3/E-AC-3 rather than treating it as noisy PCM. AC-3
+burst packing is byte-exact against FFmpeg's <code>spdif</code> muxer. E-AC-3 packing (<code>Eac3BurstPacker</code>)
+— data type 0x15, the 24576-byte/4x-carrier-rate burst, multi-syncframe accumulation, <code>Pd</code> in
+bytes not bits — is independently verified against both FFmpeg's <code>spdif_header_eac3</code> and
+Microsoft's own IEC 61937 documentation (both fetched live and cross-checked against each
+other, not recalled), plus round-trip and real-audio unit tests. This header only produces the
+framed bytes; getting them onto real hardware is <code>PassthroughSink</code>, below.</p>
+<p><strong>De-framing</strong> (the other direction) is <code>BurstReader</code>, <code>unwrap_stream</code> and
+<code>PassthroughDetector</code>. <code>BurstReader</code> is a streaming <code>Pa</code>/<code>Pb</code>/<code>Pc</code>/<code>Pd</code> parser: data types 0x01
+and 0x15, both 16-bit word orders, the stuffing between bursts, <code>Pd</code>'s two different units, and
+E-AC-3's 4× carrier with its multi-syncframe bursts. Feed it carrier bytes in whatever chunks
+the source produces and take elementary-stream bytes out; it holds one burst plus the caller's
+chunk and nothing more, so a two-hour capture costs what a two-second one does. <code>unwrap_stream</code>
+is the batch form, mirroring <code>wrap_stream</code>.</p>
+<p>The input is by definition untrusted — a burst carrier comes off a wire or out of a capture
+device — so nothing taken from <code>Pd</code> is believed past its data type's repetition period, and a
+preamble not backed by a <code>0x0B77</code> syncframe is treated as a false match to resync past rather
+than a fatal error. <code>fuzz/fuzz_iec61937_unwrap.cpp</code> keeps that honest.</p>
+<p>This is also what closes the loop on the wrap side: bursts written by this project <em>and</em> by
+FFmpeg's <code>spdif</code> muxer read back byte-exactly to the streams that went in, AC-3 and E-AC-3,
+little-endian and big-endian carriers alike. Backs <code>ac3cli unspdif</code>.</p>
+<p><code>PassthroughDetector</code> answers the capture-side question — is this endpoint delivering PCM, or
+somebody's bursts? — from the same interleaved float frames <code>ac3::audio::Capture</code> delivers,
+using <code>carrier_from_capture</code> to recover the PCM16 words exactly (every backend converts int16
+to float by dividing by 32768, so nothing is lost). <code>ac3cli record</code> uses it to write the
+elementary stream instead of encoding noise; <code>ac3cli live</code> uses it to stop rather than encode a
+whole session of it.</p>
+<h3 id="ac3audiopassthroughsink-exclusive-mode-passthrough"><code>ac3::audio::PassthroughSink</code> — exclusive-mode passthrough<a class="headerlink" href="#ac3audiopassthroughsink-exclusive-mode-passthrough" title="Permanent link">&para;</a></h3>
+<p><code>ac3/audio/passthrough.hpp</code>. Exclusive-mode/direct bitstream output, AC-3 or E-AC-3 — WASAPI on
+Windows, ALSA on Linux, CoreAudio on macOS — the path an AV receiver needs to see the raw
+compressed bitstream rather than decoded PCM.</p>
+<p>Stated plainly, because this project's docs don't soften verification gaps: <strong>no desktop
+platform's passthrough — AC-3 and E-AC-3 alike — has been confirmed against real bitstreaming
+hardware.</strong> The one platform with that confirmation is Android, whose backend has locked a real
+AV receiver onto real Atmos output over HDMI — see <a href="../../platforms/android/">Android</a>, and each
+platform page for its own status. On <a href="../../platforms/windows/#audio-backend-wasapi">Windows</a>
+specifically: the development machine has no S/PDIF or HDMI endpoint behind a real
+Dolby-capable AV receiver, and WASAPI's <code>IsFormatSupported</code>
+correctly rejects both Dolby IEC 61937 subtypes everywhere it has been tried. What <em>is</em> verified
+there: the exclusive-mode path itself works (a Realtek endpoint accepts an exclusive-mode PCM
+format), and the burst framing it carries is verified as described above under
+<code>ac3::iec61937</code>. But no bitstream-capable receiver has been confirmed to lock onto output
+from this sink specifically — the one receiver-locking check that has been done used a different
+code path (bursts played as a PCM16 WAV through a passthrough output), not <code>PassthroughSink</code>
+itself, and that check has only been tried for AC-3, not E-AC-3.</p>
+<h3 id="ac3audiosink_capabilities-reading-what-a-sink-says-it-accepts"><code>ac3::audio::sink_capabilities</code> — reading what a sink says it accepts<a class="headerlink" href="#ac3audiosink_capabilities-reading-what-a-sink-says-it-accepts" title="Permanent link">&para;</a></h3>
+<p><code>ac3/audio/sink_capabilities.hpp</code> (roadmap UX9). <code>read_sink_capabilities(device_id)</code> reads a
+render endpoint's own advertised capabilities — CEA-861 Short Audio Descriptors, the part of
+EDID (over HDMI) or ELD (ALSA's own EDID-Like Data, which carries the same SADs) that says which
+codecs, how many channels and which sample rates a sink accepts — rather than
+<code>enumerate_render_devices()</code>'s own live-probe answer (open the device and try). <code>ac3cli play</code>
+uses it, EDID first and the probe as the documented fallback, to decide whether a source format
+needs the automatic AC-3/PCM fallback described in
+<a href="../../cli/commands/#following-the-sink">Commands → Following the sink</a>.</p>
+<p>Real on exactly one backend today: ALSA, reading the HD-audio kernel driver's own
+<code>/proc/asound/&lt;card&gt;/eld#&lt;dev&gt;.&lt;port&gt;</code> text interface (already decoded from the raw CEA-861
+bytes, so there is no byte layout for this project to get wrong — only the driver's own field
+names to read). <strong>Not verified against real HDMI/ELD hardware</strong> — the development environment
+this shipped from has no Linux box with a bitstream-capable receiver attached; see
+<a href="../../platforms/linux/">Linux</a> for the honest status. Every other backend (Windows, macOS,
+Android, PipeWire, and Linux without ALSA) reports <code>kNoBackend</code> rather than guessing: none has a
+documented user-mode API for reading a sink's raw SADs (Windows' WASAPI and macOS' CoreAudio
+both expose negotiated-format questions, the same kind <code>enumerate_render_devices()</code> already
+answers, not the sink's own raw descriptor; PipeWire's node properties might carry enough to
+reach the same ALSA ELD file, but no confirmed, version-stable property name was found to code
+against without a live daemon to verify it on).</p>
+<h3 id="ac3audiomonitorsink-shared-mode-monitor-playback"><code>ac3::audio::MonitorSink</code> — shared-mode monitor playback<a class="headerlink" href="#ac3audiomonitorsink-shared-mode-monitor-playback" title="Permanent link">&para;</a></h3>
+<p><code>ac3/audio/monitor.hpp</code>. The non-exclusive counterpart to <code>PassthroughSink</code>: shared-mode PCM
+playback — WASAPI, ALSA or CoreAudio, resampled and mixed like any other app — that decodes what is being
+encoded and plays it back on an ordinary output, for previewing a decode without a
+bitstream-capable receiver. Backs <code>ac3cli monitor</code> and <code>live</code>'s monitor leg.</p>
+<p>Unlike passthrough, <strong>this one is confirmed against real hardware.</strong> It has actually played
+decoded AC-3 and E-AC-3 (including an Atmos stream's 5.1 bed) through real Windows (Realtek)
+hardware in real time, and a live microphone capture → encode → monitor session has run
+end-to-end. Building this path against real hardware surfaced two genuine bugs that neither
+unit tests nor silent/synthetic input would have caught — see
+<a href="../../platforms/windows/#audio-backend-wasapi">Windows</a> for the details, and
+<code>src/audio/src/backend/windows/monitor.cpp</code> for the fixes.</p>
+<h2 id="capture-ac3audio">Capture: <code>ac3::audio</code><a class="headerlink" href="#capture-ac3audio" title="Permanent link">&para;</a></h2>
+<p><code>ac3/audio/capture.hpp</code>, <code>ring_buffer.hpp</code>. Live input/loopback capture — WASAPI on Windows,
+ALSA on Linux, CoreAudio on macOS — through the lock-free SPSC ring in <code>ring_buffer.hpp</code>, which
+sits between the audio callback and whatever consumes the samples (an encoder, a monitor sink,
+or both). On macOS capture is input-only: no loopback endpoint is ever enumerated, and
+<code>start()</code> refuses <code>DeviceKind::kLoopback</code> outright rather than silently opening a microphone.
+This is what backs <code>ac3cli record</code>/<code>live</code> and the GUI's live-session tab.</p>
+<p>A third way in, <code>Capture::start_process_loopback(pid, mode, format)</code> (roadmap UX11), taps what
+one process and its children render and nothing else, whichever endpoint they render to —
+Windows 10 build 20348+'s process-loopback activation, and the piece the
+<a href="../../platforms/windows-demo/">Windows Desktop Atmos Demo</a> is built on. It differs from an
+endpoint loopback in three ways worth knowing before relying on it: the caller states the
+format (there is no endpoint whose mixer format could be asked for; 48 kHz float stereo is the
+default, eight channels is honoured); a muted audio session taps as silence, because the tap sits
+after session volume; and a tap outlives its process, delivering zeros, so "the process stopped
+playing" has to come from the audio session list rather than from the capture. Refusals are
+<code>kProcessLoopbackUnavailable</code> (no such tap on this platform or this Windows build —
+<code>process_loopback_available()</code> and <code>audio_backend().process_loopback</code> say so up front) and
+<code>kProcessNotFound</code>, which the library checks itself because the OS does not.</p>
+<p><code>ac3/audio/device_watcher.hpp</code>. <code>DeviceWatcher</code> (roadmap UX11) delivers endpoint
+added/removed/state-changed and default-changed events on a callback — Windows'
+<code>IMMNotificationClient</code>, one event per physical change (the console role only; Windows would
+otherwise report every default change three times) — so an application that follows the sink can
+re-probe when something is plugged or unplugged instead of polling <code>enumerate_render_devices()</code>.
+The callback runs on a platform thread under the watcher's own lock, which is what lets
+<code>stop()</code> promise no callback is in flight when it returns; do the minimum there and never stop
+the watcher from inside it. Every non-Windows backend refuses <code>start()</code> with <code>kNoBackend</code>.</p>
+<h2 id="metering-ac3analysis">Metering: <code>ac3::analysis</code><a class="headerlink" href="#metering-ac3analysis" title="Permanent link">&para;</a></h2>
+<p><code>ac3/analysis/levels.hpp</code>. Peak/RMS metering with console ballistics, plus the Gerzon energy
+vector computed over the BS.775 ring — the metering <code>ac3cli</code> and the GUI share so their two
+displays never disagree about what a signal contains. One <code>LevelMeter</code> instance drives both: the
+moving display (<code>levels()</code>, ballistic) and the exact end-of-run report (<code>summary()</code>,
+unweighted), fed by the same pass over the samples.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">ac3</span><span class="o">::</span><span class="n">analysis</span><span class="o">::</span><span class="n">LevelMeter</span><span class="w"> </span><span class="n">meter</span><span class="p">{</span><span class="n">acmod</span><span class="p">,</span><span class="w"> </span><span class="n">lfe</span><span class="p">,</span><span class="w"> </span><span class="mi">48000</span><span class="p">};</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">meter</span><span class="p">.</span><span class="n">process</span><span class="p">(</span><span class="n">decoded_views</span><span class="p">);</span><span class="w">   </span><span class="c1">// once per frame, planar A/52 order</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">stats</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">meter</span><span class="p">.</span><span class="n">summary</span><span class="p">()[</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">ch</span><span class="p">)];</span><span class="w">  </span><span class="c1">// exact, not ballistic</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">fmt</span><span class="o">::</span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;peak %.1f dBFS  rms %.1f dBFS</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">stats</span><span class="p">.</span><span class="n">peak_db</span><span class="p">(),</span><span class="w"> </span><span class="n">stats</span><span class="p">.</span><span class="n">rms_db</span><span class="p">());</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="k">const</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">energy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ac3</span><span class="o">::</span><span class="n">analysis</span><span class="o">::</span><span class="n">energy_vector</span><span class="p">(</span><span class="n">meter</span><span class="p">.</span><span class="n">levels</span><span class="p">(),</span><span class="w"> </span><span class="n">acmod</span><span class="p">);</span>
+</code></pre></div>
+<p>Full program: <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/level_metering.cpp"><code>examples/level_metering.cpp</code></a>
+— decodes a 5.1 stream and reports both the per-channel peak/RMS and the soundfield's energy
+vector.</p>
+<p>This is a separate concern from the BS.1770 integrated-loudness measurement in
+<code>ac3::meta::LoudnessMeter</code> (see <a href="../metadata/">Metadata</a>): one is instantaneous display
+metering, the other the gated whole-programme measurement <code>dialnorm</code> is derived from.
+<code>energy_vector</code> is computed from the integrated RMS of the full-bandwidth channels only — the
+LFE has no direction to contribute, and a subwoofer's level would otherwise swamp the sum.</p>
+<hr />
+<p>See also: <a href="../decoding/">Decoding</a> — <code>ac3::io::scan</code> is what feeds both <code>matroska::mux</code> and the
+sinks above their access units; <a href="../header-map/">Header map</a> — every header referenced on this
+page in one table.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

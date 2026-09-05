@@ -1,0 +1,3686 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A clean-room AC-3 / E-AC-3 / Dolby Atmos encoder and decoder in C++23">
+      
+      
+      
+        <link rel="canonical" href="https://iainchesworthlabs.github.io/ac3forge/library/python-api/">
+      
+      
+        <link rel="prev" href="../c-api/">
+      
+      
+        <link rel="next" href="../rust-api/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Python bindings - ac3forge</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#python-bindings" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="ac3forge" class="md-header__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ac3forge
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Python bindings
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../concepts/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../verification/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Validation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../threat-model/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Threat model
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../conformance-vectors/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Conformance vectors
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Library
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../cli/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  CLI reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../gui/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  GUI guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance-quality/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance & quality
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Project
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="ac3forge" class="md-nav__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ac3forge
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform notes
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform notes
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/linux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/raspberry-pi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raspberry Pi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/android/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Android (NVIDIA Shield)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Desktop Atmos Demo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows-driver-acx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows null-sink driver on ACX (plan)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/wasm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebAssembly (browser demos)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../concepts/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/ac3-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AC-3 & E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/atmos-joc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Atmos & JOC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/object-signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threat-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threat model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../conformance-vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conformance vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Library
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Example programs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encoding-ac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encoding-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decoding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decoding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spatial-and-atmos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spatial & Atmos objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../station-broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A worked scene — station broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channel-plans-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channel plans & routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../muxing-and-sinks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Muxing & sinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../file-io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File I/O
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../iab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAB (SMPTE ST 2098-2) reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM / BW64 reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adm-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM → Atmos bridging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../iamf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAMF writing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Measuring quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../header-map/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Header map
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-stability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API stability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../c-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python bindings
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#encoding-ac-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Encoding AC-3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decoding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#zero-copy-numpy-and-buffer-reuse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zero-copy numpy and buffer reuse
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scanning-a-stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scanning a stream
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#research-trace-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Research trace export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#encoding-e-ac-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Encoding E-AC-3
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Encoding E-AC-3">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wide-layouts-ac3eac3accessunitencoder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wide layouts: ac3.eac3.AccessUnitEncoder
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#e-ac-3-and-atmos-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E-AC-3 and Atmos objects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#containers-metering-qc-and-signing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Containers, metering, QC and signing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-isnt-exposed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What isn't exposed
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rust-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rust bindings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/metadata-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Options & grammars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../gui/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GUI guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_9" id="__nav_9_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GUI guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/loading-a-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loading a source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/format-and-channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format & channels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/objects-and-motion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Objects & motion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/live-session/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live capture & session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/source-assignment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-source & assignment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/coding-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/qc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QC a stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/inspect-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inspect objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/open-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../gui/localisation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Localisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance & quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tool-comparison-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tool comparison trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../object-quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../landscape/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Landscape
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live decode demo (WASM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-encode-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live encode demo (WASM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ci-self-hosted-runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosted CI runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#encoding-ac-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Encoding AC-3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decoding
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#zero-copy-numpy-and-buffer-reuse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zero-copy numpy and buffer reuse
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scanning-a-stream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scanning a stream
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#research-trace-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Research trace export
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#encoding-e-ac-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Encoding E-AC-3
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Encoding E-AC-3">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wide-layouts-ac3eac3accessunitencoder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wide layouts: ac3.eac3.AccessUnitEncoder
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#e-ac-3-and-atmos-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E-AC-3 and Atmos objects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#containers-metering-qc-and-signing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Containers, metering, QC and signing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-isnt-exposed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What isn't exposed
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="python-bindings">Python bindings<a class="headerlink" href="#python-bindings" title="Permanent link">&para;</a></h1>
+<p>Roadmap <strong>F2</strong>: a pybind11 module (<code>python/src/ac3forge_ext/bindings.cpp</code>) bound straight onto
+<code>ac3::FrameEncoder</code>, <code>ac3::FrameDecoder</code>, <code>ac3::Eac3Decoder</code>, <code>ac3::eac3::FrameEncoder</code>,
+<code>ac3::eac3::AccessUnitEncoder</code> and <code>ac3::oba::AtmosEncoder</code> — pybind11-direct, not layered on a
+separate C API. Install from PyPI:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>ac3forge
+</code></pre></div>
+<p>or, from a source checkout of this repository, build against the same CMake tree everything else
+here uses:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>./python
+</code></pre></div>
+<p><code>ac3forge.__version__</code> reports the installed package's own PEP 440 version string, derived from
+the nearest <code>git describe</code> tag the same way <code>PROJECT_VERSION_FULL</code> is on the C++ side (see
+<a href="../../releasing/#versioning">docs/releasing.md</a>) but rendered by <code>setuptools_scm</code> rather than
+<code>cmake/GitVersionDerivation.cmake</code> — independently, on the Python-packaging side. A tag like
+<code>v0.8.0-beta.1</code> therefore reports as <code>0.8.0b2.dev1+...</code> between releases or <code>0.8.0b1</code> exactly on
+the tagged commit; that is PEP 440's normal rendering of a SemVer prerelease tag, not a bug.</p>
+<h2 id="encoding-ac-3">Encoding AC-3<a class="headerlink" href="#encoding-ac-3" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">ac3forge</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ac3</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">encoder</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">FrameEncoder</span><span class="p">(</span><span class="n">ac3</span><span class="o">.</span><span class="n">EncoderConfig</span><span class="p">(</span><span class="n">bitrate_kbps</span><span class="o">=</span><span class="mi">448</span><span class="p">,</span> <span class="n">acmod</span><span class="o">=</span><span class="n">ac3</span><span class="o">.</span><span class="n">Acmod</span><span class="o">.</span><span class="n">k3_2</span><span class="p">,</span> <span class="n">lfe</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">stream</span> <span class="o">=</span> <span class="nb">bytearray</span><span class="p">()</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="k">for</span> <span class="n">frame</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">31</span><span class="p">):</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">channels</span> <span class="o">=</span> <span class="p">[</span><span class="n">build_channel</span><span class="p">(</span><span class="n">tone</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span> <span class="k">for</span> <span class="n">tone</span> <span class="ow">in</span> <span class="n">TONES_HZ</span><span class="p">]</span>  <span class="c1"># 6 numpy float32 arrays</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">stream</span> <span class="o">+=</span> <span class="n">encoder</span><span class="o">.</span><span class="n">encode_frame</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>
+</code></pre></div>
+<p>Full program: <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_decode_roundtrip.py"><code>examples/python/encode_decode_roundtrip.py</code></a>.</p>
+<p><code>encode_frame</code> takes either a 2-D <code>(n_channels, n_samples)</code> array or a sequence of 1-D
+<code>float32</code>-convertible arrays (any array-like <code>numpy</code> accepts — a list also works), one per
+channel, <strong>AC-3 channel order</strong> (Table 5.8, LFE last — same convention as the C++ API, see
+<a href="../#conventions">docs/library/index.md</a>), each exactly <code>ac3.SAMPLES_PER_FRAME</code> (1536)
+samples. It returns one syncframe as <code>bytes</code>. See <a href="#zero-copy-numpy-and-buffer-reuse">Zero-copy numpy and buffer
+reuse</a> below for what "zero-copy" means here and the one
+caveat it comes with.</p>
+<p><code>ac3.EncoderConfig</code> mirrors <code>ac3::EncoderConfig</code> field for field (<code>encoder/encoder.hpp</code>) —
+construct it with keyword arguments for whichever fields you want to change from their C++
+defaults; an unrecognised keyword raises <code>TypeError</code> rather than being silently ignored:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">config</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">EncoderConfig</span><span class="p">(</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">acmod</span><span class="o">=</span><span class="n">ac3</span><span class="o">.</span><span class="n">Acmod</span><span class="o">.</span><span class="n">k2_0</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">bitrate_kbps</span><span class="o">=</span><span class="mi">192</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">drc</span><span class="o">=</span><span class="n">ac3</span><span class="o">.</span><span class="n">profile_for</span><span class="p">(</span><span class="n">ac3</span><span class="o">.</span><span class="n">ProfileId</span><span class="o">.</span><span class="n">kFilmLight</span><span class="p">),</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">heavy</span><span class="o">=</span><span class="n">ac3</span><span class="o">.</span><span class="n">HeavyConfig</span><span class="p">(</span><span class="n">peak_ceiling_dbfs</span><span class="o">=-</span><span class="mf">1.0</span><span class="p">),</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">)</span>
+</code></pre></div>
+<p><code>ac3.profile_for(id)</code> is <code>ac3::meta::profile(ProfileId)</code> — the conventional Dolby DRC curves;
+<code>ac3.Profile(...)</code> is available directly for a fully custom curve, same shape as the C++
+<code>meta::Profile</code> struct.</p>
+<h2 id="decoding">Decoding<a class="headerlink" href="#decoding" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">decoder</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">FrameDecoder</span><span class="p">()</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">for</span> <span class="n">frame_bytes</span> <span class="ow">in</span> <span class="n">ac3</span><span class="o">.</span><span class="n">split_frames</span><span class="p">(</span><span class="n">stream</span><span class="p">):</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">decoded</span> <span class="o">=</span> <span class="n">decoder</span><span class="o">.</span><span class="n">decode_frame</span><span class="p">(</span><span class="n">frame_bytes</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">decoded</span><span class="o">.</span><span class="n">channel_labels</span><span class="p">,</span> <span class="n">decoded</span><span class="o">.</span><span class="n">channels</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+</code></pre></div>
+<p><code>decoded.channels</code> is a list of <code>numpy.float32</code> arrays, one per channel, in decode order — a
+read-only <em>view</em> onto <code>decoded</code>'s own memory rather than a copy (see <a href="#zero-copy-numpy-and-buffer-reuse">Zero-copy
+numpy</a> below). <code>decoded.channel_labels</code> is the same channels'
+Table 5.8/Table E2.5 names as plain strings (<code>["L", "C", "R", "Ls", "Rs", "LFE"]</code>) — not part of
+the C++ <code>DecodedFrame</code>/<code>DecodedSubstream</code> structs themselves, added here purely for convenience.</p>
+<p><code>ac3.split_frames</code>/<code>ac3.split_access_units</code> wrap the free functions of the same name in
+<code>ac3/decoder/decoder.hpp</code> — splitting a raw elementary stream (or one already known to be E-AC-3)
+into individual syncframes or access units before decoding each one.</p>
+<h2 id="zero-copy-numpy-and-buffer-reuse">Zero-copy numpy and buffer reuse<a class="headerlink" href="#zero-copy-numpy-and-buffer-reuse" title="Permanent link">&para;</a></h2>
+<p>Roadmap <strong>AP6</strong>. Every <code>encode_frame</code>/<code>encode_access_unit</code> call above (AC-3, E-AC-3, and
+<code>AtmosEncoder.encode_frame</code>'s <code>objects</code>) and every decoded <code>.channels</code>/<code>.object_audio</code> property
+avoids a <code>memcpy</code> when it can:</p>
+<ul>
+<li><strong>Encode input</strong> is read directly out of the array(s) you pass — no intermediate copy — as
+  long as they are already <code>float32</code> and C-contiguous (<code>numpy</code>'s default for a freshly-built
+  array). An array that isn't (wrong dtype, a transposed/strided view, a Python <code>list</code> of plain
+  floats) is converted once, exactly as it always was; this only removes the <em>second</em>,
+  unconditional copy the pre-AP6 bindings always made on top of that.</li>
+<li><strong>Decoded PCM</strong> (<code>.channels</code>, <code>.object_audio</code>) is a read-only <code>numpy</code> view directly onto the
+  <code>DecodedFrame</code>/<code>DecodedSubstream</code>/<code>DecodedAccessUnit</code> instance's own memory — no allocation, no
+  copy. The view keeps that instance alive for as long as the view itself is (via <code>numpy</code>'s own
+  <code>base</code> mechanism), so it stays valid even after you drop your last reference to the decoded
+  object. It is non-writeable (<code>arr.flags.writeable is False</code>): mutating it would silently
+  corrupt the decoder's own state.</li>
+</ul>
+<p><strong>The one caveat</strong>: encoding releases Python's GIL for the actual codec work (so another Python
+thread can make progress while it runs), which means an array you are encoding must not be
+mutated by another thread until <code>encode_frame</code>/<code>encode_access_unit</code> returns — the same
+"don't touch the buffer mid-call" contract any zero-copy buffer-protocol API has. This does not
+apply to the array(s) you get back from decoding; those are plain read access once the call
+returns.</p>
+<p>For a caller that decodes the same stream shape repeatedly (a realtime embedder, a tight batch
+loop) and wants to reuse its own buffers instead of letting each call allocate fresh ones,
+<code>FrameDecoder.decode_frame_into</code>/<code>Eac3Decoder.decode_access_unit_into</code> write PCM straight into
+buffers you supply instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">decoder</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">FrameDecoder</span><span class="p">()</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">ac3</span><span class="o">.</span><span class="n">MAX_AC3_CHANNELS</span><span class="p">,</span> <span class="n">ac3</span><span class="o">.</span><span class="n">SAMPLES_PER_FRAME</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="k">for</span> <span class="n">frame_bytes</span> <span class="ow">in</span> <span class="n">ac3</span><span class="o">.</span><span class="n">split_frames</span><span class="p">(</span><span class="n">stream</span><span class="p">):</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">decoded</span> <span class="o">=</span> <span class="n">decoder</span><span class="o">.</span><span class="n">decode_frame_into</span><span class="p">(</span><span class="n">frame_bytes</span><span class="p">,</span> <span class="n">out</span><span class="p">)</span>  <span class="c1"># decoded.channels stays empty</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">n</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">fullbw_channel_count</span><span class="p">(</span><span class="n">decoded</span><span class="o">.</span><span class="n">acmod</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="k">if</span> <span class="n">decoded</span><span class="o">.</span><span class="n">lfe</span> <span class="k">else</span> <span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">decoded</span><span class="o">.</span><span class="n">channel_labels</span><span class="p">,</span> <span class="n">out</span><span class="p">[:</span><span class="n">n</span><span class="p">])</span>
+</code></pre></div>
+<p><code>out</code> is either a single 2-D <code>(buffers, ac3.SAMPLES_PER_FRAME)</code> array or a sequence of 1-D
+arrays, each <code>float32</code>, C-contiguous and writeable. <code>buffers</code> must be <strong>at least</strong>
+<code>ac3.MAX_AC3_CHANNELS</code> (6) for <code>decode_frame_into</code>, or <code>ac3.eac3.MAX_RENDER_CHANNELS</code> (16) for
+<code>decode_access_unit_into</code> — the
+real channel count for a given frame is only known once it has been decoded, so both methods ask
+for enough buffers up front to cover any layout their decoder can produce; unused trailing
+buffers are simply left untouched. Every one of these constraints is checked explicitly and
+raises <code>TypeError</code>/<code>ValueError</code> on mismatch — it does not fall back to silently copying into a
+private buffer the decoder would write into instead of yours (which would defeat the entire
+point), and it does not rely on the C++ side's own <code>assert()</code> (compiled out in release wheels) as
+the only guard, the same policy <code>encode_frame</code>'s own channel-count check follows (see
+<a href="#errors">Errors</a> below). The returned <code>DecodedFrame</code>/<code>DecodedAccessUnit</code>'s own <code>.channels</code> stays
+empty either way — read the PCM back from <code>out</code>.</p>
+<h2 id="scanning-a-stream">Scanning a stream<a class="headerlink" href="#scanning-a-stream" title="Permanent link">&para;</a></h2>
+<p>Roadmap <strong>AP6</strong>: <code>ac3.scan()</code> wraps <code>ac3::io::scan</code> (<code>ac3/io/elementary.hpp</code>) — reading an
+elementary stream's shape (channel layout, every programme, every access unit's byte range)
+without decoding any audio, the same walk <code>ac3cli probe</code>/a muxer's own input stage does:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">scan</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">kind</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">acmod</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">lfe</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">channels</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">access_units</span><span class="p">)</span><span class="si">}</span><span class="s2"> access units, </span><span class="si">{</span><span class="n">ac3</span><span class="o">.</span><span class="n">stream_duration_seconds</span><span class="p">(</span><span class="n">result</span><span class="p">)</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">s&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">decoder</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">FrameDecoder</span><span class="p">()</span>  <span class="c1"># or Eac3Decoder, for an E-AC-3/kAc3CoreEac3Extension stream</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="k">for</span> <span class="n">unit</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">access_units</span><span class="p">:</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">decoded</span> <span class="o">=</span> <span class="n">decoder</span><span class="o">.</span><span class="n">decode_frame</span><span class="p">(</span><span class="n">unit</span><span class="p">)</span>
+</code></pre></div>
+<p><code>result.access_units</code> is <code>ac3.ScannedStream</code>'s first (or only) programme's access units, already
+split — <code>Eac3Decoder.decode_access_unit</code>'s own input shape, or <code>FrameDecoder.decode_frame</code>'s for
+plain AC-3. <code>result.kind</code> is <code>ac3.StreamKind</code> — <code>kAc3</code>, <code>kEac3</code>, or <code>kAc3CoreEac3Extension</code> for an
+AC-3 core carrying Annex E dependent extensions (§E2.3.1.2); every scalar field describes that
+first programme, same as the C++ <code>ScannedStream</code>'s own convention. A stream carrying more than one
+independent substream (broadcast DD+'s alternate-language/commentary services) reports each as
+its own entry in <code>result.programmes</code> — a parallel sequence, not more entries in <code>access_units</code>,
+since two programmes are never one spliced timeline.</p>
+<p><code>ac3.access_unit_timing(result, index)</code> and <code>ac3.stream_duration_samples</code>/<code>stream_duration_seconds</code>/
+<code>access_unit_at_sample</code>/<code>access_unit_at_seconds</code>/<code>uniform_access_unit_samples</code> mirror
+<code>ac3::io::access_unit_timing</code> and its neighbours — all free functions taking a <code>ScannedStream</code>,
+matching the C++ shape, useful for a container muxer computing where to cut. <code>ac3.read_frame_header</code>
+(<code>ac3::io::read_frame_header</code>) reads one syncframe's header — everything <code>scan()</code> reports about
+the first frame, without walking the rest of the stream.</p>
+<p>A malformed stream raises <code>ac3.Ac3ScanError</code> (<code>.error: ac3.ScanError</code>) — same exception-translation
+convention as encode/decode failures, see <a href="#errors">Errors</a> below.</p>
+<h2 id="research-trace-export">Research trace export<a class="headerlink" href="#research-trace-export" title="Permanent link">&para;</a></h2>
+<p>Roadmap AP12. <code>ac3.verify.FrameTrace</code>/<code>Eac3AccessUnitTrace</code> are caller-owned handles that
+<code>DecoderConfig(trace=...)</code>/<code>(eac3_trace=...)</code> fills, per block per stream, as a real decode runs —
+exponents, bit allocation pointers, the §7.2.2.6 masking curve and the composite SNR offset.
+<code>ac3.verify.trace_to_csv</code>/<code>trace_to_json_lines</code> turn one of those into text, one tidy row per
+(frame, substream, block, stream, kind, index, value):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">trace</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">verify</span><span class="o">.</span><span class="n">FrameTrace</span><span class="p">()</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">decoder</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">FrameDecoder</span><span class="p">(</span><span class="n">ac3</span><span class="o">.</span><span class="n">DecoderConfig</span><span class="p">(</span><span class="n">trace</span><span class="o">=</span><span class="n">trace</span><span class="p">))</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">csv_text</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">verify</span><span class="o">.</span><span class="n">trace_csv_header</span><span class="p">()</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">for</span> <span class="n">frame</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">FRAME_COUNT</span><span class="p">):</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">decoder</span><span class="o">.</span><span class="n">decode_frame</span><span class="p">(</span><span class="n">frame_bytes</span><span class="p">[</span><span class="n">frame</span><span class="p">])</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="c1"># decode_frame refills `trace` from scratch each call - read it back out</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="c1"># once per frame rather than accumulated across the loop.</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">csv_text</span> <span class="o">+=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">verify</span><span class="o">.</span><span class="n">trace_to_csv</span><span class="p">(</span><span class="n">trace</span><span class="p">,</span> <span class="n">frame_index</span><span class="o">=</span><span class="n">frame</span><span class="p">)</span>
+</code></pre></div>
+<p>Full program: <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/trace_export.py"><code>examples/python/trace_export.py</code></a>.</p>
+<p><code>kind</code> distinguishes the per-<em>bin</em> <code>exponent</code>/<code>bap</code> curves from the per-<em>band</em> <code>mask</code> curve and
+the per-stream <code>snr_offset</code> scalar — different index spaces, named rather than forced together.
+Load the CSV/JSON Lines text with <code>pandas.read_csv</code>/<code>read_json(lines=True)</code> and call
+<code>.to_parquet()</code> from there for Parquet; this binding has no Parquet writer of its own; see
+<code>ac3/verify/trace_export.hpp</code> for why.</p>
+<h2 id="encoding-e-ac-3">Encoding E-AC-3<a class="headerlink" href="#encoding-e-ac-3" title="Permanent link">&para;</a></h2>
+<p>Roadmap <strong>AP6</strong>: <code>ac3.eac3.FrameEncoder</code>/<code>AccessUnitEncoder</code> wrap <code>ac3::eac3::FrameEncoder</code>/
+<code>AccessUnitEncoder</code> directly (pybind11-direct, like everything else in this binding) — a real
+submodule rather than a flat <code>Eac3FrameEncoder</code> name, since <code>ac3::FrameEncoder</code> and
+<code>ac3::eac3::FrameEncoder</code> share a name across C++ namespaces (roadmap AP2); <code>ac3.FrameEncoder</code>
+(AC-3) and <code>ac3.eac3.FrameEncoder</code> (E-AC-3) keep that collision out of the Python surface too.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">config</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">eac3</span><span class="o">.</span><span class="n">FrameConfig</span><span class="p">(</span><span class="n">bitrate_kbps</span><span class="o">=</span><span class="mi">192</span><span class="p">,</span> <span class="n">acmod</span><span class="o">=</span><span class="n">ac3</span><span class="o">.</span><span class="n">Acmod</span><span class="o">.</span><span class="n">k2_0</span><span class="p">)</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">encoder</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">eac3</span><span class="o">.</span><span class="n">FrameEncoder</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">frame</span> <span class="o">=</span> <span class="n">encoder</span><span class="o">.</span><span class="n">encode_frame</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>  <span class="c1"># channels: encoder.channel_count arrays, AC-3 order</span>
+</code></pre></div>
+<p><code>ac3.eac3.FrameConfig</code> mirrors <code>ac3::eac3::FrameConfig</code>'s core surface — sample rate (including
+the three <code>fscod2</code> reduced rates), bitrate, <code>numblkscod</code>, <code>acmod</code>/<code>lfe</code>, the Annex E tools
+(<code>auto_tools</code> and the individual <code>coupling</code>/<code>spx</code>/<code>aht</code> flags it overrides), substream identity
+(<code>strmtyp</code>/<code>substreamid</code>/<code>chanmap</code>/<code>last_dependent</code>), and <code>drc</code>/<code>heavy</code>/<code>drc2</code>/<code>heavy2</code> (the same
+<code>ac3.Profile</code>/<code>ac3.HeavyConfig</code> types the AC-3 side uses). Not mirrored: the <code>mixmdate</code>/<code>infomdat</code>
+metadata groups, <code>vbr</code>/ABR (<code>EQ12</code>) and <code>search</code> (<code>EQ7</code>/<code>EQ13</code>'s per-frame bit-allocation codes
+search) — real gaps, not design decisions, unlike the C API's own documented trim.</p>
+<h3 id="wide-layouts-ac3eac3accessunitencoder">Wide layouts: <code>ac3.eac3.AccessUnitEncoder</code><a class="headerlink" href="#wide-layouts-ac3eac3accessunitencoder" title="Permanent link">&para;</a></h3>
+<p>Anything past 5.1 needs an independent substream plus dependents that widen it —
+<code>ac3.eac3.access_unit_config_for_layout()</code> is the named-layout convenience: it builds a whole
+<code>AccessUnitConfig</code> from a <code>LayoutId</code>, without hand-building a dependent's <code>chanmap</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">config</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">eac3</span><span class="o">.</span><span class="n">access_unit_config_for_layout</span><span class="p">(</span><span class="n">ac3</span><span class="o">.</span><span class="n">eac3</span><span class="o">.</span><span class="n">LayoutId</span><span class="o">.</span><span class="n">k71</span><span class="p">,</span> <span class="n">bitrate_kbps</span><span class="o">=</span><span class="mi">448</span><span class="p">)</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">encoder</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">eac3</span><span class="o">.</span><span class="n">AccessUnitEncoder</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">unit</span> <span class="o">=</span> <span class="n">encoder</span><span class="o">.</span><span class="n">encode_access_unit</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>  <span class="c1"># channels: encoder.channel_count arrays</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">stream</span> <span class="o">+=</span> <span class="n">unit</span><span class="o">.</span><span class="n">bytes</span>
+</code></pre></div>
+<p><code>ac3.eac3.LayoutId</code> names the same eight layouts <code>ac3::plan::LayoutId</code> does (<code>kMono</code>, <code>kStereo</code>,
+<code>kDualMono</code>, <code>k51</code>, <code>k71</code>, <code>k512</code>, <code>k514</code>, <code>k714</code>); <code>dependent_bitrate_kbps</code> (default half of
+<code>bitrate_kbps</code>, applied to every dependent) overrides the per-dependent rate. Building an
+<code>AccessUnitConfig</code> by hand works too — <code>independent</code>/<code>dependents</code> are plain
+<code>ac3.eac3.FrameConfig</code>/<code>list[ac3.eac3.FrameConfig]</code> fields — for a layout <code>access_unit_config_for_layout</code>
+doesn't name, or full control over each substream's own fields.</p>
+<p><code>unit</code> is an <code>ac3.eac3.AccessUnit</code>: <code>.bytes</code> is the whole access unit, <code>.substream_bytes</code> is each
+substream's byte length (independent first, summing to <code>len(unit.bytes)</code>).</p>
+<p>Full program: <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_eac3.py"><code>examples/python/encode_eac3.py</code></a>.</p>
+<h2 id="e-ac-3-and-atmos-objects">E-AC-3 and Atmos objects<a class="headerlink" href="#e-ac-3-and-atmos-objects" title="Permanent link">&para;</a></h2>
+<p><code>ac3.Eac3Decoder.decode_substream</code>/<code>decode_access_unit</code> return <code>None</code> exactly when a frame's PCM
+is being held back for transient pre-noise processing (§3.7, see the C++ <code>Eac3Decoder</code> header) —
+call <code>.flush()</code> once at end-of-stream to collect anything still pending.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">encoder</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">AtmosEncoder</span><span class="p">(</span><span class="n">ac3</span><span class="o">.</span><span class="n">AtmosConfig</span><span class="p">(</span><span class="n">bitrate_kbps</span><span class="o">=</span><span class="mi">448</span><span class="p">),</span> <span class="n">objects</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">placements</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="n">ac3</span><span class="o">.</span><span class="n">ObjectPlacement</span><span class="p">(</span><span class="n">position</span><span class="o">=</span><span class="n">ac3</span><span class="o">.</span><span class="n">Position</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">z</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)),</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">ac3</span><span class="o">.</span><span class="n">ObjectPlacement</span><span class="p">(</span><span class="n">position</span><span class="o">=</span><span class="n">ac3</span><span class="o">.</span><span class="n">Position</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">z</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)),</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p">]</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="n">decoder</span> <span class="o">=</span> <span class="n">ac3</span><span class="o">.</span><span class="n">Eac3Decoder</span><span class="p">()</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">unit</span> <span class="o">=</span> <span class="n">encoder</span><span class="o">.</span><span class="n">encode_frame</span><span class="p">([</span><span class="n">object0_pcm</span><span class="p">,</span> <span class="n">object1_pcm</span><span class="p">],</span> <span class="n">placements</span><span class="p">)</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="n">decoded</span> <span class="o">=</span> <span class="n">decoder</span><span class="o">.</span><span class="n">decode_access_unit</span><span class="p">(</span><span class="n">unit</span><span class="p">)</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="k">if</span> <span class="n">decoded</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">decoded</span><span class="o">.</span><span class="n">object_metadata</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    <span class="k">for</span> <span class="n">obj</span><span class="p">,</span> <span class="n">audio</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">decoded</span><span class="o">.</span><span class="n">object_metadata</span><span class="o">.</span><span class="n">objects</span><span class="p">,</span> <span class="n">decoded</span><span class="o">.</span><span class="n">object_audio</span><span class="p">):</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">y</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">position</span><span class="o">.</span><span class="n">z</span><span class="p">,</span> <span class="n">obj</span><span class="o">.</span><span class="n">gain_db</span><span class="p">,</span> <span class="n">audio</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+</code></pre></div>
+<p><code>decoded.object_metadata</code> is the decoded OAMD (<code>ac3.DecodedProgram</code>: <code>.program</code> plus
+<code>.objects</code>, a list of <code>ac3.DynamicObject</code>); <code>decoded.object_audio</code> is JOC's reconstructed
+per-object audio, index-parallel to <code>object_metadata.objects</code> — same pairing convention as the
+C++ <code>DecodedSubstream</code>/<code>DecodedAccessUnit</code> structs.</p>
+<h2 id="errors">Errors<a class="headerlink" href="#errors" title="Permanent link">&para;</a></h2>
+<p>Every fallible call translates the C++ side's <code>std::expected</code> error branch into a Python
+exception rather than a Result-like return — idiomatic for a Python API, even though the C++
+core itself never throws (see <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>'s
+"no exceptions for stream-level failure" rule, which is a C++-core policy this binding layer
+does not need to import wholesale).</p>
+<table>
+<thead>
+<tr>
+<th>Exception</th>
+<th>Raised by</th>
+<th><code>.error</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ac3.Ac3EncodeError</code></td>
+<td><code>FrameEncoder.encode_frame</code>, <code>AtmosEncoder.encode_frame</code>, <code>ac3.eac3.FrameEncoder.encode_frame</code>, <code>ac3.eac3.AccessUnitEncoder.encode_access_unit</code></td>
+<td><code>ac3.FrameError</code></td>
+</tr>
+<tr>
+<td><code>ac3.Ac3DecodeError</code></td>
+<td><code>FrameDecoder.decode_frame</code>/<code>decode_frame_into</code>, <code>Eac3Decoder.decode_substream</code>/<code>decode_access_unit</code>/<code>decode_access_unit_into</code>, <code>ac3.split_frames</code>/<code>split_access_units</code>/<code>stream_bsid</code></td>
+<td><code>ac3.DecodeError</code></td>
+</tr>
+<tr>
+<td><code>ac3.Ac3ScanError</code></td>
+<td><code>ac3.scan</code>, <code>ac3.read_frame_header</code></td>
+<td><code>ac3.ScanError</code></td>
+</tr>
+</tbody>
+</table>
+<p>All three derive from <code>ac3.Ac3Error(RuntimeError)</code>. <code>ac3.FrameError</code> has no C++-side <code>describe()</code>
+(see <a href="../#conventions">docs/library/index.md</a>'s own note — some codec-level failures never
+got a text description on the C++ side either), so an <code>Ac3EncodeError</code>'s message is the
+enumerator's own name; <code>ac3.DecodeError</code>/<code>ac3.ScanError</code> both do (<code>ac3.describe</code>, overloaded for
+either), so an <code>Ac3DecodeError</code>/<code>Ac3ScanError</code>'s message is real spec-level text.</p>
+<p>A wrong-length or wrong-count channel array (not <code>ac3.SAMPLES_PER_FRAME</code> samples, or not
+<code>channel_count</code> of them) raises a plain <code>ValueError</code> instead — that is a Python-level usage
+error, not a codec-level failure the C++ side can report at all (short-changing <code>encode_frame</code> is
+documented as "a programming error, not a runtime one"). <code>decode_frame_into</code>/
+<code>decode_access_unit_into</code>'s <code>out</code> gets the same treatment for its own shape: too few buffers, a
+buffer that's too short, or one that isn't C-contiguous or writeable all raise <code>ValueError</code>; the
+wrong dtype raises <code>TypeError</code>. See <a href="#zero-copy-numpy-and-buffer-reuse">Zero-copy numpy</a> above.</p>
+<h2 id="containers-metering-qc-and-signing">Containers, metering, QC and signing<a class="headerlink" href="#containers-metering-qc-and-signing" title="Permanent link">&para;</a></h2>
+<p>Roadmap AP6's completeness pass added four submodules, each pybind11-direct over the same C++
+classes every other binding here wraps:</p>
+<ul>
+<li><strong><code>ac3forge.containers</code></strong> — the three container writers and the batch read side, bytes in /
+  bytes out: <code>mux_matroska</code>/<code>mux_mp4</code>/<code>mux_mpegts</code> over <code>MatroskaTrack</code>/<code>Mp4Track</code>/<code>TsTrack</code>
+  (kwargs constructors, the same convention every config class here uses), and
+  <code>demux_matroska</code>/<code>demux_mp4</code>/<code>demux_mpegts</code> bringing frames back out. <code>Mp4Track.codec_config</code>
+  takes the <code>dac3</code>/<code>dec3</code> payload <code>ac3forge.build_codec_config_box(stream)</code> produces — built
+  straight off the bitstream, never off whatever a source container declared, exactly like
+  <code>ac3cli mp4</code>. The incremental <code>Reader</code>/<code>Writer</code> classes and the fragmented-MP4/HLS/DASH
+  surface stay C++-only for now — a boundary, not a silent gap.</li>
+<li><strong><code>ac3forge.meta</code></strong> — <code>LoudnessMeter</code> (BS.1770; every gated measurement is <code>None</code> until it
+  can mean anything), the cited <code>qc_preset()</code> table, and <code>evaluate_qc_gate()</code> — <code>ac3cli qc</code>'s
+  own machinery, callable from a notebook.</li>
+<li><strong><code>ac3forge.signing</code></strong> — <code>SigningKey</code> (base64 or raw, the single decode every front end
+  shares), <code>sign_atmos_stream</code> (returns a signed copy — Python bytes are immutable),
+  <code>has_authenticity_tag</code> and <code>verify_atmos_stream</code>.</li>
+<li><strong><code>Eac3Decoder</code> is a context manager</strong> — <code>with ac3forge.Eac3Decoder() as d:</code> drains the §3.7
+  hold-back on scope exit (discarding it; call <code>flush()</code> yourself to keep it).</li>
+</ul>
+<p>The hand-written stubs in <code>__init__.pyi</code> cover all of it, and wheels.yml's <code>stubtest</code> step
+holds them to the compiled module on every push.</p>
+<h2 id="what-isnt-exposed">What isn't exposed<a class="headerlink" href="#what-isnt-exposed" title="Permanent link">&para;</a></h2>
+<p><code>FrameEncoder</code>/<code>AtmosEncoder</code>'s self-check <code>trace</code> hook (<code>ac3::verify::FrameTrace</code>) and
+<code>AtmosEncoder</code>'s <code>bed()</code>/<code>parameters()</code> introspection accessors are internal verification
+tooling, not part of this binding's surface — the DECODE-side <code>trace</code>/<code>eac3_trace</code> on
+<code>DecoderConfig</code> above is a different thing (roadmap AP12's research export, not the
+encoder/decoder mirror self-check <code>ac3::verify::MirrorEncoder</code>/<code>Eac3MirrorEncoder</code> drive
+in-repo) and is exposed. <code>DecodedAccessUnit</code>/<code>DecodedSubstream</code>'s full Table E2.5 channel-map
+machinery (<code>chanmap</code>, <code>location_map()</code>, <code>layout</code>) is likewise not exposed beyond the convenience
+<code>channel_labels</code> list above — deliberately unsupported for now, the same "say so and say why"
+convention <code>CONTRIBUTING.md</code> asks of the C++ side itself, not a silent gap.</p>
+<p><code>ac3.eac3.FrameConfig</code>'s <code>trace</code> hook is the same ENCODE-side omission as <code>FrameEncoder</code>'s above -
+<code>ac3.verify.Eac3AccessUnitTrace</code> is decode-only from Python too, same as its AC-3 counterpart. Its
+<code>mixmdate</code>/<code>infomdat</code> metadata groups, <code>vbr</code>/ABR and <code>search</code> are unmirrored too, but those <strong>are</strong>
+gaps rather than decisions (see <a href="#encoding-e-ac-3">Encoding E-AC-3</a> above) — <code>AccessUnitConfig</code> is
+also missing <code>additional</code> (further independent programmes, I1-I7).</p>
+<p>There is no <code>Eac3Decoder.decode_substream_into</code> — only the two forms that assemble a full
+programme (<code>FrameDecoder.decode_frame_into</code>, <code>Eac3Decoder.decode_access_unit_into</code>) have a
+caller-buffer form, because that is the only pair <code>ac3::FrameDecoder</code>/<code>ac3::Eac3Decoder</code>
+themselves expose one for (see <a href="#zero-copy-numpy-and-buffer-reuse">Zero-copy numpy</a> above); a
+single substream's own PCM is always freshly allocated.</p>
+<p><code>ac3::oba::ObjectScene</code> (the object-scene timeline behind <code>ac3cli atmos-path</code> and the GUI's
+export - see <a href="../spatial-and-atmos/#the-scene-ac3obaobjectscene">Spatial &amp; Atmos objects</a>) is not
+here either, and that is a decision rather than an omission - but no longer the shape-instability
+one it used to be. <code>SceneCursor</code> existed precisely because the seam a live position source would
+plug into wasn't finished; roadmap <code>UX4</code>'s OSC wire form
+(<a href="../spatial-and-atmos/#the-osc-wire-form"><code>ac3/oba/scene_osc.hpp</code></a>) has since landed as a sibling
+header, and it changed nothing about <code>scene.hpp</code>: no method on <code>ObjectScene</code>/<code>SceneCursor</code> gained
+or lost a parameter, nothing was added to either class. The shape has settled. What is left is a
+plain "not done yet": this surface is a candidate for the coming API freeze, where an
+experimental type would be a lasting commitment, and exposing half of it - the serialisation
+without the type, say - would still be worse than exposing none, because a caller would get a
+scene it could load and not evaluate. Read and write the JSON form from the host language and
+hand the resulting placements to the encoder entry points above until it is exposed properly.</p>
+<hr />
+<p>See also: <a href="../encoding-ac3/">Encoding AC-3</a>, <a href="../decoding/">Decoding</a>,
+<a href="../spatial-and-atmos/">Spatial &amp; Atmos objects</a> — the C++ APIs these bindings wrap;
+<a href="../../releasing/#publishing-to-pypi">docs/releasing.md</a> — how a tagged release reaches PyPI.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
