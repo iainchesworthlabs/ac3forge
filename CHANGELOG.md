@@ -84,6 +84,30 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **Crucible can be operated without a mouse, and says what it is doing to a screen reader**
+  ([Keyboard and screen readers](docs/crucible/accessibility.md)). Every button, checkbox, bed
+  chip, the header pill and the Advanced disclosure are tab stops that Space and Return press;
+  a segmented choice is one tab stop with Left, Right, Home and End choosing inside it; the
+  applications list walks with Up and Down and places with Enter; and the room is one focus
+  scope whose arrows move whichever application is selected — 0.05 of the room per press, 0.01
+  with Shift, 0.25 with Ctrl, Page Up and Page Down for height, Home to recentre, Delete to
+  send it back to the bed, plus and minus for size — the same keys whichever picture is on
+  screen. `Ctrl+1`, `Ctrl+2` and `Ctrl+3` switch pages, F1 opens About, Escape closes a dialog.
+  Whatever holds the keyboard draws a ring just outside its own border. Room markers,
+  application rows, bed chips, endpoint rows and both buttons on each of them, the signal
+  path's stations, the combo boxes and the text fields carry a role, a name and a description
+  built from the same live values the window draws, and changes worth hearing — the engine
+  starting or refusing, where applications play, what you hear it on, the signing key, and
+  every keyboard move in the room — are announced once each and written into the diagnostics
+  file as well. The palettes were re-derived so muted text, the accent used as ink, control
+  borders and the focus ring meet the WCAG floors in all three palettes and both modes; the one
+  number that does not reach 4.5:1, the label on a primary button's accent fill, is stated
+  plainly in the guide. **Settings → Appearance → Text size** is 100% (the default, and the size
+  the window is drawn at), 125%, 150%, 175% or System, which reads the point size the desktop
+  reports; every size in the window follows it and the controls grow rather than clip. Building
+  the window now needs Qt 6.8 or later, because that is where `Accessible.announce` arrives.
+  No screen reader has been run against the window by hand yet.
+
 - **Applications have their own icons on Linux**, in the rail, the bed chips and both room
   views. The identity comes from PipeWire: `application.icon-name`, `application.process.binary`
   and, for a sandboxed application, its portal application id. All three live on an object's

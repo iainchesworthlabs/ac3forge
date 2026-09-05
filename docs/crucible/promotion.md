@@ -675,7 +675,7 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     `.deb`'s name, and uploads both as a run artifact (not a release asset: the release legs
     build against ALSA and cannot produce it, which is the next step for `docs/releasing.md`'s
     table). The fleet's Linux image is Ubuntu 26.04 with Qt 6.10; when `decide-runner` falls
-    back to GitHub's 24.04 and its Qt 6.4, below the window's 6.5, the step warns by name and
+    back to GitHub's 24.04 and its Qt 6.4, below the window's 6.8, the step warns by name and
     skips the window half rather than fail the leg for something unrelated to the change.
 
 ### Phase 5: macOS
@@ -840,16 +840,103 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     No floor is set. `coverage_report.sh` gates the library per component, and the same is worth
     doing here once a second measurement says which of these numbers are stable.
 
+!!! success "Done 2026-09-05: the accessibility pass"
+    The window can be operated without a mouse, and what it offers a screen reader is asserted
+    rather than assumed. Every hand-drawn control is a tab stop that Space and Return press
+    (`CrucibleButton`, `CrucibleCheck`, `BedChip`, the header pill, the Advanced disclosure);
+    the shared `SegmentedControl` is one tab stop with Left/Right/Home/End choosing inside it,
+    the way a radio group behaves elsewhere. A new `ui/qml/RoomKeys.qml`, a `FocusScope` around
+    both room views, moves whichever application is selected: arrows across and front to back
+    (0.05, Shift 0.01, Ctrl 0.25), Page Up and Page Down for height, Home to recentre, Enter to
+    place one that is in the bed, Delete to return it, plus and minus for size — the same keys
+    whichever picture is on screen, because nothing in it asks which. `Ctrl+1/2/3` switch pages,
+    F1 opens About, Escape closes a dialog. A new shared `apps/gui/qml/FocusRing.qml` draws a
+    two-pixel accent-derived ring outside a control's own border while it has the keyboard;
+    clicking a button does not take focus, so a mouse user sees no rings, and clicking a row, a
+    marker or a chip does, because that is where the arrows continue from.
+
+    Names: markers, application rows, bed chips, endpoint rows and both buttons on each of them,
+    the signal path's three stations, the two combo boxes and the pin, the driver-folder and
+    silent-device fields, the applications list and the room scope all carry a role, a name and a
+    description composed from the same live property the view draws — never a second, typed copy.
+    Position words moved into a `RoomWords` singleton the card, the rows, the markers and the
+    announcements share. An `A11y` singleton and one transition hook in `Main.qml` turn engine
+    state, the hearing line, the signing status, the default output and driver messages into one
+    sentence each, compared with the last one said for that fact so a 60 ms poll repeats nothing,
+    and send it both to `Accessible.announce` and, through a new `CrucibleController::note`, into
+    the diagnostics ring, so a report carries what the window said as well as what the engine did.
+
+    Contrast and text size: `Theme` gained `luminance`/`contrast` (compositing the foreground's
+    alpha over the background, which is what a reader sees — measuring the unmixed token reports
+    about 15:1 for a colour that reads at 5), `accentInk`, focus-ring tokens, `textMuted` at 68%
+    and `divider` at 50%, and `accentText` is now whichever end of the palette reads better on
+    the accent. Every literal `font.pixelSize` under `apps/crucible/ui/qml` is a `Theme` token
+    times a new `Theme.fontScale`, and the header, footer, buttons, chips, fields and combo boxes
+    derive their heights from their labels; the exceptions are the three Texts inside the 3D
+    scene graph, which are scene units and say so. A Text size setting (100/125/150/175/System,
+    `appearance/textScale`) drives the scale. **100% is the default.** "System" reads the point
+    size the platform theme reports and counts 9 pt as 100%, which is the base size on Windows
+    and what its own Text size setting scales; GNOME, KDE and Ubuntu report 10 or 11 pt with
+    nothing about text size touched, so System starts the window 11 to 22% larger there. Making
+    it the default would have changed the layout on the platform this window was verified on,
+    silently — so it is a choice a person makes, the setting's note says what it reads, and the
+    default draws the window at the size the mockups and the `--shot` captures pin.
+
+    **One number does not reach AA, and it is a design decision on the record.** The label on a
+    primary button's accent fill is the better of the two ends of the palette on that accent:
+    5.7-8.6:1 in the dark modes and in ink light, but 3.95:1 in signal light and 4.22:1 in
+    console light, above the 3:1 floor for a control and below the 4.5:1 one for small text. The
+    fill stays the design system's colour; the alternative, filling the button with `accentInk`
+    and keeping the pale label, reaches 4.5:1 and darkens the button instead. `tst_accessibility`
+    asserts ">= 3, and the better of the two", `docs/crucible/accessibility.md` states both
+    numbers plainly, and `apps/gui` inherits whichever way this goes, so the design owner's
+    answer belongs here before it merges.
+
+    Qt floor raised to 6.8 (`Accessible.announce` is `Q_REVISION(6, 8)`) in all four
+    `find_package` calls, `qt_standard_project_setup`, the tests' `find_package`, `install.md`
+    and the CI warning; every verified platform is already above it (6.8 on the Pi, 6.10 on
+    Windows and the fleet). The harness gained a scripted machine: a `TestServices` singleton
+    over the engine's existing fakes and a plain C++ `set_test_services` on the controller,
+    reachable from neither QML nor the shipped binary, so the keys-only room flow runs where
+    there is no audio session. A null seam restores the platform's own and `TestServices.clear()`
+    hands the machine back, which both suites do in `cleanup()`: the default device and the
+    silent device are held by the controller rather than passed to the engine, and `movesDefault`
+    and `silentDeviceFromPackage` are CONSTANT properties that never re-read after a swap.
+
+    Two suites carry it: `tst_keyboard.qml` (the keys-only flows, the tab order, the focus ring,
+    the text scale) and `tst_accessibility.qml` (names, roles and descriptions from live data,
+    the announcer, and the palette contrast floors for signal, ink and console in both modes).
+    One trap is worth keeping: a `ListView` writes its own `currentIndex` back to 0 whenever the
+    value of its model changes, and the controller replaces the applications list on every poll
+    where the membership or the sound-first order moved. With the row leading the selection, an
+    application starting, exiting or going quiet handed the room's arrow keys to whatever had
+    floated to the top of the rail. The selection leads now, and the row follows it.
+
+    **Verified:** by the two suites, which CI runs on the Windows legs and the Linux LLVM leg
+    (`ctest -L crucible-ui`, offscreen and `QT_QUICK_BACKEND=software`). **Not verified:** no
+    screen reader has been run against the window by hand — neither NVDA on Windows nor Orca on
+    the Pi — so the suites prove the window offers the right names, roles and announcements and
+    not that a reader speaks them as intended; and no `--shot` capture has been taken at 150% to
+    confirm nothing clips at the largest text size (the default draws the window unchanged).
+    **Left for later:** the six `.ts` catalogues do not carry this pass's new strings and land
+    with the translation review; the 3D camera's orbit and zoom and moving one side of a split
+    pair on its own stay mouse-only, and `accessibility.md` says so; and the Signal path page
+    still names a platform in three sentences a reader now hears out loud ("the Windows default
+    output", "Headphones (Windows Spatial Sound)", "System follows Windows"), which wants the
+    same controller-property treatment `fullscreenRuleReason` and `silentDeviceAdvice` already
+    have.
+
 !!! note "Still open in Phase 6"
-    Two of the five items are not done. The **review of the six mechanically translated
-    languages** is a pass of its own: the catalogues are two commits stale against the source,
-    fifteen current strings have no entry and sixty-five rename-era entries sit as vanished, and
-    the window has no `LayoutMirroring` root, so Arabic, Hebrew and Yiddish flip their text and
-    keep a left-to-right layout. The **accessibility pass** has not started: nothing in the
-    window is a tab stop, there is no focus indicator, the room's objects cannot be placed from
-    the keyboard, and the light palettes fail the AA contrast floor for muted text. Both are
-    planned against readings of the code; the translation gate lands last, after every item that
-    adds a string.
+    One of the five items is not done. The **review of the six mechanically translated
+    languages** is a pass of its own: the catalogues are stale against the source, fifteen
+    current strings have no entry and sixty-five rename-era entries sit as vanished, and the
+    window has no `LayoutMirroring` root, so Arabic, Hebrew and Yiddish flip their text and keep
+    a left-to-right layout. It lands last, after every item that adds a string - and the
+    accessibility pass above added a good many.
+
+    No screen reader has been run against this window by anyone. The suites assert that every
+    role, name and description exists and follows the live data; whether NVDA or Orca speaks
+    them in a sensible order is a thing a person has to sit down and listen to.
 
     Three things wait on a machine rather than on work here: the Linux create-on-send wait needs
     a Pi run to confirm the node appears inside it, the application icons need the Pi to say
