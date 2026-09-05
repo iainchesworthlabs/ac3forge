@@ -3,8 +3,11 @@
 // only stands the QML up, applies the language, and offers one debugging
 // aid: `--shot <path.png>` grabs the window after it has settled and quits,
 // the way ac3gui's smoke modes do, so a headless check can see the screen;
-// `--page settings` (or output, room) picks the page it shows first, and
-// `--place Name=x,y,z` positions a listed application before the capture.
+// `--page settings` (or output, room, room3d, about, firstrun) picks the
+// page it shows first, and `--place Name=x,y,z` positions a listed
+// application before the capture. A `--shot` run never shows the first-run
+// dialog unless `--page firstrun` asked for it, so a capture against a
+// fresh settings store is clean.
 
 #include <QFont>
 #include <QFontDatabase>
@@ -66,6 +69,11 @@ void migrate_demo_settings() {
     for (const auto& key : keys) {
         current.setValue(key, previous.value(key));
     }
+    // A marker that the copy happened, for the first-run dialog's one
+    // sentence that says so. The dialog's own acknowledgement cannot have
+    // been copied: the demo never wrote one, so a migrated machine sees the
+    // explanation once too.
+    current.setValue(QStringLiteral("migration/fromDesktopAtmos"), true);
     current.sync();
 }
 
@@ -182,6 +190,17 @@ int main(int argc, char** argv) {
     engine.loadFromModule("Ac3ForgeCrucible", "Main");
     if (engine.rootObjects().isEmpty()) {
         return 1;
+    }
+    // A capture never shows the first-run dialog it did not ask for:
+    // Main.qml reads this one event-loop turn later, after main() has had
+    // its say. `--page firstrun` opens the dialog over the Room page.
+    if (!shot_path.isEmpty()) {
+        engine.rootObjects().first()->setProperty("suppressFirstRun", true);
+    }
+    if (page == QLatin1String("firstrun")) {
+        engine.rootObjects().first()->setProperty("page", QStringLiteral("room"));
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openFirstRun");
+        page.clear();
     }
     if (page == QLatin1String("room3d")) {  // the room with its 3D view up
         engine.rootObjects().first()->setProperty("roomThreeD", true);

@@ -100,8 +100,8 @@ Item {
                 text: root.appsOnSilent
                     ? qsTr("Restore %1").arg(CrucibleController.previousDefaultName.length ? CrucibleController.previousDefaultName : qsTr("the previous output"))
                     : qsTr("Send applications to %1").arg(CrucibleController.nullSinkName)
-                enabled: root.appsOnSilent ? CrucibleController.previousDefaultName.length > 0 : root.silentPresent
-                primary: !root.appsOnSilent && root.silentPresent
+                enabled: root.appsOnSilent ? CrucibleController.previousDefaultName.length > 0 : (root.silentPresent || CrucibleController.silentDeviceCanCreate)
+                primary: !root.appsOnSilent && (root.silentPresent || CrucibleController.silentDeviceCanCreate)
                 onClicked: root.appsOnSilent ? CrucibleController.restoreDefault() : CrucibleController.moveDefaultToNullSink()
             }
             Text { Layout.fillWidth: true; visible: CrucibleController.defaultMessage.length > 0; text: CrucibleController.defaultMessage; color: Theme.accent; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }

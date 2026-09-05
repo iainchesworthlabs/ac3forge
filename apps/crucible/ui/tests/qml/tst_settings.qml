@@ -32,6 +32,7 @@ TestCase {
         CrucibleController.moveDefaultOnLaunch = false;
         CrucibleController.driverDir = "";
         CrucibleController.clearKey();
+        CrucibleController.firstRunAcknowledged = false;
     }
 
     function test_defaults() {
@@ -45,6 +46,7 @@ TestCase {
         compare(CrucibleController.keepRunningWhenClosed, true);
         compare(CrucibleController.moveDefaultOnLaunch, false);
         compare(CrucibleController.keyPath, "");
+        compare(CrucibleController.firstRunAcknowledged, false);
     }
 
     function test_settingsRoundTripAndNotify() {
@@ -59,6 +61,7 @@ TestCase {
         CrucibleController.moveDefaultOnLaunch = true;
         CrucibleController.pinned = "stereo";
         CrucibleController.splitStereo = true;
+        CrucibleController.firstRunAcknowledged = true;
         compare(CrucibleController.lowLatency, true);
         compare(CrucibleController.bypassCodec, true);
         compare(CrucibleController.splitStereo, true);
@@ -69,7 +72,8 @@ TestCase {
         compare(CrucibleController.keepRunningWhenClosed, false);
         compare(CrucibleController.moveDefaultOnLaunch, true);
         compare(CrucibleController.pinned, "stereo");
-        verify(spy.count >= 9, "one settingsChanged per write, got " + spy.count);
+        compare(CrucibleController.firstRunAcknowledged, true);
+        verify(spy.count >= 10, "one settingsChanged per write, got " + spy.count);
         // Writing the same value again is not a change.
         const before = spy.count;
         CrucibleController.bitrate = 640;
@@ -102,6 +106,10 @@ TestCase {
         // and the property says which.
         verify(CrucibleController.driverDir.length > 0);
         compare(CrucibleController.driverBusy, false);
+        // The two facts the first-run dialog shapes itself around are
+        // booleans on every platform, whatever they say on this one.
+        verify(typeof CrucibleController.movesDefault === "boolean");
+        verify(typeof CrucibleController.silentDeviceCanCreate === "boolean");
     }
 
     function test_driverButtonsRefuseWithoutAPackage() {

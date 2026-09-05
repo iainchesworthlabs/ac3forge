@@ -236,7 +236,7 @@ Flickable {
                             spacing: Theme.space2
                             CrucibleButton {
                                 text: CrucibleController.defaultIsNullSink ? qsTr("Restore %1").arg(CrucibleController.previousDefaultName.length ? CrucibleController.previousDefaultName : qsTr("the previous output")) : qsTr("Send applications to %1").arg(CrucibleController.nullSinkName)
-                                enabled: CrucibleController.defaultIsNullSink ? CrucibleController.previousDefaultName.length > 0 : CrucibleController.nullSinkPresent
+                                enabled: CrucibleController.defaultIsNullSink ? CrucibleController.previousDefaultName.length > 0 : (CrucibleController.nullSinkPresent || CrucibleController.silentDeviceCanCreate)
                                 onClicked: CrucibleController.defaultIsNullSink ? CrucibleController.restoreDefault() : CrucibleController.moveDefaultToNullSink()
                             }
                             CrucibleButton { text: qsTr("Open Sound settings"); onClicked: CrucibleController.openSoundSettings() }

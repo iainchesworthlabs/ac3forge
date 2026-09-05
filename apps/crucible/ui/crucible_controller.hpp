@@ -92,6 +92,15 @@ class CrucibleController : public QObject {
     // Version, commit and build target, for About.
     Q_PROPERTY(QString versionDetails READ versionDetails CONSTANT)
     Q_PROPERTY(bool moveDefaultOnLaunch READ moveDefaultOnLaunch WRITE setMoveDefaultOnLaunch NOTIFY settingsChanged)
+    // Whether the first-run explanation of what this application does to the
+    // sound settings has been seen (FirstRunDialog.qml). Stored as the
+    // version of the explanation that was acknowledged
+    // (firstRun/acknowledgedVersion), so a change to what it says can show
+    // it once more.
+    Q_PROPERTY(bool firstRunAcknowledged READ firstRunAcknowledged WRITE setFirstRunAcknowledged NOTIFY settingsChanged)
+    // Whether this store was copied from the demo's on the first launch
+    // (ui/main.cpp), for the one sentence in the first-run dialog that says so.
+    Q_PROPERTY(bool migratedFromDemo READ migratedFromDemo CONSTANT)
 
     // --- the default output ---------------------------------------------------
     Q_PROPERTY(QString defaultOutputName READ defaultOutputName NOTIFY defaultChanged)
@@ -99,6 +108,11 @@ class CrucibleController : public QObject {
     Q_PROPERTY(QString previousDefaultName READ previousDefaultName NOTIFY defaultChanged)
     Q_PROPERTY(bool nullSinkPresent READ nullSinkPresent NOTIFY defaultChanged)
     Q_PROPERTY(QString defaultMessage READ defaultMessage NOTIFY defaultChanged)
+    // Whether moving the system default output is part of this platform's
+    // model at all (DefaultDevice::moves_default). False where each
+    // application is silenced at its tap instead, and the views drop the
+    // move, the restore and the silent device with it.
+    Q_PROPERTY(bool movesDefault READ movesDefault CONSTANT)
 
     // --- the null-sink driver (Phase 4) ------------------------------------
     // The folder holding install.ps1, remove.ps1 and the built package; the
@@ -122,6 +136,11 @@ class CrucibleController : public QObject {
     // a folder to point at) or made by this application itself; the
     // settings page shows the driver tools only in the first case.
     Q_PROPERTY(bool silentDeviceFromPackage READ silentDeviceFromPackage CONSTANT)
+    // Whether this application can make the silent device itself, right
+    // now: true where the device is the application's own and it is not
+    // there yet, never where it is an installed package (an elevated install
+    // stays an explicit Settings action). Send applications creates it first.
+    Q_PROPERTY(bool silentDeviceCanCreate READ silentDeviceCanCreate NOTIFY driverChanged)
     // Whether this build carries the room's 3D view (Qt Quick 3D found at
     // configure time; the page hides its toggle otherwise).
     Q_PROPERTY(bool has3D READ has3D CONSTANT)
@@ -181,12 +200,16 @@ public:
     void setKeepRunningWhenClosed(bool on);
     [[nodiscard]] bool moveDefaultOnLaunch() const;
     void setMoveDefaultOnLaunch(bool on);
+    [[nodiscard]] bool firstRunAcknowledged() const;
+    void setFirstRunAcknowledged(bool on);
+    [[nodiscard]] bool migratedFromDemo() const;
 
     [[nodiscard]] QString defaultOutputName() const { return default_name_; }
     [[nodiscard]] bool defaultIsNullSink() const { return default_is_null_sink_; }
     [[nodiscard]] QString previousDefaultName() const { return previous_default_name_; }
     [[nodiscard]] bool nullSinkPresent() const { return null_sink_present_; }
     [[nodiscard]] QString defaultMessage() const { return default_message_; }
+    [[nodiscard]] bool movesDefault() const { return default_device_->moves_default(); }
 
     [[nodiscard]] QString driverDir() const;
     void setDriverDir(const QString& dir);
@@ -198,6 +221,7 @@ public:
     [[nodiscard]] bool silentDeviceNeeded() const { return silent_state_.needed; }
     [[nodiscard]] QString silentDeviceAdvice() const;
     [[nodiscard]] bool silentDeviceFromPackage() const;
+    [[nodiscard]] bool silentDeviceCanCreate() const;
     [[nodiscard]] static bool has3D() { return AC3DESK_QUICK3D != 0; }
     // Make any probed endpoint the Windows default output (the same policy
     // call the silent-device switch uses), by its endpoint id.
@@ -217,6 +241,11 @@ public:
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
+    // stop(), then put the default output back where this application moved
+    // it from, then end the process: what the tray's Quit and the window's
+    // close do when it is not staying in the tray. stop() alone never
+    // touches the default, so the test suites can call it freely.
+    Q_INVOKABLE void quit();
     Q_INVOKABLE void position(int app, double x, double y, double z);
     Q_INVOKABLE void unposition(int app);
     Q_INVOKABLE void setSplit(int app, bool split);
@@ -261,6 +290,11 @@ private:
     void poll_driver();
     [[nodiscard]] ac3::crucible::ReportFacts build_report_facts() const;
     [[nodiscard]] ac3::crucible::Secrets secrets() const;
+    // The restore behind quit() and QCoreApplication::aboutToQuit: idempotent
+    // through moved_default_by_us_, and it never opens the sound settings on
+    // a refusal (a window opening as the application exits is worse than a
+    // logged failure).
+    void restore_on_quit();
 
     // The machine, behind the engine's seams: the system default output
     // and the silent device applications play into. Both are resolved
@@ -288,6 +322,9 @@ private:
     std::string previous_default_id_;
     bool default_is_null_sink_ = false;
     bool null_sink_present_ = false;
+    // Whether this application moved the default to the silent device
+    // itself, so quit puts back only what it changed.
+    bool moved_default_by_us_ = false;
     std::uint64_t last_endpoint_stamp_ = 0;
 
     std::shared_ptr<ac3::crucible::VirtualDevice> virtual_device_;

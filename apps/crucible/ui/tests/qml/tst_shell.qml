@@ -21,6 +21,9 @@ TestCase {
         CrucibleController.palette = "signal";
         CrucibleController.keepRunningWhenClosed = true;
         CrucibleController.moveDefaultOnLaunch = false;
+        // Seen already, so the first-run dialog does not sit over the shell
+        // cases; tst_firstrun.qml is where it is exercised.
+        CrucibleController.firstRunAcknowledged = true;
     }
 
     function cleanup() {
@@ -92,5 +95,18 @@ TestCase {
         verify(report.indexOf("signing: ") >= 0, "no signing note: " + report);
         // The status line that names the key file never reaches the report.
         verify(report.indexOf("loaded from") < 0, report);
+    function test_stopNeverTouchesTheDefault() {
+        // quit() restores the default output this application moved and then
+        // ends the process, which no test can call. The invariant it rests
+        // on is asserted through stop() instead: what every suite calls in
+        // init() and cleanup() must never move a developer's own default output.
+        const window = createTemporaryObject(shell, testCase);
+        verify(window);
+        tryCompare(window, "visible", true);
+        const wasNullSink = CrucibleController.defaultIsNullSink;
+        const name = CrucibleController.defaultOutputName;
+        CrucibleController.stop();
+        compare(CrucibleController.defaultIsNullSink, wasNullSink);
+        compare(CrucibleController.defaultOutputName, name);
     }
 }
