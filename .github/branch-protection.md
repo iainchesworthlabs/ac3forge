@@ -140,16 +140,17 @@ alerts) was created 2026-08-24 to block merges on new scanner findings,
 analysis workflows moved to a nightly schedule. Why it was disabled: a
 `code_scanning` rule waits for every analysis category the target branch has
 previously seen, and `main` carries four CodeQL categories - `cpp`,
-`python`, `javascript-typescript` and `java-kotlin` - of which the last is
-produced only by `_build.yml`'s `build-android` job, which `ci.yml` gates
-behind `changes.outputs.code == 'true'`; `codeql.yml` and
-`msvc-analysis.yml` also `paths-ignore`d docs at the time. A docs-only PR
+`python`, `javascript-typescript` and `java-kotlin` - and at the time the
+last of those was produced only by `_build.yml`'s `build-android` job,
+which `ci.yml` gates behind `changes.outputs.code == 'true'`; `codeql.yml`
+and `msvc-analysis.yml` also `paths-ignore`d docs then. A docs-only PR
 therefore could never satisfy the rule and sat un-mergeable forever: no
 docs-only PR merged between the ruleset's creation and its disabling.
 
-Why it must not come back: since 2026-09 the `cpp`, `python` and
-`javascript-typescript` CodeQL categories and the PREfast analysis are
-produced only by nightly runs on `refs/heads/main`, never on a PR merge
+Why it must not come back: since 2026-09 every CodeQL category - `cpp`,
+`python`, `javascript-typescript` and `java-kotlin`, the last having moved
+out of `build-android` into the nightly matrix - and the PREfast analysis
+are produced only by nightly runs on `refs/heads/main`, never on a PR merge
 commit or a merge-queue ref. A `code_scanning` rule would wait for an
 analysis of the PR merge commit in every category `main` has ever seen, so
 re-creating it would block every PR - docs-only or not - on "Code scanning
@@ -159,15 +160,18 @@ this repo has deliberately moved away from.
 
 ## Nightly analysis and other visible-only scanners
 
-`codeql.yml` and `msvc-analysis.yml` (MSVC Code Analysis, `/analyze`) run
-nightly against `main` - 02:17 and 02:23 UTC, see
-`docs/ci-self-hosted-runners.md` "Nightly analysis window" - and neither
-reports on a PR at all. Their alerts land in **Security → Code scanning**
-against `refs/heads/main`; because nothing reliably notifies anyone about a
-new default-branch alert, each workflow's `surface` job fails on alerts created
-since the previous nightly and opens or refreshes a `nightly-analysis`
-issue (one per engine, via `.github/actions/report-nightly-failure`). Close
-the issue once the findings are fixed or dismissed with a justification.
+`codeql.yml`, `msvc-analysis.yml` (MSVC Code Analysis, `/analyze`),
+`static-analysis.yml` (clang-tidy) and `sonarcloud.yml` run nightly against
+`main` - 02:17 to 02:35 UTC, see `docs/ci-self-hosted-runners.md` "Nightly
+analysis window" - and none of them reports on a PR at all. The first three
+put their alerts in **Security → Code scanning** against `refs/heads/main`;
+because nothing reliably notifies anyone about a new default-branch alert,
+each workflow fails on findings since the previous nightly and opens or
+refreshes a `nightly-analysis` issue (one per engine, via
+`.github/actions/report-nightly-failure`). Close the issue once the findings
+are fixed or dismissed with a justification. SonarCloud is the exception to
+the Security-tab part: its findings live in its own dashboard, and what fails
+the job is its quality gate on new code.
 
 `osv-scanner.yml`, `zizmor.yml` and `scorecard.yml` upload SARIF to
 **Security → Code scanning** but don't fail PR checks - triage their alerts
