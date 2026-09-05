@@ -76,10 +76,16 @@ TestCase {
         compare(monogram.text, "No");
     }
 
-    function test_sizesFollowTheRequest() {
+    // One identity at two of the sizes the window asks for: the rail's 28
+    // and the 3D room's 160, which share a provider cache entry. Both reach
+    // the picture and each item keeps its own size. What size image the
+    // provider handed each of them is not readable from here - an AppIcon's
+    // Image fills the item whatever the picture's size - so this says that
+    // one identity serves two consumers, and nothing about the picture.
+    // That the provider caches the picture unscaled and scales per request
+    // is stated where it is done, not asserted here.
+    function test_oneIdentityAtTwoSizes() {
         if (!isLinux) skip("the icon theme is the Linux provider's");
-        // The rail's size and the 3D room's, from one identity: the fixture
-        // theme carries 32 and 256, and each request is scaled to its own.
         const small = makeIcon({ name: "Fixture", iconName: "crucible-fixture-icon", size: 28 });
         const large = makeIcon({ name: "Fixture", iconName: "crucible-fixture-icon", size: 160 });
         expectIcon(small, "the 28-pixel request");

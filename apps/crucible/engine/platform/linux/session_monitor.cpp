@@ -103,9 +103,20 @@ public:
             auto& app = apps[stream.pid];
             if (app.app != 0) {
                 // A second stream from the same application: one entry, and
-                // the tap takes the process, not the stream. Its identity
-                // still back-fills what the first stream did not carry.
-                facts_for(stream.pid, &stream);
+                // the tap takes the process, not the stream. What this
+                // stream carries and the first did not fills both the cache
+                // and the entry already built, so an icon that arrives with
+                // the second stream shows on this refresh, not the next.
+                const Facts& more = facts_for(stream.pid, &stream);
+                if (app.icon_name.empty()) {
+                    app.icon_name = more.icon_name;
+                }
+                if (app.app_id.empty()) {
+                    app.app_id = more.app_id;
+                }
+                if (app.image_path.empty()) {
+                    app.image_path = more.exe.empty() ? more.binary : more.exe;
+                }
                 continue;
             }
             const Facts& facts = facts_for(stream.pid, &stream);

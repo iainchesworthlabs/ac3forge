@@ -71,19 +71,29 @@ QImage AppIconProvider::requestImage(const QString& id, QSize* size, const QSize
     // cannot contain a raw '?'.
     const QString path = QUrl::fromPercentEncoding(id.section(QLatin1Char('?'), 0, 0).toUtf8());
     const bool large = requested_size.width() > 20 || requested_size.height() > 20 || !requested_size.isValid();
+    // What is kept under the key is the icon the shell gave, at the size it
+    // gave it, and never a copy scaled to one caller's request: the rail
+    // asks for 28 pixels and the 3D room for 160 against this one key, and
+    // whichever arrived second would be handed the first one's scaled image.
+    // Scaling happens per request, below; the Linux provider is written the
+    // same way.
     const QString key = path + (large ? QStringLiteral("|L") : QStringLiteral("|S"));
+    QImage image;
+    bool cached = false;
     {
         const QMutexLocker lock(&mutex_);
         if (const auto it = cache_.constFind(key); it != cache_.constEnd()) {
-            if (size != nullptr) {
-                *size = it->size();
-            }
-            return *it;
+            image = *it;
+            cached = true;  // a cached null is an answer: the monogram
         }
     }
-    QImage image = path.isEmpty() ? QImage{} : own_icon(path, large ? 256 : 32);
-    if (image.isNull() && !path.isEmpty()) {
-        image = shell_icon(path, large);
+    if (!cached) {
+        image = path.isEmpty() ? QImage{} : own_icon(path, large ? 256 : 32);
+        if (image.isNull() && !path.isEmpty()) {
+            image = shell_icon(path, large);
+        }
+        const QMutexLocker lock(&mutex_);
+        cache_.insert(key, image);
     }
     if (!image.isNull() && requested_size.isValid()) {
         image = image.scaled(requested_size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -91,8 +101,6 @@ QImage AppIconProvider::requestImage(const QString& id, QSize* size, const QSize
     if (size != nullptr) {
         *size = image.size();
     }
-    const QMutexLocker lock(&mutex_);
-    cache_.insert(key, image);
     return image;
 }
 

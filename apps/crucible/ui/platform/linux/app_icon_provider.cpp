@@ -55,17 +55,23 @@
 // (below). Every request arrives on Qt Quick's pixmap-reader thread, because
 // the provider asks for ForceAsynchronousImageLoading; the id is parsed and
 // the .desktop index built and searched there, and none of that touches
-// Qt's GUI state. The theme lookups themselves - QIcon::fromTheme and the
-// pixmap it yields - run on the GUI thread, one queued call per new
-// identity, which the reader thread waits on. QIconLoader is one process-
-// wide set of caches with no lock, and the GUI thread uses it too (a file
-// dialog's icons, a widget style's standard icons), so two threads in it at
-// once would be a race; it is only ever entered from the thread that owns
-// it. The wait is bounded rather than a blocking connection: the reader
-// thread's own destructor, at engine teardown, runs on the GUI thread and
-// waits for the reader, and a reader blocked on that same GUI thread would
-// never return. On a timeout the answer is null and is not cached, so the
-// next request asks again. The frame thread never touches any of it.
+// Qt's GUI state. The .desktop candidate is worked out for every new
+// identity, including one that names an icon and will be answered by rung 1,
+// so that the GUI thread is entered once for it rather than twice; the index
+// behind it is one directory walk per process, shared by every application,
+// so asking early only means paying for it on an earlier request.
+//
+// The theme lookups themselves - QIcon::fromTheme and the pixmap it yields
+// - run on the GUI thread, one queued call per new identity, which the
+// reader thread waits on. QIconLoader is one process-wide set of caches with
+// no lock, and the GUI thread uses it too (a file dialog's icons, a widget
+// style's standard icons), so two threads in it at once would be a race; it
+// is only ever entered from the thread that owns it. The wait is bounded
+// rather than a blocking connection: the reader thread's own destructor, at
+// engine teardown, runs on the GUI thread and waits for the reader, and a
+// reader blocked on that same GUI thread would never return. On a timeout
+// the answer is null and is not cached, so the next request asks again. The
+// frame thread never touches any of it.
 //
 // The offscreen platform - the Qt Quick test suite, and `--shot` - has no
 // icon theme: its platform theme is a bare QPlatformTheme whose hints are
@@ -147,11 +153,9 @@ QImage theme_image(const QString& icon_name, int px) {
     if (icon_name.isEmpty()) {
         return {};
     }
-    const QIcon icon = QIcon::fromTheme(icon_name);
-    if (icon.isNull()) {
-        return {};
-    }
-    return icon.pixmap(QSize(px, px)).toImage();
+    // A name the theme has no entry for yields a null pixmap, and that is
+    // the miss; there is no cheaper test worth making first.
+    return QIcon::fromTheme(icon_name).pixmap(QSize(px, px)).toImage();
 }
 
 // An Icon= value as an image: an absolute path is read as a file, a name
@@ -174,8 +178,10 @@ QString basename_of(const QString& path) {
 // The .desktop rungs' candidate: the Icon= of the entry that fits, or
 // nothing. The index is built on first use, and rebuilt once when a lookup
 // misses on an index older than a minute, so an application installed
-// mid-session gets its icon at the next miss without a timer. Reader
-// thread, under the resolver mutex.
+// mid-session is found the first time it is asked for, without a timer. An
+// identity already answered never comes back here, whether the answer was an
+// icon or the monogram: requestImage keeps it for the life of the process.
+// Reader thread, under the resolver mutex.
 std::optional<std::string> desktop_icon(Resolver& r, const AppIdentity& who) {
     using namespace std::chrono_literals;
     const auto now = std::chrono::steady_clock::now();
@@ -283,46 +289,54 @@ QImage AppIconProvider::requestImage(const QString& id, QSize* size, const QSize
     const bool large = requested_size.width() > 20 || requested_size.height() > 20 || !requested_size.isValid();
     // The whole id is the key: two processes of one application, and a
     // restarted one, share a lookup (the per-process cache is the session
-    // monitor's).
+    // monitor's). What is kept under it is the picture the platform gave, at
+    // the size it gave it, and never a copy scaled to one caller's request:
+    // the rail asks for 28 pixels and the 3D room for 160 against this one
+    // key, and whichever arrived second would be handed the first one's
+    // scaled image. Scaling happens per request, below.
     const QString key = id + (large ? QStringLiteral("|L") : QStringLiteral("|S"));
+    QImage image;
+    bool cached = false;
     {
         const QMutexLocker lock(&mutex_);
         if (const auto it = cache_.constFind(key); it != cache_.constEnd()) {
-            if (size != nullptr) {
-                *size = it->size();
-            }
-            return *it;
+            image = *it;
+            cached = true;  // a cached null is an answer: the monogram
         }
     }
-
-    const int px = large ? 256 : 32;
-    const QString binary = basename_of(path);
-    // The .desktop candidate first, here on the reader thread: it is plain
-    // file reading, and the GUI thread then gets everything in one call.
-    std::optional<std::string> desktop;
-    if (!app_id.isEmpty() || !binary.isEmpty() || !name.isEmpty()) {
-        Resolver& r = resolver();
-        const QMutexLocker lock(&r.mutex);
-        desktop = desktop_icon(r, {.app_id = app_id.toStdString(),
-                                   .binary = binary.toStdString(),
-                                   .name = name.toStdString()});
+    if (!cached) {
+        const int px = large ? 256 : 32;
+        const QString binary = basename_of(path);
+        // The .desktop candidate first, here on the reader thread: it is
+        // plain file reading, and the GUI thread then gets everything in one
+        // call (the file header says why it is worked out even for an
+        // identity an icon name will answer first).
+        std::optional<std::string> desktop;
+        if (!app_id.isEmpty() || !binary.isEmpty() || !name.isEmpty()) {
+            Resolver& r = resolver();
+            const QMutexLocker lock(&r.mutex);
+            desktop = desktop_icon(r, {.app_id = app_id.toStdString(),
+                                       .binary = binary.toStdString(),
+                                       .name = name.toStdString()});
+        }
+        bool answered = false;
+        Resolved resolved = on_gui_thread(icon_name, desktop, binary, px, answered);
+        image = std::move(resolved.image);
+        qCDebug(lcIcons) << "icon for" << name << "path" << path << "icon-name" << icon_name
+                         << "app" << app_id << "->"
+                         << (answered ? resolved.rung : "no answer from the GUI thread");
+        if (answered) {
+            // A null is cached too, as Windows caches one: the monogram is
+            // the answer for this identity for the life of the process.
+            const QMutexLocker lock(&mutex_);
+            cache_.insert(key, image);
+        }
     }
-    bool answered = false;
-    Resolved resolved = on_gui_thread(icon_name, desktop, binary, px, answered);
-    QImage image = std::move(resolved.image);
     if (!image.isNull() && requested_size.isValid()) {
         image = image.scaled(requested_size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     }
     if (size != nullptr) {
         *size = image.size();
-    }
-    qCDebug(lcIcons) << "icon for" << name << "path" << path << "icon-name" << icon_name << "app"
-                     << app_id << "->" << (answered ? resolved.rung : "no answer from the GUI thread");
-    if (answered) {
-        // A null is cached too, as Windows caches one: the monogram is the
-        // answer for this identity for the life of the process.
-        const QMutexLocker lock(&mutex_);
-        cache_.insert(key, image);
     }
     return image;
 }

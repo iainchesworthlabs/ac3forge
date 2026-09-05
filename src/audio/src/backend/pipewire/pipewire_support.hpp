@@ -318,7 +318,8 @@ struct OutputStreamNode {
 // for the info events those binds provoke. The registry facts never depend
 // on a bind: a machine where a bind fails, or a server that sends no info,
 // yields the list this function returned before, with the three identity
-// fields empty.
+// fields empty. A core error, or a first sync that never comes back, is the
+// other case: nothing is returned at all, as the registry-only walk did.
 //
 // Cost: one proxy per stream node and per client, and one more round trip,
 // per call - the Linux session monitor calls this twice a second on its own
@@ -371,7 +372,9 @@ struct OutputStreamNode {
         std::vector<std::unique_ptr<BoundNode>> nodes;
         std::unordered_map<std::uint32_t, std::unique_ptr<BoundClient>> clients;
         int pending = 0;
-    } state{registry.get(), loop.get(), {}, {}, {}, {}, 0};
+        bool completed = false;   // the sync this loop waits for came back
+        bool failed = false;      // the core reported an error: the walk is over
+    } state{registry.get(), loop.get(), {}, {}, {}, {}, 0, false, false};
 
     spa_hook registry_listener{};
     pw_registry_events registry_events{};
@@ -458,14 +461,19 @@ struct OutputStreamNode {
     core_events.done = [](void* data, std::uint32_t done_id, int seq) {
         auto* self = static_cast<State*>(data);
         if (done_id == PW_ID_CORE && seq == self->pending) {
+            self->completed = true;
             pw_main_loop_quit(self->loop);
         }
     };
     // A core error (the daemon going away mid-walk) ends the wait rather
-    // than leaving the monitor thread inside pw_main_loop_run for ever.
+    // than leaving the monitor thread inside pw_main_loop_run for ever, and
+    // records that it happened: a second sync on a dead core never comes
+    // back either, so it is never issued, and a walk that did not finish
+    // returns nothing rather than a short list that reads as the graph.
     core_events.error = [](void* data, std::uint32_t error_id, int, int, const char*) {
         auto* self = static_cast<State*>(data);
         if (error_id == PW_ID_CORE) {
+            self->failed = true;
             pw_main_loop_quit(self->loop);
         }
     };
@@ -474,41 +482,47 @@ struct OutputStreamNode {
     // First: every existing global, binding streams and clients as they arrive.
     state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
     pw_main_loop_run(loop.get());
-    // Second: the info events those binds asked for.
-    state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
-    pw_main_loop_run(loop.get());
+    const bool listed = state.completed && !state.failed;
+    if (listed) {
+        // Second: the info events those binds asked for.
+        state.completed = false;
+        state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
+        pw_main_loop_run(loop.get());
+    }
 
     std::vector<OutputStreamNode> out;
-    out.reserve(state.streams.size());
-    for (auto& stream : state.streams) {
-        const auto found = state.client_pids.find(stream.client_id);
-        StreamIdentity identity;
-        if (stream.bound != nullptr) {
-            identity = stream.bound->identity;
+    if (listed) {
+        out.reserve(state.streams.size());
+        for (auto& stream : state.streams) {
+            const auto found = state.client_pids.find(stream.client_id);
+            StreamIdentity identity;
+            if (stream.bound != nullptr) {
+                identity = stream.bound->identity;
+            }
+            if (const auto client = state.clients.find(stream.client_id);
+                client != state.clients.end()) {
+                // The node's info first; the client's fills what it left empty.
+                const StreamIdentity& theirs = client->second->identity;
+                if (identity.icon_name.empty()) {
+                    identity.icon_name = theirs.icon_name;
+                }
+                if (identity.binary.empty()) {
+                    identity.binary = theirs.binary;
+                }
+                if (identity.app_id.empty()) {
+                    identity.app_id = theirs.app_id;
+                }
+            }
+            out.push_back({.id = stream.id,
+                           .target = std::move(stream.target),
+                           .application = identity.application.empty()
+                                              ? std::move(stream.application)
+                                              : std::move(identity.application),
+                           .pid = found == state.client_pids.end() ? 0 : found->second,
+                           .icon_name = std::move(identity.icon_name),
+                           .binary = std::move(identity.binary),
+                           .app_id = std::move(identity.app_id)});
         }
-        if (const auto client = state.clients.find(stream.client_id);
-            client != state.clients.end()) {
-            // The node's info first; the client's fills what it left empty.
-            const StreamIdentity& theirs = client->second->identity;
-            if (identity.icon_name.empty()) {
-                identity.icon_name = theirs.icon_name;
-            }
-            if (identity.binary.empty()) {
-                identity.binary = theirs.binary;
-            }
-            if (identity.app_id.empty()) {
-                identity.app_id = theirs.app_id;
-            }
-        }
-        out.push_back({.id = stream.id,
-                       .target = std::move(stream.target),
-                       .application = identity.application.empty()
-                                          ? std::move(stream.application)
-                                          : std::move(identity.application),
-                       .pid = found == state.client_pids.end() ? 0 : found->second,
-                       .icon_name = std::move(identity.icon_name),
-                       .binary = std::move(identity.binary),
-                       .app_id = std::move(identity.app_id)});
     }
     for (auto& node : state.nodes) {
         spa_hook_remove(&node->listener);
