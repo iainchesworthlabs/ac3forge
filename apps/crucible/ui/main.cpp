@@ -8,6 +8,7 @@
 
 #include <QFont>
 #include <QFontDatabase>
+#include <QApplication>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QVariant>
@@ -79,7 +80,11 @@ int main(int argc, char** argv) {
     if (qEnvironmentVariableIsEmpty("QSG_RENDER_LOOP")) {
         qputenv("QSG_RENDER_LOOP", QByteArrayLiteral("basic"));
     }
-    QGuiApplication app(argc, argv);
+    // QApplication, not QGuiApplication: the tray icon (Qt.labs.platform,
+    // Main.qml) is QSystemTrayIcon underneath, a Widgets class. Windows
+    // tolerated the narrower application object because its native menu
+    // path needs no widgets; Linux refused it and the tray was absent.
+    QApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("Crucible"));
     QGuiApplication::setOrganizationName(QStringLiteral("ac3forge"));
     migrate_demo_settings();

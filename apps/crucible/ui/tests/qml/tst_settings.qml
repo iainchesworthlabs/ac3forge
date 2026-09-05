@@ -102,6 +102,12 @@ TestCase {
     }
 
     function test_driverButtonsRefuseWithoutAPackage() {
+        // Only where the device is a driver from a folder. Elsewhere the
+        // application makes it, a folder means nothing, and "found" is the
+        // platform's word for "can make one" - test_pageShowsTheDriverState
+        // covers that shape.
+        if (!CrucibleController.silentDeviceFromPackage)
+            skip("no driver package on this platform: the application makes the silent device itself");
         CrucibleController.driverDir = "C:/no/such/folder";
         compare(CrucibleController.driverPackageFound, false);
         CrucibleController.installDriver();
@@ -115,16 +121,52 @@ TestCase {
     }
 
     function test_pageShowsTheDriverStateAndFolder() {
-        const page = createTemporaryObject(settingsPage, testCase);
+        // Parented to the window's root item, not to the TestCase: the
+        // TestCase item is invisible by design, and an Item's visible reads
+        // the effective value, so nothing under it can ever be seen. The
+        // other tests here only read enabled and text and never noticed.
+        const page = createTemporaryObject(settingsPage, testCase.parent);
         verify(page);
         waitForRendering(page);
-        CrucibleController.driverDir = "C:/no/such/folder";
+        // The two-stage note names the device the platform owns, whatever
+        // it is called there: the first Linux screenshot said "Desktop
+        // Atmos" on a machine that has never had one.
+        const note = findChild(page, "silentDeviceNote");
+        verify(note, "the two-stage note carries objectName silentDeviceNote");
+        verify(note.text.indexOf(CrucibleController.nullSinkName) >= 0, note.text);
+        // Open Advanced, so what follows is about what is shown, not about
+        // a section that is closed on every platform alike. Set, not
+        // clicked: the toggle sits below a 700-pixel page, and a synthetic
+        // click on something outside the window opens nothing.
+        const advanced = findChild(page, "advancedSection");
+        verify(advanced, "the Advanced section carries objectName advancedSection");
+        advanced.open = true;
+        waitForRendering(page);
+        const folderRow = findChild(page, "driverFolderRow");
+        verify(folderRow, "the driver folder row carries objectName driverFolderRow");
         const folderInput = findChild(page, "driverFolderInput");
         verify(folderInput, "the driver folder field carries objectName driverFolderInput");
-        compare(folderInput.text, CrucibleController.driverDir);
         const install = findChild(page, "installDriverButton");
         verify(install);
-        compare(install.enabled, false);
+        const remove = findChild(page, "removeDriverButton");
+        verify(remove);
+        if (CrucibleController.silentDeviceFromPackage) {
+            // A driver from a folder: the folder is shown, follows the
+            // setting, and a bogus one leaves nothing to install.
+            verify(folderRow.visible, "the driver folder is shown where the device is a driver");
+            CrucibleController.driverDir = "C:/no/such/folder";
+            compare(folderInput.text, CrucibleController.driverDir);
+            compare(install.enabled, false);
+            compare(install.text, "Install driver");
+            compare(remove.text, "Remove driver");
+        } else {
+            // The application's own device: no folder, and the buttons say
+            // create and remove, not install.
+            verify(!folderRow.visible, "no driver folder where the application makes the device");
+            compare(install.text, "Create device");
+            compare(remove.text, "Remove device");
+            compare(install.enabled, CrucibleController.driverPackageFound && !CrucibleController.driverBusy);
+        }
     }
 
     Component { id: spyComponent; SignalSpy {} }

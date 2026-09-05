@@ -1,5 +1,7 @@
 #include "session_monitor.hpp"
 
+#include <unistd.h>
+
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -75,9 +77,18 @@ public:
         // The pid comes from the Client that owns each stream, not from the
         // stream node - output_stream_nodes() does that join and says why.
         const auto streams = ac3::pipewire::output_stream_nodes();
+        const auto self = static_cast<std::uint32_t>(::getpid());
         for (const auto& stream : streams) {
             if (stream.pid == 0) {
                 continue;  // the daemon could not attribute it; nothing to tap
+            }
+            if (stream.pid == self) {
+                // Crucible's own streams - the output probes, the sinks - are
+                // PipeWire streams like any other and were listed as an
+                // application called "ac3forge probe" on the first Linux
+                // screenshot. Windows never lists another instance of this
+                // program; the same rule, by pid.
+                continue;
             }
             auto& app = apps[stream.pid];
             if (app.app != 0) {

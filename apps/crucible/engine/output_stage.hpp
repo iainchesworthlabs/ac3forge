@@ -90,7 +90,21 @@ public:
     // Enumerates and probes every render endpoint, runs the policy, and if
     // the answer differs from what is running, switches. Cheap enough to
     // call on every device event and on demand.
+    // Re-run the probe and act on it: enumerate(), then apply(). Kept as one
+    // call for the tests and for callers that can afford to block.
     const OutputStatus& reprobe(bool signing_key_loaded);
+
+    // The slow half, safe on any thread: ask every endpoint what it accepts.
+    // Instant on Windows (IsFormatSupported); on PipeWire every answer is a
+    // real connect with a timeout, and on a machine with two endpoints that
+    // is several seconds - which, run on the frame thread, was a seven-second
+    // first frame on the Raspberry Pi (docs/crucible/promotion.md, Phase 4).
+    // Touches nothing the frame thread owns.
+    [[nodiscard]] std::vector<EndpointFacts> enumerate() const;
+
+    // The fast half, frame thread only: choose a mode and endpoint from the
+    // facts and start or switch sinks accordingly.
+    const OutputStatus& apply(std::vector<EndpointFacts> facts, bool signing_key_loaded);
     void set_pinned(std::optional<OutputMode> pinned);
     void set_preferred_endpoint(std::string id);
     void set_null_sink_substring(std::string substring);

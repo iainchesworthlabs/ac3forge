@@ -223,6 +223,28 @@ public:
         package_dir_ = dir;
     }
 
+    void set_device_name(std::string name) {
+        const std::lock_guard lock(mutex_);
+        device_name_ = std::move(name);
+    }
+
+    void set_from_package(bool from_package) {
+        const std::lock_guard lock(mutex_);
+        from_package_ = from_package;
+    }
+
+    bool from_package() const override {
+        const std::lock_guard lock(mutex_);
+        return from_package_;
+    }
+
+    std::string device_name() const override {
+        const std::lock_guard lock(mutex_);
+        return device_name_;
+    }
+
+    std::string how_to_get_one() const override { return "a fake has no advice"; }
+
     SilentDeviceState state(const SilentDeviceQuery& query) override {
         const std::lock_guard lock(mutex_);
         last_query_ = query;
@@ -261,6 +283,8 @@ private:
     std::string install_refusal_;
     SilentDeviceQuery last_query_;
     std::string package_dir_;
+    std::string device_name_ = "Fake Silent";
+    bool from_package_ = false;
     std::size_t installs_ = 0;
     std::size_t removes_ = 0;
 };

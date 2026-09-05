@@ -130,24 +130,29 @@ void OutputStage::stop() {
     status_.sink_queue_frames = 0;
 }
 
-const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
+std::vector<EndpointFacts> OutputStage::enumerate() const {
     std::vector<EndpointFacts> facts;
-    {
-        const std::string needle = lower(config_.null_sink_substring);
-        for (const auto& device : impl_->devices->render_devices(config_.sample_rate)) {
-            facts.push_back({.id = device.id,
-                             .name = device.name,
-                             .is_default = device.is_default,
-                             .is_null_sink = !needle.empty() &&
-                                             lower(device.name).find(needle) != std::string::npos,
-                             .accepts_eac3 = device.accepts_eac3,
-                             .accepts_ac3 = device.accepts_ac3,
-                             .shared_channels = device.shared_channels,
-                             .spatial = device.spatial,
-                             .spatial_max_objects = device.spatial_max_objects});
-        }
+    const std::string needle = lower(config_.null_sink_substring);
+    for (const auto& device : impl_->devices->render_devices(config_.sample_rate)) {
+        facts.push_back({.id = device.id,
+                         .name = device.name,
+                         .is_default = device.is_default,
+                         .is_null_sink = !needle.empty() &&
+                                         lower(device.name).find(needle) != std::string::npos,
+                         .accepts_eac3 = device.accepts_eac3,
+                         .accepts_ac3 = device.accepts_ac3,
+                         .shared_channels = device.shared_channels,
+                         .spatial = device.spatial,
+                         .spatial_max_objects = device.spatial_max_objects});
     }
+    return facts;
+}
 
+const OutputStatus& OutputStage::reprobe(bool signing_key_loaded) {
+    return apply(enumerate(), signing_key_loaded);
+}
+
+const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool signing_key_loaded) {
     const auto choice = choose_output({.endpoints = facts,
                                        .signing_key_loaded = signing_key_loaded,
                                        .pinned = config_.pinned,

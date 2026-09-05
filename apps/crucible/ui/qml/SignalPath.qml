@@ -93,7 +93,7 @@ Item {
             }
             Warning {
                 visible: !root.silentPresent
-                text: qsTr("There is no silent device to send them to: install the Desktop Atmos driver (Settings).")
+                text: qsTr("There is no silent device to send them to: %1.").arg(CrucibleController.silentDeviceAdvice)
             }
             CrucibleButton {
                 Layout.fillWidth: true
@@ -110,7 +110,7 @@ Item {
 
         // 2. This app.
         Station {
-            kicker: qsTr("2 · DESKTOP ATMOS")
+            kicker: qsTr("2 · CRUCIBLE")
             title: CrucibleController.soundingCount + qsTr(" with sound · ") + CrucibleController.placedCount + qsTr(" placed")
             warn: !CrucibleController.running
             Text {

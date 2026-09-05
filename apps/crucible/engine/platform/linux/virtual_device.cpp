@@ -62,6 +62,12 @@ public:
 
     // Meaningless here: there is no package to point at.
     void set_package_dir(std::string_view) override {}
+    bool from_package() const override { return false; }
+
+    std::string device_name() const override { return "Crucible (silent)"; }
+    std::string how_to_get_one() const override {
+        return "Crucible creates it when you send applications to it; nothing to install";
+    }
 
     SilentDeviceState state(const SilentDeviceQuery& query) override {
         const std::lock_guard lock(mutex_);
@@ -174,9 +180,19 @@ private:
     void teardown_locked() {
         if (loop_) {
             pw_thread_loop_stop(loop_.get());
+            pw_thread_loop_lock(loop_.get());
+            // The proxy first, then the core it belongs to: a core destroyed
+            // with a live proxy is the "impl_ext_end_proxy: Device or
+            // resource busy" the window logged. The node itself goes with
+            // the connection either way (object.linger=false).
+            if (node_ != nullptr) {
+                pw_proxy_destroy(node_);
+                node_ = nullptr;
+            }
+            core_.reset();
+            context_.reset();
+            pw_thread_loop_unlock(loop_.get());
         }
-        // The node goes with the connection, which is the whole point of
-        // object.linger=false; destroying the core is what releases it.
         node_ = nullptr;
         core_.reset();
         context_.reset();

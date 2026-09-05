@@ -183,6 +183,14 @@ class WindowsVirtualDevice final : public VirtualDevice {
 public:
     void set_package_dir(std::string_view dir) override { package_dir_ = dir; }
 
+    // The driver's endpoint. It changes to "Crucible" in the same change
+    // that renames the INF, once signing is paid for.
+    std::string device_name() const override { return "Desktop Atmos"; }
+    bool from_package() const override { return true; }
+    std::string how_to_get_one() const override {
+        return "install the Desktop Atmos driver (Settings)";
+    }
+
     SilentDeviceState state(const SilentDeviceQuery& query) override {
         SilentDeviceState out;
         out.needed = true;

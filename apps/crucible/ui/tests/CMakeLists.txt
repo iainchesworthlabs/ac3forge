@@ -18,12 +18,19 @@ qt_add_executable(ac3crucible_qmltests
     ui/crucible_controller.cpp
     ui/crucible_controller.hpp
     ui/app_entry.hpp
-    ui/app_icon_provider.cpp
     ui/app_icon_provider.hpp
     ../gui/system_theme.cpp
     ../gui/system_theme.hpp
     ../gui/language_manager.cpp
     ../gui/language_manager.hpp)
+# The icon provider is per platform, the same way the window's own target
+# selects it (apps/crucible/CMakeLists.txt): this target embeds the same
+# sources and has to make the same choice.
+if(WIN32)
+    target_sources(ac3crucible_qmltests PRIVATE ui/platform/windows/app_icon_provider.cpp)
+elseif(LINUX)
+    target_sources(ac3crucible_qmltests PRIVATE ui/platform/linux/app_icon_provider.cpp)
+endif()
 
 qt_add_qml_module(ac3crucible_qmltests
     URI Ac3ForgeCrucible
@@ -35,7 +42,7 @@ qt_add_qml_module(ac3crucible_qmltests
 target_include_directories(ac3crucible_qmltests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/ui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui")
 target_compile_definitions(ac3crucible_qmltests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX
-    AC3DESK_DRIVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/driver"
+    AC3DESK_DRIVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}/apps/windows/driver"
     AC3DESK_QUICK3D=${AC3DESK_QUICK3D}
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/ui/tests/qml")
 target_link_libraries(ac3crucible_qmltests PRIVATE

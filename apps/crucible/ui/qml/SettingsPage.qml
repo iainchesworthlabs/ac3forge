@@ -94,14 +94,17 @@ Flickable {
                 Layout.fillWidth: true
                 spacing: Theme.space3
                 RailBlock { ordinal: "01"; label: qsTr("SILENT DEVICE · WHERE APPLICATIONS PLAY"); Layout.fillWidth: true; Layout.fillHeight: false }
-                Note { text: qsTr("Sound takes two stages here. Applications play into the Windows default output; this app taps them there and sends the result to the endpoint you hear. For the first stage to be silent, the default must be a device that discards what it is given: the Desktop Atmos driver. Until it is installed, any silent endpoint whose name matches the filter under Advanced stands in.") }
+                Note { objectName: "silentDeviceNote"; text: qsTr("Sound takes two stages here. Applications play into the system default output; this app taps them there and sends the result to the endpoint you hear. For the first stage to be silent, the default must be a device that discards what it is given: \"%1\". Until it is there, any silent endpoint whose name matches the filter under Advanced stands in.").arg(CrucibleController.nullSinkName) }
                 // What a person needs to know, in the order it matters: is the
                 // device there; do applications play to it; and, only while it
-                // is not there, what stands between this machine and a
-                // test-signed driver. A packaged install carries the signed
-                // driver and installs it with the application (Phase 6), so
-                // the source-build tools (the folder, install, remove) live
-                // under Advanced rather than in the way.
+                // is not there, what stands between this machine and one. On
+                // Windows that is a test-signed driver, so a packaged install
+                // carries the signed driver and installs it with the
+                // application (Phase 6), and the source-build tools (the
+                // folder, install, remove) live under Advanced rather than in
+                // the way. On Linux the application makes the device itself,
+                // and the page says so instead of showing a folder that
+                // means nothing there: silentDeviceFromPackage decides.
                 Card {
                     visible: CrucibleController.silentDeviceNeeded
                     ColumnLayout {
@@ -112,7 +115,7 @@ Flickable {
                         }
                         StatusRow {
                             ok: CrucibleController.defaultIsNullSink
-                            text: CrucibleController.defaultIsNullSink ? qsTr("Applications play to it: it is the Windows default output.") : qsTr("Applications do not play to it yet: the Windows default output is %1. Send them there from the Room or Signal path page.").arg(CrucibleController.defaultOutputName.length ? CrucibleController.defaultOutputName : qsTr("not set"))
+                            text: CrucibleController.defaultIsNullSink ? qsTr("Applications play to it: it is the system default output.") : qsTr("Applications do not play to it yet: the system default output is %1. Send them there from the Room or Signal path page.").arg(CrucibleController.defaultOutputName.length ? CrucibleController.defaultOutputName : qsTr("not set"))
                         }
                         // What stands in the way, in the platform's own words.
                         // The sentence is composed where the facts are - test
@@ -128,14 +131,16 @@ Flickable {
                         }
                         Note {
                             visible: !CrucibleController.nullSinkPresent
-                            text: CrucibleController.driverPackageFound
-                                ? qsTr("A built driver package is in the driver folder, ready to install.")
-                                : qsTr("An installed copy of this application brings the driver with it. This is a build from source: build the driver, then point Advanced at its folder, or put a built package there.")
+                            text: !CrucibleController.silentDeviceFromPackage
+                                ? qsTr("Nothing to install: this application makes the silent device itself. Create it now, or it is created when you send applications to it.")
+                                : CrucibleController.driverPackageFound
+                                    ? qsTr("A built driver package is in the driver folder, ready to install.")
+                                    : qsTr("An installed copy of this application brings the driver with it. This is a build from source: build the driver, then point Advanced at its folder, or put a built package there.")
                         }
                         Flow {
                             Layout.fillWidth: true
                             spacing: Theme.space2
-                            CrucibleButton { objectName: "installDriverButton"; visible: !CrucibleController.nullSinkPresent; text: qsTr("Install driver"); primary: true; enabled: CrucibleController.driverPackageFound && !CrucibleController.driverBusy; onClicked: CrucibleController.installDriver() }
+                            CrucibleButton { objectName: "installDriverButton"; visible: !CrucibleController.nullSinkPresent; text: CrucibleController.silentDeviceFromPackage ? qsTr("Install driver") : qsTr("Create device"); primary: true; enabled: CrucibleController.driverPackageFound && !CrucibleController.driverBusy; onClicked: CrucibleController.installDriver() }
                             CrucibleButton { text: qsTr("Check again"); enabled: !CrucibleController.driverBusy; onClicked: CrucibleController.refreshDriver() }
                         }
                         Note { visible: CrucibleController.driverMessage.length > 0; text: CrucibleController.driverMessage }
@@ -144,6 +149,7 @@ Flickable {
                 // Advanced: the source-build tools, and what counts as silent.
                 ColumnLayout {
                     id: advanced
+                    objectName: "advancedSection"
                     Layout.fillWidth: true
                     spacing: Theme.space2
                     property bool open: false
@@ -158,8 +164,12 @@ Flickable {
                         }
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: advanced.open = !advanced.open }
                     }
+                    // The folder and its package only exist where the device
+                    // is a driver; elsewhere "remove" undoes the application's
+                    // own device and there is nothing to point at.
                     SettingRow {
-                        visible: advanced.open
+                        objectName: "driverFolderRow"
+                        visible: advanced.open && CrucibleController.silentDeviceFromPackage
                         label: qsTr("Driver folder")
                         Field {
                             objectId: "driverFolderInput"
@@ -167,14 +177,14 @@ Flickable {
                             input.onEditingFinished: CrucibleController.driverDir = input.text
                         }
                     }
-                    Note { visible: advanced.open; text: qsTr("Where install.ps1, remove.ps1 and the built package live: beside this app by default, or apps/windows/driver in a source tree.") + " " + (CrucibleController.driverPackageFound ? qsTr("A built package is there.") : qsTr("No built package is there.")) }
+                    Note { visible: advanced.open && CrucibleController.silentDeviceFromPackage; text: qsTr("Where install.ps1, remove.ps1 and the built package live: beside this app by default, or apps/windows/driver in a source tree.") + " " + (CrucibleController.driverPackageFound ? qsTr("A built package is there.") : qsTr("No built package is there.")) }
                     Flow {
                         visible: advanced.open
                         Layout.fillWidth: true
                         spacing: Theme.space2
-                        CrucibleButton { text: qsTr("Remove driver"); enabled: CrucibleController.driverPackageFound && !CrucibleController.driverBusy; onClicked: CrucibleController.removeDriver() }
+                        CrucibleButton { objectName: "removeDriverButton"; text: CrucibleController.silentDeviceFromPackage ? qsTr("Remove driver") : qsTr("Remove device"); enabled: CrucibleController.driverPackageFound && !CrucibleController.driverBusy; onClicked: CrucibleController.removeDriver() }
                     }
-                    Note { visible: advanced.open; text: qsTr("Removes the device and the driver package this folder's remove.ps1 knows about; an installed copy of the application removes its own on uninstall.") }
+                    Note { visible: advanced.open; text: CrucibleController.silentDeviceFromPackage ? qsTr("Removes the device and the driver package this folder's remove.ps1 knows about; an installed copy of the application removes its own on uninstall.") : qsTr("Removes this application's own silent device; it also goes when the application does.") }
                     SettingRow {
                         visible: advanced.open
                         label: qsTr("Silent device")

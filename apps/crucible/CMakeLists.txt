@@ -81,9 +81,14 @@ elseif(UNIX AND NOT APPLE)
     target_include_directories(ac3crucible_engine
         PRIVATE "${CMAKE_SOURCE_DIR}/src/audio/src/backend/pipewire")
     target_link_libraries(ac3crucible_engine PRIVATE PkgConfig::AC3CRUCIBLE_PIPEWIRE)
+endif()
+# The profiling header pair, on every platform: the engine loop and the
+# controller carry Tracy zones whichever platform half is compiled in. This
+# sat inside the Windows arm when there was only one arm, and lived inside
+# the Linux arm for a while after the second was added - which is how a
+# Windows build came to lose ac3/internal/profiling.hpp.
 target_include_directories(ac3crucible_engine PUBLIC
     "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
-endif()
 
 # The console runner: Phase 2's exit criterion, and the thing the UI replaces.
 add_executable(ac3crucible-run runner/main.cpp)
@@ -106,7 +111,9 @@ set_target_properties(ac3crucible-run PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMA
 # C++ is compiled into this target too, where QML_ELEMENT registers it in
 # this module.
 # ---------------------------------------------------------------------------
-find_package(Qt6 6.5 QUIET COMPONENTS Core Gui Qml Quick QuickControls2 LinguistTools)
+# Widgets is for the tray alone - Qt.labs.platform's SystemTrayIcon is
+# QSystemTrayIcon underneath - and is what lets it exist on Linux.
+find_package(Qt6 6.5 QUIET COMPONENTS Core Gui Widgets Qml Quick QuickControls2 LinguistTools)
 if(NOT Qt6_FOUND)
     message(WARNING "Qt6 not found: the AC3Forge Crucible's window (ac3crucible) is skipped; "
                     "the engine and the ac3crucible-run runner still build.")
@@ -182,10 +189,20 @@ else()
         ../gui/system_theme.hpp
         ../gui/language_manager.cpp
         ../gui/language_manager.hpp
-        "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_icon_provider.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_icon_provider.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_entry.hpp"
     )
+    # The application-icon provider is the one part of the window that talks
+    # to the operating system directly, so it is a platform directory like
+    # engine/platform/: Windows asks the shell for an executable's icon,
+    # Linux has no single call for that and returns none (the monogram shows
+    # instead - see ui/platform/linux/app_icon_provider.cpp for what doing it
+    # properly involves).
+    if(WIN32)
+        target_sources(ac3crucible PRIVATE ui/platform/windows/app_icon_provider.cpp)
+    elseif(LINUX)
+        target_sources(ac3crucible PRIVATE ui/platform/linux/app_icon_provider.cpp)
+    endif()
     qt_add_qml_module(ac3crucible
         URI Ac3ForgeCrucible
         VERSION 1.0
@@ -198,14 +215,14 @@ else()
     # Settings screen's install/remove buttons look when no driver/ folder
     # sits beside the executable (a build-tree run).
     target_compile_definitions(ac3crucible PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX
-        AC3DESK_DRIVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/driver"
+        AC3DESK_DRIVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}/apps/windows/driver"
         AC3DESK_QUICK3D=${AC3DESK_QUICK3D})
     # ac3::warnings is deliberately not linked: Qt's generated sources would
     # be compiled under it (apps/gui carries a workaround for exactly that).
     target_link_libraries(ac3crucible PRIVATE
         ac3::crucible_engine
         ac3::coverage
-        Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 ${AC3DESK_QUICK3D_LIB})
+        Qt6::Core Qt6::Gui Qt6::Qml Qt6::Widgets Qt6::Quick Qt6::QuickControls2 ${AC3DESK_QUICK3D_LIB})
     qt_add_resources(ac3crucible "ac3crucible_icons"
         PREFIX "/icons"
         BASE "${CMAKE_SOURCE_DIR}/apps/gui/icons"
@@ -227,15 +244,30 @@ else()
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-ExtraBold.ttf"
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/NotoSansArabic.ttf"
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/NotoSansHebrew.ttf")
-    # The .exe's own icon (Explorer, the taskbar before the window shows):
-    # the GUI app's resource script, configured with this target's name.
-    set(AC3_GUI_ICON_ICO "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
-    file(TO_CMAKE_PATH "${AC3_GUI_ICON_ICO}" AC3_GUI_ICON_ICO)
-    configure_file("${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3gui.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/ac3crucible.rc" @ONLY)
-    target_sources(ac3crucible PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ac3crucible.rc")
     set_target_properties(ac3crucible PROPERTIES
-        WIN32_EXECUTABLE ON
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+    # The executable's own icon, per platform, the same three-way split as
+    # apps/gui/CMakeLists.txt. Windows: a resource script compiled in (RC has
+    # to be enabled by hand under Ninja). macOS: the .icns copied into the
+    # bundle. Linux: nothing here - the hicolor theme install below is how a
+    # freedesktop menu finds it.
+    if(WIN32)
+        enable_language(RC)
+        set(AC3_GUI_ICON_ICO "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
+        file(TO_CMAKE_PATH "${AC3_GUI_ICON_ICO}" AC3_GUI_ICON_ICO)
+        configure_file("${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3gui.rc.in" "${CMAKE_CURRENT_BINARY_DIR}/ac3crucible.rc" @ONLY)
+        target_sources(ac3crucible PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/ac3crucible.rc")
+        set_target_properties(ac3crucible PROPERTIES WIN32_EXECUTABLE ON)
+    elseif(APPLE)
+        set(AC3CRUCIBLE_ICON_ICNS "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge.icns")
+        set_source_files_properties("${AC3CRUCIBLE_ICON_ICNS}" PROPERTIES
+            MACOSX_PACKAGE_LOCATION Resources)
+        target_sources(ac3crucible PRIVATE "${AC3CRUCIBLE_ICON_ICNS}")
+        set_target_properties(ac3crucible PROPERTIES
+            MACOSX_BUNDLE ON
+            MACOSX_BUNDLE_BUNDLE_NAME "Crucible"
+            MACOSX_BUNDLE_ICON_FILE "ac3forge.icns")
+    endif()
 
     # The same language set as the GUI (roadmap UX3), the same pipeline:
     # lupdate scans this target's QML and C++, lrelease compiles the .ts
@@ -257,20 +289,24 @@ else()
         LUPDATE_TARGET ac3crucible_lupdate
         LRELEASE_TARGET ac3crucible_lrelease)
 
-    # Qt runtime next to the executable, as apps/gui does it, so the demo
-    # runs from the build tree.
-    get_filename_component(AC3DESK_QT_BIN_DIR "${Qt6_DIR}/../../../bin" ABSOLUTE)
-    find_program(AC3DESK_WINDEPLOYQT NAMES windeployqt6 windeployqt HINTS "${AC3DESK_QT_BIN_DIR}")
-    if(AC3DESK_WINDEPLOYQT)
-        add_custom_command(TARGET ac3crucible POST_BUILD
-            COMMAND "${AC3DESK_WINDEPLOYQT}"
-                --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml"
-                --qmldir "${AC3DESK_SHARED_DIR}"
-                --compiler-runtime
-                "$<TARGET_FILE:ac3crucible>"
-            COMMENT "Deploying Qt runtime dependencies for ac3crucible")
-    else()
-        message(WARNING "windeployqt not found next to Qt6; ac3crucible.exe will not run standalone from the build tree.")
+    # Qt runtime next to the executable, as apps/gui does it, so the window
+    # runs from the build tree. Windows only: a Linux build finds Qt through
+    # the system's own loader and needs nothing copied, and a warning that
+    # "ac3crucible.exe will not run standalone" there would be wrong twice.
+    if(WIN32)
+        get_filename_component(AC3DESK_QT_BIN_DIR "${Qt6_DIR}/../../../bin" ABSOLUTE)
+        find_program(AC3DESK_WINDEPLOYQT NAMES windeployqt6 windeployqt HINTS "${AC3DESK_QT_BIN_DIR}")
+        if(AC3DESK_WINDEPLOYQT)
+            add_custom_command(TARGET ac3crucible POST_BUILD
+                COMMAND "${AC3DESK_WINDEPLOYQT}"
+                    --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml"
+                    --qmldir "${AC3DESK_SHARED_DIR}"
+                    --compiler-runtime
+                    "$<TARGET_FILE:ac3crucible>"
+                COMMENT "Deploying Qt runtime dependencies for ac3crucible")
+        else()
+            message(WARNING "windeployqt not found next to Qt6; ac3crucible.exe will not run standalone from the build tree.")
+        endif()
     endif()
 
     # Four windeployqt passes share bin/: ac3gui's, ac3gui_qmltests's (ordered
@@ -301,12 +337,20 @@ else()
     # targets the build tree). COMPONENT crucible, not runtime: the demo is
     # its own download rather than something an ac3cli/ac3gui user is given
     # (cmake/Packaging.cmake).
-    qt_generate_deploy_qml_app_script(
-        TARGET ac3crucible
-        OUTPUT_SCRIPT AC3DESK_DEPLOY_SCRIPT
-        NO_UNSUPPORTED_PLATFORM_ERROR)
     install(TARGETS ac3crucible RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT crucible)
-    install(SCRIPT "${AC3DESK_DEPLOY_SCRIPT}" COMPONENT crucible)
+    # Only where the package carries its own Qt. On Linux the system's Qt is
+    # the one the binary was built against and the loader finds it, so the
+    # package ships none (docs/releasing.md); left to run there, this script
+    # copies the distribution's QML plugins into the package and then fails
+    # to rewrite an RPATH they never had - which is how the first cpack on
+    # the Raspberry Pi died.
+    if(WIN32 OR APPLE)
+        qt_generate_deploy_qml_app_script(
+            TARGET ac3crucible
+            OUTPUT_SCRIPT AC3DESK_DEPLOY_SCRIPT
+            NO_UNSUPPORTED_PLATFORM_ERROR)
+        install(SCRIPT "${AC3DESK_DEPLOY_SCRIPT}" COMPONENT crucible)
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -324,8 +368,28 @@ endif()
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
 install(TARGETS ac3crucible-run RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT crucible)
-install(FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/driver/install.ps1"
-        "${CMAKE_CURRENT_SOURCE_DIR}/driver/remove.ps1"
-        "${CMAKE_CURRENT_SOURCE_DIR}/driver/NullSinkDevice.ps1"
-    DESTINATION "${CMAKE_INSTALL_BINDIR}/driver" COMPONENT crucible)
+if(WIN32)
+    install(FILES
+            "${CMAKE_SOURCE_DIR}/apps/windows/driver/install.ps1"
+            "${CMAKE_SOURCE_DIR}/apps/windows/driver/remove.ps1"
+            "${CMAKE_SOURCE_DIR}/apps/windows/driver/NullSinkDevice.ps1"
+        DESTINATION "${CMAKE_INSTALL_BINDIR}/driver" COMPONENT crucible)
+elseif(LINUX)
+    # What a freedesktop menu needs: the launcher, the AppStream record a
+    # software centre reads, and the icon in the hicolor theme at the two
+    # sizes the window itself embeds. Same layout apps/gui installs under
+    # `runtime`; this is `crucible` because the application is its own
+    # package (cmake/Packaging.cmake). No driver scripts: Linux needs no
+    # driver, and a PowerShell script in a .deb is a mistake waiting for a
+    # reader.
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3crucible.desktop"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/applications" COMPONENT crucible)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3crucible.metainfo.xml"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo" COMPONENT crucible)
+    install(FILES "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-256.png"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps"
+        RENAME "ac3crucible.png" COMPONENT crucible)
+    install(FILES "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-32.png"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps"
+        RENAME "ac3crucible.png" COMPONENT crucible)
+endif()

@@ -106,6 +106,13 @@ class CrucibleController : public QObject {
     Q_PROPERTY(QString silentDeviceBlocker READ silentDeviceBlocker NOTIFY driverChanged)
     Q_PROPERTY(QStringList silentDeviceDetail READ silentDeviceDetail NOTIFY driverChanged)
     Q_PROPERTY(bool silentDeviceNeeded READ silentDeviceNeeded NOTIFY driverChanged)
+    // How a person gets a silent device on this platform, in one sentence,
+    // for the signal path's warning when there is none.
+    Q_PROPERTY(QString silentDeviceAdvice READ silentDeviceAdvice CONSTANT)
+    // Whether the silent device is installed from a package (a driver, with
+    // a folder to point at) or made by this application itself; the
+    // settings page shows the driver tools only in the first case.
+    Q_PROPERTY(bool silentDeviceFromPackage READ silentDeviceFromPackage CONSTANT)
     // Whether this build carries the room's 3D view (Qt Quick 3D found at
     // configure time; the page hides its toggle otherwise).
     Q_PROPERTY(bool has3D READ has3D CONSTANT)
@@ -175,6 +182,8 @@ public:
     [[nodiscard]] QString silentDeviceBlocker() const;
     [[nodiscard]] QStringList silentDeviceDetail() const;
     [[nodiscard]] bool silentDeviceNeeded() const { return silent_state_.needed; }
+    [[nodiscard]] QString silentDeviceAdvice() const;
+    [[nodiscard]] bool silentDeviceFromPackage() const;
     [[nodiscard]] static bool has3D() { return AC3DESK_QUICK3D != 0; }
     // Make any probed endpoint the Windows default output (the same policy
     // call the silent-device switch uses), by its endpoint id.

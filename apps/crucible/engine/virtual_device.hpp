@@ -84,10 +84,33 @@ class VirtualDevice {
 public:
     virtual ~VirtualDevice() = default;
 
+    // What the silent device is called, as the platform's own sound settings
+    // show it and as the engine matches it by name: "Desktop Atmos" on
+    // Windows (the driver's endpoint, until the driver is renamed with its
+    // signing), "Crucible (silent)" on Linux. The first Linux screenshot
+    // labelled every station with the Windows name because this lived in
+    // the window as a default rather than in the platform that owns it.
+    [[nodiscard]] virtual std::string device_name() const = 0;
+
+    // One sentence on how a person gets a silent device on this platform,
+    // for the signal path's warning when there is none: "install the
+    // driver" is Windows advice and wrong everywhere else.
+    [[nodiscard]] virtual std::string how_to_get_one() const = 0;
+
     // Where a platform that installs from a built package should look. A
     // no-op where the concept does not apply: Linux loads a module and macOS
     // needs no device, so neither has a package directory.
     virtual void set_package_dir(std::string_view) {}
+
+    // Whether the silent device comes from a package in a folder the person
+    // can point at - a driver, installed and removed by tools that live
+    // beside it - or is made by this application itself. The settings page
+    // shows the folder, the package's state and the driver wording only in
+    // the first case; in the second, "install" means "create". The first
+    // Linux run of the settings tests failed on exactly this: the page
+    // asserted a bogus folder meant no package, on a platform with no
+    // package at all.
+    [[nodiscard]] virtual bool from_package() const { return false; }
 
     // Cheap enough for the UI's poll.
     [[nodiscard]] virtual SilentDeviceState state(const SilentDeviceQuery& query) = 0;

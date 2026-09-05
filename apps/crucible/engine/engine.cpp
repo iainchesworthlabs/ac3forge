@@ -75,6 +75,15 @@ struct Engine::Impl {
     std::mutex session_mutex;
     std::vector<AppSession> latest_sessions;
     bool sessions_fresh = false;
+    // The probe's thread, the same shape as the monitor's: it runs the slow
+    // enumeration and leaves the facts here; the frame loop applies them at
+    // its next boundary and never waits. `probing` keeps one enumeration in
+    // flight at a time, since a second request while one runs would only
+    // repeat it.
+    std::jthread probe_thread;
+    std::mutex probe_mutex;
+    std::optional<std::vector<EndpointFacts>> probe_result;
+    std::atomic_bool probing{false};
     std::vector<AppId> keep_ids;  // placed applications, for the monitor to keep listed
     std::shared_ptr<AudioDevices> devices;
     TapPool taps;
@@ -417,16 +426,44 @@ struct Engine::Impl {
                 }
             }
             refresh_sessions();
-            if (want_reprobe.exchange(false, std::memory_order_acq_rel)) {
-                AC3_ZONE_SCOPED_N("reprobe");
-                const auto before = output->status().mode;
-                const auto before_endpoint = output->status().endpoint_id;
-                output->reprobe(signing.available());
-                follow_null_sink_width();
-                if (output->status().mode != before || output->status().endpoint_id != before_endpoint) {
-                    // A sink took time to open; what the taps gathered
-                    // meanwhile would sit in its queue for good.
-                    taps.flush();
+            // The probe: asked for on the frame thread, run off it. A request
+            // while one is already in flight is simply absorbed - the running
+            // enumeration will be as fresh as any it could start.
+            if (want_reprobe.exchange(false, std::memory_order_acq_rel) &&
+                !probing.exchange(true, std::memory_order_acq_rel)) {
+                if (probe_thread.joinable()) {
+                    probe_thread.join();
+                }
+                probe_thread = std::jthread([this] {
+                    AC3_ZONE_SCOPED_N("probe (off-thread)");
+                    auto facts = output->enumerate();
+                    {
+                        const std::lock_guard<std::mutex> lock(probe_mutex);
+                        probe_result = std::move(facts);
+                    }
+                    probing.store(false, std::memory_order_release);
+                });
+            }
+            // Facts that arrived since the last frame are applied here, where
+            // starting and stopping sinks is allowed.
+            {
+                std::optional<std::vector<EndpointFacts>> facts;
+                {
+                    const std::lock_guard<std::mutex> lock(probe_mutex);
+                    facts.swap(probe_result);
+                }
+                if (facts) {
+                    AC3_ZONE_SCOPED_N("apply probe");
+                    const auto before = output->status().mode;
+                    const auto before_endpoint = output->status().endpoint_id;
+                    output->apply(std::move(*facts), signing.available());
+                    follow_null_sink_width();
+                    if (output->status().mode != before ||
+                        output->status().endpoint_id != before_endpoint) {
+                        // A sink took time to open; what the taps gathered
+                        // meanwhile would sit in its queue for good.
+                        taps.flush();
+                    }
                 }
             }
 

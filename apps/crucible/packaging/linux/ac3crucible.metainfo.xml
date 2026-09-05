@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo for AC3Forge Crucible (roadmap UX12) - what puts it in a
+  Linux desktop's application menu and software centre, alongside
+  ac3crucible.desktop. <id> matches the .desktop file's own basename, which
+  the launchable requires to associate the two. Same shape as ac3gui's.
+-->
+<component type="desktop-application">
+  <id>ac3crucible.desktop</id>
+  <name>Crucible</name>
+  <summary>Every application on the desk as an object in a live Dolby Atmos scene</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>
+      AC3Forge Crucible takes every application making sound on the machine, lets each be
+      placed in a room, and streams the result live as E-AC-3 JOC (Dolby Atmos) to a receiver -
+      or as Dolby Digital 5.1, multichannel PCM or stereo, following whatever the hardware
+      accepts. Applications you have not placed, and whichever is full-screen, form the 5.1 bed.
+    </p>
+    <p>
+      On Linux it needs PipeWire: each application is tapped separately through its own stream
+      node, and the silent device the applications play into is a PipeWire node Crucible creates
+      while it runs and removes when it exits. No driver is installed and nothing is left behind.
+    </p>
+    <p>
+      Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories. This is a
+      clean-room implementation of published standards and is not affiliated with Dolby.
+    </p>
+  </description>
+  <launchable type="desktop-id">ac3crucible.desktop</launchable>
+  <url type="homepage">https://github.com/iainchesworthlabs/ac3forge</url>
+  <url type="help">https://iainchesworthlabs.github.io/ac3forge/crucible/</url>
+  <provides>
+    <binary>ac3crucible</binary>
+    <binary>ac3crucible-run</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">960</display_length>
+  </requires>
+  <content_rating type="oars-1.1"/>
+</component>

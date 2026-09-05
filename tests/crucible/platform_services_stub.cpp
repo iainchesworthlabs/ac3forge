@@ -69,6 +69,10 @@ public:
         return std::unexpected("this build has no silent-device backend");
     }
     DeviceActionStatus action_status() override { return {}; }
+    std::string device_name() const override { return {}; }
+    std::string how_to_get_one() const override {
+        return "this build has no silent-device backend";
+    }
 };
 
 }  // namespace
