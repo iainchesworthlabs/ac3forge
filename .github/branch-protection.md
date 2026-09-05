@@ -34,9 +34,9 @@ on the repo. Configure a protection rule (or ruleset) for `main` with:
 
   `No Quarantine On Main` is not selected in its own right - it sits in
   `CI Status`'s `needs` list, so it still gates every merge through that one
-  aggregate check. `Analyze (C++)` was removed 2026-08-31: `codeql.yml`
-  `paths-ignore`s `docs/**`/`**/*.md`, so on a docs-only PR the required
-  context never reported and the PR sat green-but-BLOCKED forever (the
+  aggregate check. `Analyze (C++)` was removed 2026-08-31: `codeql.yml`'s PR
+  trigger then `paths-ignore`d `docs/**`/`**/*.md`, so on a docs-only PR the
+  required context never reported and the PR sat green-but-BLOCKED forever (the
   code-scanning ruleset section below records the fuller version of the same
   trap). Since 2026-09 `codeql.yml` has no PR trigger at all - see
   [Nightly analysis and other visible-only scanners](#nightly-analysis-and-other-visible-only-scanners)
@@ -163,8 +163,8 @@ this repo has deliberately moved away from.
 nightly against `main` - 02:17 and 02:23 UTC, see
 `docs/ci-self-hosted-runners.md` "Nightly analysis window" - and neither
 reports on a PR at all. Their alerts land in **Security → Code scanning**
-against `refs/heads/main`; because GitHub sends no notification for a new
-default-branch alert, each workflow's `surface` job fails on alerts created
+against `refs/heads/main`; because nothing reliably notifies anyone about a
+new default-branch alert, each workflow's `surface` job fails on alerts created
 since the previous nightly and opens or refreshes a `nightly-analysis`
 issue (one per engine, via `.github/actions/report-nightly-failure`). Close
 the issue once the findings are fixed or dismissed with a justification.

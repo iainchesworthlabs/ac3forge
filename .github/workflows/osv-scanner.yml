@@ -18,8 +18,9 @@ on:
   schedule:
     # Weekly, offset from the other Monday weeklies (zizmor 03:50, scorecard
     # 04:00) so no two land on the runner queue in the same minute. The
-    # nightly analysis crons sit earlier, at 02:17-02:35 - see
-    # docs/ci-self-hosted-runners.md "Nightly analysis window".
+    # nightly analysis crons sit earlier, at 02:17 (codeql.yml) and 02:23
+    # (msvc-analysis.yml) - see docs/ci-self-hosted-runners.md "Nightly
+    # analysis window".
     - cron: "45 3 * * 1"
   workflow_dispatch:
 

@@ -13,13 +13,12 @@
 # once a night on refs/heads/main (the ref that refreshes main's
 # Security > Code scanning baseline), and nothing gates on this workflow. A
 # run holds a self-hosted Windows slot for about 35 minutes when the fleet is
-# online; per PR and again per merge-queue entry, that made it the largest
-# single consumer of the Windows pool, which is why it moved off the PR path.
-# docs/ci-self-hosted-runners.md "Nightly analysis window" has the cron table
-# this slot sits in.
+# online, so it runs once a night rather than per PR and per merge-queue
+# entry. docs/ci-self-hosted-runners.md "Nightly analysis window" has the
+# cron table this slot sits in.
 #
-# Surfacing: upload-sarif does not fail on findings and GitHub sends no
-# notification for a new alert on the default branch, so the `surface` job
+# Surfacing: upload-sarif does not fail on findings and nothing reliably
+# notifies anyone about a new alert on the default branch, so the `surface` job
 # at the bottom queries the code-scanning API for PREfast alerts created
 # since the previous nightly and, on any (or on an analysis failure), opens
 # or refreshes the `nightly-analysis` issue through
@@ -28,7 +27,7 @@ name: MSVC Code Analysis
 
 on:
   schedule:
-    # Nightly, six minutes after codeql.yml's cron so the two deciders and
+    # Nightly, six minutes after codeql.yml's cron so the two
     # toolchain-versions calls do not land on the control-plane runner in the
     # same minute. See docs/ci-self-hosted-runners.md "Nightly analysis window".
     - cron: "23 2 * * *"
@@ -161,15 +160,21 @@ jobs:
   # alerts on refs/heads/main created inside the last nightly window and
   # fails if there are any; that failure, or analyze failing, is handed to
   # the shared report-nightly-failure action, which opens (or comments on)
-  # one `nightly-analysis` issue for this engine. `always()` so an analyze
-  # failure is reported rather than skipped past. upload-sarif keeps its
-  # default wait-for-processing: true, so the alerts exist by the time this
-  # runs. Pinned to ubuntu-latest like this file's check-runner: it needs
-  # gh and GNU date, nothing from the fleet.
+  # one `nightly-analysis` issue for this engine. `!cancelled()` rather than
+  # `always()`: an analyze failure is still reported rather than skipped
+  # past, but a run someone cancelled by hand does not open an issue over
+  # it. upload-sarif keeps its default wait-for-processing: true, so the
+  # alerts exist by the time this runs. Pinned to ubuntu-latest because this
+  # file's check-runner is (this workflow does not read CONTROL_RUNNER_JSON);
+  # the job is seconds long and needs only gh and GNU date, so it takes
+  # nothing from the fleet. The query is pinned to refs/heads/main, the ref
+  # the schedule analyses; a workflow_dispatch from another branch uploads
+  # against that branch and this job does not see it, so the alert-to-issue
+  # path can only be exercised on main.
   surface:
     name: Surface findings
     needs: analyze
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -186,6 +191,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           # Nightly cadence plus an hour of slack for a late-starting run.
+          # The 25 h window overlaps the previous run by about an hour, so an
+          # alert from night N is listed again on night N+1 while it stays
+          # open - a second comment on the same issue, not a second finding.
           WINDOW_HOURS: "25"
         shell: bash
         run: |

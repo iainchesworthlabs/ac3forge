@@ -37,8 +37,9 @@ the kill switch that returns them all to GitHub-hosted - it is evaluated fresh o
 run, so a dead self-hosted fleet can never lock the escape hatch shut.
 (`msvc-analysis.yml`'s and `wheels.yml`'s own deciders are pinned to `ubuntu-latest`
 instead and don't read the variable.) Fork PRs are pinned to
-GitHub-hosted unconditionally here too: `check-runner` executes `decide-runner` from a
-checkout of the fork's merge ref, which is fork-controlled code.
+GitHub-hosted unconditionally in `ci.yml`'s and `_build.yml`'s deciders: `check-runner`
+executes `decide-runner` from a checkout of the fork's merge ref, which is fork-controlled
+code (`codeql.yml`'s decider has no `pull_request` trigger and needs no pin).
 
 This page describes what ac3forge's CI does with a self-hosted runner once one exists. It
 does not describe how one comes to exist - the fleet itself (Packer images, provisioning
@@ -145,26 +146,26 @@ analysis lands on the self-hosted fleet whenever a Linux or Windows runner is on
 GitHub-hosted otherwise. The fleet is normally idle at 02:00 UTC, which is the point of the
 slot. Neither workflow asks for the `big` label; ac3forge does not use the big runners. A run
 that finds something new (or fails) opens or refreshes a `nightly-analysis` issue through
-`.github/actions/report-nightly-failure` - GitHub sends no notification for a new
-default-branch code-scanning alert, so the issue is what makes the finding visible the next
-morning.
+`.github/actions/report-nightly-failure` - nothing reliably notifies anyone about a new
+default-branch code-scanning alert (GitHub's documented code-scanning notifications cover
+alert assignment), so the issue is what makes the finding visible the next morning.
 
 The fleet is shared with `aqualink-automate`. Scheduled runs are placed so the two repos'
 heavy legs never share a window, and every cron sits off the top of the hour (GitHub delays
-on-the-hour schedules). ac3forge owns 02:00-03:15 UTC on the fleet; aqualink-automate owns
-the 04:00 hour.
+on-the-hour schedules). The agreed split: ac3forge owns 02:00-03:15 UTC on the fleet, and
+aqualink-automate takes the 04:00 hour (its code-scanning cron is Tuesday 21:42 UTC weekly
+today, plus per-PR and push runs; the move into 04:xx has not been made yet).
 
 | UTC | Repo | Workflow | Fleet use |
 |---|---|---|---|
 | 02:17 | ac3forge | `codeql.yml` (C++ on self-hosted Linux ~9 min; Python/JS ~2 min) | Linux |
 | 02:23 | ac3forge | `msvc-analysis.yml` (PREfast, ~35 min) | Windows |
-| 02:29 | ac3forge | `static-analysis.yml` (clang-tidy, ~8 min) - planned, see CHANGELOG | Linux |
-| 02:35 | ac3forge | `sonarcloud.yml` - planned, see CHANGELOG | none (`ubuntu-latest`) |
 | 03:17 | ac3forge | `fuzz.yml` nightly jobs | none (hosted) |
-| 04:07 | aqualink-automate | `automated-codescanning.yml` (CodeQL and MSVC on the `big` runners; SonarCloud hosted) | Linux big, Windows big |
 | 04:43 | ac3forge | `interop.yml` | none (hosted) |
 | Mon 03:45 / 03:50 / 04:00 | ac3forge | `osv-scanner.yml` / `zizmor.yml` / `scorecard.yml` | none (hosted) |
+| Tue 21:42 / 22:17 / 22:27 / 22:37 | aqualink-automate | `automated-codescanning.yml` (CodeQL and MSVC on the `big` runners; SonarCloud hosted) / trivy / osv / scorecard - weekly today; code scanning is to move to 04:07, the minute that repo picked | Linux big, Windows big |
 
+Minutes 02:29 and 02:35 are held for further analysis engines if any move into this window.
 When either repo adds or moves a cron that touches the fleet, update this table and the copy
 kept in [iainchesworthlabs/ci-runners](https://github.com/iainchesworthlabs/ci-runners).
 

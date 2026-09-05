@@ -1089,9 +1089,10 @@ Stays blocked until those exist; listed so the state is recorded rather than red
 
 ## VX. Verification and oracles
 
-Nine required build legs, sanitizers, clang-tidy, PREfast, CodeQL, per-component coverage
-floors, a gold-reference gate on every leg, eleven libFuzzer harnesses (one of them opt-in) and
-an AC-3 input-space fuzzer already exist. What remains is mostly what the tree names itself.
+Nine required build legs, sanitizers, clang-tidy, per-component coverage floors, a
+gold-reference gate on every leg, eleven libFuzzer harnesses (one of them opt-in) and an AC-3
+input-space fuzzer already exist; PREfast and CodeQL run nightly against `main`. What remains
+is mostly what the tree names itself.
 
 ### Shipped
 

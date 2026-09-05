@@ -5,8 +5,8 @@ description: >-
   engine for as long as it stays open; the owner closes it once the findings
   are fixed or dismissed. Shared by the nightly analysis workflows
   (codeql.yml, msvc-analysis.yml) so every engine turns a job failure into
-  the same triage surface. GitHub sends no notification for a new
-  code-scanning alert on the default branch, and a schedule run's failure
+  the same triage surface. Nothing reliably notifies anyone about a new
+  default-branch code-scanning alert, and a schedule run's failure
   email goes only to whoever last edited the cron line, so an issue is what
   makes a nightly finding visible the next morning. Needs `issues: write` on
   the calling job.
@@ -14,8 +14,8 @@ description: >-
 inputs:
   engine:
     description: >-
-      Which engine failed, as it should read in the issue title - CodeQL,
-      PREfast, clang-tidy, SonarCloud.
+      Which engine failed, as it should read in the issue title - CodeQL or
+      PREfast today.
     required: true
   detail:
     description: >-

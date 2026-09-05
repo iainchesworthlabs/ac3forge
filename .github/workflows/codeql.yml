@@ -7,15 +7,15 @@
 # measure the codec's output stay on ci.yml's per-PR/per-queue-entry path.
 # A schedule run analyses the default branch's latest commit, which is the
 # ref that refreshes main's Security > Code scanning baseline, so dropping
-# push:main loses nothing (and the per-PR runs never gated anything after
-# 2026-08-31). docs/ci-self-hosted-runners.md "Nightly analysis window" has
-# the cron table this slot sits in, alongside msvc-analysis.yml and the other
-# repo that shares the runner fleet.
+# push:main loses nothing. docs/ci-self-hosted-runners.md "Nightly analysis
+# window" has the cron table this slot sits in, alongside msvc-analysis.yml
+# and the other repo that shares the runner fleet.
 #
-# Surfacing: codeql-action/analyze does not fail on findings, and GitHub
-# sends no notification for a new alert on the default branch, so a finding
-# from a nightly would otherwise sit in the Security tab until someone
-# opened it. The `surface` job at the bottom queries the code-scanning API
+# Surfacing: codeql-action/analyze does not fail on findings, and nothing
+# reliably notifies anyone about a new alert on the default branch (GitHub's
+# documented code-scanning notifications cover alert assignment), so a
+# finding from a nightly would otherwise sit in the Security tab until
+# someone opened it. The `surface` job at the bottom queries the code-scanning API
 # for CodeQL alerts on refs/heads/main created since the previous nightly and
 # fails on any; that failure, or an analyze failure, opens or refreshes one
 # `nightly-analysis` issue through .github/actions/report-nightly-failure.
@@ -95,8 +95,9 @@ jobs:
   # runner is online. The job itself is control-plane, routed by
   # vars.CONTROL_RUNNER_JSON with the same delete-the-variable kill switch as
   # ci.yml's check-runner. No fork-PR pin here: with no pull_request trigger,
-  # decide-runner only ever runs from a checkout of this repository's own
-  # main.
+  # decide-runner only ever runs from a checkout of a ref in this repository
+  # (main on the schedule, whichever branch a workflow_dispatch names), never
+  # from a fork.
   check-runner:
     name: Check self-hosted runner availability
     runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
@@ -127,6 +128,12 @@ jobs:
     name: Analyze (${{ matrix.display }})
     needs: [toolchain-versions, check-runner]
     runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+    # C++ leg 8.6 min median on the fleet (2026-09-04); the interpreted legs
+    # are seconds. A hung run would otherwise hold a Linux fleet slot for
+    # GitHub's 360-minute default, into aqualink-automate's 04:00 window.
+    # Unmeasured on ubuntu-latest (the fallback when no Linux runner is
+    # online) - raise this if a hosted run trips it.
+    timeout-minutes: 45
     # Empty for every interpreted leg, so only the C++ one pays for the pinned
     # ubuntu:26.04 image (and the bootstrap/toolchain/vcpkg steps that follow).
     container: ${{ matrix.container }}
@@ -238,13 +245,18 @@ jobs:
   # the last nightly window and fails if there are any; that failure, or the
   # analyze matrix failing, is handed to the shared report-nightly-failure
   # action, which opens (or comments on) one `nightly-analysis` issue for
-  # this engine. `always()` so an analyze failure is reported rather than
-  # skipped past. analyze keeps codeql-action's default
-  # wait-for-processing: true, so the alerts exist by the time this runs.
+  # this engine. `!cancelled()` rather than `always()`: an analyze failure is
+  # still reported rather than skipped past, but a run someone cancelled by
+  # hand does not open an issue over it. analyze keeps codeql-action's
+  # default wait-for-processing: true, so the alerts exist by the time this
+  # runs. The query is pinned to refs/heads/main, the ref the schedule
+  # analyses; a workflow_dispatch from another branch uploads against that
+  # branch and this job does not see it, so the alert-to-issue path can only
+  # be exercised on main.
   surface:
     name: Surface findings
     needs: analyze
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
@@ -261,6 +273,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           # Nightly cadence plus an hour of slack for a late-starting run.
+          # The 25 h window overlaps the previous run by about an hour, so an
+          # alert from night N is listed again on night N+1 while it stays
+          # open - a second comment on the same issue, not a second finding.
           WINDOW_HOURS: "25"
         shell: bash
         run: |

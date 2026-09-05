@@ -14,6 +14,12 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- CodeQL (`codeql.yml`) and MSVC Code Analysis (`msvc-analysis.yml`) run nightly against
+  `main` (02:17 and 02:23 UTC) instead of on every pull request, push and merge-queue entry,
+  and open or refresh a `nightly-analysis` issue when a run finds a new alert or fails. The
+  required checks on `main` (`Branch Name`, `CI Status`, `Scan dependency diff`) are
+  unchanged; the `code-scanning-gate-main` ruleset was deleted, since a merge-time
+  code-scanning rule cannot be satisfied when analysis runs only on `main`.
 - The Desktop Atmos Demo's silent output device, `Ac3ForgeNullSink`, is now an ACX (Audio
   Class eXtensions) driver on KMDF, derived from Microsoft's AudioCodec sample, in place of
   the PortCls/WaveRT miniport derived from the Simple Audio Sample: about 1,900 lines in
