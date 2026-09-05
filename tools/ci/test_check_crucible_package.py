@@ -108,7 +108,9 @@ class NoticesContentTest(unittest.TestCase):
             self.assertIn("libpipewire", out)
             self.assertIn("GNU LESSER GENERAL PUBLIC LICENSE", out)
             # A Windows file that is right in every way but one still fails.
-            code, out = run(windows_zip(directory, WINDOWS_NOTICES + QUICK3D_SECTION + "libpipewire-0.3\n"))
+            code, out = run(
+                windows_zip(directory, WINDOWS_NOTICES + QUICK3D_SECTION + "libpipewire-0.3\n")
+            )
             self.assertEqual(code, 1)
             self.assertIn("libpipewire", out)
 
@@ -120,11 +122,15 @@ class NoticesContentTest(unittest.TestCase):
             self.assertIn("does not name Qt Quick 3D", out)
             # Saying so without shipping the module (which the name check
             # refuses on its own; the notices rule names the same thing).
-            code, out = run(windows_zip(directory, WINDOWS_NOTICES + QUICK3D_SECTION, quick3d_payload=False))
+            code, out = run(
+                windows_zip(directory, WINDOWS_NOTICES + QUICK3D_SECTION, quick3d_payload=False)
+            )
             self.assertEqual(code, 1)
             self.assertIn("QtQuick3D", out)
             # Matched: present with the payload.
-            code, out = run(windows_zip(directory, WINDOWS_NOTICES + QUICK3D_SECTION, quick3d_payload=True))
+            code, out = run(
+                windows_zip(directory, WINDOWS_NOTICES + QUICK3D_SECTION, quick3d_payload=True)
+            )
             self.assertEqual(code, 0, out)
 
     def test_unfilled_qt_version_token_fails(self):
@@ -143,7 +149,9 @@ class NoticesContentTest(unittest.TestCase):
             self.assertIn("GNU LESSER GENERAL PUBLIC LICENSE", out)
             self.assertIn("libpipewire", out)
             # The LGPL heading alone is enough.
-            code, out = run(linux_tar(directory, LINUX_NOTICES + "GNU LESSER GENERAL PUBLIC LICENSE\n"))
+            code, out = run(
+                linux_tar(directory, LINUX_NOTICES + "GNU LESSER GENERAL PUBLIC LICENSE\n")
+            )
             self.assertEqual(code, 1)
             self.assertIn("GNU LESSER GENERAL PUBLIC LICENSE", out)
 
@@ -156,7 +164,9 @@ class NoticesContentTest(unittest.TestCase):
 
     def test_linux_tar_needs_debian_copyright(self):
         with tempfile.TemporaryDirectory() as directory:
-            code, out = run(linux_tar(directory, LINUX_NOTICES, omit=("share/doc/ac3forge-crucible/copyright",)))
+            code, out = run(
+                linux_tar(directory, LINUX_NOTICES, omit=("share/doc/ac3forge-crucible/copyright",))
+            )
             self.assertEqual(code, 1)
             self.assertIn("::error::missing share/doc/ac3forge-crucible/copyright", out)
 

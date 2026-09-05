@@ -116,17 +116,25 @@ def check_notices(text: str, required: tuple[str, ...], forbidden: tuple[str, ..
     that cross-check, for an archive that carries no Qt at all (Linux), where
     the section's presence is the build's business and not the payload's.
     """
-    problems = [f"NOTICES.txt does not mention {phrase!r}" for phrase in required if phrase not in text]
+    problems = [
+        f"NOTICES.txt does not mention {phrase!r}" for phrase in required if phrase not in text
+    ]
     problems += [f"NOTICES.txt mentions {phrase!r}, which belongs to the other platform's package"
                  for phrase in forbidden if phrase in text]
     if not QT_VERSION_PATTERN.search(text):
-        problems.append("NOTICES.txt names no Qt 6.x version - the configure-time token was not filled")
+        problems.append(
+            "NOTICES.txt names no Qt 6.x version - the configure-time token was not filled"
+        )
     if ships_quick3d is not None:
         named = QUICK3D_MARKER in text
         if ships_quick3d and not named:
-            problems.append(f"the package ships qml/QtQuick3D/ but NOTICES.txt does not name {QUICK3D_MARKER}")
+            problems.append(
+                f"the package ships qml/QtQuick3D/ but NOTICES.txt does not name {QUICK3D_MARKER}"
+            )
         elif named and not ships_quick3d:
-            problems.append(f"NOTICES.txt names {QUICK3D_MARKER} but the package ships no qml/QtQuick3D/")
+            problems.append(
+                f"NOTICES.txt names {QUICK3D_MARKER} but the package ships no qml/QtQuick3D/"
+            )
     return problems
 
 
