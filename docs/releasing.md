@@ -60,6 +60,13 @@ dispatched build fetches full history (or gets the version stamped directly via
    backstop - it is what caught alerts #83-94 unnoticed on `main` under the old
    `develop`-\>`main` promotion flow, where alerts could accumulate on `develop` invisibly
    until a promotion merge landed them all on `main` at once.
+
+   CodeQL and MSVC PREfast analyse `main` nightly (02:17 and 02:23 UTC), not per pull
+   request, so a release cut before the following night's run has not had that day's merges
+   scanned. Either wait for the nightly or dispatch both by hand first
+   (`gh workflow run codeql.yml` / `gh workflow run msvc-analysis.yml`) and let them finish
+   before running the query above. An open `nightly-analysis` issue means a run found
+   something that has not been triaged yet - deal with it before tagging.
 2. CI green on `main` for the commit you're about to tag.
 3. Releases must be **cut from main** - `resolve-version` checks this with
    `git merge-base --is-ancestor` and fails otherwise (dry runs are exempt).

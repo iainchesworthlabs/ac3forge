@@ -1,4 +1,24 @@
-# CodeQL static analysis across every language in this repository.
+# CodeQL static analysis across every language in this repository, run
+# nightly against main.
+#
+# Trigger: one schedule at 02:17 UTC, plus workflow_dispatch. No push,
+# pull_request or merge_group trigger: code-analysis engines in this repo run
+# once a night on refs/heads/main, and only the jobs that build, run or
+# measure the codec's output stay on ci.yml's per-PR/per-queue-entry path.
+# A schedule run analyses the default branch's latest commit, which is the
+# ref that refreshes main's Security > Code scanning baseline, so dropping
+# push:main loses nothing (and the per-PR runs never gated anything after
+# 2026-08-31). docs/ci-self-hosted-runners.md "Nightly analysis window" has
+# the cron table this slot sits in, alongside msvc-analysis.yml and the other
+# repo that shares the runner fleet.
+#
+# Surfacing: codeql-action/analyze does not fail on findings, and GitHub
+# sends no notification for a new alert on the default branch, so a finding
+# from a nightly would otherwise sit in the Security tab until someone
+# opened it. The `surface` job at the bottom queries the code-scanning API
+# for CodeQL alerts on refs/heads/main created since the previous nightly and
+# fails on any; that failure, or an analyze failure, opens or refreshes one
+# `nightly-analysis` issue through .github/actions/report-nightly-failure.
 #
 # The C++ leg is modelled on CountdownSolver's .github/workflows/codeql.yml
 # (same CMake+vcpkg shape, same gitflow model) - build-mode: manual,
@@ -39,40 +59,18 @@
 name: CodeQL
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "LICENSE"
-      - "mkdocs.yml"
-      - "requirements/requirements-docs.in"
-      - "requirements/requirements-docs.txt"
-      - ".github/workflows/docs.yml"
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "LICENSE"
-      - "mkdocs.yml"
-      - "requirements/requirements-docs.in"
-      - "requirements/requirements-docs.txt"
-      - ".github/workflows/docs.yml"
   schedule:
-    # Weekly scan catches new CodeQL query packs even without code changes.
-    - cron: "17 3 * * 1"
-  # main's merge queue (see .github/branch-protection.md) needs "Analyze
-  # (C++)" to actually report on its temporary gh-readonly-queue/... ref -
-  # see ci.yml's own merge_group comment for why the trigger alone is
-  # sufficient here (no pull_request-only context is read below).
-  merge_group:
-    branches: [ main ]
+    # Nightly against main - see docs/ci-self-hosted-runners.md "Nightly
+    # analysis window": ac3forge owns 02:00-03:15 UTC on the shared fleet,
+    # aqualink-automate owns ~04:00. Off-minute per GitHub's own advice.
+    - cron: "17 2 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: codeql-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  # One nightly at a time; a manual dispatch queues behind a running nightly
+  # rather than cancelling it (an analysis that never finishes uploads nothing).
+  group: codeql-nightly
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -92,14 +90,16 @@ jobs:
   # single-leg jobs (see docs/ci-self-hosted-runners.md). The C++ analyze
   # leg is a full tracer build inside the same pinned ubuntu:26.04
   # container the CI matrix uses, so it runs identically on either pool;
-  # the interpreted legs are seconds long either way. The job itself is
-  # control-plane, routed by vars.CONTROL_RUNNER_JSON with the same
-  # delete-the-variable kill switch and the same unconditional fork-PR pin
-  # to GitHub-hosted as ci.yml's check-runner (it executes decide-runner
-  # from a checkout of the fork's merge ref - fork-controlled code).
+  # the interpreted legs are seconds long either way. At 02:17 the fleet is
+  # normally idle, so `auto` lands every leg on self-hosted whenever a Linux
+  # runner is online. The job itself is control-plane, routed by
+  # vars.CONTROL_RUNNER_JSON with the same delete-the-variable kill switch as
+  # ci.yml's check-runner. No fork-PR pin here: with no pull_request trigger,
+  # decide-runner only ever runs from a checkout of this repository's own
+  # main.
   check-runner:
     name: Check self-hosted runner availability
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
       actions: read
@@ -117,12 +117,12 @@ jobs:
           mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
           org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
-  # `display`, not `language`, in the job name - and "C++" spelled exactly as it
-  # was before this became a matrix. The check name a branch-protection ruleset
-  # selects is this rendered string, and .github/branch-protection.md requires
-  # "Analyze (C++)" on main: renaming it to "Analyze (cpp)"
-  # would leave that required check permanently pending on every PR until an
-  # admin edited the ruleset. Adding legs is free; renaming one is not.
+  # `display`, not `language`, in the job name, and "C++" spelled as it was
+  # before this became a matrix. No ruleset selects these check names any
+  # more (nothing here reports on a PR), but the rendered name is what the
+  # run history filters by and the `category` on the analyze step is what
+  # the Security > Code scanning alert history is keyed by - keep both
+  # stable. Adding a leg is free; renaming one splits its history.
   analyze:
     name: Analyze (${{ matrix.display }})
     needs: [toolchain-versions, check-runner]
@@ -194,22 +194,6 @@ jobs:
           node-version: "24"
 
       - name: Initialize CodeQL
-        # vars.PAUSE_NONESSENTIAL_CI: a temporary, reversible-by-variable
-        # pause on the two non-required legs during PR/merge-queue
-        # validation only, during a merge-queue drain. C++ is main's own
-        # required check (see this file's own comment above on why renaming
-        # it is not free) and always runs; push:main/schedule runs of every
-        # language are untouched either way. Clear/remove the variable to
-        # revert - no code change needed. (Job-level `if:` can't reference
-        # `matrix` - github.com/actions/runner/issues on context
-        # availability - so this and the analyze step below carry the
-        # condition instead of the job itself; checkout above still runs
-        # but costs a couple of seconds, not the minutes CodeQL init/analyze
-        # would.)
-        if: >-
-          matrix.language == 'cpp' ||
-          vars.PAUSE_NONESSENTIAL_CI != 'true' ||
-          (github.event_name != 'pull_request' && github.event_name != 'merge_group')
         uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           languages: ${{ matrix.language }}
@@ -243,12 +227,62 @@ jobs:
         run: cmake --build --preset build-linux-gcc -- -k 0
 
       - name: Perform CodeQL Analysis
-        # Same condition as "Initialize CodeQL" above - both skip together,
-        # or neither does.
-        if: >-
-          matrix.language == 'cpp' ||
-          vars.PAUSE_NONESSENTIAL_CI != 'true' ||
-          (github.event_name != 'pull_request' && github.event_name != 'merge_group')
         uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           category: "/language:${{ matrix.language }}"
+
+  # Turns "a new CodeQL alert appeared on main" into something a person sees
+  # the next morning. codeql-action/analyze never fails on findings and
+  # GitHub does not notify on new default-branch alerts, so this job asks
+  # the code-scanning API for CodeQL alerts on refs/heads/main created inside
+  # the last nightly window and fails if there are any; that failure, or the
+  # analyze matrix failing, is handed to the shared report-nightly-failure
+  # action, which opens (or comments on) one `nightly-analysis` issue for
+  # this engine. `always()` so an analyze failure is reported rather than
+  # skipped past. analyze keeps codeql-action's default
+  # wait-for-processing: true, so the alerts exist by the time this runs.
+  surface:
+    name: Surface findings
+    needs: analyze
+    if: always()
+    runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    permissions:
+      contents: read
+      security-events: read
+      issues: write
+    env:
+      TOOL: CodeQL
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fail on code-scanning alerts created since the last nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Nightly cadence plus an hour of slack for a late-starting run.
+          WINDOW_HOURS: "25"
+        shell: bash
+        run: |
+          set -euo pipefail
+          since="$(date -u -d "-${WINDOW_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"
+          # The alerts endpoint has no created-since filter: ask for the
+          # newest first and filter client-side. One page of 100 bounds the
+          # call; more than 100 new alerts in one night would be truncated,
+          # which is acceptable for a "did anything new appear" signal.
+          gh api "repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&ref=refs/heads/main&tool_name=${TOOL}&sort=created&direction=desc&per_page=100" \
+            --jq ".[] | select(.created_at > \"${since}\") | \"\\(.number)\\t\\(.rule.id)\\t\\(.most_recent_instance.location.path):\\(.most_recent_instance.location.start_line)\\t\\(.html_url)\"" \
+            > new-alerts.tsv
+          count="$(wc -l < new-alerts.tsv | tr -d '[:space:]')"
+          if [ "${count}" -gt 0 ]; then
+            echo "::error::${count} new ${TOOL} alert(s) on main since ${since}:"
+            cat new-alerts.tsv
+            exit 1
+          fi
+          echo "No new ${TOOL} alerts on main since ${since}."
+
+      - uses: ./.github/actions/report-nightly-failure
+        if: failure() || needs.analyze.result != 'success'
+        with:
+          engine: ${{ env.TOOL }}
+          detail: "New CodeQL alerts on main since the previous nightly, or the analysis itself failed. See the run log, then Security > Code scanning filtered to refs/heads/main and tool CodeQL."

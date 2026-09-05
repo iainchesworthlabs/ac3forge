@@ -11,12 +11,13 @@ the rest overflow to GitHub-hosted). macOS and the arm64 legs always stay on Git
 runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
 (Detect changes, Static Analysis, FFmpeg Validate, ADM Module, ABI diff, Performance vs
 merge base, and the cheap gate jobs) route the same way through its
-`check-runner` job, `codeql.yml`'s Analyze matrix routes through its own `check-runner`,
-MSVC Code Analysis (PREfast) and the Windows wheel leg route through deciders of their own
-in `msvc-analysis.yml`/`wheels.yml`, and `_build.yml`'s standalone containerised
-build-footprint job rides the matrix fan-out as leg 5 - so one queue entry can now put up
-to four Windows consumers (two build legs, PREfast, the wheel leg) onto the 7-runner
-Windows fleet at once. Several jobs stay on GitHub-hosted deliberately: Coverage (see its
+`check-runner` job, the Windows wheel leg routes through a decider of its own in
+`wheels.yml`, and `_build.yml`'s standalone containerised build-footprint job rides the
+matrix fan-out as leg 5 - so one queue entry can put up to three Windows consumers (two
+build legs, the wheel leg) onto the 7-runner Windows fleet at once. The nightly analysis
+workflows (`codeql.yml`, `msvc-analysis.yml`) have deciders of their own too, but run
+against `main` once a night rather than per queue entry - see
+[Nightly analysis window](#nightly-analysis-window). Several jobs stay on GitHub-hosted deliberately: Coverage (see its
 own comment in `ci.yml` for the undiagnosed shutdown-signal failure); build-wasm /
 build-android / build-rust (they run bare and lean on toolchains the hosted image
 pre-bakes - emsdk, Android SDK/NDK, rustup - that the fleet image does not; route them
@@ -132,6 +133,40 @@ carries the exact pinned version - which the fleet's own Packer template now bak
 `ci-runners`' `scripts/windows/03-llvm-toolchain.ps1`), so that leg's self-hosted timings
 do include a pre-bake shortcut and should be read accordingly. Wider pre-baking is a
 reasonable follow-up once there's real data to justify it - not built in advance of that data.
+
+## Nightly analysis window
+
+The code-analysis engines - CodeQL (`codeql.yml`) and MSVC Code Analysis / PREfast
+(`msvc-analysis.yml`) - run once a night against `main` rather than on every push, pull
+request and merge-queue entry. Both still route through a `decide-runner` call of their own
+at that hour (`codeql.yml`'s decider reads `CONTROL_RUNNER_JSON` the way `ci.yml`'s does;
+`msvc-analysis.yml`'s is pinned to `ubuntu-latest` and doesn't read the variable), so the
+analysis lands on the self-hosted fleet whenever a Linux or Windows runner is online and on
+GitHub-hosted otherwise. The fleet is normally idle at 02:00 UTC, which is the point of the
+slot. Neither workflow asks for the `big` label; ac3forge does not use the big runners. A run
+that finds something new (or fails) opens or refreshes a `nightly-analysis` issue through
+`.github/actions/report-nightly-failure` - GitHub sends no notification for a new
+default-branch code-scanning alert, so the issue is what makes the finding visible the next
+morning.
+
+The fleet is shared with `aqualink-automate`. Scheduled runs are placed so the two repos'
+heavy legs never share a window, and every cron sits off the top of the hour (GitHub delays
+on-the-hour schedules). ac3forge owns 02:00-03:15 UTC on the fleet; aqualink-automate owns
+the 04:00 hour.
+
+| UTC | Repo | Workflow | Fleet use |
+|---|---|---|---|
+| 02:17 | ac3forge | `codeql.yml` (C++ on self-hosted Linux ~9 min; Python/JS ~2 min) | Linux |
+| 02:23 | ac3forge | `msvc-analysis.yml` (PREfast, ~35 min) | Windows |
+| 02:29 | ac3forge | `static-analysis.yml` (clang-tidy, ~8 min) - planned, see CHANGELOG | Linux |
+| 02:35 | ac3forge | `sonarcloud.yml` - planned, see CHANGELOG | none (`ubuntu-latest`) |
+| 03:17 | ac3forge | `fuzz.yml` nightly jobs | none (hosted) |
+| 04:07 | aqualink-automate | `automated-codescanning.yml` (CodeQL and MSVC on the `big` runners; SonarCloud hosted) | Linux big, Windows big |
+| 04:43 | ac3forge | `interop.yml` | none (hosted) |
+| Mon 03:45 / 03:50 / 04:00 | ac3forge | `osv-scanner.yml` / `zizmor.yml` / `scorecard.yml` | none (hosted) |
+
+When either repo adds or moves a cron that touches the fleet, update this table and the copy
+kept in [iainchesworthlabs/ci-runners](https://github.com/iainchesworthlabs/ci-runners).
 
 ## Toolchain version pins
 

@@ -24,8 +24,10 @@ this file.
 
 PRs target `main`. To merge, a PR must pass the required checks: `Branch Name`, the `CI Status`
 aggregate (every required CI job — the build/test matrix, clang-tidy, coverage, the
-FFmpeg-oracle validation and the rest), CodeQL's `Analyze (C++)`, and the `Scan dependency diff`
-dependency review; a merge queue serializes landing when several PRs are ready at once (see
+FFmpeg-oracle validation and the rest) and the `Scan dependency diff` dependency review; a
+merge queue serializes landing when several PRs are ready at once. CodeQL and MSVC PREfast do
+not gate a PR: they run nightly against `main` and open a `nightly-analysis` issue when a run
+finds something new (see
 [.github/branch-protection.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)
 for the full required-check list and the merge-queue rationale). Releases are tags cut directly
 from `main` — see [docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md).
