@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import QtTest
 
 import Ac3ForgeCrucible
@@ -74,6 +75,9 @@ TestCase {
 
     function cleanup() {
         CrucibleController.stop();
+        // The machine back, for the two seams the controller holds rather
+        // than hands to the engine. A no-op unless this case scripted it.
+        TestServices.clear();
         Theme.fontScale = 1.0;
     }
 
@@ -258,6 +262,31 @@ TestCase {
         compare(secondRing.visible, true);
     }
 
+    // The same rule on the other three shapes of control: a check, whose
+    // ring is around the box rather than the note; a bed chip; and the room
+    // scope, where the ring says the arrows are here.
+    function test_focusRingIsOnEveryKindOfControl() {
+        const check = createTemporaryObject(checkComponent, testCase.parent);
+        const app = createTemporaryObject(fakeAppComponent, testCase, { slot: -1 });
+        const chip = createTemporaryObject(chipComponent, testCase.parent, { app: app });
+        const keys = createTemporaryObject(keysComponent, testCase.parent, { app: app });
+        verify(check && chip && keys);
+        const rings = [findChild(check, "focusRing"), findChild(chip, "focusRing"),
+                       findChild(keys, "focusRing")];
+        const owners = [check, chip, keys];
+        for (let i = 0; i < owners.length; ++i) {
+            verify(rings[i], "control " + i + " carries a focus ring");
+            compare(rings[i].visible, false);
+        }
+        for (let i = 0; i < owners.length; ++i) {
+            owners[i].forceActiveFocus();
+            verify(owners[i].activeFocus);
+            for (let j = 0; j < rings.length; ++j) {
+                compare(rings[j].visible, i === j, "ring " + j + " with the focus on " + i);
+            }
+        }
+    }
+
     function test_advancedDisclosureTogglesWithSpace() {
         const page = createTemporaryObject(settingsPage, testCase.parent);
         verify(page);
@@ -331,22 +360,26 @@ TestCase {
         verify(keys, "the room's key scope carries objectName roomKeys");
         list.forceActiveFocus();
         verify(list.activeFocus);
-        // Read from the items themselves rather than from the window's
-        // activeFocusItem, so this needs no second module import.
-        let steps = 0;
-        let sawChoice = false;
-        while (steps < 8 && !keys.activeFocus) {
+        // The documented order (docs/crucible/accessibility.md, "The focus
+        // order"): the applications list, the room-view switch where the
+        // build has the 3D picture, then the room. Collected as it is
+        // walked, from the window's own activeFocusItem, so this asserts the
+        // ORDER and the number of presses rather than only the arrival.
+        verify(!CrucibleController.has3D || choice, "a 3D build carries the room-view switch");
+        const wanted = CrucibleController.has3D ? ["roomViewChoice", "roomKeys"] : ["roomKeys"];
+        const walked = [];
+        for (let step = 0; step < wanted.length; ++step) {
             keyClick(Qt.Key_Tab);
-            ++steps;
-            sawChoice = sawChoice || (choice !== null && choice.activeFocus);
+            walked.push(page.Window.activeFocusItem ? page.Window.activeFocusItem.objectName : "");
         }
-        verify(keys.activeFocus, "Tab from the applications list reaches the room within " + steps + " presses");
-        // The 3D switch is on the way there exactly where the build has one.
-        compare(sawChoice, CrucibleController.has3D,
-                "the room-view switch is a tab stop iff this build has Qt Quick 3D");
+        compare(walked.join(" > "), wanted.join(" > "), "the room page in reading order");
+        verify(keys.activeFocus, "Tab from the applications list reaches the room in " + wanted.length + " presses");
         // And back the way it came.
         keyClick(Qt.Key_Backtab);
         verify(!keys.activeFocus, "Shift+Tab leaves the room scope");
+        compare(page.Window.activeFocusItem ? page.Window.activeFocusItem.objectName : "",
+                CrucibleController.has3D ? "roomViewChoice" : "appList",
+                "Shift+Tab returns to the item before it");
     }
 
     function test_textScaleGrowsTheControls() {
@@ -435,6 +468,41 @@ TestCase {
             const app = CrucibleController.apps.find(function(entry) { return entry.app === chosen; });
             return app && app.slot < 0;
         }, 5000, "Delete returned it");
+    }
+
+    // The rail re-sorts itself whenever an application starts, exits or goes
+    // quiet, and a ListView answers a model whose value changed by putting
+    // its own currentIndex back to 0. That must not choose an application:
+    // the selection is what the room's arrow keys move, and it would walk to
+    // the top of the list on its own while a person was placing something.
+    // The write below is what the view itself does in that case.
+    function test_theListRowFollowsTheSelectionAndNotTheOtherWayAbout() {
+        if (!scriptedRoom()) {
+            skip("the engine did not run over the scripted machine here: " + CrucibleController.lastError);
+        }
+        const page = createTemporaryObject(roomPage, testCase.parent);
+        verify(page);
+        waitForRendering(page);
+        const list = findChild(page, "appList");
+        verify(list);
+        // Nothing is chosen until someone chooses it.
+        compare(page.selectedApp, -1);
+        compare(list.currentIndex, -1);
+
+        list.forceActiveFocus();
+        keyClick(Qt.Key_Down);
+        const first = page.selectedApp;
+        verify(first >= 0, "Down chooses an application");
+        keyClick(Qt.Key_Down);
+        const chosen = page.selectedApp;
+        verify(chosen !== first, "a second Down moves to the next one");
+        compare(list.currentIndex, page.indexOfApp(chosen), "the row followed the selection");
+
+        const away = page.indexOfApp(chosen) === 0 ? 1 : 0;
+        list.currentIndex = away;
+        compare(page.selectedApp, chosen, "the view's own row does not choose an application");
+        compare(list.currentIndex, page.indexOfApp(page.selectedApp),
+                "and the row is put back where the selection is");
     }
 
     function test_sizeSliderRespondsToKeys() {

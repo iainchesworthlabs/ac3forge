@@ -28,13 +28,17 @@ ApplicationWindow {
     property bool suppressFirstRun: false
     property alias firstRunDialogRef: firstRun
 
-    // The text size the person chose, or the one the platform's own theme
-    // reports. Every size in the window is a multiple of this
-    // (Theme.fontScale), so "Larger text" in the desktop's accessibility
-    // settings, or the Text size setting here, moves all of them together.
-    // 9 pt is the message-font size the common desktops report at 100%, and
-    // what their larger-text settings scale; a platform that reports a pixel
-    // size instead has no point size to read and stays at 1.0.
+    // The text size the person chose. Every size in the window is a multiple
+    // of this (Theme.fontScale), so the Text size setting moves all of them
+    // together and the controls grow rather than clip.
+    //
+    // 100% is the default and is what the window is drawn at. "System" reads
+    // the point size the platform's theme reports and counts 9 pt as 100%,
+    // which is the base size on Windows and what its Text size setting
+    // scales; several Linux desktops report 10 or 11 pt with nothing about
+    // text size touched, so "System" starts the window larger there and is
+    // an explicit choice rather than the default. A platform that reports a
+    // pixel size instead has no point size to read and stays at 1.0.
     function applyTextScale() {
         const choice = CrucibleController.textScale;
         if (choice === "system") {
@@ -161,6 +165,7 @@ ApplicationWindow {
                 FocusRing {}
             }
             SegmentedControl {
+                objectName: "pageChoice"
                 model: [{ label: qsTr("Room"), value: "room" }, { label: qsTr("Signal path"), value: "output" }, { label: qsTr("Settings"), value: "settings" }]
                 currentValue: window.page
                 accessibleName: qsTr("Page")

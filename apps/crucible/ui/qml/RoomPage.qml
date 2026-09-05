@@ -33,19 +33,34 @@ Item {
         return -1;
     }
     // The list's current row and the page's selection are two views of one
-    // thing. Each writes to the other only when the two differ, so a
-    // keyboard walk down the list and a click on a marker both settle
-    // instead of driving each other round.
-    function selectFromList() {
-        const apps = CrucibleController.apps;
-        if (appList.currentIndex < 0 || appList.currentIndex >= apps.length) return;
-        const id = apps[appList.currentIndex].app;
-        if (page.selectedApp !== id) page.selectedApp = id;
-    }
-    onSelectedAppChanged: {
+    // thing, and the selection is the one that decides. The row follows it
+    // and never the other way about, because the row is not always moved by
+    // a person: a ListView writes its own currentIndex back to 0 whenever
+    // the VALUE of its model changes, and the controller replaces the
+    // applications list on every poll where the membership or the
+    // sound-first order moved - an application starting, exiting, or merely
+    // going quiet. A row that led the selection would hand the room's arrow
+    // keys to whatever had just floated to the top of the rail.
+    //
+    // So: the arrow keys and a click set the selection, and anything else
+    // that moves the row is put back.
+    function syncListRow() {
         const row = page.indexOfApp(page.selectedApp);
-        if (row >= 0 && appList.currentIndex !== row) appList.currentIndex = row;
+        if (appList.currentIndex !== row) appList.currentIndex = row;
     }
+    // Up and Down in the list, moving the selection rather than a cursor of
+    // the view's own that the selection would then have to chase.
+    function stepSelection(delta) {
+        const apps = CrucibleController.apps;
+        if (apps.length === 0) return;
+        const at = page.indexOfApp(page.selectedApp);
+        const row = at < 0
+            ? (delta > 0 ? 0 : apps.length - 1)
+            : Math.max(0, Math.min(apps.length - 1, at + delta));
+        page.selectedApp = apps[row].app;
+        appList.positionViewAtIndex(row, ListView.Contain);
+    }
+    onSelectedAppChanged: page.syncListRow()
 
     RowLayout {
         anchors.fill: parent
@@ -95,7 +110,11 @@ Item {
                         spacing: 2
                         model: CrucibleController.apps
                         activeFocusOnTab: true
-                        keyNavigationEnabled: true
+                        // The view's own cursor is off: page.stepSelection
+                        // moves the selection and syncListRow brings the row
+                        // to it, which is the only direction that survives
+                        // the model being replaced under the view.
+                        keyNavigationEnabled: false
                         // Nothing is current until something is chosen: the
                         // page opens with no selected application, as it did
                         // when only a click could select one.
@@ -103,10 +122,20 @@ Item {
                         Accessible.role: Accessible.List
                         Accessible.name: qsTr("Applications")
                         Accessible.focusable: true
-                        onCurrentIndexChanged: page.selectFromList()
+                        onCurrentIndexChanged: page.syncListRow()
                         Keys.onPressed: function(event) {
+                            if (event.key === Qt.Key_Up) {
+                                page.stepSelection(-1);
+                                event.accepted = true;
+                                return;
+                            }
+                            if (event.key === Qt.Key_Down) {
+                                page.stepSelection(1);
+                                event.accepted = true;
+                                return;
+                            }
                             if (event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter && event.key !== Qt.Key_Space) {
-                                return;  // Up and Down are the list's own
+                                return;
                             }
                             if (page.selected && page.selected.slot < 0 && !page.selected.fullscreen) {
                                 CrucibleController.position(page.selected.app, 0.5, 0.5, 0);

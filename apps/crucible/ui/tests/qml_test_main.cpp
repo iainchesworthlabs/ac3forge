@@ -12,6 +12,7 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -19,7 +20,9 @@
 #include <vector>
 
 #include "../../../gui/language_manager.hpp"
+#include "default_device.hpp"
 #include "session_monitor.hpp"
+#include "slots.hpp"
 #include "virtual_device.hpp"
 #include "../app_icon_provider.hpp"
 #include "../crucible_controller.hpp"
@@ -67,8 +70,7 @@ public:
     // controller singleton cannot be reached, so a suite can skip rather
     // than fail on a harness that did not register it.
     Q_INVOKABLE bool scriptSessions(const QVariantList& apps) {
-        auto* controller = engine_->singletonInstance<CrucibleController*>(
-            QStringLiteral("Ac3ForgeCrucible"), QStringLiteral("CrucibleController"));
+        auto* controller = find_controller();
         if (controller == nullptr) {
             return false;
         }
@@ -111,11 +113,38 @@ public:
 
         controller->set_test_services(std::move(sessions), std::move(devices), std::move(foreground),
                                       std::move(default_device), std::move(virtual_device));
+        scripted_ = true;
+        return true;
+    }
+
+    // The machine back. Every scripted suite calls this in cleanup(),
+    // because two of the five seams are held by the controller rather than
+    // handed to the engine at start(): a case that ran after a scripted one
+    // would otherwise read the fake default device and the fake silent
+    // device, and CONSTANT properties over them would answer from before the
+    // swap. A no-op when nothing was scripted, so an unscripted case pays
+    // nothing for it.
+    Q_INVOKABLE bool clear() {
+        if (!scripted_) {
+            return true;
+        }
+        auto* controller = find_controller();
+        if (controller == nullptr) {
+            return false;
+        }
+        controller->set_test_services(nullptr, nullptr, nullptr, nullptr, nullptr);
+        scripted_ = false;
         return true;
     }
 
 private:
+    [[nodiscard]] CrucibleController* find_controller() const {
+        return engine_->singletonInstance<CrucibleController*>(QStringLiteral("Ac3ForgeCrucible"),
+                                                               QStringLiteral("CrucibleController"));
+    }
+
     QQmlEngine* engine_ = nullptr;
+    bool scripted_ = false;
 };
 
 // The isolation described above: settings, style, language and the icon

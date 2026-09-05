@@ -169,17 +169,19 @@ void CrucibleController::set_test_services(std::shared_ptr<ac3::crucible::Sessio
     test_sessions_ = std::move(sessions);
     test_devices_ = std::move(devices);
     test_foreground_ = std::move(foreground);
-    if (default_device) {
-        default_device_ = std::move(default_device);
-        previous_default_id_ = default_device_->default_id();
-        // Nothing has been moved on a seam this object has only just met.
-        moved_default_by_us_ = false;
-        previous_default_name_.clear();
-    }
-    if (virtual_device) {
-        virtual_device_ = std::move(virtual_device);
-    }
-    log_.note("platform seams replaced by a test harness");
+    // A null one puts the platform's own back, so a harness can hand the
+    // machine over for one case and give it back afterwards; these two are
+    // held rather than passed to the engine, and movesDefault and
+    // silentDeviceFromPackage are CONSTANT properties, so a swap that stuck
+    // would answer for every case that ran after it in the same process.
+    default_device_ = default_device ? std::move(default_device) : ac3::crucible::platform_default_device();
+    previous_default_id_ = default_device_->default_id();
+    // Nothing has been moved on a seam this object has only just met.
+    moved_default_by_us_ = false;
+    previous_default_name_.clear();
+    virtual_device_ = virtual_device ? std::move(virtual_device) : ac3::crucible::platform_virtual_device();
+    log_.note(test_sessions_ ? "platform seams replaced by a test harness"
+                             : "platform seams restored by a test harness");
     refreshDefault();
     refreshDriver();
 }
@@ -589,10 +591,10 @@ void CrucibleController::setRoomView(const QString& view) {
 }
 
 QString CrucibleController::textScale() const {
-    const auto stored = settings_.value(QStringLiteral("appearance/textScale"), QStringLiteral("system")).toString();
+    const auto stored = settings_.value(QStringLiteral("appearance/textScale"), QStringLiteral("100")).toString();
     static const QStringList known{QStringLiteral("system"), QStringLiteral("100"), QStringLiteral("125"),
                                    QStringLiteral("150"), QStringLiteral("175")};
-    return known.contains(stored) ? stored : QStringLiteral("system");
+    return known.contains(stored) ? stored : QStringLiteral("100");
 }
 
 void CrucibleController::setTextScale(const QString& scale) {

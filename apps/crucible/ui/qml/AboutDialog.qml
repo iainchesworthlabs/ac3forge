@@ -13,9 +13,9 @@ Dialog {
     // Licences...: Main.qml opens the LicencesDialog over this one.
     signal showLicences()
     modal: true
-    // A Popup honours CloseOnEscape only while it has active focus, and a
-    // hand-drawn CrucibleButton is not a tab stop, so without these two lines
-    // the dialog cannot be dismissed from the keyboard at all.
+    // A Popup honours CloseOnEscape only while it has active focus, so the
+    // dialog takes it as it opens; and Close is where a keyboard user wants
+    // to start, so it is what has it.
     focus: true
     onOpened: aboutCloseButton.forceActiveFocus()
     anchors.centerIn: parent

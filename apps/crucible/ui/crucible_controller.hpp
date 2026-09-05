@@ -86,11 +86,15 @@ class CrucibleController : public QObject {
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY settingsChanged)
     Q_PROPERTY(QString palette READ palette WRITE setPalette NOTIFY settingsChanged)
     Q_PROPERTY(QString roomView READ roomView WRITE setRoomView NOTIFY settingsChanged)  // "2d" or "3d"
-    // How large the window's text is: "system" (the size the platform theme
-    // reports, which is how a desktop's own larger-text setting reaches this
-    // application) or a percentage - "100", "125", "150", "175". Main.qml
-    // turns it into Theme.fontScale, and every size in the window is a
-    // multiple of that (docs/crucible/accessibility.md).
+    // How large the window's text is: a percentage - "100" (the default,
+    // and the size the window is drawn at), "125", "150", "175" - or
+    // "system", which takes the point size the platform's theme reports and
+    // counts 9 pt as 100%. "system" is not the default because 9 pt is the
+    // base size on Windows and several Linux desktops report 10 or 11 with
+    // nothing about text size touched, so it would open the window 11 to 22%
+    // larger than it is designed for and say nothing about why. Main.qml
+    // turns the choice into Theme.fontScale, and every size in the window is
+    // a multiple of that (docs/crucible/accessibility.md).
     Q_PROPERTY(QString textScale READ textScale WRITE setTextScale NOTIFY settingsChanged)
     Q_PROPERTY(bool keepRunningWhenClosed READ keepRunningWhenClosed WRITE setKeepRunningWhenClosed NOTIFY settingsChanged)
     // Background processes with audio sessions (no visible window, not a
@@ -304,8 +308,14 @@ public:
     // keyboard suites can drive a real controller and a real engine over
     // fake sessions and devices instead of skipping on a machine with no
     // audio session. Deliberately neither Q_INVOKABLE nor a property:
-    // nothing in QML and nothing in the shipped window can reach it. A null
-    // argument leaves that seam as the platform's own.
+    // nothing in QML and nothing in the shipped window can reach it.
+    //
+    // A null argument puts that seam back to the platform's own, so five
+    // nulls hand the machine back. A suite has to do that before a case that
+    // expects the machine's own answers: the default device and the silent
+    // device are held here rather than passed to the engine at start(), and
+    // movesDefault and silentDeviceFromPackage are CONSTANT properties whose
+    // bindings never re-read after a swap.
     void set_test_services(std::shared_ptr<ac3::crucible::SessionMonitor> sessions,
                            std::shared_ptr<ac3::crucible::AudioDevices> devices,
                            std::shared_ptr<ac3::crucible::Foreground> foreground,

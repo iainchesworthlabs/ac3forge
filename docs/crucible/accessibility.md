@@ -83,12 +83,15 @@ read as a dozen identical "Hear it here".
 
 ## Text size
 
-**Settings → Appearance → Text size** is System, 100%, 125%, 150% or 175%. Every size in the
+**Settings → Appearance → Text size** is 100%, 125%, 150%, 175% or System. Every size in the
 window is a multiple of it, and the controls derive their heights from their labels, so larger
 text makes a taller button rather than a clipped one.
 
-System is the default and reads the size the desktop's own text setting reports, which is how a
-larger-text setting made outside Crucible reaches it.
+100% is the default and is the size the window is drawn at. System reads the point size the
+platform's theme reports and counts 9 pt as 100%: 9 pt is the base size on Windows, and the
+desktop's own Text size setting scales it, which is how that setting reaches Crucible. Several
+Linux desktops report 10 or 11 pt with nothing about text size touched, so System starts the
+window 11 to 22% larger there — pick a percentage if that is not what you want.
 
 ## Colour and contrast
 

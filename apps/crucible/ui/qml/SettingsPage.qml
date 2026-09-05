@@ -402,13 +402,14 @@ Flickable {
                     label: qsTr("Text size")
                     SegmentedControl {
                         objectName: "textSizeChoice"
-                        model: [{ label: qsTr("System"), value: "system" }, { label: "100%", value: "100" },
-                                { label: "125%", value: "125" }, { label: "150%", value: "150" }, { label: "175%", value: "175" }]
+                        model: [{ label: "100%", value: "100" }, { label: "125%", value: "125" },
+                                { label: "150%", value: "150" }, { label: "175%", value: "175" },
+                                { label: qsTr("System"), value: "system" }]
                         currentValue: CrucibleController.textScale
                         accessibleName: qsTr("Text size")
                         onSelected: function(value) { CrucibleController.textScale = value; }
                     }
-                    Note { text: qsTr("Every size in the window follows this. System takes the size the desktop's own text setting reports, which is how a larger-text setting outside this application reaches it.") }
+                    Note { text: qsTr("Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too.") }
                 }
                 SettingRow {
                     label: qsTr("3D layout")

@@ -60,6 +60,12 @@ TestCase {
 
     function cleanup() {
         CrucibleController.stop();
+        // The machine back, for the two seams the controller holds rather
+        // than hands to the engine: the case after a scripted one asks the
+        // platform's own default device and silent device, and CONSTANT
+        // properties over them are never re-read. A no-op unless this case
+        // scripted it.
+        TestServices.clear();
         Theme.preference = "system";
         Theme.paletteChoice = "signal";
         Theme.fontScale = 1.0;
@@ -289,8 +295,22 @@ TestCase {
         compare(announcer.Accessible.name, A11y.lastMessage);
         // The controller republishes every property on every 60 ms poll.
         // Nothing is said again for a state that has not changed.
-        wait(600);
-        const settled = spy.count;
+        //
+        // Waited out rather than assumed: the one state change asked for
+        // above can bring others with it - the output probe settles a moment
+        // later and the mode, the endpoint and where applications play each
+        // become a sentence of their own - and how many of those a machine
+        // has is not what this case is about. When two readings a poll apart
+        // agree, the window has finished saying what changed; from there,
+        // ten more polls say nothing.
+        let settled = spy.count;
+        for (let i = 0; i < 20; ++i) {
+            wait(300);
+            if (spy.count === settled) {
+                break;
+            }
+            settled = spy.count;
+        }
         wait(600);
         compare(spy.count, settled, "ten more polls say nothing new: " + A11y.lastMessage);
     }
