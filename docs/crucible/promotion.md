@@ -808,6 +808,29 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     Qt6Test, Qt6QuickTest and `qml/QtTest`, which the deploy picked up from the test QML; the
     notices list them until the deploy is narrowed.
 
+!!! success "Measured 2026-09-05: what the tests reach"
+
+    The first coverage figures since the rename, from
+    `tools/checks/coverage_crucible.ps1` over a `config-windows-llvm-coverage` build running the
+    `crucible` and `crucible-ui` labels - 99 cases between them. Over `apps/crucible`:
+    **76.3% of lines** (1,036 of 4,369 missed), **62.2% of branches** and 84.2% of functions.
+    The demo's last measurement, under its old name, was 72% of lines and 60% of branches from
+    57 cases, so the figure held while the code grew by half.
+
+    The shape matters more than the total. What this pass added is among the best covered:
+    `engine/diagnostics.cpp` 91% of lines, `ui/desktop_entries.cpp` 94%, `engine/slots.cpp` 96%,
+    `engine/tap_pool.cpp` 97%. What is thin is thin for reasons that are on this page already:
+    `ui/main.cpp` is 0%, because the Qt Quick harness has an entry point of its own and never
+    runs the application's; `engine/platform/windows/driver_tools.cpp` is 30%, because the rest
+    of it launches an elevated PowerShell script that no test may run; and
+    `platform/windows/{default_device,foreground}.cpp` sit near 46%, because their other half
+    is what a machine with a real endpoint and a real front window does. The Linux platform
+    half does not appear at all: this is a Windows build, and its twin needs the same run under
+    `config-linux-gcc-coverage`.
+
+    No floor is set. `coverage_report.sh` gates the library per component, and the same is worth
+    doing here once a second measurement says which of these numbers are stable.
+
 !!! note "Still open in Phase 6"
     Two of the five items are not done. The **review of the six mechanically translated
     languages** is a pass of its own: the catalogues are two commits stale against the source,
