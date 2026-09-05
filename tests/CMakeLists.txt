@@ -413,22 +413,22 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp")
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 
-# The Windows AC3Forge Crucible's engine core (roadmap UX11, apps/windows/
+# AC3Forge Crucible's engine core (roadmap UX11/UX12, apps/crucible/
 # engine/): the slot plan, the bed mixer, placement smoothing and the
 # output-mode policy. All four are plain C++ over ac3::oba types with no
-# Windows in them - the platform layer next to them is what talks to WASAPI -
-# so they compile into this target on every platform, ungated, the same way
-# apps/common does above: the rules the demo's UI hangs on are worth holding
-# on a Linux CI leg that could never run the demo itself. The app target
-# (AC3FORGE_BUILD_CRUCIBLE) is Windows-only and separate.
+# platform in them - the platform layer next to them is what talks to WASAPI
+# or PipeWire - so they compile into this target on every platform, ungated,
+# the same way apps/common does above: the rules the window's UI hangs on
+# are worth holding on a CI leg that does not build the window itself. The
+# app target (AC3FORGE_BUILD_CRUCIBLE, Windows and Linux) is separate.
 #
 # The tap pool and the output stage joined them once they were written over
 # the AudioDevices seam (apps/crucible/engine/audio_devices.hpp): with the
 # WASAPI classes behind an interface they are plain C++ over the library's
 # codec, packer and decoder, and tests/crucible/fake_devices.hpp stands in
 # for the machine. platform_audio_devices() itself is declared in
-# platform_services.hpp and defined
-# only in the Windows platform directory; these tests never call it, and
+# platform_services.hpp and defined in apps/crucible/engine/
+# library_devices.cpp, which this target does not compile; these tests never call it, and
 # the one place the stage would (a null `devices` in its config) is a path
 # the tests do not take, so the reference resolves to the stub below on
 # every platform and to the real thing in the app.

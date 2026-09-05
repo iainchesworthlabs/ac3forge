@@ -38,10 +38,11 @@ fi
 # AC3FORGE_MAX_IMAGE_BYTES was re-based from 400,000 to 465,000 after PF7's own
 # feature branch (roadmap PF6/PF7, PR #351) picked up several mid-flight merges
 # from `develop` - most significantly DC10's QMF-domain JOC reconstruction,
-# which the decode path now genuinely needs (src/dsp/qmf.cpp and
-# src/verify/eac3_mirror.cpp, both correctly added to src/forge/minimal.cmake's
-# source list) - between when 354,060/400,000 were first measured and when the
-# PR actually merged. The image had already reached 412,516 bytes at that
+# which the decode path now needs (src/forge/src/dsp/qmf.cpp and
+# src/forge/src/verify/eac3_mirror.cpp, both correctly added to
+# src/forge/minimal.cmake's source list) - between when 354,060/400,000 were
+# first measured and when the PR actually merged. The image had already
+# reached 412,516 bytes at that
 # point; nobody re-measured before merging. See docs/performance-trend.md's
 # footprint table for the current breakdown.
 : "${AC3FORGE_MAX_IMAGE_BYTES:=465000}"

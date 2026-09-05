@@ -4,12 +4,13 @@
 # with an independent decoder (FFmpeg) on the same encoded bitstream, using a
 # fixed, checked-in 5.1 WAV (tests/golden/audio/reference_51.wav - see
 # tools/generators/gen_gold_reference_wav.py) as the input material. This is
-# docs/RESEARCH.md's validation pyramid L3 ("FFmpeg oracle, every commit")
+# the original validation pyramid's L3 ("FFmpeg oracle, every commit"; the
+# design now lives in docs/verification.md as "FFmpeg as an external oracle")
 # plus a lightweight L4 (SNR vs. FFmpeg's own decode) - designed from the
-# start, but never wired into any CI leg until now. tools/ci/run_codec_
-# matrix.sh already exercises "does every layout/tool/metadata combination
-# run without crashing"; this is the complementary "is the audio actually
-# right" check that script deliberately does not attempt.
+# start, but never wired into any CI leg until now. tools/ci/run_codec_matrix.sh
+# already exercises "does every layout/tool/metadata combination run without
+# crashing"; this is the complementary "is the audio actually right" check that
+# script deliberately does not attempt.
 #
 # Usage: verify_gold_reference.sh <path-to-ac3cli> [workdir]
 # Requires ffmpeg and python3 (or python) on PATH. Exits non-zero on the
@@ -26,10 +27,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GOLD_WAV="$REPO_ROOT/tests/golden/audio/reference_51.wav"
 COMPARE="$REPO_ROOT/tools/checks/compare_wav.py"
 
-# Same reasoning as docs/RESEARCH.md's L3 recipe: pin drc_scale to 0 on both
-# sides so a dynamic-range-compression default mismatch between FFmpeg and
-# ac3cli's own decoder (which also defaults drc_scale to 0 - see
-# apps/cli/main.cpp's MetaOptions) can never masquerade as a fidelity loss.
+# Pin drc_scale to 0 on both sides so a dynamic-range-compression default
+# mismatch between FFmpeg and ac3cli's own decoder (which also defaults
+# drc_scale to 0 - see apps/cli/support.hpp's Options, and the drc_scale row
+# of docs/library/decoding.md for why) can never masquerade as a fidelity
+# loss.
 #
 # 55, not some more conservative-looking round number: this gate compares two
 # decodes of the *same* bitstream (FFmpeg vs. ac3cli's own decoder), so absent
@@ -183,9 +185,10 @@ fi
 count=0
 
 # L3: FFmpeg strict-decode. -err_detect crccheck+bitstream+buffer+explode
-# turns on checks FFmpeg does NOT run by default (crucially the AC-3 CRC,
-# per docs/RESEARCH.md's own critical finding) - pass is exit 0 with empty
-# stderr, not just "a WAV came out."
+# turns on checks FFmpeg does NOT run by default (crucially the AC-3 CRC:
+# without it FFmpeg conceals errors and a broken stream looks fine - see
+# CONTRIBUTING.md's Oracles section) - pass is exit 0 with empty stderr, not
+# just "a WAV came out."
 ffmpeg_strict_decode() {
     local in="$1" out="$2"
     local stderr_out

@@ -135,7 +135,7 @@ add_compile_options("${AC3_FP_CONTRACT_FLAG}")
 # ---------------------------------------------------------------------------
 option(AC3FORGE_BUILD_CLI "Build the ac3cli command-line application" ON)
 option(AC3FORGE_BUILD_GUI "Build the Qt6 Quick GUI application" ON)
-option(AC3FORGE_BUILD_CRUCIBLE "Build the Windows AC3Forge Crucible (roadmap UX11; Windows only)" OFF)
+option(AC3FORGE_BUILD_CRUCIBLE "Build AC3Forge Crucible (roadmap UX12; Windows and Linux)" OFF)
 option(AC3FORGE_BUILD_TESTS "Build the unit test suite" ON)
 # Catch2 is the only build-time dependency. Turn this off to insist it comes
 # from a package manager instead of the network (see tests/CMakeLists.txt).

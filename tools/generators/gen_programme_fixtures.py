@@ -3,7 +3,7 @@
 Every landscape and trend number this project publishes used to rest entirely
 on tools/generators/gen_gold_reference_wav.py's output - 2.5-3 s of sin(),
 pseudo-random noise and boxcar-FIR smoothing. That is a fixture, not
-programme material, and src/lib/src/encoder/encoder.cpp records for real what
+programme material, and src/forge/src/encoder/encoder.cpp records for real what
 tuning against it costs: narrowing the encoder's bandwidth to 14.7 kHz looked
 like a 2.1 dB SNR win on reference_51.wav and would have made a 448 kbit/s
 AC-3 encoder plainly worse to listen to.
