@@ -695,7 +695,7 @@ This is what backs `ac3cli record`/`live` and the GUI's live-session tab.
 A third way in, `Capture::start_process_loopback(pid, mode, format)` (roadmap UX11), taps what
 one process and its children render and nothing else, whichever endpoint they render to —
 Windows 10 build 20348+'s process-loopback activation, and the piece the
-[Windows Desktop Atmos Demo](../platforms/windows-demo.md) is built on. It differs from an
+[AC3Forge Crucible](../crucible/index.md) is built on. It differs from an
 endpoint loopback in three ways worth knowing before relying on it: the caller states the
 format (there is no endpoint whose mixer format could be asked for; 48 kHz float stereo is the
 default, eight channels is honoured); a muted audio session taps as silence, because the tap sits

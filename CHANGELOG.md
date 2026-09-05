@@ -14,6 +14,47 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **The Desktop Atmos Demo is now AC3Forge Crucible** (roadmap UX12; `apps/crucible/`, the
+  [Crucible guide](docs/crucible/index.md)): a desktop application rather than a Windows
+  demo, with the same idea - every application that is playing sound becomes an Atmos
+  object the user places in a room, streamed live as E-AC-3 JOC or AC-3, or as PCM
+  surround or stereo when the endpoint cannot take a bitstream. `ac3desk`/`ac3windemo`
+  are `ac3crucible`/`ac3crucible-run`; the option is `AC3FORGE_BUILD_CRUCIBLE`; settings
+  migrate from `ac3forge/DesktopAtmos` on first launch; the Windows package is
+  `ac3forge-crucible-<version>-win64.zip`. Everything the application asks of the operating
+  system - which applications are playing, which window is in front, what the default
+  output is, and a silent device for applications to play into - now goes through four
+  platform seams under `apps/crucible/engine/`, with one implementation per platform
+  directory and no `#ifdef`s, and the same engine, room and signal-path tests run against
+  fakes of them on every platform. The Windows null-sink driver stays in
+  `apps/windows/driver/` under its own name until it is signed.
+- **Crucible runs on Linux, on PipeWire** (verified on a Raspberry Pi 4B with an Atmos
+  receiver on HDMI, 2026-09-05). Applications are tapped one at a time through PipeWire's
+  per-stream target, the silent device is a `support.null-audio-sink` node the application
+  creates and removes itself (no driver, nothing installed), the default sink moves through
+  the `default` metadata as `wpctl set-default` does, and the front window is read from the X11 active window through libxcb (`_NET_ACTIVE_WINDOW`, `_NET_WM_STATE`, `_NET_WM_PID`, matched against each application's process tree on the engine's session-monitor thread; `AC3FORGE_CRUCIBLE_X11`, AUTO/ON/OFF, takes `libxcb1-dev` when it is there) or, under Wayland, without a display, or in a build without libxcb, reported as off with the reason, which the Room page, `ac3crucible-run status` and the platform probe print. Linux
+  needs the PipeWire backend: a Crucible build against ALSA is refused at configure time,
+  since ALSA has no per-application streams to tap. The window builds and its Qt Quick
+  tests pass on Linux; the `crucible` CPack component produces an
+  `ac3forge-crucible-<version>-Linux-<arch>.tar.gz` and an `ac3forge-crucible` `.deb`
+  (depending on `pipewire` and a session manager, carrying no Qt of its own), though
+  releases do not ship it yet because the release legs build against ALSA. Settings on
+  Linux say "Create device" where Windows says "Install driver", and show no driver folder.
+  On 2026-09-05 the whole path was confirmed against a receiver: an application tapped through
+  PipeWire, encoded live as E-AC-3 with a JOC object layer and a signed object container, read
+  on the receiver's own front panel as "Atmos/DD+" rendered to its 7.1 speakers. A pre-encoded
+  5.1 stream through the same sink read "5.1 DD+".
+- The PipeWire backend's passthrough now offers AC-3 and E-AC-3 on a sink only when the
+  sink's `iec958.codecs` lists them - the session manager's reading of the display's EDID -
+  and never on the strength of a successful connect, which PipeWire's adapter grants to a
+  headphone jack as readily as to a receiver. Reading that property means binding each
+  sink for its node info; the registry's property dictionary is a subset that never carries
+  it, which is how the first gate on the Pi rejected the very receiver it was written for.
+  `Capture::start_process_loopback` works on PipeWire (one application's output streams,
+  found by joining each stream node to the process behind it - see the Fixed entry below for
+  which of the two pids that is), refusing the exclude-process-tree mode ALSA and PipeWire
+  cannot express, and `DeviceWatcher` reports default-sink changes from the `default`
+  metadata object.
 - Code analysis runs nightly against `main` instead of on every pull request, push and
   merge-queue entry: CodeQL (`codeql.yml`, 02:17 UTC), MSVC Code Analysis
   (`msvc-analysis.yml`, 02:23 UTC) and clang-tidy, which moved out of `ci.yml`'s
@@ -81,6 +122,80 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   how sharply these gates can see.
 
 ### Added
+
+- **Crucible can be operated without a mouse, and says what it is doing to a screen reader**
+  ([Keyboard and screen readers](docs/crucible/accessibility.md)). Every button, checkbox, bed
+  chip, the header pill and the Advanced disclosure are tab stops that Space and Return press;
+  a segmented choice is one tab stop with Left, Right, Home and End choosing inside it; the
+  applications list walks with Up and Down and places with Enter; and the room is one focus
+  scope whose arrows move whichever application is selected — 0.05 of the room per press, 0.01
+  with Shift, 0.25 with Ctrl, Page Up and Page Down for height, Home to recentre, Delete to
+  send it back to the bed, plus and minus for size — the same keys whichever picture is on
+  screen. `Ctrl+1`, `Ctrl+2` and `Ctrl+3` switch pages, F1 opens About, Escape closes a dialog.
+  Whatever holds the keyboard draws a ring just outside its own border. Room markers,
+  application rows, bed chips, endpoint rows and both buttons on each of them, the signal
+  path's stations, the combo boxes and the text fields carry a role, a name and a description
+  built from the same live values the window draws, and changes worth hearing — the engine
+  starting or refusing, where applications play, what you hear it on, the signing key, and
+  every keyboard move in the room — are announced once each and written into the diagnostics
+  file as well. The palettes were re-derived so muted text, the accent used as ink, control
+  borders and the focus ring meet the WCAG floors in all three palettes and both modes; the one
+  number that does not reach 4.5:1, the label on a primary button's accent fill, is stated
+  plainly in the guide. **Settings → Appearance → Text size** is 100% (the default, and the size
+  the window is drawn at), 125%, 150%, 175% or System, which reads the point size the desktop
+  reports; every size in the window follows it and the controls grow rather than clip. Building
+  the window now needs Qt 6.8 or later, because that is where `Accessible.announce` arrives.
+  No screen reader has been run against the window by hand yet.
+
+- **Applications have their own icons on Linux**, in the rail, the bed chips and both room
+  views. The identity comes from PipeWire: `application.icon-name`, `application.process.binary`
+  and, for a sandboxed application, its portal application id. All three live on an object's
+  info rather than on the registry dictionary a listener is handed, so the session monitor now
+  binds each stream node and its client for them, the way the sink walk already did for
+  `iec958.codecs`. The window then resolves in four steps and takes the first that yields a
+  picture: the icon name through the icon theme; a `.desktop` entry matched by application id,
+  `TryExec`, `Exec`, `StartupWMClass` or `Name`; the theme under the binary's own name; and the
+  monogram, which is still the right picture for a script, an interpreter or a command-line
+  player. Qt SVG is an optional dependency (`qt6-svg-dev` to build, `libqt6svg6` to run): an
+  icon that exists only as SVG needs it, and without it the configure log says so and those
+  applications show the monogram. The image provider now keeps each picture at the size the
+  platform gave it and scales per request, so the 3D room's large icon is its own image rather
+  than the rail's small one enlarged; that applies on Windows as well.
+- **Crucible explains itself on first run, and puts the default output back on quit**
+  (`apps/crucible/`): the first launch opens a dialog that says what Crucible does to the sound
+  settings before it does it, naming the silent device the platform uses, saying the default
+  output will move to it and be restored on quit, and offering Send now, Not now or Open
+  Settings, with a tick that makes the move automatic on every launch; it is shown once per user
+  (a store carried over from the Desktop Atmos demo sees it once too) and a `--shot` capture
+  suppresses it unless `--page firstrun` asks for it. Quitting from the tray, or closing the
+  window with "Keep running in the tray" off, now restores the previous default output when
+  Crucible moved it, which four places already promised. On Linux, Send applications creates the
+  "Crucible (silent)" node in the same press when it is not there yet.
+- **Crucible saves a diagnostics file** (Settings, "Save diagnostics…";
+  [Troubleshooting](docs/crucible/troubleshooting.md#saving-a-diagnostics-file)): a text
+  file with the version and platform, how the signing key was obtained, the engine's counters
+  (the catch-ups, tap backlog and sink queue included, which the window did not show), the
+  endpoints the last probe found, the applications by name and description, the two devices
+  of the signal path, the settings and the last 512 messages the application and its engine
+  left. It never carries the signing key, the path to the key file or the value of any
+  environment variable: the `signing/` settings are written as withheld and the finished text
+  is scrubbed of every spelling of the key path and of the inline key value.
+- **Every Crucible package carries its third-party notices, and About has a Licences view**
+  (`apps/crucible/notices/`, `cmake/Notices.cmake`). `NOTICES.txt` is generated per platform at
+  configure time from shared fragments and a component list per platform directory, with the
+  versions CMake already holds: the Windows zip's copy names the bundled Qt modules, reproduces
+  the LGPL-3 text with the relinking statement and the download.qt.io source location, lists the
+  third-party code inside the Qt libraries from the kit's SBOM, credits the Mesa, DirectX Shader
+  Compiler and Microsoft runtime files the deploy places, and reproduces the MS-PL for the driver
+  scripts; the Linux tarball and `.deb` carry theirs under `share/doc/ac3forge-crucible/` (with
+  `LICENSE.txt` and the Debian `copyright` alias), naming the system Qt and PipeWire instead.
+  Both name `{fmt}` and reproduce the OFL 1.1 with the Archivo and Noto copyright lines, and a
+  build with the room's 3D view states that Qt Quick 3D is used under the GPL-3, which is what
+  Qt's SBOM records for it (the About box had said LGPL for all of Qt). The same file is
+  embedded and shown by About > Licences… (`--page licences` captures it), so the window and
+  the package cannot disagree; `tools/ci/check_crucible_package.py` reads the file and refuses a
+  package whose notices were written for the other platform or whose Qt Quick 3D section
+  disagrees with what shipped.
 
 - The Desktop Atmos Demo is built, tested and packaged in CI (roadmap UX11 phase 6): both
   Windows legs build `ac3desk`/`ac3windemo` and run the demo's 68 tests, and the MSVC leg
@@ -194,6 +309,31 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `u32` elsewhere — `Error::Other` had baked the Linux answer in).
 
 ### Fixed
+
+- **Crucible listed every PulseAudio application on Linux as one entry, and could tap none of
+  them** (`src/audio/src/backend/pipewire/pipewire_support.hpp`). PipeWire records the process
+  behind a client from the socket credentials, and the session list and the per-process tap both
+  read that. It names the application only where the application talks to the daemon itself: one
+  using the PulseAudio API - VLC, Firefox, Chromium, most of a desktop - reaches it through
+  `pipewire-pulse`, whose pid every one of their clients then carries. Read off a Raspberry Pi
+  4B: VLC's client said pid 32005, which was `pipewire-pulse`; VLC was 49692. A stream whose
+  `client.api` names a relay is now bound for the `application.process.id` on its info, which is
+  the pid that means something, and `stream_owner_pid()` carries the rule with a test on it. A
+  graph with no PulseAudio application in it costs the tap what it always did.
+
+- **Crucible could not start on a Linux desktop with a system tray** (`apps/crucible/ui/`).
+  Publishing a StatusNotifierItem took the process down with `SIGBUS` inside Qt's own D-Bus
+  delivery, before the window drew a frame, on nine or ten launches out of ten on the Raspberry
+  Pi OS desktop. The Linux build no longer publishes a tray icon: `ui/tray_support.hpp` is a
+  platform seam like the icon provider beside it, the Settings page shows the platform's reason
+  where the "keep running in the tray" setting used to be, and closing the window quits. The
+  measurements and what has been ruled out are in `docs/crucible/promotion.md`.
+
+- **The room page described Windows' application list on Linux.** Windows keeps an audio session
+  while an application holds the device open, so a paused player stays listed and greys;
+  PipeWire has a stream only while there is sound, so on Linux applications appear when they
+  start playing and leave when they stop. The sentence is now `SessionMonitor::listing_rule()`,
+  one paragraph from each platform, and `docs/crucible/troubleshooting.md` leads with it.
 
 - **The README's decode-accuracy badge disagreed with the page it links to.** Per-channel SNR
   floors taught `docs/performance-quality.md`'s Decode accuracy card to pick a check by its
@@ -1513,7 +1653,7 @@ CLI together with the entire library SDK.
   this project's own encoder; affected rows are marked `unverified` rather than scored.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.
 
 ## [0.4.0-beta.1] - 2026-08-14
 
@@ -1795,7 +1935,7 @@ dashboards, and Android release builds sign with a real keystore.
   this project's own encoder; affected rows are marked `unverified` rather than scored.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.
 
 ## [0.3.0-beta.1] - 2026-08-11
 
@@ -1895,7 +2035,7 @@ assignment, and a GUI tier split for first-time users through experts.
   Player — verified only by this project's own encoder/decoder round trip.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.
 
 ## [0.2.0-beta.1] - 2026-08-10
 
@@ -1990,4 +2130,4 @@ used during development as an independent oracle to check output against.
   Player — verified only by this project's own encoder/decoder round trip.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.

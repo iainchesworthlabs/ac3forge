@@ -413,46 +413,73 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp")
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
 
-# The Windows Desktop Atmos Demo's engine core (roadmap UX11, apps/windows/
+# AC3Forge Crucible's engine core (roadmap UX11/UX12, apps/crucible/
 # engine/): the slot plan, the bed mixer, placement smoothing and the
 # output-mode policy. All four are plain C++ over ac3::oba types with no
-# Windows in them - the platform layer next to them is what talks to WASAPI -
-# so they compile into this target on every platform, ungated, the same way
-# apps/common does above: the rules the demo's UI hangs on are worth holding
-# on a Linux CI leg that could never run the demo itself. The app target
-# (AC3FORGE_BUILD_WINDEMO) is Windows-only and separate.
+# platform in them - the platform layer next to them is what talks to WASAPI
+# or PipeWire - so they compile into this target on every platform, ungated,
+# the same way apps/common does above: the rules the window's UI hangs on
+# are worth holding on a CI leg that does not build the window itself. The
+# app target (AC3FORGE_BUILD_CRUCIBLE, Windows and Linux) is separate.
 #
 # The tap pool and the output stage joined them once they were written over
-# the AudioDevices seam (apps/windows/engine/audio_devices.hpp): with the
+# the AudioDevices seam (apps/crucible/engine/audio_devices.hpp): with the
 # WASAPI classes behind an interface they are plain C++ over the library's
-# codec, packer and decoder, and tests/windemo/fake_devices.hpp stands in
-# for the machine. wasapi_devices() itself is declared there and defined
-# only in the Windows platform directory; these tests never call it, and
-# the one place the stage would (a null `devices` in its config) is a path
-# the tests do not take, so the reference resolves to the stub below on
-# every platform and to the real thing in the app.
+# codec, packer and decoder, and tests/crucible/fake_devices.hpp stands in
+# for the machine. platform_audio_devices() itself is declared in
+# platform_services.hpp and defined in
+# apps/crucible/engine/library_devices.cpp, which this target does not
+# compile; these tests never call it, and the one place the stage would
+# (a null `devices` in its config) is a path the tests do not take, so the
+# reference resolves to the stub below on every platform and to the real
+# thing in the app.
 target_sources(ac3tests PRIVATE
-    windemo/test_slots.cpp
-    windemo/test_bed_mixer.cpp
-    windemo/test_placement.cpp
-    windemo/test_output_policy.cpp
-    windemo/test_tap_pool.cpp
-    windemo/test_output_stage.cpp
-    windemo/test_nullsink_position.cpp
-    windemo/wasapi_devices_stub.cpp
-    "${CMAKE_SOURCE_DIR}/apps/windows/engine/slots.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/windows/engine/bed_mixer.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/windows/engine/placement.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/windows/engine/output_policy.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/windows/engine/tap_pool.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/windows/engine/output_stage.cpp")
+    crucible/test_slots.cpp
+    crucible/test_bed_mixer.cpp
+    crucible/test_placement.cpp
+    crucible/test_output_policy.cpp
+    crucible/test_tap_pool.cpp
+    crucible/test_output_stage.cpp
+    crucible/test_nullsink_position.cpp
+    crucible/test_platform_seams.cpp
+    crucible/test_diagnostics.cpp
+    crucible/test_desktop_entries.cpp
+    crucible/platform_services_stub.cpp
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/placement.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_policy.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/tap_pool.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/diagnostics.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/ui/desktop_entries.cpp")
 # The null-sink driver's position clock (apps/windows/driver/Source/Main/
 # position.h) is a header with no kernel dependencies, kept that way so the
 # one piece of the driver that is logic rather than framework plumbing is
-# tested here, on every platform, where kernel code could never be.
+# tested here, on every platform, where kernel code could never be. The
+# window's .desktop-entry reader (apps/crucible/ui/desktop_entries.hpp) is
+# plain C++ over std::filesystem for the same reason and rides the same
+# target, Qt-free, on every platform.
 target_include_directories(ac3tests PRIVATE
-    "${CMAKE_SOURCE_DIR}/apps/windows/engine"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/ui"
     "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main")
+
+# The Linux Foreground's X11 half has a pure policy (x11_foreground.cpp: when
+# a read yields a pid, when a lost display becomes a reason) over an injected
+# reader, and the session classification and the process-tree walk beside it
+# are headers. None of it needs xcb or a display, so it is tested here with a
+# fake reader - on Linux only, the way tests/backend/pipewire rides its
+# backend: the files live in a platform directory and are compiled nowhere
+# else. Ungated on AC3FORGE_BUILD_CRUCIBLE for the reason the block above
+# gives: the rules are worth holding on a leg that never builds the app.
+if(LINUX)
+    target_sources(ac3tests PRIVATE
+        crucible/platform/linux/test_x11_foreground.cpp
+        "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux/x11_foreground.cpp")
+    target_include_directories(ac3tests PRIVATE
+        "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux")
+endif()
 
 # ac3adm::ac3adm is opt-in (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own
 # option() for why it is not on by default like matroska/mp4/mpegts) - test_adm.cpp is only

@@ -3,7 +3,7 @@
 # Platform-isolation guard.
 #
 # ac3forge branches on the operating system in CMake, never in the preprocessor:
-# src/audio/CMakeLists.txt picks one src/audio/src/platform/<backend>/ directory
+# src/audio/CMakeLists.txt picks one src/audio/src/backend/<backend>/ directory
 # (alsa/android/macos/pipewire/posix/windows) for the target OS, so exactly one
 # audio_backend.cpp/capture.cpp/monitor.cpp/passthrough.cpp set is ever
 # compiled. That only stays true if nobody reaches for an #ifdef, and an #ifdef

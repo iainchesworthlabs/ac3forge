@@ -46,15 +46,16 @@ than showing blank, exactly the fallback a real partial translation gives everyw
 app. Completing the rest is tracked as follow-on work, not a hidden gap: search any `.ts` file for
 `type="unfinished"` to see exactly what remains.
 
-## The Desktop Atmos Demo shares this pipeline
+## Crucible shares this pipeline
 
-The Windows demo (`apps/windows/`, roadmap UX11) is a second Qt app in the repository and
-reuses `LanguageManager` rather than copying it: the class takes a translation basename
-(`"ac3gui"` by default, `"ac3desk"` for the demo) that names the `.qm` files it loads from
-`:/i18n/`, and `useSystemLanguage()` forgets a saved override so the app follows the Windows
-locale again. The demo ships the same six languages (`apps/windows/translations/`), has its
-own `ac3desk_lupdate` target, and honours the same `AC3GUI_LOCALE` override for smoke checks.
-Its translations are mechanical for now.
+Everything above is `ac3gui`, half of [Forge](../forge/index.md).
+[Crucible](../crucible/index.md) (`apps/crucible/`, roadmap UX11/UX12) is the family's other Qt
+application, and reuses `LanguageManager` rather than copying it: the class takes a translation
+basename (`"ac3gui"` by default, `"ac3crucible"` for Crucible) that names the `.qm` files it
+loads from `:/i18n/`, and `useSystemLanguage()` forgets a saved override so the app follows the
+system locale again. Crucible ships the same six languages (`apps/crucible/translations/`), has
+its own `ac3crucible_lupdate` target, and honours the same `AC3GUI_LOCALE` override for smoke
+checks. Its translations are mechanical for now.
 
 ## Updating an existing translation
 

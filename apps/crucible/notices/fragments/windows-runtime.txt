@@ -1,0 +1,28 @@
+Runtime files placed beside Qt
+------------------------------
+
+Five files in bin/ came with Qt's deployment tool rather than from Qt's
+own source, each under its own terms.
+
+opengl32sw.dll is Mesa's llvmpipe software rasteriser, built by The Qt
+Company as the OpenGL fallback for a machine whose graphics driver has no
+usable OpenGL. Copyright (C) Brian Paul and the Mesa authors, under the
+MIT licence, in the form Mesa's own documentation gives it:
+
+{{FILE:MESA_MIT}}
+
+dxcompiler.dll is the DirectX Shader Compiler, Copyright (C) Microsoft
+Corporation and Copyright (C) the LLVM Team, University of Illinois at
+Urbana-Champaign, under the University of Illinois/NCSA Open Source
+License:
+
+{{FILE:DXC_NCSA}}
+
+d3dcompiler_47.dll and dxil.dll are Microsoft components, redistributed
+under the distributable-code terms of the Windows SDK they come from;
+Microsoft's terms govern them, and nothing in this file adds to or takes
+from those terms.
+
+vc_redist.x64.exe is the Microsoft Visual C++ Redistributable installer,
+placed here so the C++ runtime the application needs can be installed
+where it is missing; Microsoft's own licence terms apply when it is run.

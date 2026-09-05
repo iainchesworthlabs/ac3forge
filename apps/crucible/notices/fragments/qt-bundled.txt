@@ -1,0 +1,91 @@
+Qt {{QT_VERSION}}
+------------------
+
+This package includes the Qt {{QT_VERSION}} libraries, plugins, QML modules
+and translations that ac3crucible.exe loads (bin/Qt6*.dll, plugins/, qml/
+and translations/): Qt Core, Gui, Widgets, Network, OpenGL, Qml (with its
+Models, WorkerScript and Meta libraries), Quick, Quick Controls 2 and its
+styles, Quick Dialogs 2, Quick Effects, Quick Layouts, Quick Shapes, Quick
+Templates 2, Quick Test and Test, Svg, Shader Tools, Qt Labs Platform and
+FolderListModel, and the platform, image-format, icon-engine, TLS,
+network-information, style and QML-tooling plugins.
+
+Copyright (C) The Qt Company Ltd. and other contributors.
+
+These are used under the GNU Lesser General Public License, version 3,
+reproduced at the end of this section; the GNU General Public License it
+refers to is LICENSE.txt beside this file. Qt's translations are under the
+BSD 3-clause licence. The module for the room's 3D view, where this build
+carries it, is under different terms and has its own section below.
+
+The Qt libraries are linked dynamically. You may replace them with a
+modified Qt 6 that is binary-compatible with this version and the
+application will load it: they are looked up by name from the directories
+bin/qt.conf points at.
+
+The complete corresponding source of this exact Qt version is published
+by The Qt Company at
+https://download.qt.io/archive/qt/{{QT_SERIES}}/{{QT_VERSION}}/single/
+and the project will also supply it on request, through the repository's
+issue tracker, for as long as this package is offered.
+
+The Qt libraries in turn contain third-party code, each part under its
+own terms. The list below was transcribed from the SPDX documents in the
+Qt 6.8.3 kit (sbom/*.spdx) for the modules this package includes; the
+documents the {{QT_VERSION}} kit carries are the record for this package,
+and Qt's attribution for each entry, with the full text of every licence
+named, is at https://doc.qt.io/qt-6/licenses-used-in-qt.html
+
+  Qt Core, Gui, Network, Widgets and their plugins (qtbase):
+    PCRE2 10.45                    BSD-3-Clause with PCRE2 exception
+    PCRE2 sljit 10.45              BSD-2-Clause
+    zlib 1.3.1                     Zlib
+    FreeType 2.13.3                FTL or GPL-2.0-only, used under the FTL
+                                   (its bdf and pcf parts: MIT)
+    HarfBuzz 10.4.0                MIT
+    libpng 1.6.47                  Libpng and libpng-2.0
+    libjpeg-turbo 3.1.0            IJG and BSD-3-Clause
+    double-conversion 3.3.0        BSD-3-Clause
+    TinyCBOR 0.6.1                 MIT
+    md4c 0.5.2                     MIT
+    BLAKE2                         CC0-1.0 or Apache-2.0
+    MD4, MD5, SipHash, SHA-3       CC0-1.0 (SHA-3 endian helper: BSD-2-Clause)
+    SHA-1                          public domain
+    RFC 6234 SHA-2                 BSD-3-Clause
+    easing curves                  BSD-3-Clause
+    Unicode Character Database 34  Unicode-3.0
+    Unicode CLDR 46.1              Unicode-3.0
+    Apache Tika MIME types         Apache-2.0
+    libpsl                         BSD-3-Clause
+    Public Suffix List data        MPL-2.0
+    D3D12 Memory Allocator         MIT
+    Vulkan Memory Allocator 3.0.1  MIT
+    D3D12 MiniEngine mipmap        MIT
+    OpenGL and OpenGL ES 2 headers MIT
+    Vulkan XML specification       Apache-2.0 or MIT
+    Adobe Glyph List 1.7           BSD-3-Clause
+    ICC sRGB colour profile        ICC licence
+    smooth scaling (Imlib2)        BSD-2-Clause and Imlib2
+    grayraster (FreeType)          FTL
+    xserverhelper                  X11 and HPND
+    webgradients                   MIT
+    Wintab (platform plugin)       Lcs-Telegraphics
+  Qt Svg (qtsvg):
+    xsvg                           HPND-sell-variant
+  Qt Qml and Quick Controls 2 (qtdeclarative):
+    masm (JavaScriptCore)          BSD-2-Clause
+    Angular Material shadow        MIT (the Material style)
+  Qt Shader Tools (qtshadertools):
+    glslang 14.2.0                 BSD-3-Clause, MIT (Khronos, old variant),
+                                   Apache-2.0, GPL-3.0-or-later with the
+                                   Bison exception 2.2, and the AML glslang
+                                   variant
+    SPIRV-Cross                    Apache-2.0 and MIT (Khronos, old variant)
+  Qt Test (qtbase; a test-only module the deployment tool placed):
+    Catch2 2.13.10                 BSL-1.0
+    cycle 3.3.10                   MIT
+    Linux perf headers 6.13        GPL-2.0-only with Linux-syscall-note
+    Valgrind headers 3.24.0        BSD-4-Clause
+  Qt Translations (qttranslations): BSD-3-Clause
+
+{{FILE:LGPL3}}

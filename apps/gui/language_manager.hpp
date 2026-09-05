@@ -29,7 +29,7 @@ class LanguageManager : public QObject {
 public:
     // `app` and `engine` must outlive this LanguageManager.
     // `translation_basename` names the .qm files under :/i18n/ ("ac3gui" for
-    // the GUI; the Desktop Atmos Demo passes its own), so a second Qt app in
+    // the GUI; the AC3Forge Crucible passes its own), so a second Qt app in
     // this repository reuses this class rather than copying it.
     explicit LanguageManager(QGuiApplication& app, QQmlEngine& engine,
                              QString translation_basename = QStringLiteral("ac3gui"),

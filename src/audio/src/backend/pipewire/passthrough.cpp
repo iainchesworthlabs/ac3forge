@@ -54,6 +54,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -101,16 +102,28 @@ bool wait_for_connect(pw_thread_loop* loop, std::atomic<ConnectState>& state, in
 
 // The probe-only state callback: enumeration and the empty-device_id
 // candidate walk in start() both only need "did it settle", not the full
-// process()-wiring PassthroughSink::Impl carries - a plain atomic is enough
-// data for this one.
+// process()-wiring PassthroughSink::Impl carries. What it does need beside
+// the answer is the loop to wake, or wait_for_connect() below sleeps out its
+// whole one-second step for an answer that is already there - see
+// capture.cpp's note and the measurement there.
+struct ProbeState {
+    std::atomic<ConnectState> connect_state{ConnectState::kPending};
+    pw_thread_loop* loop = nullptr;
+};
+
 void on_probe_state_changed(void* data, pw_stream_state /*old_state*/, pw_stream_state state,
                              const char* /*error*/) {
-    auto& connect_state = *static_cast<std::atomic<ConnectState>*>(data);
+    auto& probe = *static_cast<ProbeState*>(data);
     if (state == PW_STREAM_STATE_STREAMING || state == PW_STREAM_STATE_PAUSED) {
         auto expected = ConnectState::kPending;
-        connect_state.compare_exchange_strong(expected, ConnectState::kReady);
+        probe.connect_state.compare_exchange_strong(expected, ConnectState::kReady);
     } else if (state == PW_STREAM_STATE_ERROR) {
-        connect_state.store(ConnectState::kError, std::memory_order_release);
+        probe.connect_state.store(ConnectState::kError, std::memory_order_release);
+    } else {
+        return;  // still on its way; nobody is waiting for this one
+    }
+    if (probe.loop != nullptr) {
+        pw_thread_loop_signal(probe.loop, false);
     }
 }
 
@@ -139,7 +152,7 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
     }
 
     pw_thread_loop_lock(loop.get());
-    std::atomic<ConnectState> state{ConnectState::kPending};
+    ProbeState probe{.connect_state = ConnectState::kPending, .loop = loop.get()};
 
     pw_properties* props =
         pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Playback",
@@ -147,7 +160,7 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
                            nullptr);
 
     Stream stream{pw_stream_new_simple(pw_thread_loop_get_loop(loop.get()), "ac3forge probe",
-                                        props, &probe_events(), &state)};
+                                        props, &probe_events(), &probe)};
     if (!stream) {
         pw_thread_loop_unlock(loop.get());
         pw_thread_loop_stop(loop.get());
@@ -159,15 +172,23 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
     if (pw_stream_connect(stream.get(), PW_DIRECTION_OUTPUT, PW_ID_ANY, flags, params, n_params) <
         0) {
         pw_thread_loop_unlock(loop.get());
-        stream.reset();
         pw_thread_loop_stop(loop.get());
+        pw_thread_loop_lock(loop.get());
+        stream.reset();
+        pw_thread_loop_unlock(loop.get());
         return false;
     }
 
-    const bool ready = wait_for_connect(loop.get(), state, timeout_seconds);
+    const bool ready = wait_for_connect(loop.get(), probe.connect_state, timeout_seconds);
     pw_thread_loop_unlock(loop.get());
-    stream.reset();
+    // Stop before destroying, not after. Every successful probe reached this
+    // line, and on the first machine with a real PipeWire session it
+    // deadlocked here: pw_stream_destroy() ran from the wrong context, and
+    // the pw_thread_loop_stop() that followed never returned.
     pw_thread_loop_stop(loop.get());
+    pw_thread_loop_lock(loop.get());
+    stream.reset();
+    pw_thread_loop_unlock(loop.get());
     return ready;
 }
 
@@ -212,18 +233,47 @@ bool probe_exclusive_pcm(const std::string& node_id, std::uint32_t sample_rate) 
     return probe_connect(node_id, params, 1, kProbeTimeoutSeconds);
 }
 
-std::vector<std::pair<std::string, std::string>> candidate_sinks() {
-    std::vector<std::pair<std::string, std::string>> candidates;  // (id, friendly name)
-    ac3::pipewire::for_each_audio_node([&candidates](std::uint32_t, const spa_dict& props) {
-        if (!ac3::pipewire::is_audio_sink(props)) {
-            return;
+// A sink, with the compressed codecs the session manager has enabled on it.
+// `iec958.codecs` is what WirePlumber writes onto a node after reading the
+// display's ELD - `["PCM","AC3","EAC3",...]` - and it is the only honest
+// answer to "can this sink carry a bitstream". Absent or empty, it cannot.
+struct CandidateSink {
+    std::string id;
+    std::string name;
+    bool codec_ac3 = false;
+    bool codec_eac3 = false;
+};
+
+std::vector<CandidateSink> candidate_sinks() {
+    std::vector<CandidateSink> candidates;
+    for (auto& sink : ac3::pipewire::audio_sinks_with_info()) {
+        if (sink.name.empty()) {
+            continue;
         }
-        auto id = ac3::pipewire::node_id(props);
-        if (id.empty()) {
-            return;
-        }
-        candidates.emplace_back(std::move(id), ac3::pipewire::node_friendly_name(props));
-    });
+        CandidateSink candidate{.id = std::move(sink.name), .name = std::move(sink.description)};
+        // iec958.codecs is a JSON array of names, quoted or bare depending on
+        // who serialised it. Match each name as a token, bounded by anything
+        // that is not part of one, so "AC3" is not found inside "EAC3".
+        const std::string_view list{sink.codecs};
+        const auto has = [&list](std::string_view name) {
+            std::size_t at = 0;
+            while ((at = list.find(name, at)) != std::string_view::npos) {
+                const bool start_ok =
+                    at == 0 || !std::isalnum(static_cast<unsigned char>(list[at - 1]));
+                const std::size_t stop = at + name.size();
+                const bool end_ok =
+                    stop >= list.size() || !std::isalnum(static_cast<unsigned char>(list[stop]));
+                if (start_ok && end_ok) {
+                    return true;
+                }
+                at = stop;
+            }
+            return false;
+        };
+        candidate.codec_ac3 = has("AC3");
+        candidate.codec_eac3 = has("EAC3");
+        candidates.push_back(std::move(candidate));
+    }
     return candidates;
 }
 
@@ -253,14 +303,25 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
     std::uint32_t sample_rate) {
     std::vector<RenderDeviceInfo> devices;
 
-    for (const auto& [id, name] : candidate_sinks()) {
+    for (const auto& sink : candidate_sinks()) {
+        // The connect probe alone is not enough, and the first machine with a
+        // real session showed why: PipeWire's adapter accepted an IEC 958
+        // AC-3 stream on the analogue headphone jack, which cannot carry a
+        // bitstream, and reported it as a passthrough-capable output. The
+        // adapter accepts the format and would render the bursts as PCM
+        // noise. So the codec has to be enabled on the node first - that is
+        // the session manager's judgement, from the sink's own ELD - and
+        // only then is the connect worth asking. A sink with no
+        // iec958.codecs at all is a plain PCM output and is never probed.
         RenderDeviceInfo info{
-            .id = id,
-            .name = name,
+            .id = sink.id,
+            .name = sink.name,
             .is_default = false,
-            .supports_ac3_passthrough = probe_iec958(id, BitstreamFormat::kAc3, sample_rate),
-            .supports_eac3_passthrough = probe_iec958(id, BitstreamFormat::kEac3, sample_rate),
-            .supports_exclusive_pcm = probe_exclusive_pcm(id, sample_rate),
+            .supports_ac3_passthrough =
+                sink.codec_ac3 && probe_iec958(sink.id, BitstreamFormat::kAc3, sample_rate),
+            .supports_eac3_passthrough =
+                sink.codec_eac3 && probe_iec958(sink.id, BitstreamFormat::kEac3, sample_rate),
+            .supports_exclusive_pcm = probe_exclusive_pcm(sink.id, sample_rate),
         };
         devices.push_back(std::move(info));
     }
@@ -286,6 +347,7 @@ struct PassthroughSink::Impl {
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
+    std::size_t rendered_bytes = 0;  // process() only: the partial burst carried over
     std::atomic<std::uint64_t> underruns{0};
 
     // See capture.cpp's Impl for the locking discipline this shares.
@@ -299,6 +361,14 @@ struct PassthroughSink::Impl {
             impl.connect_state.compare_exchange_strong(expected, ConnectState::kReady);
         } else if (state == PW_STREAM_STATE_ERROR) {
             impl.connect_state.store(ConnectState::kError, std::memory_order_release);
+        } else {
+            return;  // still on its way; nobody is waiting for this one
+        }
+        // Wake the thread in wait_for_connect(). Without this the answer is
+        // set and nobody is told, so the waiter sleeps out its full
+        // one-second step - see capture.cpp's note and the measurement there.
+        if (impl.loop) {
+            pw_thread_loop_signal(impl.loop.get(), false);
         }
     }
 
@@ -332,7 +402,15 @@ struct PassthroughSink::Impl {
             std::fill(out + got, out + byte_count, std::byte{0});
             impl.underruns.fetch_add(1, std::memory_order_relaxed);
         }
-        impl.rendered.fetch_add(got / impl.burst_bytes, std::memory_order_relaxed);
+        // A callback usually asks for less than one burst, so counting
+        // got / burst_bytes per callback rounds to zero every time and the
+        // stat read 0 through a run that plainly played. Bytes accumulate
+        // and a burst is counted each time a whole one has gone out.
+        impl.rendered_bytes += got;
+        while (impl.rendered_bytes >= impl.burst_bytes) {
+            impl.rendered_bytes -= impl.burst_bytes;
+            impl.rendered.fetch_add(1, std::memory_order_relaxed);
+        }
 
         spa_buf->datas[0].chunk->offset = 0;
         spa_buf->datas[0].chunk->stride = static_cast<std::int32_t>(kCarrierFrameBytes);
@@ -394,6 +472,9 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
 void PassthroughSink::stop() {
     if (impl_->loop) {
         pw_thread_loop_stop(impl_->loop.get());
+        pw_thread_loop_lock(impl_->loop.get());
+        impl_->stream.reset();
+        pw_thread_loop_unlock(impl_->loop.get());
     }
     impl_->stream.reset();
     impl_->loop.reset();
@@ -419,9 +500,14 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         if (candidates.empty()) {
             return std::unexpected(PassthroughError::kDeviceNotFound);
         }
-        for (const auto& [id, name] : candidates) {
-            if (probe_iec958(id, format_kind, sample_rate)) {
-                target = id;
+        // The same gate enumerate_render_devices() applies, for the same
+        // reason: the connect alone said yes on the headphone jack. A sink
+        // whose session manager has not enabled this codec is not asked.
+        for (const auto& sink : candidates) {
+            const bool enabled = format_kind == BitstreamFormat::kEac3 ? sink.codec_eac3
+                                                                        : sink.codec_ac3;
+            if (enabled && probe_iec958(sink.id, format_kind, sample_rate)) {
+                target = sink.id;
                 break;
             }
         }

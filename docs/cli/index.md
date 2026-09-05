@@ -21,20 +21,23 @@ ac3cli
 
 ## Installing
 
-Building from source ([Quick start](../quickstart.md)) always works. Three shorter paths are
-staged but not live yet — each is pending submission to its registry, so use the local form
-shown until then (see [Releasing](../releasing.md) for the per-tool submission status):
+`ac3cli` installs as part of [Forge](../forge/index.md), the `ac3cli` + `ac3gui` pair — that
+page carries the same three paths in one place. Building from source
+([Quick start](../quickstart.md)) always works (see [Releasing](../releasing.md) for the
+per-tool submission status):
 
 - **winget** (Windows) — once
   [`packaging/winget/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/winget)
   is merged into `microsoft/winget-pkgs`, `winget install iainchesworthlabs.ac3forge` installs
   `ac3cli` and `ac3gui` together as portable executables. Today, `winget install --manifest
   packaging/winget/manifests/i/iainchesworthlabs/ac3forge/<version>` from a clone does the same.
-- **Homebrew** (macOS/Linux) — once
+- **Homebrew** (macOS/Linux) —
   [`packaging/homebrew/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/homebrew)
-  is published to a personal tap, `brew install iainchesworthlabs/ac3forge/ac3forge` installs
-  `ac3cli` (GUI not packaged there — see that page). Today, `brew install --build-from-source
-  ./packaging/homebrew/Formula/ac3forge.rb` from a clone builds the same formula locally.
+  is published to the live personal tap `iainchesworthlabs/homebrew-ac3forge`, so
+  `brew install iainchesworthlabs/ac3forge/ac3forge` installs `ac3cli` from source; the GUI
+  has a cask of its own, with the caveats on the [Forge page](../forge/index.md#installing).
+  `brew install --build-from-source ./packaging/homebrew/Formula/ac3forge.rb` from a clone
+  builds the same formula locally.
 - **A prebuilt archive** — every [release](https://github.com/iainchesworthlabs/ac3forge/releases)
   already publishes a `.zip`/`.tar.gz`/`.dmg` per platform with `ac3cli` (and `ac3gui` where
   built) inside, no package manager or local clone needed — see [What gets

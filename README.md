@@ -27,18 +27,26 @@
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue)](docs/building.md)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-A clean-room AC-3 and E-AC-3 encoder and decoder in C++23, implemented from the published
-standards. It turns PCM — or mono sources placed and moved in 3D space — into AC-3, E-AC-3,
-or E-AC-3 with Joint Object Coding elementary streams, and reads those streams back.
+AC3Forge is one clean-room AC-3, E-AC-3 and Dolby Atmos codec, written from the published
+standards in C++23, and the two applications built on it.
+
+| Member | What it is | How to get it | Docs |
+|---|---|---|---|
+| **The library** — `ac3::forge` | The codec: encodes and decodes AC-3 and E-AC-3, every coding mode and layout the standards define, every Annex E tool, and Atmos objects via JOC — with MKV/MP4/MPEG-TS muxing, IAB and ADM/BW64 reading, IAMF writing, an AC-4 inspector, live capture and passthrough, loudness QC and object signing beside it. C, Python, Rust and WebAssembly bindings. | `ac3forge-dev-*` archives, and `libac3forge0` plus `libac3forge-dev` (DEB) or `ac3forge-devel` (RPM), from each [release](https://github.com/iainchesworthlabs/ac3forge/releases); `pip install ac3forge`; or build from source | [docs/library/](docs/library/index.md), with the full [capability tables](docs/library/capabilities.md) |
+| **Forge** — `ac3cli` + `ac3gui` | The tooling over the library: a thirty-nine-command CLI, and a Qt Quick workbench with a plan view for placing objects and channel-level metering. One release download carries both. | A release `.zip`/`.tar.gz`/`.dmg`, or the Windows `.exe` installer from the next release tag on; on macOS `brew install iainchesworthlabs/ac3forge/ac3forge` for the CLI and `brew install --cask iainchesworthlabs/ac3forge/ac3gui` for the GUI; the winget submission is blocked on roadmap DR4 | [docs/forge/](docs/forge/index.md), then the [CLI](docs/cli/index.md) and [GUI](docs/gui/index.md) guides |
+| **Crucible** — `ac3crucible` | A desktop application for Windows and Linux that makes every application playing sound an Atmos object the listener places in a room, streamed live over HDMI or decoded to whatever the endpoint takes. Ships its own silent virtual output device on Windows; taps PipeWire on Linux. | Build from source with `-DAC3FORGE_BUILD_CRUCIBLE=ON`; the `ac3forge-crucible-*` archive, `.deb` and `.rpm` ship from the next release tag | [docs/crucible/](docs/crucible/index.md) |
 
 Nothing here links FFmpeg or any other codec library. The FFmpeg command-line tools are used
 during development as an independent decoder to check output against; the build does not
 depend on them.
 
 **Documentation:** [iainchesworthlabs.github.io/ac3forge](https://iainchesworthlabs.github.io/ac3forge/)
-— a beginner's guide to the formats, a developer quick start, the full library and CLI
-reference, and a step-by-step GUI guide with screenshots. This file is a short pointer into it,
-not a copy of it; where the two disagree, the docs are current and this file is what's stale.
+— a beginner's guide to the formats, a developer quick start, the full library reference, and
+step-by-step guides to Forge and Crucible with screenshots. This file is a short pointer into it,
+not a copy of it. [CONTRIBUTING.md](CONTRIBUTING.md#documentation) settles which page wins when
+two disagree: [docs/library/capabilities.md](docs/library/capabilities.md) and
+[docs/verification.md](docs/verification.md) are the authority on what the project can and cannot
+do, and everything here — and in [docs/history.md](docs/history.md) — summarises them.
 
 **Standards and trademarks.** "Dolby", "Dolby Digital" and "Dolby Atmos" are trademarks of
 Dolby Laboratories. This project implements the openly published standards — ATSC A/52:2018
@@ -57,22 +65,11 @@ Android build leg for the Shield TV demo app under `apps/android/`. See
 [docs/building.md](docs/building.md#verified-configuration) for exact toolchain versions and
 what each CI leg covers.
 
-## What it does
-
-Encodes and decodes AC-3 and E-AC-3 — every coding mode and layout the standards define, every
-Annex E coding tool, and Dolby Atmos objects via JOC — plus standalone MKV/MP4/MPEG-TS muxing, a
-BW64/RF64 + ADM reader, live capture/playback and S/PDIF passthrough, loudness metering and QC,
-and EMDF object signing. Also included: **Shield Atmos Demo**, a small Android TV app
-(`apps/android/`) streaming live, controller-driven Atmos object motion out an NVIDIA Shield's
-HDMI passthrough to a real AV receiver, sideload-only — see
-[docs/platforms/android.md](docs/platforms/android.md). And **Desktop Atmos Demo**, a Windows app
-(`apps/windows/`) that makes every application playing sound an Atmos object the user places
-in a room and streams the result live over HDMI, or decoded to whatever the endpoint takes,
-with its own silent virtual output device; see
-[docs/platforms/windows-demo.md](docs/platforms/windows-demo.md).
-
-Full capability tables — coding modes, sample rates, bit rates, metadata fields, spec section
-citations — are in [What it does](docs/index.md#what-it-does).
+**Also in the tree:** **Shield Atmos Demo** (`apps/android/`), an Android TV app streaming live,
+controller-driven Atmos object motion out an NVIDIA Shield's HDMI passthrough to a real AV
+receiver, sideload-only — see [docs/platforms/android.md](docs/platforms/android.md); and the
+browser demos (`apps/wasm/`) that decode and encode in a page over the library compiled to
+WebAssembly. Both demonstrate the library rather than being members of their own.
 
 ## What it does not do
 
@@ -83,9 +80,10 @@ An operator who has one can sign with it — see
 5.1 bed. That is a licensing gate, not a conformance failure. AC-3 has no VBR — its frame size
 indexes a fixed table rather than stating a word count, so it stays CBR; E-AC-3 supports both.
 Enhanced coupling and transient pre-noise processing have no external decode oracle at all, so
-they are scored through the in-repo decoder rather than FFmpeg. No Linux or macOS audio output
-has been confirmed against real hardware, and no listening test has been run anywhere — the
-quality numbers below are waveform metrics.
+they are scored through the in-repo decoder rather than FFmpeg. Linux audio output has reached
+a real receiver on one machine only, a Raspberry Pi 4B over ALSA; the PipeWire backend has
+not, and macOS output has not been confirmed against hardware at all. No listening test has
+been run anywhere — the quality numbers below are waveform metrics.
 
 What that means for object reconstruction, which streams FFmpeg can check independently versus
 which only the in-repo decoder can, and what has and hasn't been confirmed against real audio
@@ -121,15 +119,18 @@ ac3cli decode out.ec3 out.wav
 `ac3cli`'s commands cover encoding, decoding, muxing, inspection, QC and live capture; run it
 with no arguments for the full listing.
 `ac3gui` is a Qt Quick front end over the same library: file and live-capture encoding, a plan
-view for placing objects, and channel-level metering. For the C++ API — two headers and about a
+view for placing objects, and channel-level metering. The pair is Forge, and
+[docs/forge/](docs/forge/index.md) says how to get it. For the C++ API — two headers and about a
 dozen lines to encode a frame — see [Quick start](docs/quickstart.md) or
 [Library conventions](docs/library/index.md).
 
 ## Validation
 
-Quality is measured, not asserted. `tools/ci/quality_race.py` synthesizes stereo programme
-material, encodes it with both ac3forge and FFmpeg at matched bit rates, decodes both with
-FFmpeg as a neutral referee, aligns by cross-correlation, and reports SNR against the original:
+These are the library's numbers; Forge and Crucible inherit them, since every coding decision
+either of them makes is a call into `ac3::forge`. Quality is measured rather than asserted:
+`tools/ci/quality_race.py` synthesizes stereo programme material, encodes it with both ac3forge
+and FFmpeg at matched bit rates, decodes both with FFmpeg as a neutral referee, aligns by
+cross-correlation, and reports SNR against the original:
 
 | Bit rate | ac3forge | FFmpeg | Difference |
 |---|---|---|---|
@@ -164,29 +165,60 @@ and where the raw-pointer boundaries are, the per-access-unit resource limits, a
 ## Repository layout
 
 ```
-cmake/          toolchains, Qt/CPack/sanitizer/coverage modules, vcpkg triplet overlays
-src/forge/        ac3::forge — the whole codec, GUI-free
+# the library — src/ is installable, apps/ consumes it and never the reverse
+src/forge/      ac3::forge — the whole codec, GUI-free
+src/capi/       ac3forge_c — a plain-C11 surface over the encode/decode core, for bindings and
+                callers that do not link C++23
+src/admbridge/  ac3::admbridge — maps the ADM object graph src/ac3adm parses onto the Atmos
+                encoder's input
+src/signing/    ac3::signing — EMDF object signing, key supplied at runtime
 src/matroska/   matroska::matroska — a standalone MKV muxer, no ac3::forge dependency
 src/mp4/        mp4::mp4 — a standalone MP4/ISOBMFF muxer plus fMP4/CMAF + HLS/DASH, no ac3::forge dependency
 src/mpegts/     mpegts::mpegts — a standalone MPEG-2 Transport Stream muxer, no ac3::forge dependency
 src/ac3adm/     ac3adm::ac3adm — BW64/RF64 + Audio Definition Model reader (opt-in, needs Boost)
-src/audio/      the platform audio backends — WASAPI, ALSA, CoreAudio, Android, null fallback
-src/signing/    ac3::signing — EMDF object signing, key supplied at runtime
-apps/cli/       ac3cli — command-line front end
-apps/gui/       ac3gui — Qt Quick front end (QML module "Ac3Forge")
-apps/android/   Shield Atmos Demo — Android TV app, live Atmos object motion over HDMI
-apps/windows/   Desktop Atmos Demo, Windows only: the engine, the ac3windemo runner and the
-                ac3desk window; the Ac3ForgeNullSink driver (MS-PL, separately licensed); its
-                VMware test guest; and the spikes the plan was measured with
-tests/          Catch2 unit tests; golden/ vectors generated by tools/
+src/ac3iab/     ac3iab::ac3iab — a standalone SMPTE ST 2098-2 (IAB) bitstream reader, codec-blind
+src/ac4/        ac4::ac4 — a standalone AC-4 TOC/presentation/substream inspector, codec-blind
+src/iamf/       iamf::iamf — a standalone IAMF v1.1 OBU/ISOBMFF writer, fed from an E-AC-3 decode
+python/         the ac3forge PyPI package — pybind11 bindings straight onto ac3::forge
+js/             ac3forge-wasm-decoder — the npm streaming decoder package (AudioWorklet + Worker)
+rust/           ac3forge-sys and ac3forge — Rust crates over the C API in src/capi
 examples/       the programs docs/library/ is written from
 fuzz/           libFuzzer harnesses over untrusted-input entry points (Clang only, off by
                 default) — see fuzz/README.md
+apps/baremetal/ ac3probe — the minimum-footprint decoder probe, cross-compiled for
+                arm-none-eabi and run under QEMU, or built natively on the host
+
+# Forge — the CLI and the GUI, built and packaged as one thing
+apps/cli/       ac3cli — command-line front end
+apps/gui/       ac3gui — Qt Quick front end (QML module "Ac3Forge")
+apps/common/    the recording sink, fMP4 folder writer and container input the CLI, GUI and
+                Crucible compile in directly; no library target of its own
+
+# Crucible — the desktop application and its Windows driver
+apps/crucible/  AC3Forge Crucible, Windows and Linux: the engine, the ac3crucible-run runner,
+                the ac3crucible window, its translations and packaging, and the spikes the
+                plan was measured with
+apps/windows/   the Windows-only pieces of Crucible: the Ac3ForgeNullSink driver (MS-PL,
+                separately licensed) and the VMware guest it is verified in
+
+# beside the family — demonstrations of the library, not members
+apps/android/   Shield Atmos Demo — Android TV app, live Atmos object motion over HDMI
+apps/wasm/      the browser demos, decode and encode, over ac3::forge compiled to WASM
+
+# shared by all three — owned by the family, by no one member
+cmake/          toolchains, Qt/CPack/sanitizer/coverage modules, vcpkg triplet overlays
+assets/         the app-icon source: one procedural mark, plus a hand-authored SVG for the
+                WASM favicon; every .ico/.icns/.png/mipmap in the tree is generated from it
+src/audio/      the platform audio backends — WASAPI, ALSA, PipeWire, CoreAudio, Android, null
+                fallback
+tests/          Catch2 unit tests; golden/ vectors generated by tools/
 tools/          Python: table/fixture generators and the published conformance vector
                 set (generators/), correctness checks and the gold-reference gate
                 (checks/), independent reference implementations (references/),
                 CI-only orchestration - trend appenders, the codec matrix, the
                 FFmpeg quality race (ci/)
+requirements/   pip-compile --generate-hashes locks for the CI Python jobs: lint, coverage,
+                docs, ffmpeg-validate and the wheel tests
 packaging/      vcpkg port, winget manifest, Conan recipe (staged, pending upstream submission);
                 Homebrew formula/cask (published to the live homebrew-ac3forge tap)
 docs/           the site source — see Documentation below
@@ -207,10 +239,13 @@ generators in `tools/`.
 | [docs/building.md](docs/building.md) | Building from a clean clone, including the failures you will hit |
 | [docs/platforms/](docs/platforms/windows.md) | Windows / Linux / Raspberry Pi / macOS specifics: toolchains, audio backends, packaging |
 | [docs/platforms/android.md](docs/platforms/android.md) | Shield Atmos Demo: the Android TV app, HDMI passthrough, controller input, screenshots |
-| [docs/platforms/windows-demo.md](docs/platforms/windows-demo.md) | Desktop Atmos Demo: the PC's applications as Atmos objects, design, phase record and what is verified |
+| [docs/crucible/](docs/crucible/index.md) | AC3Forge Crucible: every application on the desk as an Atmos object; the guide, install, signal path and troubleshooting |
+| [docs/platforms/windows-demo.md](docs/platforms/windows-demo.md) | The Windows demo Crucible grew from: design, phase record and what is verified |
 | [docs/concepts/](docs/concepts/index.md) | Beginner's guide to AC-3, E-AC-3, Atmos and JOC, with diagrams |
+| [docs/library/capabilities.md](docs/library/capabilities.md) | The capability and limitation tables: coding modes, layouts, rates, metadata fields, spec citations |
 | [docs/library/](docs/library/index.md) | The public API, with compiled examples |
 | [docs/library/examples.md](docs/library/examples.md) | Index of the example programs the library pages excerpt |
+| [docs/forge/](docs/forge/index.md) | Forge: what the `ac3cli` + `ac3gui` pair is, and the three ways to install it |
 | [docs/cli/](docs/cli/index.md) | The `ac3cli` reference: every command, the option grammars |
 | [docs/gui/](docs/gui/index.md) | Step-by-step `ac3gui` guide, with screenshots |
 | [docs/verification.md](docs/verification.md) | How output is checked, and where checking runs out |

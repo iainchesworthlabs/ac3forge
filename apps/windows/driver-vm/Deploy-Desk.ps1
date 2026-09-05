@@ -1,4 +1,4 @@
-# Puts the built window (ac3desk with the Qt runtime windeployqt laid beside
+# Puts the built window (ac3crucible with the Qt runtime windeployqt laid beside
 # it) into the driver-test guest, installs the VC++ runtime there, and starts
 # the window on the guest's desktop, so the demo can be seen end to end
 # against the driver: Test-Driver.ps1 first, then this.
@@ -13,8 +13,8 @@
 #                                                   one application placed in each
 #
 # -KeyFile copies the key to the guest (C:\Users\atmos\signing.key, never
-# written to this repo) and points ac3desk's own signing/keyPath setting at
-# it directly in the guest's registry, so every ac3desk process this script
+# written to this repo) and points ac3crucible's own signing/keyPath setting at
+# it directly in the guest's registry, so every ac3crucible process this script
 # starts loads it and Atmos mode shows. (AC3FORGE_SIGNING_KEY_FILE would be
 # the documented alternative, but runProgramInGuest has no reliable way to
 # set an env var for the process it launches on this guest - a cmd.exe /c
@@ -46,7 +46,7 @@ param(
     [string[]]$ExtraPages = @(),
     [string]$ShotDir = '.',
     # name=x,y,z[,split] placements applied before every capture (not the
-    # final interactive start), passed straight through to ac3desk's own
+    # final interactive start), passed straight through to ac3crucible's own
     # --place. See guest\Set-DefaultToNullSink.ps1 to also move the guest's
     # default output to the driver before capturing, for shots where
     # "applications play to" should read the real endpoint.
@@ -56,7 +56,7 @@ $ErrorActionPreference = 'Stop'
 $vmrun = Join-Path $Workstation 'vmrun.exe'
 $vmx = Join-Path $VmDir "$Name.vmx"
 $guest = @('-T', 'ws', '-gu', 'atmos', '-gp', 'atmos')
-$work = Join-Path ([IO.Path]::GetTempPath()) 'ac3desk-deploy'
+$work = Join-Path ([IO.Path]::GetTempPath()) 'ac3crucible-deploy'
 New-Item -ItemType Directory -Force $work | Out-Null
 
 function Invoke-Guest([string]$script, [string]$tag) {
@@ -85,22 +85,22 @@ if (-not $Redist) {
 # The window and what windeployqt put beside it; not the tests and tools
 # that share the bin directory.
 $bin = Join-Path $BuildDir 'bin'
-if (-not (Test-Path (Join-Path $bin 'ac3desk.exe'))) { throw "no ac3desk.exe in $bin; build ac3desk first" }
-$stage = Join-Path $work 'ac3desk'
+if (-not (Test-Path (Join-Path $bin 'ac3crucible.exe'))) { throw "no ac3crucible.exe in $bin; build ac3crucible first" }
+$stage = Join-Path $work 'ac3crucible'
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force $stage | Out-Null
-Copy-Item (Join-Path $bin 'ac3desk.exe') $stage
+Copy-Item (Join-Path $bin 'ac3crucible.exe') $stage
 Copy-Item (Join-Path $bin '*.dll') $stage
 foreach ($d in @('generic', 'iconengines', 'imageformats', 'networkinformation', 'platforms', 'qml', 'qmltooling', 'styles', 'tls', 'translations')) {
     if (Test-Path (Join-Path $bin $d)) { Copy-Item (Join-Path $bin $d) (Join-Path $stage $d) -Recurse -Force }
 }
-$zip = Join-Path $work 'ac3desk.zip'
+$zip = Join-Path $work 'ac3crucible.zip'
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
 Write-Host ("staged {0} MB, zipped {1} MB" -f [math]::Round((Get-ChildItem $stage -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB), [math]::Round((Get-Item $zip).Length / 1MB))
 
 Write-Host 'copying the window and the VC++ runtime to the guest'
-& $vmrun @guest copyFileFromHostToGuest $vmx $zip 'C:\Users\atmos\ac3desk.zip' | Out-Null
+& $vmrun @guest copyFileFromHostToGuest $vmx $zip 'C:\Users\atmos\ac3crucible.zip' | Out-Null
 & $vmrun @guest copyFileFromHostToGuest $vmx $Redist 'C:\Users\atmos\vc_redist.x64.exe' | Out-Null
 
 $guestKeyPath = ''
@@ -109,12 +109,12 @@ if ($KeyFile) {
     Write-Host 'copying the signing key to the guest (never written to this repo)'
     $guestKeyPath = 'C:\Users\atmos\signing.key'
     & $vmrun @guest copyFileFromHostToGuest $vmx $KeyFile $guestKeyPath | Out-Null
-    # ac3desk's QSettings organisation/application ("ac3forge"/"DesktopAtmos",
-    # set with the four-argument QSettings constructor in desk_controller.cpp -
-    # note no space, unlike the window's displayed app name) is where
-    # signing/keyPath lives on Windows: HKCU\Software\ac3forge\DesktopAtmos.
+    # ac3crucible's QSettings organisation/application ("ac3forge"/"Crucible",
+    # set with the four-argument QSettings constructor in
+    # crucible_controller.cpp) is where
+    # signing/keyPath lives on Windows: HKCU\Software\ac3forge\Crucible.
     Invoke-Guest @"
-`$regPath = 'HKCU:\Software\ac3forge\DesktopAtmos\signing'
+`$regPath = 'HKCU:\Software\ac3forge\Crucible\signing'
 New-Item -Path `$regPath -Force | Out-Null
 Set-ItemProperty -Path `$regPath -Name 'keyPath' -Value '$guestKeyPath'
 "@ 'setkey' | ForEach-Object { "  $_" }
@@ -122,10 +122,10 @@ Set-ItemProperty -Path `$regPath -Name 'keyPath' -Value '$guestKeyPath'
 
 Write-Host 'unpacking and installing the runtime'
 Invoke-Guest @'
-Get-Process ac3desk -ErrorAction SilentlyContinue | Stop-Process -Force
-if (Test-Path C:\Users\atmos\ac3desk) { Remove-Item C:\Users\atmos\ac3desk -Recurse -Force }
-Expand-Archive C:\Users\atmos\ac3desk.zip -DestinationPath C:\Users\atmos\ac3desk
-"files: " + (Get-ChildItem C:\Users\atmos\ac3desk -Recurse -File | Measure-Object).Count
+Get-Process ac3crucible -ErrorAction SilentlyContinue | Stop-Process -Force
+if (Test-Path C:\Users\atmos\ac3crucible) { Remove-Item C:\Users\atmos\ac3crucible -Recurse -Force }
+Expand-Archive C:\Users\atmos\ac3crucible.zip -DestinationPath C:\Users\atmos\ac3crucible
+"files: " + (Get-ChildItem C:\Users\atmos\ac3crucible -Recurse -File | Measure-Object).Count
 $p = Start-Process -FilePath C:\Users\atmos\vc_redist.x64.exe -ArgumentList '/install','/quiet','/norestart' -Wait -PassThru
 "vc_redist exit: " + $p.ExitCode
 "endpoints: " + ((Get-PnpDevice -Class AudioEndpoint | Where-Object Status -eq OK | Select-Object -ExpandProperty FriendlyName) -join ' | ')
@@ -134,7 +134,7 @@ $p = Start-Process -FilePath C:\Users\atmos\vc_redist.x64.exe -ArgumentList '/in
 function Capture([string]$page, [string]$outFile) {
     Write-Host "capturing --page $page in the guest$(if ($guestKeyPath) { ' (signing key loaded)' })"
     $placeArgs = $Place | ForEach-Object { '--place', $_ }
-    & $vmrun @guest runProgramInGuest $vmx -interactive -activeWindow 'C:\Users\atmos\ac3desk\ac3desk.exe' '--shot' 'C:\Users\atmos\shot.png' '--page' $page @placeArgs | Out-Null
+    & $vmrun @guest runProgramInGuest $vmx -interactive -activeWindow 'C:\Users\atmos\ac3crucible\ac3crucible.exe' '--shot' 'C:\Users\atmos\shot.png' '--page' $page @placeArgs | Out-Null
     & $vmrun @guest copyFileFromGuestToHost $vmx 'C:\Users\atmos\shot.png' $outFile | Out-Null
     if (Test-Path $outFile) { "  shot: $outFile" } else { "  shot: none ($page)" }
 }
@@ -147,8 +147,8 @@ if ($ExtraPages) {
 }
 
 Write-Host 'starting the window on the guest desktop'
-& $vmrun @guest runProgramInGuest $vmx -interactive -activeWindow -noWait 'C:\Users\atmos\ac3desk\ac3desk.exe' | Out-Null
+& $vmrun @guest runProgramInGuest $vmx -interactive -activeWindow -noWait 'C:\Users\atmos\ac3crucible\ac3crucible.exe' | Out-Null
 Start-Sleep -Seconds 6
 Invoke-Guest @'
-Get-Process ac3desk -ErrorAction SilentlyContinue | Select-Object Id, StartTime | Format-Table -AutoSize | Out-String
+Get-Process ac3crucible -ErrorAction SilentlyContinue | Select-Object Id, StartTime | Format-Table -AutoSize | Out-String
 '@ 'running' | ForEach-Object { "  $_" }

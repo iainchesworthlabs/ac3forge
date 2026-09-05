@@ -99,8 +99,8 @@ is deliberately explicit about the difference.
 
 ### Per-process loopback and device notifications (roadmap UX11)
 
-Two more WASAPI paths, both added for the [Windows Desktop Atmos Demo](windows-demo.md) and
-both Windows-only in the backend tree:
+Two more WASAPI paths, added to the shared audio layer for [Crucible](../crucible/index.md)
+and available to anything else that links it, both Windows-only in the backend tree:
 
 - **`Capture::start_process_loopback(pid, mode, format)`** — `ActivateAudioInterfaceAsync`
   with `AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK`, which captures what one process tree
@@ -120,7 +120,7 @@ both Windows-only in the backend tree:
   for the same include-order reason `capture.cpp` spells its GUIDs out by hand.
 
 !!! note "Both confirmed on the development workstation, 2026-09-03"
-    Through the raw WASAPI spike first (`apps/windows/spikes/README.md`, S1: sixteen taps at
+    Through the raw WASAPI spike first (`apps/crucible/spikes/README.md`, S1: sixteen taps at
     once, exact separation, the mute and exclusive-mode hazards) and then through these library
     entry points themselves (`s1_library_tap`), on Windows 11 build 26200. Not yet exercised on
     a hosted CI runner beyond the device-free contract in `tests/audio/test_audio_backend.cpp`,
@@ -131,7 +131,7 @@ asks `IAudioClient3::GetSharedModeEnginePeriod` for the engine's smallest shared
 for the stream's format and opens with `InitializeSharedAudioStream` at that, falling back to
 the default period where the interface is missing or the engine refuses the format at that
 size; the other backends take the flag and ignore it. On the workstation's Realtek endpoint
-it changes nothing, and the spike's `period_probe` (`apps/windows/spikes/s5_latency/`) says
+it changes nothing, and the spike's `period_probe` (`apps/crucible/spikes/s5_latency/`) says
 why: the engine answers 480 frames, 10 ms, for the default, fundamental, minimum and maximum
 period alike, for the demo's float format and for the mix format both. `IAudioClient`'s
 "minimum 3 ms" device period is the exclusive-mode floor, not a shared-mode offer. A device
