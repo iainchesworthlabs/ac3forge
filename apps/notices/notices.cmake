@@ -140,11 +140,39 @@ ac3_generate_notices("${AC3FORGE_NOTICES_FILE}"
 message(STATUS "Forge notices  : ${AC3FORGE_NOTICES_PLATFORM} build, sections: ${AC3FORGE_NOTICE_FRAGMENTS}")
 
 # ---------------------------------------------------------------------------
-# Where the two files land. COMPONENT runtime throughout - the same component
-# ac3cli, ac3gui, the man page, the completions and the XDG files already
-# install under, so every generator picks them up with the binaries rather
-# than needing a component of their own (cmake/Packaging.cmake).
+# Where the two files land. COMPONENT runtime for the pair above - the same
+# component ac3cli, ac3gui, the man page, the completions and the XDG files
+# already install under, so every generator picks them up with the binaries
+# rather than needing a component of their own (cmake/Packaging.cmake).
+#
+# The licence also goes into the two library components, `library` (the
+# headers, the import library and the CMake package - the ac3forge-dev-*
+# archive, libac3forge-dev, ac3forge-devel) and `libruntime` (the shared
+# object alone - libac3forge0). Both reach someone who never downloads the
+# runtime archive, and a library handed over under the GPL with no copy of
+# the licence beside it is the omission this file exists to close. Debian
+# policy asks for a copyright file in every binary package, not only the one
+# carrying the binaries.
+#
+# They take the licence alone, not the notices: the notices describe what a
+# built application bundles - Qt, the fonts, the Windows runtime - and none
+# of that is in a library package.
 # ---------------------------------------------------------------------------
+if(WIN32 OR APPLE)
+    set(AC3FORGE_LIBRARY_LICENCE_DESTINATION ".")
+else()
+    set(AC3FORGE_LIBRARY_LICENCE_DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/ac3forge")
+endif()
+foreach(_ac3forge_lib_component library libruntime)
+    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
+        DESTINATION "${AC3FORGE_LIBRARY_LICENCE_DESTINATION}" RENAME "LICENSE.txt"
+        COMPONENT ${_ac3forge_lib_component})
+    if(NOT (WIN32 OR APPLE))
+        install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
+            DESTINATION "${AC3FORGE_LIBRARY_LICENCE_DESTINATION}" RENAME "copyright"
+            COMPONENT ${_ac3forge_lib_component})
+    endif()
+endforeach()
 if(WIN32 OR APPLE)
     # The archive/installer root and the .dmg root, beside bin/ and (on
     # macOS) ac3gui.app - the same place apps/crucible puts its pair in the
