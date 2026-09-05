@@ -1,9 +1,13 @@
 # ac3forge
 
-<!-- Build & code health -->
+<!-- Build & code health. CodeQL, MSVC Code Analysis, Static Analysis and
+     SonarCloud run nightly against main, not per PR - see
+     docs/ci-self-hosted-runners.md "Nightly analysis window". -->
 [![CI](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/ci.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/codeql.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/codeql.yml)
 [![MSVC Code Analysis](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/msvc-analysis.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/msvc-analysis.yml)
+[![Static Analysis](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/static-analysis.yml)
+[![SonarCloud](https://sonarcloud.io/api/project_badges/measure?project=iainchesworthlabs_ac3forge&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=iainchesworthlabs_ac3forge)
 [![OSV-Scanner](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/osv-scanner.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/osv-scanner.yml)
 [![Zizmor](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/zizmor.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/zizmor.yml)
 <!-- What the last merge actually MEASURED, not just whether it ran. The

@@ -35,7 +35,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   moved with them, out of the Android build job in `_build.yml` (where a scanner failure
   failed a required check) and into the nightly matrix as a leg of its own; the APK build and
   the emulator tests stay where they were, and `security-events: write` came off
-  `build-android` and both of its callers.
+  `build-android` and both of its callers. A fourth engine, SonarCloud, joins them at 02:35
+  UTC (`sonarcloud.yml`): maintainability, duplication and coverage on new code, which is the
+  view the other three do not give. It reads CMake's own `compile_commands.json` rather than
+  running build-wrapper, is pinned to GitHub-hosted because the CFamily analyser does not fit
+  the shared fleet's guests, and skips itself with a notice until `SONAR_TOKEN` is set rather
+  than failing nightly over a setup step. Its findings live in the SonarCloud dashboard, not
+  Security > Code scanning.
 - The ABI gate no longer runs on merge-queue entries. The pull-request run already produced
   the merge-base comparison the job exists for; a `merge_group` run takes the
   release-relative view instead (HEAD against the latest `v*` tag), which the push to `main`

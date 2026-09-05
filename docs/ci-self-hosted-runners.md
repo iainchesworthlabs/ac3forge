@@ -138,14 +138,18 @@ reasonable follow-up once there's real data to justify it - not built in advance
 
 ## Nightly analysis window
 
-The code-analysis engines - CodeQL (`codeql.yml`) and MSVC Code Analysis / PREfast
-(`msvc-analysis.yml`) - run once a night against `main` rather than on every push, pull
-request and merge-queue entry. Both still route through a `decide-runner` call of their own
+The code-analysis engines - CodeQL (`codeql.yml`), MSVC Code Analysis / PREfast
+(`msvc-analysis.yml`), clang-tidy (`static-analysis.yml`) and SonarCloud
+(`sonarcloud.yml`) - run once a night against `main` rather than on every push, pull
+request and merge-queue entry. The first three route through a `decide-runner` call of their own
 at that hour (`codeql.yml`'s decider reads `CONTROL_RUNNER_JSON` the way `ci.yml`'s does;
 `msvc-analysis.yml`'s is pinned to `ubuntu-latest` and doesn't read the variable), so the
 analysis lands on the self-hosted fleet whenever a Linux or Windows runner is online and on
-GitHub-hosted otherwise. The fleet is normally idle at 02:00 UTC, which is the point of the
-slot. Neither workflow asks for the `big` label; ac3forge does not use the big runners. A run
+GitHub-hosted otherwise. `sonarcloud.yml` is the exception: it is pinned to
+GitHub-hosted and never routed, because the CFamily analyser does not fit the fleet's
+12 GB guests (its own header carries the measurements). The fleet is normally idle at
+02:00 UTC, which is the point of the slot. No workflow here asks for the `big` label;
+ac3forge does not use the big runners. A run
 that finds something new (or fails) opens or refreshes a `nightly-analysis` issue through
 `.github/actions/report-nightly-failure` - nothing reliably notifies anyone about a new
 default-branch code-scanning alert (GitHub's documented code-scanning notifications cover
@@ -162,14 +166,45 @@ today, plus per-PR and push runs; the move into 04:xx has not been made yet).
 | 02:17 | ac3forge | `codeql.yml` (C++ on self-hosted Linux ~9 min; Python/JS ~2 min) | Linux |
 | 02:23 | ac3forge | `msvc-analysis.yml` (PREfast, ~35 min) | Windows |
 | 02:29 | ac3forge | `static-analysis.yml` (clang-tidy, ~8 min) | Linux |
+| 02:35 | ac3forge | `sonarcloud.yml` (unmeasured here; 43-58 min on the sibling) | none (`ubuntu-latest`) |
 | 03:17 | ac3forge | `fuzz.yml` nightly jobs | none (hosted) |
 | 04:43 | ac3forge | `interop.yml` | none (hosted) |
 | Mon 03:45 / 03:50 / 04:00 | ac3forge | `osv-scanner.yml` / `zizmor.yml` / `scorecard.yml` | none (hosted) |
 | Tue 21:42 / 22:17 / 22:27 / 22:37 | aqualink-automate | `automated-codescanning.yml` (CodeQL and MSVC on the `big` runners; SonarCloud hosted) / trivy / osv / scorecard - weekly today; code scanning is to move to 04:07, the minute that repo picked | Linux big, Windows big |
 
-Minute 02:35 is held for a further analysis engine if one moves into this window.
 When either repo adds or moves a cron that touches the fleet, update this table and the copy
 kept in [iainchesworthlabs/ci-runners](https://github.com/iainchesworthlabs/ci-runners).
+
+### SonarCloud setup
+
+`sonarcloud.yml` is the one nightly that needs configuration outside this repository, and
+it skips itself with a notice until that exists rather than failing every night. All of
+this is done by hand, once, by someone with admin on both sides:
+
+1. The project is already onboarded: organisation `iainchesworthlabs`, project key
+   `iainchesworthlabs_ac3forge`, which is what `sonar-project.properties` declares.
+   Note that this is a different SonarCloud organisation from the one
+   `aqualink-automate` analyses under (`iainchesworth`), so its settings and token do
+   not carry over.
+2. **Project > Administration > Analysis Method: turn Automatic Analysis off.** SonarCloud
+   refuses a CI-based analysis while autoscan owns the project, and autoscan cannot read
+   C or C++ from a compile database, so leaving it on means no C++ results at all.
+3. **Project > Administration > New Code: set a number of days.** 1 matches the nightly
+   cadence; 2 means a skipped night is still caught by the next run. This one matters:
+   the organisation's default is "previous version", which would never advance here
+   because nothing bumps `sonar.projectVersion` per run - every commit would stay
+   "new code" forever and the quality gate would never settle.
+4. Generate a token (My Account > Security, or a project analysis token) and add it as the
+   repository secret **`SONAR_TOKEN`** under Settings > Secrets and variables > Actions.
+   The workflow's `preflight` job checks for exactly this and skips the scan without it.
+5. Optionally add the quality-gate badge to `README.md`. Worth doing only after the first
+   run: the badge 404s until the project has been analysed once.
+
+Two things about the first run are unverified here and will show up in its log: whether
+`sonarqube-scan-action` runs cleanly inside this repo's `ubuntu:26.04` container (the
+sibling runs it directly on the hosted image), and whether the CFamily analyser accepts
+GCC 16. If the container is the problem, the fallback is to build in the container and
+scan outside it, keeping the compile database's paths consistent between the two.
 
 ## Toolchain version pins
 
