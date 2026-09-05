@@ -55,6 +55,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   which of the two pids that is), refusing the exclude-process-tree mode ALSA and PipeWire
   cannot express, and `DeviceWatcher` reports default-sink changes from the `default`
   metadata object.
+
+- The nightly SonarCloud scan now builds the examples, so they are analysed. The CFamily
+  analyser only sees a file the compile database names, and `config-linux-gcc-coverage` turns
+  examples off - for a coverage reason, not an analysis one - so the ~15 translation units
+  under `examples/` were listed in `sonar.sources` and then silently skipped. They are
+  documentation people copy from, which is an argument for analysing them. The coverage figure
+  is unaffected: `sonar.coverage.exclusions` already lists `examples/**`, so they stay
+  unmeasured rather than reading as 0%.
 - Code analysis runs nightly against `main` instead of on every pull request, push and
   merge-queue entry: CodeQL (`codeql.yml`, 02:17 UTC), MSVC Code Analysis
   (`msvc-analysis.yml`, 02:23 UTC) and clang-tidy, which moved out of `ci.yml`'s
