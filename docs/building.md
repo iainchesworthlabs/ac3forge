@@ -717,8 +717,8 @@ layout/tool/metadata option space (see
 [gold-reference gate](#gold-reference-correctness-gate) below, which every leg runs against one
 fixed sample to check output *quality*; ffmpeg-validate instead checks that every option
 combination produces a *structurally correct* stream at all, plus a numeric fidelity floor for
-the Annex E tool combinations the one fixed gold-reference sample does not itself exercise. No
-leg remains experimental.
+the Annex E tool combinations the one fixed gold-reference sample does not itself exercise.
+One leg, `windows-msvc-arm64`, is still marked experimental, and still packages for release.
 
 The coverage job gates line and branch coverage per component, not as one blended
 number, using the same GCC 16 pin as the other Linux legs; the floor table, the measurement each
