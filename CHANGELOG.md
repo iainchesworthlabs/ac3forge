@@ -339,6 +339,15 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   start playing and leave when they stop. The sentence is now `SessionMonitor::listing_rule()`,
   one paragraph from each platform, and `docs/crucible/troubleshooting.md` leads with it.
 
+- The three unlabelled `<input>` elements in the WASM demos now carry an `aria-label`: the
+  stream picker and the seek slider in the decode demo, and the WAV picker in the encode one.
+  A screen reader announced them by type alone ("file upload button", "slider"), with the
+  surrounding text giving the only clue what they were for. `aria-label` rather than a visible
+  `<label>` so nothing moves on the page; the `Format` control beside them already used the
+  wrapping-`<label>` form and keeps it. Found by the first SonarCloud scan
+  (`Web:InputWithoutLabelCheck`). `docs/assets/wasm-decode-demo/` and
+  `docs/assets/wasm-encode-demo/` are re-copied to match, which `docs.yml` compares byte for
+  byte.
 - **The README's decode-accuracy badge disagreed with the page it links to.** Per-channel SNR
   floors taught `docs/performance-quality.md`'s Decode accuracy card to pick a check by its
   tightest per-channel *margin* and report the channel that owns it, but

@@ -97,9 +97,11 @@
   <div class="panel">
     <div class="controls">
       <button id="loadDemo">Load bundled demo</button>
-      <input type="file" id="fileInput" accept=".ec3,.ac3,.eac3">
+      <input type="file" id="fileInput" accept=".ec3,.ac3,.eac3"
+             aria-label="Choose an AC-3 or E-AC-3 elementary stream">
       <button id="playPause" disabled>Play</button>
-      <input type="range" id="seek" min="0" max="1000" value="0" disabled>
+      <input type="range" id="seek" min="0" max="1000" value="0" disabled
+             aria-label="Seek position">
       <span id="scrubTime"></span>
     </div>
     <div id="status"></div>
