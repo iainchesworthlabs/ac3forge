@@ -14,3 +14,9 @@
 # a Windows checkout's autocrlf can't disagree with what `cargo fmt --check`
 # (rust/, roadmap AP9) expects in CI.
 *.rs text eol=lf
+
+# The Crucible's notice fragments and licence texts are read at configure
+# time and concatenated into the package's NOTICES.txt (cmake/Notices.cmake);
+# the generator normalises line endings, and pinning the blobs to LF keeps
+# the checked-in bytes the same on every platform too.
+apps/crucible/notices/** text eol=lf

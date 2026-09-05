@@ -1,0 +1,14 @@
+Typefaces
+---------
+
+The executable embeds the Archivo typeface (Regular, Medium, SemiBold and
+ExtraBold), Copyright 2020 The Archivo Project Authors
+(https://github.com/Omnibus-Type/Archivo), and Noto Sans Arabic and Noto
+Sans Hebrew, Copyright 2022 The Noto Project Authors
+(https://github.com/notofonts/arabic and https://github.com/notofonts/hebrew),
+for the languages Archivo does not cover. Each is licensed under the SIL
+Open Font License, Version 1.1, reproduced below as it ships with Archivo;
+the same text, under the Noto copyright lines above, governs the two Noto
+faces.
+
+{{FILE:OFL}}

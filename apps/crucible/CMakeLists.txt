@@ -49,6 +49,8 @@ if(WIN32)
     # COM for the session manager and policy config, the shell for the
     # full-screen query and the Settings fallback.
     target_link_libraries(ac3crucible_engine PRIVATE ole32 shell32 user32 version)
+    # This platform's notices directory (notices/notices.cmake).
+    set(AC3CRUCIBLE_PLATFORM_DIR windows)
 elseif(UNIX AND NOT APPLE)
     # Crucible needs a per-application tap, and on Linux only the PipeWire
     # backend has one - ALSA has no per-application concept at all, which is
@@ -112,6 +114,8 @@ elseif(UNIX AND NOT APPLE)
                        "(libxcb1-dev on Debian/Ubuntu, libxcb-devel on Fedora; "
                        "-DAC3FORGE_CRUCIBLE_X11=OFF silences this)")
     endif()
+    # This platform's notices directory (notices/notices.cmake).
+    set(AC3CRUCIBLE_PLATFORM_DIR linux)
 endif()
 # The profiling header pair, on every platform: the engine loop and the
 # controller carry Tracy zones whichever platform half is compiled in. This
@@ -148,6 +152,8 @@ find_package(Qt6 6.5 QUIET COMPONENTS Core Gui Widgets Qml Quick QuickControls2 
 if(NOT Qt6_FOUND)
     message(WARNING "Qt6 not found: the AC3Forge Crucible's window (ac3crucible) is skipped; "
                     "the engine and the ac3crucible-run runner still build.")
+    # The runner still installs, with the notices for what it alone carries.
+    include("${CMAKE_CURRENT_SOURCE_DIR}/notices/notices.cmake")
 else()
     qt_standard_project_setup(REQUIRES 6.5)
 
@@ -166,6 +172,12 @@ else()
         set(AC3DESK_QUICK3D_QML)
         message(STATUS "Qt Quick 3D not found: the AC3Forge Crucible's 3D room is left out")
     endif()
+
+    # This build's third-party notices, assembled now that the two facts that
+    # change them are known (the kit, and whether it has Quick 3D): installed
+    # with the package below and embedded as :/notices/NOTICES.txt for
+    # About > Licences (notices/notices.cmake).
+    include("${CMAKE_CURRENT_SOURCE_DIR}/notices/notices.cmake")
 
     set(AC3DESK_SHARED_QML Theme.qml Card.qml RailBlock.qml SegmentedControl.qml)
     # Generated INTO the source tree (ignored by git, see ui/qml/shared/.gitignore)
@@ -196,6 +208,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/Monogram.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/AboutDialog.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/FirstRunDialog.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/LicencesDialog.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/AppIcon.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/CrucibleButton.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/CrucibleCheck.qml"
@@ -264,8 +277,8 @@ else()
     # The GUI app's faces, so this window renders as designed on a machine
     # that never installed Archivo, and so Arabic, Hebrew and Yiddish have
     # glyphs (the shared LanguageManager selects the Noto faces by name).
-    # SIL OFL 1.1, attributed in the About box; the licence texts ship
-    # beside the files.
+    # SIL OFL 1.1: the copyright lines and the licence text travel in the
+    # package's NOTICES.txt, which About > Licences shows.
     qt_add_resources(ac3crucible "ac3crucible_fonts"
         PREFIX "/fonts"
         BASE "${CMAKE_SOURCE_DIR}/apps/gui/fonts"
@@ -276,6 +289,14 @@ else()
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-ExtraBold.ttf"
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/NotoSansArabic.ttf"
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/NotoSansHebrew.ttf")
+    # The same NOTICES.txt the package installs, so the Licences dialog shows
+    # exactly what this build ships. The file exists at configure time
+    # (notices/notices.cmake wrote it), like the rewritten shared QML above,
+    # so no GENERATED plumbing is needed.
+    qt_add_resources(ac3crucible "ac3crucible_notices"
+        PREFIX "/notices"
+        BASE "${CMAKE_CURRENT_BINARY_DIR}/notices"
+        FILES "${AC3CRUCIBLE_NOTICES_FILE}")
     set_target_properties(ac3crucible PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     # The executable's own icon, per platform, the same three-way split as
@@ -406,6 +427,10 @@ if(WIN32)
             "${CMAKE_SOURCE_DIR}/apps/windows/driver/remove.ps1"
             "${CMAKE_SOURCE_DIR}/apps/windows/driver/NullSinkDevice.ps1"
         DESTINATION "${CMAKE_INSTALL_BINDIR}/driver" COMPONENT crucible)
+    # The notices and the licence at the archive root, beside bin/ - the
+    # layout tools/ci/check_crucible_package.py asserts and reads.
+    install(FILES "${AC3CRUCIBLE_NOTICES_FILE}" DESTINATION "." COMPONENT crucible)
+    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION "." RENAME "LICENSE.txt" COMPONENT crucible)
 elseif(LINUX)
     # What a freedesktop menu needs: the launcher, the AppStream record a
     # software centre reads, and the icon in the hicolor theme at the two
@@ -424,4 +449,15 @@ elseif(LINUX)
     install(FILES "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-32.png"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps"
         RENAME "ac3crucible.png" COMPONENT crucible)
+    # The notices and the licence under share/doc/<package>/, where a .deb
+    # keeps them; the notices once more as `copyright`, the name dpkg and
+    # lintian look for and CPack's DEB generator never writes.
+    install(FILES "${AC3CRUCIBLE_NOTICES_FILE}"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/ac3forge-crucible" COMPONENT crucible)
+    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/ac3forge-crucible"
+        RENAME "LICENSE.txt" COMPONENT crucible)
+    install(FILES "${AC3CRUCIBLE_NOTICES_FILE}"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/ac3forge-crucible"
+        RENAME "copyright" COMPONENT crucible)
 endif()

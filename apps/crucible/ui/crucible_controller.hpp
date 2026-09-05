@@ -91,6 +91,9 @@ class CrucibleController : public QObject {
     Q_PROPERTY(QString roomLayout READ roomLayout WRITE setRoomLayout NOTIFY settingsChanged)
     // Version, commit and build target, for About.
     Q_PROPERTY(QString versionDetails READ versionDetails CONSTANT)
+    // The third-party notices this build ships - the package's NOTICES.txt,
+    // embedded at build time - for About > Licences.
+    Q_PROPERTY(QString licenceNotices READ licenceNotices CONSTANT)
     Q_PROPERTY(bool moveDefaultOnLaunch READ moveDefaultOnLaunch WRITE setMoveDefaultOnLaunch NOTIFY settingsChanged)
     // Whether the first-run explanation of what this application does to the
     // sound settings has been seen (FirstRunDialog.qml). Stored as the
@@ -234,6 +237,7 @@ public:
     [[nodiscard]] QString roomLayout() const;
     void setRoomLayout(const QString& layout);
     [[nodiscard]] QString versionDetails() const;
+    [[nodiscard]] QString licenceNotices() const;
 
     Q_INVOKABLE void installDriver();
     Q_INVOKABLE void removeDriver();

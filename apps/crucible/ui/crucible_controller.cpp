@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QIODevice>
 #include <QStandardPaths>
 #include <QThread>
 #include <QUrl>
@@ -602,6 +603,20 @@ void CrucibleController::setRoomLayout(const QString& layout) {
 
 QString CrucibleController::versionDetails() const {
     return QString::fromStdString(ac3::version_details());
+}
+
+QString CrucibleController::licenceNotices() const {
+    // The same file the package installs, embedded by apps/crucible/CMakeLists.txt
+    // (and by the test binary), so the dialog cannot say something the
+    // package does not. A binary built without the embedding gets a
+    // sentence that says so rather than an empty view.
+    QFile file(QStringLiteral(":/notices/NOTICES.txt"));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return tr("This build carries no embedded notices file (:/notices/NOTICES.txt was not "
+                  "compiled in); the NOTICES.txt beside the application and the repository's "
+                  "LICENSE say what it ships.");
+    }
+    return QString::fromUtf8(file.readAll());
 }
 
 void CrucibleController::setDefaultOutput(const QString& id) {

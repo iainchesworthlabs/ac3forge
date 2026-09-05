@@ -8,8 +8,9 @@ twice. It works differently on each platform, and on one of them there is nothin
 ### Get it
 
 `ac3forge-crucible-<version>-win64.zip`, from the releases page. It carries the window, the
-console runner, its own Qt runtime, and the driver's install and remove scripts. Unpack it
-somewhere and run `ac3crucible.exe`.
+console runner, its own Qt runtime, the driver's install and remove scripts, the third-party
+notices (`NOTICES.txt`) and the licence (`LICENSE.txt`). Unpack it somewhere and run
+`ac3crucible.exe`. About > Licences… shows the same notices from inside the window.
 
 It is a separate download from the main `ac3forge` package, and stays one while its driver is
 test-signed.
@@ -77,6 +78,11 @@ cmake --build build/crucible --target ac3crucible ac3crucible-run
 
 `-DAC3FORGE_WITH_ALSA=OFF` is not optional. With ALSA headers present the library selects ALSA,
 and Crucible refuses to build against it.
+
+The tarball and the `.deb` carry the notices under `share/doc/ac3forge-crucible/`:
+`NOTICES.txt` (what the build links and embeds, with each licence), `LICENSE.txt`, and the
+notices once more as `copyright`, the name Debian tools look for. About > Licences… shows the
+same text.
 
 ### The silent device
 

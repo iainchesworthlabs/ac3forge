@@ -1,0 +1,7 @@
+{fmt} {{FMT_VERSION}}
+----------------------
+
+The {fmt} formatting library, version {{FMT_VERSION}}, is compiled into
+ac3crucible and ac3crucible-run.
+
+{{FILE:FMT_MIT}}
