@@ -119,29 +119,82 @@ elseif(UNIX)
         set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
         set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 
-        # No explicit CPACK_DEBIAN_PACKAGE_DEPENDS for Qt here, unlike
-        # CountdownSolver's Packaging.cmake (which this module is otherwise
-        # modelled on). That is not an oversight: AC3FORGE_BUILD_GUI defaults
-        # OFF on every Linux preset today (cmake/FindQt6.cmake can find a
-        # Linux Qt kit fine - see CMakePresets.json's linux-gcc description -
-        # but nothing turns AC3FORGE_BUILD_GUI on by default there yet), so a
-        # Linux .deb here only ever contains ac3cli, which links no Qt at
-        # all. CPACK_DEBIAN_PACKAGE_SHLIBDEPS alone is enough for that.
+        # The QML modules ac3gui needs, declared by hand, because nothing
+        # automatic can find them. Two separate gaps, and only the first is
+        # the one usually talked about:
         #
-        # The gotcha to know about BEFORE packaging a Linux ac3gui build:
-        # dpkg-shlibdeps will NOT pick up Qt's libraries on its own if that
-        # Qt kit came from a private prebuilt archive rather than an apt
-        # package - SHLIBDEPS resolves a shared library to a Depends entry
-        # by asking dpkg which *installed apt package* owns that .so file,
-        # and silently drops anything it can't map that way. CountdownSolver
-        # hit this for real (see the comment in
-        # R:\CountdownSolver\cmake\Packaging.cmake) and works around it with
-        # an explicit CPACK_DEBIAN_PACKAGE_DEPENDS list naming the Qt runtime
-        # + qml6-module-* packages and minimum versions by hand. Do the same
-        # here once a Linux ac3gui is actually being packaged - and note
-        # this only applies if that Qt kit is NOT the distro's own apt
-        # package; a system Qt6 install (e.g. via apt) resolves fine through
-        # SHLIBDEPS alone, same as it does for every other shared library.
+        #   dpkg-shlibdeps reads a binary's DT_NEEDED entries and asks dpkg
+        #   which *installed apt package* owns each .so. It resolves the Qt
+        #   LIBRARIES that way when the kit is the distribution's own (the
+        #   CI legs install qt6-base-dev/qt6-declarative-dev, so it does),
+        #   and silently drops anything it cannot map - which is what
+        #   happens with a private prebuilt kit from aqtinstall or a
+        #   relocated archive. CountdownSolver hit that case in its own
+        #   packaging (the comment in R:\CountdownSolver\cmake\Packaging.cmake)
+        #   and works around it exactly this way.
+        #
+        #   A QML import is invisible to shlibdeps in EVERY case, distro kit
+        #   or not. `import QtQuick.Controls` is resolved at run time by the
+        #   QML engine walking its import paths for a qmldir and a plugin;
+        #   none of that reaches the executable's ELF headers, so no
+        #   library-level scan can ever see it. Debian and Ubuntu split
+        #   those modules into one qml6-module-* package each, so a .deb
+        #   without them installs cleanly and then dies at the first import
+        #   - which is what the released .deb has been doing.
+        #
+        # The list is ac3gui's own imports, read off apps/gui/qml/*.qml, not
+        # copied from the Crucible pass in .github/workflows/_build.yml: the
+        # two windows import different things. ac3gui imports QtQuick,
+        # QtQuick.Controls, QtQuick.Dialogs, QtQuick.Layouts, QtQuick.Window
+        # and QtCore (Main.qml's Settings). Crucible additionally imports
+        # QtQuick.Effects, Qt.labs.platform and QtQuick3D and none of those
+        # belong here; ac3crucible is its own component with its own Depends
+        # further down. Four entries are named that no .qml file imports:
+        #   qml6-module-qtquick-templates       what QtQuick.Controls is
+        #                                       implemented on top of
+        #   qml6-module-qtqml-models            named in QtQuick's own qmldir;
+        #   qml6-module-qtqml-workerscript      the first is where the delegate
+        #                                       model behind this window's
+        #                                       ListView and its Repeaters
+        #                                       comes from
+        #   qml6-module-qt-labs-folderlistmodel QtQuick.Dialogs' non-native
+        #                                       FileDialog/FolderDialog
+        #                                       fallback, which is what runs
+        #                                       where no XDG portal answers
+        # Each of those is already pulled in by the package above it on
+        # Ubuntu 26.04, so naming them changes nothing there. They are named
+        # because this package should state what it needs rather than
+        # inherit it from another package's Depends field, which that
+        # package is free to change.
+        #
+        # Only when the GUI is in the package. A CLI-only .deb
+        # (AC3FORGE_BUILD_GUI=OFF, still the default on every Linux preset in
+        # CMakePresets.json) links no Qt at all, and pulling the whole QML
+        # runtime onto a machine that asked for ac3cli would be a regression.
+        # The Qt libraries themselves stay with shlibdeps, which resolves
+        # them from an apt kit; a private kit needs them added here too, and
+        # the first gap above is the reason why.
+        if(AC3FORGE_BUILD_GUI)
+            set(AC3FORGE_GUI_QML_MODULES
+                qml6-module-qtcore
+                qml6-module-qtqml-models
+                qml6-module-qtqml-workerscript
+                qml6-module-qtquick
+                qml6-module-qtquick-controls
+                qml6-module-qtquick-dialogs
+                qml6-module-qtquick-layouts
+                qml6-module-qtquick-templates
+                qml6-module-qtquick-window
+                qml6-module-qt-labs-folderlistmodel)
+            # Debian wants one comma-separated field and a CMake list is
+            # semicolon-separated, so the join happens here rather than being
+            # left to CPack - CPACK_VERBATIM_VARIABLES (top of this file)
+            # passes the value through exactly as written. No version floors:
+            # every one of these arrived with Qt 6 itself, and the Qt version
+            # floor that does matter is already carried by the library
+            # dependencies shlibdeps writes.
+            list(JOIN AC3FORGE_GUI_QML_MODULES ", " CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS)
+        endif()
 
         # Component-aware packaging, OFF by default for the DEB generator -
         # without this, CPack ignores CPACK_COMPONENTS_ALL/GROUP entirely and
@@ -225,6 +278,18 @@ elseif(UNIX)
         # convention for a development package, where Debian/Ubuntu use "-dev".
         set(CPACK_RPM_COMPONENT_INSTALL ON)
         set(CPACK_RPM_RUNTIME_PACKAGE_NAME "ac3forge")
+        # No QML Requires here, unlike the DEB block above, and that is the
+        # one asymmetry between the two worth knowing. The RPM distributions
+        # this generator targets do not split the QML modules out: Fedora and
+        # RHEL ship QtQuick, Quick Controls, Dialogs, Layouts and the QtCore
+        # QML module inside qt6-qtdeclarative, the same package that owns the
+        # libQt6Qml.so.6/libQt6Quick.so.6 that ac3gui links - so
+        # CPACK_RPM_PACKAGE_AUTOREQPROV's soname scan already pulls every one
+        # of them in, and Debian's per-module qml6-module-* split is what
+        # makes the .deb need a list by hand. Reasoned from the two
+        # distributions' package layouts rather than measured: this project
+        # has no RPM host, and `rpm -qp --requires` on a built package is
+        # what would confirm it.
         set(CPACK_RPM_CRUCIBLE_PACKAGE_NAME "ac3forge-crucible")
         set(CPACK_RPM_CRUCIBLE_FILE_NAME RPM-DEFAULT)
         set(CPACK_RPM_CRUCIBLE_PACKAGE_REQUIRES "pipewire, wireplumber")

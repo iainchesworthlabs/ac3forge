@@ -631,6 +631,23 @@ jobs:
       # later as "Unknown CMake command" at the call site in
       # apps/gui/CMakeLists.txt - a confusing error to trace back to a
       # missing apt package, which is why this comment spells it out.
+      #
+      # The qml6-module-* lines are the RUNTIME modules ac3gui's own imports
+      # resolve to, read off apps/gui/qml/*.qml: QtQuick, Controls and the
+      # Templates underneath them, Dialogs and the folder model its
+      # non-native FileDialog falls back on, Layouts, Window, QtCore for
+      # Main.qml's Settings, and the two QtQml modules QtQuick's own qmldir
+      # names. Deliberately not the Crucible pass's list further down - that
+      # is a different window with different imports (Effects, Qt.labs.platform
+      # and Quick 3D there; none of them here). These are the same names
+      # cmake/Packaging.cmake declares as the runtime .deb's Depends when the
+      # GUI is in the package, and installing them by name here is what keeps
+      # the two lists in step: an apt-get that cannot resolve one of these
+      # fails this step loudly, whereas a wrong name in the Depends field
+      # would ship and make the .deb uninstallable instead. The -dev
+      # packages above already pull most of them in transitively, which is
+      # why the QML tests have passed on every leg while the .deb's own
+      # dependency list stayed missing.
       - name: Install Qt6 (Linux GUI)
         if: matrix.gui && runner.os == 'Linux'
         run: |
@@ -638,7 +655,11 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           apt-get install -y -qq --no-install-recommends \
             qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
-            qt6-l10n-tools qt6-tools-dev
+            qt6-l10n-tools qt6-tools-dev \
+            qml6-module-qtcore qml6-module-qtqml-models qml6-module-qtqml-workerscript \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
+            qml6-module-qtquick-dialogs qml6-module-qtquick-layouts \
+            qml6-module-qtquick-window qml6-module-qt-labs-folderlistmodel
 
       # Homebrew's "qt" formula is the umbrella Qt6 package (unlike apt's
       # split qt6-base-dev/qt6-declarative-dev): one install pulls in

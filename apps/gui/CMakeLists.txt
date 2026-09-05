@@ -9,6 +9,15 @@
 # ---------------------------------------------------------------------------
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent LinguistTools)
 
+# The kit's version, out to the top level, for apps/notices/notices.cmake's Qt
+# section: that file is include()d from the top-level CMakeLists.txt and cannot
+# read Qt6_VERSION, which find_package set in THIS directory's scope only.
+# PARENT_SCOPE for exactly the reason apps/crucible/CMakeLists.txt exports
+# AC3FORGE_CRUCIBLE_X11_BACKEND the same way. REQUIRED above is what lets the
+# notices treat AC3FORGE_BUILD_GUI=ON as "a Qt kit was found": the two cannot
+# disagree, because a missing kit fails the configure on this line.
+set(AC3FORGE_GUI_QT_VERSION "${Qt6_VERSION}" PARENT_SCOPE)
+
 qt_standard_project_setup(REQUIRES 6.5)
 
 qt_add_executable(ac3gui
@@ -443,12 +452,17 @@ endif()
 # path lookup and breaks QtQuick.Controls at startup - confirmed empirically
 # in CountdownSolver (R:\CountdownSolver\src\app\CMakeLists.txt), which hit
 # this exact bug and documents it in the same place. Linux packaging instead
-# relies on a declared Qt6 runtime dependency in cmake/Packaging.cmake's DEB
-# generator plus the system's own Qt6 install - not implemented yet here
-# because AC3FORGE_BUILD_GUI defaults OFF on every Linux preset (see
-# CMakePresets.json), so this bug cannot bite in CI until someone turns it on
-# for a packaging build. Do not "fix" this by adding the WIN32 OR APPLE
-# guard below back in for Linux too.
+# relies on the system's own Qt6 install plus a declared runtime dependency on
+# it in cmake/Packaging.cmake's DEB generator, which is now written: see that
+# file's CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS block for the qml6-module-* list
+# and, more to the point, for why dpkg-shlibdeps cannot work that list out on
+# its own whatever the Qt kit came from. This comment used to say the
+# dependency was not implemented "yet" and could not bite in CI because
+# AC3FORGE_BUILD_GUI defaults OFF on every Linux preset. Both halves had gone
+# stale: .github/workflows/_build.yml's four Linux legs carry `gui: true`
+# alongside `packageable: true`, so ac3gui has been going into a released .deb
+# with nothing declaring the QML runtime it needs. Do not "fix" the qt.conf
+# problem above by adding the WIN32 OR APPLE guard below back in for Linux too.
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
 
