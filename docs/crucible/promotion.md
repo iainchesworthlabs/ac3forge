@@ -824,9 +824,18 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     runs the application's; `engine/platform/windows/driver_tools.cpp` is 30%, because the rest
     of it launches an elevated PowerShell script that no test may run; and
     `platform/windows/{default_device,foreground}.cpp` sit near 46%, because their other half
-    is what a machine with a real endpoint and a real front window does. The Linux platform
-    half does not appear at all: this is a Windows build, and its twin needs the same run under
-    `config-linux-gcc-coverage`.
+    is what a machine with a real endpoint and a real front window does.
+
+    The Linux platform half does not appear here, and it is worth being exact about why. The
+    Catch2 binary links `tests/crucible/platform_services_stub.cpp`, so no platform directory is
+    compiled into it on any operating system except `x11_foreground.cpp`, which is pure policy
+    over an injected reader. Everything else - the Linux session monitor, default device and
+    silent device - is reached only through the Qt Quick suites, which run the real controller
+    against the real seams. Those numbers therefore exist only where a Qt build runs
+    `crucible-ui`: this Windows machine, the Raspberry Pi and the Linux CI leg. Measuring the
+    Linux side means a coverage build on one of the latter two, and the machine-facing parts of
+    those files stay outside any of it - `tools/checks/crucible_platform_probe.cpp` is what
+    exercises them, by hand, on hardware.
 
     No floor is set. `coverage_report.sh` gates the library per component, and the same is worth
     doing here once a second measurement says which of these numbers are stable.
