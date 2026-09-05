@@ -30,6 +30,14 @@
 # covered by its own Qt Quick tests, and its one Qt-free class
 # (RecordingSink) is already in ac3tests.
 #
+# apps/crucible is out of scope here for the same reason and gated anyway,
+# somewhere else: tools/checks/coverage_crucible.ps1 holds its line and branch
+# floors and runs on the Windows clang-cl leg, where a Qt kit already is
+# (.github/workflows/_build.yml, "Crucible coverage floor"). Most of that tree
+# only executes under Qt - the window, its controller, and the Qt Quick suites
+# that are the only thing driving its platform seams - so a figure taken in
+# this job would cover the platform-free engine core and nothing else.
+#
 # Run by .github/workflows/ci.yml's coverage job after `ctest`; runnable
 # locally the same way, from the repository root (see docs/building.md):
 #

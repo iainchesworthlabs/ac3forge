@@ -4,22 +4,27 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <filesystem>
-#include <fstream>
 #include <memory>
-#include <optional>
-#include <sstream>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "pipewire_support.hpp"
 #include "platform_services.hpp"
-#include "process_tree.hpp"
+#include "proc_facts.hpp"
 
 // The Linux SessionMonitor: who is playing sound, from the PipeWire graph
 // (docs/crucible/promotion.md, Phase 4).
+//
+// What is left in this file is the PipeWire half. Everything that is not -
+// the /proc readers, the per-process fact cache and its back-fill, and the
+// two records a refresh builds - lives in proc_facts.hpp beside this file,
+// because this translation unit cannot be compiled at all without the
+// PipeWire headers and none of that needs them. That is what
+// tests/crucible/platform/linux/test_session_facts.cpp drives; what is left
+// here needs a running daemon and is checked by hand on hardware with
+// tools/checks/crucible_platform_probe.cpp.
 //
 // This is where Linux and Windows differ most, and the difference is a
 // simplification rather than a gap.
@@ -88,51 +93,6 @@ namespace ac3::crucible {
 
 namespace {
 
-// /proc/<pid>/comm is the kernel's short name for the process, which is what
-// Windows calls the image stem. Empty when the process has gone.
-[[nodiscard]] std::string process_name(std::uint32_t pid) {
-    std::ifstream comm("/proc/" + std::to_string(pid) + "/comm");
-    std::string name;
-    std::getline(comm, name);
-    return name;
-}
-
-// The executable behind a pid, for an icon. /proc/<pid>/exe is a symlink the
-// owner can always read for their own processes - except across a sandbox
-// boundary: a Flatpak or snap application's link may be unreadable or point
-// inside its runtime, which is what the binary name from PipeWire is for.
-[[nodiscard]] std::string process_exe(std::uint32_t pid) {
-    std::error_code ec;
-    const auto target = std::filesystem::read_symlink("/proc/" + std::to_string(pid) + "/exe", ec);
-    return ec ? std::string{} : target.string();
-}
-
-// The parent of a pid, from /proc/<pid>/stat. The second field there (comm,
-// in parentheses) may itself hold spaces and parentheses, so the parse starts
-// after the LAST ')' and takes the second word from there: state, then ppid.
-// nullopt when the process has gone.
-[[nodiscard]] std::optional<std::uint32_t> ppid_of(std::uint32_t pid) {
-    std::ifstream stat_file("/proc/" + std::to_string(pid) + "/stat");
-    std::string line;
-    std::getline(stat_file, line);
-    const auto paren = line.rfind(')');
-    if (paren == std::string::npos) {
-        return std::nullopt;
-    }
-    std::istringstream rest(line.substr(paren + 1));
-    std::string state;
-    std::uint32_t parent = 0;
-    if (!(rest >> state >> parent)) {
-        return std::nullopt;
-    }
-    return parent;
-}
-
-[[nodiscard]] bool process_alive(std::uint32_t pid) {
-    std::error_code ec;
-    return std::filesystem::exists("/proc/" + std::to_string(pid), ec);
-}
-
 class LinuxSessionMonitor final : public SessionMonitor {
 public:
     // See SessionMonitor::listing_rule, and this file's header comment for
@@ -166,44 +126,25 @@ public:
                 // program; the same rule, by pid.
                 continue;
             }
+            // The three identity fields, out of the PipeWire type and into
+            // the plain one the bookkeeping below is written against
+            // (proc_facts.hpp): nothing past this line sees a PipeWire type,
+            // which is what lets a test drive it.
+            const StreamFacts identity{.binary = stream.binary,
+                                       .icon_name = stream.icon_name,
+                                       .app_id = stream.app_id};
             auto& app = apps[stream.pid];
+            const ProcessFacts& facts = facts_.facts_for(stream.pid, &identity);
             if (app.app != 0) {
                 // A second stream from the same application: one entry, and
-                // the tap takes the process, not the stream. What this
-                // stream carries and the first did not fills both the cache
-                // and the entry already built, so an icon that arrives with
-                // the second stream shows on this refresh, not the next.
-                const Facts& more = facts_for(stream.pid, &stream);
-                if (app.icon_name.empty()) {
-                    app.icon_name = more.icon_name;
-                }
-                if (app.app_id.empty()) {
-                    app.app_id = more.app_id;
-                }
-                if (app.image_path.empty()) {
-                    app.image_path = more.exe.empty() ? more.binary : more.exe;
-                }
+                // the tap takes the process, not the stream. The facts_for()
+                // call above has already filled the cache from this stream;
+                // this fills the entry already built, so an icon that arrives
+                // with the second stream shows on this refresh, not the next.
+                fill_from_second_stream(app, facts);
                 continue;
             }
-            const Facts& facts = facts_for(stream.pid, &stream);
-            app.app = stream.pid;
-            app.name = facts.name.empty() ? stream.application : facts.name;
-            // The executable's path, or, where /proc keeps it from us (a
-            // sandbox), the bare binary name PipeWire reports: a degenerate
-            // path whose basename is itself, which is all the icon lookup
-            // takes from it.
-            app.image_path = facts.exe.empty() ? facts.binary : facts.exe;
-            app.description = stream.application;
-            app.icon_name = facts.icon_name;
-            app.app_id = facts.app_id;
-            app.active = true;
-            // No portable way to ask; see this file's header comment.
-            app.has_window = true;
-            app.packaged = false;
-            app.has_session = true;
-            // The stream's pid and its same-executable ancestors, for the
-            // engine's full-screen match (this file's header comment).
-            app.session_pids = facts.tree;
+            app = sounding_session(stream.pid, stream.application, facts);
         }
 
         // Applications the engine asked to keep: listed while their process
@@ -213,27 +154,11 @@ public:
             if (pid == 0 || apps.contains(pid) || !process_alive(pid)) {
                 continue;
             }
-            const Facts& facts = facts_for(pid, nullptr);
-            AppSession app;
-            app.app = pid;
-            app.name = facts.name;
-            app.image_path = facts.exe.empty() ? facts.binary : facts.exe;
-            app.description = facts.name;
-            app.icon_name = facts.icon_name;
-            app.app_id = facts.app_id;
-            app.active = false;
-            app.has_window = true;
-            app.has_session = false;
-            // The same ancestor list a sounding application carries, so the
-            // full-screen rule still matches one that has gone quiet.
-            app.session_pids = facts.tree;
-            apps.emplace(pid, std::move(app));
+            apps.emplace(pid, kept_session(pid, facts_.facts_for(pid, nullptr)));
         }
 
         // Facts for processes that have gone.
-        std::erase_if(facts_, [&apps](const auto& entry) {
-            return !apps.contains(entry.first);
-        });
+        facts_.forget_unless([&apps](std::uint32_t pid) { return apps.contains(pid); });
 
         std::vector<AppSession> out;
         out.reserve(apps.size());
@@ -245,52 +170,11 @@ public:
     }
 
 private:
-    // Read once per process and kept while it lives, for the reason the
-    // Windows monitor caches: reading /proc for every process on every
-    // refresh is the expensive part, and none of it changes. The identity
-    // from the stream is kept with them, so a kept application that was
-    // first seen silent still gets its icon once it plays.
-    struct Facts {
-        std::string name;
-        std::string exe;
-        std::vector<std::uint32_t> tree;  // the pid and its same-executable ancestors
-        std::string binary;      // application.process.binary, or empty
-        std::string icon_name;   // application.icon-name, or empty
-        std::string app_id;      // the sandbox's app id, or empty
-    };
-
-    // `stream`: the stream this process was seen on, or null for a kept
-    // process with none. On a hit a stream back-fills whatever is empty.
-    const Facts& facts_for(std::uint32_t pid, const ac3::pipewire::OutputStreamNode* stream) {
-        if (const auto it = facts_.find(pid); it != facts_.end()) {
-            if (stream != nullptr) {
-                Facts& facts = it->second;
-                if (facts.binary.empty()) {
-                    facts.binary = stream->binary;
-                }
-                if (facts.icon_name.empty()) {
-                    facts.icon_name = stream->icon_name;
-                }
-                if (facts.app_id.empty()) {
-                    facts.app_id = stream->app_id;
-                }
-            }
-            return it->second;
-        }
-        // Every member named, in declaration order: GCC's
-        // -Werror=missing-field-initializers rejects a partial designated
-        // initialiser, and the order must follow the struct.
-        return facts_
-            .emplace(pid, Facts{.name = process_name(pid),
-                                .exe = process_exe(pid),
-                                .tree = same_image_ancestors(pid, ppid_of, process_exe),
-                                .binary = stream != nullptr ? stream->binary : std::string{},
-                                .icon_name = stream != nullptr ? stream->icon_name : std::string{},
-                                .app_id = stream != nullptr ? stream->app_id : std::string{}})
-            .first->second;
-    }
-
-    std::unordered_map<std::uint32_t, Facts> facts_;
+    // The /proc facts per process, the identity from the stream kept beside
+    // them, and the eviction of both. proc_facts.hpp holds all three, and the
+    // reasoning for each, because none of it needs PipeWire and all of it is
+    // worth a test (tests/crucible/platform/linux/test_session_facts.cpp).
+    ProcessFactsCache facts_;
 };
 
 }  // namespace

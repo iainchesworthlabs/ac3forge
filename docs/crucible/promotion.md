@@ -944,19 +944,82 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     `platform/windows/{default_device,foreground}.cpp` sit near 46%, because their other half
     is what a machine with a real endpoint and a real front window does.
 
-    The Linux platform half does not appear here, and it is worth being exact about why. The
-    Catch2 binary links `tests/crucible/platform_services_stub.cpp`, so no platform directory is
-    compiled into it on any operating system except `x11_foreground.cpp`, which is pure policy
-    over an injected reader. Everything else - the Linux session monitor, default device and
-    silent device - is reached only through the Qt Quick suites, which run the real controller
-    against the real seams. Those numbers therefore exist only where a Qt build runs
-    `crucible-ui`: this Windows machine, the Raspberry Pi and the Linux CI leg. Measuring the
-    Linux side means a coverage build on one of the latter two, and the machine-facing parts of
-    those files stay outside any of it - `tools/checks/crucible_platform_probe.cpp` is what
-    exercises them, by hand, on hardware.
+    The Linux platform half barely appears here, and it is worth being exact about why. The
+    Catch2 binary links `tests/crucible/platform_services_stub.cpp`, which supplies every
+    `platform_*()` factory, so no platform seam is compiled into it on any operating system.
+    What it does take out of `engine/platform/linux/` is the part of that directory needing
+    neither xcb nor PipeWire: `x11_foreground.cpp`, the X11 Foreground's policy over an
+    injected reader, and - since the seams pass below - `proc_facts.hpp`, the session monitor's
+    /proc readers, its per-process fact cache and the two records a refresh builds, moved into
+    a header so they could be reached at all. Everything else - the rest of the Linux session
+    monitor, the default device and the silent device - is reached only through the Qt Quick
+    suites, which run the real controller against the real seams. Those numbers therefore exist
+    only where a Qt build runs `crucible-ui`: this Windows machine, the Raspberry Pi and the
+    Linux CI leg. Measuring the Linux side means a coverage build on one of the latter two, and
+    the machine-facing parts of those files stay outside any of it -
+    `tools/checks/crucible_platform_probe.cpp` is what exercises them, by hand, on hardware.
 
-    No floor is set. `coverage_report.sh` gates the library per component, and the same is worth
-    doing here once a second measurement says which of these numbers are stable.
+    A floor is set from this measurement, and the script that reads it now fails when the
+    number drops. `tools/checks/coverage_crucible.ps1` gates `apps/crucible` at **74% of
+    lines and 60% of branches** - about two points under what was read here, so it holds
+    today's state rather than asking for tests nobody has written - and prints the per-file
+    breakdown under the gate, reported and not gated, so a file at 0% shows as itself rather
+    than averaging away. A failing `ctest` fails the script too, which it did not before: a
+    coverage figure for a suite that had gone red was worth nothing. The floors and their
+    calibration live in that script's own header the way `coverage_report.sh` carries the
+    library's, with the same instruction attached - raise them as the suite grows rather than
+    leaving the headroom in place.
+
+    It runs on the Windows clang-cl leg (`.github/workflows/_build.yml`, "Crucible coverage
+    floor"): a second instrumented tree inside a leg that already has clang-cl, the pinned
+    LLVM and the Qt kit, rather than a job of its own, because on this fleet a queue slot
+    costs more than a core. The Linux figure is still not taken anywhere, for the reason
+    above - it needs a coverage build on the Pi or on the Linux CI leg.
+
+!!! success "Done 2026-09-06: the seams nothing tested"
+
+    An audit found three places under `apps/crucible` with no test at all, and all three are
+    seams - the parts of this application that differ per platform and therefore have the
+    fewest readers.
+
+    **The tray.** `ui/platform/{windows,linux}/tray_support.cpp` are now driven by
+    `ui/tests/qml/tst_platform.qml`, on both platforms, through the same
+    `CrucibleController.trayAvailable`/`trayAbsentReason` the window binds. The invariant it
+    holds everywhere is that a tray which is not published carries a sentence a person can
+    read and one that is published carries none; on Linux it additionally holds
+    `trayAvailable` to false and the sentence to its two facts - that there is no tray here,
+    and that closing the window therefore quits. That assertion is about a defect, not a
+    preference: publishing a StatusNotifierItem from this window kills the process, and the
+    file beside it carries the measurement and everything ruled out. On Windows the seam is
+    checked against `Qt.labs.platform.SystemTrayIcon.available`, which is the right question
+    there and the wrong one on Linux.
+
+    **The Linux session monitor.** Its bookkeeping was unreachable rather than untested:
+    `engine/platform/linux/session_monitor.cpp` includes `pipewire_support.hpp`, so nothing in
+    it compiles without the PipeWire headers, and the /proc readers, the per-process fact
+    cache and the record-building sat in an anonymous namespace inside it. They are now
+    `engine/platform/linux/proc_facts.hpp` - the same split `process_tree.hpp` already was -
+    and `tests/crucible/platform/linux/test_session_facts.cpp` drives them on any Linux
+    machine against a `/proc` the test writes itself: a `comm` holding a space, a `stat` line
+    whose comm holds a `)`, a pid with no `exe` link across a sandbox boundary. What it pins:
+    the stat parse starting from the LAST `)`, /proc being read once per process and not once
+    per stream, a second stream back-filling an icon the first did not carry and never
+    overwriting one it did, the eviction of facts for processes that have gone, and the two
+    records - the sounding one and the kept one - including the ancestor list the full-screen
+    rule matches against.
+
+    **The Linux silent device.** `engine/platform/linux/virtual_device.cpp` cannot be reached
+    from the Catch2 binary at all (the stub is linked there, and it needs libpipewire), so
+    what is testable without creating a real node is asserted through the window in the same
+    `tst_platform.qml`: the device is named by the platform that owns it ("Crucible (silent)",
+    not the Windows name the first Linux screenshot showed), its advice mentions no driver
+    because Linux needs none, it reports itself as not from a package, it can create one, and
+    nothing is ever left running after a read. The listing rule rides along, for the same
+    reason - it is the sentence the room shows and the two platforms disagree about it.
+
+    Not done, and only reachable with a daemon: `refresh()` itself, `install()`/`remove()` and
+    the node teardown order, and `node_in_graph()`. Those stay with
+    `tools/checks/crucible_platform_probe.cpp` on hardware.
 
 !!! success "Done 2026-09-05: the accessibility pass"
     The window can be operated without a mouse, and what it offers a screen reader is asserted
