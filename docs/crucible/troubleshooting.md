@@ -122,6 +122,26 @@ on the strength of a connect alone, because PipeWire's adapter will accept an IE
 on an analogue jack and render the bursts as noise. If you see a bitstream mode on a
 headphone jack, that gate has been bypassed; report it.
 
+## Linux: an application shows a monogram
+
+Crucible found no icon for it. It looks in three places, in order: the icon name the
+application set on its own PipeWire client, the `.desktop` entry that matches it, and the icon
+theme under the binary's own name.
+
+- `pw-dump | grep -E '"application\.(name|icon-name|process\.binary)"'` shows what the
+  application told PipeWire. `application.icon-name` is a theme icon name; most applications set
+  only `application.name` and `application.process.binary`.
+- The `.desktop` match is by application id (a Flatpak's), then `TryExec`, `Exec`,
+  `StartupWMClass` against the name or the binary, then `Name`. An application started through
+  a wrapper script has a binary its entry does not name, and matches only through
+  `StartupWMClass` or `Name`.
+- An icon that exists only as SVG needs Qt SVG (`libqt6svg6`); without it the monogram stays.
+- A script, an interpreter or a command-line player (`python3`, `sh`, `aplay`) has no icon of
+  its own, and the monogram is the right picture for it.
+
+`QT_LOGGING_RULES="ac3crucible.icons.debug=true" ac3crucible` prints the theme Crucible found
+and which of the three answered for each application.
+
 ## Getting more out of it
 
 The console runner's `status` line reports the frame's own time beside the loop's cadence,

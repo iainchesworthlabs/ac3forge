@@ -69,9 +69,9 @@ library's PipeWire backend has streamed E-AC-3 bursts to a real HDMI sink with a
 on the end of it; whether the receiver locked is the receiver's display's to say, and that reading
 is still open. It matters more than it sounds, because Crucible **cannot** use the ALSA backend
 (no per-application tap), so it is forced onto the one passthrough path this project had not
-confirmed before. [The plan](promotion.md#alsa-or-pipewire) is blunt about that. What the Linux
-window still lacks: application icons (the monogram stands in), and the full-screen rule, which
-Wayland cannot answer.
+confirmed before. [The plan](promotion.md#alsa-or-pipewire) is blunt about that. Application
+icons come from the icon theme and the `.desktop` entries. What the Linux window still lacks:
+the full-screen rule, which Wayland cannot answer.
 
 **macOS** needs no driver — its process taps can mute an application where they tap it, which is
 the job the Windows driver exists to do — but nothing is implemented. It is blocked on a Mac to

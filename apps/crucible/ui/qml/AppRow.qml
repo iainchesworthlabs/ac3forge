@@ -31,6 +31,8 @@ Rectangle {
         AppIcon {
             name: root.app.name
             imagePath: root.app.imagePath
+            iconName: root.app.iconName
+            appId: root.app.appId
             size: 28
             dimmed: root.app.silent
             fill: root.placed ? (root.selected ? Theme.accent600 : Theme.neutral700) : (root.app.active ? Theme.neutral600 : Theme.neutral500)

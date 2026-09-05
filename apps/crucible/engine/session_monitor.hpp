@@ -15,8 +15,9 @@
 // Windows reads IAudioSessionManager2 on each render endpoint and groups the
 // sessions by process tree, because the session's process is often not the
 // application - Chrome's audio comes from a utility process under the
-// browser. Linux reads the PipeWire registry, where a stream already carries
-// application.name and application.process.id. macOS reads
+// browser. Linux reads the PipeWire graph: a stream's Client carries the
+// process id, and the stream node's info carries application.name and the
+// icon name the application gave itself. macOS reads
 // kAudioHardwarePropertyProcessObjectList. What the engine needs from all
 // three is the same list, so that is what this interface is: the list, and
 // nothing about how it was obtained.
@@ -34,6 +35,13 @@ struct AppSession {
     std::string name;            // image name without extension, e.g. "chrome"
     std::string image_path;      // the root process's executable, for an icon
     std::string description;     // the executable's FileDescription, or empty
+    // The platform's own icon name for it, when it gives one (PipeWire's
+    // application.icon-name): a freedesktop icon-theme name, never a path;
+    // empty on Windows, where the executable's path is the icon's identity.
+    std::string icon_name;
+    // The platform's application id when sandboxed (a Flatpak app id, which
+    // is also its .desktop file id); empty otherwise.
+    std::string app_id;
     std::string endpoint_name;   // where its session lives (the first one seen)
     bool active = false;         // playing on at least one session
     // An application, as a person means it: some process in the tree owns

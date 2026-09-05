@@ -63,6 +63,9 @@ The window says which of these you are in rather than leaving you to work it out
   separately, and ALSA has no per-application concept at all. A build configured against ALSA is
   refused at configure time with a message saying so.
 - `libpipewire-0.3-dev` to build, `pipewire` and a session manager (WirePlumber) to run.
+- `qt6-svg-dev` to build and `libqt6svg6` to run, for application icons that exist only as
+  SVG in the icon theme (`org.gnome.*` applications, most Flatpaks). Qt SVG is optional: without
+  it the configure log says so and those applications show the monogram.
 
 ### Build it
 
@@ -100,7 +103,14 @@ key `wpctl set-default` writes, and restores your previous default on exit.
 The window builds and runs on Linux (`ac3crucible`), and so does `ac3crucible-run`, a console
 runner over the same engine that lists the applications it can see, takes positions, and reports
 which output it chose and why. Building the window needs Qt 6.5 or later with Quick, Quick
-Controls 2, Widgets and Linguist Tools; Quick 3D is optional and adds the 3D room.
+Controls 2, Widgets and Linguist Tools; Quick 3D is optional and adds the 3D room, Qt SVG is
+optional and adds the SVG-only icons.
+
+Application icons come from the icon theme. An application gets one when it names an icon
+through PipeWire (`application.icon-name`), when a `.desktop` entry matches it — by its Flatpak
+application id, or by `Exec`, `TryExec`, `StartupWMClass` or `Name` — or when the theme has an
+icon named after its binary. A script, an interpreter or a command-line player (`python3`, `sh`,
+`aplay`) has none of those, and shows the monogram.
 
 ```
 ac3crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE]
@@ -110,14 +120,11 @@ ac3crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE]
   status                    one line of engine state
 ```
 
-Three gaps worth knowing before you start:
+Two gaps worth knowing before you start:
 
 - **The full-screen rule is off.** It makes the full-screen application the bed, and no Wayland
   client can ask which window is full-screen — that is Wayland's security model, not a missing
   feature. Crucible says which reason applies rather than silently dropping the rule.
-- **Applications show as monograms, not icons.** Linux has no single call for "the icon this
-  executable has"; the mapping from a process to its `.desktop` entry is heuristic and is a
-  follow-up.
 - **A bitstream has reached a receiver's HDMI sink from Linux, but its lock is not yet
   confirmed.** WirePlumber enables a sink's compressed codecs from the display's own EDID (the
   `iec958.codecs` property), so on a receiver that advertises them nothing needs configuring by

@@ -244,16 +244,59 @@ bool for_each_audio_node(Visitor&& visit) {
     return result.ec == std::errc{} ? value : 0;
 }
 
+// The application.* keys a client sets on itself, as one record: what the
+// window needs to find an icon for the process behind a stream.
+//
+// These live on an object's **info**, not on its registry dictionary. What
+// a registry listener is handed for a node is the server's global-key
+// subset of its properties - object.path, the client and device ids,
+// priorities, media.class and application.name among them - and
+// application.icon-name and application.process.binary are not in that
+// subset. They reach a client only by binding the object and listening for
+// its info event, the same fact audio_sinks_with_info() records for
+// iec958.codecs. The server copies a client's application.* properties onto
+// the nodes that client creates, so a stream node's info normally carries
+// them; a Flatpak client's pipewire.access.portal.app_id is on the Client
+// alone. output_stream_nodes() therefore binds both, prefers the node's
+// values and lets the client's fill what the node left empty.
+struct StreamIdentity {
+    std::string application;   // application.name
+    std::string icon_name;     // application.icon-name: a freedesktop icon-theme name
+    std::string binary;        // application.process.binary: the executable's basename
+    std::string app_id;        // pipewire.access.portal.app_id (a Flatpak id), else application.id
+};
+
+// Fills `into` from an info dictionary, keeping what is already there
+// wherever a key is absent or empty.
+inline void read_stream_identity(const spa_dict& props, StreamIdentity& into) {
+    const auto take = [&props](const char* key, std::string& field) {
+        if (const char* value = spa_dict_lookup(&props, key);
+            value != nullptr && value[0] != '\0') {
+            field = value;
+        }
+    };
+    take(PW_KEY_APP_NAME, into.application);
+    take(PW_KEY_APP_ICON_NAME, into.icon_name);
+    take(PW_KEY_APP_PROCESS_BINARY, into.binary);
+    take("pipewire.access.portal.app_id", into.app_id);
+    if (into.app_id.empty()) {
+        take(PW_KEY_APP_ID, into.app_id);
+    }
+}
+
 // One application's playback stream, with the process behind it.
 struct OutputStreamNode {
     std::uint32_t id = 0;      // the registry global id
     std::string target;        // what PW_KEY_TARGET_OBJECT accepts for it
     std::string application;   // application.name, for a person to read
     std::uint32_t pid = 0;     // the process that owns the owning client
+    std::string icon_name;     // application.icon-name, or empty (see StreamIdentity)
+    std::string binary;        // application.process.binary, or empty
+    std::string app_id;        // the portal app id (Flatpak) or application.id, or empty
 };
 
 // Every application playback stream in the graph, each with the process id
-// behind it.
+// behind it and what the application says about itself for an icon.
 //
 // The pid is **not on the node**, which is the thing worth writing down: a
 // Stream/Output/Audio node carries application.name, media.class and a
@@ -266,61 +309,217 @@ struct OutputStreamNode {
 // Of the two pids the Client carries, pipewire.sec.pid is the daemon's own,
 // taken from the socket credentials, while application.process.id is whatever
 // the client said. The first is preferred and the second is the fallback.
+//
+// The icon identity is the second thing the registry dictionary lacks (see
+// StreamIdentity), so this is a bind-for-info walk in the shape of
+// audio_sinks_with_info(): the registry pass records the facts it always
+// did - target, application.name, client.id, the Client's pid - and
+// additionally binds each stream node and each Client; a second sync waits
+// for the info events those binds provoke. The registry facts never depend
+// on a bind: a machine where a bind fails, or a server that sends no info,
+// yields the list this function returned before, with the three identity
+// fields empty.
+//
+// Cost: one proxy per stream node and per client, and one more round trip,
+// per call - the Linux session monitor calls this twice a second on its own
+// thread. Should that ever show on a small machine, the Client binds can be
+// skipped for pids the caller already knows; not done until measured.
 [[nodiscard]] inline std::vector<OutputStreamNode> output_stream_nodes() {
+    ensure_initialized();
+
+    MainLoop loop{pw_main_loop_new(nullptr)};
+    if (!loop) {
+        return {};
+    }
+    Context context{pw_context_new(pw_main_loop_get_loop(loop.get()), nullptr, 0)};
+    if (!context) {
+        return {};
+    }
+    Core core{pw_context_connect(context.get(), nullptr, 0)};
+    if (!core) {
+        return {};
+    }
+    Registry registry{pw_core_get_registry(core.get(), PW_VERSION_REGISTRY, 0)};
+    if (!registry) {
+        return {};
+    }
+
+    struct BoundNode {
+        pw_proxy* proxy = nullptr;
+        spa_hook listener{};
+        pw_node_events events{};
+        StreamIdentity identity;
+    };
+    struct BoundClient {
+        pw_proxy* proxy = nullptr;
+        spa_hook listener{};
+        pw_client_events events{};
+        StreamIdentity identity;
+    };
     struct Pending {
         std::uint32_t id = 0;
         std::string target;
         std::string application;
         std::uint32_t client_id = 0;
+        BoundNode* bound = nullptr;   // null when the bind failed
     };
-    std::vector<Pending> streams;
-    std::unordered_map<std::uint32_t, std::uint32_t> client_pids;
+    struct State {
+        pw_registry* registry = nullptr;
+        pw_main_loop* loop = nullptr;
+        std::vector<Pending> streams;
+        std::unordered_map<std::uint32_t, std::uint32_t> client_pids;
+        std::vector<std::unique_ptr<BoundNode>> nodes;
+        std::unordered_map<std::uint32_t, std::unique_ptr<BoundClient>> clients;
+        int pending = 0;
+    } state{registry.get(), loop.get(), {}, {}, {}, {}, 0};
 
-    const bool session = for_each_global(
-        [&streams, &client_pids](std::uint32_t id, std::string_view type, const spa_dict& props) {
-            if (type == PW_TYPE_INTERFACE_Client) {
-                std::uint32_t pid = dict_u32(props, "pipewire.sec.pid");
-                if (pid == 0) {
-                    pid = dict_u32(props, PW_KEY_APP_PROCESS_ID);
+    spa_hook registry_listener{};
+    pw_registry_events registry_events{};
+    registry_events.version = PW_VERSION_REGISTRY_EVENTS;
+    registry_events.global = [](void* data, std::uint32_t global_id, std::uint32_t,
+                                const char* type, std::uint32_t, const spa_dict* props) {
+        auto* self = static_cast<State*>(data);
+        if (type == nullptr || props == nullptr) {
+            return;
+        }
+        const std::string_view kind{type};
+        if (kind == PW_TYPE_INTERFACE_Client) {
+            // The registry fact, as before: which process owns this client.
+            std::uint32_t pid = dict_u32(*props, "pipewire.sec.pid");
+            if (pid == 0) {
+                pid = dict_u32(*props, PW_KEY_APP_PROCESS_ID);
+            }
+            if (pid != 0) {
+                self->client_pids.emplace(global_id, pid);
+            }
+            // And a bind for the identity only its info carries.
+            auto* client_proxy = static_cast<pw_proxy*>(
+                pw_registry_bind(self->registry, global_id, type, PW_VERSION_CLIENT, 0));
+            if (client_proxy == nullptr) {
+                return;
+            }
+            auto client_bound = std::make_unique<BoundClient>();
+            client_bound->proxy = client_proxy;
+            client_bound->events.version = PW_VERSION_CLIENT_EVENTS;
+            client_bound->events.info = [](void* bound_data, const pw_client_info* client_info) {
+                auto* b = static_cast<BoundClient*>(bound_data);
+                if (client_info == nullptr || client_info->props == nullptr) {
+                    return;
                 }
-                if (pid != 0) {
-                    client_pids.emplace(id, pid);
+                read_stream_identity(*client_info->props, b->identity);
+            };
+            pw_proxy_add_object_listener(client_proxy, &client_bound->listener,
+                                         &client_bound->events, client_bound.get());
+            self->clients.emplace(global_id, std::move(client_bound));
+            return;
+        }
+        if (kind != PW_TYPE_INTERFACE_Node || !is_output_stream(*props)) {
+            return;
+        }
+        // The registry facts, as before.
+        const char* name = spa_dict_lookup(props, PW_KEY_APP_NAME);
+        const char* serial = spa_dict_lookup(props, PW_KEY_OBJECT_SERIAL);
+        const char* node_name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
+        Pending stream{.id = global_id,
+                       .target = serial != nullptr    ? serial
+                                 : node_name != nullptr ? node_name
+                                                        : std::string{},
+                       .application = name != nullptr ? name
+                                      : node_name != nullptr ? node_name
+                                                             : std::string{},
+                       .client_id = dict_u32(*props, PW_KEY_CLIENT_ID),
+                       .bound = nullptr};
+        // And the bind, whose failure costs only the identity.
+        auto* node_proxy = static_cast<pw_proxy*>(
+            pw_registry_bind(self->registry, global_id, type, PW_VERSION_NODE, 0));
+        if (node_proxy != nullptr) {
+            auto node_bound = std::make_unique<BoundNode>();
+            node_bound->proxy = node_proxy;
+            node_bound->events.version = PW_VERSION_NODE_EVENTS;
+            node_bound->events.info = [](void* bound_data, const pw_node_info* node_info) {
+                auto* b = static_cast<BoundNode*>(bound_data);
+                if (node_info == nullptr || node_info->props == nullptr) {
+                    return;
                 }
-                return;
-            }
-            if (type != PW_TYPE_INTERFACE_Node) {
-                return;
-            }
-            const char* media_class = spa_dict_lookup(&props, PW_KEY_MEDIA_CLASS);
-            if (media_class == nullptr ||
-                std::string_view{media_class} != "Stream/Output/Audio") {
-                return;
-            }
-            const char* name = spa_dict_lookup(&props, PW_KEY_APP_NAME);
-            const char* serial = spa_dict_lookup(&props, PW_KEY_OBJECT_SERIAL);
-            const char* node_name = spa_dict_lookup(&props, PW_KEY_NODE_NAME);
-            streams.push_back({.id = id,
-                               .target = serial != nullptr    ? serial
-                                         : node_name != nullptr ? node_name
-                                                                : std::string{},
-                               .application = name != nullptr ? name
-                                              : node_name != nullptr ? node_name
-                                                                     : std::string{},
-                               .client_id = dict_u32(props, PW_KEY_CLIENT_ID)});
-        });
-    if (!session) {
-        return {};
-    }
+                read_stream_identity(*node_info->props, b->identity);
+            };
+            pw_proxy_add_object_listener(node_proxy, &node_bound->listener,
+                                         &node_bound->events, node_bound.get());
+            stream.bound = node_bound.get();
+            self->nodes.push_back(std::move(node_bound));
+        }
+        self->streams.push_back(std::move(stream));
+    };
+    pw_registry_add_listener(registry.get(), &registry_listener, &registry_events, &state);
+
+    spa_hook core_listener{};
+    pw_core_events core_events{};
+    core_events.version = PW_VERSION_CORE_EVENTS;
+    core_events.done = [](void* data, std::uint32_t done_id, int seq) {
+        auto* self = static_cast<State*>(data);
+        if (done_id == PW_ID_CORE && seq == self->pending) {
+            pw_main_loop_quit(self->loop);
+        }
+    };
+    // A core error (the daemon going away mid-walk) ends the wait rather
+    // than leaving the monitor thread inside pw_main_loop_run for ever.
+    core_events.error = [](void* data, std::uint32_t error_id, int, int, const char*) {
+        auto* self = static_cast<State*>(data);
+        if (error_id == PW_ID_CORE) {
+            pw_main_loop_quit(self->loop);
+        }
+    };
+    pw_core_add_listener(core.get(), &core_listener, &core_events, &state);
+
+    // First: every existing global, binding streams and clients as they arrive.
+    state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
+    pw_main_loop_run(loop.get());
+    // Second: the info events those binds asked for.
+    state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
+    pw_main_loop_run(loop.get());
 
     std::vector<OutputStreamNode> out;
-    out.reserve(streams.size());
-    for (auto& stream : streams) {
-        const auto found = client_pids.find(stream.client_id);
+    out.reserve(state.streams.size());
+    for (auto& stream : state.streams) {
+        const auto found = state.client_pids.find(stream.client_id);
+        StreamIdentity identity;
+        if (stream.bound != nullptr) {
+            identity = stream.bound->identity;
+        }
+        if (const auto client = state.clients.find(stream.client_id);
+            client != state.clients.end()) {
+            // The node's info first; the client's fills what it left empty.
+            const StreamIdentity& theirs = client->second->identity;
+            if (identity.icon_name.empty()) {
+                identity.icon_name = theirs.icon_name;
+            }
+            if (identity.binary.empty()) {
+                identity.binary = theirs.binary;
+            }
+            if (identity.app_id.empty()) {
+                identity.app_id = theirs.app_id;
+            }
+        }
         out.push_back({.id = stream.id,
                        .target = std::move(stream.target),
-                       .application = std::move(stream.application),
-                       .pid = found == client_pids.end() ? 0 : found->second});
+                       .application = identity.application.empty()
+                                          ? std::move(stream.application)
+                                          : std::move(identity.application),
+                       .pid = found == state.client_pids.end() ? 0 : found->second,
+                       .icon_name = std::move(identity.icon_name),
+                       .binary = std::move(identity.binary),
+                       .app_id = std::move(identity.app_id)});
     }
+    for (auto& node : state.nodes) {
+        spa_hook_remove(&node->listener);
+        pw_proxy_destroy(node->proxy);
+    }
+    for (auto& entry : state.clients) {
+        spa_hook_remove(&entry.second->listener);
+        pw_proxy_destroy(entry.second->proxy);
+    }
+    spa_hook_remove(&core_listener);
+    spa_hook_remove(&registry_listener);
     return out;
 }
 

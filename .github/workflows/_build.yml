@@ -1409,10 +1409,13 @@ jobs:
           # Effects, Dialogs and the folder model it uses, Qt.labs.platform
           # for the tray, Quick 3D for the room, QtTest for the suite):
           # without them the window builds and every test fails at import.
+          # qt6-svg-dev is the optional Qt SVG the window links for icon
+          # themes whose application icons are SVG only.
           $SUDO apt-get install -y -qq --no-install-recommends \
             libpipewire-0.3-dev dpkg-dev \
             qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
             qt6-l10n-tools qt6-tools-dev qt6-quick3d-dev qt6-shadertools-dev \
+            qt6-svg-dev \
             qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
             qml6-module-qtquick-layouts qml6-module-qtquick-window qml6-module-qtquick-effects \
             qml6-module-qtquick-dialogs qml6-module-qt-labs-folderlistmodel \

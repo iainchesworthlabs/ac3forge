@@ -4,6 +4,7 @@
 
 #include <shellapi.h>
 
+#include <QLatin1Char>
 #include <QMutexLocker>
 #include <QUrl>
 
@@ -65,7 +66,10 @@ QImage own_icon(const QString& path, int pixels) {
 }
 
 QImage AppIconProvider::requestImage(const QString& id, QSize* size, const QSize& requested_size) {
-    const QString path = QUrl::fromPercentEncoding(id.toUtf8());
+    // The id is the path up to the first '?': what follows is the query the
+    // Linux provider reads (app_icon_provider.hpp), and a Windows path
+    // cannot contain a raw '?'.
+    const QString path = QUrl::fromPercentEncoding(id.section(QLatin1Char('?'), 0, 0).toUtf8());
     const bool large = requested_size.width() > 20 || requested_size.height() > 20 || !requested_size.isValid();
     const QString key = path + (large ? QStringLiteral("|L") : QStringLiteral("|S"));
     {

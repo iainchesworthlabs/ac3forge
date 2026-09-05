@@ -57,11 +57,17 @@ TEST_CASE("the session monitor carries the engine's keep list", "[crucible][seam
     chrome.app = 900;
     chrome.name = "chrome";
     chrome.active = true;
+    // The platform's icon hints ride the same record; the seam hands them
+    // through untouched, and a platform without them leaves them empty.
+    chrome.icon_name = "google-chrome";
+    chrome.app_id = "com.google.Chrome";
     monitor.set_apps({chrome});
 
     const auto apps = monitor.refresh({900, 901});
     REQUIRE(apps.size() == 1);
     REQUIRE(apps.front().name == "chrome");
+    REQUIRE(apps.front().icon_name == "google-chrome");
+    REQUIRE(apps.front().app_id == "com.google.Chrome");
     // The engine passes the placed applications so a silent spell does not
     // unlist them; the seam has to hand that through unchanged.
     REQUIRE(monitor.last_keep() == std::vector<std::uint32_t>{900, 901});

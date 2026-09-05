@@ -30,6 +30,7 @@ if(WIN32)
     target_sources(ac3crucible_qmltests PRIVATE ui/platform/windows/app_icon_provider.cpp)
 elseif(LINUX)
     target_sources(ac3crucible_qmltests PRIVATE ui/platform/linux/app_icon_provider.cpp)
+    target_sources(ac3crucible_qmltests PRIVATE ui/desktop_entries.cpp ui/desktop_entries.hpp)
 endif()
 
 qt_add_qml_module(ac3crucible_qmltests
@@ -49,6 +50,9 @@ target_link_libraries(ac3crucible_qmltests PRIVATE
     ac3::crucible_engine
     ac3::coverage
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickTest ${AC3DESK_QUICK3D_LIB})
+if(Qt6Svg_FOUND)
+    target_link_libraries(ac3crucible_qmltests PRIVATE ${AC3DESK_SVG_LIB})
+endif()
 # Into bin/ beside ac3crucible.exe, whose windeployqt step puts the Qt runtime
 # there; ordered after it so the two never deploy into bin/ at once.
 set_target_properties(ac3crucible_qmltests PROPERTIES
@@ -104,4 +108,13 @@ foreach(test_file IN LISTS AC3DESK_QML_TEST_FILES)
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
         TIMEOUT 300
         LABELS "crucible-ui")
+    # The icon fixture (ui/tests/fixtures/xdg: a hicolor theme and four
+    # .desktop entries) is what the Linux icon provider sees as the whole
+    # XDG data path, and the data home is an empty build-tree directory so
+    # a developer's own ~/.local/share never leaks into a run. Inert on
+    # Windows, whose provider reads neither variable (tst_icons.qml).
+    set_property(TEST ac3crucible_qml_tests_${suite} APPEND PROPERTY ENVIRONMENT
+        "XDG_DATA_DIRS=${CMAKE_CURRENT_SOURCE_DIR}/ui/tests/fixtures/xdg"
+        "XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/tests/xdg-home")
 endforeach()
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests/xdg-home")
