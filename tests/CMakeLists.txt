@@ -442,6 +442,7 @@ target_sources(ac3tests PRIVATE
     crucible/test_nullsink_position.cpp
     crucible/test_platform_seams.cpp
     crucible/test_diagnostics.cpp
+    crucible/test_desktop_entries.cpp
     crucible/platform_services_stub.cpp
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"
@@ -450,12 +451,18 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/tap_pool.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/diagnostics.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp")
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/ui/desktop_entries.cpp")
 # The null-sink driver's position clock (apps/windows/driver/Source/Main/
 # position.h) is a header with no kernel dependencies, kept that way so the
 # one piece of the driver that is logic rather than framework plumbing is
-# tested here, on every platform, where kernel code could never be.
+# tested here, on every platform, where kernel code could never be. The
+# window's .desktop-entry reader (apps/crucible/ui/desktop_entries.hpp) is
+# plain C++ over std::filesystem for the same reason and rides the same
+# target, Qt-free, on every platform.
 target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/ui"
     "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main")
 
 # The Linux Foreground's X11 half has a pure policy (x11_foreground.cpp: when

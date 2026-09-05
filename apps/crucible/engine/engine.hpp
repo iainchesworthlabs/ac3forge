@@ -70,6 +70,8 @@ struct AppStatus {
     std::string name;
     std::string image_path;
     std::string description;  // the executable's own name for itself, or empty
+    std::string icon_name;    // the platform's icon-theme name for it, or empty (see AppSession)
+    std::string app_id;       // the platform's application id when sandboxed, or empty
     bool active = false;
     bool has_window = false;  // owns a visible top-level window (see AppSession)
     bool packaged = false;    // a packaged app, whose window belongs to a host

@@ -180,6 +180,19 @@ else()
     # with the package below and embedded as :/notices/NOTICES.txt for
     # About > Licences (notices/notices.cmake).
     include("${CMAKE_CURRENT_SOURCE_DIR}/notices/notices.cmake")
+    # Qt SVG is optional the same way: linked when the kit has it, so that
+    # an application whose icon-theme entry is SVG only (org.gnome.*, most
+    # Flatpaks) resolves in the Linux icon provider, windeployqt copies the
+    # svg image format and icon engine on Windows, and the .deb's shlibdeps
+    # names libqt6svg6. Without it those applications show the monogram,
+    # and the configure log says so.
+    find_package(Qt6 6.5 QUIET COMPONENTS Svg)
+    if(Qt6Svg_FOUND)
+        set(AC3DESK_SVG_LIB Qt6::Svg)
+    else()
+        set(AC3DESK_SVG_LIB)
+        message(STATUS "Qt SVG not found: SVG-only application icons show the monogram")
+    endif()
 
     set(AC3DESK_SHARED_QML Theme.qml Card.qml RailBlock.qml SegmentedControl.qml)
     # Generated INTO the source tree (ignored by git, see ui/qml/shared/.gitignore)
@@ -241,14 +254,16 @@ else()
     )
     # The application-icon provider is the one part of the window that talks
     # to the operating system directly, so it is a platform directory like
-    # engine/platform/: Windows asks the shell for an executable's icon,
-    # Linux has no single call for that and returns none (the monogram shows
-    # instead - see ui/platform/linux/app_icon_provider.cpp for what doing it
-    # properly involves).
+    # engine/platform/: Windows asks the shell for an executable's icon;
+    # Linux resolves the icon theme and the .desktop entries (see
+    # ui/platform/linux/app_icon_provider.cpp for the four rungs), and the
+    # Qt-free reader for those entries (ui/desktop_entries.cpp) is compiled
+    # here beside it and into ac3tests on every platform.
     if(WIN32)
         target_sources(ac3crucible PRIVATE ui/platform/windows/app_icon_provider.cpp)
     elseif(LINUX)
         target_sources(ac3crucible PRIVATE ui/platform/linux/app_icon_provider.cpp)
+        target_sources(ac3crucible PRIVATE ui/desktop_entries.cpp ui/desktop_entries.hpp)
     endif()
     qt_add_qml_module(ac3crucible
         URI Ac3ForgeCrucible
@@ -270,6 +285,9 @@ else()
         ac3::crucible_engine
         ac3::coverage
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Widgets Qt6::Quick Qt6::QuickControls2 ${AC3DESK_QUICK3D_LIB})
+    if(Qt6Svg_FOUND)
+        target_link_libraries(ac3crucible PRIVATE ${AC3DESK_SVG_LIB})
+    endif()
     qt_add_resources(ac3crucible "ac3crucible_icons"
         PREFIX "/icons"
         BASE "${CMAKE_SOURCE_DIR}/apps/gui/icons"

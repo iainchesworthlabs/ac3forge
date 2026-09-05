@@ -3,18 +3,22 @@ import QtQuick
 import Ac3ForgeCrucible
 
 // The application's icon stand-in: the first letters of its name in a
-// square. Real Windows icons come later; the shape and size are what the
-// mockups fix.
+// square. AppIcon shows it until the platform's own icon has loaded, and
+// instead of one where the platform has none; the shape and size are what
+// the mockups fix.
 Rectangle {
     id: root
     property string name: ""
     property color fill: Theme.neutral700
     property int size: 28
+    // The letters shown, for tests.
+    readonly property string text: label.text
 
     width: size
     height: size
     color: fill
     Text {
+        id: label
         anchors.centerIn: parent
         text: {
             const n = root.name.trim();

@@ -11,6 +11,7 @@
 #include <optional>
 
 #include "../../../gui/language_manager.hpp"
+#include "../app_icon_provider.hpp"
 
 // Qt Quick Test entry point for the AC3Forge Crucible's window: runs every
 // tst_*.qml under QUICK_TEST_SOURCE_DIR against the REAL CrucibleController the
@@ -48,6 +49,10 @@ public slots:
         language_manager_.emplace(*qGuiApp, *engine, QStringLiteral("ac3crucible"));
         language_manager_->applyInitialLanguage();
         qmlRegisterSingletonInstance("Ac3ForgeCrucibleLanguage", 1, 0, "LanguageManager", &*language_manager_);
+        // The same appicon image provider ui/main.cpp registers, so an
+        // AppIcon under test reaches the platform's provider (tst_icons.qml)
+        // rather than Image.Error for every id. The engine owns it.
+        engine->addImageProvider(QStringLiteral("appicon"), new ac3::crucible::ui::AppIconProvider);
     }
 
 private:

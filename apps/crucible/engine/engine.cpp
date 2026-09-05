@@ -378,6 +378,8 @@ struct Engine::Impl {
                 a.name = it->second.name;
                 a.image_path = it->second.image_path;
                 a.description = it->second.description;
+                a.icon_name = it->second.icon_name;
+                a.app_id = it->second.app_id;
                 a.active = it->second.active;
                 a.has_window = it->second.has_window;
                 a.packaged = it->second.packaged;

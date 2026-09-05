@@ -156,6 +156,25 @@ scrub matches the key path wherever it occurs, so a key file at a very short pat
 that prefix everywhere it appears, which costs some of the report's usefulness and none of its
 safety. The audio daemon's own output (PipeWire's log on Linux) is a separate thing and is not
 captured here.
+## Linux: an application shows a monogram
+
+Crucible found no icon for it. It looks in three places, in order: the icon name the
+application set on its own PipeWire client, the `.desktop` entry that matches it, and the icon
+theme under the binary's own name.
+
+- `pw-dump | grep -E '"application\.(name|icon-name|process\.binary)"'` shows what the
+  application told PipeWire. `application.icon-name` is a theme icon name; most applications set
+  only `application.name` and `application.process.binary`.
+- The `.desktop` match is by application id (a Flatpak's), then `TryExec`, `Exec`,
+  `StartupWMClass` against the name or the binary, then `Name`. An application started through
+  a wrapper script has a binary its entry does not name, and matches only through
+  `StartupWMClass` or `Name`.
+- An icon that exists only as SVG needs Qt SVG (`libqt6svg6`); without it the monogram stays.
+- A script, an interpreter or a command-line player (`python3`, `sh`, `aplay`) has no icon of
+  its own, and the monogram is the right picture for it.
+
+`QT_LOGGING_RULES="ac3crucible.icons.debug=true" ac3crucible` prints the theme Crucible found
+and which of the three answered for each application.
 
 ## Getting more out of it
 

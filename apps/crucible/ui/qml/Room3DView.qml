@@ -420,6 +420,8 @@ Item {
                                                     size: 160
                                                     name: appNode.app.name
                                                     imagePath: appNode.app.imagePath
+                                                    iconName: appNode.app.iconName
+                                                    appId: appNode.app.appId
                                                     dimmed: appNode.app.silent
                                                     fill: appNode.selected ? Theme.accent600 : Theme.neutral700
                                                 }

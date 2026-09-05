@@ -23,6 +23,11 @@ class AppEntry final : public QObject {
     Q_PROPERTY(int app READ app CONSTANT)
     Q_PROPERTY(QString name READ name NOTIFY changed)
     Q_PROPERTY(QString imagePath READ imagePath NOTIFY changed)
+    // The platform's icon-theme name and application id for it, when the
+    // platform gives them (Linux); empty otherwise. AppIcon hands both to
+    // the image provider beside the path.
+    Q_PROPERTY(QString iconName READ iconName NOTIFY changed)
+    Q_PROPERTY(QString appId READ appId NOTIFY changed)
     Q_PROPERTY(bool background READ background NOTIFY changed)
     // Running with nothing to tap: no audio session at the moment.
     Q_PROPERTY(bool silent READ silent NOTIFY changed)
@@ -59,6 +64,8 @@ public:
         };
         set(name_, name);
         set(image_path_, QString::fromStdString(s.image_path));
+        set(icon_name_, QString::fromStdString(s.icon_name));
+        set(app_id_, QString::fromStdString(s.app_id));
         set(background_, background);
         set(silent_, !s.has_session);
         set(active_, s.active);
@@ -96,6 +103,8 @@ public:
     [[nodiscard]] int app() const { return app_; }
     [[nodiscard]] QString name() const { return name_; }
     [[nodiscard]] QString imagePath() const { return image_path_; }
+    [[nodiscard]] QString iconName() const { return icon_name_; }
+    [[nodiscard]] QString appId() const { return app_id_; }
     [[nodiscard]] bool background() const { return background_; }
     [[nodiscard]] bool silent() const { return silent_; }
     [[nodiscard]] bool active() const { return active_; }
@@ -124,6 +133,8 @@ private:
     int app_;
     QString name_;
     QString image_path_;
+    QString icon_name_;
+    QString app_id_;
     bool background_ = false;
     bool silent_ = false;
     bool active_ = false;

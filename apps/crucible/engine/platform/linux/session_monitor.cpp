@@ -18,7 +18,7 @@
 #include "platform_services.hpp"
 #include "process_tree.hpp"
 
-// The Linux SessionMonitor: who is playing sound, from the PipeWire registry
+// The Linux SessionMonitor: who is playing sound, from the PipeWire graph
 // (docs/crucible/promotion.md, Phase 4).
 //
 // This is where Linux and Windows differ most, and the difference is a
@@ -49,6 +49,14 @@
 // the obvious thing, matches nothing and yields an empty list for ever.
 // ac3::pipewire::output_stream_nodes() does the join.
 //
+// The icon's identity comes the same way. Neither application.icon-name nor
+// application.process.binary is on the registry dictionary a listener is
+// handed; both are on the node's info, and a Flatpak client's portal app id
+// on its Client's, so output_stream_nodes() binds each stream and its client
+// for their info and hands the three back beside the pid. They are cached
+// here per process with the /proc facts, and back-filled when a later stream
+// from the same process carries what the first did not.
+//
 // What is lost with it is Windows' `has_window` test, which asks the shell
 // whether some process in the tree owns a visible top-level window. There is
 // no portable way to ask that on Linux and no way at all under Wayland (see
@@ -72,7 +80,9 @@ namespace {
 }
 
 // The executable behind a pid, for an icon. /proc/<pid>/exe is a symlink the
-// owner can always read for their own processes.
+// owner can always read for their own processes - except across a sandbox
+// boundary: a Flatpak or snap application's link may be unreadable or point
+// inside its runtime, which is what the binary name from PipeWire is for.
 [[nodiscard]] std::string process_exe(std::uint32_t pid) {
     std::error_code ec;
     const auto target = std::filesystem::read_symlink("/proc/" + std::to_string(pid) + "/exe", ec);
@@ -129,14 +139,22 @@ public:
             auto& app = apps[stream.pid];
             if (app.app != 0) {
                 // A second stream from the same application: one entry, and
-                // the tap takes the process, not the stream.
+                // the tap takes the process, not the stream. Its identity
+                // still back-fills what the first stream did not carry.
+                facts_for(stream.pid, &stream);
                 continue;
             }
-            const Facts& facts = facts_for(stream.pid);
+            const Facts& facts = facts_for(stream.pid, &stream);
             app.app = stream.pid;
             app.name = facts.name.empty() ? stream.application : facts.name;
-            app.image_path = facts.exe;
+            // The executable's path, or, where /proc keeps it from us (a
+            // sandbox), the bare binary name PipeWire reports: a degenerate
+            // path whose basename is itself, which is all the icon lookup
+            // takes from it.
+            app.image_path = facts.exe.empty() ? facts.binary : facts.exe;
             app.description = stream.application;
+            app.icon_name = facts.icon_name;
+            app.app_id = facts.app_id;
             app.active = true;
             // No portable way to ask; see this file's header comment.
             app.has_window = true;
@@ -154,12 +172,14 @@ public:
             if (pid == 0 || apps.contains(pid) || !process_alive(pid)) {
                 continue;
             }
-            const Facts& facts = facts_for(pid);
+            const Facts& facts = facts_for(pid, nullptr);
             AppSession app;
             app.app = pid;
             app.name = facts.name;
-            app.image_path = facts.exe;
+            app.image_path = facts.exe.empty() ? facts.binary : facts.exe;
             app.description = facts.name;
+            app.icon_name = facts.icon_name;
+            app.app_id = facts.app_id;
             app.active = false;
             app.has_window = true;
             app.has_session = false;
@@ -186,21 +206,46 @@ public:
 private:
     // Read once per process and kept while it lives, for the reason the
     // Windows monitor caches: reading /proc for every process on every
-    // refresh is the expensive part, and none of it changes.
+    // refresh is the expensive part, and none of it changes. The identity
+    // from the stream is kept with them, so a kept application that was
+    // first seen silent still gets its icon once it plays.
     struct Facts {
         std::string name;
         std::string exe;
         std::vector<std::uint32_t> tree;  // the pid and its same-executable ancestors
+        std::string binary;      // application.process.binary, or empty
+        std::string icon_name;   // application.icon-name, or empty
+        std::string app_id;      // the sandbox's app id, or empty
     };
 
-    const Facts& facts_for(std::uint32_t pid) {
+    // `stream`: the stream this process was seen on, or null for a kept
+    // process with none. On a hit a stream back-fills whatever is empty.
+    const Facts& facts_for(std::uint32_t pid, const ac3::pipewire::OutputStreamNode* stream) {
         if (const auto it = facts_.find(pid); it != facts_.end()) {
+            if (stream != nullptr) {
+                Facts& facts = it->second;
+                if (facts.binary.empty()) {
+                    facts.binary = stream->binary;
+                }
+                if (facts.icon_name.empty()) {
+                    facts.icon_name = stream->icon_name;
+                }
+                if (facts.app_id.empty()) {
+                    facts.app_id = stream->app_id;
+                }
+            }
             return it->second;
         }
+        // Every member named, in declaration order: GCC's
+        // -Werror=missing-field-initializers rejects a partial designated
+        // initialiser, and the order must follow the struct.
         return facts_
             .emplace(pid, Facts{.name = process_name(pid),
                                 .exe = process_exe(pid),
-                                .tree = same_image_ancestors(pid, ppid_of, process_exe)})
+                                .tree = same_image_ancestors(pid, ppid_of, process_exe),
+                                .binary = stream != nullptr ? stream->binary : std::string{},
+                                .icon_name = stream != nullptr ? stream->icon_name : std::string{},
+                                .app_id = stream != nullptr ? stream->app_id : std::string{}})
             .first->second;
     }
 
