@@ -41,7 +41,11 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   running build-wrapper, is pinned to GitHub-hosted because the CFamily analyser does not fit
   the shared fleet's guests, and skips itself with a notice until `SONAR_TOKEN` is set rather
   than failing nightly over a setup step. Its findings live in the SonarCloud dashboard, not
-  Security > Code scanning.
+  Security > Code scanning. Surfacing a failure is a job of its own on an uncontainerised
+  runner, the shape the other three already use, because `report-nightly-failure` is a `gh`
+  script and `gh` is not in `ubuntu:26.04`; and the scan lets the scanner find
+  `sonar-project.properties` itself rather than naming it through `github.workspace`, which
+  expands to the host path a container job cannot see.
 - The ABI gate no longer runs on merge-queue entries. The pull-request run already produced
   the merge-base comparison the job exists for; a `merge_group` run takes the
   release-relative view instead (HEAD against the latest `v*` tag), which the push to `main`

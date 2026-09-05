@@ -102,9 +102,10 @@ jobs:
     # Generous on purpose for the first cold-cache run - tighten it once a
     # week of real runs has a number in it.
     timeout-minutes: 150
+    # No issues: write - opening the issue is the `surface` job's business now,
+    # and this job only reads the tree it analyses.
     permissions:
       contents: read
-      issues: write
     env:
       BUILD_DIR: build/config-linux-gcc-coverage
     steps:
@@ -205,6 +206,16 @@ jobs:
       # job, which is what the surfacing step below reports on. The analysis
       # cache is left at its server-side default, so each night reuses the
       # previous night's cache for this branch with no CI plumbing.
+      #
+      # No -Dproject.settings: the scanner already auto-loads
+      # sonar-project.properties from sonar.projectBaseDir, which the action
+      # sets to `.`, and naming the file explicitly is a trap in a container
+      # job. `github.workspace` expands on the HOST, to
+      # /home/runner/work/ac3forge/ac3forge, while the container sees the same
+      # tree at /__w/ac3forge/ac3forge - so the path resolves to nothing
+      # inside, the scanner logs "Project root configuration file: NONE" and
+      # fails on missing sonar.projectKey/sonar.organization. Every other
+      # property below is relative and resolves against the base dir.
       - name: Run SonarCloud scan
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8
         env:
@@ -212,17 +223,38 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
-            -Dproject.settings=${{ github.workspace }}/sonar-project.properties
             -Dsonar.cfamily.compile-commands=${{ env.BUILD_DIR }}/compile_commands.json
             -Dsonar.cfamily.threads=3
             -Dsonar.coverageReportPaths=${{ env.BUILD_DIR }}/coverage-sonarqube.xml
             -Dsonar.qualitygate.wait=true
 
-      # Unlike the other three nightlies, SonarCloud findings do not land in
-      # Security > Code scanning, so there is no alerts API to query - the
-      # quality gate failing (or the build failing) is the whole signal.
+  # A job of its own, on a runner with no container - the same shape
+  # codeql.yml, msvc-analysis.yml and static-analysis.yml all use. It cannot
+  # be a step inside `scan`: report-nightly-failure is a gh CLI script, and gh
+  # is not in ubuntu:26.04, so inlining it there fails with "gh: command not
+  # found" and the nightly stays silent about its own failure.
+  #
+  # Unlike the other three nightlies, SonarCloud findings do not land in
+  # Security > Code scanning, so there is no alerts API to query - the quality
+  # gate failing (or the build failing) is the whole signal.
+  #
+  # `== 'failure'` rather than the `!= 'success'` the other three use: `scan`
+  # here skips itself deliberately when SONAR_TOKEN is absent, and a skip is
+  # not something to open an issue about.
+  surface:
+    name: Surface findings
+    needs: scan
+    if: ${{ !cancelled() && needs.scan.result == 'failure' }}
+    runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - uses: ./.github/actions/report-nightly-failure
-        if: failure()
         with:
           engine: SonarCloud
           detail: "The SonarCloud quality gate failed on new code, or the build or scan itself failed. The findings are in the project dashboard, not Security > Code scanning: https://sonarcloud.io/project/overview?id=iainchesworthlabs_ac3forge"
