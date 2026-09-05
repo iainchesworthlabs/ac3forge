@@ -706,11 +706,14 @@ smoke-tests it in a second container that never had Qt installed at all — see
 [Linux](platforms/linux.md#appimage), roadmap DR8),
 script-lint (ruff over every `.py`, shellcheck over every `.sh`, actionlint over the workflows,
 all three pinned in `requirements/requirements-lint.txt`),
-static-analysis (clang-tidy), coverage (`tools/checks/coverage_report.sh` over every `src/` library
+coverage (`tools/checks/coverage_report.sh` over every `src/` library
 component *and* `apps/cli`, via `config-linux-gcc-coverage`),
 adm-validate (the opt-in ADM module) and ffmpeg-validate all run on every push, as does
 build-android (the Shield app's debug APK) — the four Linux build legs install the same
-Qt6/ALSA packages and build/smoke-test the GUI too. ffmpeg-validate is a
+Qt6/ALSA packages and build/smoke-test the GUI too. clang-tidy is no longer among them:
+since 2026-09 it runs nightly against `main` from `.github/workflows/static-analysis.yml`,
+on the same DEBUG preset with the same `-warnings-as-errors='*'`, so the local recipe above
+is unchanged and a finding opens a `nightly-analysis` issue instead of failing a PR. ffmpeg-validate is a
 separate, CLI-only linux-llvm build that runs FFmpeg as an independent oracle against the full
 layout/tool/metadata option space (see
 [CONTRIBUTING.md's Oracles section](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#oracles)) — a different question from the

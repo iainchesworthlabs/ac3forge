@@ -9,14 +9,15 @@ Windows) that means every leg, and the per-leg fan-out only reappears as gracefu
 degradation when most of the fleet is genuinely gone (one surviving runner takes one leg,
 the rest overflow to GitHub-hosted). macOS and the arm64 legs always stay on GitHub-hosted
 runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
-(Detect changes, Static Analysis, FFmpeg Validate, ADM Module, ABI diff, Performance vs
+(Detect changes, FFmpeg Validate, ADM Module, ABI diff, Performance vs
 merge base, and the cheap gate jobs) route the same way through its
-`check-runner` job, `codeql.yml`'s Analyze matrix routes through its own `check-runner`,
-MSVC Code Analysis (PREfast) and the Windows wheel leg route through deciders of their own
-in `msvc-analysis.yml`/`wheels.yml`, and `_build.yml`'s standalone containerised
-build-footprint job rides the matrix fan-out as leg 5 - so one queue entry can now put up
-to four Windows consumers (two build legs, PREfast, the wheel leg) onto the 7-runner
-Windows fleet at once. Several jobs stay on GitHub-hosted deliberately: Coverage (see its
+`check-runner` job, the Windows wheel leg routes through a decider of its own in
+`wheels.yml`, and `_build.yml`'s standalone containerised build-footprint job rides the
+matrix fan-out as leg 5 - so one queue entry can put up to three Windows consumers (two
+build legs, the wheel leg) onto the 7-runner Windows fleet at once. The nightly analysis
+workflows (`codeql.yml`, `msvc-analysis.yml`, `static-analysis.yml`) have deciders of their
+own too, but run against `main` once a night rather than per queue entry - see
+[Nightly analysis window](#nightly-analysis-window). Several jobs stay on GitHub-hosted deliberately: Coverage (see its
 own comment in `ci.yml` for the undiagnosed shutdown-signal failure); build-wasm /
 build-android / build-rust (they run bare and lean on toolchains the hosted image
 pre-bakes - emsdk, Android SDK/NDK, rustup - that the fleet image does not; route them
@@ -25,8 +26,9 @@ needs pwsh, which the fleet's Linux image does not ship - see the job's own comm
 `ci.yml`); and the wheels workflow's Linux and macOS legs (the fleet's Python has no pip,
 which `cibuildwheel` needs before it can do anything - see `wheels.yml`'s own comment).
 
-Control-plane jobs - the `check-runner`/`check-runners` deciders in `ci.yml`, `_build.yml`
-and `codeql.yml`, `_toolchain-versions.yml`'s `resolve`, and the `CI Status` aggregator -
+Control-plane jobs - the `check-runner`/`check-runners` deciders in `ci.yml`, `_build.yml`,
+`codeql.yml` and `static-analysis.yml`, `_toolchain-versions.yml`'s `resolve`, and the
+`CI Status` aggregator -
 route separately, via the repository variable `CONTROL_RUNNER_JSON` (a runner-label JSON
 array, e.g. `["self-hosted","Linux","X64"]`; unset means `ubuntu-latest`). These are
 seconds-long jobs that everything else waits on, and leaving them on the shared hosted pool
@@ -36,8 +38,9 @@ the kill switch that returns them all to GitHub-hosted - it is evaluated fresh o
 run, so a dead self-hosted fleet can never lock the escape hatch shut.
 (`msvc-analysis.yml`'s and `wheels.yml`'s own deciders are pinned to `ubuntu-latest`
 instead and don't read the variable.) Fork PRs are pinned to
-GitHub-hosted unconditionally here too: `check-runner` executes `decide-runner` from a
-checkout of the fork's merge ref, which is fork-controlled code.
+GitHub-hosted unconditionally in `ci.yml`'s and `_build.yml`'s deciders: `check-runner`
+executes `decide-runner` from a checkout of the fork's merge ref, which is fork-controlled
+code (`codeql.yml`'s decider has no `pull_request` trigger and needs no pin).
 
 This page describes what ac3forge's CI does with a self-hosted runner once one exists. It
 does not describe how one comes to exist - the fleet itself (Packer images, provisioning
@@ -132,6 +135,76 @@ carries the exact pinned version - which the fleet's own Packer template now bak
 `ci-runners`' `scripts/windows/03-llvm-toolchain.ps1`), so that leg's self-hosted timings
 do include a pre-bake shortcut and should be read accordingly. Wider pre-baking is a
 reasonable follow-up once there's real data to justify it - not built in advance of that data.
+
+## Nightly analysis window
+
+The code-analysis engines - CodeQL (`codeql.yml`), MSVC Code Analysis / PREfast
+(`msvc-analysis.yml`), clang-tidy (`static-analysis.yml`) and SonarCloud
+(`sonarcloud.yml`) - run once a night against `main` rather than on every push, pull
+request and merge-queue entry. The first three route through a `decide-runner` call of their own
+at that hour (`codeql.yml`'s decider reads `CONTROL_RUNNER_JSON` the way `ci.yml`'s does;
+`msvc-analysis.yml`'s is pinned to `ubuntu-latest` and doesn't read the variable), so the
+analysis lands on the self-hosted fleet whenever a Linux or Windows runner is online and on
+GitHub-hosted otherwise. `sonarcloud.yml` is the exception: it is pinned to
+GitHub-hosted and never routed, because the CFamily analyser does not fit the fleet's
+12 GB guests (its own header carries the measurements). The fleet is normally idle at
+02:00 UTC, which is the point of the slot. No workflow here asks for the `big` label;
+ac3forge does not use the big runners. A run
+that finds something new (or fails) opens or refreshes a `nightly-analysis` issue through
+`.github/actions/report-nightly-failure` - nothing reliably notifies anyone about a new
+default-branch code-scanning alert (GitHub's documented code-scanning notifications cover
+alert assignment), so the issue is what makes the finding visible the next morning.
+
+The fleet is shared with `aqualink-automate`. Scheduled runs are placed so the two repos'
+heavy legs never share a window, and every cron sits off the top of the hour (GitHub delays
+on-the-hour schedules). The agreed split: ac3forge owns 02:00-03:15 UTC on the fleet, and
+aqualink-automate takes the 04:00 hour (its code-scanning cron is Tuesday 21:42 UTC weekly
+today, plus per-PR and push runs; the move into 04:xx has not been made yet).
+
+| UTC | Repo | Workflow | Fleet use |
+|---|---|---|---|
+| 02:17 | ac3forge | `codeql.yml` (C++ on self-hosted Linux ~9 min; Python/JS ~2 min) | Linux |
+| 02:23 | ac3forge | `msvc-analysis.yml` (PREfast, ~35 min) | Windows |
+| 02:29 | ac3forge | `static-analysis.yml` (clang-tidy, ~8 min) | Linux |
+| 02:35 | ac3forge | `sonarcloud.yml` (unmeasured here; 43-58 min on the sibling) | none (`ubuntu-latest`) |
+| 03:17 | ac3forge | `fuzz.yml` nightly jobs | none (hosted) |
+| 04:43 | ac3forge | `interop.yml` | none (hosted) |
+| Mon 03:45 / 03:50 / 04:00 | ac3forge | `osv-scanner.yml` / `zizmor.yml` / `scorecard.yml` | none (hosted) |
+| Tue 21:42 / 22:17 / 22:27 / 22:37 | aqualink-automate | `automated-codescanning.yml` (CodeQL and MSVC on the `big` runners; SonarCloud hosted) / trivy / osv / scorecard - weekly today; code scanning is to move to 04:07, the minute that repo picked | Linux big, Windows big |
+
+When either repo adds or moves a cron that touches the fleet, update this table and the copy
+kept in [iainchesworthlabs/ci-runners](https://github.com/iainchesworthlabs/ci-runners).
+
+### SonarCloud setup
+
+`sonarcloud.yml` is the one nightly that needs configuration outside this repository, and
+it skips itself with a notice until that exists rather than failing every night. All of
+this is done by hand, once, by someone with admin on both sides:
+
+1. The project is already onboarded: organisation `iainchesworthlabs`, project key
+   `iainchesworthlabs_ac3forge`, which is what `sonar-project.properties` declares.
+   Note that this is a different SonarCloud organisation from the one
+   `aqualink-automate` analyses under (`iainchesworth`), so its settings and token do
+   not carry over.
+2. **Project > Administration > Analysis Method: turn Automatic Analysis off.** SonarCloud
+   refuses a CI-based analysis while autoscan owns the project, and autoscan cannot read
+   C or C++ from a compile database, so leaving it on means no C++ results at all.
+3. **Project > Administration > New Code: set a number of days.** 1 matches the nightly
+   cadence; 2 means a skipped night is still caught by the next run. This one matters:
+   the organisation's default is "previous version", which would never advance here
+   because nothing bumps `sonar.projectVersion` per run - every commit would stay
+   "new code" forever and the quality gate would never settle.
+4. Generate a token (My Account > Security, or a project analysis token) and add it as the
+   repository secret **`SONAR_TOKEN`** under Settings > Secrets and variables > Actions.
+   The workflow's `preflight` job checks for exactly this and skips the scan without it.
+5. Optionally add the quality-gate badge to `README.md`. Worth doing only after the first
+   run: the badge 404s until the project has been analysed once.
+
+Two things about the first run are unverified here and will show up in its log: whether
+`sonarqube-scan-action` runs cleanly inside this repo's `ubuntu:26.04` container (the
+sibling runs it directly on the hosted image), and whether the CFamily analyser accepts
+GCC 16. If the container is the problem, the fallback is to build in the container and
+scan outside it, keeping the compile database's paths consistent between the two.
 
 ## Toolchain version pins
 

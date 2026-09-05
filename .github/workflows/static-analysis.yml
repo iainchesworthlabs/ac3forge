@@ -1,0 +1,175 @@
+# clang-tidy over the library and the CLI, nightly against main.
+#
+# This was ci.yml's `static-analysis` job, inside the `CI Status` aggregate,
+# until 2026-09. It moved for the reason codeql.yml and msvc-analysis.yml
+# moved: it is an analysis engine, and analysis engines run once a night on
+# refs/heads/main here, while the jobs that build, run or measure the codec's
+# output stay on ci.yml's per-PR and per-queue-entry path. A finding that
+# used to fail the offending PR now fails this run and opens or refreshes a
+# `nightly-analysis` issue instead. docs/ci-self-hosted-runners.md "Nightly
+# analysis window" has the cron table this slot sits in.
+#
+# Unlike CodeQL and PREfast, clang-tidy uploads no SARIF and mints no
+# code-scanning alert: -warnings-as-errors='*' makes any finding fail the
+# job outright, so `surface` below needs no alerts query - a failed job is
+# the finding.
+#
+# .clang-tidy's own header comment explains the curated check groups and
+# what got excluded from them (and why). A full Build precedes clang-tidy,
+# not just Configure: CMake 3.28's Ninja dependency-scan step (the
+# "Generating CXX dyndep file" lines in a normal build log) writes a
+# per-TU .modmap response file that compile_commands.json's command lines
+# reference, and nothing generates it until ninja actually runs - clang-tidy
+# fails with "no such file or directory" on every TU without this step, even
+# though it is only reading the AST, not linking anything.
+# -warnings-as-errors='*' makes any finding in the curated set fail the job
+# (run-clang-tidy-<version> is the LLVM Python wrapper and takes single-dash
+# arguments, unlike clang-tidy itself): every finding present when this job
+# was added was either fixed or suppressed with a NOLINT and a one-line
+# justification, so a clean baseline is the starting point, not an
+# aspiration. (.clang-tidy now carries WarningsAsErrors: '*' too, so a plain
+# local `clang-tidy` run agrees with this job - the flag here stays as the
+# explicit, self-describing form.)
+#
+# The DEBUG preset, deliberately: analysis builds are diagnostic builds
+# and keep asserts on, same reasoning that exempts the sanitizer leg from
+# performance gating. A Release configure defines NDEBUG, which
+# preprocesses every assert() away before clang-tidy ever parses the TU -
+# so the analyzer never learns the invariants asserts state, and every
+# assert-adjacent finding needed a NOLINT crutch paired with the assert.
+# clang-tidy's findings don't depend on optimization level, only on what
+# the preprocessor kept, so the existing debug preset is the right
+# configuration and no analysis-only preset is needed.
+#
+# No `changes` gate here, unlike the job this replaces: a schedule has no
+# diff to classify, so the docs-only skip that gate existed for cannot
+# apply.
+name: Static Analysis
+
+on:
+  schedule:
+    # Nightly, six minutes after msvc-analysis.yml's cron, so the deciders
+    # and toolchain-versions calls of the three nightly workflows do not land
+    # on the control-plane runner in the same minute. See
+    # docs/ci-self-hosted-runners.md "Nightly analysis window".
+    - cron: "29 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  # One nightly at a time; a manual dispatch queues behind a running nightly
+  # rather than cancelling it.
+  group: static-analysis-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Single source of truth for the LLVM and vcpkg pins this workflow builds
+  # against - the same reusable workflow ci.yml's own jobs call.
+  toolchain-versions:
+    uses: ./.github/workflows/_toolchain-versions.yml
+    permissions:
+      contents: read
+      actions: read
+    secrets:
+      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
+
+  # Routes the analysis job to the self-hosted Linux fleet when a runner is
+  # online, falling back to GitHub-hosted otherwise. Control-plane job,
+  # routed by vars.CONTROL_RUNNER_JSON with the same delete-the-variable kill
+  # switch as ci.yml's check-runner. No fork-PR pin: with no pull_request
+  # trigger, decide-runner only ever runs from a checkout of a ref in this
+  # repository, never from a fork.
+  check-runner:
+    name: Check self-hosted runner availability
+    runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      runner: ${{ steps.decide.outputs.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: decide
+        uses: ./.github/actions/decide-runner
+        with:
+          os-label: Linux
+          hosted-json: '["ubuntu-latest"]'
+          mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
+          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
+
+  static-analysis:
+    name: Static Analysis (clang-tidy)
+    needs: [toolchain-versions, check-runner]
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+    container: ubuntu:26.04
+    # 8.0 min median on the fleet (2026-09-04), dominated by the full debug
+    # build clang-tidy needs before it parses a TU. With cancel-in-progress
+    # false, a hung run would otherwise hold a Linux fleet slot for GitHub's
+    # 360-minute default, into the 04:00 window the other repo on this fleet
+    # uses.
+    timeout-minutes: 60
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
+        run: bash .github/toolchain/03-llvm-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+
+      - name: Configure
+        shell: bash
+        run: cmake --preset config-linux-llvm-debug
+
+      - name: Build
+        shell: bash
+        run: cmake --build --preset build-linux-llvm-debug -- -k 0
+
+      - name: clang-tidy
+        shell: bash
+        env:
+          LLVM_VERSION: ${{ needs.toolchain-versions.outputs.llvm_version }}
+        run: |
+          "run-clang-tidy-${LLVM_VERSION}" -j "$(nproc)" -p build/config-linux-llvm-debug \
+            -warnings-as-errors='*' \
+            '(src/(forge|matroska|mp4|mpegts)|apps/cli)/.*\.cpp'
+
+  # A finding (or a broken build) is handed to the shared
+  # report-nightly-failure action, which opens - or comments on - the one
+  # `nightly-analysis` issue for this engine. `!cancelled()` rather than
+  # `always()`: a failure is still reported, but a run someone cancelled by
+  # hand does not open an issue over it. Pinned to the control-plane runner
+  # like check-runner above: seconds long, needs only gh.
+  surface:
+    name: Surface findings
+    needs: static-analysis
+    if: ${{ !cancelled() && needs.static-analysis.result != 'success' }}
+    runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/report-nightly-failure
+        with:
+          engine: clang-tidy
+          detail: "clang-tidy reported a finding in .clang-tidy's curated set (-warnings-as-errors='*' fails the job on any of them), or the debug build it analyses failed. The run log names the file and the check; `clang-tidy -fix` repairs most of this set mechanically."

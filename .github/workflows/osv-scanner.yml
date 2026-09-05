@@ -16,8 +16,11 @@ on:
   pull_request:
     branches: [ main ]
   schedule:
-    # Weekly, offset from the CodeQL cron (Mon 03:17) to avoid runner
-    # contention at the same minute.
+    # Weekly, offset from the other Monday weeklies (zizmor 03:50, scorecard
+    # 04:00) so no two land on the runner queue in the same minute. The
+    # nightly analysis crons sit earlier, at 02:17 (codeql.yml) and 02:23
+    # (msvc-analysis.yml) - see docs/ci-self-hosted-runners.md "Nightly
+    # analysis window".
     - cron: "45 3 * * 1"
   workflow_dispatch:
 
