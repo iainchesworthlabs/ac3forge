@@ -164,6 +164,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/BedChip.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/Monogram.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/AboutDialog.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/FirstRunDialog.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/AppIcon.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/CrucibleButton.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/CrucibleCheck.qml"

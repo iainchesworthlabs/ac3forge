@@ -22,14 +22,31 @@ ApplicationWindow {
 
     property string page: "room"
     property bool roomThreeD: false
+    // A capture run (main.cpp, --shot) sets this before the first event-loop
+    // turn, so the first-run dialog never lands in a screenshot that did
+    // not ask for it.
+    property bool suppressFirstRun: false
+    property alias firstRunDialogRef: firstRun
 
     Component.onCompleted: {
         Theme.preference = CrucibleController.theme;
         Theme.paletteChoice = CrucibleController.palette;
+        // start() changes no sound setting: the output policy never opens
+        // the endpoint that is the default, and its probe is what fills the
+        // facts the first-run dialog sits over.
         CrucibleController.start();
-        if (CrucibleController.moveDefaultOnLaunch && !CrucibleController.defaultIsNullSink) {
-            CrucibleController.moveDefaultToNullSink();
-        }
+        // One turn later, so main.cpp's setProperty calls (which run after
+        // this handler and before the loop) can suppress the dialog. The
+        // launch-time move waits behind the dialog on the one launch it has
+        // not been seen: Send performs it, Not now leaves the setting for
+        // the next launch, which is what was asked for, now explained.
+        Qt.callLater(function() {
+            if (!CrucibleController.firstRunAcknowledged && !window.suppressFirstRun) {
+                firstRun.open();
+            } else if (CrucibleController.moveDefaultOnLaunch && !CrucibleController.defaultIsNullSink) {
+                CrucibleController.moveDefaultToNullSink();
+            }
+        });
     }
     Connections {
         target: CrucibleController
@@ -44,8 +61,7 @@ ApplicationWindow {
             close.accepted = false;
             window.hide();
         } else {
-            CrucibleController.stop();
-            Qt.quit();
+            CrucibleController.quit();
         }
     }
 
@@ -117,6 +133,8 @@ ApplicationWindow {
     }
     AboutDialog { id: about }
     function openAbout() { about.open(); }
+    FirstRunDialog { id: firstRun; onOpenSettings: window.page = "settings" }
+    function openFirstRun() { firstRun.open(); }
 
     // --- pages ----------------------------------------------------------------
     StackLayout {
@@ -202,7 +220,7 @@ ApplicationWindow {
             Platform.MenuSeparator {}
             Platform.MenuItem {
                 text: CrucibleController.defaultIsNullSink ? qsTr("Default output: ") + CrucibleController.defaultOutputName : qsTr("Move default output to ") + CrucibleController.nullSinkName
-                enabled: !CrucibleController.defaultIsNullSink && CrucibleController.nullSinkPresent
+                enabled: !CrucibleController.defaultIsNullSink && (CrucibleController.nullSinkPresent || CrucibleController.silentDeviceCanCreate)
                 onTriggered: CrucibleController.moveDefaultToNullSink()
             }
             Platform.MenuItem {
@@ -215,7 +233,7 @@ ApplicationWindow {
             Platform.MenuItem { text: qsTr("Settings…"); onTriggered: { window.page = "settings"; window.show(); window.raise(); window.requestActivate(); } }
             Platform.MenuItem { text: qsTr("About…"); onTriggered: { window.show(); window.raise(); window.requestActivate(); about.open(); } }
             Platform.MenuSeparator {}
-            Platform.MenuItem { text: qsTr("Quit"); onTriggered: { CrucibleController.stop(); Qt.quit(); } }
+            Platform.MenuItem { text: qsTr("Quit"); onTriggered: CrucibleController.quit() }
         }
     }
 }

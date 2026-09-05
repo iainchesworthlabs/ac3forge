@@ -34,14 +34,6 @@ then install with the application and need neither setting.
 With test signing on, the Settings page's **Install driver** button runs the package's script
 elevated. "Speakers (Desktop Atmos)" then appears in your sound settings.
 
-### First run
-
-Open Crucible. The header shows the path as a single line — `apps → stereo · Your Receiver`, or
-`⚠ apps heard direct → …` while the default output is still a real device.
-
-If it warns, use the one button it offers to send applications to the silent device. Crucible
-remembers your previous default and puts it back when it exits.
-
 ### Without the driver
 
 Crucible still runs. Taps, placements and every output mode work; you will simply hear the direct
@@ -92,8 +84,10 @@ your machine. The Settings page's silent-device block says as much on Linux — 
 **Create device** rather than Install driver, and there is no driver folder under Advanced,
 because there is nothing to point at.
 
-Crucible sets it as your default sink through PipeWire's `default.audio.sink` metadata, the same
-key `wpctl set-default` writes, and restores your previous default on exit.
+Send applications — from the first-run dialog, the Room rail or the Signal path page — creates
+the node if it is not there yet, in the same press; Settings' Create device makes it ahead of
+time. Crucible sets it as your default sink through PipeWire's `default.audio.sink` metadata,
+the same key `wpctl set-default` writes, and restores your previous default on exit.
 
 ### What you get, and what you do not
 
@@ -131,6 +125,42 @@ where they capture it — but it is blocked on a Mac to run it and a Developer I
 sign it, since the tap's consent prompt does not fire for an unsigned binary.
 
 [The plan](promotion.md) has the detail.
+
+## First run
+
+The first time Crucible opens, a dialog says what it is about to do to your sound settings
+before it does it. It names the silent device this platform uses ("Desktop Atmos" on Windows,
+"Crucible (silent)" on Linux), says that your default output will move to it so that every
+application plays into it and Crucible taps each one there, and that the previous default is put
+back when Crucible quits. If there is no silent device yet, it says how this platform gets one,
+and on Windows repeats what stands in the way of loading the driver.
+
+Three ways out:
+
+- **Send applications to …** moves the default output now. On Linux this also creates the node
+  if it is not there yet.
+- **Not now** changes nothing; the same button on the Room rail and the Signal path page does
+  the move later.
+- **Open Settings** goes to the Settings page, where the silent device's state and the install
+  tools live.
+
+A tick in the dialog, "Do this every time Crucible starts", is the Behaviour setting *Move the
+default output to the silent device on launch*, and can be changed in Settings at any time. The
+dialog is shown once per user; closing it by any route, Escape included, counts as seen. A
+machine whose settings were carried over from the Desktop Atmos demo sees it once too, and the
+dialog says so, because the demo never explained this.
+
+The header then shows the path as a single line — `apps → stereo · Your Receiver`, or
+`⚠ apps heard direct → …` while the default output is still a device you can hear — and the
+Room rail carries the one button that fixes it.
+
+Quitting from the tray, or closing the window with "Keep running in the tray" off, restores the
+previous default output when Crucible moved it; a default you moved by hand is left where you
+put it. Closing the window while that setting is on only hides it, so applications stay on the
+silent device until you quit or press Restore.
+
+On a platform that never moves the default (macOS, when its half exists), the dialog says that
+nothing in the sound settings changes and offers no Send.
 
 ## A signing key, on any platform
 

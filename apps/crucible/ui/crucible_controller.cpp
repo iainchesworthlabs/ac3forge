@@ -9,8 +9,10 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QThread>
 #include <QUrl>
 #include <QVariantMap>
+#include <QtLogging>
 
 #include <algorithm>
 #include <cmath>
@@ -24,6 +26,17 @@ namespace {
 using ac3::crucible::OutputMode;
 
 constexpr int kPollMs = 60;  // the meters read at this rate; 120 stepped visibly
+
+// The version of the first-run explanation (FirstRunDialog.qml). Bump it
+// when what the dialog says changes enough to be worth showing once more,
+// such as the silent device's name changing with the driver's signing.
+constexpr int kFirstRunVersion = 1;
+
+// A silent device the application makes itself appears in the graph a
+// moment after the request returns; Send applications waits this long, at
+// most, for it before moving the default, so one press does the whole move.
+constexpr int kCreateWaitTries = 20;
+constexpr unsigned long kCreateWaitStepMs = 25;
 
 QString mode_key(OutputMode mode) {
     switch (mode) {
@@ -91,6 +104,12 @@ CrucibleController::CrucibleController(QObject* parent)
     connect(&poll_timer_, &QTimer::timeout, this, &CrucibleController::poll);
     driver_timer_.setInterval(250);
     connect(&driver_timer_, &QTimer::timeout, this, &CrucibleController::poll_driver);
+    // A session logout, or a close of the last path that never went through
+    // quit(), still puts the default back; quit() runs the same restore
+    // first and the flag makes the second call a no-op.
+    if (auto* application = QCoreApplication::instance()) {
+        connect(application, &QCoreApplication::aboutToQuit, this, &CrucibleController::restore_on_quit);
+    }
     previous_default_id_ = default_device_->default_id();
     refreshDefault();
     refreshDriver();
@@ -149,6 +168,28 @@ void CrucibleController::stop() {
         placed_ = 0;
         bed_ = 0;
         emit appsChanged();
+    }
+}
+
+void CrucibleController::quit() {
+    stop();
+    restore_on_quit();
+    QCoreApplication::quit();
+}
+
+void CrucibleController::restore_on_quit() {
+    if (!moved_default_by_us_) {
+        return;
+    }
+    moved_default_by_us_ = false;
+    // The machine's state now, not the last poll's: a person may have moved
+    // the default by hand since, and that is left where they put it.
+    refreshDefault();
+    if (!default_is_null_sink_ || previous_default_id_.empty()) {
+        return;
+    }
+    if (const auto ok = default_device_->set_default(previous_default_id_); !ok) {
+        qWarning("could not restore the previous default output on quit: %s", ok.error().c_str());
     }
 }
 
@@ -358,6 +399,10 @@ bool CrucibleController::silentDeviceFromPackage() const {
     return virtual_device_->from_package();
 }
 
+bool CrucibleController::silentDeviceCanCreate() const {
+    return !virtual_device_->from_package() && silent_state_.can_install;
+}
+
 void CrucibleController::setNullSinkName(const QString& name) {
     if (name == nullSinkName()) {
         return;
@@ -546,6 +591,27 @@ void CrucibleController::setMoveDefaultOnLaunch(bool on) {
     emit settingsChanged();
 }
 
+bool CrucibleController::firstRunAcknowledged() const {
+    return settings_.value(QStringLiteral("firstRun/acknowledgedVersion"), 0).toInt() >= kFirstRunVersion;
+}
+
+void CrucibleController::setFirstRunAcknowledged(bool on) {
+    if (on == firstRunAcknowledged()) {
+        return;
+    }
+    if (on) {
+        settings_.setValue(QStringLiteral("firstRun/acknowledgedVersion"), kFirstRunVersion);
+    } else {
+        settings_.remove(QStringLiteral("firstRun/acknowledgedVersion"));
+    }
+    settings_.sync();  // survive a hard exit
+    emit settingsChanged();
+}
+
+bool CrucibleController::migratedFromDemo() const {
+    return settings_.value(QStringLiteral("migration/fromDesktopAtmos"), false).toBool();
+}
+
 // --- commands ---------------------------------------------------------------
 
 void CrucibleController::position(int app, double x, double y, double z) {
@@ -640,6 +706,24 @@ void CrucibleController::refreshDefault() {
 }
 
 void CrucibleController::moveDefaultToNullSink() {
+    // Where this application makes the silent device itself, the first Send
+    // creates it, so the seam's "Crucible creates it when you send
+    // applications to it" is what happens. Where the device is an installed
+    // package this is skipped: an install is elevated and persistent, and
+    // stays an explicit Settings action.
+    if (!null_sink_present_ && silentDeviceCanCreate()) {
+        if (const auto made = virtual_device_->install(); !made) {
+            default_message_ = from_utf8(made.error());
+            emit defaultChanged();
+            return;
+        }
+        const std::string wanted = nullSinkName().toStdString();
+        for (int tries = 0; tries < kCreateWaitTries && default_device_->find_endpoint(wanted).empty(); ++tries) {
+            QThread::msleep(kCreateWaitStepMs);
+        }
+        refreshDefault();
+        refreshDriver();
+    }
     const auto id = default_device_->find_endpoint(nullSinkName().toStdString());
     if (id.empty()) {
         default_message_ = QStringLiteral("No render endpoint named like \"%1\" exists; install the virtual device or name it in Settings.").arg(nullSinkName());
@@ -655,6 +739,7 @@ void CrucibleController::moveDefaultToNullSink() {
         default_device_->open_sound_settings();
     } else {
         default_message_.clear();
+        moved_default_by_us_ = true;
     }
     refreshDefault();
     reprobe();
@@ -671,6 +756,7 @@ void CrucibleController::restoreDefault() {
         default_device_->open_sound_settings();
     } else {
         default_message_.clear();
+        moved_default_by_us_ = false;
     }
     refreshDefault();
     reprobe();

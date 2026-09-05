@@ -149,3 +149,19 @@ TEST_CASE("the silent device seam describes a platform that needs none", "[cruci
         REQUIRE(started.error() == "no package was built");
     }
 }
+
+TEST_CASE("a platform half that never moves the default needs no silent device",
+          "[crucible][seams]") {
+    // What the first-run dialog rests on: its rows about the move and the
+    // restore, and its Send button, show only where the platform moves the
+    // default output, and a platform whose taps silence each application
+    // where they tap it has no silent device to move to either. The stub
+    // linked here (the leg with no platform half) answers no to both, the
+    // way macOS will, and is the shape the dialog's other branch renders.
+    const auto device = platform_default_device();
+    const auto silent = platform_virtual_device();
+    REQUIRE_FALSE(device->moves_default());
+    const SilentDeviceState state =
+        silent->state({.endpoint_present = false, .endpoint_is_default = false});
+    REQUIRE_FALSE(state.needed);
+}
