@@ -15,6 +15,10 @@ import Ac3ForgeCrucible
 // show it once more.
 Dialog {
     id: root
+    // What the previous default output is called, for either reading of
+    // step 03 below.
+    readonly property string previousOutput: CrucibleController.previousDefaultName.length
+        ? CrucibleController.previousDefaultName : qsTr("your previous default output")
     modal: true
     anchors.centerIn: parent
     width: Math.min(640, parent ? parent.width - 60 : 640)
@@ -147,7 +151,14 @@ Dialog {
             ordinal: "03"
             visible: root.movesDefault
             heading: qsTr("It is put back when Crucible quits")
-            body: qsTr("Quitting from the tray restores %1. Closing the window only hides it while \"Keep running in the tray\" is on, so applications stay on the silent device until you quit or press Restore.").arg(CrucibleController.previousDefaultName.length ? CrucibleController.previousDefaultName : qsTr("your previous default output"))
+            // Two readings, because the way out differs by platform: with a
+            // tray the window can be closed and left running, and without
+            // one - which is every Linux desktop, see ui/tray_support.hpp -
+            // closing the window IS quitting, and telling a person otherwise
+            // on their first screen is the worst place to be wrong.
+            body: CrucibleController.trayAvailable
+                ? qsTr("Quitting from the tray restores %1. Closing the window only hides it while \"Keep running in the tray\" is on, so applications stay on the silent device until you quit or press Restore.").arg(root.previousOutput)
+                : qsTr("Closing the window quits Crucible and restores %1. There is no tray icon on this desktop, so there is nothing left running behind the window.").arg(root.previousOutput)
             // Only where the silent device is an installed package that
             // outlives the application.
             Detail {

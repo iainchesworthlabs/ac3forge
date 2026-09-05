@@ -54,7 +54,7 @@ differently, and [Install and first run](install.md) is mostly about that differ
 |---|---|---|---|
 | Enumerate and tap | yes | yes, confirmed on hardware | designed, not built |
 | Silence | a signed driver, [see below](#the-silent-device) | a PipeWire node, nothing to install | the tap mutes; no device needed |
-| Bitstream to a receiver | not yet confirmed | bursts reach the HDMI sink; receiver lock not yet confirmed | not built |
+| Bitstream to a receiver | not yet confirmed | yes, read off the receiver: 5.1 DD+, and Atmos/DD+ with objects | not built |
 | The window | yes | yes, headless-verified on the Pi | no |
 
 **Windows** is the platform the application was built on and the one with the longest record:
@@ -64,14 +64,18 @@ EV certificate and attestation submission are in place.
 
 **Linux** has the engine, the console runner, the window, and all four platform services over
 PipeWire. Its per-application tap, session list, default-device control and silent device are
-confirmed against a live session on real hardware, and the window builds and renders there. The
-library's PipeWire backend has streamed E-AC-3 bursts to a real HDMI sink with an Atmos receiver
-on the end of it; whether the receiver locked is the receiver's display's to say, and that reading
-is still open. It matters more than it sounds, because Crucible **cannot** use the ALSA backend
+confirmed against a live session on real hardware, and the window runs on a desktop there. The
+receiver's own display has been read: a pre-encoded 5.1 fixture showed **5.1 DD+**, and the live
+path with a key loaded and an application placed showed **Atmos/DD+**, rendered at 7.1 from a 5.1
+bed plus objects. That reading matters more than it sounds, because Crucible **cannot** use the
+ALSA backend
 (no per-application tap), so it is forced onto the one passthrough path this project had not
 confirmed before. [The plan](promotion.md#alsa-or-pipewire) is blunt about that. Application
-icons come from the icon theme and the `.desktop` entries. What the Linux window still lacks is
-the full-screen rule under Wayland, which cannot be answered there; under X11 the rule is on.
+icons come from the icon theme and the `.desktop` entries. Two things the Linux window does not
+have: the full-screen rule under Wayland, which cannot be answered there, though under X11 the
+rule is on; and a tray icon, because publishing one crashes the window on the desktops it has
+been tried on, so closing the window quits
+([Troubleshooting](troubleshooting.md#linux-there-is-no-tray-icon)).
 
 **macOS** needs no driver — its process taps can mute an application where they tap it, which is
 the job the Windows driver exists to do — but nothing is implemented. It is blocked on a Mac to

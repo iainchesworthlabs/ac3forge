@@ -171,10 +171,12 @@ The header then shows the path as a single line — `apps → stereo · Your Rec
 `⚠ apps heard direct → …` while the default output is still a device you can hear — and the
 Room rail carries the one button that fixes it.
 
-Quitting from the tray, or closing the window with "Keep running in the tray" off, restores the
-previous default output when Crucible moved it; a default you moved by hand is left where you
-put it. Closing the window while that setting is on only hides it, so applications stay on the
-silent device until you quit or press Restore.
+Quitting restores the previous default output when Crucible moved it; a default you moved by
+hand is left where you put it. On Windows, quitting means quitting from the tray, or closing the
+window with "Keep running in the tray" off — closing it while that setting is on only hides the
+window, so applications stay on the silent device until you quit or press Restore. On Linux
+there is no tray icon and no such setting, so closing the window is quitting; see
+[Troubleshooting](troubleshooting.md#linux-there-is-no-tray-icon) for why.
 
 On a platform that never moves the default (macOS, when its half exists), the dialog says that
 nothing in the sound settings changes and offers no Send.
