@@ -447,6 +447,11 @@ std::expected<void, CaptureError> Capture::start_process_loopback(
     //
     // The pid is resolved through the owning Client, not read off the node -
     // see output_stream_nodes() for why the obvious version matches nothing.
+    //
+    // The registry facts alone, which is the default: a tap needs the target
+    // and the pid, never an icon name, and this runs on the caller's frame
+    // thread, where the binds the identity needs cost about a second on a
+    // Raspberry Pi (measured; see that function's comment).
     const auto streams = ac3::pipewire::output_stream_nodes();
     std::string target;
     for (const auto& stream : streams) {

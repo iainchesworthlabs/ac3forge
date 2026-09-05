@@ -321,11 +321,22 @@ struct OutputStreamNode {
 // fields empty. A core error, or a first sync that never comes back, is the
 // other case: nothing is returned at all, as the registry-only walk did.
 //
-// Cost: one proxy per stream node and per client, and one more round trip,
-// per call - the Linux session monitor calls this twice a second on its own
-// thread. Should that ever show on a small machine, the Client binds can be
-// skipped for pids the caller already knows; not done until measured.
-[[nodiscard]] inline std::vector<OutputStreamNode> output_stream_nodes() {
+// Cost, measured on a Raspberry Pi 4B on 2026-09-05: the binds and the
+// second round trip take about a second there with a graph of a few dozen
+// objects. The Linux session monitor pays it twice a second on a thread of
+// its own and does not care; the tap does, because Capture::
+// start_process_loopback calls this from the engine's frame thread, where a
+// second is thirty dropped frames. So the identity is asked for rather than
+// assumed: kRegistryOnly, the default, is the walk this function was before
+// any of it - no binds, one round trip - and only the session monitor, which
+// needs an icon name, asks for kWithInfo.
+enum class StreamIdentityDepth : std::uint8_t {
+    kRegistryOnly,  // names, target and pid; icon_name, binary and app_id stay empty
+    kWithInfo,      // additionally bind each node and client for the identity on their info
+};
+
+[[nodiscard]] inline std::vector<OutputStreamNode> output_stream_nodes(
+    StreamIdentityDepth depth = StreamIdentityDepth::kRegistryOnly) {
     ensure_initialized();
 
     MainLoop loop{pw_main_loop_new(nullptr)};
@@ -367,6 +378,7 @@ struct OutputStreamNode {
     struct State {
         pw_registry* registry = nullptr;
         pw_main_loop* loop = nullptr;
+        StreamIdentityDepth depth = StreamIdentityDepth::kRegistryOnly;
         std::vector<Pending> streams;
         std::unordered_map<std::uint32_t, std::uint32_t> client_pids;
         std::vector<std::unique_ptr<BoundNode>> nodes;
@@ -374,7 +386,7 @@ struct OutputStreamNode {
         int pending = 0;
         bool completed = false;   // the sync this loop waits for came back
         bool failed = false;      // the core reported an error: the walk is over
-    } state{registry.get(), loop.get(), {}, {}, {}, {}, 0, false, false};
+    } state{registry.get(), loop.get(), depth, {}, {}, {}, {}, 0, false, false};
 
     spa_hook registry_listener{};
     pw_registry_events registry_events{};
@@ -394,6 +406,9 @@ struct OutputStreamNode {
             }
             if (pid != 0) {
                 self->client_pids.emplace(global_id, pid);
+            }
+            if (self->depth == StreamIdentityDepth::kRegistryOnly) {
+                return;
             }
             // And a bind for the identity only its info carries.
             auto* client_proxy = static_cast<pw_proxy*>(
@@ -432,9 +447,13 @@ struct OutputStreamNode {
                                                              : std::string{},
                        .client_id = dict_u32(*props, PW_KEY_CLIENT_ID),
                        .bound = nullptr};
-        // And the bind, whose failure costs only the identity.
-        auto* node_proxy = static_cast<pw_proxy*>(
-            pw_registry_bind(self->registry, global_id, type, PW_VERSION_NODE, 0));
+        // And the bind, whose failure costs only the identity. Skipped
+        // entirely when the caller asked for the registry facts alone.
+        auto* node_proxy =
+            self->depth == StreamIdentityDepth::kRegistryOnly
+                ? nullptr
+                : static_cast<pw_proxy*>(
+                      pw_registry_bind(self->registry, global_id, type, PW_VERSION_NODE, 0));
         if (node_proxy != nullptr) {
             auto node_bound = std::make_unique<BoundNode>();
             node_bound->proxy = node_proxy;
@@ -483,8 +502,9 @@ struct OutputStreamNode {
     state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
     pw_main_loop_run(loop.get());
     const bool listed = state.completed && !state.failed;
-    if (listed) {
-        // Second: the info events those binds asked for.
+    if (listed && depth == StreamIdentityDepth::kWithInfo) {
+        // Second: the info events those binds asked for. There are none to
+        // wait for when nothing was bound, and the round trip is the cost.
         state.completed = false;
         state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
         pw_main_loop_run(loop.get());

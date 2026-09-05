@@ -122,7 +122,10 @@ public:
 
         // The pid comes from the Client that owns each stream, not from the
         // stream node - output_stream_nodes() does that join and says why.
-        const auto streams = ac3::pipewire::output_stream_nodes();
+        // With the identity: this is where an icon name comes from, and this
+        // thread is its own, at twice a second.
+        const auto streams = ac3::pipewire::output_stream_nodes(
+            ac3::pipewire::StreamIdentityDepth::kWithInfo);
         const auto self = static_cast<std::uint32_t>(::getpid());
         for (const auto& stream : streams) {
             if (stream.pid == 0) {
