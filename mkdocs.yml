@@ -142,6 +142,7 @@ nav:
       - Releasing: releasing.md
       - History: history.md
       - Roadmap: roadmap.md
+      - The family recasting: family/recasting.md
       - Live decode demo (WASM): wasm-demo.md
       - Live encode demo (WASM): wasm-encode-demo.md
       - Self-hosted CI runners: ci-self-hosted-runners.md
