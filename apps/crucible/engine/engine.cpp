@@ -677,7 +677,12 @@ struct Engine::Impl {
         output->stop();
         taps.sync({});
         {
-            std::array<char, 32> worst{};
+            // Sized for what %.1f can produce from any double, not for the
+            // few milliseconds a frame takes: a compiler cannot see the
+            // second thing, and GCC 16 makes the resulting truncation
+            // warning an error under -Werror. The same reasoning as
+            // diagnostics.cpp's timestamp.
+            std::array<char, 344> worst{};
             std::snprintf(worst.data(), worst.size(), "%.1f", worst_ms);
             note("engine stopped after " + std::to_string(frames_encoded) + " frames, worst " + worst.data() +
                  " ms, " + std::to_string(output->status().underruns) + " underruns, " + std::to_string(starved) +

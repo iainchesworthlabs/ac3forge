@@ -1044,9 +1044,15 @@ jobs:
           if [ "${{ matrix.gui }}" = "true" ]; then
             extra_args+=(-DAC3FORGE_BUILD_GUI=ON)
           fi
-          # OFF by default in CMakeLists.txt (Windows-only, and a demo rather
-          # than part of the library), so the legs that want it ask here.
-          if [ "${{ matrix.crucible }}" = "true" ]; then
+          # OFF by default in CMakeLists.txt, so the legs that want it ask
+          # here - and only on Windows. On Linux this tree selects the ALSA
+          # backend, which has no per-application concept at all, and
+          # apps/crucible/CMakeLists.txt refuses that combination by design
+          # rather than building a window that can list applications and
+          # never capture one. Crucible's Linux build is the dedicated pass
+          # further down, which installs the PipeWire headers and configures
+          # its own tree with -DAC3FORGE_WITH_ALSA=OFF.
+          if [ "${{ matrix.crucible }}" = "true" ] && [ "$RUNNER_OS" = "Windows" ]; then
             extra_args+=(-DAC3FORGE_BUILD_CRUCIBLE=ON)
           fi
           if [ -n "$VERSION_TAG_INPUT" ]; then
@@ -1093,7 +1099,10 @@ jobs:
       # than a deliberate choice - the same "failing loudly beats degrading
       # quietly" reasoning as the NSIS assert further down.
       - name: Assert the AC3Forge Crucible was built (Windows)
-        if: matrix.crucible
+        # Windows only, as the name says: this looks in the matrix build
+        # tree, and on Linux that tree deliberately has no Crucible in it
+        # (see the Configure step above).
+        if: matrix.crucible && runner.os == 'Windows'
         shell: bash
         run: |
           set -euo pipefail

@@ -58,8 +58,14 @@ std::string one_line(std::string_view text) {
     return out;
 }
 
+// Every caller passes a small `decimals` and a value from a clock, a level
+// or a position, so 64 was the size of the answer rather than the size of
+// the format. %f can reach 309 digits before the point for a double at the
+// top of its range; this is that plus a sign, a point, up to a dozen
+// decimals and the terminator, so no input truncates and no compiler has to
+// prove anything about the callers.
 std::string fixed(double value, int decimals) {
-    std::array<char, 64> buffer{};
+    std::array<char, 344> buffer{};
     std::snprintf(buffer.data(), buffer.size(), "%.*f", decimals, value);
     return buffer.data();
 }
@@ -114,7 +120,13 @@ void DiagnosticLog::note(std::string_view line) {
     // frame thread holds it for one push.
     const auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_).count();
-    std::array<char, 24> stamp{};
+    // Sized for what the format can produce, not for what the clock will:
+    // two long longs are up to twenty characters each, and GCC 16 under the
+    // coverage preset's -fno-inline cannot see that a millisecond count
+    // since this object was constructed is small, so it reports the
+    // truncation as an error. Forty-eight covers sign, both fields, the
+    // separator, the trailing space and the terminator.
+    std::array<char, 48> stamp{};
     std::snprintf(stamp.data(), stamp.size(), "+%04lld.%03lld ", static_cast<long long>(elapsed / 1000),
                   static_cast<long long>(elapsed % 1000));
     std::string entry = stamp.data();
