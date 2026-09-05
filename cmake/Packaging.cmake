@@ -164,6 +164,37 @@ elseif(UNIX)
         set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME "ac3forge")
         set(CPACK_DEBIAN_LIBRUNTIME_PACKAGE_NAME "libac3forge0")
         set(CPACK_DEBIAN_LIBRARY_PACKAGE_NAME "libac3forge-dev")
+        # AC3Forge Crucible (roadmap UX12): its own package, since it is its
+        # own download everywhere else. shlibdeps resolves libpipewire-0.3 and
+        # the Qt runtime from the binary; what it cannot see is that the
+        # application needs the PipeWire *daemon* and a session manager
+        # running, which is a Depends on the service packages, not a library.
+        # No ALSA dependency, on purpose: apps/crucible/CMakeLists.txt refuses
+        # to build against the ALSA backend at all.
+        set(CPACK_DEBIAN_CRUCIBLE_PACKAGE_NAME "ac3forge-crucible")
+        # Named for what it is, the same reasoning as the archive override
+        # further down: without this the file is
+        # ac3forge-<version>-<system>-crucible.deb, the base name with the
+        # component appended, and nothing in it says "Crucible" until dpkg
+        # is asked. DEB-DEFAULT is dpkg's own <name>_<version>_<arch>.deb.
+        set(CPACK_DEBIAN_CRUCIBLE_FILE_NAME DEB-DEFAULT)
+        set(CPACK_DEBIAN_CRUCIBLE_PACKAGE_SECTION "sound")
+        set(CPACK_DEBIAN_CRUCIBLE_PACKAGE_DEPENDS "pipewire, wireplumber | pipewire-media-session")
+        # The extended Debian description for this component. The synopsis -
+        # the first line, what `apt show` headlines - is the project-wide
+        # CPACK_PACKAGE_DESCRIPTION_SUMMARY on every component's package, and
+        # this CPack offers no per-component override of it that took effect
+        # when tried (both CPACK_COMPONENT_<C>_DESCRIPTION and this variable
+        # feed only the indented part). So the crucible .deb headlines as the
+        # library and says what it is on the next line. Cosmetic, and noted in
+        # docs/releasing.md rather than hidden.
+        set(CPACK_DEBIAN_CRUCIBLE_DESCRIPTION
+            "AC3Forge Crucible - your applications, placed in a live Dolby Atmos room
+ Every application making sound on the desk becomes an object in a Dolby Atmos
+ scene: drag each to a place in the room and the result streams to a receiver
+ as E-AC-3 JOC, or as Dolby Digital, multichannel PCM or stereo, following the
+ hardware. Needs a running PipeWire session; the silent device applications
+ play into is a PipeWire node Crucible creates while it runs.")
 
         # The -dev package's headers/static-archives are useless without a
         # matching runtime .so to actually link and load - and since this
@@ -194,6 +225,9 @@ elseif(UNIX)
         # convention for a development package, where Debian/Ubuntu use "-dev".
         set(CPACK_RPM_COMPONENT_INSTALL ON)
         set(CPACK_RPM_RUNTIME_PACKAGE_NAME "ac3forge")
+        set(CPACK_RPM_CRUCIBLE_PACKAGE_NAME "ac3forge-crucible")
+        set(CPACK_RPM_CRUCIBLE_FILE_NAME RPM-DEFAULT)
+        set(CPACK_RPM_CRUCIBLE_PACKAGE_REQUIRES "pipewire, wireplumber")
         set(CPACK_RPM_LIBRUNTIME_PACKAGE_NAME "libac3forge0")
         set(CPACK_RPM_LIBRARY_PACKAGE_NAME "ac3forge-devel")
         set(CPACK_RPM_LIBRARY_PACKAGE_REQUIRES "libac3forge0 = %{version}-%{release}")
@@ -253,7 +287,7 @@ set(CPACK_COMPONENTS_ALL runtime library libruntime)
 # Added only when it was actually built, since CPack would otherwise package
 # an empty component; kept out of the NSIS installer for now by
 # cmake/CPackProjectConfig.cmake, which is where that choice is explained.
-if(AC3FORGE_BUILD_CRUCIBLE AND WIN32)
+if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR LINUX))
     list(APPEND CPACK_COMPONENTS_ALL crucible)
 endif()
 

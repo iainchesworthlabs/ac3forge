@@ -10,6 +10,7 @@ did not run. That is what this checks, from CI (.github/workflows/_build.yml)
 and from a local `cpack --preset pack-windows-msvc` run just the same:
 
     python tools/ci/check_crucible_package.py packages/ac3forge-crucible-*.zip
+    python tools/ci/check_crucible_package.py packages/ac3forge-crucible-*-Linux.tar.gz
 
 The layout it expects is the one qt_generate_deploy_qml_app_script() produces
 and the existing runtime archive already uses: the binaries in bin/ beside a
@@ -20,6 +21,7 @@ translations/ directories.
 from __future__ import annotations
 
 import sys
+import tarfile
 import zipfile
 
 # What has to be there for the window to exist and start at all: itself, the
@@ -43,12 +45,60 @@ REQUIRED = (
 # would have said so.
 REQUIRED_QML = ("qml/QtQuick/", "qml/QtQuick3D/")
 
+# The Linux archive is a different shape and a different claim. There is no
+# bundled Qt - the system's own loader finds it - so nothing about qt.conf or
+# a platform plugin applies. What has to be there is the two binaries under
+# bin/ and what a freedesktop menu needs under share/: the launcher, the
+# AppStream record, and the icon in the hicolor theme. And one thing must NOT
+# be there: the driver's PowerShell scripts, which are Windows and would only
+# ever confuse a reader of a .deb. The .tar.gz mirrors the install tree the
+# .deb and .rpm carry, and Python can read it without any of dpkg.
+REQUIRED_LINUX = (
+    "bin/ac3crucible",
+    "bin/ac3crucible-run",
+    "share/applications/ac3crucible.desktop",
+    "share/metainfo/ac3crucible.metainfo.xml",
+    "share/icons/hicolor/256x256/apps/ac3crucible.png",
+    "share/icons/hicolor/32x32/apps/ac3crucible.png",
+)
+FORBIDDEN_LINUX = ("driver/install.ps1", "driver/remove.ps1", "driver/NullSinkDevice.ps1")
+
+
+def check_linux(path: str) -> int:
+    # CPack may or may not put a top-level package directory in the tarball
+    # (CPACK_INCLUDE_TOPLEVEL_DIRECTORY; the component archives here do not).
+    # Normalise to an install prefix either way: keep a name that already
+    # starts at an install directory, and strip one leading segment from one
+    # that does not. Stripping unconditionally turned bin/ac3crucible-run into
+    # ac3crucible-run and reported everything missing on a correct archive.
+    install_dirs = ("bin/", "share/", "lib/", "include/", "libexec/")
+    with tarfile.open(path) as archive:
+        names = []
+        for member in archive.getmembers():
+            name = member.name.removeprefix("./")
+            if not name.startswith(install_dirs) and "/" in name:
+                name = name.split("/", 1)[1]
+            names.append(name)
+        total_mb = round(sum(m.size for m in archive.getmembers()) / 1048576)
+    print(f"{path}: {len(names)} entries, {total_mb} MB unpacked")
+    problems = [f"missing {name}" for name in REQUIRED_LINUX if name not in names]
+    problems += [f"Windows driver script shipped in a Linux package: {name}"
+                 for name in names for pattern in FORBIDDEN_LINUX if name.endswith(pattern)]
+    for problem in problems:
+        print(f"::error::{problem}")
+    if problems:
+        return 1
+    print("ok: the Linux package holds the window, the runner and the menu entry, and no driver scripts")
+    return 0
+
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(f"usage: {argv[0]} <archive.zip>", file=sys.stderr)
         return 2
     path = argv[1]
+    if path.endswith((".tar.gz", ".tgz", ".tar.xz")):
+        return check_linux(path)
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
         total_mb = round(sum(info.file_size for info in archive.infolist()) / 1048576)

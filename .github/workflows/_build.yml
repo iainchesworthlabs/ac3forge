@@ -1396,10 +1396,30 @@ jobs:
         run: |
           set -euo pipefail
           if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
+          export DEBIAN_FRONTEND=noninteractive
           $SUDO apt-get update -qq
-          $SUDO apt-get install -y -qq --no-install-recommends libpipewire-0.3-dev
+          # libpipewire for the engine, dpkg-dev for the .deb's shlibdeps,
+          # and distro Qt for the window and its Qt Quick tests - the same
+          # apt Qt the GUI leg above uses (cmake/FindQt6.cmake, never vcpkg).
+          # apps/crucible/CMakeLists.txt asks for Qt 6.5; the fleet's
+          # Ubuntu 26.04 image carries 6.10, and the check below says what
+          # happens on a runner that carries less. The qml6-module-* lines
+          # are the runtime modules the window's imports resolve to
+          # (QtQuick, Layouts, Controls and the Templates underneath them,
+          # Effects, Dialogs and the folder model it uses, Qt.labs.platform
+          # for the tray, Quick 3D for the room, QtTest for the suite):
+          # without them the window builds and every test fails at import.
+          $SUDO apt-get install -y -qq --no-install-recommends \
+            libpipewire-0.3-dev dpkg-dev \
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
+            qt6-l10n-tools qt6-tools-dev qt6-quick3d-dev qt6-shadertools-dev \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
+            qml6-module-qtquick-layouts qml6-module-qtquick-window qml6-module-qtquick-effects \
+            qml6-module-qtquick-dialogs qml6-module-qt-labs-folderlistmodel \
+            qml6-module-qt-labs-platform qml6-module-qtqml-workerscript qml6-module-qtqml-models \
+            qml6-module-qtquick3d qml6-module-qttest
           cmake --preset config-${{ matrix.preset }} -B build/crucible \
-            -DAC3FORGE_BUILD_CRUCIBLE=ON \
+            -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_BUILD_TESTS=ON \
             -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON \
             2>&1 | tee /tmp/crucible-configure.log
           grep -q 'Audio backend  : pipewire' /tmp/crucible-configure.log || {
@@ -1416,6 +1436,79 @@ jobs:
             echo "::error::the Crucible build reported success but produced no ac3crucible-run"
             exit 1
           }
+
+          # The window. CMake warns and carries on when Qt is missing or too
+          # old; here that is only acceptable on a runner that cannot do
+          # better, and then loudly. This leg normally runs on the fleet
+          # (Ubuntu 26.04, Qt 6.10); when decide-runner falls back to
+          # GitHub's ubuntu-latest (24.04, Qt 6.4) the window cannot be
+          # built there, and a warning that names the reason beats a red
+          # leg for something unrelated to the change. With a new-enough Qt
+          # present, a missing window is a failure like any other.
+          QT_VER="$(qmake6 -query QT_VERSION 2>/dev/null || echo 0)"
+          if grep -q 'Qt6 not found' /tmp/crucible-configure.log; then
+            if dpkg --compare-versions "$QT_VER" lt 6.5; then
+              echo "::warning::Crucible window skipped on this runner: Qt $QT_VER is below the 6.5 apps/crucible/CMakeLists.txt needs. The engine and runner were built; the window, its tests and its package were not exercised here."
+              exit 0
+            fi
+            echo "::error::the Crucible window was not configured although Qt $QT_VER is present: see the configure log above"
+            exit 1
+          fi
+          cmake --build build/crucible --target ac3crucible ac3crucible_qmltests ac3tests -- -k 0
+          test -x build/crucible/bin/ac3crucible || {
+            echo "::error::the Crucible build reported success but produced no ac3crucible"
+            exit 1
+          }
+
+          # Tests, in this tree, against this backend: the engine's own
+          # ([crucible] and [seams], on the fakes of the platform seams) and
+          # the PipeWire backend's contract ([audio-backend]), which no other
+          # leg runs on PipeWire; then the window's Qt Quick suite, headless.
+          # --no-tests=error, because a label with nothing behind it once
+          # passed a step like this having run nothing.
+          (cd build/crucible && ./bin/ac3tests "[crucible],[seams],[audio-backend]")
+          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+            ctest --test-dir build/crucible -L crucible-ui --no-tests=error --output-on-failure
+
+          # Package: the crucible component alone. The runtime component is
+          # the release legs' business and is not built here, and the
+          # component is a separate download everywhere anyway
+          # (docs/releasing.md). Then the same layout check the Windows leg
+          # runs on its zip, and the .deb's identity.
+          (cd build/crucible && cpack -B packages -D CPACK_COMPONENTS_ALL=crucible -G "TGZ;DEB")
+          shopt -s nullglob
+          tars=(build/crucible/packages/ac3forge-crucible-*.tar.gz)
+          if [ ${#tars[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-crucible-*.tar.gz - the crucible component did not reach CPACK_COMPONENTS_ALL on Linux (cmake/Packaging.cmake) or its install rules produced nothing (apps/crucible/CMakeLists.txt)."
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${tars[@]}"
+          python3 tools/ci/check_crucible_package.py "${tars[0]}"
+          debs=(build/crucible/packages/ac3forge-crucible_*.deb)
+          if [ ${#debs[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-crucible_*.deb (dpkg-deb is installed above; CPACK_DEBIAN_CRUCIBLE_FILE_NAME in cmake/Packaging.cmake names it DEB-DEFAULT style)"
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          dpkg-deb -I "${debs[0]}" | grep -E '^ (Package|Version|Section|Depends):'
+          dpkg-deb -I "${debs[0]}" | grep -q '^ Package: ac3forge-crucible$' || {
+            echo "::error::the Crucible .deb is not named ac3forge-crucible - CPACK_DEBIAN_CRUCIBLE_PACKAGE_NAME (cmake/Packaging.cmake) is not reaching the generator"
+            exit 1
+          }
+
+      # Not a release asset yet - the release legs build against ALSA and
+      # cannot produce this - but a person can take the tarball or .deb
+      # from the run. Empty on the Qt-too-old skip above, on purpose.
+      - name: Upload the AC3Forge Crucible Linux package
+        if: matrix.crucible && runner.os == 'Linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ac3forge-crucible-linux-${{ matrix.preset }}
+          path: |
+            build/crucible/packages/ac3forge-crucible-*.tar.gz
+            build/crucible/packages/ac3forge-crucible_*.deb
+          if-no-files-found: ignore
 
       # Proves BUILD_SHARED_LIBS=ON actually works before it ships in a real
       # release: ac3::forge_shared/matroska::matroska_shared existing and
