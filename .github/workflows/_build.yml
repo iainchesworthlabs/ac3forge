@@ -1124,6 +1124,72 @@ jobs:
           fi
           ls -1 "$build/bin/ac3crucible.exe" "$build/bin/ac3crucible-run.exe"
 
+      # The AC3Forge Crucible's coverage floor - what ci.yml's `coverage` job
+      # is for the library, for the one first-party tree that job cannot see.
+      #
+      # It cannot see it for the reason its own header gives about apps/gui:
+      # instrumenting a Qt application needs a Qt kit on the instrumented leg,
+      # and no Linux leg installs one. Crucible is worse off than apps/gui
+      # there, because more of it lives behind Qt - the window, its controller,
+      # and the Qt Quick suites that are the ONLY thing driving the Linux
+      # platform seams (tests/crucible/platform_services_stub.cpp is what the
+      # Catch2 binary links). So the figure is taken where the kit already is.
+      #
+      # One extra pass inside this leg rather than a job of its own, the same
+      # shape as the ALSA fallback and the Linux Crucible pass below: what it
+      # needs is a different BUILD of what this leg already has - clang-cl,
+      # the pinned LLVM (llvm-profdata and llvm-cov ship in the same install,
+      # at the C:\Program Files\LLVM the script defaults to) and the Qt kit
+      # with Quick3D - rather than a different machine. On this fleet the
+      # scarce resource is a queue slot and not a core (see
+      # docs/ci-self-hosted-runners.md), so a second tree inside a leg that
+      # is already running costs less than a job waiting for a runner.
+      #
+      # windows-llvm and not windows-msvc: config-windows-llvm-coverage is a
+      # clang-cl preset (-fprofile-instr-generate/-fcoverage-mapping) and MSVC
+      # has no counterpart llvm-cov could read. It roughly doubles this leg's
+      # build time, which is the price of the gate; the alternative was a
+      # number nothing checked.
+      #
+      # tools/checks/coverage_crucible.ps1 runs the `crucible` and
+      # `crucible-ui` labels itself under LLVM_PROFILE_FILE, merges the
+      # profiles, gates apps/crucible's line and branch figures against the
+      # floors in its own header, and prints a per-file breakdown under them.
+      # It is shared verbatim with a local run (docs/crucible/promotion.md),
+      # so CI and a developer machine cannot drift onto different thresholds -
+      # the same rule coverage_report.sh follows for the library.
+      #
+      # Windows PowerShell, not pwsh: the self-hosted fleet's Windows image
+      # does not ship PowerShell 7 (see the LLVM install step's own note).
+      - name: Crucible coverage floor (Windows, clang-cl)
+        if: matrix.crucible && matrix.preset == 'windows-llvm'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The same -DCMAKE_PREFIX_PATH the Configure step above bolts onto
+          # every Windows leg, for the reason it gives: install-qt-action puts
+          # the kit under a runner-specific QT_ROOT_DIR that
+          # cmake/FindQt6.cmake's local search roots (C:/Qt/6.x/msvc2022_64
+          # and friends) do not cover, so the preset alone finds no Qt6 here.
+          # Without it this configure does not degrade into a smaller number -
+          # it fails outright, because AC3FORGE_BUILD_GUI is ON for every
+          # windows-llvm preset (CMakePresets.json) and apps/gui/CMakeLists.txt
+          # asks for Qt6 REQUIRED.
+          #
+          # Asserted rather than assumed: an empty QT_ROOT_DIR would pass an
+          # empty prefix path and leave find_package to whatever kit happened
+          # to be on the image, which is a measurement of a different build
+          # from the one this leg tested.
+          if (-not $env:QT_ROOT_DIR) {
+            throw "QT_ROOT_DIR is not set - did the 'Install Qt (prebuilt)' step run on this leg?"
+          }
+          cmake --preset config-windows-llvm-coverage "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+          if ($LASTEXITCODE -ne 0) { throw "the instrumented configure failed ($LASTEXITCODE)" }
+          cmake --build --preset build-windows-llvm-coverage
+          if ($LASTEXITCODE -ne 0) { throw "the instrumented build failed ($LASTEXITCODE)" }
+          .\tools\checks\coverage_crucible.ps1 -BuildDir build\config-windows-llvm-coverage
+          if ($LASTEXITCODE -ne 0) { throw "the Crucible coverage gate failed ($LASTEXITCODE)" }
+
       # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
       # lightweight L4 SNR check from the project's original validation-
       # pyramid design, now docs/verification.md - wired into CI for the

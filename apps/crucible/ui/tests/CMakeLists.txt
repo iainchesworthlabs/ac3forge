@@ -114,8 +114,11 @@ qt6_add_resources(ac3crucible_qmltests "ac3crucible_qmltests_translations"
     FILES ${AC3DESK_TEST_QM_FILES})
 
 # One ctest entry per suite (its own process, its own controller), label
-# "desk" so the coverage preset and tools/checks/coverage_crucible.ps1 can
-# select it alongside the "crucible" Catch2 cases. QT_FORCE_STDERR_LOGGING
+# "crucible-ui" so the coverage preset and tools/checks/coverage_crucible.ps1
+# can select it alongside the "crucible" Catch2 cases - both of them read the
+# label written below, so renaming it here means editing that script's
+# -Labels default and CMakePresets.json's test-windows-llvm-coverage filter
+# with it. QT_FORCE_STDERR_LOGGING
 # for the reason apps/gui/tests gives: without it Qt on Windows routes the
 # PASS/FAIL lines away from stderr when it decides no console is attached.
 file(GLOB AC3DESK_QML_TEST_FILES CONFIGURE_DEPENDS

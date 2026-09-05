@@ -473,9 +473,21 @@ target_include_directories(ac3tests PRIVATE
 # backend: the files live in a platform directory and are compiled nowhere
 # else. Ungated on AC3FORGE_BUILD_CRUCIBLE for the reason the block above
 # gives: the rules are worth holding on a leg that never builds the app.
+#
+# test_session_facts.cpp rides the same block for the same reason, and is why
+# proc_facts.hpp exists: the Linux session monitor's /proc readers, its
+# per-process fact cache and the two records a refresh builds were all inside
+# session_monitor.cpp, which cannot be compiled at all without the PipeWire
+# headers - so none of it could be reached from here. Moved into a header
+# beside it, none of it needs PipeWire and all of it runs on any Linux
+# machine, against a /proc the test writes itself. Unlike x11_foreground.cpp
+# below, no file from apps/crucible is added beside it: the header is compiled
+# into this case, and the .cpp that includes it stays in ac3crucible_engine
+# where libpipewire is.
 if(LINUX)
     target_sources(ac3tests PRIVATE
         crucible/platform/linux/test_x11_foreground.cpp
+        crucible/platform/linux/test_session_facts.cpp
         "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux/x11_foreground.cpp")
     target_include_directories(ac3tests PRIVATE
         "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux")
