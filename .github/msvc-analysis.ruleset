@@ -18,7 +18,7 @@
     C26829 (unwrapped possibly-empty optional) - 7 alerts, all dismissed
       as false positives at sites where a have_first/non-empty-stream
       guard proves the optional engaged (see the comments at each site).
-      The same defect class stays covered portably by clang-tidy's
+      The same defect class stays covered portably by the nightly clang-tidy job's
       bugprone-unchecked-optional-access on ci.yml's static-analysis leg,
       which CAN be suppressed in-source with a NOLINT where the analysis
       is proven wrong - those NOLINTs and their justifications already

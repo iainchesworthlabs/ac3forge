@@ -7,9 +7,12 @@
 # the authority, so re-check there rather than trusting a row here. Exact
 # test counts per leg drift as features land (the same counts-drift note
 # _build.yml's header carries), so no count is stated here: read the ctest
-# summary in the leg's own log. Every leg is required and has real GitHub
-# Actions runs behind it (see _build.yml's header for how the last of them,
-# macos-llvm, got there).
+# summary in the leg's own log. Every leg listed here is required and has
+# real GitHub Actions runs behind it (see _build.yml's header for how the
+# last of them, macos-llvm, got there). The code-analysis engines are not
+# in this table: clang-tidy, CodeQL and MSVC PREfast run nightly against
+# main in their own workflows and none of them feeds CI Status - see
+# docs/ci-self-hosted-runners.md "Nightly analysis window".
 #
 #   leg                     status    notes
 #   ----------------------  --------  ------------------------------------------
@@ -26,7 +29,6 @@
 #                                     sanitizer leg's install time - see
 #                                     _build.yml. Also runs the codec-matrix
 #                                     script's full layout/tool/atmos sweep
-#   static-analysis (tidy)  GREEN     .clang-tidy's curated set, clean baseline
 #   coverage                GREEN     per-component line/branch gates over all
 #                                     nine library components (src/forge 92.2%
 #                                     line / 84.1% branch on the 2026-08-20
@@ -228,8 +230,8 @@ jobs:
           fi
           echo "No quarantined signer in the tree."
 
-  # Same self-hosted/GitHub-hosted fan-out MSVC Code Analysis's own
-  # check-runner gets (see docs/ci-self-hosted-runners.md), via the shared
+  # Same self-hosted/GitHub-hosted fan-out the nightly analysis workflows'
+  # check-runner jobs get (see docs/ci-self-hosted-runners.md), via the shared
   # decide-runner composite action - covers this workflow's own cheap,
   # container-free jobs below (everything except platform-macros, which
   # needs pwsh and the self-hosted Linux image's shell is unverified, and
@@ -417,11 +419,12 @@ jobs:
   # checking anything, and nothing downstream would ever notice. Every rule in
   # ruff.toml's curated set was picked with that in mind; see its header.
   #
-  # A separate job from static-analysis (clang-tidy) rather than another step
-  # inside it: that one needs a container bootstrap, a GCC install, vcpkg and a
-  # complete build before it parses its first TU. This one needs a checkout and
-  # a pip install. Keeping them apart means a broken oracle script is reported
-  # in about a minute instead of behind the slowest job on the critical path.
+  # A checkout and a pip install, kept apart from anything that needs a
+  # container bootstrap, a toolchain install, vcpkg and a complete build before
+  # it parses its first TU - the nightly clang-tidy job in static-analysis.yml
+  # used to be that neighbour here. Keeping them apart means a broken oracle
+  # script is reported in about a minute instead of behind the slowest job on
+  # the critical path.
   #
   # zizmor.yml already covers workflow *security* (injectable expressions,
   # over-broad permissions, unpinned actions); actionlint covers workflow
@@ -518,76 +521,6 @@ jobs:
           set -euo pipefail
           .lintvenv/bin/actionlint -no-color -oneline \
             -shellcheck .lintvenv/bin/shellcheck -pyflakes=
-
-  # .clang-tidy's own header comment explains the curated check groups and
-  # what got excluded from them (and why). A full Build precedes clang-tidy,
-  # not just Configure: CMake 3.28's Ninja dependency-scan step (the
-  # "Generating CXX dyndep file" lines in a normal build log) writes a
-  # per-TU .modmap response file that compile_commands.json's command lines
-  # reference, and nothing generates it until ninja actually runs - clang-tidy
-  # fails with "no such file or directory" on every TU without this step, even
-  # though it is only reading the AST, not linking anything.
-  # -warnings-as-errors='*' makes any finding in the curated set fail the job
-  # (run-clang-tidy-<version> is the LLVM Python wrapper and takes single-dash
-  # arguments, unlike clang-tidy itself): every finding present when this job
-  # was added was either fixed or suppressed with a NOLINT and a one-line
-  # justification (see the commit that added this job), so a clean baseline
-  # is the starting point, not an aspiration. (.clang-tidy now carries
-  # WarningsAsErrors: '*' too, so a plain local `clang-tidy` run agrees with
-  # this job - the flag here stays as the explicit, self-describing form.)
-  #
-  # The DEBUG preset, deliberately: analysis builds are diagnostic builds
-  # and keep asserts on, same reasoning that exempts the sanitizer leg from
-  # performance gating. A Release configure defines NDEBUG, which
-  # preprocesses every assert() away before clang-tidy ever parses the TU -
-  # so the analyzer never learns the invariants asserts state, and every
-  # assert-adjacent finding needed a NOLINT crutch paired with the assert.
-  # clang-tidy's findings don't depend on optimization level, only on what
-  # the preprocessor kept, so the existing debug preset is the right
-  # configuration and no analysis-only preset is needed.
-  static-analysis:
-    name: Static Analysis (clang-tidy)
-    needs: [changes, toolchain-versions, check-runner]
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    container: ubuntu:26.04
-    steps:
-      - name: Bootstrap container
-        run: |
-          set -eu
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
-            build-essential ca-certificates cmake curl git gnupg lsb-release \
-            ninja-build pkg-config software-properties-common tar unzip wget zip
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
-        run: bash .github/toolchain/03-llvm-toolchain.sh
-
-      - uses: ./.github/actions/setup-vcpkg
-        with:
-          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
-
-      - name: Configure
-        shell: bash
-        run: cmake --preset config-linux-llvm-debug
-
-      - name: Build
-        shell: bash
-        run: cmake --build --preset build-linux-llvm-debug -- -k 0
-
-      - name: clang-tidy
-        shell: bash
-        env:
-          LLVM_VERSION: ${{ needs.toolchain-versions.outputs.llvm_version }}
-        run: |
-          "run-clang-tidy-${LLVM_VERSION}" -j "$(nproc)" -p build/config-linux-llvm-debug \
-            -warnings-as-errors='*' \
-            '(src/(forge|matroska|mp4|mpegts)|apps/cli)/.*\.cpp'
 
   # ac3tests coverage over every library component: src/forge plus audio,
   # signing, matroska, mp4, mpegts, capi, and - via the coverage preset's
@@ -740,8 +673,8 @@ jobs:
   # the gold-reference gate, packaging), and this module's own dependency footprint - two
   # FetchContent git clones (vendored libbw64/libadm) plus eight vcpkg Boost header packages - is
   # real enough to be worth keeping off that critical path rather than adding to it. A standalone
-  # job instead runs in parallel with everything else, the same reasoning static-analysis,
-  # coverage and ffmpeg-validate already follow for their own container+toolchain setup.
+  # job instead runs in parallel with everything else, the same reasoning coverage and
+  # ffmpeg-validate already follow for their own container+toolchain setup.
   #
   # One leg, not the whole matrix - same reasoning as ffmpeg-validate above: this module's own
   # code does not vary by platform/compiler (no #ifdefs anywhere in this repo - see
@@ -851,17 +784,16 @@ jobs:
     # (persist_quality_trend gates it to direct main pushes below);
     # actions: read is only actually used by check-runners, to list this
     # repo's (and optionally iainchesworthlabs org's) self-hosted runners -
-    # see docs/ci-self-hosted-runners.md. security-events: write is only
-    # actually used by build-android's java-kotlin CodeQL analyze step (see
-    # its own comment in _build.yml for why that leg lives there instead of
-    # codeql.yml). Every other job in that reusable workflow keeps the
-    # workflow-level `contents: read` it already declares - a callee job's own
+    # see docs/ci-self-hosted-runners.md. No security-events here since
+    # 2026-09: the java-kotlin CodeQL scan that needed it left build-android
+    # for codeql.yml's nightly matrix, and nothing in that reusable workflow
+    # uploads SARIF any more. Every other job in it keeps the workflow-level
+    # `contents: read` it already declares - a callee job's own
     # `permissions:` can only narrow what the caller grants here, never widen
     # it, so this is the one place that ceiling has to be raised.
     permissions:
       contents: write
       actions: read
-      security-events: write
     with:
       # Computed here, not inside _build.yml: github.event_name/github.ref
       # reflect the reusable workflow's own call context once inside it, and
@@ -1541,7 +1473,16 @@ jobs:
   abi-gate:
     name: ABI gate
     needs: [changes, toolchain-versions, check-runner]
-    if: needs.changes.outputs.code == 'true'
+    # Not on a merge-queue entry. The PR run already produced the merge-base
+    # comparison this job exists for; a merge_group run takes the
+    # release-relative view instead (HEAD against the latest v* tag - see the
+    # base-selection step below), which the push to main then repeats. While
+    # ABI_ENFORCE is 'false' that second view blocks nothing and nobody reads
+    # it before the merge lands, so it was two shared-library builds per queue
+    # entry for a result with no audience. Revisit with AP1: when ABI_ENFORCE
+    # flips, decide whether the queue needs its own check or can keep trusting
+    # the PR run.
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'merge_group'
     runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     container: ubuntu:26.04
     env:
@@ -2366,7 +2307,7 @@ jobs:
   ci-status:
     name: CI Status
     if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, static-analysis, coverage, adm-validate, build-and-test, ffmpeg-validate, performance-gate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
+    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, coverage, adm-validate, build-and-test, ffmpeg-validate, performance-gate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
     # Control-plane job, same vars.CONTROL_RUNNER_JSON routing and kill
     # switch as check-runner above. This is the required check every PR
     # waits on LAST - when the hosted pool is saturated, a run whose every
@@ -2388,7 +2329,6 @@ jobs:
           R_CORPUS: ${{ needs.fixture-corpus.result }}
           R_SCRIPTLINT: ${{ needs.script-lint.result }}
           # 'skipped' on a docs-only change, which is a pass, not a failure.
-          R_TIDY: ${{ needs.static-analysis.result }}
           R_COVERAGE: ${{ needs.coverage.result }}
           R_ADM: ${{ needs.adm-validate.result }}
           R_BUILD: ${{ needs.build-and-test.result }}
@@ -2397,7 +2337,7 @@ jobs:
           # itself is gated on `changes`), which is a pass.
           R_PERF_GATE: ${{ needs.performance-gate.result }}
           # 'skipped' on every PR and every push off main (its own
-          # `if`) - a pass, not a failure, same as R_TIDY/R_COVERAGE above.
+          # `if`) - a pass, not a failure, same as R_COVERAGE above.
           R_PERF_TREND: ${{ needs.persist-performance-trend.result }}
           R_EXT_TREND: ${{ needs.persist-external-comparison-trend.result }}
           R_OBJ_TREND: ${{ needs.persist-object-quality-trend.result }}
@@ -2409,7 +2349,7 @@ jobs:
                       "packaging-consistency:$R_PACKAGING" \
                       "fixture-corpus:$R_CORPUS" \
                       "script-lint:$R_SCRIPTLINT" \
-                      "static-analysis:$R_TIDY" "coverage:$R_COVERAGE" \
+                      "coverage:$R_COVERAGE" \
                       "adm-validate:$R_ADM" \
                       "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \
                       "performance-gate:$R_PERF_GATE" \

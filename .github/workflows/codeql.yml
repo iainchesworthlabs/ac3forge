@@ -7,15 +7,15 @@
 # measure the codec's output stay on ci.yml's per-PR/per-queue-entry path.
 # A schedule run analyses the default branch's latest commit, which is the
 # ref that refreshes main's Security > Code scanning baseline, so dropping
-# push:main loses nothing (and the per-PR runs never gated anything after
-# 2026-08-31). docs/ci-self-hosted-runners.md "Nightly analysis window" has
-# the cron table this slot sits in, alongside msvc-analysis.yml and the other
-# repo that shares the runner fleet.
+# push:main loses nothing. docs/ci-self-hosted-runners.md "Nightly analysis
+# window" has the cron table this slot sits in, alongside msvc-analysis.yml
+# and the other repo that shares the runner fleet.
 #
-# Surfacing: codeql-action/analyze does not fail on findings, and GitHub
-# sends no notification for a new alert on the default branch, so a finding
-# from a nightly would otherwise sit in the Security tab until someone
-# opened it. The `surface` job at the bottom queries the code-scanning API
+# Surfacing: codeql-action/analyze does not fail on findings, and nothing
+# reliably notifies anyone about a new alert on the default branch (GitHub's
+# documented code-scanning notifications cover alert assignment), so a
+# finding from a nightly would otherwise sit in the Security tab until
+# someone opened it. The `surface` job at the bottom queries the code-scanning API
 # for CodeQL alerts on refs/heads/main created since the previous nightly and
 # fails on any; that failure, or an analyze failure, opens or refreshes one
 # `nightly-analysis` issue through .github/actions/report-nightly-failure.
@@ -25,7 +25,7 @@
 # library+CLI only, no Qt app: the GUI adds nothing CodeQL needs to see and
 # config-linux-gcc already defaults AC3FORGE_BUILD_GUI off (see
 # CMakePresets.json), so this is the same build ci.yml's static-analysis
-# (clang-tidy) job already proves clean.
+# (clang-tidy) nightly already proves clean.
 #
 # The other two legs (roadmap VX14) cover code the C++ leg never saw: ~30
 # Python files (the oracles and CI gates under tools/, plus the python/
@@ -35,23 +35,27 @@
 # step, which is why the steps below are conditioned on the language rather
 # than split into a second workflow.
 #
-# java-kotlin is deliberately NOT in the matrix, and that is a measured
-# result, not an oversight. It was added alongside the other two and
-# dispatched on this branch (run 32637028120, 2026-08-23); CodeQL 2.26.3
-# reported "Detected 11 Kotlin files in your project that could not be
-# processed without a build" and ended the job as a configuration error.
-# CodeQL's Kotlin extractor has no buildless mode - apps/android is 100%
-# Kotlin, so build-mode: none extracts nothing at all. The alternatives are
-# autobuild or manual, both of which mean standing up the full Android
-# toolchain this workflow otherwise has no use for: JDK 17, the pinned NDK,
-# Gradle and the object-signing key material, all of which _build.yml's
-# android job already provisions over several minutes. That is a
-# disproportionate cost for eight thin bridge/UI files, and the right shape
-# for it is a CodeQL step inside that existing job rather than a fifth leg
-# here - left as follow-up work rather than shipped as a permanently red
-# matrix entry.
+# The java-kotlin leg builds, because it has to. CodeQL's Kotlin extractor
+# has no buildless mode and apps/android is 100% Kotlin, so build-mode:
+# none extracts nothing at all - measured, not assumed: dispatched as a
+# buildless leg once (run 32637028120, 2026-08-23), CodeQL 2.26.3 reported
+# "Detected 11 Kotlin files in your project that could not be processed
+# without a build" and ended the job as a configuration error. It therefore
+# stands up JDK 17, the pinned NDK and a real Gradle assembleDebug, and is
+# pinned to the hosted image for the preinstalled Android SDK - the same
+# reason _build.yml's build-android job is hosted.
 #
-# Complements platform-macros (no-#ifdef rule), static-analysis (clang-tidy)
+# That is where this leg used to live: as an init/analyze pair wrapped
+# around the APK build in _build.yml's build-android job, which already
+# paid for the toolchain. It moved here in 2026-09 when the analysis
+# engines moved to this nightly, because in that position it was an
+# analysis engine inside a required check - a CodeQL failure failed
+# build-android, which failed build-and-test, which failed CI Status. The
+# APK build and the emulator tests stay there; only the scanning moved.
+# The cost is rebuilding the debug APK once a night, about seven hosted
+# minutes, to avoid an analysis engine gating a pull request.
+#
+# Complements platform-macros (no-#ifdef rule), static-analysis.yml (clang-tidy)
 # and script-lint (ruff/shellcheck/actionlint) in ci.yml: those catch
 # style/portability issues, CodeQL finds actual security-relevant defects
 # (buffer overflow, use-after-free, tainted data flow) and publishes them to
@@ -95,8 +99,9 @@ jobs:
   # runner is online. The job itself is control-plane, routed by
   # vars.CONTROL_RUNNER_JSON with the same delete-the-variable kill switch as
   # ci.yml's check-runner. No fork-PR pin here: with no pull_request trigger,
-  # decide-runner only ever runs from a checkout of this repository's own
-  # main.
+  # decide-runner only ever runs from a checkout of a ref in this repository
+  # (main on the schedule, whichever branch a workflow_dispatch names), never
+  # from a fork.
   check-runner:
     name: Check self-hosted runner availability
     runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
@@ -126,9 +131,24 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.display }})
     needs: [toolchain-versions, check-runner]
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    # Empty for every interpreted leg, so only the C++ one pays for the pinned
-    # ubuntu:26.04 image (and the bootstrap/toolchain/vcpkg steps that follow).
+    # matrix.runner overrides check-runner's decision for a leg that cannot
+    # take the fleet - java-kotlin needs the hosted image's preinstalled
+    # Android SDK, which the fleet image does not ship (the
+    # follow-the-toolchain rule from docs/ci-self-hosted-runners.md). Empty
+    # for every other leg, which routes normally.
+    runs-on: ${{ matrix.runner && fromJSON(matrix.runner) || fromJSON(needs.check-runner.outputs.runner) }}
+    # C++ leg 8.6 min median on the fleet (2026-09-04); the interpreted legs
+    # are seconds; java-kotlin is a Gradle build, bounded by the same 45 that
+    # _build.yml's build-android job uses. A hung run would otherwise hold a
+    # Linux fleet slot for GitHub's 360-minute default, into
+    # aqualink-automate's 04:00 window. Unmeasured on ubuntu-latest (the
+    # fallback when no Linux runner is online) - raise this if a hosted run
+    # trips it.
+    timeout-minutes: 45
+    # Empty for every leg but C++, so only that one pays for the pinned
+    # ubuntu:26.04 image (and the bootstrap/toolchain/vcpkg steps that
+    # follow). java-kotlin needs the hosted image's own Android SDK, so it
+    # must not run in a container either.
     container: ${{ matrix.container }}
     permissions:
       security-events: write
@@ -142,14 +162,22 @@ jobs:
             display: C++
             build-mode: manual
             container: ubuntu:26.04
+            runner: ""
           - language: python
             display: Python
             build-mode: none
             container: ""
+            runner: ""
           - language: javascript-typescript
             display: JavaScript
             build-mode: none
             container: ""
+            runner: ""
+          - language: java-kotlin
+            display: Kotlin
+            build-mode: manual
+            container: ""
+            runner: '["ubuntu-latest"]'
     steps:
       # Before checkout: the bare ubuntu image has no git, and actions/checkout
       # silently degrades to a REST tarball download without it. Also installs
@@ -193,6 +221,43 @@ jobs:
         with:
           node-version: "24"
 
+      # apps/android/gradle/wrapper/gradle-wrapper.jar is a committed binary
+      # (OpenSSF Scorecard's Binary-Artifacts check, alert #65) - it can't be
+      # dropped since gradlew needs it, so this verifies its checksum against
+      # Gradle's own known-good release hashes instead. Same step
+      # _build.yml's build-android job runs before its own build.
+      - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        if: matrix.language == 'java-kotlin'
+
+      # ubuntu-latest ships several Temurin JDKs preinstalled, each with its
+      # own JAVA_HOME_<version>_X64 env var (see actions/runner-images) -
+      # selecting one this way needs no extra pinned action for a JDK AGP
+      # already requires (compileOptions targets 17 - see build.gradle.kts).
+      - name: Select JDK 17
+        if: matrix.language == 'java-kotlin'
+        shell: bash
+        run: echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+
+      # The Android SDK cmdline-tools ship preinstalled on this image
+      # (ANDROID_HOME already set), but not necessarily the exact NDK version
+      # build.gradle.kts pins (26.1.10909125, see docs/platforms/android.md) -
+      # install it explicitly rather than trust whatever the image happens to
+      # have cached. `yes | sdkmanager --licenses` can exit non-zero even
+      # after accepting everything (the piped `yes` closes before sdkmanager
+      # reads EOF) - a known quirk, not a real failure - so only the actual
+      # NDK install is allowed to fail the job.
+      #
+      # No object-signing key here, unlike build-android: signing.key is a
+      # runtime asset the app reads, not something the Kotlin extractor sees,
+      # and this leg does not package or run the APK.
+      - name: Install pinned Android NDK
+        if: matrix.language == 'java-kotlin'
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;26.1.10909125"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
@@ -226,6 +291,18 @@ jobs:
         if: matrix.language == 'cpp'
         run: cmake --build --preset build-linux-gcc -- -k 0
 
+      # The build CodeQL traces for java-kotlin. Debug, and assembleDebug
+      # only: the extractor wants compilation, not a packaged or signed
+      # artifact, and _build.yml still owns producing those.
+      - name: Build debug APK
+        if: matrix.language == 'java-kotlin'
+        working-directory: apps/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --console=plain
+
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
@@ -238,13 +315,18 @@ jobs:
   # the last nightly window and fails if there are any; that failure, or the
   # analyze matrix failing, is handed to the shared report-nightly-failure
   # action, which opens (or comments on) one `nightly-analysis` issue for
-  # this engine. `always()` so an analyze failure is reported rather than
-  # skipped past. analyze keeps codeql-action's default
-  # wait-for-processing: true, so the alerts exist by the time this runs.
+  # this engine. `!cancelled()` rather than `always()`: an analyze failure is
+  # still reported rather than skipped past, but a run someone cancelled by
+  # hand does not open an issue over it. analyze keeps codeql-action's
+  # default wait-for-processing: true, so the alerts exist by the time this
+  # runs. The query is pinned to refs/heads/main, the ref the schedule
+  # analyses; a workflow_dispatch from another branch uploads against that
+  # branch and this job does not see it, so the alert-to-issue path can only
+  # be exercised on main.
   surface:
     name: Surface findings
     needs: analyze
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
     permissions:
       contents: read
@@ -261,6 +343,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           # Nightly cadence plus an hour of slack for a late-starting run.
+          # The 25 h window overlaps the previous run by about an hour, so an
+          # alert from night N is listed again on night N+1 while it stays
+          # open - a second comment on the same issue, not a second finding.
           WINDOW_HOURS: "25"
         shell: bash
         run: |

@@ -1,9 +1,13 @@
 # ac3forge
 
-<!-- Build & code health -->
+<!-- Build & code health. CodeQL, MSVC Code Analysis, Static Analysis and
+     SonarCloud run nightly against main, not per PR - see
+     docs/ci-self-hosted-runners.md "Nightly analysis window". -->
 [![CI](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/ci.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/codeql.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/codeql.yml)
 [![MSVC Code Analysis](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/msvc-analysis.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/msvc-analysis.yml)
+[![Static Analysis](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/static-analysis.yml)
+[![SonarCloud](https://sonarcloud.io/api/project_badges/measure?project=iainchesworthlabs_ac3forge&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=iainchesworthlabs_ac3forge)
 [![OSV-Scanner](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/osv-scanner.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/osv-scanner.yml)
 [![Zizmor](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/zizmor.yml/badge.svg)](https://github.com/iainchesworthlabs/ac3forge/actions/workflows/zizmor.yml)
 <!-- What the last merge actually MEASURED, not just whether it ran. The
@@ -47,7 +51,7 @@ your use is your problem to assess, not something this project resolves.
 above shows the current one, and [CHANGELOG.md](CHANGELOG.md) records what each contains. CI
 requires Windows (MSVC, clang-cl), Linux (GCC and Clang, x64 and arm64) and macOS (Homebrew
 LLVM) — CLI and GUI alike on every platform — plus an
-ASan+UBSan leg, clang-tidy static analysis, a coverage gate over the library, a per-platform
+ASan+UBSan leg, a coverage gate over the library, a per-platform
 gold-reference quality gate, dedicated Linux FFmpeg- and ADM-validation legs, and a required
 Android build leg for the Shield TV demo app under `apps/android/`. See
 [docs/building.md](docs/building.md#verified-configuration) for exact toolchain versions and

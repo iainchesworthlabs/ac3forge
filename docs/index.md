@@ -21,7 +21,7 @@ depend on them.
     [changelog](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md) records what
     each contains. Green and required in CI on Windows (MSVC, clang-cl), Linux (GCC and Clang,
     x64 and arm64) and macOS (Homebrew LLVM) — CLI and GUI alike on every platform — plus an
-    ASan+UBSan leg, clang-tidy static analysis, a line/branch
+    ASan+UBSan leg, a line/branch
     coverage gate over the library, a per-platform gold-reference *quality* gate, dedicated
     Linux FFmpeg- and ADM-validation legs checking output *correctness*, and a required Android
     build leg. No leg remains experimental. See [building.md](building.md) for exact toolchain
