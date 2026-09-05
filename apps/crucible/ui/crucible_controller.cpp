@@ -152,6 +152,10 @@ void CrucibleController::stop() {
         engine_->stop();
         engine_.reset();
     }
+    // The rule's state was the old engine's too: a restart on another seat
+    // starts clean and states the rule until the new engine says otherwise.
+    fullscreen_rule_ = false;
+    fullscreen_reason_.clear();
     if (running_) {
         running_ = false;
         emit stateChanged();
@@ -264,12 +268,17 @@ void CrucibleController::poll() {
     const QString reason = from_utf8(s.output_reason);
     const QString signing = from_utf8(s.signing);
     const QString error = from_utf8(s.last_error);
+    const bool rule = s.fullscreen_rule_available;
+    const QString rule_reason = from_utf8(s.fullscreen_rule_reason);
     if (mode_name != mode_name_ || key != mode_key_ || endpoint != endpoint_name_ ||
         reason != output_reason_ || signing != signing_status_ ||
         s.objects_enabled != objects_enabled_ || error != last_error_ ||
-        static_cast<int>(s.tap_channels) != tap_channels_ || s.codec_bypassed != codec_bypassed_) {
+        static_cast<int>(s.tap_channels) != tap_channels_ || s.codec_bypassed != codec_bypassed_ ||
+        rule != fullscreen_rule_ || rule_reason != fullscreen_reason_) {
         tap_channels_ = static_cast<int>(s.tap_channels);
         codec_bypassed_ = s.codec_bypassed;
+        fullscreen_rule_ = rule;
+        fullscreen_reason_ = rule_reason;
         mode_name_ = mode_name;
         mode_key_ = key;
         endpoint_name_ = endpoint;

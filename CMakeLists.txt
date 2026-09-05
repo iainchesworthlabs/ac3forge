@@ -135,7 +135,7 @@ add_compile_options("${AC3_FP_CONTRACT_FLAG}")
 # ---------------------------------------------------------------------------
 option(AC3FORGE_BUILD_CLI "Build the ac3cli command-line application" ON)
 option(AC3FORGE_BUILD_GUI "Build the Qt6 Quick GUI application" ON)
-option(AC3FORGE_BUILD_CRUCIBLE "Build the Windows AC3Forge Crucible (roadmap UX11; Windows only)" OFF)
+option(AC3FORGE_BUILD_CRUCIBLE "Build AC3Forge Crucible (roadmap UX11 and UX12; Windows and Linux)" OFF)
 option(AC3FORGE_BUILD_TESTS "Build the unit test suite" ON)
 # Catch2 is the only build-time dependency. Turn this off to insist it comes
 # from a package manager instead of the network (see tests/CMakeLists.txt).
@@ -505,6 +505,14 @@ message(STATUS "  Build Python   : ${AC3FORGE_BUILD_PYTHON}")
 # and 'play' work in this build at all - see the platform tree in
 # src/audio/CMakeLists.txt. 'posix' is the one that means no.
 message(STATUS "  Audio backend  : ${AC3FORGE_AUDIO_BACKEND}")
+# Which of apps/crucible/engine/platform/linux/'s two X11 readers Crucible
+# compiled (docs/crucible/promotion.md, "X11 full-screen detection"): 'xcb'
+# reads the active window through libxcb; 'none' says so at runtime and
+# leaves the full-screen rule off. Linux only, since only Linux has the
+# choice; the Linux Crucible CI leg asserts on this line.
+if(AC3FORGE_BUILD_CRUCIBLE AND LINUX)
+    message(STATUS "  Crucible X11   : ${AC3FORGE_CRUCIBLE_X11_BACKEND}")
+endif()
 # Which src/forge/src/internal/arch/ directory the codec's vector kernels
 # were compiled from (ROADMAP PF5). 'generic' is the portable scalar
 # reference; -DAC3FORGE_SIMD=generic forces it anywhere.

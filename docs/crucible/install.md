@@ -63,6 +63,8 @@ The window says which of these you are in rather than leaving you to work it out
   separately, and ALSA has no per-application concept at all. A build configured against ALSA is
   refused at configure time with a message saying so.
 - `libpipewire-0.3-dev` to build, `pipewire` and a session manager (WirePlumber) to run.
+- `libxcb1-dev` for the full-screen rule on X11 (optional; without it the rule is off and the
+  Room page says why).
 
 ### Build it
 
@@ -112,9 +114,11 @@ ac3crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE]
 
 Three gaps worth knowing before you start:
 
-- **The full-screen rule is off.** It makes the full-screen application the bed, and no Wayland
-  client can ask which window is full-screen — that is Wayland's security model, not a missing
-  feature. Crucible says which reason applies rather than silently dropping the rule.
+- **The full-screen rule is off under Wayland.** The rule makes the full-screen application the
+  bed. Under X11 it is on: Crucible reads the active window's `_NET_WM_STATE` and `_NET_WM_PID`
+  through libxcb. No Wayland client can ask which window is full-screen — that is Wayland's
+  security model — so there the rule is off, and the Room page says which reason applies
+  (Wayland, no display, or a build without libxcb) rather than silently dropping the rule.
 - **Applications show as monograms, not icons.** Linux has no single call for "the icon this
   executable has"; the mapping from a process to its `.desktop` entry is heuristic and is a
   follow-up.

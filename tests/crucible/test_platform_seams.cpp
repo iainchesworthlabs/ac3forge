@@ -31,6 +31,14 @@ TEST_CASE("every platform service factory returns an object", "[crucible][seams]
     REQUIRE(platform_foreground() != nullptr);
     REQUIRE(platform_default_device() != nullptr);
     REQUIRE(platform_virtual_device() != nullptr);
+
+    // The rule the header states, held where the definitions linked here
+    // are the stub's, as it holds for the production Linux Foreground's
+    // Wayland and no-display arms: a Foreground that cannot answer says why.
+    const auto foreground = platform_foreground();
+    if (const auto support = foreground->support(); !support.available) {
+        REQUIRE_FALSE(support.reason.empty());
+    }
 }
 
 TEST_CASE("a platform that cannot report the foreground says so", "[crucible][seams]") {

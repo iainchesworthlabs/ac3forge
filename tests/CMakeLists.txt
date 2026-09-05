@@ -458,6 +458,22 @@ target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine"
     "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main")
 
+# The Linux Foreground's X11 half has a pure policy (x11_foreground.cpp: when
+# a read yields a pid, when a lost display becomes a reason) over an injected
+# reader, and the session classification and the process-tree walk beside it
+# are headers. None of it needs xcb or a display, so it is tested here with a
+# fake reader - on Linux only, the way tests/backend/pipewire rides its
+# backend: the files live in a platform directory and are compiled nowhere
+# else. Ungated on AC3FORGE_BUILD_CRUCIBLE for the reason the block above
+# gives: the rules are worth holding on a leg that never builds the app.
+if(LINUX)
+    target_sources(ac3tests PRIVATE
+        crucible/platform/linux/test_x11_foreground.cpp
+        "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux/x11_foreground.cpp")
+    target_include_directories(ac3tests PRIVATE
+        "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux")
+endif()
+
 # ac3adm::ac3adm is opt-in (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own
 # option() for why it is not on by default like matroska/mp4/mpegts) - test_adm.cpp is only
 # added, and ac3adm::ac3adm only linked, when that option turned this target on. Unlike cli/test_cli.cpp

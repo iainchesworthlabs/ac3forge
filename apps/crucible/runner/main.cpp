@@ -60,6 +60,8 @@ void print_status(const ac3::crucible::EngineStatus& s) {
                 static_cast<unsigned long long>(s.starved_reads),
                 static_cast<unsigned long long>(s.underruns), static_cast<unsigned>(s.tap_channels), s.tap_backlog_ms, s.sink_queue_ms, static_cast<unsigned long long>(s.catchups), s.objects_enabled ? "on" : "off", s.codec_bypassed ? "on" : "off");
     std::printf("  output: %s\n  signing: %s\n", s.output_reason.c_str(), s.signing.c_str());
+    std::printf("  full-screen rule: %s\n",
+                s.fullscreen_rule_available ? "on" : s.fullscreen_rule_reason.c_str());
     if (!s.last_error.empty()) {
         std::printf("  last error: %s\n", s.last_error.c_str());
     }

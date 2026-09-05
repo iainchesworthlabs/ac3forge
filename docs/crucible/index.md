@@ -70,8 +70,8 @@ on the end of it; whether the receiver locked is the receiver's display's to say
 is still open. It matters more than it sounds, because Crucible **cannot** use the ALSA backend
 (no per-application tap), so it is forced onto the one passthrough path this project had not
 confirmed before. [The plan](promotion.md#alsa-or-pipewire) is blunt about that. What the Linux
-window still lacks: application icons (the monogram stands in), and the full-screen rule, which
-Wayland cannot answer.
+window still lacks: application icons (the monogram stands in), and the full-screen rule under
+Wayland, which cannot be answered there; under X11 the rule is on.
 
 **macOS** needs no driver — its process taps can mute an application where they tap it, which is
 the job the Windows driver exists to do — but nothing is implemented. It is blocked on a Mac to
@@ -103,8 +103,10 @@ placed either side of its position — that costs a second slot, and Crucible re
 budget would be exceeded rather than silently dropping one.
 
 Two things always go to the bed: every application you have not placed, and the full-screen
-application in front, because a full-screen game rendering 7.1 *is* the bed. On Linux the
-full-screen rule is off, because no Wayland client can ask which window is full-screen.
+application in front, because a full-screen game rendering 7.1 *is* the bed. On Linux the rule
+is on under X11, where Crucible reads the active window's `_NET_WM_STATE` and `_NET_WM_PID`,
+and off under Wayland, because no Wayland client can ask which window is full-screen; the Room
+page says which applies.
 
 ## Objects need a signing key
 

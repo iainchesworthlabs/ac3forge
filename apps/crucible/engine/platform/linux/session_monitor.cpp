@@ -3,15 +3,20 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "pipewire_support.hpp"
 #include "platform_services.hpp"
+#include "process_tree.hpp"
 
 // The Linux SessionMonitor: who is playing sound, from the PipeWire registry
 // (docs/crucible/promotion.md, Phase 4).
@@ -22,9 +27,19 @@
 // Windows has to group audio sessions **by process tree**, because the
 // session's process is usually not the application - a browser renders its
 // audio from a utility process under the browser - so it walks parents until
-// the image name changes. PipeWire needs none of that: the process that owns
-// a stream is the one a person means, so an application here is one process
-// id and the tree walk has no counterpart.
+// the image name changes. PipeWire needs none of that for grouping: the
+// process that owns a stream is the one a person means, so an application
+// here is one process id, the stream's, and that is the pid the tap targets
+// (capture.cpp matches it exactly).
+//
+// The same walk does exist here, for matching only. The engine's full-screen
+// rule compares the front window's pid with each application's
+// session_pids, and a browser's window belongs to its main process while its
+// audio comes from the utility process listed here; so session_pids carries
+// the stream's pid and every same-executable ancestor of it
+// (process_tree.hpp), and `app` stays the stream's pid. Nothing is grouped
+// by root: two utility processes of one browser remain two entries, as
+// before.
 //
 // Finding that process id is not where it looks, though. A
 // Stream/Output/Audio node carries application.name, media.class and a
@@ -62,6 +77,27 @@ namespace {
     std::error_code ec;
     const auto target = std::filesystem::read_symlink("/proc/" + std::to_string(pid) + "/exe", ec);
     return ec ? std::string{} : target.string();
+}
+
+// The parent of a pid, from /proc/<pid>/stat. The second field there (comm,
+// in parentheses) may itself hold spaces and parentheses, so the parse starts
+// after the LAST ')' and takes the second word from there: state, then ppid.
+// nullopt when the process has gone.
+[[nodiscard]] std::optional<std::uint32_t> ppid_of(std::uint32_t pid) {
+    std::ifstream stat_file("/proc/" + std::to_string(pid) + "/stat");
+    std::string line;
+    std::getline(stat_file, line);
+    const auto paren = line.rfind(')');
+    if (paren == std::string::npos) {
+        return std::nullopt;
+    }
+    std::istringstream rest(line.substr(paren + 1));
+    std::string state;
+    std::uint32_t parent = 0;
+    if (!(rest >> state >> parent)) {
+        return std::nullopt;
+    }
+    return parent;
 }
 
 [[nodiscard]] bool process_alive(std::uint32_t pid) {
@@ -106,7 +142,9 @@ public:
             app.has_window = true;
             app.packaged = false;
             app.has_session = true;
-            app.session_pids.push_back(stream.pid);
+            // The stream's pid and its same-executable ancestors, for the
+            // engine's full-screen match (this file's header comment).
+            app.session_pids = facts.tree;
         }
 
         // Applications the engine asked to keep: listed while their process
@@ -149,13 +187,17 @@ private:
     struct Facts {
         std::string name;
         std::string exe;
+        std::vector<std::uint32_t> tree;  // the pid and its same-executable ancestors
     };
 
     const Facts& facts_for(std::uint32_t pid) {
         if (const auto it = facts_.find(pid); it != facts_.end()) {
             return it->second;
         }
-        return facts_.emplace(pid, Facts{.name = process_name(pid), .exe = process_exe(pid)})
+        return facts_
+            .emplace(pid, Facts{.name = process_name(pid),
+                                .exe = process_exe(pid),
+                                .tree = same_image_ancestors(pid, ppid_of, process_exe)})
             .first->second;
     }
 

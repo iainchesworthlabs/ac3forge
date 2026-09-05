@@ -161,4 +161,50 @@ TestCase {
         CrucibleController.stop();
     }
 
+    // The Room's full-screen note follows the controller: it states the
+    // rule while the reason is empty (the engine stopped, or a platform
+    // that can answer) and prints the platform's reason when the rule is
+    // off. Nothing here asserts English: the note's stopped text is the
+    // rule, and the running text either is that or carries the reason.
+    function test_fullscreenRuleNoteSaysWhetherTheRuleApplies() {
+        // Parented to the window's root item, not the TestCase, for the
+        // reason tst_settings gives: the TestCase item is invisible by design.
+        const page = createTemporaryObject(roomPage, testCase.parent);
+        verify(page);
+        waitForRendering(page);
+        const note = findChild(page, "fullscreenRuleNote");
+        verify(note, "the full-screen note carries objectName fullscreenRuleNote");
+        verify(note.text.length > 0);
+        // Stopped: no engine has said anything, so the note states the rule.
+        compare(CrucibleController.fullscreenRuleReason, "");
+        compare(CrucibleController.fullscreenRuleAvailable, false);
+        const ruleText = note.text;
+        CrucibleController.start();
+        if (!CrucibleController.running) {
+            skip("the engine did not start here: " + CrucibleController.lastError);
+        }
+        tryVerify(function() { return CrucibleController.framesEncoded > 0; }, 5000);
+        // Whatever this seat is, the two agree once the engine has reported:
+        // available exactly when there is no reason. The Windows offscreen
+        // leg takes the available branch; the Linux one, with no display,
+        // takes the no-display reason.
+        tryVerify(function() {
+            return CrucibleController.fullscreenRuleAvailable === (CrucibleController.fullscreenRuleReason.length === 0);
+        }, 5000, "available " + CrucibleController.fullscreenRuleAvailable + " reason '" + CrucibleController.fullscreenRuleReason + "'");
+        // Read together, so a reason that flips between the two reads (the
+        // X11 check connecting) cannot split them.
+        const reason = CrucibleController.fullscreenRuleReason;
+        const text = note.text;
+        if (reason.length > 0) {
+            verify(text.indexOf(reason) >= 0, text);
+            verify(text !== ruleText, text);
+        } else {
+            compare(text, ruleText);
+        }
+        CrucibleController.stop();
+        compare(CrucibleController.fullscreenRuleReason, "");
+        compare(CrucibleController.fullscreenRuleAvailable, false);
+        compare(note.text, ruleText);
+    }
+
 }
