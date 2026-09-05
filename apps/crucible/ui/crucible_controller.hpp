@@ -28,6 +28,13 @@
 // preferences agree; the signing key's PATH is what is stored, never the
 // key.
 
+// The first-run explanation's version. A store whose
+// firstRun/acknowledgedVersion is at least this has seen the current wording,
+// and bumping it shows the dialog once more. The Qt Quick harness seeds it so
+// that no suite instantiating the shell meets a modal it did not ask for
+// (ui/tests/qml_test_main.cpp); tst_firstrun.qml clears it in its own init().
+inline constexpr int kFirstRunVersion = 1;
+
 class CrucibleController : public QObject {
     Q_OBJECT
     QML_ELEMENT

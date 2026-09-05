@@ -43,7 +43,6 @@ constexpr int kPollMs = 60;  // the meters read at this rate; 120 stepped visibl
 // The version of the first-run explanation (FirstRunDialog.qml). Bump it
 // when what the dialog says changes enough to be worth showing once more,
 // such as the silent device's name changing with the driver's signing.
-constexpr int kFirstRunVersion = 1;
 
 // A silent device the application makes itself appears in the graph a
 // moment after the request returns; Send applications waits this long, at
@@ -145,6 +144,11 @@ ac3::crucible::EngineConfig CrucibleController::engine_config() const {
     config.pinned = mode_from_key(pinned());
     config.preferred_endpoint_id = preferredEndpoint().toStdString();
     config.diagnostics = &log_;
+    // One Foreground for the process, not two: this object reads support()
+    // for the diagnostics report and the engine polls fullscreen_pid() on its
+    // session thread, and on X11 a second instance would open a second
+    // connection to the display server.
+    config.foreground = foreground_;
     return config;
 }
 

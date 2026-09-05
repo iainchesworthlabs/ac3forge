@@ -21,6 +21,12 @@ Dialog {
     padding: Theme.space6
     title: ""
     closePolicy: Popup.CloseOnEscape
+    // CloseOnEscape fires only while the popup has active focus; without this
+    // the first thing a keyboard-only person meets is a modal they cannot
+    // close. Not now takes the focus because it is the choice that changes
+    // nothing.
+    focus: true
+    onOpened: firstRunLaterButton.forceActiveFocus()
     background: Rectangle {
         color: Theme.bg
         border.color: Theme.text
@@ -178,6 +184,7 @@ Dialog {
                 onClicked: { root.close(); root.openSettings(); }
             }
             CrucibleButton {
+                id: firstRunLaterButton
                 objectName: "firstRunLater"
                 text: qsTr("Not now")
                 onClicked: root.close()

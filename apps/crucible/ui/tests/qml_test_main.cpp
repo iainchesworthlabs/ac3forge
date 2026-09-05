@@ -12,6 +12,7 @@
 
 #include "../../../gui/language_manager.hpp"
 #include "../app_icon_provider.hpp"
+#include "../crucible_controller.hpp"
 
 // Qt Quick Test entry point for the AC3Forge Crucible's window: runs every
 // tst_*.qml under QUICK_TEST_SOURCE_DIR against the REAL CrucibleController the
@@ -25,8 +26,11 @@
 // The setup object mirrors the GUI harness's SettingsIsolation: real
 // organisation and application names plus a QTemporaryDir settings path,
 // so CrucibleController's QSettings (organisation "ac3forge", application
-// "DesktopAtmos", the shipped app's own) read and write a store that is
-// empty at start and gone at exit rather than the developer's own. The
+// "Crucible", the shipped app's own) read and write a store that is empty at
+// start and gone at exit rather than the developer's own. The store is seeded
+// as having seen the first-run explanation, so no suite that instantiates the
+// shell meets a modal it did not ask for; tst_firstrun.qml clears the key in
+// its own init(). The
 // Basic style is what ui/main.cpp sets; the offscreen platform (set on the
 // ctest entries) has no native theme to consult, and the QML customises
 // contentItems that a native style would refuse.
@@ -36,11 +40,15 @@ class DeskIsolation : public QObject {
 public slots:
     void applicationAvailable() {
         QCoreApplication::setOrganizationName(QStringLiteral("ac3forge"));
-        QCoreApplication::setApplicationName(QStringLiteral("DesktopAtmos"));
+        QCoreApplication::setApplicationName(QStringLiteral("Crucible"));
         QQuickStyle::setStyle(QStringLiteral("Basic"));
         scratch_.emplace();
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, scratch_->path());
+        QSettings seed(QSettings::IniFormat, QSettings::UserScope, QStringLiteral("ac3forge"),
+                       QStringLiteral("Crucible"));
+        seed.setValue(QStringLiteral("firstRun/acknowledgedVersion"), kFirstRunVersion);
+        seed.sync();
     }
 
     // Once per tst_*.qml: the same LanguageManager singleton ui/main.cpp
