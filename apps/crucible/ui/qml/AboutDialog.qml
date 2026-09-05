@@ -9,6 +9,7 @@ import Ac3ForgeCrucible
 // as the ac3forge GUI's About, on this app's own theme.
 Dialog {
     id: root
+    objectName: "aboutDialog"
     // Licences...: Main.qml opens the LicencesDialog over this one.
     signal showLicences()
     modal: true
@@ -29,14 +30,14 @@ Dialog {
 
     component Kicker: Text {
         Layout.topMargin: Theme.space2
-        font.pixelSize: 10
+        font.pixelSize: Theme.fontMicro
         font.letterSpacing: 1.2
         color: Theme.textMuted
     }
     component Body: Text {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontSmall
         color: Theme.textMuted
         onLinkActivated: function(link) { Qt.openUrlExternally(link); }
     }
@@ -57,7 +58,7 @@ Dialog {
             ColumnLayout {
                 spacing: 2
                 Text { text: qsTr("AC3Forge Crucible"); color: Theme.text; font.family: Theme.headingFamily; font.pixelSize: Theme.fontTitle; font.weight: Font.Bold }
-                Text { text: qsTr("your applications, placed in the room"); color: Theme.textMuted; font.pixelSize: 13 }
+                Text { text: qsTr("your applications, placed in the room"); color: Theme.textMuted; font.pixelSize: Theme.fontBody }
             }
         }
         Kicker { text: qsTr("WHAT IT DOES") }

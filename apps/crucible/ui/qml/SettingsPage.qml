@@ -40,7 +40,7 @@ Flickable {
         default property alias content: slot.data
         Layout.fillWidth: true
         spacing: Theme.space3
-        Text { id: labelText; Layout.preferredWidth: 110; Layout.alignment: Qt.AlignTop; topPadding: 7; color: Theme.text; font.pixelSize: 13 }
+        Text { id: labelText; Layout.preferredWidth: 110; Layout.alignment: Qt.AlignTop; topPadding: 7; color: Theme.text; font.pixelSize: Theme.fontBody }
         RowLayout { id: slot; Layout.fillWidth: true; spacing: Theme.space3 }
     }
     component Note: Text {
@@ -56,19 +56,22 @@ Flickable {
         property alias text: body.text
         Layout.fillWidth: true
         spacing: Theme.space2
-        Text { text: parent.ok ? "✓" : "⚠"; color: parent.ok ? Theme.textMuted : Theme.accent; font.pixelSize: 13; Layout.alignment: Qt.AlignTop }
-        Text { id: body; Layout.fillWidth: true; color: parent.ok ? Theme.textMuted : Theme.text; font.pixelSize: 13; wrapMode: Text.WordWrap }
+        Text { text: parent.ok ? "✓" : "⚠"; color: parent.ok ? Theme.textMuted : Theme.accentInk; font.pixelSize: Theme.fontBody; Layout.alignment: Qt.AlignTop; Accessible.ignored: true }
+        Text { id: body; Layout.fillWidth: true; color: parent.ok ? Theme.textMuted : Theme.text; font.pixelSize: Theme.fontBody; wrapMode: Text.WordWrap }
     }
     component Field: Rectangle {
         property alias input: input
         property alias text: input.text
         property string objectId: ""
+        // What the row's label says, passed in rather than typed again, so
+        // the name a reader hears is the label a sighted person reads.
+        property string accessibleName: ""
         implicitWidth: 240
-        implicitHeight: 30
+        implicitHeight: Math.max(30, input.implicitHeight + 10)
         Layout.fillWidth: true
         Layout.maximumWidth: 320
         color: Theme.neutral100
-        border.color: Theme.divider
+        border.color: input.activeFocus ? Theme.focusRing : Theme.divider
         border.width: 1
         TextInput {
             id: input
@@ -78,9 +81,15 @@ Flickable {
             anchors.rightMargin: 10
             verticalAlignment: TextInput.AlignVCenter
             color: Theme.text
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontBody
             selectByMouse: true
             clip: true
+            // A plain TextInput is not in the tab chain by default; the
+            // Controls' TextField is, and a field a person must type in
+            // has to be reachable without a mouse.
+            activeFocusOnTab: true
+            Accessible.role: Accessible.EditableText
+            Accessible.name: parent.accessibleName
         }
     }
 
@@ -164,15 +173,32 @@ Flickable {
                     spacing: Theme.space2
                     property bool open: false
                     Item {
+                        id: advancedToggle
+                        objectName: "advancedToggle"
                         Layout.fillWidth: true
                         implicitHeight: advancedRow.implicitHeight
+                        // A disclosure is a button, and its state is what a
+                        // reader needs before deciding to press it.
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Advanced")
+                        Accessible.description: advanced.open ? qsTr("expanded") : qsTr("collapsed")
+                        Accessible.focusable: true
+                        Accessible.onPressAction: advanced.open = !advanced.open
+                        activeFocusOnTab: true
+                        Keys.onPressed: function(event) {
+                            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                advanced.open = !advanced.open;
+                                event.accepted = true;
+                            }
+                        }
                         Row {
                             id: advancedRow
                             spacing: Theme.space2
-                            Text { text: advanced.open ? "▾" : "▸"; color: Theme.textMuted; font.pixelSize: 12 }
-                            Text { text: qsTr("Advanced"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall; font.letterSpacing: 0.5 }
+                            Text { text: advanced.open ? "▾" : "▸"; color: Theme.textMuted; font.pixelSize: Theme.fontSmall; Accessible.ignored: true }
+                            Text { text: qsTr("Advanced"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall; font.letterSpacing: 0.5; Accessible.ignored: true }
                         }
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: advanced.open = !advanced.open }
+                        FocusRing {}
                     }
                     // The folder and its package only exist where the device
                     // is a driver; elsewhere "remove" undoes the application's
@@ -183,6 +209,7 @@ Flickable {
                         label: qsTr("Driver folder")
                         Field {
                             objectId: "driverFolderInput"
+                            accessibleName: qsTr("Driver folder")
                             text: CrucibleController.driverDir
                             input.onEditingFinished: CrucibleController.driverDir = input.text
                         }
@@ -199,6 +226,8 @@ Flickable {
                         visible: advanced.open
                         label: qsTr("Silent device")
                         Field {
+                            objectId: "silentDeviceInput"
+                            accessibleName: qsTr("Silent device")
                             text: CrucibleController.nullSinkName
                             input.onEditingFinished: CrucibleController.nullSinkName = input.text
                         }
@@ -217,11 +246,12 @@ Flickable {
                     spacing: Theme.space2
                     Rectangle {
                         Layout.fillWidth: true
-                        implicitHeight: 30
+                        implicitHeight: Math.max(30, keyPathText.implicitHeight + 10)
                         color: Theme.neutral100
                         border.color: Theme.divider
                         border.width: 1
                         Text {
+                            id: keyPathText
                             anchors.fill: parent
                             anchors.leftMargin: 10
                             anchors.rightMargin: 10
@@ -229,7 +259,7 @@ Flickable {
                             text: CrucibleController.keyPath.length ? CrucibleController.keyPath : qsTr("no key file chosen")
                             color: CrucibleController.keyPath.length ? Theme.text : Theme.textMuted
                             font.family: Theme.monoFamily
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             elide: Text.ElideMiddle
                         }
                     }
@@ -239,7 +269,7 @@ Flickable {
                 RowLayout {
                     spacing: Theme.space2
                     Rectangle { width: 8; height: 8; color: CrucibleController.objectsEnabled ? Theme.accent : Theme.neutral500 }
-                    Text { Layout.fillWidth: true; text: CrucibleController.signingStatus; color: Theme.text; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                    Text { Layout.fillWidth: true; text: CrucibleController.signingStatus; color: Theme.text; font.pixelSize: Theme.fontBody; wrapMode: Text.WordWrap }
                 }
                 Note { text: qsTr("An unsigned object container would be refused outright by a validating decoder, so without a key no objects are sent.") }
                 Note { text: qsTr("With no file chosen here, the environment is honoured: AC3FORGE_SIGNING_KEY_FILE names a key file and AC3FORGE_SIGNING_KEY carries the key itself.") }
@@ -274,8 +304,12 @@ Flickable {
                     label: qsTr("Bitrate")
                     ComboBox {
                         id: bitrateBox
+                        objectName: "bitrateBox"
+                        // The row's label is a separate Text beside it, which
+                        // a reader has no way to tie to this control.
+                        Accessible.name: qsTr("Bitrate")
                         implicitWidth: 150
-                        implicitHeight: 30
+                        implicitHeight: Math.max(30, bitrateText.implicitHeight + 10)
                         model: [
                             { label: qsTr("automatic"), value: 0 }, { label: qsTr("256 kb/s"), value: 256 }, { label: qsTr("384 kb/s"), value: 384 },
                             { label: qsTr("448 kb/s"), value: 448 }, { label: qsTr("640 kb/s"), value: 640 }, { label: qsTr("1024 kb/s"), value: 1024 },
@@ -287,16 +321,16 @@ Flickable {
                         onModelChanged: sync()
                         onActivated: CrucibleController.bitrate = currentValue
                         Connections { target: CrucibleController; function onSettingsChanged() { bitrateBox.sync(); } }
-                        font.pixelSize: 12
-                        background: Rectangle { color: Theme.neutral100; border.color: Theme.divider; border.width: 1 }
-                        contentItem: Text { leftPadding: 10; text: bitrateBox.displayText; color: Theme.text; font.family: Theme.monoFamily; font.pixelSize: 12; verticalAlignment: Text.AlignVCenter }
-                        indicator: Text { x: bitrateBox.width - 22; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: 14 }
+                        font.pixelSize: Theme.fontSmall
+                        background: Rectangle { color: Theme.neutral100; border.color: bitrateBox.activeFocus ? Theme.focusRing : Theme.divider; border.width: 1 }
+                        contentItem: Text { id: bitrateText; leftPadding: 10; text: bitrateBox.displayText; color: Theme.text; font.family: Theme.monoFamily; font.pixelSize: Theme.fontSmall; verticalAlignment: Text.AlignVCenter }
+                        indicator: Text { x: bitrateBox.width - 22; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: Theme.fontNormal }
                         popup.background: Rectangle { color: Theme.surface; border.color: Theme.divider; border.width: 1 }
                         delegate: ItemDelegate {
                             required property var modelData
                             required property int index
                             width: bitrateBox.width
-                            contentItem: Text { text: modelData.label; color: Theme.text; font.family: Theme.monoFamily; font.pixelSize: 12 }
+                            contentItem: Text { text: modelData.label; color: Theme.text; font.family: Theme.monoFamily; font.pixelSize: Theme.fontSmall }
                             background: Rectangle { color: highlighted ? Theme.neutral200 : "transparent" }
                             highlighted: bitrateBox.highlightedIndex === index
                         }
@@ -332,8 +366,10 @@ Flickable {
                     label: qsTr("Language")
                     ComboBox {
                         id: languageBox
+                        objectName: "languageBox"
+                        Accessible.name: qsTr("Language")
                         implicitWidth: 240
-                        implicitHeight: 30
+                        implicitHeight: Math.max(30, languageText.implicitHeight + 10)
                         // "System" first, then every language the app ships.
                         model: [{ code: "", name: qsTr("System") }].concat(LanguageManager.availableLanguages())
                         textRole: "name"
@@ -346,21 +382,33 @@ Flickable {
                         onModelChanged: sync()
                         Connections { target: LanguageManager; function onCurrentLanguageChanged() { languageBox.sync(); } }
                         onActivated: currentValue === "" ? LanguageManager.useSystemLanguage() : LanguageManager.setLanguage(currentValue)
-                        font.pixelSize: 13
-                        background: Rectangle { color: Theme.neutral100; border.color: Theme.divider; border.width: 1 }
-                        contentItem: Text { leftPadding: 10; text: languageBox.displayText; color: Theme.text; font.pixelSize: 13; verticalAlignment: Text.AlignVCenter }
-                        indicator: Text { x: languageBox.width - 22; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: 14 }
+                        font.pixelSize: Theme.fontBody
+                        background: Rectangle { color: Theme.neutral100; border.color: languageBox.activeFocus ? Theme.focusRing : Theme.divider; border.width: 1 }
+                        contentItem: Text { id: languageText; leftPadding: 10; text: languageBox.displayText; color: Theme.text; font.pixelSize: Theme.fontBody; verticalAlignment: Text.AlignVCenter }
+                        indicator: Text { x: languageBox.width - 22; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: Theme.fontNormal }
                         popup.background: Rectangle { color: Theme.surface; border.color: Theme.divider; border.width: 1 }
                         delegate: ItemDelegate {
                             required property var modelData
                             required property int index
                             width: languageBox.width
-                            contentItem: Text { text: modelData.name; color: Theme.text; font.pixelSize: 13 }
+                            contentItem: Text { text: modelData.name; color: Theme.text; font.pixelSize: Theme.fontBody }
                             background: Rectangle { color: highlighted ? Theme.neutral200 : "transparent" }
                             highlighted: languageBox.highlightedIndex === index
                         }
                     }
                     Note { text: qsTr("System follows Windows; the translations are mechanical for now") }
+                }
+                SettingRow {
+                    label: qsTr("Text size")
+                    SegmentedControl {
+                        objectName: "textSizeChoice"
+                        model: [{ label: qsTr("System"), value: "system" }, { label: "100%", value: "100" },
+                                { label: "125%", value: "125" }, { label: "150%", value: "150" }, { label: "175%", value: "175" }]
+                        currentValue: CrucibleController.textScale
+                        accessibleName: qsTr("Text size")
+                        onSelected: function(value) { CrucibleController.textScale = value; }
+                    }
+                    Note { text: qsTr("Every size in the window follows this. System takes the size the desktop's own text setting reports, which is how a larger-text setting outside this application reaches it.") }
                 }
                 SettingRow {
                     label: qsTr("3D layout")

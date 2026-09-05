@@ -14,8 +14,32 @@ Rectangle {
     id: root
     required property var app
     signal clicked()
-    implicitHeight: 34
+    // The keyboard's drag: the page places it in the centre of the room.
+    signal place()
+    objectName: "chip-" + root.app.app
+    implicitHeight: Math.max(34, row.implicitHeight + 10)
     implicitWidth: row.implicitWidth + 14
+    Accessible.role: Accessible.Button
+    Accessible.name: qsTr("%1, in the bed").arg(root.app.name)
+    Accessible.description: root.app.fullscreen
+        ? qsTr("full-screen: stays in the bed")
+        : qsTr("Enter places it in the centre of the room")
+    Accessible.focusable: !root.app.fullscreen
+    Accessible.onPressAction: root.place()
+
+    // A full-screen application cannot leave the bed, so its chip is not a
+    // tab stop: Tab walks what can be acted on.
+    activeFocusOnTab: !root.app.fullscreen
+    Keys.onPressed: function(event) {
+        if (root.app.fullscreen) {
+            return;
+        }
+        if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            root.clicked();
+            root.place();
+            event.accepted = true;
+        }
+    }
     color: Theme.surface
     border.color: Theme.divider
     border.width: 1
@@ -33,7 +57,7 @@ Rectangle {
         anchors.centerIn: parent
         spacing: Theme.space2
         AppIcon { name: root.app.name; imagePath: root.app.imagePath; iconName: root.app.iconName; appId: root.app.appId; size: 24; fill: root.app.active ? Theme.neutral600 : Theme.neutral500; dimmed: root.app.silent }
-        Text { text: root.app.name; color: root.app.silent ? Theme.textMuted : Theme.text; font.pixelSize: 13; elide: Text.ElideRight; Layout.maximumWidth: 160 }
+        Text { text: root.app.name; color: root.app.silent ? Theme.textMuted : Theme.text; font.pixelSize: Theme.fontBody; elide: Text.ElideRight; Layout.maximumWidth: 160 }
         Canvas {
             visible: root.app.fullscreen
             width: 12; height: 12
@@ -59,7 +83,9 @@ Rectangle {
         cursorShape: root.app.fullscreen ? Qt.ArrowCursor : Qt.OpenHandCursor
         preventStealing: true
         onPressed: { root.homeX = root.x; root.homeY = root.y; }
-        onClicked: root.clicked()
+        // A chip IS where a keyboard session continues from - Enter on it
+        // places the application - so a click on one takes focus.
+        onClicked: { root.forceActiveFocus(); root.clicked(); }
         onReleased: {
             if (root.Drag.active) {
                 root.Drag.drop();
@@ -68,4 +94,5 @@ Rectangle {
             root.y = root.homeY;
         }
     }
+    FocusRing {}
 }

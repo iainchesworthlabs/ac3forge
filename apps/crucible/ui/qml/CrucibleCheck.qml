@@ -19,7 +19,19 @@ Item {
     Accessible.role: Accessible.CheckBox
     Accessible.name: root.text
     Accessible.checked: root.checked
+    Accessible.focusable: root.enabled
     Accessible.onPressAction: if (root.enabled) root.toggled(!root.checked)
+
+    activeFocusOnTab: root.enabled
+    Keys.onPressed: function(event) {
+        if (!root.enabled) {
+            return;
+        }
+        if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            root.toggled(!root.checked);
+            event.accepted = true;
+        }
+    }
 
     ColumnLayout {
         id: column
@@ -50,6 +62,10 @@ Item {
                     }
                     Connections { target: Theme; function onBgChanged() { tick.requestPaint(); } }
                 }
+                // Around the box rather than the whole row: the box is what
+                // the key presses, and a ring around three lines of note
+                // text would say the note had focus.
+                FocusRing { active: root.activeFocus }
             }
             Text { text: root.text; color: Theme.text; font.pixelSize: Theme.fontNormal }
         }

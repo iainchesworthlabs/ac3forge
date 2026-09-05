@@ -1404,7 +1404,7 @@ jobs:
           # .deb's shlibdeps,
           # and distro Qt for the window and its Qt Quick tests - the same
           # apt Qt the GUI leg above uses (cmake/FindQt6.cmake, never vcpkg).
-          # apps/crucible/CMakeLists.txt asks for Qt 6.5; the fleet's
+          # apps/crucible/CMakeLists.txt asks for Qt 6.8; the fleet's
           # Ubuntu 26.04 image carries 6.10, and the check below says what
           # happens on a runner that carries less. The qml6-module-* lines
           # are the runtime modules the window's imports resolve to
@@ -1464,8 +1464,8 @@ jobs:
           # present, a missing window is a failure like any other.
           QT_VER="$(qmake6 -query QT_VERSION 2>/dev/null || echo 0)"
           if grep -q 'Qt6 not found' /tmp/crucible-configure.log; then
-            if dpkg --compare-versions "$QT_VER" lt 6.5; then
-              echo "::warning::Crucible window skipped on this runner: Qt $QT_VER is below the 6.5 apps/crucible/CMakeLists.txt needs. The engine and runner were built; the window, its tests and its package were not exercised here."
+            if dpkg --compare-versions "$QT_VER" lt 6.8; then
+              echo "::warning::Crucible window skipped on this runner: Qt $QT_VER is below the 6.8 apps/crucible/CMakeLists.txt needs (Accessible.announce, which the window uses to tell a screen reader what changed, is 6.8). The engine and runner were built; the window, its tests and its package were not exercised here."
               exit 0
             fi
             echo "::error::the Crucible window was not configured although Qt $QT_VER is present: see the configure log above"

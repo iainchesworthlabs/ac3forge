@@ -11,7 +11,9 @@ Rectangle {
     property bool enabled: true
     signal clicked()
 
-    implicitHeight: 30
+    // The mockup's 30, and taller when the text is larger, rather than a
+    // label clipped inside a fixed box.
+    implicitHeight: Math.max(30, label.implicitHeight + 12)
     implicitWidth: label.implicitWidth + 24
     color: primary ? Theme.accent : "transparent"
     border.color: Theme.divider
@@ -19,7 +21,22 @@ Rectangle {
     opacity: enabled ? 1.0 : 0.45
     Accessible.role: Accessible.Button
     Accessible.name: root.text
+    Accessible.focusable: root.enabled
     Accessible.onPressAction: if (root.enabled) root.clicked()
+
+    // A tab stop while it can be pressed, and Space or Return presses it -
+    // the two keys every desktop uses on a button. A disabled button is
+    // skipped by Tab and ignores both.
+    activeFocusOnTab: root.enabled
+    Keys.onPressed: function(event) {
+        if (!root.enabled) {
+            return;
+        }
+        if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            root.clicked();
+            event.accepted = true;
+        }
+    }
 
     Text {
         id: label
@@ -30,13 +47,18 @@ Rectangle {
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
         text: root.text
-        color: root.primary ? Theme.bg : Theme.text
-        font.pixelSize: 13
+        // On an accent fill, whichever end of the palette reads better on
+        // it (Theme.accentText); plain text otherwise.
+        color: root.primary ? Theme.accentText : Theme.text
+        font.pixelSize: Theme.fontBody
     }
     MouseArea {
         anchors.fill: parent
         enabled: root.enabled
         cursorShape: Qt.PointingHandCursor
+        // No forceActiveFocus here on purpose: a click on a button leaves
+        // the keyboard where it was, so a mouse user never sees a ring.
         onClicked: root.clicked()
     }
+    FocusRing {}
 }

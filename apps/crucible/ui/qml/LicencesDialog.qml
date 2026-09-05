@@ -33,7 +33,7 @@ Dialog {
         Accessible.name: qsTr("Third-party licences")
         Text {
             text: qsTr("THIRD-PARTY LICENCES")
-            font.pixelSize: 10
+            font.pixelSize: Theme.fontMicro
             font.letterSpacing: 1.2
             color: Theme.textMuted
         }
@@ -48,7 +48,7 @@ Dialog {
                 wrapMode: TextEdit.Wrap
                 textFormat: TextEdit.PlainText
                 font.family: Theme.monoFamily
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontMono
                 color: Theme.text
                 background: null
                 text: CrucibleController.licenceNotices

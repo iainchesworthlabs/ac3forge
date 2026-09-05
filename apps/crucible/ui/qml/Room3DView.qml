@@ -92,18 +92,29 @@ Item {
         text: root.caption + " · " + root.layout
         color: Theme.textMuted
         font.family: Theme.monoFamily
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         font.letterSpacing: 0.6
     }
     Text {
         anchors.right: parent.right
-        text: qsTr("drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom")
+        text: qsTr("drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom · arrow keys move the selected application")
         color: Theme.textMuted
         font.family: Theme.monoFamily
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         elide: Text.ElideLeft
         width: Math.max(0, parent.width - heading.implicitWidth - 12)
         horizontalAlignment: Text.AlignRight
+    }
+    // How many are in the room, for a reader: the cards themselves are 3D
+    // models, which no accessibility bridge can reach, so the picture says
+    // what it holds and the applications list and the room's keys are where
+    // one is chosen and moved.
+    readonly property int placedCount: {
+        let count = 0;
+        for (let i = 0; i < root.apps.length; ++i) {
+            if (root.apps[i].slot >= 0) ++count;
+        }
+        return count;
     }
     Rectangle {
         id: frame
@@ -115,6 +126,9 @@ Item {
         color: Theme.neutral100
         border.color: Theme.divider
         border.width: 1
+        Accessible.role: Accessible.Grouping
+        Accessible.name: root.caption + ", " + root.layout
+        Accessible.description: qsTr("%1 placed. Choose an application in the applications list and use the arrow keys to move it; the picture follows.").arg(root.placedCount)
         View3D {
             id: view
             anchors.fill: parent
@@ -360,6 +374,11 @@ Item {
                                 text: labelNode.hovered ? modelData.name + " · " + modelData.full : modelData.name
                                 color: modelData.z > 0 ? Theme.accent700 : Theme.text
                                 font.family: Theme.monoFamily
+                                // Scene units, not screen pixels: this Text is
+                                // a face inside the 3D scene, sized against the
+                                // room's 400-unit width and drawn at whatever
+                                // the camera makes of it. The text-size setting
+                                // moves screen text; the room keeps its scale.
                                 font.pixelSize: 18
                             }
                         }
@@ -433,6 +452,8 @@ Item {
                                                     text: side === 0 ? "L" : "R"
                                                     color: Theme.text
                                                     font.family: Theme.monoFamily
+                                                    // Inside the card's 192-unit
+                                                    // texture: scene units again.
                                                     font.pixelSize: 34
                                                     font.bold: true
                                                 }
@@ -471,6 +492,7 @@ Item {
                             text: appNode.app.name
                             color: Theme.text
                             font.family: Theme.monoFamily
+                            // Scene units: a label floating above the card.
                             font.pixelSize: 20
                         }
                     }

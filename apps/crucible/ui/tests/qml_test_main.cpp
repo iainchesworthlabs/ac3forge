@@ -6,13 +6,25 @@
 #include <QQmlEngine>
 #include <QQuickStyle>
 #include <QSettings>
+#include <QString>
 #include <QTemporaryDir>
+#include <QVariant>
+#include <QVariantList>
+#include <QVariantMap>
 
+#include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "../../../gui/language_manager.hpp"
+#include "session_monitor.hpp"
+#include "virtual_device.hpp"
 #include "../app_icon_provider.hpp"
 #include "../crucible_controller.hpp"
+#include "fake_devices.hpp"
+#include "fake_services.hpp"
 
 // Qt Quick Test entry point for the AC3Forge Crucible's window: runs every
 // tst_*.qml under QUICK_TEST_SOURCE_DIR against the REAL CrucibleController the
@@ -34,6 +46,80 @@
 // Basic style is what ui/main.cpp sets; the offscreen platform (set on the
 // ctest entries) has no native theme to consult, and the QML customises
 // contentItems that a native style would refuse.
+
+// The machine, scripted: the five platform seams replaced by the same fakes
+// the engine's Catch2 cases use (tests/crucible/fake_services.hpp,
+// fake_devices.hpp), so a suite can say "there are two applications with
+// sound and one stereo endpoint" and then drive the real controller and the
+// real engine over that.
+//
+// A suite that never calls scriptSessions() sees the machine, exactly as
+// before: this changes nothing for the suites that were written against it.
+// One process per suite (one ctest entry each), so a scripted room in one
+// cannot reach another.
+class TestServices : public QObject {
+    Q_OBJECT
+
+public:
+    explicit TestServices(QQmlEngine& engine) : engine_(&engine) {}
+
+    // [{ app: 900, name: "Chrome", active: true }, ...]. False when the
+    // controller singleton cannot be reached, so a suite can skip rather
+    // than fail on a harness that did not register it.
+    Q_INVOKABLE bool scriptSessions(const QVariantList& apps) {
+        auto* controller = engine_->singletonInstance<CrucibleController*>(
+            QStringLiteral("Ac3ForgeCrucible"), QStringLiteral("CrucibleController"));
+        if (controller == nullptr) {
+            return false;
+        }
+        auto sessions = std::make_shared<ac3::crucible::testing::FakeSessionMonitor>();
+        std::vector<ac3::crucible::AppSession> listed;
+        listed.reserve(static_cast<std::size_t>(apps.size()));
+        for (const QVariant& entry : apps) {
+            const QVariantMap fields = entry.toMap();
+            ac3::crucible::AppSession session;
+            session.app = static_cast<ac3::crucible::AppId>(fields.value(QStringLiteral("app")).toUInt());
+            session.name = fields.value(QStringLiteral("name")).toString().toStdString();
+            session.active = fields.value(QStringLiteral("active"), true).toBool();
+            session.has_window = true;
+            session.has_session = true;
+            session.session_pids.push_back(session.app);
+            listed.push_back(std::move(session));
+        }
+        sessions->set_apps(std::move(listed));
+
+        // One real endpoint and one silent device, which is the least a
+        // start() needs to choose an output and open a sink.
+        auto devices = std::make_shared<ac3::crucible::testing::FakeDevices>();
+        devices->devices = {ac3::crucible::testing::realtek_default(),
+                            ac3::crucible::testing::null_sink()};
+
+        auto foreground = std::make_shared<ac3::crucible::testing::FakeForeground>();
+
+        auto default_device = std::make_shared<ac3::crucible::testing::FakeDefaultDevice>();
+        default_device->set_endpoints({{.id = "realtek", .name = "Speakers (Realtek)", .is_default = true},
+                                       {.id = "null", .name = "Speakers (Desktop Atmos)", .is_default = false}});
+
+        auto virtual_device = std::make_shared<ac3::crucible::testing::FakeVirtualDevice>();
+        virtual_device->set_device_name("Desktop Atmos");
+        virtual_device->set_state({.needed = true,
+                                   .present = true,
+                                   .in_use = false,
+                                   .can_install = false,
+                                   .blocker = {},
+                                   .detail = {}});
+
+        controller->set_test_services(std::move(sessions), std::move(devices), std::move(foreground),
+                                      std::move(default_device), std::move(virtual_device));
+        return true;
+    }
+
+private:
+    QQmlEngine* engine_ = nullptr;
+};
+
+// The isolation described above: settings, style, language and the icon
+// provider, plus the scripted machine registered for the suites that ask.
 class DeskIsolation : public QObject {
     Q_OBJECT
 
@@ -61,11 +147,16 @@ public slots:
         // AppIcon under test reaches the platform's provider (tst_icons.qml)
         // rather than Image.Error for every id. The engine owns it.
         engine->addImageProvider(QStringLiteral("appicon"), new ac3::crucible::ui::AppIconProvider);
+        // The scripted machine, under its own URI so nothing the window
+        // itself imports can reach it.
+        test_services_.emplace(*engine);
+        qmlRegisterSingletonInstance("Ac3ForgeCrucibleTest", 1, 0, "TestServices", &*test_services_);
     }
 
 private:
     std::optional<QTemporaryDir> scratch_;
     std::optional<LanguageManager> language_manager_;
+    std::optional<TestServices> test_services_;
 };
 
 QUICK_TEST_MAIN_WITH_SETUP(ac3crucible, DeskIsolation)

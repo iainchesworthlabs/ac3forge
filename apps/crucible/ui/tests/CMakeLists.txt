@@ -11,7 +11,7 @@
 # edited. Second, independent embedding of the Ac3ForgeCrucible module, not a
 # shared library, for the WHOLE_ARCHIVE reason the GUI gives.
 # ---------------------------------------------------------------------------
-find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
+find_package(Qt6 6.8 REQUIRED COMPONENTS QuickTest)
 
 qt_add_executable(ac3crucible_qmltests
     ui/tests/qml_test_main.cpp
@@ -49,8 +49,13 @@ qt6_add_resources(ac3crucible_qmltests "ac3crucible_qmltests_notices"
     BASE "${CMAKE_CURRENT_BINARY_DIR}/notices"
     FILES "${AC3CRUCIBLE_NOTICES_FILE}")
 
+# tests/crucible for the header-only fakes the scripted-machine singleton
+# builds (ui/tests/qml_test_main.cpp, TestServices): the same
+# FakeSessionMonitor/FakeDevices the engine's Catch2 cases use, so the two
+# suites cannot disagree about what a scripted machine is.
 target_include_directories(ac3crucible_qmltests PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/ui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui")
+    "${CMAKE_CURRENT_SOURCE_DIR}/ui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui"
+    "${CMAKE_SOURCE_DIR}/tests/crucible")
 target_compile_definitions(ac3crucible_qmltests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX
     AC3DESK_DRIVER_SOURCE_DIR="${CMAKE_SOURCE_DIR}/apps/windows/driver"
     AC3DESK_QUICK3D=${AC3DESK_QUICK3D}

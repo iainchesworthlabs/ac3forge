@@ -12,7 +12,9 @@
 #include <string>
 
 #include "app_entry.hpp"
+#include "audio_devices.hpp"
 #include "engine.hpp"
+#include "session_monitor.hpp"
 #include "default_device.hpp"
 #include <QStringList>
 
@@ -84,6 +86,12 @@ class CrucibleController : public QObject {
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY settingsChanged)
     Q_PROPERTY(QString palette READ palette WRITE setPalette NOTIFY settingsChanged)
     Q_PROPERTY(QString roomView READ roomView WRITE setRoomView NOTIFY settingsChanged)  // "2d" or "3d"
+    // How large the window's text is: "system" (the size the platform theme
+    // reports, which is how a desktop's own larger-text setting reaches this
+    // application) or a percentage - "100", "125", "150", "175". Main.qml
+    // turns it into Theme.fontScale, and every size in the window is a
+    // multiple of that (docs/crucible/accessibility.md).
+    Q_PROPERTY(QString textScale READ textScale WRITE setTextScale NOTIFY settingsChanged)
     Q_PROPERTY(bool keepRunningWhenClosed READ keepRunningWhenClosed WRITE setKeepRunningWhenClosed NOTIFY settingsChanged)
     // Background processes with audio sessions (no visible window, not a
     // packaged app) are hidden from the rail unless this is on.
@@ -206,6 +214,8 @@ public:
     void setPalette(const QString& palette);
     [[nodiscard]] QString roomView() const;
     void setRoomView(const QString& view);
+    [[nodiscard]] QString textScale() const;
+    void setTextScale(const QString& scale);
     [[nodiscard]] bool keepRunningWhenClosed() const;
     void setKeepRunningWhenClosed(bool on);
     [[nodiscard]] bool moveDefaultOnLaunch() const;
@@ -272,6 +282,12 @@ public:
     Q_INVOKABLE void restoreDefault();
     Q_INVOKABLE void openSoundSettings();
     Q_INVOKABLE void refreshDefault();
+    // One line into the diagnostics ring, from the window. The shell's
+    // announcer calls it for every state change it reads out, so a
+    // diagnostics file carries what the window SAID as well as what the
+    // engine did, and the two can be lined up (Main.qml, "what the window
+    // says out loud").
+    Q_INVOKABLE void note(const QString& line);
 
     // The diagnostics file: the report as text, composed from named facts
     // and never from the signing key, its path or an environment value
@@ -282,6 +298,19 @@ public:
     Q_INVOKABLE QString diagnosticsReport() const;
     Q_INVOKABLE QString suggestedDiagnosticsFile() const;
     Q_INVOKABLE bool exportDiagnostics(const QString& fileUrl);
+
+    // The five platform seams, replaced wholesale. For the Qt Quick harness
+    // alone (ui/tests/qml_test_main.cpp), which scripts a room so the
+    // keyboard suites can drive a real controller and a real engine over
+    // fake sessions and devices instead of skipping on a machine with no
+    // audio session. Deliberately neither Q_INVOKABLE nor a property:
+    // nothing in QML and nothing in the shipped window can reach it. A null
+    // argument leaves that seam as the platform's own.
+    void set_test_services(std::shared_ptr<ac3::crucible::SessionMonitor> sessions,
+                           std::shared_ptr<ac3::crucible::AudioDevices> devices,
+                           std::shared_ptr<ac3::crucible::Foreground> foreground,
+                           std::shared_ptr<ac3::crucible::DefaultDevice> default_device,
+                           std::shared_ptr<ac3::crucible::VirtualDevice> virtual_device);
 
 signals:
     void stateChanged();
@@ -352,4 +381,10 @@ private:
     ac3::crucible::DiagnosticLog& log_;
     std::shared_ptr<ac3::crucible::Foreground> foreground_;
     QString diagnostics_message_;
+
+    // Set only by set_test_services(); null in the shipped window, which is
+    // what makes engine_config() ask the platform for each of them.
+    std::shared_ptr<ac3::crucible::SessionMonitor> test_sessions_;
+    std::shared_ptr<ac3::crucible::AudioDevices> test_devices_;
+    std::shared_ptr<ac3::crucible::Foreground> test_foreground_;
 };
