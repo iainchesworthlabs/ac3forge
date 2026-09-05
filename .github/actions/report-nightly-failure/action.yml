@@ -1,0 +1,60 @@
+name: Report nightly analysis failure
+description: >-
+  Open the `nightly-analysis` issue for one analysis engine, or append a
+  comment to the one already open, linking the failing run. One issue per
+  engine for as long as it stays open; the owner closes it once the findings
+  are fixed or dismissed. Shared by the nightly analysis workflows
+  (codeql.yml, msvc-analysis.yml) so every engine turns a job failure into
+  the same triage surface. GitHub sends no notification for a new
+  code-scanning alert on the default branch, and a schedule run's failure
+  email goes only to whoever last edited the cron line, so an issue is what
+  makes a nightly finding visible the next morning. Needs `issues: write` on
+  the calling job.
+
+inputs:
+  engine:
+    description: >-
+      Which engine failed, as it should read in the issue title - CodeQL,
+      PREfast, clang-tidy, SonarCloud.
+    required: true
+  detail:
+    description: >-
+      One line of context for the issue body: what a failure of this workflow
+      means and where to look.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      # Every input read through env:, not interpolated straight into the
+      # script text - same reasoning decide-runner's action.yml gives: a
+      # value substituted directly into a run: block is shell CODE, not data
+      # (zizmor: template-injection).
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        ENGINE: ${{ inputs.engine }}
+        DETAIL: ${{ inputs.detail }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+        title="Nightly analysis: ${ENGINE} reported findings"
+        body="$(printf '%s\n\nRun: %s\nCommit: %s\n\nOpened automatically by the nightly analysis workflow. Close it once the findings are fixed, dismissed in Security > Code scanning with a justification, or suppressed in the analyzer configuration.' "${DETAIL}" "${RUN_URL}" "${SHA}")"
+
+        # --force makes this idempotent: an existing label is updated in
+        # place instead of failing the step.
+        gh label create nightly-analysis --color D93F0B --description "Opened by the nightly analysis workflows" --force >/dev/null
+
+        # Exact title match over the open issues carrying the label. An
+        # empty list gives an empty string, not an error, so a first failure
+        # falls through to `gh issue create`.
+        existing="$(gh issue list --label nightly-analysis --state open --limit 100 --json number,title \
+          --jq "[.[] | select(.title == \"${title}\")][0].number // empty")"
+        if [ -n "${existing}" ]; then
+          gh issue comment "${existing}" --body "${body}"
+          echo "Appended to open issue #${existing}."
+        else
+          gh issue create --title "${title}" --label nightly-analysis --body "${body}"
+        fi

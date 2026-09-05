@@ -1,55 +1,44 @@
-# Windows/MSVC static analysis (/analyze), complementing codeql.yml's Linux
-# GCC-based CodeQL scan. CodeQL here only ever builds the Linux/GCC leg (see
-# codeql.yml's header) - it never sees the windows-msvc build at all, and
-# this repo genuinely ships that leg with the GUI on by default (see
-# CMakePresets.json's windows-msvc preset). A defect /analyze catches that
-# gcc-based CodeQL cannot - SEH, ATL/COM misuse, and other MSVC-specific
-# patterns - would otherwise go unseen. Modelled on aqualink-automate's
-# CodeScanning_MSVCCodeAnalysis job in automated-codescanning.yml.
+# Windows/MSVC static analysis (/analyze) over the windows-msvc build, run
+# nightly against main - the Windows counterpart of codeql.yml's Linux
+# GCC-based CodeQL scan. CodeQL only ever builds the Linux/GCC leg (see
+# codeql.yml's header) and never sees the windows-msvc build, which ships
+# with the GUI on by default (CMakePresets.json's windows-msvc preset); the
+# defects /analyze catches that gcc-based CodeQL cannot - SEH, ATL/COM
+# misuse, other MSVC-specific patterns - would otherwise go unseen. Modelled
+# on aqualink-automate's CodeScanning_MSVCCodeAnalysis job in
+# automated-codescanning.yml.
+#
+# Trigger: one schedule at 02:23 UTC, plus workflow_dispatch. No push,
+# pull_request or merge_group trigger: code-analysis engines in this repo run
+# once a night on refs/heads/main (the ref that refreshes main's
+# Security > Code scanning baseline), and nothing gates on this workflow. A
+# run holds a self-hosted Windows slot for about 35 minutes when the fleet is
+# online; per PR and again per merge-queue entry, that made it the largest
+# single consumer of the Windows pool, which is why it moved off the PR path.
+# docs/ci-self-hosted-runners.md "Nightly analysis window" has the cron table
+# this slot sits in.
+#
+# Surfacing: upload-sarif does not fail on findings and GitHub sends no
+# notification for a new alert on the default branch, so the `surface` job
+# at the bottom queries the code-scanning API for PREfast alerts created
+# since the previous nightly and, on any (or on an analysis failure), opens
+# or refreshes the `nightly-analysis` issue through
+# .github/actions/report-nightly-failure.
 name: MSVC Code Analysis
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "LICENSE"
-      - "mkdocs.yml"
-      - "requirements/requirements-docs.in"
-      - "requirements/requirements-docs.txt"
-      - ".github/workflows/docs.yml"
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "LICENSE"
-      - "mkdocs.yml"
-      - "requirements/requirements-docs.in"
-      - "requirements/requirements-docs.txt"
-      - ".github/workflows/docs.yml"
-  # main's merge queue tests each queue entry on a temporary
-  # gh-readonly-queue/... ref before it merges (see ci.yml's own
-  # merge_group comment) - GitHub only runs workflows that explicitly opt
-  # into this event on that ref. Without it, PREfast never analyzes the
-  # queue's synthetic commit, so the code-scanning-gate-main ruleset (which
-  # requires a PREfast result for whatever commit reaches main) can never
-  # be satisfied for any PR going through the queue - confirmed the hard
-  # way: every queued PR sitting indefinitely on "Code scanning is waiting
-  # for results from PREfast," never resolving, regardless of how green
-  # everything else was.
-  merge_group:
-    branches: [ main ]
   schedule:
-    # Weekly, offset from the CodeQL cron (Mon 03:17) to avoid runner
-    # contention at the same minute.
-    - cron: "23 3 * * 1"
+    # Nightly, six minutes after codeql.yml's cron so the two deciders and
+    # toolchain-versions calls do not land on the control-plane runner in the
+    # same minute. See docs/ci-self-hosted-runners.md "Nightly analysis window".
+    - cron: "23 2 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: msvc-analysis-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  # One nightly at a time; a manual dispatch queues behind a running nightly
+  # rather than cancelling it (an analysis that never finishes uploads nothing).
+  group: msvc-analysis-nightly
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -69,7 +58,8 @@ jobs:
   # (see docs/ci-self-hosted-runners.md), via the shared decide-runner
   # composite action rather than _build.yml's own check-runners job - this
   # workflow is triggered independently of ci.yml/_build.yml, so it has no
-  # access to that job's outputs.
+  # access to that job's outputs. At 02:23 the Windows fleet is normally
+  # idle, so `auto` lands on self-hosted whenever a runner is online.
   check-runner:
     name: Check self-hosted runner availability
     runs-on: ubuntu-latest
@@ -93,11 +83,19 @@ jobs:
   analyze:
     name: MSVC Code Analysis
     needs: [toolchain-versions, check-runner]
-    # Belt-and-braces, same as _build.yml's build job: check-runner's own
-    # fork-PR branch already forces windows-latest for a fork PR, so this
-    # only matters if a gap ever opened up in that logic.
+    # Always true on schedule and workflow_dispatch, the only triggers today.
+    # Kept for the day a filtered pull_request trigger comes back for
+    # external-contributor PRs: it is the belt-and-braces line (same as
+    # _build.yml's build job) that keeps a fork's code off a self-hosted
+    # runner even if check-runner's own fork-PR branch ever developed a gap.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+    # 35.1 min median / 36.1 max measured on the fleet (2026-09-04); there
+    # was no bound before. A hung run would otherwise hold a Windows fleet
+    # slot into aqualink-automate's 04:00 window. Unmeasured on
+    # windows-latest (the fallback when no Windows runner is online) - raise
+    # this if a hosted run trips it.
+    timeout-minutes: 90
     permissions:
       actions: read
       contents: read
@@ -150,7 +148,66 @@ jobs:
           ruleset: .github/msvc-analysis.ruleset
           ignoredPaths: ${{ github.workspace }}/tests
 
+      # No explicit category: the SARIF's own tool name (PREfast) is what the
+      # alert history is keyed by, and it has been since the first upload.
       - name: Upload SARIF to GitHub
         uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           sarif_file: ${{ steps.run-analysis.outputs.sarif }}
+
+  # Same shape as codeql.yml's surface job, for the PREfast tool name:
+  # upload-sarif never fails on findings and GitHub does not notify on new
+  # default-branch alerts, so this job asks the code-scanning API for PREfast
+  # alerts on refs/heads/main created inside the last nightly window and
+  # fails if there are any; that failure, or analyze failing, is handed to
+  # the shared report-nightly-failure action, which opens (or comments on)
+  # one `nightly-analysis` issue for this engine. `always()` so an analyze
+  # failure is reported rather than skipped past. upload-sarif keeps its
+  # default wait-for-processing: true, so the alerts exist by the time this
+  # runs. Pinned to ubuntu-latest like this file's check-runner: it needs
+  # gh and GNU date, nothing from the fleet.
+  surface:
+    name: Surface findings
+    needs: analyze
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: read
+      issues: write
+    env:
+      TOOL: PREfast
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fail on code-scanning alerts created since the last nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Nightly cadence plus an hour of slack for a late-starting run.
+          WINDOW_HOURS: "25"
+        shell: bash
+        run: |
+          set -euo pipefail
+          since="$(date -u -d "-${WINDOW_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"
+          # The alerts endpoint has no created-since filter: ask for the
+          # newest first and filter client-side. One page of 100 bounds the
+          # call; more than 100 new alerts in one night would be truncated,
+          # which is acceptable for a "did anything new appear" signal.
+          gh api "repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&ref=refs/heads/main&tool_name=${TOOL}&sort=created&direction=desc&per_page=100" \
+            --jq ".[] | select(.created_at > \"${since}\") | \"\\(.number)\\t\\(.rule.id)\\t\\(.most_recent_instance.location.path):\\(.most_recent_instance.location.start_line)\\t\\(.html_url)\"" \
+            > new-alerts.tsv
+          count="$(wc -l < new-alerts.tsv | tr -d '[:space:]')"
+          if [ "${count}" -gt 0 ]; then
+            echo "::error::${count} new ${TOOL} alert(s) on main since ${since}:"
+            cat new-alerts.tsv
+            exit 1
+          fi
+          echo "No new ${TOOL} alerts on main since ${since}."
+
+      - uses: ./.github/actions/report-nightly-failure
+        if: failure() || needs.analyze.result != 'success'
+        with:
+          engine: ${{ env.TOOL }}
+          detail: "New PREfast alerts on main since the previous nightly, or the analysis itself failed. See the run log, then Security > Code scanning filtered to refs/heads/main and tool PREfast."

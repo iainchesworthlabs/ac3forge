@@ -38,7 +38,9 @@ on the repo. Configure a protection rule (or ruleset) for `main` with:
   `paths-ignore`s `docs/**`/`**/*.md`, so on a docs-only PR the required
   context never reported and the PR sat green-but-BLOCKED forever (the
   code-scanning ruleset section below records the fuller version of the same
-  trap). "Require branches to be up to date" is off: the merge queue below
+  trap). Since 2026-09 `codeql.yml` has no PR trigger at all - see
+  [Nightly analysis and other visible-only scanners](#nightly-analysis-and-other-visible-only-scanners)
+  below. "Require branches to be up to date" is off: the merge queue below
   makes each entry up to date server-side, without the rebase treadmill that
   setting used to cause.
 - **Require conversation resolution before merging**
@@ -64,14 +66,11 @@ ruleset edit, and the list above is deliberately unchanged:
   informational, carries `continue-on-error`, and is deliberately absent from
   `CI Status`'s `needs`; requiring it would turn hosted-runner timing noise
   into a merge blocker.
-- `codeql.yml` became a language matrix, but its C++ leg is still named
-  `Analyze (C++)` exactly - the job's `name:` interpolates a `display` value
-  chosen for that reason, since a rename would leave the required check above
-  pending forever. The two new legs report as `Analyze (Python)` and
-  `Analyze (JavaScript)`; adding them as required checks is optional, and
-  matches how the existing CodeQL leg is treated. (Historical since
-  2026-08-31 - no CodeQL leg is a required check any more, see above - but
-  the stable-`name:` practice is still worth keeping for `CI Status` itself.)
+- `codeql.yml` is nightly-only since 2026-09 and no check-name constraint
+  remains on it (its legs never report on a PR). Keep `CI Status`'s own
+  `name:` stable - that rendered string is what the required check above is
+  selected by, and renaming it leaves every PR pending until an admin edits
+  the rule.
 - `Python coverage` (`wheels.yml`) is a new check on a workflow that has no
   required checks today; leaving it that way is consistent with `Build wheels`.
 
@@ -94,14 +93,18 @@ up-to-date state automatically, then merges when green - no manual rebase-and-re
 
 Configured `merge_queue` rule parameters: `merge_method: MERGE` (matches
 this repo's real-merge-commit convention, not squash), `grouping_strategy:
-ALLGREEN`, `max_entries_to_build: 2` (deliberately low - self-hosted
-capacity is 3 Linux/2 Windows runners shared org-wide, see
-`docs/ci-self-hosted-runners.md`, and GitHub-hosted concurrency is capped at
-20 jobs account-wide on this org's Free plan; building more queue entries at
-once than that can bear just adds to the same backlog it's meant to
-relieve), `max_entries_to_merge: 5`, `min_entries_to_merge: 1`,
-`min_entries_to_merge_wait_minutes: 5`. Re-tune `max_entries_to_build` up if
-the self-hosted fleet grows or the account moves off the Free tier.
+ALLGREEN`, `max_entries_to_build: 4` (raised from 2 on 2026-08-28 when the
+self-hosted fleet grew to 13 Linux / 7 Windows runners shared org-wide, see
+`docs/ci-self-hosted-runners.md`; GitHub-hosted concurrency is still capped
+at 20 jobs account-wide on this org's Free plan, and building more queue
+entries at once than the two pools can bear just adds to the same backlog
+the queue is meant to relieve), `max_entries_to_merge: 5`,
+`min_entries_to_merge: 1`, `min_entries_to_merge_wait_minutes: 5`,
+`check_response_timeout_minutes: 180` (raised from 60 on the same date: a
+queue entry's matrix legs can wait more than an hour for a fleet slot under
+load, and the default timed entries out before their checks reported). Re-tune
+`max_entries_to_build` if the fleet changes size or the account moves off
+the Free tier.
 
 **The queue alone does not fix a genuinely oversubscribed account.** On
 2026-08-24, ~30 topic branches were open and pushing at once; even with only
@@ -119,40 +122,57 @@ also trigger on the `merge_group` event**, not just `push`/`pull_request` -
 GitHub only runs workflows that opt into `merge_group` on the queue's
 temporary `gh-readonly-queue/main/...` ref, so a workflow missing that
 trigger never reports its check there and every queue entry sits until
-`check_response_timeout_minutes` expires. `ci.yml`, `codeql.yml`, and
-`dependency-review.yml` all carry it (see each workflow's own `merge_group`
+`check_response_timeout_minutes` expires. `ci.yml` and
+`dependency-review.yml` carry it (see each workflow's own `merge_group`
 comment) - add it to anything else that later becomes a required check on
-`main`.
+`main`. The converse also holds: a workflow that produces no required check
+must NOT carry `merge_group`, or every queue entry burns a run of it for
+nothing - which is why `codeql.yml` and `msvc-analysis.yml` lost theirs in
+2026-09.
 
-## Code-scanning gate (ruleset, currently disabled)
+## Code-scanning gate (ruleset, deleted)
 
 A repository ruleset `code-scanning-gate-main` (`target: branch`,
 `refs/heads/main`, one `code_scanning` rule: PREfast at
 `errors_and_warnings`, CodeQL at `errors` alerts / `high_or_higher` security
-alerts) was created 2026-08-24 to block merges on new scanner findings. It
-was **disabled** on 2026-08-31 - enforcement only; the rule configuration is
-intact for re-enabling. Why: a `code_scanning` rule waits for every analysis
-category the target branch has previously seen, and `main` carries four
-CodeQL categories - `cpp`, `python`, `javascript-typescript` and
-`java-kotlin` - of which the last is produced only by `_build.yml`'s
-`build-android` job, which `ci.yml` gates behind
-`changes.outputs.code == 'true'`; `codeql.yml` and `msvc-analysis.yml` also
-`paths-ignore` docs. A docs-only PR therefore could never satisfy the rule
-and sat un-mergeable forever: no docs-only PR merged between the ruleset's
-creation and its disabling. Re-enabling is one field
-(`enforcement: active`) - but only do it once every expected category is
-produced on every PR, `java-kotlin` included, or the same trap returns
-immediately.
+alerts) was created 2026-08-24 to block merges on new scanner findings,
+**disabled** on 2026-08-31 and **deleted** by the owner in 2026-09 when the
+analysis workflows moved to a nightly schedule. Why it was disabled: a
+`code_scanning` rule waits for every analysis category the target branch has
+previously seen, and `main` carries four CodeQL categories - `cpp`,
+`python`, `javascript-typescript` and `java-kotlin` - of which the last is
+produced only by `_build.yml`'s `build-android` job, which `ci.yml` gates
+behind `changes.outputs.code == 'true'`; `codeql.yml` and
+`msvc-analysis.yml` also `paths-ignore`d docs at the time. A docs-only PR
+therefore could never satisfy the rule and sat un-mergeable forever: no
+docs-only PR merged between the ruleset's creation and its disabling.
 
-## Other scanners (visible-only)
+Why it must not come back: since 2026-09 the `cpp`, `python` and
+`javascript-typescript` CodeQL categories and the PREfast analysis are
+produced only by nightly runs on `refs/heads/main`, never on a PR merge
+commit or a merge-queue ref. A `code_scanning` rule would wait for an
+analysis of the PR merge commit in every category `main` has ever seen, so
+re-creating it would block every PR - docs-only or not - on "Code scanning
+is waiting for results" indefinitely. If a merge-time analysis gate is ever
+wanted again, it has to come with per-PR analysis in every category, which
+this repo has deliberately moved away from.
+
+## Nightly analysis and other visible-only scanners
+
+`codeql.yml` and `msvc-analysis.yml` (MSVC Code Analysis, `/analyze`) run
+nightly against `main` - 02:17 and 02:23 UTC, see
+`docs/ci-self-hosted-runners.md` "Nightly analysis window" - and neither
+reports on a PR at all. Their alerts land in **Security → Code scanning**
+against `refs/heads/main`; because GitHub sends no notification for a new
+default-branch alert, each workflow's `surface` job fails on alerts created
+since the previous nightly and opens or refreshes a `nightly-analysis`
+issue (one per engine, via `.github/actions/report-nightly-failure`). Close
+the issue once the findings are fixed or dismissed with a justification.
 
 `osv-scanner.yml`, `zizmor.yml` and `scorecard.yml` upload SARIF to
 **Security → Code scanning** but don't fail PR checks - triage their alerts
 there rather than via a required status check (see each workflow's header
-comment for why). `msvc-analysis.yml` (MSVC Code Analysis, `/analyze`) is
-the same shape and runs on PRs to `main` too (docs-only changes skipped):
-its findings land in code scanning for triage, not in a required status
-check. `scorecard.yml`'s branch-protection sub-check scores more completely
+comment for why). `scorecard.yml`'s branch-protection sub-check scores more completely
 with a fine-grained PAT (read-only, "Administration: read") added as a repo
 secret named `SCORECARD_READ_TOKEN`; without it, that one sub-check just
 degrades gracefully instead of failing.

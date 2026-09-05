@@ -106,8 +106,10 @@ What runs against it, continuously:
   `tests/cli/test_cli_live.cpp`, 36 cases — because TSan's shadow memory makes everything several
   times slower and the rest of the suite is single-threaded codec maths. `tsan.supp` at the
   repository root holds the suppressions and is near-empty.
-- **CodeQL** on the `security-and-quality` suite, **MSVC PREfast** with a warnings gate, **OSV
-  scanning** and **OpenSSF Scorecard**.
+- **CodeQL** on the `security-and-quality` suite and **MSVC PREfast**, both run nightly against
+  `main` rather than per pull request; a run that finds something new opens a `nightly-analysis`
+  issue, and the alerts themselves are triaged in Security > Code scanning. **OSV scanning** and
+  **OpenSSF Scorecard** as before.
 
 What is *not* covered by that leg: anything threaded that is not tagged `concurrency`. The label
 comes from the Catch2 tags themselves (`catch_discover_tests(... ADD_TAGS_AS_LABELS)`), so a race
