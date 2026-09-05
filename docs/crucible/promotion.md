@@ -594,7 +594,7 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     **The window, on Linux.** With Quick 3D, Shader Tools and Linguist Tools installed from apt,
     `ac3crucible` built on the Pi (6.1 MB, aarch64) after one platform split — the application
     icon provider asks the Windows shell for an executable's icon and is the only Windows-only
-    file in the UI; its Linux twin returns none and the monogram shows. Rendered headless with
+    file in the UI; its Linux twin returned none and the monogram showed, until Phase 6 gave it the icon theme and the `.desktop` entries. Rendered headless with
     `--shot`, the room, both views, the three-station signal path and the status bar all drew,
     with the encoder at **9.56 ms per frame** on the Pi 4B and zero underruns. The screenshot is
     what exposed the next four defects, which no log had:

@@ -84,6 +84,20 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **Applications have their own icons on Linux**, in the rail, the bed chips and both room
+  views. The identity comes from PipeWire: `application.icon-name`, `application.process.binary`
+  and, for a sandboxed application, its portal application id. All three live on an object's
+  info rather than on the registry dictionary a listener is handed, so the session monitor now
+  binds each stream node and its client for them, the way the sink walk already did for
+  `iec958.codecs`. The window then resolves in four steps and takes the first that yields a
+  picture: the icon name through the icon theme; a `.desktop` entry matched by application id,
+  `TryExec`, `Exec`, `StartupWMClass` or `Name`; the theme under the binary's own name; and the
+  monogram, which is still the right picture for a script, an interpreter or a command-line
+  player. Qt SVG is an optional dependency (`qt6-svg-dev` to build, `libqt6svg6` to run): an
+  icon that exists only as SVG needs it, and without it the configure log says so and those
+  applications show the monogram. The image provider now keeps each picture at the size the
+  platform gave it and scales per request, so the 3D room's large icon is its own image rather
+  than the rail's small one enlarged; that applies on Windows as well.
 - **Crucible explains itself on first run, and puts the default output back on quit**
   (`apps/crucible/`): the first launch opens a dialog that says what Crucible does to the sound
   settings before it does it, naming the silent device the platform uses, saying the default
