@@ -1,6 +1,10 @@
 # Commands
 
-The command list from the usage text — copied from a build of `ac3cli`, not retyped:
+The command list from the usage text, reproduced rather than paraphrased — forty-one commands, as
+a Windows build without `-DAC3FORGE_BUILD_ADM=ON` prints them. The two ADM commands read
+`UNAVAILABLE HERE` because that flag is off; `spatial` does not, because Windows is the one
+platform with a spatial backend. Nothing in the build compares this block against the binary, so
+`ac3cli help` on your own build is the authority wherever the two disagree:
 
 ```text
 Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder
@@ -43,8 +47,9 @@ Usage:
   ac3cli remux         <in.mkv|in.mp4|in.ts> <out.mkv|out.mp4|out.ts> [dvb|atsc] (container-to-container: the input is identified by its magic bytes, the output by its extension, and everything either declares is re-derived from the bitstream - the dec3-repair case)
   ac3cli devices                                              (input and loopback capture endpoints)
   ac3cli outputs                                              (render endpoints + AC-3/E-AC-3 passthrough support)
-  ac3cli play          <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index] (exclusive-mode IEC 61937 passthrough; bsid decides AC-3 vs E-AC-3)
+  ac3cli play          <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index] (exclusive-mode IEC 61937 passthrough, following the sink (bsid decides the source format; a named device that rejects it gets an automatic AC-3/PCM fallback - follow=off for the plain refusal))
   ac3cli monitor       <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index] (decode and play on an ordinary (non-bitstreamed) output)
+  ac3cli spatial       <in.ec3> [device_index]                (decode the object layer onto Windows Spatial Sound - dynamic objects at their OAMD positions, the bed's LFE static (roadmap UX8))
   ac3cli help          [<command>|exit-codes]                 (one command's own arguments and grammars, not the whole manual)
   ac3cli man                                                  (the generated groff man page, on stdout)
   ac3cli completions   <bash|zsh|fish|powershell>             (the generated completion script for that shell, on stdout)
@@ -141,12 +146,12 @@ The status text these commands normally print (frame count, routing, per-channel
 (see that section's own note): a default build's usage block at the top of this page shows this
 row as `UNAVAILABLE HERE` instead of the description below, and running it prints a clear reason
 (`ac3cli atmos-adm ...` → `error: 'atmos-adm' is unavailable on this platform: this build was not
-configured with -DAC3FORGE_BUILD_ADM=ON ...`) rather than "unknown command". Every command besides
-this one builds and works identically whether that flag is on or off — this is the one exception,
-because it is the one command that needs `ac3adm::ac3adm`/`ac3::admbridge`, this project's sole
-opt-in, Boost-requiring module (default **off** — see
-[ADM / BW64 reading](../library/adm.md#why-opt-in)). What the row looks like in a build configured
-with the flag on (the usage block at the top of this page is copied from a *default* build, where
+configured with -DAC3FORGE_BUILD_ADM=ON ...`) rather than "unknown command". Three things in the
+tool need `ac3adm::ac3adm`/`ac3::admbridge`, this project's sole opt-in, Boost-requiring module
+(default **off** — see [ADM / BW64 reading](../library/adm.md#why-opt-in)): this command,
+`atmos-iab` below, and `decode`'s optional `adm_out` argument. Everything else builds and works
+identically whether that flag is on or off. What the row looks like in a build configured
+with the flag on (the usage block at the top of this page is from a *default* build, where
 this row instead reads `UNAVAILABLE HERE`):
 
 ```text
@@ -192,7 +197,7 @@ reason even though `ac3iab::ac3iab` itself is on by default: this command needs
 (`build_iab()`), and that whole module rides `AC3FORGE_BUILD_ADM` (see
 [ADM / BW64 reading](../library/adm.md#why-opt-in)) since it PUBLIC-links `ac3adm::ac3adm`
 alongside `ac3iab::ac3iab`. What the row looks like in a build configured with the flag on (the
-usage block at the top of this page is copied from a *default* build, where this row instead reads
+usage block at the top of this page is from a *default* build, where this row instead reads
 `UNAVAILABLE HERE`):
 
 ```text
@@ -308,21 +313,24 @@ For an Atmos stream, add `objects_dir` to also export each object's reconstructe
 ac3cli decode atmos.ec3 bed.wav objects/
 ```
 
-Or add a fourth argument (`objects_dir` empty or not) to write a real ADM BWF master instead —
+Or add a fourth argument (`objects_dir` empty or not) to write an ADM BWF master instead —
 positions come from the stream's own decoded OAMD, so `master.wav` round-trips through
-`ac3cli atmos-adm` (roadmap IM2, needs `-DAC3FORGE_BUILD_ADM=ON`; without it, decode still runs
-and prints a clear warning rather than failing the whole command):
+`ac3cli atmos-adm` (roadmap IM2, needs `-DAC3FORGE_BUILD_ADM=ON`; without that flag an `adm_out`
+on an E-AC-3 input is refused before the decode starts, exit `2`, naming the flag):
 
 ```bash
 ac3cli decode atmos.ec3 bed.wav "" master.wav
 ```
 
-That works for a bed programme too, which is what channel-based-immersive third-party content
-is: a 7.1.4 bed carried in a 5.1 downmix exports its eleven non-LFE channels, and the status
-report names them (`bed [L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl Tbr] + 0 dynamic objects`) rather
-than just counting them. The report also names an OAMD trim element when one rides along, any
-`oa_element` skipped because its id is unrecognised, and how many metadata update blocks a frame
-carries when it carries more than one.
+The object export works for a bed programme too, which is what channel-based-immersive
+third-party content is: a 7.1.4 bed carried in a 5.1 downmix exports its eleven non-LFE channels
+(§6.3.2.2 never makes the LFE a JOC output), and the status report names them (`bed [L R C LFE Ls
+Rs Lb Rb Tfl Tfr Tbl Tbr] + 0 dynamic objects`) rather than just counting them. The ADM master
+does not: that writer covers dynamic-object-only programmes today, so a bed programme gets a
+warning saying so and no master file written, while the WAV and `objects_dir` outputs of the same
+run are unaffected. The report also names an OAMD trim element when one rides along, any `oa_element`
+skipped because its id is unrecognised, and how many metadata update blocks a frame carries when
+it carries more than one.
 
 ### The output stage: `channels=`, `downmix=`, `drcmode=`
 
@@ -360,9 +368,9 @@ wins, and a backend that cannot report its endpoint width leaves the audio alone
 
 ### Damaged frames: `conceal=`
 
-`decode` and `monitor` stop on a frame that will not decode. `conceal=` substitutes audio for it
-instead, reconstructed from the previous block's overlap so there is no discontinuity at either
-join:
+`decode`, `monitor` and `spatial` stop on a frame that will not decode. `conceal=` substitutes
+audio for it instead, reconstructed from the previous block's overlap so there is no discontinuity
+at either join:
 
 ```bash
 ac3cli decode recovered.ac3 out.wav conceal=repeat   # repeat-and-fade
@@ -769,8 +777,8 @@ ac3cli ts commentary.ac3 commentary.ts atsc asvc=0x05
 
 ### Live & hardware
 
-Needs the platform's capture/passthrough backend — see the per-OS Platform notes pages
-([Windows](../platforms/windows.md), [Linux](../platforms/linux.md),
+Needs the platform's capture, passthrough, monitor or spatial backend — see the per-OS Platform
+notes pages ([Windows](../platforms/windows.md), [Linux](../platforms/linux.md),
 [Raspberry Pi](../platforms/raspberry-pi.md), [macOS](../platforms/macos.md),
 [Android](../platforms/android.md)) for what's actually confirmed against real hardware on
 each OS.
@@ -782,6 +790,7 @@ each OS.
 | `record` | Captures from a device straight to a file, metering live. `layout=`/`codec=` choose the shape (any layout up to 7.1.4, AC-3 or E-AC-3), `container=` the wrapper (`raw`, `mkv`, `ts`, `spdif`, `fmp4`), `watchdog=` how long a silent device is tolerated. If the endpoint turns out to be bitstreaming IEC 61937 rather than delivering PCM (an HDMI/S/PDIF capture card, or a loopback of a player set to bitstream), `record` recognises that within about a quarter of a second and writes the **elementary stream** instead of encoding the bursts as if they were audio — see [passthrough capture](#passthrough-capture) below |
 | `play` | Exclusive-mode IEC 61937 passthrough of an existing file, bare or (roadmap IO2) inside a container — `bsid` decides AC-3 vs. E-AC-3. When a `device_index` is named, `play` follows the sink (roadmap UX9): a source format it rejects gets transcoded to AC-3 or decoded to PCM automatically instead of refused — see [Following the sink](#following-the-sink) below |
 | `monitor` | Decodes an existing file, bare or (roadmap IO2) inside a container, and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. |
+| `spatial` | Decodes an E-AC-3 stream's object layer and hands the objects to the platform's spatial renderer, each at its own OAMD position — the one playback path that renders objects as objects rather than as a bed. Windows only today; see [`spatial`](#spatial-objects-on-the-platform-renderer) below |
 | `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has. Everything `record` takes, plus a second clock-conformed capture device (`capture2=`), an object-slot budget and `map=` binding (`objects=`, `mode=atmos`), and a parallel 5.1 AC-3 leg for an AC-3-only receiver (`downmix=`) |
 
 `live`'s device arguments: `monitor_device`/`passthrough_device` take `-2` (default, leaves that
@@ -897,6 +906,57 @@ runs.
 `passthrough_device` only bitstreams plain AC-3, `live` sends it a parallel 5.1 AC-3 encode of the
 bed the main plan already computed, while the file and the monitor still carry the full stream.
 `downmix=off` restores the plain refusal.
+
+### `spatial` — objects on the platform renderer
+
+Roadmap UX8. `spatial` decodes an E-AC-3 stream's object layer and submits each reconstructed
+object to the operating system's own spatial renderer at the position its OAMD carries, instead
+of folding the objects into a bed first. On Windows that renderer is
+`ISpatialAudioObjectRenderStream`, reached through `ac3::audio::SpatialObjectSink`; no other
+backend in the tree implements one, so on Linux, macOS and Android the command is listed and
+reports itself unavailable — the same treatment the capture and passthrough commands get where
+their backends are missing (`Needs::kSpatial` in `apps/cli/main.cpp`, answered by
+`src/audio/src/backend/<os>/audio_backend.cpp`).
+
+```bash
+ac3cli spatial programme.ec3       # the default endpoint
+ac3cli spatial programme.ec3 2     # an index from 'ac3cli outputs'
+```
+
+Two refusals come before anything is decoded. A plain AC-3 input is rejected because only E-AC-3
+carries the object layer, with the error naming `monitor` as the command that plays an AC-3 bed.
+An endpoint with no spatial format enabled on it — `GetMaxDynamicObjectCount` reading zero — is
+rejected with exit `4`, rather than quietly falling back to an ordinary render path: that
+fallback would make `spatial` indistinguishable from `monitor` while claiming to be something
+else.
+
+Every dynamic object goes out at its own position, converted from TS 103 420 §4.2.1's
+room-anchored cube to the renderer's listener-relative metres; the bed's LFE goes out as a static
+object, which is the only shape it can take (§6.3.2.2 never makes the LFE a JOC output, so it is
+only ever a coded channel). The axis correspondence is exact. The metre scale is not: OAMD's cube
+carries no absolute size, so the room half-extents in `apps/cli/commands/live_audio.cpp` — 2 m to
+each side wall, 2 m front and back, 1 m to ceiling and floor — are a plausible small room rather
+than a measured one. Moving an object moves it in the right direction by the right proportion, at
+an approximate absolute distance. The session prints its object count and endpoint at the start,
+and the access units played, active dynamic objects and underruns at the end.
+
+`spatial` builds its `ac3::DecoderConfig` from the same options `decode` and `monitor` do, so the
+decode-side tokens above (`drc=`, `heavy`, `conceal=`, `fast-imdct=off`) reach it, and
+`verify-objects` checks each frame's object signature here as it does there. Two do not reach it:
+`run_spatial` leaves `fast-mdct=off` and `joc-domain=` out of the config it builds, so the JOC
+reconstruction on this path always takes the defaults — the fast forward MDCT, in the QMF domain.
+
+The §7.8 output-stage tokens (`channels=`, `downmix=`) have no purpose here, since what reaches
+the renderer is the objects rather than a fold — and they are not safe to assume harmless either:
+`run_spatial` takes the bed's LFE from the decoded channel list's last entry, and a fold replaces
+that list with its own output. What such a run actually submits has not been checked, so leave
+both tokens off this command.
+
+What is confirmed against hardware and what is not is set out on the
+[Windows](../platforms/windows.md#audio-backend-wasapi) page: the sink has activated and rendered
+this project's own Atmos stream against an endpoint with Windows Sonic enabled, and the
+no-spatial-format refusal was confirmed against two endpoints. Nobody has yet listened and
+confirmed that the objects arrive from where their positions say they should.
 
 ### Following the sink
 

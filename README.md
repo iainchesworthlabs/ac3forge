@@ -32,8 +32,8 @@ standards in C++23, and the two applications built on it.
 
 | Member | What it is | How to get it | Docs |
 |---|---|---|---|
-| **The library** — `ac3::forge` | The codec: encodes and decodes AC-3 and E-AC-3, every coding mode and layout the standards define, every Annex E tool, and Atmos objects via JOC — with MKV/MP4/MPEG-TS muxing, IAB and ADM/BW64 reading, IAMF writing, an AC-4 inspector, live capture and passthrough, loudness QC and object signing beside it. C, Python, Rust and WebAssembly bindings. | `ac3forge-dev-*` archives, and `libac3forge0` plus `libac3forge-dev` (DEB) or `ac3forge-devel` (RPM), from each [release](https://github.com/iainchesworthlabs/ac3forge/releases); `pip install ac3forge`; or build from source | [docs/library/](docs/library/index.md), with the full [capability tables](docs/library/capabilities.md) |
-| **Forge** — `ac3cli` + `ac3gui` | The tooling over the library: a thirty-nine-command CLI, and a Qt Quick workbench with a plan view for placing objects and channel-level metering. One release download carries both. | A release `.zip`/`.tar.gz`/`.dmg`, or the Windows `.exe` installer from the next release tag on; on macOS `brew install iainchesworthlabs/ac3forge/ac3forge` for the CLI and `brew install --cask iainchesworthlabs/ac3forge/ac3gui` for the GUI; the winget submission is blocked on roadmap DR4 | [docs/forge/](docs/forge/index.md), then the [CLI](docs/cli/index.md) and [GUI](docs/gui/index.md) guides |
+| **The library** — `ac3::forge` | The codec: encodes and decodes AC-3 and E-AC-3, every coding mode and layout the standards define, every Annex E tool, and Atmos objects via JOC, with loudness metering and the QC gates inside it — and MKV/MP4/MPEG-TS muxing, IAB and ADM/BW64 reading, IAMF writing, an AC-4 inspector, live capture and passthrough, and object signing beside it. C, Python, Rust and WebAssembly bindings. | `ac3forge-dev-*` archives, and `libac3forge0` plus `libac3forge-dev` (DEB) or `ac3forge-devel` (RPM), from each [release](https://github.com/iainchesworthlabs/ac3forge/releases); `pip install ac3forge`; or build from source | [docs/library/](docs/library/index.md), with the full [capability tables](docs/library/capabilities.md) |
+| **Forge** — `ac3cli` + `ac3gui` | The tooling over the library: a forty-one-command CLI, and a Qt Quick workbench with a plan view for placing objects and channel-level metering. One release download carries both. | A release `.zip`/`.tar.gz`/`.dmg`, or the Windows `.exe` installer from the next release tag on; on macOS `brew install iainchesworthlabs/ac3forge/ac3forge` for the CLI and `brew install --cask iainchesworthlabs/ac3forge/ac3gui` for the GUI; the winget submission is blocked on roadmap DR4 | [docs/forge/](docs/forge/index.md), then the [CLI](docs/cli/index.md) and [GUI](docs/gui/index.md) guides |
 | **Crucible** — `ac3crucible` | A desktop application for Windows and Linux that makes every application playing sound an Atmos object the listener places in a room, streamed live over HDMI or decoded to whatever the endpoint takes. Ships its own silent virtual output device on Windows; taps PipeWire on Linux. | Build from source with `-DAC3FORGE_BUILD_CRUCIBLE=ON`; the `ac3forge-crucible-*` archive, `.deb` and `.rpm` ship from the next release tag | [docs/crucible/](docs/crucible/index.md) |
 
 Nothing here links FFmpeg or any other codec library. The FFmpeg command-line tools are used
@@ -58,10 +58,14 @@ your use is your problem to assess, not something this project resolves.
 **Status.** The API is not stable — releases so far are 0.x betas; the Latest release badge
 above shows the current one, and [CHANGELOG.md](CHANGELOG.md) records what each contains. CI
 requires Windows (MSVC, clang-cl), Linux (GCC and Clang, x64 and arm64) and macOS (Homebrew
-LLVM) — CLI and GUI alike on every platform — plus an
-ASan+UBSan leg, a coverage gate over the library, a per-platform
-gold-reference quality gate, dedicated Linux FFmpeg- and ADM-validation legs, and a required
-Android build leg for the Shield TV demo app under `apps/android/`. See
+LLVM), covering the library and Forge's CLI and GUI alike on every one of them. Crucible's CI is
+narrower, because Crucible is a Windows and Linux application with no macOS half to build yet:
+it is built and tested on both Windows legs and, against PipeWire, on the Linux Clang leg, and
+packaged from the Windows MSVC and Linux Clang legs. Its Windows null-sink driver has a job of
+its own, which builds and test-signs the driver package and fails on any defect the WDK's driver
+rule set reports. Beside all that sit an ASan+UBSan leg, a coverage gate over the library, a
+per-platform gold-reference quality gate, dedicated Linux FFmpeg- and ADM-validation legs, and a
+required Android build leg for the Shield TV demo app under `apps/android/`. See
 [docs/building.md](docs/building.md#verified-configuration) for exact toolchain versions and
 what each CI leg covers.
 

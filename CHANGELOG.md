@@ -36,9 +36,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   needs the PipeWire backend: a Crucible build against ALSA is refused at configure time,
   since ALSA has no per-application streams to tap. The window builds and its Qt Quick
   tests pass on Linux; the `crucible` CPack component produces an
-  `ac3forge-crucible-<version>-Linux-<arch>.tar.gz` and an `ac3forge-crucible` `.deb`
-  (depending on `pipewire` and a session manager, carrying no Qt of its own), though
-  releases do not ship it yet because the release legs build against ALSA. Settings on
+  `ac3forge-crucible-<version>-Linux-x86_64.tar.gz` and an `ac3forge-crucible` `.deb`
+  (depending on `pipewire` and a session manager, carrying no Qt of its own), and a release
+  carries both - the Linux LLVM leg is the one leg built against PipeWire, and it uploads
+  them under the `packages-*` name the release workflow collects. That leg is x86_64, so
+  there is no aarch64 Linux package, and it carries no `release_package`, so the two files
+  ride on the artifact glob rather than on a release gate. No tag has been cut since that
+  wiring landed, so the route is configured rather than exercised. Settings on
   Linux say "Create device" where Windows says "Install driver", and show no driver folder.
   On 2026-09-05 the whole path was confirmed against a receiver: an application tapped through
   PipeWire, encoded live as E-AC-3 with a JOC object layer and a signed object container, read
@@ -307,6 +311,31 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   real-signal round-trip tests. `build-rust` runs on all three desktop OSes now; the first
   Windows build found and fixed a real portability bug (bindgen types C enums `i32` on MSVC,
   `u32` elsewhere — `Error::Other` had baked the Linux answer in).
+
+### Documentation
+
+- **The Crucible guide gained the two pages it was missing**, written from the window rather
+  than from the plan: [The room](docs/crucible/room.md), and
+  [Settings](docs/crucible/settings.md). There is no output-modes page and there will not be
+  one; the signal path page already carries the modes.
+
+- **The library is presented as a member in its own right.** Its page opens by saying what it
+  is before it says what to link, its navigation entry reads "What it is" like its two
+  siblings, the home page paragraph carries a download route as theirs do, and the site
+  description names all three members instead of describing a codec only. Both first screens'
+  status paragraphs now say where Crucible is built and tested rather than passing over it.
+
+- **The published-asset table matches the pipeline.** It gained a Windows arm64 row and rows
+  for Crucible, and four claims that had gone stale were corrected: that the Linux Crucible
+  package cannot reach a release, that a `.rpm` is produced for it in CI, that every
+  `release_package` leg carries the GUI, and that a failure on the experimental arm64 leg
+  fails the leg like any other.
+
+- **The CLI reference lists all forty-one commands.** The `spatial` command was undocumented
+  and every command count in the reference was stale. The browser demo pages no longer call
+  the WebAssembly decoder published: it is packed on every pull request and has never been
+  pushed to the registry, and the pages now say what a reader can do today instead of linking
+  an entry that returns nothing.
 
 ### Fixed
 

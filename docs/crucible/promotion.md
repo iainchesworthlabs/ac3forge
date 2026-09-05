@@ -708,11 +708,19 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     runs the engine's Catch2 tags and the PipeWire backend's contract tests in that tree — the
     only place they run on PipeWire — then the Qt Quick suite headless with `--no-tests=error`,
     packages the component, runs `check_crucible_package.py` on the tarball and checks the
-    `.deb`'s name, and uploads both as a run artifact (not a release asset: the release legs
-    build against ALSA and cannot produce it, which is the next step for `docs/releasing.md`'s
-    table). The fleet's Linux image is Ubuntu 26.04 with Qt 6.10; when `decide-runner` falls
-    back to GitHub's 24.04 and its Qt 6.4, below the window's 6.8, the step warns by name and
-    skips the window half rather than fail the leg for something unrelated to the change.
+    `.deb`'s name, and uploads both as `packages-crucible-<preset>` — the `packages-*` pattern
+    `release.yml` downloads (`release.yml:275-279`) and attaches file by file (`:538-549`), so
+    both files are release assets, checksummed, signed and attested with every other package.
+    No tag has been cut since that landed, so that is what CI is wired to do rather than
+    something a published release has been seen to carry. Two qualifications stay true of the
+    route: the leg is x86_64, so no release carries an aarch64 Linux Crucible package, and it
+    carries no `release_package`, so the package rides on the artifact glob rather than on a
+    release gate. The fleet's Linux image is Ubuntu 26.04 with Qt 6.10; when
+    `decide-runner` falls back to GitHub's 24.04 and its Qt 6.4, below the window's 6.8, the
+    step warns by name and skips the window half rather than fail the leg for something
+    unrelated to the change — and with it the package, which the upload's
+    `if-no-files-found: ignore` lets pass quietly, so a release cut on that fallback carries no
+    Linux Crucible package.
 
     **The Pulse relay, and what a person sees of it.** Playing something on the Pi found two
     things, one of them a bug with a wrong session list and a tap that captured nothing.
@@ -1073,10 +1081,18 @@ keeps its records. `mkdocs.yml` gains a "Crucible guide" section beside "CLI ref
 
     Every claim in the guide is one this work verified or one the demo's record verified; the
     platform table on the index says "not yet confirmed" where that is the truth, and the Linux
-    build command in the install page was run before it was written down. Not yet written: the
-    room, output modes and settings pages the GUI guide's shape would want — those describe the
-    window, and the window exists on one platform, so they wait for the pass that reviews it as
-    a product rather than the demo it was.
+    build command in the install page was run before it was written down. Left unwritten at the
+    time: the room, output modes and settings pages the GUI guide's shape would want — those
+    describe the window, and the window then existed on one platform.
+
+!!! success "Done 2026-09-06: the room and the settings pages"
+    The window runs on two platforms now and its Linux half has been read off a receiver, so the
+    two pages were written from the source rather than from this plan: [The room](room.md) and
+    [Settings](settings.md). There is no output-modes page and there will not be one —
+    [The signal path](signal-path.md) already carries the mode table, the no-key refusal and the
+    pin and endpoint controls, and a second page over the same ground would be one more thing to
+    keep true. Where the two platforms differ the pages say which is which, and where something
+    is Windows-only today they say that too.
 
 ### Phase 8: CI and packaging
 

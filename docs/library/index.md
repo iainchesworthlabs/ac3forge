@@ -1,5 +1,32 @@
 # Using ac3::forge
 
+The library is AC3Forge's codec, and the member the other two are built on. It turns PCM — or
+mono sources placed and moved in three dimensions — into AC-3, E-AC-3, or E-AC-3 carrying Dolby
+Atmos objects as Joint Object Coding, and reads those streams back. It is clean-room C++23
+written from the published standards, and nothing in it links FFmpeg or any other codec library.
+Loudness metering, level analysis and the decoded-domain quality measure are part of `ac3::forge`
+itself. Around it sit further targets, each linked only if you ask for it: MKV, MP4/CMAF and
+MPEG-TS muxing, IAB and ADM/BW64 reading, a bridge from a parsed ADM graph onto the object
+encoder, IAMF writing, and EMDF object signing. An AC-4 bitstream inspector (`ac4::ac4`) is
+built beside them — it is what `ac3cli probe` reads an AC-4 stream with — but nothing installs
+or exports it, so only an in-tree build can link it.
+[Capabilities](capabilities.md) is the exact list of what the codec does and does not do;
+[Validation](../verification.md) says how much of that has been checked, and against what.
+
+Reach for it when the codec belongs inside your own program rather than behind a command. A
+C++23 application links it directly; another language comes in through the [C API](c-api.md),
+the [Python](python-api.md) or [Rust](rust-api.md) bindings, or the
+[WebAssembly](../platforms/wasm.md) build, all over this same code. The family's other two
+members are themselves callers of it: [Forge](../forge/index.md)'s CLI and GUI make every coding
+decision by calling this API, and [Crucible](../crucible/index.md) encodes its live desktop scene
+through `ac3::oba::AtmosEncoder` the same way any other application would. It ships separately
+from them: the `ac3forge-dev-*` archives and, on Linux, the `libac3forge0` runtime package with
+`libac3forge-dev` (DEB) or `ac3forge-devel` (RPM), from each
+[release](https://github.com/iainchesworthlabs/ac3forge/releases) — see
+[Releasing](../releasing.md#what-gets-published) — plus `pip install ac3forge` for the
+[Python bindings](python-api.md). The rest of this page is how to link it and what holds across
+the API.
+
 !!! note "The name"
     `ac3forge` and `ac3::forge` name **the library** and the family's identifiers — the CMake
     project, the packages, the C++ namespace, the C symbol prefix. **Forge**, capitalised and
@@ -56,7 +83,7 @@ their **shared** variant (`ac3adm::ac3adm_shared`/`ac3::admbridge_shared`, plus 
 `ac3adm::ac3adm`/`ac3::admbridge` alias — there is no `_static` counterpart here, unlike every
 other module on this page) regardless of `AC3FORGE_INSTALL_BOTH_LINKAGES`. A self-contained
 `.so` absorbs libbw64/libadm at its own build step; a static archive would leave a downstream
-consumer with genuinely unresolved symbols into a library this package doesn't ship. `ac3adm`
+consumer with unresolved symbols into a library this package doesn't ship. `ac3adm`
 still needs Boost at build time (see the note above) — that requirement doesn't go away just
 because the *installed* artifact is self-contained.
 
@@ -114,7 +141,7 @@ pkg-config --cflags --libs ac3forge
 
 Picks whichever linkage was actually installed (the shared name when
 `AC3FORGE_INSTALL_BOTH_LINKAGES`/`BUILD_SHARED_LIBS` selected it, else the `_static`-suffixed
-one — matching what's genuinely on disk), and chains `Requires:` for a component that PUBLIC-
+one — matching what is actually on disk), and chains `Requires:` for a component that PUBLIC-
 links another (`ac3signing` requires `ac3forge`; `admbridge` requires both `ac3forge` and
 `ac3adm`). The `prefix=` line resolves relative to wherever the `.pc` file itself ends up
 (`pkg-config`'s own `${pcfiledir}`), so it works the same whether that's a real system install or
@@ -170,7 +197,8 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over
   `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder` and
   `eac3::FrameEncoder`/`AccessUnitEncoder`.
-- [WebAssembly](../platforms/wasm.md) — the `ac3forge-wasm-decoder` npm package (roadmap UX5): a
+- [WebAssembly](../platforms/wasm.md) — the `ac3forge-wasm-decoder` package (roadmap UX5), built
+  from this tree and not yet on the npm registry: a
   push-frame decode API, an AudioWorklet playback pipeline, and an hls.js/MSE bridge over the
   decoder compiled to WASM.
 

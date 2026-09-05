@@ -162,21 +162,28 @@ page rather than discovered.
 | driver `Ac3ForgeNullSink` (`.sln`, `.inx`, `.sys`, `.cat`, service, `ROOT\Ac3ForgeNullSink`); INF strings "Desktop Atmos"; artifact `ac3forge-nullsink-driver-testsigned` | Crucible | `apps/windows/driver`; `_build.yml:3111` | test-signed; frozen | strings change at signing time, ids kept | frozen after attestation is paid for |
 | release-wide `ac3forge-<bare>.spdx.json`, `ac3forge-signing-key.asc`, `ac3forge-conformance-vectors-<ver>.tar.gz`, `SHA512SUMS`, `gh attestation verify --repo iainchesworthlabs/ac3forge` | family | `release.yml:370,394`; `_build.yml:1325`; docs/releasing.md | shipped | unchanged | the verify snippets users may have saved |
 
-Three release-shape facts are open and the first tag that contains Crucible freezes them
-([decision 13](#decisions)):
+The first tag that contains Crucible freezes three release-shape facts ([decision
+13](#decisions)). All three are settled: two changed, and one was examined and deliberately left
+as it is.
 
-1. **The Linux Crucible package is a run artifact, not a release asset.** The linux-llvm leg
-   uploads it as `ac3forge-crucible-linux-<preset>` (`_build.yml:1507`), outside the
-   `packages-*` pattern release.yml downloads (`release.yml:279`); docs/releasing.md:578-581
-   records this as the next step. A `packages-crucible-<preset>` name is the one-line fix, and
-   the `.deb`, `.tar.gz` globs in release.yml's signing and attestation steps already cover it.
-2. **Two version-string styles in one release.** The runtime archive, `.exe` and `.dmg` carry
+1. **The Linux Crucible package is a release asset.** *Settled.* The linux-llvm leg packages the
+   component on every run and uploads it as `packages-crucible-<preset>`
+   (`_build.yml:1533-1541`, renamed in 99d08210), which is the `packages-*` pattern release.yml
+   downloads (`release.yml:275-279`) and attaches file by file (`:538-549`); the `.deb` and
+   `.tar.gz` globs in release.yml's checksum, signing, provenance and SBOM steps cover both
+   files. Two things stay true of that route: the leg is x86_64, so no release carries an
+   aarch64 Linux Crucible package, and it carries no `release_package`, so the package rides on
+   the artifact glob rather than on a release gate. No tag has been cut since, so the route is
+   wired and not yet exercised by a published release.
+2. **Two version-string styles in one release.** *Deliberate*, and [decision
+   13](#decisions) says why. The runtime archive, `.exe` and `.dmg` carry
    `M.m.p` (`cmake/Packaging.cmake:357-360`; the cask parses it, `Casks/ac3gui.rb:45-54`); the
    `crucible` and `dev` archives carry `PROJECT_VERSION_FULL` with the prerelease suffix
    (:363-365).
-3. **docs/releasing.md:644 and :785 say no leg is `experimental: true`**, while
-   `windows-msvc-arm64` is both `experimental: true` and `release_package: true`
-   (`_build.yml:388-393`). One of them is wrong.
+3. **The experimental claim.** *Settled.* docs/releasing.md said no leg was `experimental: true`
+   while `windows-msvc-arm64` was both `experimental: true` and `release_package: true`
+   (`_build.yml:388-393`). That page now says what the workflow does: the leg ships packages,
+   and `continue-on-error` means a failure there does not block the release.
 
 A fourth, cosmetic and already noted in `cmake/Packaging.cmake:183-191`: every DEB component's
 one-line synopsis is the library's `PROJECT_DESCRIPTION`, so `apt show ac3forge-crucible` opens
@@ -365,7 +372,6 @@ state true everywhere before the family is drawn over it.
   the mark as a generic name; `Application audio mixer` or similar. The six
   `ac3crucible_*.ts` files still carry `Desktop Atmos` as source text (13 in `ac3crucible_de.ts`):
   `cmake --build <dir> --target ac3crucible_lupdate` regenerates them.
-- `docs/releasing.md:644,785` against `_build.yml:388-393`: the experimental claim.
 - The four CHANGELOG links to `docs/project/history.md` and the three `docs/RESEARCH.md` comments
   in `verify_gold_reference.sh`.
 
@@ -381,7 +387,7 @@ comments and the coverage header describe the tree as it is.
 
 **Verified by:** `cmake --preset config-windows-msvc -DAC3FORGE_BUILD_CRUCIBLE=ON`, build, and
 `ctest --preset test-windows-msvc -L crucible` plus `-L crucible-ui`; the same on Linux with the
-command `docs/crucible/install.md:77-81` gives (`config-linux-gcc`, `-DAC3FORGE_WITH_ALSA=OFF
+command `docs/crucible/install.md:84-90` gives (`config-linux-gcc`, `-DAC3FORGE_WITH_ALSA=OFF
 -DAC3FORGE_WITH_PIPEWIRE=ON`); `mkdocs build --strict`; the greps above; the `.ts` diff shows
 only source-string changes.
 
@@ -452,15 +458,16 @@ opening `ROADMAP.md` on GitHub and following each of the DR8 links; a one-off co
 
 ### Phase 6: packaging and release shape
 
-Depends on decisions 5, 6, 13 and 14. Under S1 nothing renames; this phase lands the three
-pre-tag facts: the `packages-crucible-<preset>` artifact name and its row in docs/releasing.md's
-table (:548-554), one version-string style in `cmake/Packaging.cmake:357-365` with the two
-asserts in `_build.yml:1478-1500` and `tools/ci/check_crucible_package.py`'s docstring following,
-and the experimental claim reconciled. `CPACK_COMPONENT_<C>_DESCRIPTION` strings say which member
-each component is, for the generators that show them.
+Depends on decisions 5, 6, 13 and 14. Under S1 nothing renames. Two of the three pre-tag facts
+are in already: the artifact is `packages-crucible-<preset>` (`_build.yml:1533-1541`), and
+docs/releasing.md's table (:570-579) carries a row for the Linux Crucible package and one for the
+Windows zip. The third, one version-string style in `cmake/Packaging.cmake:357-365`, was examined
+under decision 13 and refused, and the two styles are documented instead. What is left for this
+phase is the `CPACK_COMPONENT_<C>_DESCRIPTION` strings, which say which member each component
+is, for the generators that show them.
 
-**Exit:** a release dry run publishes `ac3forge-crucible-*` for Linux beside the Windows zip, and
-every filename in the release follows one rule.
+**Exit:** a release dry run produces `ac3forge-crucible-*` for Linux beside the Windows zip among
+its collected artifacts, and each component's description names its member.
 
 **Verified by:** `cpack --preset pack-windows-msvc` and
 `python tools/ci/check_crucible_package.py packages/ac3forge-crucible-*.zip` locally; the

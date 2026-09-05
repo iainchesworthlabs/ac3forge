@@ -126,7 +126,9 @@ the path to it. See [Object signing](../concepts/object-signing.md).
 ## Where to go next
 
 - [Install and first run](install.md) — per platform, including what to do about the silent device
+- [The room](room.md) — the rail, the views, the ten slots, and the keyboard route through a placement
 - [The signal path](signal-path.md) — the two devices Crucible depends on, and why they are two
+- [Settings](settings.md) — the settings screen block by block, and what each platform does differently
 - [Keyboard and screen readers](accessibility.md) — the key map, the focus order, and what is announced
 - [Troubleshooting](troubleshooting.md) — when you hear nothing, or hear everything twice
 - [The promotion plan](promotion.md) — the design record, phase by phase, and what is unverified

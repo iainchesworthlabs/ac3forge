@@ -2415,7 +2415,7 @@ when the kit has it); and per-application size, carried into the object's OAMD e
 6 as of 2026-09-04: this record, the CHANGELOG entry and the plan page's rewrite are done,
 and so is CI - both Windows legs build the window, the runner and its Qt Quick Test suites
 and run the demo's tests, the MSVC leg packages
-`ac3forge-desktop-atmos-<version>-win64.zip` as a release asset of its own, and a
+`ac3forge-crucible-<version>-win64.zip` as a release asset of its own, and a
 GitHub-hosted `windows-driver` job builds, test-signs and Code-Analyses the driver from the
 WDK's NuGet packages, uploading it as an artifact rather than a release asset while it is
 test-signed. Attestation signing through an EV certificate remains, and S2's bitstream run

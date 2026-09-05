@@ -1,10 +1,10 @@
 # ac3cli
 
-`ac3cli` is the command-line front end over `ac3::forge` — thirty-nine commands covering
+`ac3cli` is the command-line front end over `ac3::forge` — forty-one commands covering
 synthesis, file encoding/decoding, container wrapping, inspection, live capture/playback, and the
 tool's own self-description (`help`, `man`, `completions`).
-One of the thirty-nine (`atmos-adm`) only *runs* in a build configured with
-`-DAC3FORGE_BUILD_ADM=ON`, but is always *listed* — the same "shown, not hidden" treatment
+Two of the forty-one (`atmos-adm` and `atmos-iab`) only *run* in a build configured with
+`-DAC3FORGE_BUILD_ADM=ON`, but are always *listed* — the same "shown, not hidden" treatment
 this page's own live-audio commands get when the platform can't run them either (see
 [Commands](commands.md)'s own ADM section). Every command it can run is backed by the same public
 library documented under [Library](../library/index.md); every codec and format decision lives in
@@ -13,7 +13,9 @@ the library, and the CLI keeps only small local helpers of its own (the DASH MPD
 own `ac3::oba::read_scene`).
 
 Run it with no arguments for the full usage text — the command list in [Commands](commands.md)
-is transcribed from it, and re-checked against a built binary at each release.
+is transcribed from it by hand. Nothing in the build compares the two, so the binary is the
+authority where they disagree; `ac3cli help` on your own build settles any question either page
+raises.
 
 ```bash
 ac3cli
@@ -67,7 +69,7 @@ A build from past the tag says so in the headline, as semver build metadata: `ac
 git's own describe of it), so it is not mistaken for the tagged release. A tree with
 uncommitted changes adds a `state: dirty` line.
 
-`--version` (or its `-v` alias) is a flag, not one of the thirty-nine commands — it's handled
+`--version` (or its `-v` alias) is a flag, not one of the forty-one commands — it's handled
 before argument parsing and exits immediately. So are `--help` and `-h`, which print the named
 command's own help (or the full listing when no command was named).
 
@@ -112,12 +114,12 @@ command's own help (or the full listing when no command was named).
 - **`help <command>`, `--help` and `-h`** print one command's own row and the grammars it uses;
   `man` and `completions <shell>` print a generated man page and shell completion script, all
   four rendered from the same command table so none of them can drift from what dispatch accepts.
-- **Commands needing audio hardware** (`devices`, `record`, `monitor`, `live`, `outputs`, `play`)
-  report themselves unavailable on a build with no capture/passthrough backend, rather than
-  failing to link — see the per-OS Platform notes pages ([Windows](../platforms/windows.md),
-  [Linux](../platforms/linux.md), [Raspberry Pi](../platforms/raspberry-pi.md),
-  [macOS](../platforms/macos.md), [Android](../platforms/android.md)) for what's actually
-  hardware-confirmed on each OS.
+- **Commands needing audio hardware** (`devices`, `record`, `monitor`, `live`, `outputs`, `play`,
+  `spatial`) report themselves unavailable on a build with no capture, passthrough, monitor or
+  spatial backend, rather than failing to link — see the per-OS Platform notes pages
+  ([Windows](../platforms/windows.md), [Linux](../platforms/linux.md),
+  [Raspberry Pi](../platforms/raspberry-pi.md), [macOS](../platforms/macos.md),
+  [Android](../platforms/android.md)) for what's actually hardware-confirmed on each OS.
 - **`play` follows the sink** (roadmap UX9): given a `device_index`, it reads that endpoint's own
   advertised capabilities before committing to a format. That read is itself backend-specific —
   real today only on ALSA, a live probe everywhere else, same per-OS pages above — see
@@ -125,8 +127,9 @@ command's own help (or the full listing when no command was named).
 
 ## Next
 
-- [Commands](commands.md) — all 39 commands, grouped and with real usage text (`atmos-adm` only
-  *runs* with `-DAC3FORGE_BUILD_ADM=ON`, but is listed either way), plus the exit-code table.
+- [Commands](commands.md) — all 41 commands, grouped and with the usage text they print
+  (`atmos-adm` and `atmos-iab` only *run* with `-DAC3FORGE_BUILD_ADM=ON`, but are listed either
+  way), plus the exit-code table.
 - [Options & grammars](metadata-options.md) — the `drc=`/`heavy`/`dialnorm=`/… options grammar,
   the `tools` argument grammar, and the full layout/location-list grammar.
 - [Concepts](../concepts/index.md) — if `bsid`, `syncframe`, or `JOC` aren't already familiar.

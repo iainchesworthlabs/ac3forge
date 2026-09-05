@@ -2,7 +2,7 @@
 
 `ac3::forge`'s AC-3/E-AC-3 encoder, compiled to WebAssembly, encoding a `.wav` file you drop in
 entirely in your browser — no server-side encode, no upload. This is the same C++ encode path
-`ac3cli encode` uses, running as WASM instead of a native binary, alongside a real BS.1770
+`ac3cli encode` uses, running as WASM instead of a native binary, alongside a BS.1770
 loudness/true-peak QC verdict against five delivery presets — the same measurement `ac3cli qc`
 makes.
 
@@ -21,7 +21,7 @@ makes.
 
 [Open the demo in its own tab](assets/wasm-encode-demo/index.html){ target="_blank" } ·
 [Atmos object-authoring page](assets/wasm-encode-demo/atmos/index.html){ target="_blank" } — pan
-real audio objects around a room canvas and encode the result as E-AC-3 + JOC, live
+audio objects around a room canvas and encode the result as E-AC-3 + JOC, live
 
 ## What this demonstrates
 
@@ -32,6 +32,20 @@ delivery presets (`ac3::meta::evaluate_qc_gate`): a loud file fails every preset
 properly-mastered one passes the presets it meets. The round-trip preview decodes the bytes
 this page just produced through the existing [decode demo](wasm-demo.md)'s own module and
 plays them back, so the encoded stream can be checked, not just assumed.
+
+## Third-party notices
+
+This page loads two modules, the encoder and the decoder its round-trip preview uses, and both
+carry more than `ac3::forge`. Each statically links **{fmt}** (`cmake/Fmt.cmake` pins 12.2.0, and
+the committed `ac3forge_encode.wasm` and `ac3forge_decode.wasm` both carry
+`fmt::v12::format_error`'s mangled RTTI name), which is distributed under the MIT licence, whose
+text is in this repository at
+[`apps/crucible/notices/licences/MIT-fmt.txt`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/crucible/notices/licences/MIT-fmt.txt).
+Both also carry the Emscripten runtime and the C++ standard library that toolchain supplies, each
+under its own licence.
+
+Crucible's packages carry a generated `NOTICES.txt` for this reason; the servable demo directory
+does not yet, so this section stands in for one.
 
 ## Source and how it's built
 

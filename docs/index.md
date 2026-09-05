@@ -19,13 +19,17 @@ depend on them.
     The API is not stable — releases so far are 0.x betas; the
     [changelog](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md) records what
     each contains. Green and required in CI on Windows (MSVC, clang-cl), Linux (GCC and Clang,
-    x64 and arm64) and macOS (Homebrew LLVM) — CLI and GUI alike on every platform — plus an
-    ASan+UBSan leg, a line/branch
-    coverage gate over the library, a per-platform gold-reference *quality* gate, dedicated
-    Linux FFmpeg- and ADM-validation legs checking output *correctness*, and a required Android
-    build leg. One leg, `windows-msvc-arm64`, is still marked experimental, and still
-    packages for release. See [building.md](building.md) for exact toolchain versions and
-    what each CI leg covers.
+    x64 and arm64) and macOS (Homebrew LLVM) — the library and Forge's CLI and GUI alike on every
+    one of them. Crucible's CI is narrower, because Crucible is a Windows and Linux application
+    with no macOS half to build yet: it is built and tested on both Windows legs and, against
+    PipeWire, on the Linux Clang leg, and packaged from the Windows MSVC and Linux Clang legs.
+    Its Windows null-sink driver has a job of its own, which builds and test-signs the driver
+    package and fails on any defect the WDK's driver rule set reports. Beside all that sit an
+    ASan+UBSan leg, a line/branch coverage gate over the library, a per-platform gold-reference
+    *quality* gate, dedicated Linux FFmpeg- and ADM-validation legs checking output
+    *correctness*, and a required Android build leg. One leg, `windows-msvc-arm64`, is still
+    marked experimental, and still packages for release. See [building.md](building.md) for
+    exact toolchain versions and what each CI leg covers.
 
 ## The three members
 
@@ -33,16 +37,20 @@ depend on them.
 
 `ac3::forge` and its siblings: the codec itself. It turns PCM — or mono sources placed and
 moved in 3D space — into AC-3, E-AC-3, or E-AC-3 with Joint Object Coding elementary streams,
-and reads those streams back. Around it sit standalone MKV, MP4/CMAF and MPEG-TS muxers, an IAB
-reader, an ADM/BW64 reader and bridge, an IAMF writer, an AC-4 inspector, the family's shared
-platform audio backends, loudness metering and QC, and EMDF object signing, with C, Python
-and Rust bindings and a WebAssembly build over the same code. What it can and cannot do is on
+and reads those streams back; loudness metering, level analysis and the QC gates are part of it.
+Around it sit standalone MKV, MP4/CMAF and MPEG-TS muxers, an IAB reader, an ADM/BW64 reader and
+bridge, an IAMF writer, an AC-4 inspector, the family's shared platform audio backends and EMDF
+object signing, with C, Python and Rust bindings and a WebAssembly build over the same code. It
+ships separately from the applications: the `ac3forge-dev-*` archives and, on Linux, the
+`libac3forge0` runtime package with `libac3forge-dev` (DEB) or `ac3forge-devel` (RPM), from each
+[release](https://github.com/iainchesworthlabs/ac3forge/releases), or `pip install ac3forge` for
+the [Python bindings](library/python-api.md). What it can and cannot do is on
 [Capabilities](library/capabilities.md); how to link and call it is on
-[Conventions](library/index.md).
+[the library page](library/index.md).
 
 ### Forge
 
-[Forge](forge/index.md) is the tooling over the library: `ac3cli`, the thirty-nine-command
+[Forge](forge/index.md) is the tooling over the library: `ac3cli`, the forty-one-command
 front end for encoding, decoding, muxing, inspection, QC and live capture, and `ac3gui`, the Qt
 Quick workbench with a plan view for placing objects and channel-level metering. The two ship
 together in one download in every generator and registry; the Forge page says how to get them,
@@ -75,7 +83,7 @@ compiled to WebAssembly. Both demonstrate the library.
   coding mode, layout, sample rate, metadata field and Annex E tool, with spec citations.
 - **Validation** — [how output is checked](verification.md): quality numbers, oracle coverage,
   and exactly where it runs out.
-- **Library** — [Conventions](library/index.md): the public C++ API, with
+- **Library** — [what it is and how to link it](library/index.md): the public C++ API, with
   [compiled examples](library/examples.md).
 - **Forge** — [what it is and how to get it](forge/index.md), then the
   [CLI reference](cli/index.md) for `ac3cli` and the [GUI guide](gui/index.md) for `ac3gui`.
