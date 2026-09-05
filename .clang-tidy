@@ -43,7 +43,8 @@
 #   this class of bug - see the coupling-exponent precedent in 8386c8f.
 #
 # WarningsAsErrors matches the -warnings-as-errors='*' flag ci.yml's
-# static-analysis job has always passed, so a plain local `clang-tidy` (or
+# static-analysis.yml nightly job passes (as ci.yml's per-PR static-analysis
+# job did before 2026-09), so a plain local `clang-tidy` (or
 # run-clang-tidy) invocation exits non-zero on a finding exactly like CI
 # does instead of printing a warning and exiting 0. (clangd ignores this
 # key, so IDE diagnostics are unaffected. And when verifying locally,

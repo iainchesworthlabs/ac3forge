@@ -14,12 +14,30 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
-- CodeQL (`codeql.yml`) and MSVC Code Analysis (`msvc-analysis.yml`) run nightly against
-  `main` (02:17 and 02:23 UTC) instead of on every pull request, push and merge-queue entry,
-  and open or refresh a `nightly-analysis` issue when a run finds a new alert or fails. The
-  required checks on `main` (`Branch Name`, `CI Status`, `Scan dependency diff`) are
-  unchanged; the `code-scanning-gate-main` ruleset was deleted, since a merge-time
-  code-scanning rule cannot be satisfied when analysis runs only on `main`.
+- Code analysis runs nightly against `main` instead of on every pull request, push and
+  merge-queue entry: CodeQL (`codeql.yml`, 02:17 UTC), MSVC Code Analysis
+  (`msvc-analysis.yml`, 02:23 UTC) and clang-tidy, which moved out of `ci.yml`'s
+  `static-analysis` job into `.github/workflows/static-analysis.yml` (02:29 UTC) on the same
+  DEBUG preset with the same `-warnings-as-errors='*'`. Each opens or refreshes a
+  `nightly-analysis` issue when a run finds something or fails, because nothing reliably
+  notifies anyone about a new default-branch alert. `CI Status` no longer waits on
+  clang-tidy, and the required checks on `main` (`Branch Name`, `CI Status`, `Scan
+  dependency diff`) are unchanged. The `code-scanning-gate-main` ruleset was deleted, since
+  a merge-time code-scanning rule cannot be satisfied when analysis runs only on `main`.
+  What stays per pull request is everything that builds, runs or measures the codec's
+  output: the build/test matrix and its gold-reference gate, FFmpeg Validate, ADM Module,
+  the coverage floors, performance vs merge base, the fuzz regression replay and the FATE
+  interop check. Measured motivation: on 2026-09-04 the analysis engines held about 55
+  self-hosted runner-minutes per CI event (~20 Linux, ~35 Windows) and every merge paid it
+  three times, on a fleet shared with another repository whose jobs were queued in the same
+  minute; the cost is that a finding now lands on `main` and is reported the next morning
+  rather than annotating the pull request that introduced it.
+- The ABI gate no longer runs on merge-queue entries. The pull-request run already produced
+  the merge-base comparison the job exists for; a `merge_group` run takes the
+  release-relative view instead (HEAD against the latest `v*` tag), which the push to `main`
+  then repeats. While `ABI_ENFORCE` is `'false'` that second view blocks nothing and nobody
+  reads it before the merge lands, so it was two shared-library builds per queue entry for a
+  result with no audience.
 - The Desktop Atmos Demo's silent output device, `Ac3ForgeNullSink`, is now an ACX (Audio
   Class eXtensions) driver on KMDF, derived from Microsoft's AudioCodec sample, in place of
   the PortCls/WaveRT miniport derived from the Simple Audio Sample: about 1,900 lines in
