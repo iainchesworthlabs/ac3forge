@@ -39,14 +39,18 @@ Three sources, in this order; the first that names a language the app ships wins
 ## Right to left
 
 Arabic, Hebrew and Yiddish set the application's layout direction, and the window root
-(`apps/crucible/ui/qml/Main.qml`) mirrors on it: rows run right to left, anchors and paddings
-swap sides, the header title sits at the right edge, and the combo-box chevrons move to the left
-of their controls.
+(`apps/crucible/ui/qml/Main.qml`) mirrors on it: rows run right to left, anchors swap sides, the
+header title sits at the right edge, and the combo-box chevrons move to the left of their
+controls. Padding is outside that: neither a `Text`'s padding nor a `Control`'s `leftPadding` and
+`rightPadding` swaps on its own, so a control padded differently on its two sides reads its own
+`mirrored` property and swaps them itself.
 
-Two things deliberately do not mirror:
+Two things stay where they are:
 
-- **The room views.** The plan and the elevation are pictures of a room. L is the left speaker in
-  every language, so markers and speakers keep the x they are given.
+- **The markers and the speakers in the room views.** The plan and the elevation are pictures of
+  a room. L is the left speaker in every language, so anything placed at an explicit x keeps it.
+  The rest of those views — their captions, their rows, their labels — mirrors like any other
+  page; only the placements hold still.
 - **Figures.** A coordinate, a bitrate or a channel count is written left to right inside a
   right-to-left line, which is what the bidirectional algorithm does with them.
 
@@ -77,7 +81,7 @@ text: CrucibleController.objectsEnabled ? qsTr("apps → %1 · objects signed")
                                         : qsTr("apps → %1 · 5.1 bed only")
 ```
 
-Three more rules the window follows:
+Four more rules the window follows:
 
 - **No platform names in QML prose.** Windows, PipeWire, WirePlumber, a driver, a package — the
   words that are true on one platform and wrong on another come from `CrucibleController`
@@ -91,6 +95,12 @@ Three more rules the window follows:
 - **A column sizes to its own heading.** The endpoint table's fixed columns take the width of
   their translated head (`page.pcmColumn` and its neighbours in `OutputPage.qml`), because
   "PCM CH" is "PCM-KAN." in German and "قنوات PCM" in Arabic.
+- **Anchor an overlay rather than placing it at an x.** Mirroring moves an anchor and leaves an
+  `x` and a padding where they are, so an element written as `x: box.width - 22` sits on the
+  right under Arabic too. Where a control's two paddings differ, choose them from
+  `control.mirrored`. The combo-box chevrons in `OutputPage.qml` and `SettingsPage.qml` are the
+  worked example: `anchors.right` with a margin, and a `contentItem` whose left and right padding
+  are picked by `mirrored`.
 
 ## The glossary
 
@@ -161,11 +171,21 @@ cmake --build --preset <preset> --target ac3crucible_lupdate
 ```
 
 A new or reworded string arrives as `<translation type="unfinished">`, holding the previous text
-where there was one. The regeneration that refills the catalogues also passes `-no-obsolete`
-(`LUPDATE_OPTIONS` on the `qt_add_translations()` call in `apps/crucible/CMakeLists.txt`, added
-with it), so a string the source no longer has is dropped rather than kept as translation
-memory: git history is the memory, and the dead-entry rule below wants the files clean after
-every regeneration.
+where there was one. `LUPDATE_OPTIONS -no-obsolete` on the `qt_add_translations()` call in
+`apps/crucible/CMakeLists.txt` drops a string the source no longer has rather than keeping it as
+translation memory: git history is the memory, and the dead-entry rule below wants the files
+clean after every regeneration.
+
+Two things to expect from the first regeneration after the source pass:
+
+- The position phrases moved from `RoomPage.qml` into `RoomWords.qml` after the last extraction,
+  and `lupdate` matches an entry on its context and its source. They arrive under a new
+  `RoomWords` context, unfinished, even where the English did not change, and `-no-obsolete`
+  drops the `RoomPage` originals. The previous renderings are in
+  `apps/crucible/translations/ac3crucible_<code>.ts` at commit `c5c9df76`, under `RoomPage`, and
+  can be pasted across before the review reads them.
+- Around forty entries per language are newly unfinished because the English was reworded into
+  whole sentences, on top of the fifteen strings the catalogues never had.
 
 Fill the unfinished entries in **Qt Linguist**, or by editing the `<translation>` elements
 directly; when editing by hand, remove the `type="unfinished"` attribute once the entry has
@@ -173,7 +193,8 @@ been read by someone who reads the language. Rebuild to recompile the `.qm` file
 are embedded as resources under `:/i18n`.
 
 `lupdate` groups the messages by the QML component they came from — `Main`, `OutputPage`,
-`RoomPage`, `SettingsPage`, `SignalPath` — which is how to find a string in a large file.
+`RoomPage`, `RoomWords`, `SettingsPage`, `SignalPath` — which is how to find a string in a large
+file.
 
 ## What the gate checks
 
@@ -191,9 +212,16 @@ plain `ac3tests` binary, so a developer's own `ctest` sees it:
 
 The last two are the rules the regeneration turns on. Until the catalogues have been regenerated
 from the current source and the review has filled them, an unfinished entry is the expected state
-of a freshly extracted string; the two cases say how many they are tolerating and pass. The
-constant `kCatalogueRefilled` at the top of the file is what flips them on, in the commit that
-lands the refilled catalogues.
+of a freshly extracted string; the two cases say how many they are tolerating and pass, and their
+names carry "(idle until refilled)" so a green run is not read as a guarantee. The constant
+`kCatalogueRefilled` at the top of the file is what turns them on, in the commit that lands the
+refilled catalogues; the names lose the parenthesis with it.
+
+One check is not written yet: a CI step that runs `ac3crucible_lupdate` and then
+`git diff --exit-code -- apps/crucible/translations`, the way `.github/workflows/_build.yml`
+already does for `ac3gui`. It belongs in the same commit as the refilled catalogues, because
+against the tree as it stands it would be red on the first run. It is what turns a forgotten
+regeneration into a red check rather than a quietly stale catalogue.
 
 The rules that read a translation skip an entry marked unfinished: an entry nobody has translated
 yet is empty or holds the previous language's text, and failing the placeholder rule on it would

@@ -20,23 +20,13 @@ QtObject {
     // ear level, and the middle third of the room - so what is left is what
     // is worth hearing.
     //
-    // Each step frames the one before it rather than joining a word to it:
-    // the depth is a phrase, the side and the height are sentences with a
-    // %1 in them, so a language that puts height last or reads the room
-    // right to left can order the whole line as it needs to.
+    // The floor is nine whole phrases (onTheFloor below) rather than a
+    // depth with a side glued to it, so a language that inflects the one
+    // inside the other, or says them the other way round, writes each of
+    // the nine as its own sentence. Height frames what the floor gives,
+    // which leaves two more strings instead of eighteen.
     function describe(x, y, z) {
-        //: Where something is in the room, as a screen reader hears it
-        const depth = y < 0.35 ? qsTr("in front of you")
-                    : y > 0.65 ? qsTr("behind you")
-                    : qsTr("beside you");
-        let placed = depth;
-        if (x < 0.35) {
-            //: %1 is where it is ("in front of you"); this adds which side of the room it is on
-            placed = qsTr("%1, to the left").arg(depth);
-        } else if (x > 0.65) {
-            //: %1 is where it is ("in front of you"); this adds which side of the room it is on
-            placed = qsTr("%1, to the right").arg(depth);
-        }
+        const placed = words.onTheFloor(x, y);
         if (z > 0.3) {
             //: %1 is a position ("in front of you, to the left"); this adds that it is above ear level
             return qsTr("up, %1").arg(placed);
@@ -46,6 +36,36 @@ QtObject {
             return qsTr("low, %1").arg(placed);
         }
         return placed;
+    }
+
+    // Where something is on the floor of the room, as a screen reader hears
+    // it: the front, middle or back third, and the left, middle or right
+    // third, in one phrase each.
+    function onTheFloor(x, y) {
+        const front = y < 0.35;
+        const back = y > 0.65;
+        if (x < 0.35) {
+            //: Position in the room: ahead of the listener and to their left
+            if (front) { return qsTr("in front of you, to the left"); }
+            //: Position in the room: behind the listener and to their left
+            if (back) { return qsTr("behind you, to the left"); }
+            //: Position in the room: level with the listener, to their left
+            return qsTr("beside you, to the left");
+        }
+        if (x > 0.65) {
+            //: Position in the room: ahead of the listener and to their right
+            if (front) { return qsTr("in front of you, to the right"); }
+            //: Position in the room: behind the listener and to their right
+            if (back) { return qsTr("behind you, to the right"); }
+            //: Position in the room: level with the listener, to their right
+            return qsTr("beside you, to the right");
+        }
+        //: Position in the room: ahead of the listener, neither left nor right
+        if (front) { return qsTr("in front of you"); }
+        //: Position in the room: behind the listener, neither left nor right
+        if (back) { return qsTr("behind you"); }
+        //: Position in the room: level with the listener, neither left nor right
+        return qsTr("beside you");
     }
 
     // The same position as figures, labelled: "x 0.50 · y 0.50 · z +0.00".
@@ -67,6 +87,13 @@ QtObject {
     }
 
     // Where an application sits: which slot it holds, or the bed.
+    //
+    // The three places that show both (the room card, an application row, a
+    // marker's description) put this and coords() or numbers() either side
+    // of a " · ". That separator is punctuation between two whole
+    // phrases rather than a sentence assembled from words, so it is not
+    // itself translated; folding the pair into one string would take the
+    // same phrase away from the other two callers.
     function placement(app) {
         if (!app || app.slot < 0) {
             return qsTr("in the bed");

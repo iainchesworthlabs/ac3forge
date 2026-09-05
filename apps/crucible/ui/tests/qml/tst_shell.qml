@@ -11,8 +11,8 @@ import Ac3ForgeCrucibleLanguage
 // says so, which is a state the shell has to render too.
 //
 // The last two cases are the window's right-to-left half: the header
-// follows the layout direction the language sets, and the room plan does
-// not, because it is a map of a room rather than a row of controls.
+// follows the layout direction the language sets, and the plan's speakers
+// keep the x they are given, because the plan is a map of a room.
 TestCase {
     id: testCase
     name: "Shell"
@@ -26,6 +26,10 @@ TestCase {
         CrucibleController.palette = "signal";
         CrucibleController.keepRunningWhenClosed = true;
         CrucibleController.moveDefaultOnLaunch = false;
+        // The plan rather than the elevation: the right-to-left case below
+        // reads the plan's speakers, and every case here starts from the
+        // same view whatever an earlier one left behind.
+        CrucibleController.roomView = "2d";
         // Seen already, so the first-run dialog does not sit over the shell
         // cases; tst_firstrun.qml is where it is exercised.
         CrucibleController.firstRunAcknowledged = true;
@@ -135,8 +139,7 @@ TestCase {
     function test_roomPlanKeepsLeftOnTheLeft() {
         // The plan is a picture of a room: L is where the left speaker
         // is, and mirroring the window must not move it, whatever
-        // direction the language reads in.
-        CrucibleController.roomView = "2d";
+        // direction the language reads in. init() has pinned the plan.
         verify(LanguageManager.setLanguage("he"));
         const window = createTemporaryObject(shell, testCase);
         verify(window);

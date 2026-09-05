@@ -51,9 +51,11 @@ constexpr std::array<std::string_view, 10> kBrandTerms{
 // state of a freshly extracted string, and a vanished one is the state of a
 // string this pass reworded, so the two cases below stand written and idle.
 //
-// Turn this on in the commit that lands the refilled catalogues. From then
+// Turn this on in the commit that lands the refilled catalogues, and take
+// "(idle until refilled)" out of the two case names when you do. From then
 // on an entry left unfinished, or a dead entry left in the file, fails the
-// build.
+// build. Until then the two cases report the count and pass, and the names
+// say so rather than claiming a guarantee the bodies do not give.
 constexpr bool kCatalogueRefilled = false;
 
 struct Message {
@@ -103,8 +105,8 @@ struct Message {
         const auto message_at = text.find("<message", at);
         // A <context> opens with its <name>; every <message> between that and
         // the next one belongs to it.
-        const bool name_first =
-            name_at != std::string::npos && (message_at == std::string::npos || name_at < message_at);
+        const bool name_first = name_at != std::string::npos &&
+                                (message_at == std::string::npos || name_at < message_at);
         if (name_first) {
             const auto end = text.find("</name>", name_at);
             if (end == std::string::npos) {
@@ -185,9 +187,19 @@ struct Message {
 }
 
 // A short, quotable form of a source, for the message a failure prints.
+// The cut walks back off a continuation byte first: every source and every
+// translation in ar, he and yi is multi-byte UTF-8, and half a codepoint in
+// the one line a reader has to read would print as a broken character.
 [[nodiscard]] std::string quoted(const std::string& source) {
     constexpr std::size_t kCap = 72;
-    return source.size() <= kCap ? source : source.substr(0, kCap) + "...";
+    if (source.size() <= kCap) {
+        return source;
+    }
+    std::size_t cut = kCap;
+    while (cut > 0 && (static_cast<unsigned char>(source[cut]) & 0xC0) == 0x80) {
+        --cut;
+    }
+    return source.substr(0, cut) + "...";
 }
 
 // Every entry across the six files that carries the given type, named so a
@@ -221,10 +233,13 @@ struct Message {
 
 }  // namespace
 
-TEST_CASE("crucible translation catalogues carry no unfinished entry", "[crucible][translations]") {
+TEST_CASE("crucible translation catalogues carry no unfinished entry (idle until refilled)",
+          "[crucible][translations]") {
     const auto unfinished = entries_marked("unfinished");
     if (!unfinished.empty()) {
-        WARN("unfinished entries: " << unfinished.size() << ", first: " << unfinished.front());
+        WARN("unfinished entries: " << unfinished.size() << ", first: " << unfinished.front()
+             << " - this case only fails once kCatalogueRefilled is turned on, which is the"
+                " commit that lands the refilled catalogues");
     }
     INFO(listed(unfinished));
     // With the catalogues refilled an unfinished entry is a failure. Before
@@ -233,13 +248,15 @@ TEST_CASE("crucible translation catalogues carry no unfinished entry", "[crucibl
     CHECK((unfinished.empty() || !kCatalogueRefilled));
 }
 
-TEST_CASE("crucible translation catalogues carry no vanished or obsolete entry",
+TEST_CASE("crucible translation catalogues carry no dead entry (idle until refilled)",
           "[crucible][translations]") {
     auto dead = entries_marked("vanished");
     const auto obsolete = entries_marked("obsolete");
     dead.insert(dead.end(), obsolete.begin(), obsolete.end());
     if (!dead.empty()) {
-        WARN("dead entries: " << dead.size() << ", first: " << dead.front());
+        WARN("dead entries: " << dead.size() << ", first: " << dead.front()
+             << " - this case only fails once kCatalogueRefilled is turned on, which is the"
+                " commit that lands the refilled catalogues");
     }
     INFO(listed(dead));
     // The same two states as above: a string this pass reworded leaves its
