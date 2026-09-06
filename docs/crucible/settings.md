@@ -157,15 +157,18 @@ dialog ([First run](install.md#first-run)).
 window then hides it: the engine keeps running, applications stay on the silent device, and the
 tray icon brings the window back. Quitting from the tray is what puts your default output back.
 
-This setting is **unavailable on Linux**, and the reason is a defect rather than a preference.
-Publishing a tray icon from this window takes the process down with it: read off a Raspberry Pi 4B
-running the Raspberry Pi OS desktop, the window survived 0 to 2 launches out of ten with the tray
-published and 10 out of 10 without it. The icon format, the menu's contents, the icon provider,
-the accessibility bridge, the render loop and the engine were each ruled out by measurement, and a
-minimal Qt application publishing the same tray on the same session survives. So the Linux build
-publishes no tray icon, closing the window quits, the tick is disabled, and the note beside it
-says so. [Troubleshooting](troubleshooting.md#linux-there-is-no-tray-icon) carries the rest and
-`apps/crucible/ui/platform/linux/tray_support.cpp` carries the measurements.
+The setting is **unavailable on a session with no tray** — no Windows notification area, no Linux
+panel that shows tray icons. There is then nowhere to keep the window, so the tick is disabled,
+the note beside it says which, and closing the window quits.
+[Troubleshooting](troubleshooting.md#there-is-no-tray-icon) says how to check what your session
+has.
+
+Linux published no tray at all before 2026-09-06, because publishing one crashed the window on
+nine or ten launches out of ten. That was a bug in Qt rather than a preference — a `Menu` nested
+inside a tray icon's menu is handed Qt's QWidget fallback and then read as a D-Bus menu — and
+the tray's menu is flat now, which is why the signal path appears there as a heading and seven
+choices rather than as a submenu. `apps/crucible/ui/platform/linux/tray_support.cpp` carries the
+finding.
 
 **Show applications with no audio.** On by default. Running applications with a window but no
 audio session, greyed until they play. Off hides them unless they are placed. This is a Windows

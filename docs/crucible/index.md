@@ -74,11 +74,11 @@ bed plus objects. That reading matters more than it sounds, because Crucible **c
 ALSA backend
 (no per-application tap), so it is forced onto the one passthrough path this project had not
 confirmed before. [The plan](promotion.md#alsa-or-pipewire) is blunt about that. Application
-icons come from the icon theme and the `.desktop` entries. Two things the Linux window does not
+icons come from the icon theme and the `.desktop` entries. One thing the Linux window does not
 have: the full-screen rule under Wayland, which cannot be answered there, though under X11 the
-rule is on; and a tray icon, because publishing one crashes the window on the desktops it has
-been tried on, so closing the window quits
-([Troubleshooting](troubleshooting.md#linux-there-is-no-tray-icon)).
+rule is on. It publishes a tray icon wherever the desktop has a StatusNotifier host for it, and
+says so where there is none
+([Troubleshooting](troubleshooting.md#there-is-no-tray-icon)).
 
 **macOS** needs no driver — its process taps can mute an application where they tap it, which is
 the job the Windows driver exists to do. The code for it is written: a Core Audio process tap and
