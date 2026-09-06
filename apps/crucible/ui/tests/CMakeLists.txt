@@ -30,6 +30,11 @@ qt_add_executable(ac3crucible_qmltests
 # under ui/platform/ there belongs here too - the controller is compiled into
 # this binary, so a seam this target does not choose is an unresolved symbol
 # at link time and nothing sooner.
+#
+# The macOS arm carries the OBJCXX standard and the AppKit link with it, for
+# the same reason the window's does: ui/platform/macos/app_icon_provider.mm is
+# Objective-C++, and this is a second, independent embedding rather than a
+# shared library, so nothing is inherited from the other target.
 if(WIN32)
     target_sources(ac3crucible_qmltests PRIVATE ui/platform/windows/app_icon_provider.cpp
                                                 ui/platform/windows/tray_support.cpp)
@@ -37,6 +42,19 @@ elseif(LINUX)
     target_sources(ac3crucible_qmltests PRIVATE ui/platform/linux/app_icon_provider.cpp
                                                 ui/platform/linux/tray_support.cpp)
     target_sources(ac3crucible_qmltests PRIVATE ui/desktop_entries.cpp ui/desktop_entries.hpp)
+elseif(APPLE)
+    target_sources(ac3crucible_qmltests PRIVATE ui/platform/macos/app_icon_provider.mm
+                                                ui/platform/macos/tray_support.cpp)
+    set_target_properties(ac3crucible_qmltests PROPERTIES
+        OBJCXX_STANDARD 23
+        OBJCXX_STANDARD_REQUIRED ON
+        OBJCXX_EXTENSIONS OFF)
+    # The same AppKit-versus-Qt macro collision the window's own arm names
+    # (apps/crucible/CMakeLists.txt's APPLE arms): this target compiles the
+    # same .mm, so it needs the same define, and nothing is inherited.
+    target_compile_definitions(ac3crucible_qmltests
+        PRIVATE __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES=0)
+    target_link_libraries(ac3crucible_qmltests PRIVATE "-framework AppKit" "-framework CoreGraphics")
 endif()
 
 qt_add_qml_module(ac3crucible_qmltests

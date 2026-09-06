@@ -64,7 +64,15 @@ if (Test-Path $appsRoot) {
     $scanRoots += $appsRoot
 }
 
-$files = Get-ChildItem -Path $scanRoots -Recurse -File -Include '*.h', '*.hpp', '*.cpp', '*.cc', '*.cxx', '*.inl'
+# .mm added 2026-09-06 with the first Objective-C++ in the tree
+# (apps/crucible/engine/platform/macos/foreground.mm and
+# apps/crucible/ui/platform/macos/app_icon_provider.mm). Those files say in
+# their own headers that this check holds the no-#ifdef rule over them, and
+# that was not true while the extension list stopped at .cpp - a .mm is where
+# an #ifdef would be most tempting, since it is the one language in the tree
+# that only ever compiles on one operating system. `#import` is not a
+# conditional and is not matched by $directivePattern.
+$files = Get-ChildItem -Path $scanRoots -Recurse -File -Include '*.h', '*.hpp', '*.cpp', '*.cc', '*.cxx', '*.inl', '*.mm'
 
 # apps/windows/driver/ is Microsoft's Simple Audio Sample under its own MS-PL
 # licence (see its README): a separate kernel-mode work that shares no code

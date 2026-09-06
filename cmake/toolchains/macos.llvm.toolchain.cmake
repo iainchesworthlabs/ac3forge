@@ -88,6 +88,16 @@ endif()
 
 set(CMAKE_C_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 set(CMAKE_CXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
+# Objective-C++ is a C++ dialect and has to be given the same C++ standard
+# library, or one target ends up with two. Added 2026-09-06, when
+# apps/crucible/CMakeLists.txt's APPLE arm became the first enable_language(OBJCXX)
+# in the tree: OBJCXX picks up CMAKE_OSX_ARCHITECTURES on its own, but nothing
+# copies CMAKE_CXX_FLAGS_INIT across, so without this the .mm halves of
+# ac3crucible_engine and ac3crucible would compile against whichever libc++ the
+# compiler defaults to while every .cpp beside them uses the one selected
+# below. Inert on a configure that never enables the language. Untested: no
+# macOS build of Crucible has been run from this tree.
+set(CMAKE_OBJCXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 
 # Prefer LLVM's own libc++ over the SDK's when the chosen clang ships one.
 # _LIBCPP_DISABLE_AVAILABILITY drops the vendor availability annotations, which
@@ -103,6 +113,12 @@ if(EXISTS "${_LLVM_LIBCXX_INCLUDE}")
     message(STATUS "Using LLVM libc++ headers: ${_LLVM_LIBCXX_INCLUDE}")
 
     string(APPEND CMAKE_CXX_FLAGS_INIT
+        " -nostdinc++ -isystem ${_LLVM_LIBCXX_INCLUDE} -D_LIBCPP_DISABLE_AVAILABILITY")
+    # The same three for Objective-C++ - see the CMAKE_OBJCXX_FLAGS_INIT note
+    # above. Mismatched availability annotations between the two languages are
+    # the half of this that would fail quietly: the headers would still be
+    # found, and only some inline definition would differ.
+    string(APPEND CMAKE_OBJCXX_FLAGS_INIT
         " -nostdinc++ -isystem ${_LLVM_LIBCXX_INCLUDE} -D_LIBCPP_DISABLE_AVAILABILITY")
 
     set(CMAKE_EXE_LINKER_FLAGS_INIT

@@ -135,7 +135,7 @@ add_compile_options("${AC3_FP_CONTRACT_FLAG}")
 # ---------------------------------------------------------------------------
 option(AC3FORGE_BUILD_CLI "Build the ac3cli command-line application" ON)
 option(AC3FORGE_BUILD_GUI "Build the Qt6 Quick GUI application" ON)
-option(AC3FORGE_BUILD_CRUCIBLE "Build AC3Forge Crucible (roadmap UX12; Windows and Linux)" OFF)
+option(AC3FORGE_BUILD_CRUCIBLE "Build AC3Forge Crucible (roadmap UX12; Windows, Linux and macOS)" OFF)
 option(AC3FORGE_BUILD_TESTS "Build the unit test suite" ON)
 # Catch2 is the only build-time dependency. Turn this off to insist it comes
 # from a package manager instead of the network (see tests/CMakeLists.txt).
@@ -443,11 +443,18 @@ endif()
 
 # AC3Forge Crucible (roadmap UX11 and UX12, docs/crucible/promotion.md).
 # In-tree like the GUI rather than wrapping the root the way the Android app
-# does, because it shares this toolchain. Windows and Linux have platform
-# halves under apps/crucible/engine/platform/; macOS does not yet, so it is
-# excluded here rather than failing to link. The engine core is tested
-# everywhere regardless (tests/crucible).
-if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR (UNIX AND NOT APPLE)))
+# does, because it shares this toolchain. All three desktop platforms now have
+# a half under apps/crucible/engine/platform/ and apps/crucible/ui/platform/,
+# so all three are allowed in; the guard names them rather than being dropped,
+# because a platform with no arm in apps/crucible/CMakeLists.txt would
+# configure and then fail to link, which is what this list has always been for.
+#
+# macOS was excluded here until 2026-09-06 and is now included on the strength
+# of the code compiling and nothing more: no Mac has run any part of this
+# application, and docs/crucible/promotion.md's "What cannot be verified, and
+# why" table still says so. The engine core is tested everywhere regardless
+# (tests/crucible).
+if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR APPLE OR LINUX))
     add_subdirectory(apps/crucible)
 endif()
 
