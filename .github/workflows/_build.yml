@@ -456,6 +456,35 @@ jobs:
             gui: true
             packageable: true
             gold_reference: true
+            # AC3Forge Crucible's Linux half on aarch64 (roadmap UX12). The
+            # Crucible pass further down is written against matrix.preset, so
+            # this leg only has to ask for it: same apt list, same configure
+            # assertions, same tests, same package as linux-llvm, and no
+            # second copy of any of them to drift out of step.
+            #
+            # aarch64 is the only hardware the Linux half is on record as
+            # having run on: it was written and verified against a receiver
+            # on a Raspberry Pi 4B on 2026-09-05, in Phase 4 of
+            # docs/crucible/promotion.md - a run that built the window,
+            # passed all five Qt Quick suites and produced the aarch64
+            # tarball and the arm64 .deb by hand. CI meanwhile built
+            # Crucible on x86_64 alone, so the architecture the whole
+            # record rests on was the one nothing checked, and an
+            # aarch64-only compilation fault would have reached a user
+            # through the .deb before anyone saw it.
+            #
+            # This leg and not "Linux GCC (arm64)" for two reasons. The first
+            # is the one that put the pass on linux-llvm rather than
+            # linux-gcc: that leg carries alsa_fallback, whose assertion that
+            # disabling ALSA falls back to posix holds only while no PipeWire
+            # headers are installed, and the pass installs them. The second
+            # is release_package, which the GCC arm64 leg also carries: the
+            # "Assert the AC3Forge Crucible was packaged (Windows)" step keys
+            # off matrix.crucible && matrix.release_package with no runner.os
+            # guard of its own, so on a do_package run it would go looking on
+            # Linux for a packages/ac3forge-crucible-*.zip that no Linux leg
+            # ever produces.
+            crucible: true
 
           # AddressSanitizer + UndefinedBehaviorSanitizer (cmake/Sanitizers.cmake),
           # -fno-sanitize-recover=all so a violation fails the job outright. Shares
@@ -1649,6 +1678,66 @@ jobs:
             build/crucible/packages/ac3forge-crucible-*.tar.gz
             build/crucible/packages/ac3forge-crucible_*.deb
           if-no-files-found: ignore
+
+      # The pass above is portable across Linux legs, which is why the arm64
+      # leg only had to set `crucible` to get it. Two things it cannot assert
+      # for itself, both of them about what this leg is here for.
+      #
+      # The first is its own Qt guard, which warns and exits 0 when the Qt it
+      # found is older than the 6.8 the window needs. Where that leaves this
+      # leg is worth being exact about, because the guard's own comment reads
+      # as if the runner supplied that Qt: it does not. Every Linux leg here
+      # runs inside the ubuntu:26.04 container this matrix pins, and both the
+      # bootstrap and the pass apt-install Qt into it, so the Qt on this leg
+      # is the same Qt the x86_64 leg builds against and nothing the runner
+      # fan-out picks can change it. What can still trip the guard is that
+      # image moving under both legs - and tripping it here would leave a
+      # green leg that built no window, ran no Qt Quick suite and packaged
+      # nothing, the same shape of pass over nothing the `crucible` ctest
+      # label once gave the step above. On the one leg that exists to check
+      # aarch64 there would then be nothing left checked, so this fails on it
+      # rather than forgiving it.
+      #
+      # The second is the architecture. Every name the pass globs for is
+      # computed from CMAKE_SYSTEM_PROCESSOR (cmake/Packaging.cmake, via
+      # cmake/toolchains/linux.llvm.toolchain.cmake), so its checks would pass
+      # unchanged on a package built for some other target. file(1) on the
+      # binary and the .deb's own Architecture field are what make "this is
+      # the aarch64 package" a checked claim rather than a filename - the one
+      # thing this leg exists to establish.
+      - name: Assert the Crucible package is aarch64 (Linux arm64)
+        if: matrix.crucible && matrix.preset == 'linux-llvm-arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x build/crucible/bin/ac3crucible || {
+            echo "::error::the Crucible pass produced no ac3crucible on the arm64 leg. It only skips the window when the Qt it found is below 6.8, and that Qt is apt-installed into this job's pinned ubuntu:26.04 container rather than taken from the runner - so read the warning it printed above: the container's Qt has moved, on this leg and on the x86_64 one with it."
+            exit 1
+          }
+          file build/crucible/bin/ac3crucible | tee /tmp/crucible-arch.txt
+          grep -q 'aarch64' /tmp/crucible-arch.txt || {
+            echo "::error::ac3crucible on the arm64 leg is not an aarch64 binary - see the file(1) line above"
+            exit 1
+          }
+          shopt -s nullglob
+          tars=(build/crucible/packages/ac3forge-crucible-*-Linux-aarch64.tar.gz)
+          if [ ${#tars[@]} -eq 0 ]; then
+            echo "::error::the Crucible pass packaged nothing named -Linux-aarch64.tar.gz; CPACK_SYSTEM_NAME (cmake/Packaging.cmake) takes that suffix from CMAKE_SYSTEM_PROCESSOR, which the preset's toolchain file resolves from its vcpkg triplet"
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          debs=(build/crucible/packages/ac3forge-crucible_*_arm64.deb)
+          if [ ${#debs[@]} -eq 0 ]; then
+            echo "::error::the Crucible pass packaged no ac3forge-crucible_*_arm64.deb - CPack's DEB generator takes the architecture from dpkg --print-architecture, so any other name here means this job is not running in the arm64 container its matrix entry asks for"
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          dpkg-deb -I "${debs[0]}" | grep -q '^ Architecture: arm64$' || {
+            echo "::error::the Crucible .deb is named for arm64 but does not declare Architecture: arm64"
+            exit 1
+          }
+          echo "aarch64 Crucible package: ${tars[0]}"
+          echo "aarch64 Crucible package: ${debs[0]}"
 
       # Proves BUILD_SHARED_LIBS=ON actually works before it ships in a real
       # release: ac3::forge_shared/matroska::matroska_shared existing and

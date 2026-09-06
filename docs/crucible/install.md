@@ -82,21 +82,24 @@ The window says which of these you are in rather than leaving you to work it out
 ### Get it
 
 `ac3forge-crucible-<version>-Linux-x86_64.tar.gz`, or the `ac3forge-crucible_<version>_amd64.deb`
-beside it, from the releases page. Both come off the Linux LLVM leg's Crucible pass — the one CI
-leg that builds against PipeWire, which is the only backend Crucible accepts — and are collected
-into the release with every other package
-([docs/releasing.md](../releasing.md#what-gets-published) says how). Neither carries Qt; the
-system's own loader finds it.
+beside it, from the releases page; on a Raspberry Pi 4 or 5, or any other 64-bit ARM Debian or
+Ubuntu machine, the `-Linux-aarch64.tar.gz` and the `_arm64.deb` beside those. All four come off
+the same Crucible pass on the two Linux LLVM legs — the CI legs that build against PipeWire,
+which is the only backend Crucible accepts, one per architecture — and are collected into the
+release with every other package ([docs/releasing.md](../releasing.md#what-gets-published) says
+how). None of them carries Qt; the system's own loader finds it.
 
-They are x86_64 only: no leg builds Crucible for aarch64, so a Raspberry Pi builds from a
-checkout. And nothing in the release gates on the two files being there: when that leg lands on
-a runner whose Qt is older than 6.8 it skips the window and the package with a warning, and the
-release publishes without them. The leg's log says when that happened.
+Nothing in the release gates on those files being there. The x86_64 leg skips the window and its
+package with a warning if the Qt it finds is older than the 6.8 the window needs, and the release
+publishes without them; the leg's log says when that happened. The arm64 leg does not skip: a
+step beside the pass fails that leg when the window is missing, and reads the architecture off
+the binary and the `.deb` rather than trusting their filenames.
 
 ### Build it
 
-A checkout produces the same two files — `cpack -D CPACK_COMPONENTS_ALL=crucible` in the build
-directory — and is the route for aarch64, and for anything you have changed. From a checkout:
+A checkout produces the same files — `cpack -D CPACK_COMPONENTS_ALL=crucible` in the build
+directory — and is the route for anything you have changed, and for a distribution whose Qt or
+PipeWire is older than the one the packages were built against. From a checkout:
 
 ```bash
 cmake --preset config-linux-gcc -B build/crucible -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON
