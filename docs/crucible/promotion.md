@@ -821,27 +821,50 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
 
 ### Phase 5: macOS
 
-The library half is an Objective-C++ translation unit — `CATapDescription` has no C entry point —
-implementing the tap with `muteBehavior = .mutedWhenTapped`, plus a `DeviceWatcher` over
-`kAudioHardwarePropertyDevices` and `kAudioHardwarePropertyDefaultOutputDevice` property
-listeners. The platform half reads `kAudioHardwarePropertyProcessObjectList`, takes the
-frontmost application from `NSWorkspace`, and renders a per-application signal path because
-macOS has no silent device to point at. `system_audio_tap_api_available()` already exists as the
-version gate to refuse on; the exact floor (the repo records 14.2, some sources say 14.4) gets
-pinned here.
+Both halves of this phase are on the branch. The library half is an Objective-C++ translation
+unit — `CATapDescription` has no C entry point — implementing the tap with
+`muteBehavior = CATapMutedWhenTapped`, plus a `DeviceWatcher` over three property listeners on the
+system object: `kAudioHardwarePropertyDevices` for the device list, and
+`kAudioHardwarePropertyDefaultOutputDevice`/`…DefaultInputDevice` for the two defaults moving. The
+platform half reads
+`kAudioHardwarePropertyProcessObjectList`, takes the frontmost application from `NSWorkspace`, and
+renders a per-application signal path because macOS has no silent device to point at. The version
+floor is pinned at **14.2**, in one place — `ac3::coreaudio::kSystemAudioTapMinimumOs` — with the
+14.4 figure some third-party write-ups use recorded beside it and the reason it was not taken.
 
-**Exit:** compiles and links on both macOS CI legs and survives the universal merge. **It cannot
-be run**; see below.
+**Exit:** compiles and links on both macOS CI legs and survives the universal merge. **The
+compiling and linking is done; the universal merge has not run. The application itself cannot be
+run by anyone here**; see below.
 
-!!! note "Written 2026-09-06: the application half exists and has never executed"
-    `apps/crucible/engine/platform/macos/` and `apps/crucible/ui/platform/macos/` are written,
-    and the root guard in `CMakeLists.txt` is now `WIN32 OR APPLE OR LINUX` — macOS is a
-    supported platform rather than an excluded one. **Not one line of it has run.** No Mac has
-    executed any part of this application, the macOS row in
-    [What cannot be verified](#what-cannot-be-verified-and-why) is unchanged, and the most that
-    a green macOS CI leg establishes is that this compiles and links. Every file under both new
-    directories says so at its head, in those words, so a reader who opens one of them first is
-    told before they read anything else.
+!!! note "Written 2026-09-06: both halves exist and compile; almost none of it has run"
+    `src/audio/src/backend/macos/process_tap.{hpp,mm}`,
+    `apps/crucible/engine/platform/macos/` and `apps/crucible/ui/platform/macos/` are all
+    written, and the root guard in `CMakeLists.txt` is now `WIN32 OR APPLE OR LINUX` — macOS is a
+    supported platform rather than an excluded one.
+
+    Three separate claims, and they are kept apart here because collapsing them is what went
+    wrong before: this paragraph has twice described a state the branch had already left — once
+    because two parallel worktrees were merged, once because CI had moved on since it was
+    written:
+
+    - **Written**, yes. Both halves, on this branch.
+    - **Compiled**, yes, on both legs. The first CI attempt never reached a compiler: it stopped
+      during configure, at an `install(TARGETS ac3crucible)` rule that named no
+      `BUNDLE DESTINATION` for a target with `MACOSX_BUNDLE` on. With that fixed, both macOS legs
+      built every source of both halves — the three `.mm` files among them — and linked
+      `bin/ac3crucible.app/Contents/MacOS/ac3crucible`. The universal merge that follows has not
+      run yet: its job needs both legs green, and the Apple Silicon leg was red on three Qt Quick
+      test timeouts (see [macOS](../platforms/macos.md#ci-what-has-and-has-not-been-verified)).
+    - **Run**, almost none of it. Two library cases execute macOS backend code on the runners: the
+      version gate, and the device-watcher contract case, which starts and stops a watcher on the
+      runner. Nothing else does. No Mac has executed one line of either platform half — the seam
+      tests link the stub and the Qt Quick tests drive fakes — and nobody has launched the
+      application. The macOS row in
+      [What cannot be verified](#what-cannot-be-verified-and-why) is unchanged: CI has no audio
+      device, no desktop session and no way to grant the tap's consent prompt.
+
+    Every file under the new directories says as much at its head, so a reader who opens one of
+    them first is told before they read anything else.
 
     The five seams, and what each is over:
 
@@ -910,31 +933,58 @@ be run**; see below.
     section, so it now reads `silentDeviceNeeded && !silentDeviceFromPackage`.
     `tst_settings.qml` asserted `silentDeviceNeeded` outright, in a case whose own comment
     already said what macOS would do. `tst_platform.qml` gains three macOS cases beside the
-    Linux and Windows ones. None of those has run on a Mac either, and a green run of them
-    would say that the seams say what they were written to say — nothing more.
+    Linux and Windows ones. All three of those files have since passed on both macOS legs, which
+    says that the seams say what they were written to say — nothing more, because every service
+    behind them is a fake in those tests.
 
-    Two consequences worth naming. Objective-C++ enters the tree for the first time:
-    `foreground.mm` and `app_icon_provider.mm`, with `enable_language(OBJCXX)` in
-    `apps/crucible/CMakeLists.txt`'s APPLE arm and `CMAKE_OBJCXX_COMPILER` pinned to the C++
-    compiler the toolchain file chose, so the two halves of one target cannot end up built
-    against two standard libraries. And `notices/platform/macos/components.cmake` had to exist
-    or a macOS configure would stop dead: the two Windows-specific sentences in the shared
-    `qt-bundled` fragment are now tokens each platform supplies, and Windows' `NOTICES.txt` is
-    byte-for-byte what it was.
+    Two consequences worth naming. Objective-C++ enters the tree, in **three `.mm` files across
+    two directories that enable the language**: the library's own `process_tap.mm`, under
+    `enable_language(OBJCXX)` in `src/audio/CMakeLists.txt`'s APPLE block, and Crucible's
+    `foreground.mm` and `app_icon_provider.mm`, under a second such call in
+    `apps/crucible/CMakeLists.txt`'s APPLE arm. Both call sites pin `CMAKE_OBJCXX_COMPILER` to
+    the C++ compiler the toolchain file chose, and
+    `cmake/toolchains/macos.llvm.toolchain.cmake` sets `CMAKE_OBJCXX_FLAGS_INIT` beside
+    `CMAKE_CXX_FLAGS_INIT`, so the two halves of one target cannot end up built against two
+    standard libraries. And `notices/platform/macos/components.cmake` had to exist or a macOS
+    configure would stop dead: the two Windows-specific sentences in the shared `qt-bundled`
+    fragment are now tokens each platform supplies, and Windows' `NOTICES.txt` is byte-for-byte
+    what it was.
 
-    **Not done.** The library half of Phase 5 — the process tap itself, and the `DeviceWatcher`
-    over the two property listeners — is untouched, so `ac3::audio` still reports
-    `process_loopback` unavailable on macOS and the room lists applications this build cannot
-    capture. `cmake/Packaging.cmake` still gates the Crucible component on `WIN32 OR LINUX`, so
-    there is no macOS package. `SettingsPage.qml`'s two-stage note is not gated on
-    `silentDeviceNeeded` the way the block below it is and would print an empty pair of quotes
-    where the device has no name.
+    **The library half is done, and this is what it does.** `process_tap.mm` builds the
+    `CATapDescription` and the private aggregate device carrying it; `capture.cpp`'s
+    `start_process_loopback` opens an `AudioDeviceIOProcID` on that device; `device_watcher.cpp`
+    is the `DeviceWatcher` over the three property listeners, and the one piece of this a CI
+    runner exercises at all; and `audio_backend.cpp` reports
+    `process_loopback` **available** unless the machine is older than the 14.2 floor. So the room
+    no longer lists applications the build cannot capture *for want of a tap*. What it may still
+    fail on, and none of which anyone here can try, is set out in
+    [macOS → Per-application capture](../platforms/macos.md#per-application-capture-the-core-audio-process-tap):
+    the TCC consent prompt is keyed to a code-signing identity Crucible does not have (DR6); the
+    `NSAudioCaptureUsageDescription` key that drives that prompt is declared by no bundle in this
+    tree, `apps/crucible`'s included; and the backend refuses a sample rate its tap does not
+    already deliver rather than resampling, where `TapPool` asks for 48 kHz unconditionally, so a
+    machine whose output device sits at 44.1 kHz would have every tap refused.
+
+    One narrowing is a ceiling rather than a failure waiting to happen. A `CATapDescription`
+    mixes down to mono or stereo only, and anything wider is refused with `kFormatUnsupported`;
+    `TapPool` opens at stereo and widens only to follow a null sink's width, which this platform
+    does not have, so what the engine asks for stays inside that. The cost lands as a limit
+    rather than a refusal: the eight-channel width that keeps a surround application's bed intact
+    on Windows cannot be had here at all.
+
+    **Not done.** `cmake/Packaging.cmake` still gates the Crucible component on
+    `WIN32 OR LINUX`, so there is no macOS package. `cmake/StripQtTestDeployment.cmake` now runs
+    on macOS — `apps/crucible`'s call sits in a `WIN32 OR APPLE` block whose APPLE arm a configure
+    can reach — and does nothing there, because every path it checks is the Windows package
+    layout, so a `.app` would keep its deployed Qt Test the way `ac3gui`'s `.dmg` does.
+    `SettingsPage.qml`'s two-stage note is not gated on `silentDeviceNeeded` the way the block
+    below it is and would print an empty pair of quotes where the device has no name.
 
     And the signal path's first station is still drawn where it should not be. `moves_default()`
     is the first seam answer to come back false, and `default_device.hpp` has said since the
     seams were extracted on 2026-09-04 that the window "drops the whole first station of the
     signal path" when it does — which turned out on 2026-09-06 to be the intention rather than
-    the code. What the window really
+    the code. What the window
     does, read rather than assumed: `FirstRunDialog.qml` branches correctly and hides the whole
     device step; every "Send applications to …" control in `SignalPath.qml`, `OutputPage.qml`
     and the tray menu is disabled, because each gates on
@@ -1393,7 +1443,7 @@ not.
 | Linux bitstream over PipeWire `iec958` | **confirmed 2026-09-05** - the receiver read "5.1 DD+", and "Atmos/DD+" at 7.1 with objects | none |
 | Windows bitstream to a real receiver | not yet | an HDMI cable; DR9 |
 | Windows driver on a normal machine | not yet | EV certificate and attestation; a separate session |
-| macOS anything, at runtime | **no** | no Mac has ever run this backend; DR9 |
+| macOS anything, at runtime | **no** | CI runs the version gate and the device-watcher contract case and nothing else; no Mac has opened a device, a tap or the application; DR9 |
 | macOS tap consent prompt | **no** | the prompt is keyed to code-signing identity and does not fire unsigned; DR6 |
 | Wayland full-screen foreground detection | **no**, by design | Wayland does not let a client ask about another's windows |
 | X11 full-screen foreground detection | yes, in an X11 session or a nested Xephyr on the Pi | none |
@@ -1411,14 +1461,18 @@ The macOS row is the one to hold in mind while reading Phase 5. The code can be 
 compiled on CI, and its device-free logic can be unit tested, and none of that establishes that
 it works. The demo page's discipline applies: what is claimed is what was checked.
 
-**The application half of Phase 5 was written on 2026-09-06 and that row did not move.** There
-is now a `macos` directory under both `apps/crucible/engine/platform/` and
-`apps/crucible/ui/platform/`, and macOS is a supported platform in the root `CMakeLists.txt`
-rather than an excluded one — and not one line of any of it has executed. Existing is not
-running. The most a green macOS CI leg can say is that this compiles and links, which is worth
-having for the reason the paragraph below gives and is not worth mistaking for anything else;
-every file in both directories opens by saying so in those words, so the caveat travels with
-the code rather than living only here.
+**Both halves of Phase 5 were written on 2026-09-06 and that row still says no.** The library
+gained the Core Audio process tap (`src/audio/src/backend/macos/process_tap.{hpp,mm}`) and now
+reports `process_loopback` available above macOS 14.2; there is a `macos` directory under both
+`apps/crucible/engine/platform/` and `apps/crucible/ui/platform/`; and macOS is a supported
+platform in the root `CMakeLists.txt` rather than an excluded one. Both macOS legs now compile
+and link all of it, after a first attempt that stopped during configure at an install rule. What
+that is worth is what the paragraph above says and no more: compiling on a second platform finds
+defects, and finding none is not evidence that anything works. Of the code itself, two library
+cases run on the runners — the version gate and the device-watcher contract case — and nothing
+else does: no tap has been created, no platform half has executed a line, and the application
+has never been launched. Every file in the new directories opens by saying so, so the caveat
+travels with the code rather than living only here.
 
 ## Coordination with the driver-signing session
 

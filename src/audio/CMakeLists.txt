@@ -79,10 +79,11 @@ target_sources(ac3audio PRIVATE src/live_positions.cpp)
 #
 # A directory may carry more than that fixed set. alsa/, pipewire/ and macos/
 # each have a support header their own files share, and macos/ additionally
-# has process_tap.{hpp,mm} - the project's only Objective-C++ translation
+# has process_tap.{hpp,mm} - this library's only Objective-C++ translation
 # unit, for the one CoreAudio type with no C entry point (see the APPLE block
-# below). Anything extra is listed by the block that selects its directory
-# and nowhere else, so "exactly one directory" still holds.
+# below; apps/crucible has two more .mm of its own, for AppKit). Anything
+# extra is listed by the block that selects its directory and nowhere else,
+# so "exactly one directory" still holds.
 #
 # The axis is the audio subsystem rather than the operating system, because
 # that is where the answers actually differ: windows/ is WASAPI, alsa/ and
@@ -316,22 +317,28 @@ if(APPLE)
     # -----------------------------------------------------------------------
 
     # -----------------------------------------------------------------------
-    # Objective-C++, enabled for exactly one file.
+    # Objective-C++, enabled for exactly one file in this library.
     #
-    # This is the only place in the whole project that needs a second compiled
-    # language (examples/CMakeLists.txt enables C for the C API example, and
-    # apps/gui + apps/crucible enable RC for a Windows version resource; there
-    # is no OBJC or OBJCXX anywhere else). The reason is narrow and is argued
-    # in src/backend/macos/process_tap.hpp: Core Audio's process tap is
-    # described by CATapDescription, an Objective-C class with no C entry
-    # point at all, so the tap cannot be built from a .cpp however the calls
-    # around it are spelled. process_tap.mm is that one file; everything else
-    # in the directory stays plain C++ and includes process_tap.hpp, which
-    # names nothing Objective-C.
+    # Two directories in the tree enable OBJCXX, for three .mm files in all:
+    # this block, for the one file below, and apps/crucible/CMakeLists.txt's
+    # APPLE arm, for Crucible's two AppKit seams (engine/platform/macos/
+    # foreground.mm and ui/platform/macos/app_icon_provider.mm). There is no
+    # OBJC anywhere, and the tree's other second languages are unrelated:
+    # examples/CMakeLists.txt enables C for the C API example, and apps/gui +
+    # apps/crucible enable RC for a Windows version resource.
+    #
+    # The reason here is narrow and is argued in
+    # src/backend/macos/process_tap.hpp: Core Audio's process tap is described
+    # by CATapDescription, an Objective-C class with no C entry point at all,
+    # so the tap cannot be built from a .cpp however the calls around it are
+    # spelled. process_tap.mm is that one file; everything else in the
+    # directory stays plain C++ and includes process_tap.hpp, which names
+    # nothing Objective-C.
     #
     # Enabled HERE rather than in the top-level project() call. ac3audio is
-    # the only target in the tree with an OBJCXX source and it is defined in
-    # this file, so this is the directory that compiles the language.
+    # the only target defined in this file with an OBJCXX source, and no
+    # target outside apps/crucible has one either, so this is the directory
+    # that compiles the language for the library.
     #
     # Read the CMake documentation for enable_language() before moving this,
     # because it asks for something slightly wider than that: the highest
@@ -340,10 +347,15 @@ if(APPLE)
     # ac3gui, ac3crucible and ac3tests all link ac3audio from sibling
     # directories, so by that reading the call belongs at the top level under
     # if(APPLE). It is here instead because the language registration itself
-    # is global to the generator and the only OBJCXX compile happens in this
-    # directory - but that is a reading, not something anyone here has
-    # configured a Mac to confirm. If a macOS leg fails at generate time with
-    # anything about OBJCXX being unknown or unconfigured in another
+    # is global to the generator and this directory's only OBJCXX compile is
+    # the file below - and apps/crucible, which has the other two, makes the
+    # same call in its own APPLE arm rather than relying on this one. Both
+    # macOS CI legs have since configured, generated and built this way, so
+    # the reading holds where it has been tried - with the caveat that both
+    # legs set AC3FORGE_BUILD_CRUCIBLE=ON (.github/workflows/_build.yml), so
+    # the two calls have only ever been reached together and this one has
+    # never been exercised alone. If a macOS configure ever fails at generate
+    # time with anything about OBJCXX being unknown or unconfigured in another
     # directory, moving these three statements verbatim into the top-level
     # CMakeLists.txt under if(APPLE) is the fix; nothing else about this
     # block would change.

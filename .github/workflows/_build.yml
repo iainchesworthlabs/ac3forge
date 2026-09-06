@@ -1420,13 +1420,16 @@ jobs:
       # leg) since extraction doesn't depend on OS/compiler - the sources it
       # scans are identical everywhere gui: true builds ac3gui.
       #
-      # Deliberately NOT the stricter "zero unfinished" gate the sibling
-      # CountdownSolver project runs (R:\CountdownSolver's own
-      # .github/workflows/ci.yml, "Translations complete") - translation
-      # coverage here is real but partial by design (docs/gui/
-      # localisation.md tracks exactly what), so that bar would fail today
-      # on content nobody has touched. Tightening to it is the natural next
-      # step once coverage is complete, not before.
+      # This is the drift gate: it asks whether the catalogues match the
+      # sources, not whether every entry is translated. The stricter
+      # "zero unfinished" bar would now pass - every ac3gui catalogue was
+      # filled on 2026-09-06 and carries no unfinished entry - but it belongs
+      # in the test suite rather than here, where Crucible's equivalent
+      # already lives: tests/crucible/test_translations.cpp now asserts it
+      # over this application's seven catalogues as well as Crucible's six,
+      # runs on every platform, and names the entry that failed. A second
+      # copy in a workflow step would gate the same thing on one leg and
+      # report it worse.
       - name: Check translations are up to date
         if: matrix.gui && matrix.name == 'Linux GCC'
         shell: bash

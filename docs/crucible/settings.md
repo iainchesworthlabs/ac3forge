@@ -49,11 +49,13 @@ node named "Crucible (silent)" while it runs and takes it away when it exits, so
 no elevation and cannot fail for signing reasons. The page says as much instead of offering a
 driver folder that would mean nothing there.
 
-**On macOS** there is nothing here yet: macOS is not built ([Install](install.md#macos)). The
-design needs no silent device at all, because process taps mute each application where they
-capture it, so there would be nothing to install and no default output to move. The seam already
-carries the flag for a platform that answers that way, and the card is hidden wherever it says a
-silent device is not needed; no platform in the tree says so today.
+**On macOS** there is nothing here to install. The design needs no silent device at all, because
+process taps mute each application where they capture it, so there would be nothing to install and
+no default output to move: the macOS seam answers that a silent device is not needed
+(`apps/crucible/engine/platform/macos/virtual_device.cpp`), and the whole card is hidden wherever
+a platform answers that way. That is read off the source rather than seen: Crucible's macOS half
+has never run on a Mac, CI compiles it rather than running it, and whether it compiles past
+configure is not yet known ([Install](install.md#macos)).
 
 ### Advanced
 
@@ -124,13 +126,17 @@ wears Ink's neutrals. The three named palettes are checked for contrast by the t
 modes ([Colour and contrast](accessibility.md#colour-and-contrast)). The System palette is not
 among them: its accent comes from the desktop while the window runs.
 
-**Language** is System or one of six: French, German, Spanish, Arabic, Hebrew and Yiddish.
-Choosing one swaps the translators, the application font where the language needs different glyph
-coverage, and the window's layout direction, and retranslates the running window without a
-restart. Two things to know before you rely on it: the catalogues were written against the demo's
-strings, so a string that changed when the application was renamed shows its English until the
-catalogues are regenerated, and the window's own note under this control still words System as
-following Windows, which the Linux build inherited. System follows the platform's locale on both.
+**Language** is System, English, or one of the six the window is translated into: French, German,
+Spanish, Arabic, Hebrew and Yiddish. Choosing one of the six swaps in its translators, the
+application font where the language needs glyph coverage the window's own face has not, and the
+window's layout direction, and retranslates the running window without a restart; English takes
+the translators away and leaves the source strings. Every string the window has is translated in
+all six: the catalogues carry 385 messages each and none is left unfinished, so nothing falls back
+to English. What is not settled is whether each rendering is the right one. The translations are
+machine-made and no speaker of any of the six has read them, which is what the window's own note
+under this control says. That note also words System as following the language the desktop is set
+to, which is what it does on Windows and on Linux alike. [Languages](localisation.md) is the
+glossary they are held to and the review that has yet to run.
 
 **Text size** is 100%, 125%, 150%, 175% or System, and every size in the window is a multiple of
 it. What System means, and why it starts a Linux window larger than a Windows one, is

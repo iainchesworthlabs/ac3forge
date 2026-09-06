@@ -177,8 +177,12 @@ class CrucibleController : public QObject {
     // spatial format switched on is the per-endpoint `spatial` flag in
     // `endpoints`, and the two are separate questions. False on every
     // backend but Windows today, and where it is false the output policy
-    // refuses the headphones mode on every endpoint, so the Output page does
-    // not offer it as a pin.
+    // refuses the headphones mode on every endpoint. OutputPage.qml reads
+    // this and drops the headphones entry from its pin list; the tray's
+    // signal-path menu in Main.qml does not read it yet and offers the entry
+    // on every platform, so a pin the page will not show can still be chosen
+    // from the tray. What that choice does is in engine_pin()'s comment in
+    // the .cpp.
     Q_PROPERTY(bool spatialAvailable READ spatialAvailable CONSTANT)
     // Why not, in the backend's own words (Capability::reason, which lives
     // beside the implementation it is making excuses for). Empty where the

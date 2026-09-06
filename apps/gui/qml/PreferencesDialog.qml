@@ -252,7 +252,12 @@ Dialog {
                     Accessible.description: qsTr("Switches the app's own text; Arabic, Hebrew and Yiddish also mirror the whole window right-to-left.")
                 }
                 PrefsNote {
-                    text: qsTr("French, German, Spanish, Arabic, Hebrew and Yiddish are partially translated today. Anything not yet translated stays in English rather than showing blank.")
+                    // Both halves of what this used to say were made false on
+                    // 2026-09-06: the six catalogues were filled, so nothing
+                    // falls back to English any more. What replaces them is
+                    // the caveat that now matters, and the one Crucible's
+                    // equivalent note carries.
+                    text: qsTr("French, German, Spanish, Arabic, Hebrew and Yiddish are complete. The translations are machine-made and have not been read by a speaker.")
                 }
 
                 Item { Layout.preferredHeight: Theme.space2 }

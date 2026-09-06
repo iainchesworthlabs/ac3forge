@@ -27,8 +27,12 @@ enum class CaptureError : std::uint8_t {
     kDeviceNotFound,
     kFormatUnsupported,  // endpoint delivers a format we cannot convert
     kAlreadyRunning,
-    // start_process_loopback() only. This platform has no per-process tap:
-    // every non-Windows backend, and Windows before 10 build 20348.
+    // start_process_loopback() only, where this machine or this call cannot
+    // use a tap: Windows before 10 build 20348, macOS before 14.2, PipeWire
+    // asked for kExcludeProcessTree (which it has no way to express), and
+    // ALSA always - it has no per-application concept at all. The posix and
+    // Android backends refuse with kNoBackend instead, having no capture
+    // backend to refuse from.
     kProcessLoopbackUnavailable,
     // start_process_loopback() only: no process has that id. Checked here
     // because the OS does not: a tap on an id nobody owns activates, starts,
@@ -57,8 +61,12 @@ struct DeviceInfo {
 [[nodiscard]] std::expected<std::vector<DeviceInfo>, CaptureError> enumerate_devices();
 
 // Whether start_process_loopback() can work on the machine this is running
-// on - not the one it was built on. On Windows that is a build-number test
-// (10.0.20348 introduced the activation); every other backend answers false.
+// on - not the one it was built on. Three backends have a tap and each asks
+// the machine a different question: Windows a build-number test (10.0.20348
+// introduced the activation), macOS an OS version test (Core Audio's process
+// tap arrived in 14.2), PipeWire whether a session is reachable right now.
+// The ALSA, posix and Android backends have no per-application concept at all
+// and answer a constant false.
 // audio_backend().process_loopback says the same thing as a Capability.
 [[nodiscard]] bool process_loopback_available();
 

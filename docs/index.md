@@ -19,15 +19,20 @@ depend on them.
     The API is not stable — releases so far are 0.x betas; the
     [changelog](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md) records what
     each contains. Green and required in CI on Windows (MSVC, clang-cl), Linux (GCC and Clang,
-    x64 and arm64) and macOS (Homebrew LLVM) — the library and Forge's CLI and GUI alike on every
-    one of them. Crucible's CI is narrower, because Crucible is a Windows and Linux application
-    with no macOS half to build yet: it is built and tested on both Windows legs and, against
-    PipeWire, on the Linux Clang leg, and packaged from the Windows MSVC and Linux Clang legs.
-    Its Windows null-sink driver has a job of its own, which builds and test-signs the driver
-    package and fails on any defect the WDK's driver rule set reports. Beside all that sit an
-    ASan+UBSan leg, a line/branch coverage gate over the library, a per-platform gold-reference
-    *quality* gate, dedicated Linux FFmpeg- and ADM-validation legs checking output
-    *correctness*, and a required Android build leg. One leg, `windows-msvc-arm64`, is still
+    x64 and arm64) and macOS (Homebrew LLVM, arm64 and Intel) — the library and Forge's CLI and
+    GUI alike on every one of them. Crucible's CI is narrower, and covers the three platforms
+    unevenly: it is built and tested on both Windows legs, on both Linux Clang legs against
+    PipeWire, and on both macOS legs, and packaged from the Windows MSVC leg and both Linux
+    Clang legs. The macOS legs joined on 2026-09-06: the first configure stopped at an install
+    rule, and with that fixed both legs compiled the macOS platform half and ran the suites over
+    it — every test passed on the Intel leg, and three of Crucible's eleven Qt Quick suites
+    timed out on the Apple Silicon one. None of it can be put near sound on a hosted runner, so
+    no macOS code has captured or played anything.
+    Crucible's Windows null-sink driver has a job of its own, which builds and test-signs the
+    driver package and fails on any defect the WDK's driver rule set reports. Beside all that
+    sit an ASan+UBSan leg, a line/branch coverage gate over the library, a per-platform
+    gold-reference *quality* gate, dedicated Linux FFmpeg- and ADM-validation legs checking
+    output *correctness*, and a required Android build leg. One leg, `windows-msvc-arm64`, is still
     marked experimental, and still packages for release. See [building.md](building.md) for
     exact toolchain versions and what each CI leg covers.
 
@@ -58,12 +63,14 @@ and the [CLI reference](cli/index.md) and [GUI guide](gui/index.md) cover each i
 
 ### Crucible
 
-[Crucible](crucible/index.md) is the desktop application for Windows and Linux that makes every
-application playing sound an Atmos object the listener places in a room, and streams the result
-live over HDMI, or decoded to whatever the endpoint takes. On Windows it installs its own
-silent virtual output device so the sound has somewhere to go; on Linux it taps each
-application through PipeWire. [Install and first run](crucible/install.md) is the fastest way
-in.
+[Crucible](crucible/index.md) is the desktop application that makes every application playing
+sound an Atmos object the listener places in a room, and streams the result live over HDMI, or
+decoded to whatever the endpoint takes. It runs on Windows, where it installs its own silent
+virtual output device so the sound has somewhere to go, and on Linux, where it taps each
+application through PipeWire. A macOS platform half compiles on the two macOS CI legs and the
+window's suites run over it there; nobody has launched it on a Mac, and its Core Audio tap has
+never captured anything.
+[Install and first run](crucible/install.md) is the fastest way in.
 
 ## Also in the tree
 

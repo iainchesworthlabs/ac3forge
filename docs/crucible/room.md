@@ -26,14 +26,18 @@ both belong to the window rather than to this page.
 
 ## 01 The applications list
 
-**What is listed is not the same on both platforms**, and the line under the list is the
+**What is listed is not the same on every platform**, and the line under the list is the
 platform's own sentence rather than a general one.
 
 On **Windows**, every running application with a window is listed, and one with nothing to tap is
 greyed until it plays. A browser's windows and tabs share one entry. On **Linux**, an application
 is listed while it is playing: PipeWire gives it a stream when it starts making sound and takes
-the stream away when it stops, so the list follows the sound rather than the windows. On both, a
-placed application keeps its place while it runs, silent or not.
+the stream away when it stops, so the list follows the sound rather than the windows. The
+**macOS** seam is written to say both halves — listed while macOS is holding sound open for an
+application, greyed while nothing is coming out of it — and, below macOS 14.0, to say instead
+that Core Audio there cannot report which processes are using sound, so nothing can be listed;
+nobody has yet seen either sentence on a Mac. On all three, a placed application keeps its place
+while it runs, silent or not.
 
 The order is sound first, then applications with a session but no sound, then silent ones, and by
 name within each group. That means the rail reorders itself while you watch it. The selection is
@@ -90,8 +94,8 @@ elevation, they are nudged apart so both stay reachable.
 
 The 3D picture is compiled in when the Qt kit that built Crucible has Quick 3D, and left out when
 it does not; the **Plan + elevation / 3D** switch appears only where it is in. A build without it
-has the two flat views, no switch, and nothing missing from placement, which stays in the plan and
-the elevation either way. On Linux, Quick 3D is one of the optional pieces
+has the two flat views, no switch, and nothing missing from placement: the plan and the elevation
+place, move and return an application on their own. On Linux, Quick 3D is one of the optional pieces
 [Install](install.md#what-you-get-and-what-you-do-not) names.
 
 It draws you at the centre of the room and each placed application as a card carrying its own icon,
@@ -105,6 +109,7 @@ The picture is worked with the mouse:
 
 - drag an application to move it across the floor at its own height;
 - hold `Shift`, or drag with the right button, to move it up and down instead;
+- drop a chip from the bed tray to place it at ear level under the pointer;
 - drag empty space to orbit the camera, which turns the room with the mouse;
 - the wheel zooms;
 - hovering a speaker names it in full.
@@ -148,9 +153,9 @@ take it to a point and to the whole room.
 
 **Three ways back to the bed**: the Send to bed button, a double-click on the marker, or `Delete`
 or `Backspace` while the room has the keyboard. The bed tray's own line also offers dragging a
-marker back to it. The marker publishes no drag in the source as it stands, so that fourth route
-does nothing today; this was read off the code rather than tried on a machine, and one of the
-three above is the way to do it meanwhile.
+marker back to it, and that fourth route does nothing today: the markers publish no drag, and the
+tray's drop area has no handler behind it. That was read off the source rather than tried on a
+machine, and one of the three above is the way to do it meanwhile.
 
 ## 03 The bed, and the ten slots
 
@@ -212,7 +217,7 @@ claim.
 | **Linux, X11** | On. Crucible reads `_NET_WM_STATE` and `_NET_WM_PID` on the active window through libxcb. A build configured without libxcb has no reader and says so. |
 | **Linux, Wayland** | Off. A Wayland client is given no way to ask about another client's windows, and no portal exposes it. |
 | **Linux, no display** | Off. An ssh login or a container has no window manager to ask. |
-| **macOS** | Designed — NSWorkspace answers for the frontmost application — and not built. |
+| **macOS** | Off, and written to be. `NSWorkspace` names the application a person is working in and says nothing about its windows, and AppKit gives one application no way to ask about another's, so the seam reports that it cannot answer and which of two reasons applies: there is a window session but macOS will not say what fills the screen, or there is no window session at all. `CGWindowListCopyWindowInfo` bounds against `CGDisplayBounds` would answer it, and is not written. The seam compiles on the two macOS CI legs and a suite there reads its refusal; the `NSWorkspace` call that chooses between the two reasons runs only once the engine polls, and nothing has polled it. |
 
 The note under the applications list is the reason in the platform's own words, so the rule being
 off is always attributed.

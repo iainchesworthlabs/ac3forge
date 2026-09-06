@@ -37,9 +37,13 @@
 // hardware that will do it - a MacBook with no digital output enumerates
 // zero passthrough-capable devices rather than reporting itself unavailable,
 // the same as ALSA's own documented behaviour for a machine with only an
-// analog output. It does not mean any of it has been run, either: no Mac has
-// ever run this backend (ROADMAP.md DR9), so what the tap and the watcher
-// claim is that they compile.
+// analog output. It does not mean any of it has been run, either. Both macOS
+// CI legs compiled and linked this file, process_tap.mm and the watcher on
+// 2026-09-06, and the library's own two device-free cases ran there - the
+// version gate, and the watcher contract case, which starts and stops a
+// watcher for real. Nothing else has executed: no tap has been created, no
+// audio has passed through any of it, and no Mac has run the application
+// (ROADMAP.md DR9).
 
 namespace ac3::audio {
 

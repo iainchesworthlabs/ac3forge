@@ -1,7 +1,11 @@
 # AC3Forge Crucible (roadmap UX11 and UX12): docs/crucible/promotion.md, and
 # docs/platforms/windows-demo.md for the demo it grew out of. Windows, Linux
-# and macOS - the third arrived on 2026-09-06 and has never been run, only
-# compiled.
+# and macOS - the third arrived on 2026-09-06. It compiles: the first CI
+# attempt stopped at the install() rule below for want of a BUNDLE
+# DESTINATION, and with that fixed both macOS legs built every source here
+# and linked bin/ac3crucible.app/Contents/MacOS/ac3crucible. Nobody has
+# launched it. No Mac has run this application, only its Qt Quick tests,
+# which drive fakes rather than any of the platform arms below.
 #
 # engine/ is the headless part - what the UI drives and the spikes proved -
 # split in two the way the CLI's own platform/ directory is: the pure modules
@@ -44,10 +48,12 @@ target_link_libraries(ac3crucible_engine
 # and the silent device are demo policy rather than audio I/O, and ac3::audio
 # deliberately does not carry them.
 #
-# The macOS arm compiles but has never run: no Mac has executed any part of
-# this application, which is what docs/crucible/promotion.md's "What cannot be
-# verified, and why" table says and what every file under
-# engine/platform/macos/ repeats at its head.
+# The macOS arm compiles and has never run: both macOS CI legs built every
+# file under engine/platform/macos/ on 2026-09-06, and no Mac has executed a
+# line of any of them - the seam tests link the stub and the QML tests drive
+# fakes. That is what docs/crucible/promotion.md's "What cannot be verified,
+# and why" table says and what every file under engine/platform/macos/
+# repeats at its head.
 if(WIN32)
     target_sources(ac3crucible_engine PRIVATE
         engine/platform/windows/session_monitor.cpp
@@ -142,14 +148,24 @@ elseif(APPLE)
     # (src/audio/src/backend/macos/) already answers for render devices, sinks
     # and the tap - so a macos/audio_devices.cpp would be a second definition
     # of platform_audio_devices() and a duplicate symbol at link, not a gap.
-    # What that backend cannot do yet, it refuses through the library's own
-    # Capability: process_loopback is unavailable there, so the room lists
-    # applications this build cannot capture (docs/platforms/macos.md,
-    # "Loopback capture: not yet implemented").
+    # That backend now carries the Core Audio process tap itself
+    # (src/audio/src/backend/macos/process_tap.mm) and reports
+    # process_loopback available unless the machine is older than macOS 14.2.
+    # What stands between this application and a capture here is elsewhere:
+    # the code-signing identity the TCC consent prompt is keyed to; the
+    # NSAudioCaptureUsageDescription Info.plist key that drives that prompt,
+    # which this target declares nowhere, since it takes CMake's default
+    # template below (apps/gui/Info.plist.in is the precedent for supplying
+    # one); and the tap's own mono/stereo and sample-rate refusals.
+    # engine/platform/macos/session_monitor.cpp's header lists all four;
+    # docs/platforms/macos.md, "Per-application capture: the Core Audio
+    # process tap", carries the mechanism.
     #
     # OBJCXX, and why this directory turns it on. NSWorkspace and NSImage have
     # no C entry point, so the Foreground and the icon provider are .mm
-    # translation units - the first two in the tree. enable_language() from a
+    # translation units - two of the three in the tree, the third being the
+    # library's own process_tap.mm, which src/audio/CMakeLists.txt's APPLE
+    # block enables the language for separately. enable_language() from a
     # subdirectory rather than from the root is what this file already does
     # further down, in the window's own icon block, where the WIN32 arm calls
     # enable_language(RC) before compiling ac3crucible.rc (apps/gui does the
@@ -496,9 +512,14 @@ else()
     # -no-obsolete drops an entry whose source string is gone rather than
     # keeping it as translation memory: git history is that memory, and
     # tests/crucible/test_translations.cpp wants the files clean after a
-    # regeneration. The catalogues in the tree predate the rewording of the
-    # source strings, so they have been neither regenerated nor read against
-    # the glossary they are held to (docs/crucible/localisation.md).
+    # regeneration. The catalogues were regenerated and filled on 2026-09-06,
+    # so all six carry every source string with a translation and none marked
+    # unfinished, vanished or obsolete - which is what
+    # tests/crucible/test_translations.cpp now asserts rather than warns
+    # about. They have still not been read by a speaker of any of the six
+    # languages: they were made against the glossary in
+    # docs/crucible/localisation.md, which is a different and smaller claim
+    # than being right, and the window's own language note says so.
     set(AC3DESK_TS_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3crucible_fr.ts"
         "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3crucible_de.ts"

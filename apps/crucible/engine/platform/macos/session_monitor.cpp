@@ -19,12 +19,16 @@
 // The macOS SessionMonitor: who is playing sound, from Core Audio's own list
 // of the processes using the HAL (docs/crucible/promotion.md, Phase 5).
 //
-// **THIS HAS NEVER BEEN RUN.** Written 2026-09-06 against Apple's
-// documentation for the AudioProcess object class; the only thing that will
-// read it before somebody has a Mac in front of them is the macOS CI
-// compiler. Nothing below is a report of observed behaviour, and the
-// sentences a person sees are written to be true of the API rather than
-// convenient (docs/crucible/promotion.md, "What cannot be verified, and why").
+// **THIS HAS COMPILED. IT HAS NEVER RUN.** Written 2026-09-06 against
+// Apple's documentation for the AudioProcess object class. Both macOS CI
+// legs have since compiled and linked it, which is the whole of what has
+// happened to it: the seam tests link the stub
+// (tests/crucible/platform_services_stub.cpp) and the Crucible QML tests
+// drive FakeSessionMonitor, so no test instantiates the class below and not
+// one line of it has executed anywhere. Nothing here is a report of observed
+// behaviour, and the sentences a person sees are written to be true of the
+// API rather than convenient (docs/crucible/promotion.md, "What cannot be
+// verified, and why").
 //
 // The mechanism. macOS 14.0 added an object class to the HAL for a process:
 // kAudioHardwarePropertyProcessObjectList on the system object hands back an
@@ -54,13 +58,19 @@
 // test rather than a device round trip. Below the floor the list is empty and
 // listing_rule() says why, rather than an empty room leaving somebody to guess.
 //
-// One thing about that precedent, checked on 2026-09-06 before leaning on it:
-// system_audio_tap_api_available() is an inline function in a header and no
-// caller anywhere in src/ names it, so no build has ever EMITTED a
-// __builtin_available on this platform. Clang lowers one to a call into
-// compiler-rt (__isPlatformVersionAtLeast), and whether the Homebrew clang the
-// toolchain file picks links its own builtins archive here is untried. The
-// shape is borrowed; the link is not evidence.
+// That precedent is more than a shape, and this file's header used to say
+// otherwise. It was written in a worktree where nothing in src/ called
+// system_audio_tap_api_available(), and concluded from that that no build had
+// ever emitted a __builtin_available here. A test had, since before this
+// branch: tests/backend/macos/test_macos_support.cpp's "this CI runner's OS
+// build exposes the Core Audio tap API" calls it, and it passes on both macOS
+// legs on main. Clang lowers a __builtin_available to a call into compiler-rt
+// (__isPlatformVersionAtLeast), so the Homebrew clang the toolchain file picks
+// does link its builtins here and the gate does answer on a hosted runner.
+// What is new on this branch is that the library calls it too
+// (src/audio/src/backend/macos/capture.cpp's process_loopback_available()).
+// None of that says anything about the property reads below; it says the
+// version test itself is a mechanism that links and returns.
 //
 // How this differs from the other two, which a person can see.
 //
@@ -85,14 +95,43 @@
 // is shared. Two helpers of one browser stay two entries, as two utility
 // processes do on Linux.
 //
-// What the taps do. Nothing yet: ac3::audio's macOS backend reports
-// process_loopback unavailable (src/audio/src/backend/macos/audio_backend.cpp)
-// because the Core Audio process tap it would need is not written - it needs
-// an Objective-C class, a consent prompt keyed to a code-signing identity, and
-// a machine to see either on (docs/platforms/macos.md, "Loopback capture").
-// So this list is what the room shows and the engine cannot yet capture any of
-// it. That is a gap in the library half, stated here because it is what a
-// reader of this file will ask next.
+// What the taps do, which is what a reader of this file asks next. The tap is
+// written. src/audio/src/backend/macos/process_tap.mm builds the
+// CATapDescription and the aggregate device behind it, and
+// audio_backend.cpp reports process_loopback AVAILABLE unless the machine's
+// OS is older than the floor pinned in coreaudio_names.hpp - macOS 14.2,
+// where AudioHardwareCreateProcessTap arrived. So the gap is no longer a
+// missing translation unit. Four things stand between this list and a
+// capture, none of them in this file:
+//
+//   - The code-signing identity. Creating a tap raises a TCC consent prompt
+//     of its own (SystemAudioCaptureRequests), keyed to the requesting
+//     binary's signature, and per every report surveyed it never fires at all
+//     for an unsigned binary - which is what Crucible ships as today
+//     (ROADMAP.md DR6, blocked on certificates). A denial and a prompt that
+//     never appeared arrive identically, as one refusal from
+//     AudioHardwareCreateProcessTap.
+//   - The Info.plist key. That prompt is driven by
+//     NSAudioCaptureUsageDescription, and this application's bundle declares
+//     none: apps/crucible/CMakeLists.txt's APPLE arm sets MACOSX_BUNDLE and
+//     the .icns and takes CMake's default Info.plist template, which has no
+//     such key. apps/gui/Info.plist.in is the precedent for supplying one.
+//   - The channel count. A CATapDescription's mixdown descriptions are mono
+//     and stereo, so the backend refuses anything else with
+//     kFormatUnsupported. TapPool opens at stereo and widens only to follow a
+//     null sink's width, and this platform has no null sink, so what the
+//     engine asks for here is inside that - a ceiling rather than a present
+//     refusal, and the reason a surround-rendering application's bed cannot
+//     arrive by channel here the way it does on Windows.
+//   - The sample rate. A mixdown tap runs at the rate of the device it mixes
+//     down to, and the backend refuses a rate its tap does not already
+//     deliver rather than resampling to it. TapPool asks for 48000
+//     unconditionally, so a machine whose output device sits at 44.1 kHz
+//     would have every tap refused.
+//
+// None of those four has been observed either way. docs/platforms/macos.md's
+// "Per-application capture: the Core Audio process tap" carries the whole of
+// it, including both figures in circulation for the version floor.
 
 namespace ac3::crucible {
 

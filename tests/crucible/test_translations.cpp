@@ -52,7 +52,7 @@ constexpr std::array<std::string_view, 10> kBrandTerms{
 // string this pass reworded, so the two cases below stand written and idle.
 //
 // Turned on 2026-09-06, the day the catalogues were refilled: the six
-// Crucible files carry 385 messages each and the six ac3gui files 767, none
+// Crucible files carry 385 messages each and the six ac3gui files 795, none
 // of them unfinished and none vanished. From here an entry left unfinished,
 // or a dead entry left behind, fails the build.
 //
@@ -252,6 +252,47 @@ TEST_CASE("crucible translation catalogues carry no unfinished entry",
     // that it is the expected state of a string lupdate has just extracted,
     // and the count above is what the pass still owes a translator.
     CHECK((unfinished.empty() || !kCatalogueRefilled));
+}
+
+// The GUI's seven catalogues, held to the two rules that matter most once a
+// set is complete: nothing unfinished, nothing dead. They are read with the
+// parser above and not through Qt, the same way and for the same reason.
+//
+// Seven and not six: apps/gui/translations carries an `xx` pseudo-locale
+// beside the six languages, which exists to make an untranslated string
+// obvious in a screenshot, so it is included here rather than excepted - a
+// pseudo-locale with a hole in it is as wrong as any other.
+//
+// This lives beside Crucible's rather than in a workflow step, because a
+// step gates one leg and reports "the diff is not empty", where a case runs
+// everywhere and names the entry.
+TEST_CASE("gui translation catalogues carry no unfinished or dead entry",
+          "[gui][translations]") {
+    static constexpr std::array<std::string_view, 7> kGuiLanguages{"ar", "de", "es", "fr",
+                                                                   "he", "xx", "yi"};
+    std::vector<std::string> offenders;
+    for (const std::string_view code : kGuiLanguages) {
+        const auto path = fs::path{AC3FORGE_GUI_TS_DIR} / ("ac3gui_" + std::string{code} + ".ts");
+        std::ifstream in(path, std::ios::binary);
+        INFO("catalogue " << path.string());
+        REQUIRE(in.is_open());
+        const std::string text{std::istreambuf_iterator<char>{in},
+                               std::istreambuf_iterator<char>{}};
+        // A file that parsed to nothing would pass every rule below it, so
+        // the count is asserted before the contents are judged.
+        const auto messages = parse(text);
+        INFO("messages parsed from " << path.string() << ": " << messages.size());
+        REQUIRE(messages.size() > 100);
+        for (const Message& message : messages) {
+            for (const std::string_view mark : {"unfinished", "vanished", "obsolete"}) {
+                if (message.attributes.find(mark) != std::string::npos) {
+                    offenders.push_back(std::string{code} + ": " + message.source);
+                }
+            }
+        }
+    }
+    INFO(listed(offenders));
+    CHECK(offenders.empty());
 }
 
 TEST_CASE("crucible translation catalogues carry no dead entry",

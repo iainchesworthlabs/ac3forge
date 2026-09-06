@@ -59,9 +59,10 @@ thing `wpctl set-default` writes — and restores the previous default on exit.
 ### macOS
 
 **There is no station 1.** macOS process taps can mute an application at the point they capture
-it, so each application is silenced individually and no default output is moved at all. When the
-macOS half exists, the window will show two stations rather than three, because the first one has
-nothing to be.
+it, so each application is silenced individually and no default output is moved at all. The
+macOS half is written now, and its `DefaultDevice` seam answers that the default never moves, so
+the window drops that station and shows two rather than three. Read off the source rather than
+seen: nothing macOS has been run, and the two CI legs that compile it cannot launch a window.
 
 ## What the mode line means
 
