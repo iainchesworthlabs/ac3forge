@@ -254,10 +254,16 @@ Dialog {
                 PrefsNote {
                     // Both halves of what this used to say were made false on
                     // 2026-09-06: the six catalogues were filled, so nothing
-                    // falls back to English any more. What replaces them is
-                    // the caveat that now matters, and the one Crucible's
-                    // equivalent note carries.
-                    text: qsTr("French, German, Spanish, Arabic, Hebrew and Yiddish are complete. The translations are machine-made and have not been read by a speaker.")
+                    // falls back to English any more.
+                    //
+                    // Word for word what Crucible's language note says
+                    // (apps/crucible/ui/qml/SettingsPage.qml), on purpose: the
+                    // two windows sit under the same picker, offer the same
+                    // six languages from the same pipeline, and carry the same
+                    // caveat. One sentence between them means one rendering
+                    // per language to keep right, and a reader who uses both
+                    // is told the same thing twice rather than two things.
+                    text: qsTr("System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.")
                 }
 
                 Item { Layout.preferredHeight: Theme.space2 }

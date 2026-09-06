@@ -202,10 +202,19 @@ qt_add_resources(ac3gui "ac3gui_icons"
 # relying on the deferred/auto-collected path here either, so this avoids
 # the failure mode outright rather than trusting the scopes stay aligned).
 # ---------------------------------------------------------------------------
+# -no-obsolete, the same as apps/crucible's call, and for the same reason:
+# an entry whose source string is gone is kept as translation memory
+# otherwise, and git history is that memory. It also matters to the gate -
+# tests/crucible/test_translations.cpp holds these seven catalogues to
+# carrying nothing unfinished and nothing dead, and without this flag a
+# reworded string leaves its old self behind as a vanished entry and fails
+# that case. Which is how this was found, on 2026-09-06: one note was
+# reworded, six catalogues kept the old wording, and the case named all six.
 qt_add_translations(ac3gui
     IMMEDIATE_CALL
     SOURCE_TARGETS ac3gui
     TS_FILES ${AC3_TS_FILES}
+    LUPDATE_OPTIONS -no-obsolete
     LUPDATE_TARGET ac3gui_lupdate
     LRELEASE_TARGET ac3gui_lrelease)
 

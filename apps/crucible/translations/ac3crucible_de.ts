@@ -119,77 +119,77 @@
 <context>
     <name>CrucibleController</name>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="102"/>
+        <location filename="../ui/crucible_controller.cpp" line="115"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="103"/>
+        <location filename="../ui/crucible_controller.cpp" line="116"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="104"/>
+        <location filename="../ui/crucible_controller.cpp" line="117"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="105"/>
+        <location filename="../ui/crucible_controller.cpp" line="118"/>
         <source>PCM surround</source>
         <translation>PCM-Surround</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="106"/>
+        <location filename="../ui/crucible_controller.cpp" line="119"/>
         <source>Headphones</source>
         <translation>Kopfhörer</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="107"/>
+        <location filename="../ui/crucible_controller.cpp" line="120"/>
         <source>Stereo</source>
         <translation>Stereo</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="108"/>
+        <location filename="../ui/crucible_controller.cpp" line="121"/>
         <source>No output</source>
         <translation>Keine Ausgabe</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="722"/>
+        <location filename="../ui/crucible_controller.cpp" line="748"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
         <translation>Dieser Build enthält keine eingebettete Hinweisdatei (:/notices/NOTICES.txt wurde nicht einkompiliert); die NOTICES.txt neben der Anwendung und die LICENSE des Repositorys sagen, was er ausliefert.</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1215"/>
+        <location filename="../ui/crucible_controller.cpp" line="1241"/>
         <source>saved to %1</source>
         <translation>gespeichert unter %1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1218"/>
+        <location filename="../ui/crucible_controller.cpp" line="1244"/>
         <source>could not write %1: %2</source>
         <translation>%1 konnte nicht geschrieben werden: %2</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1008"/>
+        <location filename="../ui/crucible_controller.cpp" line="1034"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>Installation läuft, bitte die Rechteanfrage beantworten …</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1023"/>
+        <location filename="../ui/crucible_controller.cpp" line="1049"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>Entfernen läuft, bitte die Rechteanfrage beantworten …</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1043"/>
+        <location filename="../ui/crucible_controller.cpp" line="1069"/>
         <source>installed</source>
         <translation>installiert</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1043"/>
+        <location filename="../ui/crucible_controller.cpp" line="1069"/>
         <source>removed</source>
         <translation>entfernt</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1047"/>
+        <location filename="../ui/crucible_controller.cpp" line="1073"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 fehlgeschlagen (Exit-Code %2)</translation>
     </message>
@@ -531,57 +531,57 @@
         <translation>PCM-Surround</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="447"/>
+        <location filename="../ui/qml/Main.qml" line="453"/>
         <source>Headphones</source>
         <translation>Kopfhörer</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="448"/>
+        <location filename="../ui/qml/Main.qml" line="454"/>
         <source>Stereo</source>
         <translation>Stereo</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="453"/>
+        <location filename="../ui/qml/Main.qml" line="459"/>
         <source>Default output: %1</source>
         <translation>Standardausgabe: %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="454"/>
+        <location filename="../ui/qml/Main.qml" line="460"/>
         <source>Move default output to %1</source>
         <translation>Standardausgabe auf %1 umstellen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="459"/>
+        <location filename="../ui/qml/Main.qml" line="465"/>
         <source>previous default output</source>
         <translation>vorherige Standardausgabe</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="459"/>
+        <location filename="../ui/qml/Main.qml" line="465"/>
         <source>Restore %1</source>
         <translation>%1 wiederherstellen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="464"/>
+        <location filename="../ui/qml/Main.qml" line="470"/>
         <source>Objects on · key loaded</source>
         <translation>Objekte an · Schlüssel geladen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="464"/>
+        <location filename="../ui/qml/Main.qml" line="470"/>
         <source>Objects off · no key</source>
         <translation>Objekte aus · kein Schlüssel</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="465"/>
+        <location filename="../ui/qml/Main.qml" line="471"/>
         <source>Settings…</source>
         <translation>Einstellungen…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="466"/>
+        <location filename="../ui/qml/Main.qml" line="472"/>
         <source>About…</source>
         <translation>Über…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="468"/>
+        <location filename="../ui/qml/Main.qml" line="474"/>
         <source>Quit</source>
         <translation>Beenden</translation>
     </message>

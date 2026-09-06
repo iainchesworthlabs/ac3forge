@@ -3392,261 +3392,261 @@
         <translation>מחליף את הטקסט של היישום עצמו; ערבית, עברית ויידיש גם משקפות את כל החלון מימין לשמאל.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="255"/>
-        <source>French, German, Spanish, Arabic, Hebrew and Yiddish are partially translated today. Anything not yet translated stays in English rather than showing blank.</source>
-        <translation>צרפתית, גרמנית, ספרדית, ערבית, עברית ויידיש מתורגמות חלקית כיום. כל מה שעדיין לא תורגם נשאר באנגלית במקום להופיע ריק.</translation>
+        <location filename="../qml/PreferencesDialog.qml" line="266"/>
+        <source>System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.</source>
+        <translation>מערכת עוקבת אחר השפה ששולחן העבודה מוגדר אליה. התרגומים נוצרו במכונה ולא נקראו בידי דובר.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="260"/>
-        <location filename="../qml/PreferencesDialog.qml" line="262"/>
+        <location filename="../qml/PreferencesDialog.qml" line="271"/>
+        <location filename="../qml/PreferencesDialog.qml" line="273"/>
         <source>Meters — show</source>
         <translation>מדים — הצג</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="264"/>
+        <location filename="../qml/PreferencesDialog.qml" line="275"/>
         <source>Every coded channel</source>
         <translation>כל ערוץ מקודד</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="265"/>
+        <location filename="../qml/PreferencesDialog.qml" line="276"/>
         <source>Only speakers a receiver drives</source>
         <translation>רק רמקולים שמפעיל מקלט</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="271"/>
+        <location filename="../qml/PreferencesDialog.qml" line="282"/>
         <source>A stream can carry channels no speaker plays — silent beds under objects, or positions a dependent substream replaces. Showing every coded channel tells you what is in the file; showing rendered speakers tells you what a listener hears.</source>
         <translation>זרם יכול לשאת ערוצים שאף רמקול אינו מנגן — מצעים שקטים מתחת לאובייקטים, או מיקומים שזרם-משנה תלוי מחליף. הצגת כל ערוץ מקודד מראה מה נמצא בקובץ; הצגת רמקולים מעובדים מראה מה המאזין שומע בפועל.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="276"/>
+        <location filename="../qml/PreferencesDialog.qml" line="287"/>
         <source>EXPLANATIONS</source>
         <translation>הסברים</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="278"/>
+        <location filename="../qml/PreferencesDialog.qml" line="289"/>
         <source>Show the plain-language notes beside controls</source>
         <translation>הצגת הערות בשפה פשוטה לצד הבקרות</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="284"/>
+        <location filename="../qml/PreferencesDialog.qml" line="295"/>
         <source>Warn before a choice changes the codec</source>
         <translation>התראה לפני שבחירה משנה את המקודד</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="290"/>
+        <location filename="../qml/PreferencesDialog.qml" line="301"/>
         <source>The codec always follows the channels either way — the warning only makes the moment it changes a deliberate one.</source>
         <translation>המקודד תמיד עוקב אחר הערוצים בכל מקרה — האזהרה רק הופכת את רגע השינוי למכוון.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="301"/>
+        <location filename="../qml/PreferencesDialog.qml" line="312"/>
         <source>WHEN AC3FORGE OPENS</source>
         <translation>בעת פתיחת AC3FORGE</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="303"/>
-        <location filename="../qml/PreferencesDialog.qml" line="305"/>
+        <location filename="../qml/PreferencesDialog.qml" line="314"/>
+        <location filename="../qml/PreferencesDialog.qml" line="316"/>
         <source>Controls</source>
         <translation>בקרות</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="308"/>
+        <location filename="../qml/PreferencesDialog.qml" line="319"/>
         <source>Guided — one step at a time</source>
         <translation>מודרך — צעד אחר צעד</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="309"/>
+        <location filename="../qml/PreferencesDialog.qml" line="320"/>
         <source>Advanced — all the format controls</source>
         <translation>מתקדם — כל בקרות הפורמט</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="310"/>
+        <location filename="../qml/PreferencesDialog.qml" line="321"/>
         <source>Expert — coding tools and broadcast metadata</source>
         <translation>מומחה — כלי קידוד ומטא-נתוני שידור</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="311"/>
+        <location filename="../qml/PreferencesDialog.qml" line="322"/>
         <source>Whatever I used last</source>
         <translation>מה שהשתמשתי בו לאחרונה</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="322"/>
+        <location filename="../qml/PreferencesDialog.qml" line="333"/>
         <source>Guided asks a question per step and applies the constraints for you. Advanced shows the format, channels and objects at once. Expert adds the Annex E tools and the metadata panel.</source>
         <translation>מודרך שואל שאלה בכל שלב ומחיל את המגבלות עבורך. מתקדם מציג את הפורמט, הערוצים והאובייקטים בבת אחת. מומחה מוסיף את כלי נספח E ואת לוח המטא-נתונים.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="326"/>
+        <location filename="../qml/PreferencesDialog.qml" line="337"/>
         <source>Reopen the last session&apos;s sources and assignments</source>
         <translation>פתיחה מחדש של המקורות וההקצאות מהפעלה האחרונה</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="332"/>
+        <location filename="../qml/PreferencesDialog.qml" line="343"/>
         <source>Start on the last screen I was on</source>
         <translation>התחלה במסך האחרון שבו הייתי</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="340"/>
+        <location filename="../qml/PreferencesDialog.qml" line="351"/>
         <source>FILES AND RUNS</source>
         <translation>קבצים והרצות</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="342"/>
+        <location filename="../qml/PreferencesDialog.qml" line="353"/>
         <source>Output folder</source>
         <translation>תיקיית פלט</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="352"/>
+        <location filename="../qml/PreferencesDialog.qml" line="363"/>
         <source>Beside the first source</source>
         <translation>לצד המקור הראשון</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="359"/>
+        <location filename="../qml/PreferencesDialog.qml" line="370"/>
         <source>Choose…</source>
         <translation>בחירה…</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="364"/>
+        <location filename="../qml/PreferencesDialog.qml" line="375"/>
         <source>Reset</source>
         <translation>איפוס</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="370"/>
-        <location filename="../qml/PreferencesDialog.qml" line="373"/>
+        <location filename="../qml/PreferencesDialog.qml" line="381"/>
+        <location filename="../qml/PreferencesDialog.qml" line="384"/>
         <source>Name new files</source>
         <translation>שם לקבצים חדשים</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="381"/>
+        <location filename="../qml/PreferencesDialog.qml" line="392"/>
         <source>{source} is the first source&apos;s own name, {ext} the suffix the plan derives — a pattern with neither would name every encode identically.</source>
         <translation>{source} הוא השם העצמי של המקור הראשון, {ext} הוא הסיומת שהתוכנית גוזרת — תבנית ללא אף אחד מהם הייתה מכנה כל קידוד באותו שם בדיוק.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="385"/>
+        <location filename="../qml/PreferencesDialog.qml" line="396"/>
         <source>Keep partial output when a run fails</source>
         <translation>שמירת פלט חלקי כאשר הרצה נכשלת</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="391"/>
+        <location filename="../qml/PreferencesDialog.qml" line="402"/>
         <source>A failed or cancelled run&apos;s frames are kept beside the intended output as &lt;name&gt;.partial.&lt;ext&gt; — named, never silently discarded.</source>
         <translation>המסגרות של הרצה שנכשלה או בוטלה נשמרות לצד הפלט המיועד בשם &lt;name&gt;.partial.&lt;ext&gt; — בעלות שם, ולעולם לא נמחקות בשקט.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="402"/>
+        <location filename="../qml/PreferencesDialog.qml" line="413"/>
         <source>DEFAULTS FOR A NEW ENCODE</source>
         <translation>ברירות מחדל לקידוד חדש</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="404"/>
-        <location filename="../qml/PreferencesDialog.qml" line="406"/>
+        <location filename="../qml/PreferencesDialog.qml" line="415"/>
+        <location filename="../qml/PreferencesDialog.qml" line="417"/>
         <source>Container</source>
         <translation>מכל</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="413"/>
-        <location filename="../qml/PreferencesDialog.qml" line="415"/>
+        <location filename="../qml/PreferencesDialog.qml" line="424"/>
+        <location filename="../qml/PreferencesDialog.qml" line="426"/>
         <source>Rate mode</source>
         <translation>מצב קצב</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="417"/>
+        <location filename="../qml/PreferencesDialog.qml" line="428"/>
         <source>Constant</source>
         <translation>קבוע</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="418"/>
+        <location filename="../qml/PreferencesDialog.qml" line="429"/>
         <source>Variable</source>
         <translation>משתנה</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="424"/>
-        <location filename="../qml/PreferencesDialog.qml" line="427"/>
+        <location filename="../qml/PreferencesDialog.qml" line="435"/>
+        <location filename="../qml/PreferencesDialog.qml" line="438"/>
         <source>Bit rate</source>
         <translation>קצב סיביות</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="430"/>
-        <location filename="../qml/PreferencesDialog.qml" line="434"/>
+        <location filename="../qml/PreferencesDialog.qml" line="441"/>
+        <location filename="../qml/PreferencesDialog.qml" line="445"/>
         <source>%1 kbps</source>
         <translation>%1 קילוסיביות לשנייה</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="444"/>
         <location filename="../qml/PreferencesDialog.qml" line="455"/>
+        <location filename="../qml/PreferencesDialog.qml" line="466"/>
         <source>VBR quality</source>
         <translation>איכות VBR</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="465"/>
-        <location filename="../qml/PreferencesDialog.qml" line="467"/>
+        <location filename="../qml/PreferencesDialog.qml" line="476"/>
+        <location filename="../qml/PreferencesDialog.qml" line="478"/>
         <source>DRC profile</source>
         <translation>פרופיל DRC</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="475"/>
+        <location filename="../qml/PreferencesDialog.qml" line="486"/>
         <source>Measure loudness and set dialnorm from it</source>
         <translation>מדידת רמת הקול וקביעת dialnorm על פיה</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="481"/>
+        <location filename="../qml/PreferencesDialog.qml" line="492"/>
         <source>The codec is not a default — it follows the channels you pick, and there is no default channel layout for the same reason. Variable rate applies to Dolby Digital Plus files only.</source>
         <translation>המקודד אינו ברירת מחדל — הוא עוקב אחר הערוצים שבחרת, ומאותה סיבה אין פריסת ערוצים כברירת מחדל. קצב משתנה חל רק על קובצי Dolby Digital Plus.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="486"/>
+        <location filename="../qml/PreferencesDialog.qml" line="497"/>
         <source>CAPTURE</source>
         <translation>לכידה</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="488"/>
+        <location filename="../qml/PreferencesDialog.qml" line="499"/>
         <source>Start monitoring as soon as a device is chosen</source>
         <translation>התחלת ניטור מיד עם בחירת התקן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="494"/>
+        <location filename="../qml/PreferencesDialog.qml" line="505"/>
         <source>Ask for a filename before recording</source>
         <translation>בקשת שם קובץ לפני ההקלטה</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="500"/>
+        <location filename="../qml/PreferencesDialog.qml" line="511"/>
         <source>Left unticked, Record writes straight to the output folder under a timestamped take name — the run strip and status line always say where.</source>
         <translation>אם לא מסומן, ההקלטה נכתבת ישירות לתיקיית הפלט תחת שם צילום עם חותמת זמן — רצועת ההרצה ושורת הסטטוס תמיד אומרות איפה.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="505"/>
+        <location filename="../qml/PreferencesDialog.qml" line="516"/>
         <source>COMMAND LINE</source>
         <translation>שורת פקודה</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="507"/>
+        <location filename="../qml/PreferencesDialog.qml" line="518"/>
         <source>Keep the ac3cli line visible</source>
         <translation>השארת שורת ac3cli גלויה</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="518"/>
+        <location filename="../qml/PreferencesDialog.qml" line="529"/>
         <source>DIAGNOSTICS</source>
         <translation>נתוני אבחון</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="520"/>
+        <location filename="../qml/PreferencesDialog.qml" line="531"/>
         <source>A plain-text file to attach to a bug report: the versions, this machine&apos;s platform, what is loaded, the settings in force and the last messages the window logged. It carries no audio, no part of any file you loaded, no signing key and no value of any environment variable — only whether the two signing variables are set at all.</source>
         <translation>קובץ טקסט פשוט לצירוף לדוח באג: הגרסאות, הפלטפורמה של המכונה הזאת, מה נטען, ההגדרות שבתוקף וההודעות האחרונות שהחלון רשם ביומן. הוא אינו נושא אודיו, אף חלק מקובץ שטענתם, אף מפתח חתימה ואף ערך של משתנה סביבה — רק האם שני משתני החתימה מוגדרים בכלל.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="524"/>
+        <location filename="../qml/PreferencesDialog.qml" line="535"/>
         <source>Save diagnostics…</source>
         <translation>שמרו נתוני אבחון…</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="525"/>
+        <location filename="../qml/PreferencesDialog.qml" line="536"/>
         <source>Writes a plain-text support file where you choose. Nothing is sent anywhere.</source>
         <translation>כותב קובץ תמיכה בטקסט פשוט במקום שתבחרו. שום דבר לא נשלח לשום מקום.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="549"/>
+        <location filename="../qml/PreferencesDialog.qml" line="560"/>
         <source>Cancel</source>
         <translation>ביטול</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="554"/>
+        <location filename="../qml/PreferencesDialog.qml" line="565"/>
         <source>Save</source>
         <translation>שמירה</translation>
     </message>

@@ -3392,261 +3392,261 @@
         <translation>Cambia el texto de la propia aplicación; el árabe, el hebreo y el yidis también reflejan toda la ventana de derecha a izquierda.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="255"/>
-        <source>French, German, Spanish, Arabic, Hebrew and Yiddish are partially translated today. Anything not yet translated stays in English rather than showing blank.</source>
-        <translation>El francés, el alemán, el español, el árabe, el hebreo y el yidis están parcialmente traducidos hoy por hoy. Lo que aún no está traducido se queda en inglés en vez de aparecer en blanco.</translation>
+        <location filename="../qml/PreferencesDialog.qml" line="266"/>
+        <source>System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.</source>
+        <translation>Sistema sigue el idioma configurado en el escritorio. Las traducciones están hechas por una máquina y no las ha leído ningún hablante.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="260"/>
-        <location filename="../qml/PreferencesDialog.qml" line="262"/>
+        <location filename="../qml/PreferencesDialog.qml" line="271"/>
+        <location filename="../qml/PreferencesDialog.qml" line="273"/>
         <source>Meters — show</source>
         <translation>Medidores — mostrar</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="264"/>
+        <location filename="../qml/PreferencesDialog.qml" line="275"/>
         <source>Every coded channel</source>
         <translation>Cada canal codificado</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="265"/>
+        <location filename="../qml/PreferencesDialog.qml" line="276"/>
         <source>Only speakers a receiver drives</source>
         <translation>Solo los altavoces que impulsa un receptor</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="271"/>
+        <location filename="../qml/PreferencesDialog.qml" line="282"/>
         <source>A stream can carry channels no speaker plays — silent beds under objects, or positions a dependent substream replaces. Showing every coded channel tells you what is in the file; showing rendered speakers tells you what a listener hears.</source>
         <translation>Un flujo puede transportar canales que ningún altavoz reproduce — lechos silenciosos bajo objetos, o posiciones que sustituye un subflujo dependiente. Mostrar cada canal codificado indica lo que contiene el archivo; mostrar los altavoces renderizados indica lo que realmente escucha un oyente.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="276"/>
+        <location filename="../qml/PreferencesDialog.qml" line="287"/>
         <source>EXPLANATIONS</source>
         <translation>EXPLICACIONES</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="278"/>
+        <location filename="../qml/PreferencesDialog.qml" line="289"/>
         <source>Show the plain-language notes beside controls</source>
         <translation>Mostrar las notas en lenguaje sencillo junto a los controles</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="284"/>
+        <location filename="../qml/PreferencesDialog.qml" line="295"/>
         <source>Warn before a choice changes the codec</source>
         <translation>Avisar antes de que una elección cambie el códec</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="290"/>
+        <location filename="../qml/PreferencesDialog.qml" line="301"/>
         <source>The codec always follows the channels either way — the warning only makes the moment it changes a deliberate one.</source>
         <translation>El códec siempre sigue a los canales de todos modos — el aviso solo convierte ese momento de cambio en algo deliberado.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="301"/>
+        <location filename="../qml/PreferencesDialog.qml" line="312"/>
         <source>WHEN AC3FORGE OPENS</source>
         <translation>AL ABRIR AC3FORGE</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="303"/>
-        <location filename="../qml/PreferencesDialog.qml" line="305"/>
+        <location filename="../qml/PreferencesDialog.qml" line="314"/>
+        <location filename="../qml/PreferencesDialog.qml" line="316"/>
         <source>Controls</source>
         <translation>Controles</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="308"/>
+        <location filename="../qml/PreferencesDialog.qml" line="319"/>
         <source>Guided — one step at a time</source>
         <translation>Guiado — un paso a la vez</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="309"/>
+        <location filename="../qml/PreferencesDialog.qml" line="320"/>
         <source>Advanced — all the format controls</source>
         <translation>Avanzado — todos los controles de formato</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="310"/>
+        <location filename="../qml/PreferencesDialog.qml" line="321"/>
         <source>Expert — coding tools and broadcast metadata</source>
         <translation>Experto — herramientas de codificación y metadatos de difusión</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="311"/>
+        <location filename="../qml/PreferencesDialog.qml" line="322"/>
         <source>Whatever I used last</source>
         <translation>Lo que usé la última vez</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="322"/>
+        <location filename="../qml/PreferencesDialog.qml" line="333"/>
         <source>Guided asks a question per step and applies the constraints for you. Advanced shows the format, channels and objects at once. Expert adds the Annex E tools and the metadata panel.</source>
         <translation>Guiado hace una pregunta por paso y aplica las restricciones por usted. Avanzado muestra el formato, los canales y los objetos a la vez. Experto añade las herramientas del Anexo E y el panel de metadatos.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="326"/>
+        <location filename="../qml/PreferencesDialog.qml" line="337"/>
         <source>Reopen the last session&apos;s sources and assignments</source>
         <translation>Reabrir las fuentes y asignaciones de la última sesión</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="332"/>
+        <location filename="../qml/PreferencesDialog.qml" line="343"/>
         <source>Start on the last screen I was on</source>
         <translation>Iniciar en la última pantalla en la que estaba</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="340"/>
+        <location filename="../qml/PreferencesDialog.qml" line="351"/>
         <source>FILES AND RUNS</source>
         <translation>ARCHIVOS Y EJECUCIONES</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="342"/>
+        <location filename="../qml/PreferencesDialog.qml" line="353"/>
         <source>Output folder</source>
         <translation>Carpeta de salida</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="352"/>
+        <location filename="../qml/PreferencesDialog.qml" line="363"/>
         <source>Beside the first source</source>
         <translation>Junto a la primera fuente</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="359"/>
+        <location filename="../qml/PreferencesDialog.qml" line="370"/>
         <source>Choose…</source>
         <translation>Elegir…</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="364"/>
+        <location filename="../qml/PreferencesDialog.qml" line="375"/>
         <source>Reset</source>
         <translation>Restablecer</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="370"/>
-        <location filename="../qml/PreferencesDialog.qml" line="373"/>
+        <location filename="../qml/PreferencesDialog.qml" line="381"/>
+        <location filename="../qml/PreferencesDialog.qml" line="384"/>
         <source>Name new files</source>
         <translation>Nombrar los archivos nuevos</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="381"/>
+        <location filename="../qml/PreferencesDialog.qml" line="392"/>
         <source>{source} is the first source&apos;s own name, {ext} the suffix the plan derives — a pattern with neither would name every encode identically.</source>
         <translation>{source} es el nombre propio de la primera fuente, {ext} el sufijo que deriva el plan — un patrón sin ninguno de los dos nombraría todas las codificaciones de forma idéntica.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="385"/>
+        <location filename="../qml/PreferencesDialog.qml" line="396"/>
         <source>Keep partial output when a run fails</source>
         <translation>Mantener la salida parcial cuando una ejecución falla</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="391"/>
+        <location filename="../qml/PreferencesDialog.qml" line="402"/>
         <source>A failed or cancelled run&apos;s frames are kept beside the intended output as &lt;name&gt;.partial.&lt;ext&gt; — named, never silently discarded.</source>
         <translation>Los fotogramas de una ejecución fallida o cancelada se conservan junto a la salida prevista como &lt;name&gt;.partial.&lt;ext&gt; — con nombre, nunca descartados en silencio.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="402"/>
+        <location filename="../qml/PreferencesDialog.qml" line="413"/>
         <source>DEFAULTS FOR A NEW ENCODE</source>
         <translation>VALORES PREDETERMINADOS PARA UNA NUEVA CODIFICACIÓN</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="404"/>
-        <location filename="../qml/PreferencesDialog.qml" line="406"/>
+        <location filename="../qml/PreferencesDialog.qml" line="415"/>
+        <location filename="../qml/PreferencesDialog.qml" line="417"/>
         <source>Container</source>
         <translation>Contenedor</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="413"/>
-        <location filename="../qml/PreferencesDialog.qml" line="415"/>
+        <location filename="../qml/PreferencesDialog.qml" line="424"/>
+        <location filename="../qml/PreferencesDialog.qml" line="426"/>
         <source>Rate mode</source>
         <translation>Modo de tasa</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="417"/>
+        <location filename="../qml/PreferencesDialog.qml" line="428"/>
         <source>Constant</source>
         <translation>Constante</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="418"/>
+        <location filename="../qml/PreferencesDialog.qml" line="429"/>
         <source>Variable</source>
         <translation>Variable</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="424"/>
-        <location filename="../qml/PreferencesDialog.qml" line="427"/>
+        <location filename="../qml/PreferencesDialog.qml" line="435"/>
+        <location filename="../qml/PreferencesDialog.qml" line="438"/>
         <source>Bit rate</source>
         <translation>Tasa de bits</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="430"/>
-        <location filename="../qml/PreferencesDialog.qml" line="434"/>
+        <location filename="../qml/PreferencesDialog.qml" line="441"/>
+        <location filename="../qml/PreferencesDialog.qml" line="445"/>
         <source>%1 kbps</source>
         <translation>%1 kbps</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="444"/>
         <location filename="../qml/PreferencesDialog.qml" line="455"/>
+        <location filename="../qml/PreferencesDialog.qml" line="466"/>
         <source>VBR quality</source>
         <translation>Calidad VBR</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="465"/>
-        <location filename="../qml/PreferencesDialog.qml" line="467"/>
+        <location filename="../qml/PreferencesDialog.qml" line="476"/>
+        <location filename="../qml/PreferencesDialog.qml" line="478"/>
         <source>DRC profile</source>
         <translation>Perfil DRC</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="475"/>
+        <location filename="../qml/PreferencesDialog.qml" line="486"/>
         <source>Measure loudness and set dialnorm from it</source>
         <translation>Medir la sonoridad y establecer el dialnorm a partir de ella</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="481"/>
+        <location filename="../qml/PreferencesDialog.qml" line="492"/>
         <source>The codec is not a default — it follows the channels you pick, and there is no default channel layout for the same reason. Variable rate applies to Dolby Digital Plus files only.</source>
         <translation>El códec no es un valor predeterminado — sigue a los canales que usted elige, y por la misma razón no existe una disposición de canales predeterminada. La tasa variable se aplica solo a los archivos Dolby Digital Plus.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="486"/>
+        <location filename="../qml/PreferencesDialog.qml" line="497"/>
         <source>CAPTURE</source>
         <translation>CAPTURA</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="488"/>
+        <location filename="../qml/PreferencesDialog.qml" line="499"/>
         <source>Start monitoring as soon as a device is chosen</source>
         <translation>Iniciar la monitorización en cuanto se elige un dispositivo</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="494"/>
+        <location filename="../qml/PreferencesDialog.qml" line="505"/>
         <source>Ask for a filename before recording</source>
         <translation>Solicitar un nombre de archivo antes de grabar</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="500"/>
+        <location filename="../qml/PreferencesDialog.qml" line="511"/>
         <source>Left unticked, Record writes straight to the output folder under a timestamped take name — the run strip and status line always say where.</source>
         <translation>Sin marcar, Grabar escribe directamente en la carpeta de salida bajo un nombre de toma con marca de tiempo — la franja de ejecución y la línea de estado siempre indican dónde.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="505"/>
+        <location filename="../qml/PreferencesDialog.qml" line="516"/>
         <source>COMMAND LINE</source>
         <translation>LÍNEA DE COMANDOS</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="507"/>
+        <location filename="../qml/PreferencesDialog.qml" line="518"/>
         <source>Keep the ac3cli line visible</source>
         <translation>Mantener visible la línea de ac3cli</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="518"/>
+        <location filename="../qml/PreferencesDialog.qml" line="529"/>
         <source>DIAGNOSTICS</source>
         <translation>DIAGNÓSTICO</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="520"/>
+        <location filename="../qml/PreferencesDialog.qml" line="531"/>
         <source>A plain-text file to attach to a bug report: the versions, this machine&apos;s platform, what is loaded, the settings in force and the last messages the window logged. It carries no audio, no part of any file you loaded, no signing key and no value of any environment variable — only whether the two signing variables are set at all.</source>
         <translation>Un archivo de texto plano para adjuntar a un informe de error: las versiones, la plataforma de esta máquina, lo que está cargado, los ajustes en vigor y los últimos mensajes que registró la ventana. No lleva audio, ni parte alguna de ningún archivo que hayas cargado, ni la clave de firma, ni el valor de ninguna variable de entorno — solo si las dos variables de firma están definidas.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="524"/>
+        <location filename="../qml/PreferencesDialog.qml" line="535"/>
         <source>Save diagnostics…</source>
         <translation>Guardar el diagnóstico…</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="525"/>
+        <location filename="../qml/PreferencesDialog.qml" line="536"/>
         <source>Writes a plain-text support file where you choose. Nothing is sent anywhere.</source>
         <translation>Escribe un archivo de texto plano de soporte donde elijas. No se envía nada a ninguna parte.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="549"/>
+        <location filename="../qml/PreferencesDialog.qml" line="560"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="554"/>
+        <location filename="../qml/PreferencesDialog.qml" line="565"/>
         <source>Save</source>
         <translation>Guardar</translation>
     </message>

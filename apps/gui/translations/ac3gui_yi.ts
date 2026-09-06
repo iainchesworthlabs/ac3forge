@@ -3392,261 +3392,261 @@
         <translation>בײַט דעם אייגענעם טעקסט פֿון דער אַפּליקאַציע; אַראַביש, העברעיִש און ייִדיש שפּיגלען אויך איבער דאָס גאַנצע פֿענצטער פֿון רעכטס אויף לינקס.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="255"/>
-        <source>French, German, Spanish, Arabic, Hebrew and Yiddish are partially translated today. Anything not yet translated stays in English rather than showing blank.</source>
-        <translation>פֿראַנצייזיש, דײַטש, שפּאַניש, אַראַביש, העברעיִש און ייִדיש זײַנען הײַנט טיילווײַז איבערגעזעצט. וואָס ס&apos;איז נאָך ניט איבערגעזעצט בלײַבט אויף ענגליש אַנשטאָט זיך צו ווײַזן ליידיק.</translation>
+        <location filename="../qml/PreferencesDialog.qml" line="266"/>
+        <source>System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.</source>
+        <translation>סיסטעם גייט נאָך דער שפּראַך אויף וועלכער דער דעסקטאָפּ איז אײַנגעשטעלט. די איבערזעצונגען זײַנען מאַשין־געמאַכט און קיין רעדער האָט זיי נישט איבערגעלייענט.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="260"/>
-        <location filename="../qml/PreferencesDialog.qml" line="262"/>
+        <location filename="../qml/PreferencesDialog.qml" line="271"/>
+        <location filename="../qml/PreferencesDialog.qml" line="273"/>
         <source>Meters — show</source>
         <translation>מעטערס — ווײַזן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="264"/>
+        <location filename="../qml/PreferencesDialog.qml" line="275"/>
         <source>Every coded channel</source>
         <translation>יעדער קאָדירטער קאַנאַל</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="265"/>
+        <location filename="../qml/PreferencesDialog.qml" line="276"/>
         <source>Only speakers a receiver drives</source>
         <translation>בלויז רעדער וואָס אַ עמפֿאַנגער פֿירט</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="271"/>
+        <location filename="../qml/PreferencesDialog.qml" line="282"/>
         <source>A stream can carry channels no speaker plays — silent beds under objects, or positions a dependent substream replaces. Showing every coded channel tells you what is in the file; showing rendered speakers tells you what a listener hears.</source>
         <translation>אַ שטראָם קען טראָגן קאַנאַלן וואָס קיין רעדער שפּילט נישט — שטילע געלעגערס אונטער אָביעקטן, אָדער פּאָזיציעס וואָס אַ תּלוי-שטראָם ענדערט. ווײַזן יעדער קאָדירטער קאַנאַל זאָגט וואָס איז אין דער טעקע; ווײַזן געמאַכטע רעדער זאָגט וואָס אַ צוהערער הערט טאַקע.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="276"/>
+        <location filename="../qml/PreferencesDialog.qml" line="287"/>
         <source>EXPLANATIONS</source>
         <translation>דערקלערונגען</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="278"/>
+        <location filename="../qml/PreferencesDialog.qml" line="289"/>
         <source>Show the plain-language notes beside controls</source>
         <translation>ווײַזן די פּשוטע דערקלערונגען לעבן די קאָנטראָלן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="284"/>
+        <location filename="../qml/PreferencesDialog.qml" line="295"/>
         <source>Warn before a choice changes the codec</source>
         <translation>וואָרענען איידער אַ ברירה ענדערט דעם קאָדעק</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="290"/>
+        <location filename="../qml/PreferencesDialog.qml" line="301"/>
         <source>The codec always follows the channels either way — the warning only makes the moment it changes a deliberate one.</source>
         <translation>דער קאָדעק גייט תּמיד נאָך די קאַנאַלן סײַ ווי סײַ — די וואָרענונג מאַכט נאָר דעם רגע פֿון ענדערן אַ באַוווּסטן.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="301"/>
+        <location filename="../qml/PreferencesDialog.qml" line="312"/>
         <source>WHEN AC3FORGE OPENS</source>
         <translation>ווען AC3FORGE עפֿנט זיך</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="303"/>
-        <location filename="../qml/PreferencesDialog.qml" line="305"/>
+        <location filename="../qml/PreferencesDialog.qml" line="314"/>
+        <location filename="../qml/PreferencesDialog.qml" line="316"/>
         <source>Controls</source>
         <translation>קאָנטראָלן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="308"/>
+        <location filename="../qml/PreferencesDialog.qml" line="319"/>
         <source>Guided — one step at a time</source>
         <translation>געפֿירט — איין טראָט מיט אַ מאָל</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="309"/>
+        <location filename="../qml/PreferencesDialog.qml" line="320"/>
         <source>Advanced — all the format controls</source>
         <translation>אַוואַנסירט — אַלע פֿורמאַט־קאָנטראָלן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="310"/>
+        <location filename="../qml/PreferencesDialog.qml" line="321"/>
         <source>Expert — coding tools and broadcast metadata</source>
         <translation>מבֿין — קאָדירונג צוגאָבן און שידור־מעטאַדאַטן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="311"/>
+        <location filename="../qml/PreferencesDialog.qml" line="322"/>
         <source>Whatever I used last</source>
         <translation>וואָס איך האָב באַניצט לעצטנס</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="322"/>
+        <location filename="../qml/PreferencesDialog.qml" line="333"/>
         <source>Guided asks a question per step and applies the constraints for you. Advanced shows the format, channels and objects at once. Expert adds the Annex E tools and the metadata panel.</source>
         <translation>געפֿירט פֿרעגט אַ פֿראַגע יעדער טראָט און לייגט אָן די באַגרענעצונגען פֿאַר אײַך. אַוואַנסירט ווײַזט דעם פֿורמאַט, קאַנאַלן און אָביעקטן אין איין מאָל. מבֿין לייגט צו די צוגאָבן פֿון צוגאָב E און דעם מעטאַדאַטן־טאָוול.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="326"/>
+        <location filename="../qml/PreferencesDialog.qml" line="337"/>
         <source>Reopen the last session&apos;s sources and assignments</source>
         <translation>ווידער עפֿענען די מקורים און צוטיילונגען פֿון דער לעצטער סעסיע</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="332"/>
+        <location filename="../qml/PreferencesDialog.qml" line="343"/>
         <source>Start on the last screen I was on</source>
         <translation>אָנהייבן אויף דעם לעצטן עקראַן וווּ איך בין געווען</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="340"/>
+        <location filename="../qml/PreferencesDialog.qml" line="351"/>
         <source>FILES AND RUNS</source>
         <translation>טעקעס און לויפֿן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="342"/>
+        <location filename="../qml/PreferencesDialog.qml" line="353"/>
         <source>Output folder</source>
         <translation>אויסגאַנג־אָרדנער</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="352"/>
+        <location filename="../qml/PreferencesDialog.qml" line="363"/>
         <source>Beside the first source</source>
         <translation>לעבן דער ערשטער מקור</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="359"/>
+        <location filename="../qml/PreferencesDialog.qml" line="370"/>
         <source>Choose…</source>
         <translation>קלײַבן…</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="364"/>
+        <location filename="../qml/PreferencesDialog.qml" line="375"/>
         <source>Reset</source>
         <translation>צוריקשטעלן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="370"/>
-        <location filename="../qml/PreferencesDialog.qml" line="373"/>
+        <location filename="../qml/PreferencesDialog.qml" line="381"/>
+        <location filename="../qml/PreferencesDialog.qml" line="384"/>
         <source>Name new files</source>
         <translation>נעמען נײַע טעקעס</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="381"/>
+        <location filename="../qml/PreferencesDialog.qml" line="392"/>
         <source>{source} is the first source&apos;s own name, {ext} the suffix the plan derives — a pattern with neither would name every encode identically.</source>
         <translation>{source} איז דער אייגענער נאָמען פֿון דעם ערשטן מקור, {ext} דער סוף וואָס דער פּלאַן גיט אַרויס — אַ מוסטער אָן קיינער פֿון ביידע וואָלט גערופֿן יעדער קאָדירונג פּונקט אזוי.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="385"/>
+        <location filename="../qml/PreferencesDialog.qml" line="396"/>
         <source>Keep partial output when a run fails</source>
         <translation>היטן דעם טיילווײַזן אויסגאַנג ווען אַ לויף פֿעלט</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="391"/>
+        <location filename="../qml/PreferencesDialog.qml" line="402"/>
         <source>A failed or cancelled run&apos;s frames are kept beside the intended output as &lt;name&gt;.partial.&lt;ext&gt; — named, never silently discarded.</source>
         <translation>די פֿריימס פֿון אַ לויף וואָס איז דורכגעפֿאַלן אָדער אָפּגעזאָגט ווערן געהיט לעבן דעם געוואָלטן אויסגאַנג ווי &lt;name&gt;.partial.&lt;ext&gt; — מיט אַ נאָמען, קיין מאָל נישט שטילערהייט אַוועקגעוואָרפֿן.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="402"/>
+        <location filename="../qml/PreferencesDialog.qml" line="413"/>
         <source>DEFAULTS FOR A NEW ENCODE</source>
         <translation>סטאַנדאַרטן פֿאַר אַ נײַער קאָדירונג</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="404"/>
-        <location filename="../qml/PreferencesDialog.qml" line="406"/>
+        <location filename="../qml/PreferencesDialog.qml" line="415"/>
+        <location filename="../qml/PreferencesDialog.qml" line="417"/>
         <source>Container</source>
         <translation>קאָנטיינער</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="413"/>
-        <location filename="../qml/PreferencesDialog.qml" line="415"/>
+        <location filename="../qml/PreferencesDialog.qml" line="424"/>
+        <location filename="../qml/PreferencesDialog.qml" line="426"/>
         <source>Rate mode</source>
         <translation>קורס־מאָדוס</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="417"/>
+        <location filename="../qml/PreferencesDialog.qml" line="428"/>
         <source>Constant</source>
         <translation>קאָנסטאַנט</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="418"/>
+        <location filename="../qml/PreferencesDialog.qml" line="429"/>
         <source>Variable</source>
         <translation>וואַריאַבל</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="424"/>
-        <location filename="../qml/PreferencesDialog.qml" line="427"/>
+        <location filename="../qml/PreferencesDialog.qml" line="435"/>
+        <location filename="../qml/PreferencesDialog.qml" line="438"/>
         <source>Bit rate</source>
         <translation>ביט־קורס</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="430"/>
-        <location filename="../qml/PreferencesDialog.qml" line="434"/>
+        <location filename="../qml/PreferencesDialog.qml" line="441"/>
+        <location filename="../qml/PreferencesDialog.qml" line="445"/>
         <source>%1 kbps</source>
         <translation>%1 קילאָביטן/סעק</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="444"/>
         <location filename="../qml/PreferencesDialog.qml" line="455"/>
+        <location filename="../qml/PreferencesDialog.qml" line="466"/>
         <source>VBR quality</source>
         <translation>VBR קוואַליטעט</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="465"/>
-        <location filename="../qml/PreferencesDialog.qml" line="467"/>
+        <location filename="../qml/PreferencesDialog.qml" line="476"/>
+        <location filename="../qml/PreferencesDialog.qml" line="478"/>
         <source>DRC profile</source>
         <translation>DRC פּראָפֿיל</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="475"/>
+        <location filename="../qml/PreferencesDialog.qml" line="486"/>
         <source>Measure loudness and set dialnorm from it</source>
         <translation>מעסטן קלאַנג-שטאַרקייט און שטעלן dialnorm דערפֿון</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="481"/>
+        <location filename="../qml/PreferencesDialog.qml" line="492"/>
         <source>The codec is not a default — it follows the channels you pick, and there is no default channel layout for the same reason. Variable rate applies to Dolby Digital Plus files only.</source>
         <translation>דער קאָדעק איז נישט קיין סטאַנדאַרט — ער גייט נאָך די קאַנאַלן וואָס איר קלײַבט, און פֿון דער זעלבער סיבה איז נישטאָ קיין סטאַנדאַרטע קאַנאַל-אויסלייג. וואַריאַבלער קורס גילט נאָר פֿאַר Dolby Digital Plus טעקעס.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="486"/>
+        <location filename="../qml/PreferencesDialog.qml" line="497"/>
         <source>CAPTURE</source>
         <translation>כאַפּונג</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="488"/>
+        <location filename="../qml/PreferencesDialog.qml" line="499"/>
         <source>Start monitoring as soon as a device is chosen</source>
         <translation>אָנהייבן קאָנטראָלירן תּיכּף ווען אַ מכשיר איז אויסגעקליבן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="494"/>
+        <location filename="../qml/PreferencesDialog.qml" line="505"/>
         <source>Ask for a filename before recording</source>
         <translation>פֿרעגן פֿאַר אַ טעקע-נאָמען איידער רעקאָרדירן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="500"/>
+        <location filename="../qml/PreferencesDialog.qml" line="511"/>
         <source>Left unticked, Record writes straight to the output folder under a timestamped take name — the run strip and status line always say where.</source>
         <translation>אויב נישט אָנגעצייכנט, שרײַבט רעקאָרדירן גלײַך אין דעם אויסגאַנג־אָרדנער אונטער אַ נאָמען מיט אַ צײַט־שטעמפּל — די לויף-פּאַס און סטאַטוס-שורה זאָגן תּמיד וווּ.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="505"/>
+        <location filename="../qml/PreferencesDialog.qml" line="516"/>
         <source>COMMAND LINE</source>
         <translation>באַפֿעל-שורה</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="507"/>
+        <location filename="../qml/PreferencesDialog.qml" line="518"/>
         <source>Keep the ac3cli line visible</source>
         <translation>האַלטן די ac3cli-שורה זעעוודיק</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="518"/>
+        <location filename="../qml/PreferencesDialog.qml" line="529"/>
         <source>DIAGNOSTICS</source>
         <translation>דיאַגנאָסטיק</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="520"/>
+        <location filename="../qml/PreferencesDialog.qml" line="531"/>
         <source>A plain-text file to attach to a bug report: the versions, this machine&apos;s platform, what is loaded, the settings in force and the last messages the window logged. It carries no audio, no part of any file you loaded, no signing key and no value of any environment variable — only whether the two signing variables are set at all.</source>
         <translation>אַ פּשוט־טעקסט טעקע צוצולייגן צו אַ באַג־באַריכט: די ווערסיעס, די פּלאַטפֿאָרמע פֿון דער דאָזיקער מאַשין, וואָס איז אַרײַנגעלאָדן, די אײַנשטעלונגען וואָס זײַנען אין קראַפֿט און די לעצטע מעלדונגען וואָס דאָס פֿענצטער האָט פֿאַרשריבן. זי טראָגט ניט קיין אַודיאָ, קיין טייל פֿון קיין שום טעקע וואָס איר האָט אַרײַנגעלאָדן, קיין אונטערשרײַב־שליסל און קיין ווערט פֿון קיין שום סבֿיבֿה־וואַריאַבל — בלויז צי די צוויי אונטערשרײַב־וואַריאַבלען זײַנען בכלל אײַנגעשטעלט.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="524"/>
+        <location filename="../qml/PreferencesDialog.qml" line="535"/>
         <source>Save diagnostics…</source>
         <translation>אויפֿהיטן די דיאַגנאָסטיק…</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="525"/>
+        <location filename="../qml/PreferencesDialog.qml" line="536"/>
         <source>Writes a plain-text support file where you choose. Nothing is sent anywhere.</source>
         <translation>שרײַבט אַ פּשוט־טעקסט שטיצע־טעקע וווּ איר קלײַבט אויס. גאָרנישט ווערט ניט געשיקט ערגעץ.</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="549"/>
+        <location filename="../qml/PreferencesDialog.qml" line="560"/>
         <source>Cancel</source>
         <translation>אָפּזאָגן</translation>
     </message>
     <message>
-        <location filename="../qml/PreferencesDialog.qml" line="554"/>
+        <location filename="../qml/PreferencesDialog.qml" line="565"/>
         <source>Save</source>
         <translation>שפּײַכערן</translation>
     </message>

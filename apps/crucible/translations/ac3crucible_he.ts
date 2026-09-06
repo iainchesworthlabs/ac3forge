@@ -119,77 +119,77 @@
 <context>
     <name>CrucibleController</name>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="102"/>
+        <location filename="../ui/crucible_controller.cpp" line="115"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="103"/>
+        <location filename="../ui/crucible_controller.cpp" line="116"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="104"/>
+        <location filename="../ui/crucible_controller.cpp" line="117"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="105"/>
+        <location filename="../ui/crucible_controller.cpp" line="118"/>
         <source>PCM surround</source>
         <translation>PCM היקפי</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="106"/>
+        <location filename="../ui/crucible_controller.cpp" line="119"/>
         <source>Headphones</source>
         <translation>אוזניות</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="107"/>
+        <location filename="../ui/crucible_controller.cpp" line="120"/>
         <source>Stereo</source>
         <translation>סטריאו</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="108"/>
+        <location filename="../ui/crucible_controller.cpp" line="121"/>
         <source>No output</source>
         <translation>אין פלט</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="722"/>
+        <location filename="../ui/crucible_controller.cpp" line="748"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
         <translation>בנייה זו אינה נושאת קובץ הודעות מוטמע (:/notices/NOTICES.txt לא הודר לתוכה); קובץ NOTICES.txt שליד היישום וקובץ LICENSE שבמאגר אומרים מה היא כוללת.</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1215"/>
+        <location filename="../ui/crucible_controller.cpp" line="1241"/>
         <source>saved to %1</source>
         <translation>נשמר אל %1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1218"/>
+        <location filename="../ui/crucible_controller.cpp" line="1244"/>
         <source>could not write %1: %2</source>
         <translation>לא ניתן היה לכתוב את %1: %2</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1008"/>
+        <location filename="../ui/crucible_controller.cpp" line="1034"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>מתקין, יש לענות לבקשת ההרשאות…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1023"/>
+        <location filename="../ui/crucible_controller.cpp" line="1049"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>מסיר, יש לענות לבקשת ההרשאות…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1043"/>
+        <location filename="../ui/crucible_controller.cpp" line="1069"/>
         <source>installed</source>
         <translation>הותקן</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1043"/>
+        <location filename="../ui/crucible_controller.cpp" line="1069"/>
         <source>removed</source>
         <translation>הוסר</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1047"/>
+        <location filename="../ui/crucible_controller.cpp" line="1073"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 נכשל (קוד יציאה %2)</translation>
     </message>
@@ -531,57 +531,57 @@
         <translation>PCM היקפי</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="447"/>
+        <location filename="../ui/qml/Main.qml" line="453"/>
         <source>Headphones</source>
         <translation>אוזניות</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="448"/>
+        <location filename="../ui/qml/Main.qml" line="454"/>
         <source>Stereo</source>
         <translation>סטריאו</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="453"/>
+        <location filename="../ui/qml/Main.qml" line="459"/>
         <source>Default output: %1</source>
         <translation>פלט ברירת המחדל: %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="454"/>
+        <location filename="../ui/qml/Main.qml" line="460"/>
         <source>Move default output to %1</source>
         <translation>העבירו את פלט ברירת המחדל אל %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="459"/>
+        <location filename="../ui/qml/Main.qml" line="465"/>
         <source>previous default output</source>
         <translation>פלט ברירת המחדל הקודם</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="459"/>
+        <location filename="../ui/qml/Main.qml" line="465"/>
         <source>Restore %1</source>
         <translation>שחזר את %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="464"/>
+        <location filename="../ui/qml/Main.qml" line="470"/>
         <source>Objects on · key loaded</source>
         <translation>אובייקטים פעילים · מפתח נטען</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="464"/>
+        <location filename="../ui/qml/Main.qml" line="470"/>
         <source>Objects off · no key</source>
         <translation>אובייקטים כבויים · אין מפתח</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="465"/>
+        <location filename="../ui/qml/Main.qml" line="471"/>
         <source>Settings…</source>
         <translation>הגדרות…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="466"/>
+        <location filename="../ui/qml/Main.qml" line="472"/>
         <source>About…</source>
         <translation>אודות…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="468"/>
+        <location filename="../ui/qml/Main.qml" line="474"/>
         <source>Quit</source>
         <translation>יציאה</translation>
     </message>

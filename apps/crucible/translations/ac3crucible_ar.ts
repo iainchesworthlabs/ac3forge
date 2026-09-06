@@ -119,77 +119,77 @@
 <context>
     <name>CrucibleController</name>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="102"/>
+        <location filename="../ui/crucible_controller.cpp" line="115"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="103"/>
+        <location filename="../ui/crucible_controller.cpp" line="116"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="104"/>
+        <location filename="../ui/crucible_controller.cpp" line="117"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="105"/>
+        <location filename="../ui/crucible_controller.cpp" line="118"/>
         <source>PCM surround</source>
         <translation>محيطي PCM</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="106"/>
+        <location filename="../ui/crucible_controller.cpp" line="119"/>
         <source>Headphones</source>
         <translation>سماعات الرأس</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="107"/>
+        <location filename="../ui/crucible_controller.cpp" line="120"/>
         <source>Stereo</source>
         <translation>استيريو</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="108"/>
+        <location filename="../ui/crucible_controller.cpp" line="121"/>
         <source>No output</source>
         <translation>لا إخراج</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="722"/>
+        <location filename="../ui/crucible_controller.cpp" line="748"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
         <translation>لا يحمل هذا البناء ملف إشعارات مضمَّنًا (لم يُصرَّف :/notices/NOTICES.txt ضمنه)؛ وملف NOTICES.txt المجاور للتطبيق وملف LICENSE في المستودع يوضّحان ما يشحنه.</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1215"/>
+        <location filename="../ui/crucible_controller.cpp" line="1241"/>
         <source>saved to %1</source>
         <translation>حُفظ في %1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1218"/>
+        <location filename="../ui/crucible_controller.cpp" line="1244"/>
         <source>could not write %1: %2</source>
         <translation>تعذّرت كتابة %1: %2</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1008"/>
+        <location filename="../ui/crucible_controller.cpp" line="1034"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>جارٍ التثبيت، أجب على طلب رفع الصلاحيات…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1023"/>
+        <location filename="../ui/crucible_controller.cpp" line="1049"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>جارٍ الإزالة، أجب على طلب رفع الصلاحيات…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1043"/>
+        <location filename="../ui/crucible_controller.cpp" line="1069"/>
         <source>installed</source>
         <translation>تم التثبيت</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1043"/>
+        <location filename="../ui/crucible_controller.cpp" line="1069"/>
         <source>removed</source>
         <translation>تمت الإزالة</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1047"/>
+        <location filename="../ui/crucible_controller.cpp" line="1073"/>
         <source>%1 failed (exit code %2)</source>
         <translation>فشل %1 (رمز الخروج %2)</translation>
     </message>
@@ -531,57 +531,57 @@
         <translation>محيطي PCM</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="447"/>
+        <location filename="../ui/qml/Main.qml" line="453"/>
         <source>Headphones</source>
         <translation>سماعات الرأس</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="448"/>
+        <location filename="../ui/qml/Main.qml" line="454"/>
         <source>Stereo</source>
         <translation>استيريو</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="453"/>
+        <location filename="../ui/qml/Main.qml" line="459"/>
         <source>Default output: %1</source>
         <translation>المخرج الافتراضي: %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="454"/>
+        <location filename="../ui/qml/Main.qml" line="460"/>
         <source>Move default output to %1</source>
         <translation>انقل المخرج الافتراضي إلى %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="459"/>
+        <location filename="../ui/qml/Main.qml" line="465"/>
         <source>previous default output</source>
         <translation>الإخراج الافتراضي السابق</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="459"/>
+        <location filename="../ui/qml/Main.qml" line="465"/>
         <source>Restore %1</source>
         <translation>استعادة %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="464"/>
+        <location filename="../ui/qml/Main.qml" line="470"/>
         <source>Objects on · key loaded</source>
         <translation>الكائنات مفعلة · المفتاح محمّل</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="464"/>
+        <location filename="../ui/qml/Main.qml" line="470"/>
         <source>Objects off · no key</source>
         <translation>الكائنات معطلة · لا مفتاح</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="465"/>
+        <location filename="../ui/qml/Main.qml" line="471"/>
         <source>Settings…</source>
         <translation>الإعدادات…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="466"/>
+        <location filename="../ui/qml/Main.qml" line="472"/>
         <source>About…</source>
         <translation>حول…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="468"/>
+        <location filename="../ui/qml/Main.qml" line="474"/>
         <source>Quit</source>
         <translation>إنهاء</translation>
     </message>
