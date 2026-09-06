@@ -31,7 +31,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 mkdir -p "$OUT/fuzz_scan" "$OUT/fuzz_ac3_decode" "$OUT/fuzz_eac3_decode" "$OUT/fuzz_wav_read" \
-         "$OUT/fuzz_signing_verify" "$OUT/fuzz_iec61937_unwrap"
+         "$OUT/fuzz_signing_verify" "$OUT/fuzz_iec61937_unwrap" \
+         "$OUT/fuzz_ac4_parse" "$OUT/fuzz_iab_parse"
 
 run() { "$AC3CLI" "$@" >/dev/null; }
 
@@ -44,6 +45,20 @@ add_seed() {
         cp "$file" "$OUT/$name/$base"
     done
 }
+
+# AC-4 has no encoder here, so its seed is the checked-in Dolby Encoding
+# Engine baseline tests/ac4 already parses - a real stream from a real
+# encoder, and a better starting corpus than anything this repo could
+# synthesise for a format it only reads.
+echo "==> AC-4: the checked-in DEE baseline, as a parser seed"
+add_seed "fuzz_ac4_parse" "$REPO_ROOT/tests/golden/external-baseline/ac4-stereo-64/dee.ac4"
+
+# The IAB seed comes from examples/encode_iab.cpp's own --write-fixture mode,
+# the one tools/ci/run_codec_matrix.sh drives, so it needs that example built -
+# which this script's AC3CLI_BIN contract does not cover. It is committed
+# instead; regenerate with:
+#
+#     encode_iab --write-fixture fuzz/seeds/fuzz_iab_parse/iab-bed-object.iab
 
 echo "==> AC-3: silence, sine and orbit across every layout AC-3 can carry"
 for layout in mono stereo 51 51c; do

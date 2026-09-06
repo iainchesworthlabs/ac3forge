@@ -158,6 +158,16 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `cpack` run; the RPM generator gzips the man page to `ac3cli.1.gz`, so checking those too
   would make the expected names generator-specific for no further failure mode caught.
 
+- Fuzz harnesses for the two parsers of third-party files that had none: `fuzz_iab_parse`
+  (`ac3iab::parse_iabitstream`, `parse_mxf_iab` and `parse_iaframe` - §7's Preamble+IAFrame
+  run, the SMPTE ST 2067-201 KLV wrapper around it, and §9.1's single extracted frame) and
+  `fuzz_ac4_parse` (`ac4::scan` and `ac4::parse_raw_frame`). Both exist only to read files
+  this project did not write, and both size their loops from numbers the file chose. IAB is
+  clean over 1.5 million executions and joins the default target list; `fuzz_ac4_parse` is
+  built and carries its regression corpus but stays out of `run.sh`'s `BASE_TARGETS` for now,
+  because the AC-4 TOC parser still has unbounded-allocation findings beyond the ones fixed
+  above - see that file's own note.
+
 - **Crucible can be operated without a mouse, and says what it is doing to a screen reader**
   ([Keyboard and screen readers](docs/crucible/accessibility.md)). Every button, checkbox, bed
   chip, the header pill and the Advanced disclosure are tab stops that Space and Return press;
@@ -379,6 +389,20 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   could not happen. It now names every package the documentation promises and fails on whatever
   is absent, listing what did arrive.
 
+- **The AC-4 parser dereferenced a null pointer on a legal bitstream, and could be made to ask
+  for gigabytes.** §4.2.3.11 transmits `substream_size[]` only when `b_size_present`, a flag
+  Table 14 reads only when `n_substreams == 1` - so a stream that clears it left
+  `Toc::substream_sizes` empty while `Toc::n_substreams` was 1, and `parse_raw_frame()` indexed
+  element 0 of an empty vector. `tests/ac4` had only ever built the `b_size_present = 1` shape,
+  so the whole branch was untested. A substream whose size is not transmitted now runs from
+  `payload_base` to the end of the frame, which is unambiguous because `scan()` hands
+  `parse_raw_frame()` exactly one `frame_size`-bounded frame. Separately, `parse_toc()` no
+  longer calls `reserve()` on counts that arrive through `variable_bits()` (one fuzzed frame
+  asked for a 137 GB `vector<SubstreamGroupInfo>`), and the three count-driven loops that grew
+  a vector without checking whether the reader had run out - `substream_sizes`, a
+  presentation's `group_refs`, and the channel-coded `n_lf_substreams` loop - now stop the way
+  the substream-group loop beside them always did. All found by the new
+  `fuzz/fuzz_ac4_parse.cpp`, the first two within seconds of its first run.
 - **Crucible listed every PulseAudio application on Linux as one entry, and could tap none of
   them** (`src/audio/src/backend/pipewire/pipewire_support.hpp`). PipeWire records the process
   behind a client from the socket credentials, and the session list and the per-process tap both

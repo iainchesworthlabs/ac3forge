@@ -46,6 +46,17 @@ SECONDS_PER_TARGET="${AC3FORGE_FUZZ_SECONDS:-60}"
 # this list. See seed_source_for below for how they reuse seed corpora
 # without duplicating any files.
 #
+# fuzz_ac4_parse is absent for a third reason, and a temporary one: it is
+# built like every other harness and its regressions replay clean, but the
+# AC-4 TOC parser still has an open family of unbounded-allocation findings
+# that mutation reaches within a few hundred thousand executions. Two are
+# fixed (the substream_sizes null dereference and the reserve()/loop pair
+# that rode variable_bits counts into multi-gigabyte allocations); the rest
+# are not, and putting the target in this list would make the mutation runs
+# red every night for a known, filed problem rather than a new one. Run it
+# by hand with `fuzz/run.sh run fuzz_ac4_parse`, and put it back here once
+# the parser bounds every count-driven loop.
+#
 # fuzz_adm_parse is absent for a different reason from the differential
 # pair's: it is not built at all unless AC3FORGE_FUZZ_ADM=1 turns
 # AC3FORGE_BUILD_ADM on (see configure_and_build below), because ac3adm needs
@@ -55,7 +66,7 @@ SECONDS_PER_TARGET="${AC3FORGE_FUZZ_SECONDS:-60}"
 readonly BASE_TARGETS=(fuzz_scan fuzz_ac3_decode fuzz_eac3_decode fuzz_wav_read
                        fuzz_iec61937_unwrap fuzz_emdf_parse fuzz_oamd_parse
                        fuzz_joc_parse fuzz_osc_parse fuzz_signing_verify fuzz_matroska_demux
-                       fuzz_mp4_demux fuzz_mpegts_demux)
+                       fuzz_mp4_demux fuzz_mpegts_demux fuzz_iab_parse)
 
 adm_enabled() { [ -n "${AC3FORGE_FUZZ_ADM:-}" ]; }
 
