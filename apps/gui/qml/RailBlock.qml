@@ -28,13 +28,13 @@ ColumnLayout {
         Text {
             text: root.ordinal
             color: Theme.accent700
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontMono
             font.family: Theme.monoFamily
         }
         Text {
             text: root.label
             color: Theme.text
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontMono
             font.letterSpacing: 1.3
             font.weight: Font.DemiBold
         }

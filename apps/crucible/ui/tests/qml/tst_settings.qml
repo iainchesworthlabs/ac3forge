@@ -91,10 +91,22 @@ TestCase {
     }
 
     function test_driverBlockReadsTheMachine() {
-        // The silent device is a real thing on this platform, so the block
-        // shows at all. On macOS it would not: the taps mute each
-        // application where they tap it and there is no device to install.
-        verify(CrucibleController.silentDeviceNeeded);
+        // Whether the silent device is a real thing here at all, from the
+        // seam rather than from a platform name. Windows and Linux both need
+        // one; macOS does not, because its taps mute each application where
+        // they tap it, so `needed` is false and the whole block hides.
+        //
+        // This asserted `needed` outright until 2026-09-06, when there were
+        // two platforms and both answered yes; the comment beside it already
+        // said what macOS would do. Now that the third arm exists, the pair
+        // of facts that go with a false answer are asserted instead: there is
+        // no package to install from and nothing for the application to
+        // create either, so neither branch of the install UI is offered.
+        verify(typeof CrucibleController.silentDeviceNeeded === "boolean");
+        if (!CrucibleController.silentDeviceNeeded) {
+            compare(CrucibleController.silentDeviceFromPackage, false);
+            compare(CrucibleController.silentDeviceCanCreate, false);
+        }
         // The blocker is the platform's own sentence and is empty when
         // nothing is in the way, so its content is the machine's business
         // and not this test's - what matters is that it is a string the
@@ -170,6 +182,18 @@ TestCase {
             compare(install.enabled, false);
             compare(install.text, "Install driver");
             compare(remove.text, "Remove driver");
+            // With no package in that folder the note says what is missing,
+            // not what kind of copy this is. driverDir() finds the packaged
+            // scripts beside the executable, so a download reaches this
+            // branch as readily as a checkout does and the page cannot tell
+            // them apart; the old wording asserted a checkout and sent a
+            // packaged reader to bcdedit for a driver no download holds.
+            const driverNote = findChild(page, "driverPackageNote");
+            verify(driverNote, "the driver note carries objectName driverPackageNote");
+            if (!CrucibleController.nullSinkPresent) {
+                verify(driverNote.visible, "the note is shown while there is no silent device");
+                verify(driverNote.text.indexOf("This is a build from source") < 0, driverNote.text);
+            }
         } else {
             // The application's own device: no folder, and the buttons say
             // create and remove, not install.

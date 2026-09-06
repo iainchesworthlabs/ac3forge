@@ -34,6 +34,7 @@ Dialog {
 
     // The working copy.
     property string themeChoice: "system"
+    property string textScaleChoice: "100"
     property string paletteChoice: "signal"
     property string controlsChoice: "guided"
     property string meterChoice: "coded"
@@ -56,6 +57,7 @@ Dialog {
 
     onAboutToShow: {
         themeChoice = settings.theme;
+        textScaleChoice = settings.textScale;
         paletteChoice = settings.palette;
         controlsChoice = settings.controlsOnOpen;
         meterChoice = settings.meterMode;
@@ -83,19 +85,32 @@ Dialog {
         onAccepted: root.outputFolderChoice = selectedFolder.toString()
     }
 
+    // Where the diagnostics file goes. selectedFile is set before open(), so
+    // the suggested name and folder appear in the dialog - the same shape as
+    // the Crucible's own Settings page, and the same defaultSuffix, so a
+    // support file from either window looks the same to whoever reads it.
+    FileDialog {
+        id: diagnosticsDialog
+        title: qsTr("Save diagnostics")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "txt"
+        nameFilters: [qsTr("Text files (*.txt)"), qsTr("All files (*)")]
+        onAccepted: EncoderController.exportDiagnostics(selectedFile.toString())
+    }
+
     component PrefsKicker: Text {
-        font.pixelSize: 10
+        font.pixelSize: Theme.fontMicro
         font.letterSpacing: 1.5
         color: Theme.textMuted
     }
     component PrefsLabel: Text {
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontSmall
         color: Theme.text
     }
     component PrefsNote: Text {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         color: Theme.textMuted
     }
 
@@ -113,7 +128,7 @@ Dialog {
 
         Text {
             text: qsTr("Preferences")
-            font.pixelSize: 20
+            font.pixelSize: Math.round(20 * Theme.fontScale)
             font.family: Theme.headingFamily
             font.weight: Font.ExtraBold
             color: Theme.text
@@ -145,6 +160,29 @@ Dialog {
                 }
                 PrefsNote {
                     text: qsTr("Light and dark are each hand-tuned per palette; the level thresholds never move.")
+                }
+
+                Item { Layout.preferredHeight: Theme.space2 }
+
+                PrefsLabel { text: qsTr("Text size") }
+                SegmentedControl {
+                    objectName: "prefsTextSize"
+                    accessibleName: qsTr("Text size")
+                    // The same five choices, spelled the same way, that the
+                    // Crucible offers - see Main.qml's applyTextScale() for
+                    // what each one becomes.
+                    model: [
+                        { value: "100", label: "100%" },
+                        { value: "125", label: "125%" },
+                        { value: "150", label: "150%" },
+                        { value: "175", label: "175%" },
+                        { value: "system", label: qsTr("System") },
+                    ]
+                    currentValue: root.textScaleChoice
+                    onSelected: (value) => root.textScaleChoice = value
+                }
+                PrefsNote {
+                    text: qsTr("Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too. Some panels still hold their controls at a fixed height and can clip the largest sizes — docs/gui/accessibility.md says which.")
                 }
 
                 Item { Layout.preferredHeight: Theme.space2 }
@@ -214,7 +252,18 @@ Dialog {
                     Accessible.description: qsTr("Switches the app's own text; Arabic, Hebrew and Yiddish also mirror the whole window right-to-left.")
                 }
                 PrefsNote {
-                    text: qsTr("French, German, Spanish, Arabic, Hebrew and Yiddish are partially translated today. Anything not yet translated stays in English rather than showing blank.")
+                    // Both halves of what this used to say were made false on
+                    // 2026-09-06: the six catalogues were filled, so nothing
+                    // falls back to English any more.
+                    //
+                    // Word for word what Crucible's language note says
+                    // (apps/crucible/ui/qml/SettingsPage.qml), on purpose: the
+                    // two windows sit under the same picker, offer the same
+                    // six languages from the same pipeline, and carry the same
+                    // caveat. One sentence between them means one rendering
+                    // per language to keep right, and a reader who uses both
+                    // is told the same thing twice rather than two things.
+                    text: qsTr("System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.")
                 }
 
                 Item { Layout.preferredHeight: Theme.space2 }
@@ -240,13 +289,13 @@ Dialog {
                     text: qsTr("Show the plain-language notes beside controls")
                     checked: root.explanationsChoice
                     onToggled: root.explanationsChoice = checked
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                 }
                 CheckBox {
                     text: qsTr("Warn before a choice changes the codec")
                     checked: root.warnCodecChoice
                     onToggled: root.warnCodecChoice = checked
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                 }
                 PrefsNote {
                     text: qsTr("The codec always follows the channels either way — the warning only makes the moment it changes a deliberate one.")
@@ -288,13 +337,13 @@ Dialog {
                     text: qsTr("Reopen the last session's sources and assignments")
                     checked: root.restoreSessionChoice
                     onToggled: root.restoreSessionChoice = checked
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                 }
                 CheckBox {
                     text: qsTr("Start on the last screen I was on")
                     checked: root.restoreScreenChoice
                     onToggled: root.restoreScreenChoice = checked
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                 }
 
                 Item { Layout.preferredHeight: Theme.space2 }
@@ -313,7 +362,7 @@ Dialog {
                               ? root.outputFolderChoice.replace("file:///", "")
                               : qsTr("Beside the first source")
                         elide: Text.ElideMiddle
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSmall
                         font.family: Theme.monoFamily
                         color: Theme.text
                     }
@@ -336,7 +385,7 @@ Dialog {
                     Layout.fillWidth: true
                     text: root.namePatternChoice
                     font.family: Theme.monoFamily
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     onTextEdited: root.namePatternChoice = text
                 }
                 PrefsNote {
@@ -347,7 +396,7 @@ Dialog {
                     text: qsTr("Keep partial output when a run fails")
                     checked: root.keepPartialChoice
                     onToggled: root.keepPartialChoice = checked
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                 }
                 PrefsNote {
                     text: qsTr("A failed or cancelled run's frames are kept beside the intended output as <name>.partial.<ext> — named, never silently discarded.")
@@ -407,7 +456,7 @@ Dialog {
                     Item { Layout.fillWidth: true }
                     Text {
                         text: root.vbrQualityChoice
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSmall
                         font.family: Theme.monoFamily
                         color: Theme.text
                     }
@@ -437,7 +486,7 @@ Dialog {
                     text: qsTr("Measure loudness and set dialnorm from it")
                     checked: root.measureChoice
                     onToggled: root.measureChoice = checked
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                 }
                 PrefsNote {
                     text: qsTr("The codec is not a default — it follows the channels you pick, and there is no default channel layout for the same reason. Variable rate applies to Dolby Digital Plus files only.")
@@ -450,13 +499,13 @@ Dialog {
                     text: qsTr("Start monitoring as soon as a device is chosen")
                     checked: root.autoMonitorChoice
                     onToggled: root.autoMonitorChoice = checked
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                 }
                 CheckBox {
                     text: qsTr("Ask for a filename before recording")
                     checked: root.askRecordNameChoice
                     onToggled: root.askRecordNameChoice = checked
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                 }
                 PrefsNote {
                     text: qsTr("Left unticked, Record writes straight to the output folder under a timestamped take name — the run strip and status line always say where.")
@@ -469,7 +518,31 @@ Dialog {
                     text: qsTr("Keep the ac3cli line visible")
                     checked: root.cliVisible
                     onToggled: root.cliVisible = checked
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
+                }
+
+                Item { Layout.preferredHeight: Theme.space2 }
+
+                // An act, not a setting, so it runs on the press rather than
+                // waiting behind Save - the same immediate shape the Language
+                // combo above already has, and Cancel has nothing to cancel.
+                PrefsKicker { text: qsTr("DIAGNOSTICS") }
+                PrefsNote {
+                    text: qsTr("A plain-text file to attach to a bug report: the versions, this machine's platform, what is loaded, the settings in force and the last messages the window logged. It carries no audio, no part of any file you loaded, no signing key and no value of any environment variable — only whether the two signing variables are set at all.")
+                }
+                Button {
+                    objectName: "prefsDiagnosticsButton"
+                    text: qsTr("Save diagnostics…")
+                    Accessible.description: qsTr("Writes a plain-text support file where you choose. Nothing is sent anywhere.")
+                    onClicked: {
+                        diagnosticsDialog.selectedFile = EncoderController.suggestedDiagnosticsFile();
+                        diagnosticsDialog.open();
+                    }
+                }
+                PrefsNote {
+                    objectName: "prefsDiagnosticsMessage"
+                    visible: EncoderController.diagnosticsMessage.length > 0
+                    text: EncoderController.diagnosticsMessage
                 }
             }
         }
@@ -493,6 +566,7 @@ Dialog {
                 highlighted: true
                 onClicked: {
                     settings.theme = root.themeChoice;
+                    settings.textScale = root.textScaleChoice;
                     settings.palette = root.paletteChoice;
                     settings.controlsOnOpen = root.controlsChoice;
                     settings.meterMode = root.meterChoice;

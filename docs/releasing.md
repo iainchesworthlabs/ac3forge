@@ -535,12 +535,17 @@ One package per OS **and architecture**, not one per compiler-toolchain leg: `_b
 builds and tests both Windows toolchains (MSVC, clang-cl), both Linux toolchains (GCC, Clang) - on
 both x64 and arm64 - and, since DR8, both macOS architectures (arm64 and x86_64) on every push. For
 Windows and Linux, only the leg marked `release_package: true` per OS/arch actually packages for a
-release - windows-msvc, linux-gcc and linux-gcc-arm64. windows-llvm, linux-llvm and
-linux-llvm-arm64 still catch compiler-specific bugs in full, every push; they just don't produce a
-second, redundantly canonical archive that a downloader would have no way to choose between.
-`cmake/Packaging.cmake` arch-qualifies the Linux archive filename (`ac3forge-X.Y.Z-Linux-x86_64.tar.gz`
-vs. `...-Linux-aarch64.tar.gz`) specifically so the two Linux architectures' TGZ/ZIP downloads never
-collide; DEB/RPM already carry their arch in their own filenames.
+release - windows-msvc, windows-msvc-arm64, linux-gcc and linux-gcc-arm64. windows-llvm,
+linux-llvm and linux-llvm-arm64 still catch compiler-specific bugs in full, every push; they just
+don't produce a second, redundantly canonical archive that a downloader would have no way to
+choose between. `cmake/Packaging.cmake` arch-qualifies the Linux archive filename
+(`ac3forge-X.Y.Z-Linux-x86_64.tar.gz` vs. `...-Linux-aarch64.tar.gz`) specifically so the two
+Linux architectures' TGZ/ZIP downloads never collide; DEB/RPM already carry their arch in their
+own filenames. The two linux-llvm legs are the one exception to all of that, and only for
+AC3Forge Crucible: they are the legs that build against PipeWire, which is the only backend
+Crucible accepts, so they are the only legs that can package that component - one per Linux
+architecture - and those packages do reach the release, on the artifact glob rather than on a
+`release_package` gate (the last three rows below, and the Linux paragraph after them).
 
 macOS doesn't fit the "one `release_package` leg" shape at all: neither `macos-llvm` (arm64) nor
 `macos-llvm-x64` (x86_64, on GitHub's native-Intel `macos-15-intel` runner - real hardware, not
@@ -557,34 +562,46 @@ matching `ac3forge-dev-*` library archive is attempted the same way (`library`/`
 components instead of `runtime`) but is best-effort - see `package-macos-universal`'s own comment in
 `_build.yml` - so it may be missing from a given release; check that job's log if it's absent.
 
+What a release carries, and which leg builds it. The first five rows are the library and Forge's
+`ac3cli`/`ac3gui` and the sixth is the Shield app; the last three are AC3Forge Crucible's own
+component, a separate download on both platforms that have one, and on both Linux
+architectures. The `.AppImage` and the conformance-vector bundle are not CPack products and are
+described after the table.
+
 | Platform | Arch | Leg | End-user packages | Library (`ac3forge-dev-*`) |
 |---|---|---|---|---|
 | Windows | x64 | windows-msvc | `.zip`, `.exe` (NSIS) | `.zip` |
-| Windows | arm64 | windows-msvc-arm64 (`experimental: true`, see below) | `.zip`, `.exe` (NSIS) | `.zip` |
+| Windows | arm64 | windows-msvc-arm64 | `.zip`, `.exe` (NSIS) - `ac3cli` only, and the leg is still `experimental: true`; both are explained below | `.zip` |
 | Linux | x86_64 | linux-gcc | `.tar.gz`, `.deb`, `.rpm` | `.tar.gz`, plus real system packages: `libac3forge0`/`ac3forge-devel` (RPM) and `libac3forge0`/`libac3forge-dev` (DEB) |
 | Linux | aarch64 (Raspberry Pi 4/5 and other arm64 targets) | linux-gcc-arm64 | `.tar.gz`, `.deb`, `.rpm` | same split as x86_64, above |
 | macOS | arm64 + x86_64 (universal) | macos-llvm + macos-llvm-x64, merged by `package-macos-universal` | `.dmg` | `.zip`, best-effort (see above) |
 | Android (Shield) | arm64 (NDK) | build-android | `.apk` | none - Shield links `ac3::forge`/`ac3::audio` in-tree, it isn't a `find_package(ac3forge)` consumer |
+| AC3Forge Crucible, Windows | x64 | windows-msvc | `ac3forge-crucible-*-win64.zip` | none - the `crucible` component carries no headers or CMake config |
+| AC3Forge Crucible, Linux | x86_64 | linux-llvm | `ac3forge-crucible-*-Linux-x86_64.tar.gz`, `ac3forge-crucible_*_amd64.deb` | none, same reason |
+| AC3Forge Crucible, Linux | aarch64 | linux-llvm-arm64 | `ac3forge-crucible-*-Linux-aarch64.tar.gz`, `ac3forge-crucible_*_arm64.deb` | none, same reason |
 
 Windows x64 additionally ships AC3Forge Crucible as its own
 `ac3forge-crucible-*-win64.zip` (roadmap UX12, [the Crucible guide](crucible/index.md)): the
 `crucible` CPack component - `ac3crucible.exe`, the `ac3crucible-run` runner, the driver's
 install/remove scripts, a Qt runtime of its own, and `NOTICES.txt` beside `LICENSE.txt` at the
 archive root (the third-party notices, generated per platform from `apps/crucible/notices/` at
-configure time) - packaged by the same `windows-msvc` leg as the row above and picked up by
-`release.yml`'s existing `*.zip` glob. It is a separate download
-rather than part of the `runtime` component, and deliberately absent from the NSIS installer
-(`cmake/CPackProjectConfig.cmake` says why): its null-sink driver is test-signed only, so the
-application needs a machine with test signing on to be useful, which is not something an
-`ac3cli` download should carry. When the EV certificate lands, the installer takes over
-installing the application and its signed driver - one line in that file, and this paragraph,
-change together. `tools/ci/check_crucible_package.py` guards the archive's shape in CI and
-against a local `cpack`.
+configure time) - packaged by the same `windows-msvc` leg as the first row, uploaded inside that
+leg's own `packages-windows-msvc` artifact and attached to the release with everything else in it.
+It is a separate download rather than part of the `runtime` component, and deliberately absent
+from the NSIS installer (`cmake/CPackProjectConfig.cmake` says why): its null-sink driver is
+test-signed only, so the application needs a machine with test signing on to be useful, which is
+not something an `ac3cli` download should carry. When the EV certificate lands, the installer
+takes over installing the application and its signed driver - one line in that file, and this
+paragraph, change together. `tools/ci/check_crucible_package.py` guards the archive's shape in
+CI and against a local `cpack`.
 
-Linux ships the same component as `ac3forge-crucible-*-Linux-<arch>.tar.gz` and, where
-`dpkg-deb` and `rpmbuild` exist, as the `ac3forge-crucible` `.deb` and `.rpm` (named the way
-those tools name things, `ac3forge-crucible_<version>_<arch>.deb`): `ac3crucible`,
-`ac3crucible-run`, the freedesktop launcher, the AppStream record and the icon in the hicolor
+Linux ships the same component as `ac3forge-crucible-*-Linux-x86_64.tar.gz` and the
+`ac3forge-crucible` `.deb` beside it (named the way `dpkg` names things,
+`ac3forge-crucible_<version>_amd64.deb`), and again as the `-Linux-aarch64.tar.gz` and
+`_arm64.deb` pair the arm64 leg builds. Those and no `.rpm`: the CI pass runs
+`cpack -G "TGZ;DEB"`, and the RPM settings `cmake/Packaging.cmake` carries for the component are
+there for a local `cpack` on a machine with `rpmbuild`. The archives hold `ac3crucible`,
+`ac3crucible-run`, the freedesktop launcher, the AppStream record and its icons in the hicolor
 theme, and under `share/doc/ac3forge-crucible/` the notices (`NOTICES.txt`, once more as the
 `copyright` file a `.deb` is expected to carry) with `LICENSE.txt` - and nothing else: no Qt
 (the system's own loader finds it), and no driver scripts, because Linux needs no driver. The `.deb` depends on `pipewire` and a session manager
@@ -592,20 +609,31 @@ theme, and under `share/doc/ac3forge-crucible/` the notices (`NOTICES.txt`, once
 than libraries shlibdeps could see; everything else it depends on is resolved from the binary.
 Two things to know. The component is packaged only from a PipeWire build, which is the only
 build Crucible accepts on Linux ([why](crucible/promotion.md#alsa-or-pipewire)), so the
-existing Linux release legs - which build ALSA - do not produce it. The Linux LLVM leg's
-Crucible pass does build and package it, and uploads it as `packages-crucible-<preset>`, which
-is the pattern `release.yml` collects - so it ships as a release asset without that leg being a
-`release_package` one, and its configure step passes the same `DERIVED_VERSION_OVERRIDE` every
-other release-bound build does, or it would stamp the previous release's version. What it is not
-is guaranteed: the step skips itself whole on a runner whose Qt is older than 6.8, so the
-completeness check deliberately does not require it, and a release can go out without it.
-And the `.deb`'s one-line synopsis is the library's, not Crucible's: CPack's
-DEB generator headlines every component's package with the project summary and offers no
-per-component override that takes effect, so `apt show ac3forge-crucible` opens with
-"Clean-room AC-3 encoder" and says what the package actually is on the next line. The same
-check script reads the tarball's layout, and refuses one that carries a PowerShell script; on
-both platforms it also reads `NOTICES.txt` and refuses a notices file written for the other
-platform, or one whose Quick 3D section disagrees with what the archive ships.
+Linux release legs - which build ALSA - do not produce it. The Crucible pass runs on both Linux
+LLVM legs instead - x86_64 on linux-llvm, aarch64 on linux-llvm-arm64 since 2026-09-06 - and each
+builds, packages and uploads its own pair as `packages-crucible-<preset>`, which is the
+`packages-*` pattern `release.yml` downloads and then attaches file by file, so all four files
+are release assets, checksummed, GPG-signed, SBOM'd and attested with every other package. Its
+configure step passes the same `DERIVED_VERSION_OVERRIDE` every other release-bound build does,
+or it would stamp the previous release's version onto them. One qualification comes with that
+route: neither leg carries `release_package`, so the packages ride on the artifact glob rather
+than on a release gate. On x86_64 that has a visible consequence - when the pass finds a Qt older
+than 6.8 it skips the window and its package with a warning, the upload step then finds nothing
+to attach, and `if-no-files-found: ignore` lets the release publish without it rather than fail,
+which is why the completeness check deliberately does not require it. The arm64 leg does not
+skip: a step beside the pass fails that leg when the window is missing, and reads the
+architecture off the binary and the `.deb` rather than off their filenames. Any other failure in
+that pass does block the release - neither linux-llvm leg is experimental, so they fail the run
+like any other. No tag has been cut since that wiring landed, so this is what the workflow is
+configured to do rather than a route a published release has been seen to take; a `release.yml`
+dry run is what would exercise it before a tag does. And the `.deb`'s one-line synopsis is the
+library's, not Crucible's: CPack's DEB generator headlines every component's package with the
+project summary and offers no per-component override that takes effect, so
+`apt show ac3forge-crucible` opens with "Clean-room AC-3 encoder" and says what the package
+actually is on the next line. The same check script reads the tarball's layout, and refuses one
+that carries a PowerShell script; on both platforms it also reads `NOTICES.txt` and refuses a
+notices file written for the other platform, or one whose Quick 3D section disagrees with what
+the archive ships.
 
 Linux x86_64 also ships a self-contained `ac3gui` `.AppImage` (roadmap DR8), built by its own
 `linux-appimage` job rather than a `release_package: true` leg above - it isn't a CPack product
@@ -665,18 +693,22 @@ See [Conformance vectors](conformance-vectors.md) for what is in it and how a de
 uses it.
 
 One leg is still `experimental: true`, `windows-msvc-arm64` on its own runner label
-(`_build.yml`'s matrix comment says why), and it carries `release_package: true` as well, so its
-packages ship. What `experimental` costs is the leg's own failure signal: `_build.yml` runs it
-under `continue-on-error`, so it can die and still report green to the reusable workflow. That is
-why `release.yml`'s "Verify every documented package was built" step names each package this
-section promises and fails on whatever is absent, rather than counting files - a release cannot
-quietly go out missing this platform. The other four package
-for real rather than best-effort - a packaging failure on any of them blocks the release the
-same as a build or test failure would. Every package - end-user or library - gets a `.sha512`
+(`_build.yml`'s matrix comment says why), and it carries `release_package: true` as well, so a
+release run packages it and its files are collected with the rest. What it packages is `ac3cli`
+and not `ac3gui`: `CMakePresets.json`'s `windows-msvc-arm64` preset leaves `AC3FORGE_BUILD_GUI`
+off, because Qt's only Windows arm64 kit for the pinned 6.8.3 is a cross-compile kit expecting a
+paired x64 install for its host tools - that preset's own description says the rest. What
+`experimental` costs is the leg's own failure signal: `_build.yml` runs it under
+`continue-on-error`, so it can die and still report green to the reusable workflow. That is why
+`release.yml`'s "Verify every documented package was built" step names each package this section
+promises and fails on whatever is absent, rather than counting files - a release cannot quietly
+go out missing this platform. That line is still on the leg, and `_build.yml`'s header says it
+comes off only once a run has gone green, so read that row as what the workflow is configured to
+produce rather than as something a release has been seen to carry. The other four package for
+real rather than best-effort - a packaging failure on any of them blocks the release the same as
+a build or test failure would. Every package - end-user or library - gets a `.sha512`
 (`CPACK_PACKAGE_CHECKSUM` in `cmake/Packaging.cmake`), an aggregate `SHA512SUMS` manifest,
-keyless Sigstore/OIDC build provenance, and an SPDX SBOM covering the whole release artifact
-set - see Verifying a download below. GPG signatures are additional and only appear once a
-signing key is provisioned (next section); their absence doesn't block a release.
+keyless Sigstore/OIDC build
 
 ## Provisioning the GPG signing key (optional, one-time)
 
@@ -816,9 +848,17 @@ completeness check found that a package listed under
 created. Its log names each missing one and lists everything that did arrive. Start at the
 `build-packages` run: the usual cause is that leg failing, and on `windows-msvc-arm64` that
 failure does not turn the job red by itself (`experimental: true`, so `continue-on-error`) - the
-step exists to catch exactly that. Two absences are expected and deliberately not required: the
-macOS `ac3forge-dev-*` archive (best-effort, see above) and the Linux AC3Forge Crucible package,
-whose leg skips itself on a runner with too old a Qt.
+step exists to catch exactly that. What that leg packages is `ac3cli` without `ac3gui` (see
+[What gets published](#what-gets-published) above), so its absence is one package and not two.
+
+Three absences are expected and deliberately not required. The macOS `ac3forge-dev-*` archive is
+best-effort, as above. So is the x86_64 Linux AC3Forge Crucible package: it comes off
+`linux-llvm`, which carries no `release_package`, and that leg skips the window and its package
+with a warning when the Qt it finds is older than 6.8 - so a release with no
+`ac3forge-crucible-*-Linux-x86_64.tar.gz` can be that rather than a failure, and the leg's log
+distinguishes the two. The aarch64 pair off `linux-llvm-arm64` has no such excuse: a step beside
+that leg's pass fails it when the window is missing rather than letting the skip stand, so a
+release missing `ac3forge-crucible-*-Linux-aarch64.tar.gz` means that leg failed.
 
 ## What's deliberately not here
 

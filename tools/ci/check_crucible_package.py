@@ -27,6 +27,14 @@ with whether qml/QtQuick3D/ actually shipped. So the file is read, not just
 listed: each platform has phrases it must contain and phrases it must not,
 the Qt version token must have been filled, and on Windows the Quick 3D
 section must be present exactly when the payload is.
+
+The third is a negative: the Windows zip carries no driver .inf. See
+FORBIDDEN_WINDOWS_SUFFIX below for why a check exists to assert that something
+is missing.
+
+The fourth is another negative, and the one most likely to come back: the zip
+carries no part of Qt's test module. See FORBIDDEN_WINDOWS_QT_TEST_QML and
+FORBIDDEN_WINDOWS_QT_TEST_DLLS.
 """
 
 from __future__ import annotations
@@ -52,6 +60,49 @@ REQUIRED = (
     "NOTICES.txt",
     "LICENSE.txt",
 )
+
+# The driver is NOT in the Windows package, and this is here to fail the day
+# it is. The zip ships install.ps1 and remove.ps1 (above) but nothing for them
+# to install, because the driver is test-signed only and shipping it waits on
+# an EV certificate and attestation. Three places say so in their own words,
+# and they have to agree:
+#
+#   - docs/crucible/install.md, which tells a reader not to turn test signing
+#     on or memory integrity off for a driver that is not there;
+#   - the Settings page's driver note (apps/crucible/ui/qml/SettingsPage.qml);
+#   - package_complete() in
+#     apps/crucible/engine/platform/windows/driver_tools.cpp, which requires
+#     Ac3ForgeNullSink.inf and so greys Install driver on every packaged copy.
+#
+# They had drifted before this check existed: driverDir() finds the packaged
+# scripts beside the executable, so a packaged copy took the "build from
+# source" branch of that note and read as a checkout, while install.md sent
+# the same reader to bcdedit for a driver the download does not hold. The
+# .inf is the file package_complete() looks for, so its absence is exactly
+# the condition those three describe. Asserting the absence means that the
+# day the driver does ship, this job goes red and the three above are
+# revisited alongside this check - which no positive check would ever prompt
+# anyone to do.
+FORBIDDEN_WINDOWS_SUFFIX = ".inf"
+
+# Qt's test module is NOT in the package either, and this rule is what keeps it
+# out. It used to ship: Qt deploys the QML modules that qmlimportscanner found
+# for the application, Qt runs that scanner over the application's whole source
+# directory, and apps/crucible/ui/tests/qml/tst_*.qml all `import QtTest` - so
+# qml/QtTest/ went into every zip, and windeployqt followed the plugin in it
+# with Qt6Test.dll and Qt6QuickTest.dll. Only ac3crucible_qmltests loads any of
+# that, and it is never installed. cmake/StripQtTestDeployment.cmake deletes
+# the three at install time and carries the measurement behind them.
+#
+# This is asserted here rather than trusted because the removal is a deletion
+# after the fact: it is silently undone by a Qt version that deploys to a
+# different path, by an application whose install rules stop calling the
+# script, or by a second module arriving the same way. None of those would
+# fail a build - the package would get bigger again, which is precisely
+# what went unnoticed until an audit weighed the zip.
+FORBIDDEN_WINDOWS_QT_TEST_QML = "qml/QtTest/"
+FORBIDDEN_WINDOWS_QT_TEST_DLLS = ("qt6test.dll", "qt6testd.dll",
+                                  "qt6quicktest.dll", "qt6quicktestd.dll")
 
 # QML modules the window imports directly. QtQuick3D earns its own line: the
 # room's 3D view is optional at build time (apps/crucible/CMakeLists.txt skips
@@ -197,6 +248,22 @@ def main(argv: list[str]) -> int:
         for prefix in REQUIRED_QML
         if not any(n.startswith(prefix) for n in names)
     ]
+    problems += [
+        f"the package carries a driver INF ({name}): if the driver now ships, "
+        "docs/crucible/install.md, the Settings page's driver note and package_complete() in "
+        "driver_tools.cpp all still say it does not - update them with this check"
+        for name in names
+        if name.lower().endswith(FORBIDDEN_WINDOWS_SUFFIX)
+    ]
+    problems += [
+        f"the package carries Qt's test module ({name}): nothing a user runs loads it, and "
+        "cmake/StripQtTestDeployment.cmake should have removed it at install time - check that "
+        "apps/crucible/CMakeLists.txt still runs that script after the Qt deploy script, and "
+        "that Qt still deploys these to the paths it names"
+        for name in names
+        if name.startswith(FORBIDDEN_WINDOWS_QT_TEST_QML)
+        or name.rsplit("/", 1)[-1].lower() in FORBIDDEN_WINDOWS_QT_TEST_DLLS
+    ]
     if notices is not None:
         ships_quick3d = any(n.startswith("qml/QtQuick3D/") for n in names)
         problems += check_notices(notices, NOTICES_WINDOWS, NOTICES_NOT_WINDOWS, ships_quick3d)
@@ -205,7 +272,7 @@ def main(argv: list[str]) -> int:
     if problems:
         return 1
     print("ok: the Windows package holds the window, its Qt, the driver scripts, the licence and a "
-          "notices file written for it")
+          "notices file written for it, and no driver of its own and no Qt Test")
     return 0
 
 

@@ -24,6 +24,7 @@
 #include "commands/stream_tools.hpp"
 #include "commands/synth.hpp"
 #include "exit_codes.hpp"
+#include "platform/console_encoding.hpp"
 #include "support.hpp"
 #include "usage.hpp"
 
@@ -171,7 +172,7 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 40 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
+// 41 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
 // linked ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above
 // and run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating
 // it, never sized out of the table entirely - the identical "listed, not hidden" treatment
@@ -490,6 +491,53 @@ int run_completions(std::string_view shell) {
     return print_completions(shell, command_infos());
 }
 
+// Holds a Windows console on UTF-8 for the length of the run and puts its own
+// code page back afterwards, so the section signs in this CLI's spec
+// citations ("A/52 §7.8" and the seventy-nine others) render as themselves
+// rather than as two bytes of the console's own code page. Inert everywhere
+// else - platform/console_encoding.hpp is the whole story, including why
+// redirected output is unaffected either way.
+//
+// A guard rather than two bare calls in main() because the code page has to
+// go back on every path out, including the two catch blocks below, and a
+// destructor is the only thing that covers them without repeating itself.
+// The member's initialiser is where the console is switched: there is no
+// second state to keep.
+class ConsoleEncoding {
+public:
+    ConsoleEncoding() = default;
+
+    ~ConsoleEncoding() {
+        // Flush first, and this ordering is the whole point of the two lines
+        // rather than an afterthought. A console interprets bytes with the
+        // code page in force when they are WRITTEN, and the MSVC runtime does
+        // not line-buffer a console: its setvbuf documentation says outright
+        // that line buffering there is full buffering, so a run printing less
+        // than one buffer's worth still has all of it pending when main
+        // returns. Restoring first would hand that pending text to the CRT's
+        // own exit-time flush, after the code page had already gone back -
+        // which is the very rendering this class exists to prevent, arrived
+        // at from the other direction. std::fflush(nullptr) is every open
+        // output stream, which covers stderr as well and, since nothing here
+        // calls sync_with_stdio(false), std::cout with them.
+        //
+        // (void) for the reason support.cpp casts its own two fflush calls:
+        // cert-err33-c is on (.clang-tidy) and there is nothing to do about a
+        // failure here anyway - the run is over and the report has been
+        // written or it has not.
+        (void)std::fflush(nullptr);
+        ac3::cli::platform::restore_console_encoding(previous_);
+    }
+
+    ConsoleEncoding(const ConsoleEncoding&) = delete;
+    ConsoleEncoding& operator=(const ConsoleEncoding&) = delete;
+    ConsoleEncoding(ConsoleEncoding&&) = delete;
+    ConsoleEncoding& operator=(ConsoleEncoding&&) = delete;
+
+private:
+    unsigned int previous_ = ac3::cli::platform::set_console_utf8();
+};
+
 }  // namespace
 
 int run_main(int argc, char** argv) {
@@ -604,6 +652,9 @@ int run_main(int argc, char** argv) {
 // the catch block's own fmt::println, whose fixed one-argument format string
 // has no realistic way to throw. NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv) {
+    // Before anything prints, and outside the try so it also covers what the
+    // catch blocks print.
+    const ConsoleEncoding console{};
     try {
         return run_main(argc, argv);
     } catch (const std::exception& e) {

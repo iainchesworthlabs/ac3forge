@@ -79,7 +79,7 @@ Item {
         border.width: 1
         Accessible.role: Accessible.Grouping
         Accessible.name: station.kicker + ", " + station.title
-        Accessible.description: (station.warn ? qsTr("Warning. ") : "") + station.detail
+        Accessible.description: station.warn ? qsTr("Warning. %1").arg(station.detail) : station.detail
         ColumnLayout {
             id: body
             anchors.fill: parent
@@ -152,7 +152,7 @@ Item {
         Station {
             objectName: "station-crucible"
             kicker: qsTr("2 · CRUCIBLE")
-            title: CrucibleController.soundingCount + qsTr(" with sound · ") + CrucibleController.placedCount + qsTr(" placed")
+            title: qsTr("%1 with sound · %2 placed").arg(CrucibleController.soundingCount).arg(CrucibleController.placedCount)
             warn: !CrucibleController.running
             detail: root.sentences([crucibleNote, crucibleStopped])
             Text {
@@ -182,7 +182,7 @@ Item {
             Text { id: hearReason; Layout.fillWidth: true; text: CrucibleController.outputReason; color: Theme.textMuted; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap }
             RowLayout {
                 Layout.fillWidth: true
-                Text { id: hearChoice; Layout.fillWidth: true; text: (CrucibleController.preferredEndpoint.length ? qsTr("endpoint: your choice") : qsTr("endpoint: automatic")) + qsTr(" · pin: ") + CrucibleController.pinned; color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMono; elide: Text.ElideRight }
+                Text { id: hearChoice; Layout.fillWidth: true; text: CrucibleController.preferredEndpoint.length ? qsTr("endpoint: your choice · pin: %1").arg(CrucibleController.pinned) : qsTr("endpoint: automatic · pin: %1").arg(CrucibleController.pinned); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMono; elide: Text.ElideRight }
                 CrucibleButton { objectName: "chooseEndpointButton"; visible: root.showChoose; text: qsTr("Choose…"); onClicked: root.openOutput() }
             }
         }

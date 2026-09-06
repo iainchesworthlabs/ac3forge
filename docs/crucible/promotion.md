@@ -414,7 +414,10 @@ places one, and encodes; the signal path renders with the null sink as the defau
     no PipeWire session everything degrades by saying so: "no render endpoint can carry any
     mode", no signing key, no applications. The root guard is now
     `WIN32 OR (UNIX AND NOT APPLE)`; macOS is excluded until Phase 5 gives it a platform half,
-    rather than being allowed to configure and then fail to link.
+    rather than being allowed to configure and then fail to link. (Superseded 2026-09-06: Phase
+    5's application half landed and the guard is now `WIN32 OR APPLE OR LINUX`. The reason for
+    having a guard at all is unchanged — a platform with no arm in
+    `apps/crucible/CMakeLists.txt` would configure and then fail to link.)
 
     Two decisions were taken rather than deferred, both stated in the code:
 
@@ -708,11 +711,20 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     runs the engine's Catch2 tags and the PipeWire backend's contract tests in that tree — the
     only place they run on PipeWire — then the Qt Quick suite headless with `--no-tests=error`,
     packages the component, runs `check_crucible_package.py` on the tarball and checks the
-    `.deb`'s name, and uploads both as a run artifact (not a release asset: the release legs
-    build against ALSA and cannot produce it, which is the next step for `docs/releasing.md`'s
-    table). The fleet's Linux image is Ubuntu 26.04 with Qt 6.10; when `decide-runner` falls
-    back to GitHub's 24.04 and its Qt 6.4, below the window's 6.8, the step warns by name and
-    skips the window half rather than fail the leg for something unrelated to the change.
+    `.deb`'s name, and uploads both as `packages-crucible-<preset>` — the `packages-*` pattern
+    `release.yml` downloads (`release.yml:275-279`) and attaches file by file (`:538-549`), so
+    both files are release assets, checksummed, signed and attested with every other package.
+    No tag has been cut since that landed, so that is what CI is wired to do rather than
+    something a published release has been seen to carry. One qualification stays true of the
+    route: the leg carries no `release_package`, so the package rides on the artifact glob
+    rather than on a release gate. The other — that the leg was x86_64, so no release could
+    carry an aarch64 Linux Crucible package — closed on 2026-09-06, and Phase 8 below records
+    what closed it. The fleet's Linux image is Ubuntu 26.04 with Qt 6.10; when
+    `decide-runner` falls back to GitHub's 24.04 and its Qt 6.4, below the window's 6.8, the
+    step warns by name and skips the window half rather than fail the leg for something
+    unrelated to the change — and with it the package, which the upload's
+    `if-no-files-found: ignore` lets pass quietly, so a release cut on that fallback carries no
+    x86_64 Linux Crucible package.
 
     **The Pulse relay, and what a person sees of it.** Playing something on the Pi found two
     things, one of them a bug with a wrong session list and a tap that captured nothing.
@@ -745,12 +757,11 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     the same pattern as `VirtualDevice::how_to_get_one()`. `troubleshooting.md` leads with it
     under "An application is not in the list".
 
-    **The tray, and why Linux does not get one.** The window would not start on a real Linux
-    desktop. Every launch on the Pi died with `SIGBUS` on the main thread, inside `libQt6Gui`
-    reached from `libQt6DBus` delivering the panel's `GetLayout` call on the tray's
+    **The tray, and the Qt bug that took it away for a day.** The window would not start on a
+    real Linux desktop. Every launch on the Pi died with `SIGBUS` on the main thread, inside
+    `libQt6Gui` reached from `libQt6DBus` delivering the panel's `GetLayout` call on the tray's
     `com.canonical.dbusmenu` object. The faulting instruction is an `ldaxr` — a refcount — on a
-    pointer holding two AArch64 instruction words, so something is refcounting an object after
-    something else has written over it.
+    pointer holding two AArch64 instruction words.
 
     The first reading of it was wrong and is worth recording as such: the Pi's compositor is
     labwc, which looked like a session with no host for a StatusNotifierItem, so the fix was
@@ -758,49 +769,320 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     `org.kde.StatusNotifierWatcher` on that session and Qt answers yes; the item registers, the
     panel asks for the menu, and the process dies.
 
-    It is a race, so every single launch is evidence of nothing. Measured over ten launches per
-    arm, on the Pi, 2026-09-06:
+    The second reading was wrong too, and that one cost more. Measured over ten launches per arm
+    the window survived 0–2 of 10 with the tray and 10 of 10 without, which reads as a race; and
+    since a minimal Qt application publishing the same tray and the same menu on the same
+    session survived 10 of 10, it read as a race reached through this window's shape. So the
+    hunt was for a schedule. Ruled out, each over ten launches: the icon format (SVG and PNG die
+    alike, and this system ships no Qt 6 SVG icon engine at all); the menu's contents, with
+    every binding replaced by a literal; the application-icon provider and its
+    `QIcon::fromTheme` calls; Qt's accessibility bridge; the Qt Quick render loop, basic and
+    threaded; PipeWire's RTKit D-Bus client; the engine, which need not be running; the window's
+    header, footer, pages, dialogs and announcer, each removed in turn; any symbol this binary
+    exports over one Qt resolves, of which there are none; glibc's own heap checking
+    (`MALLOC_CHECK_=3`, `glibc.malloc.check=3`); a use-after-free, since the faulting pointer is
+    byte-identical with `MALLOC_PERTURB_` set; a Qt version or layout mismatch; and stale
+    generated code, since a fresh tree crashes at the same rate.
+
+    All of that is consistent with what it turned out to be, and none of it points at it,
+    because a 2 GB Pi could not run the one thing that would: an address sanitiser, or Qt's own
+    debug symbols. So the next step was a machine that could.
+
+    **The VM.** [`apps/linux/tray-vm/`](../../apps/linux/tray-vm/) is a scripted VMware guest,
+    the same shape as the Windows driver guest in `apps/windows/driver-vm/`: Debian 13, which
+    carries the Pi's exact Qt (6.8.2) and publishes matching `-dbgsym` packages, on labwc with
+    waybar as the panel — the Pi's own stack a step out, since `wf-panel-pi` has no amd64 build
+    and waybar is linked against the same `libdbusmenu-gtk3` that makes the call. x86_64, so the
+    architecture differs from the Pi's on purpose: if a fault does not cross, that is a finding
+    too. `Test-Tray.ps1` builds the window twice, with and without the reproducer, launches each
+    ten times and counts.
+
+    It crossed. Same fault, 9–10 deaths in 10, and the signal differs only because the AArch64
+    read was an `ldaxr`, which faults unaligned as `SIGBUS` where x86-64 faults unmapped as
+    `SIGSEGV`. With `-dbgsym` the backtrace is the whole answer:
+
+    ```
+    QDBusPlatformMenu::items                       qdbusplatformmenu.cpp:258
+    QDBusMenuLayoutItem::populate(menu,  depth=-2) qdbusmenutypes.cpp:94
+    QDBusMenuLayoutItem::populate(item,  depth=-1) qdbusmenutypes.cpp:110
+    QDBusMenuLayoutItem::populate(menu,  depth=-1) qdbusmenutypes.cpp:97
+    QDBusMenuAdaptor::GetLayout(parentId=0)        qdbusmenuadaptor.cpp:118
+    ```
+
+    The item at `qdbusmenutypes.cpp:110` is the "Signal path · auto" `MenuItem`, and its
+    `m_subMenu` is a `QWidgetPlatformMenu` — Qt Labs Platform's QWidget fallback — being read as
+    a `QDBusPlatformMenu`.
+
+    **It is a type confusion in Qt, and it is not a race.** `QQuickLabsPlatformMenu::create()`
+    gives a `Menu` nested inside another `Menu` the handle its parent's handle makes, through
+    `QPlatformMenu::createSubMenu()`. `QDBusPlatformMenu` implements no `createSubMenu()`, so the
+    base class answers, nothing native comes back, the platform theme's `createPlatformMenu()`
+    returns nothing either, and Labs Platform falls through to its own QWidget fallback. Then
+    `QDBusPlatformMenuItem::setMenu()` `static_cast`s that to `QDBusPlatformMenu` and writes
+    `m_containingMenuItem` through it, off the end of the object — valgrind catches that write
+    inside `QQmlObjectCreator::finalize`, before the window is on screen:
+
+    ```
+    Invalid write of size 8
+       at QDBusPlatformMenuItem::setMenu(QPlatformMenu*)   qdbusplatformmenu.cpp:58
+       by  ??? (libQt6LabsPlatform.so.6.8.2)
+       by  QQmlObjectCreator::finalize                     qqmlobjectcreator.cpp:1573
+       ...
+     Address 0x1ea1cd10 is 32 bytes before a block of size 128
+    ```
+
+    The bad `static_cast` is then kept, and when the panel asks the tray for its layout,
+    `QDBusMenuLayoutItem::populate` reads `QDBusPlatformMenu::m_items` out of a
+    `QWidgetPlatformMenu`. The `QList`'s `d` pointer is whatever that object holds at the offset
+    — `0xe` in the dump above, two instruction words on the Pi — and refcounting it is the
+    crash.
+
+    Which is why it looked like a race and is not one. The read is always wrong; whether it
+    faults depends on what the bytes at that offset happen to be. Removing an unrelated QML
+    block, or adding a `Qt.callLater` with an empty body, moved it because those change the
+    heap, not the schedule — and the minimal application survived because its menu had no
+    submenu in it.
+
+    **The fix is the menu's shape.** Measured on the VM, ten launches per arm, 2026-09-06:
 
     | arm | survived |
     |---|---|
-    | the window as it shipped | 0–2 of 10 |
-    | the same window, tray not published | 10 of 10 |
-    | a minimal Qt application, same tray, same menu, same session | 10 of 10 |
+    | the tray's menu with one nested `Menu` | 0 of 10, then 1 of 10 |
+    | the same menu with that submenu's items lifted to the top level | 10 of 10 |
+    | the tray with no menu at all | 10 of 10 |
+    | no tray published | 10 of 10 |
 
-    Ruled out, each over ten launches: the icon format (SVG and PNG die alike, and this system
-    ships no Qt 6 SVG icon engine at all — there is no `iconengines` directory); the menu's
-    contents, with every binding replaced by a literal; the application-icon provider and its
-    `QIcon::fromTheme` calls; Qt's accessibility bridge; the Qt Quick render loop, basic and
-    threaded; PipeWire's RTKit D-Bus client; the engine, which need not be running; the window's
-    header, footer, pages, dialogs and announcer, each removed in turn; and any symbol this
-    binary exports over one Qt resolves, of which there are none.
+    So the Linux build publishes a tray again, and `Main.qml`'s tray menu is flat: the signal
+    path is a disabled heading that reads the current choice, with the seven choices under it.
+    One shape rather than one per platform, because a submenu is not worth two menus to
+    maintain, and because the same Qt defect is reachable on any platform whose theme provides
+    no native menu. `tst_platform.qml`'s `test_theTrayMenuNestsNoSubmenu` walks the tray's items
+    and fails on a `subMenu`, so putting one back fails a test rather than a person's session.
+    Verified afterwards on the VM: 20 of 20 launches survived, valgrind reports no invalid read
+    or write in 180 seconds, and `GetLayout` called by hand returns all nineteen items.
 
-    What is left is a timing window. The minimal application survives, so it is reached through
-    this window's shape; but removing any one of several unrelated QML blocks moves it, and a
-    `Qt.callLater` with an empty body is enough to bring it back, which is the signature of a
-    schedule rather than of a culprit in our own data. That is as far as bisection goes without
-    a sanitiser on a desktop of this kind, and that is the next step.
+    `ui/tray_support.hpp` is still the seam, one file per platform beside
+    `ui/platform/<os>/app_icon_provider.cpp` — but both platforms now answer it with
+    `QSystemTrayIcon::isSystemTrayAvailable()`, which is what a seam should look like when the
+    platforms agree. Where a session has no tray at all, the sentence beside the greyed "keep
+    running in the tray" setting is still the platform's own, and `onClosing` still quits rather
+    than hiding a window with no way back to it.
 
-    So the Linux build does not publish a tray. `ui/tray_support.hpp` is the seam, one file per
-    platform beside `ui/platform/<os>/app_icon_provider.cpp`: Windows asks Qt about the
-    notification area, Linux answers no and says why in a sentence the Settings page shows in
-    place of the "keep running in the tray" setting. `Main.qml` reads
-    `CrucibleController.trayAvailable` rather than Qt's `available`, and `onClosing` quits
-    instead of hiding a window with no way back to it.
+    **Not reported upstream yet.** The report is the two blocks above: `QDBusPlatformMenu` has
+    no `createSubMenu()`, and `QDBusPlatformMenuItem::setMenu()` `static_cast`s whatever it is
+    handed. Either half alone would be enough to fix it — a `createSubMenu()` that returns a new
+    `QDBusPlatformMenu`, or a `qobject_cast` in `setMenu()` that refuses what it cannot use.
+    Reproduced on Qt 6.8.2 on two architectures; `apps/linux/tray-vm/` builds the machine that
+    shows it.
 
 ### Phase 5: macOS
 
-The library half is an Objective-C++ translation unit — `CATapDescription` has no C entry point —
-implementing the tap with `muteBehavior = .mutedWhenTapped`, plus a `DeviceWatcher` over
-`kAudioHardwarePropertyDevices` and `kAudioHardwarePropertyDefaultOutputDevice` property
-listeners. The platform half reads `kAudioHardwarePropertyProcessObjectList`, takes the
-frontmost application from `NSWorkspace`, and renders a per-application signal path because
-macOS has no silent device to point at. `system_audio_tap_api_available()` already exists as the
-version gate to refuse on; the exact floor (the repo records 14.2, some sources say 14.4) gets
-pinned here.
+Both halves of this phase are on the branch. The library half is an Objective-C++ translation
+unit — `CATapDescription` has no C entry point — implementing the tap with
+`muteBehavior = CATapMutedWhenTapped`, plus a `DeviceWatcher` over three property listeners on the
+system object: `kAudioHardwarePropertyDevices` for the device list, and
+`kAudioHardwarePropertyDefaultOutputDevice`/`…DefaultInputDevice` for the two defaults moving. The
+platform half reads
+`kAudioHardwarePropertyProcessObjectList`, takes the frontmost application from `NSWorkspace`, and
+renders a per-application signal path because macOS has no silent device to point at. The version
+floor is pinned at **14.2**, in one place — `ac3::coreaudio::kSystemAudioTapMinimumOs` — with the
+14.4 figure some third-party write-ups use recorded beside it and the reason it was not taken.
 
-**Exit:** compiles and links on both macOS CI legs and survives the universal merge. **It cannot
-be run**; see below.
+**Exit:** compiles and links on both macOS CI legs and survives the universal merge. **The
+compiling and linking is done; the universal merge has not run. The application itself cannot be
+run by anyone here**; see below.
+
+!!! note "Written 2026-09-06: both halves exist and compile; almost none of it has run"
+    `src/audio/src/backend/macos/process_tap.{hpp,mm}`,
+    `apps/crucible/engine/platform/macos/` and `apps/crucible/ui/platform/macos/` are all
+    written, and the root guard in `CMakeLists.txt` is now `WIN32 OR APPLE OR LINUX` — macOS is a
+    supported platform rather than an excluded one.
+
+    Three separate claims, and they are kept apart here because collapsing them is what went
+    wrong before: this paragraph has twice described a state the branch had already left — once
+    because two parallel worktrees were merged, once because CI had moved on since it was
+    written:
+
+    - **Written**, yes. Both halves, on this branch.
+    - **Compiled**, yes, on both legs. The first CI attempt never reached a compiler: it stopped
+      during configure, at an `install(TARGETS ac3crucible)` rule that named no
+      `BUNDLE DESTINATION` for a target with `MACOSX_BUNDLE` on. With that fixed, both macOS legs
+      built every source of both halves — the three `.mm` files among them — and linked
+      `bin/ac3crucible.app/Contents/MacOS/ac3crucible`. The universal merge that follows has not
+      run yet: its job needs both legs green, and the Apple Silicon leg was red on three Qt Quick
+      test timeouts (see [macOS](../platforms/macos.md#ci-what-has-and-has-not-been-verified)).
+    - **Run**, almost none of it. Two library cases execute macOS backend code on the runners: the
+      version gate, and the device-watcher contract case, which starts and stops a watcher on the
+      runner. Nothing else does. No Mac has executed one line of either platform half — the seam
+      tests link the stub and the Qt Quick tests drive fakes — and nobody has launched the
+      application. The macOS row in
+      [What cannot be verified](#what-cannot-be-verified-and-why) is unchanged: CI has no audio
+      device, no desktop session and no way to grant the tap's consent prompt.
+
+    Every file under the new directories says as much at its head, so a reader who opens one of
+    them first is told before they read anything else.
+
+    The five seams, and what each is over:
+
+    - **`SessionMonitor`** reads `kAudioHardwarePropertyProcessObjectList` and, per process
+      object, `kAudioProcessPropertyPID`, `…BundleID` and `…IsRunningOutput`. Its
+      `listing_rule()` is closer to Linux's than to Windows': the list follows what is using the
+      sound hardware rather than what has a window. It says *both* halves — listed while macOS
+      holds sound open for it, greyed while nothing is coming out — and claims nothing about how
+      long a paused player lingers, because that is exactly the thing one launch would settle
+      and no launch has happened. The macOS 14.0 floor is a real runtime gate
+      (`__builtin_available`, the shape `system_audio_tap_api_available()` already uses), since
+      the deployment target is 13.3; below it the list is empty and the rule says why rather
+      than leaving an empty room unexplained. An application's identity comes from the
+      *outermost* `.app` bundle its executable lies in, which is what puts a browser's audio
+      helper in the room as the browser: Windows' same-image process walk finds nothing here,
+      because the helper is a different binary with a different name inside the same bundle.
+    - **`Foreground`** asks NSWorkspace for the frontmost application and then reports that it
+      **cannot answer**, with which of two reasons applies decided by that call — there is a
+      window session but macOS will not say whether anything fills the screen, or there is no
+      window session at all. It deliberately does not hand back the frontmost pid: the engine
+      pins whatever this returns to the bed, so answering "the window with focus" would move a
+      person's mixer around as they clicked between applications and `support()` would be
+      reporting availability while doing it. `foreground.hpp`'s own rule. What would answer the
+      question is `CGWindowListCopyWindowInfo` bounds against `CGDisplayBounds`, and the file
+      says so, why it was not written here (that family is being deprecated in favour of
+      ScreenCaptureKit, and a deprecation warning is a failed build under `-Werror`, which would
+      break the one claim this code can carry) and what to do about it with a Mac in front of
+      you.
+    - **`DefaultDevice`** reads `kAudioHardwarePropertyDefaultOutputDevice` and never writes it.
+      `moves_default()` is **false**, the only platform where it is, and that is the point: the
+      tap mutes where it taps, so nothing has to be moved and nothing has to be restored on
+      quit. `set_default()` refuses with a sentence saying it does not need to.
+      `FirstRunDialog.qml` was checked before this was relied on — it already computes
+      `movesDefault && silentDeviceNeeded` and renders "Applications are silenced where they are
+      tapped" with "Nothing in your sound settings changes here" when that is false, hiding the
+      device status, the blocker, Send and the restore row with it. No QML needed changing.
+    - **`VirtualDevice`** answers `needed = false`. `how_to_get_one()` is written to read as
+      "nothing to do here" rather than as a missing feature, by naming what happens instead:
+      "nothing to install: macOS silences each application at the point Crucible taps it, so no
+      silent device is needed". `device_name()` is **empty**, because there is no endpoint to
+      name and inventing one would put a device in the room's vocabulary that is not on the
+      machine; every consumer already guards an empty search before using it.
+    - **`AudioDevices`** needed nothing new. That seam is the one platform service that is not
+      per-platform — `engine/library_devices.cpp` forwards it to `ac3::audio`, whose macOS
+      backend already answers — so a `macos/audio_devices.cpp` would have been a duplicate
+      definition of `platform_audio_devices()` and a link error, not a gap.
+
+    The window half is two files. `tray_support.cpp` answers **yes**, through Qt's own
+    `isSystemTrayAvailable()` as Windows does, and the file records why Linux's no was not
+    inherited: every part of the fault measured there is in Qt's D-Bus and dbusmenu path, and
+    macOS puts a `QSystemTrayIcon` in the menu bar as an `NSStatusItem` with no D-Bus anywhere.
+    That is a reason not to copy Linux's refusal and it is **not** evidence that this works;
+    whoever runs Crucible on a Mac first should run the Linux file's own reproducer — ten
+    launches, count the survivors — before trusting it, and the file says so.
+    `app_icon_provider.mm` asks NSWorkspace for a bundle's icon in three rungs (the `.app` path,
+    then the bundle identifier through `URLForApplicationWithBundleIdentifier:`, then the
+    monogram) and follows the Linux provider's threading discipline exactly: parse on Qt Quick's
+    pixmap-reader thread, hop to the GUI thread for every AppKit call with the same bounded
+    2 s wait and the same shared block, cache the null as an answer, scale per request. The
+    reason for the rule differs — AppKit is main-thread-only where `QIconLoader` is an unlocked
+    process-wide cache — and the consequence is identical.
+
+    Two things this needed elsewhere in the tree, both because a third platform arrived where
+    the code had assumed two. `tst_about.qml` inferred "the application makes its own silent
+    device" from `!silentDeviceFromPackage`, which macOS also answers while carrying no PipeWire
+    section, so it now reads `silentDeviceNeeded && !silentDeviceFromPackage`.
+    `tst_settings.qml` asserted `silentDeviceNeeded` outright, in a case whose own comment
+    already said what macOS would do. `tst_platform.qml` gains three macOS cases beside the
+    Linux and Windows ones. All three of those files have since passed on both macOS legs, which
+    says that the seams say what they were written to say — nothing more, because every service
+    behind them is a fake in those tests.
+
+    Two consequences worth naming. Objective-C++ enters the tree, in **three `.mm` files across
+    two directories that enable the language**: the library's own `process_tap.mm`, under
+    `enable_language(OBJCXX)` in `src/audio/CMakeLists.txt`'s APPLE block, and Crucible's
+    `foreground.mm` and `app_icon_provider.mm`, under a second such call in
+    `apps/crucible/CMakeLists.txt`'s APPLE arm. Both call sites pin `CMAKE_OBJCXX_COMPILER` to
+    the C++ compiler the toolchain file chose, and
+    `cmake/toolchains/macos.llvm.toolchain.cmake` sets `CMAKE_OBJCXX_FLAGS_INIT` beside
+    `CMAKE_CXX_FLAGS_INIT`, so the two halves of one target cannot end up built against two
+    standard libraries. And `notices/platform/macos/components.cmake` had to exist or a macOS
+    configure would stop dead: the two Windows-specific sentences in the shared `qt-bundled`
+    fragment are now tokens each platform supplies, and Windows' `NOTICES.txt` is byte-for-byte
+    what it was.
+
+    **The library half is done, and this is what it does.** `process_tap.mm` builds the
+    `CATapDescription` and the private aggregate device carrying it; `capture.cpp`'s
+    `start_process_loopback` opens an `AudioDeviceIOProcID` on that device; `device_watcher.cpp`
+    is the `DeviceWatcher` over the three property listeners, and the one piece of this a CI
+    runner exercises at all; and `audio_backend.cpp` reports
+    `process_loopback` **available** unless the machine is older than the 14.2 floor. So the room
+    no longer lists applications the build cannot capture *for want of a tap*. What it may still
+    fail on, and none of which anyone here can try, is set out in
+    [macOS → Per-application capture](../platforms/macos.md#per-application-capture-the-core-audio-process-tap):
+    the TCC consent prompt is keyed to a code-signing identity Crucible does not have (DR6); the
+    `NSAudioCaptureUsageDescription` key that drives that prompt is declared by no bundle in this
+    tree, `apps/crucible`'s included; and the backend refuses a sample rate its tap does not
+    already deliver rather than resampling, where `TapPool` asks for 48 kHz unconditionally, so a
+    machine whose output device sits at 44.1 kHz would have every tap refused.
+
+    One narrowing is a ceiling rather than a failure waiting to happen. A `CATapDescription`
+    mixes down to mono or stereo only, and anything wider is refused with `kFormatUnsupported`;
+    `TapPool` opens at stereo and widens only to follow a null sink's width, which this platform
+    does not have, so what the engine asks for stays inside that. The cost lands as a limit
+    rather than a refusal: the eight-channel width that keeps a surround application's bed intact
+    on Windows cannot be had here at all.
+
+    **Not done.** `cmake/Packaging.cmake` still gates the Crucible component on
+    `WIN32 OR LINUX`, so there is no macOS package. `cmake/StripQtTestDeployment.cmake` now runs
+    on macOS — `apps/crucible`'s call sits in a `WIN32 OR APPLE` block whose APPLE arm a configure
+    can reach — and does nothing there, because every path it checks is the Windows package
+    layout, so a `.app` would keep its deployed Qt Test the way `ac3gui`'s `.dmg` does.
+    `SettingsPage.qml`'s two-stage note is not gated on `silentDeviceNeeded` the way the block
+    below it is and would print an empty pair of quotes where the device has no name.
+
+    And the signal path's first station is still drawn where it should not be. `moves_default()`
+    is the first seam answer to come back false, and `default_device.hpp` has said since the
+    seams were extracted on 2026-09-04 that the window "drops the whole first station of the
+    signal path" when it does — which turned out on 2026-09-06 to be the intention rather than
+    the code. What the window
+    does, read rather than assumed: `FirstRunDialog.qml` branches correctly and hides the whole
+    device step; every "Send applications to …" control in `SignalPath.qml`, `OutputPage.qml`
+    and the tray menu is disabled, because each gates on
+    `nullSinkPresent || silentDeviceCanCreate` and both are false here; the launch-time move sits
+    behind `behaviour/moveDefaultOnLaunch`, which defaults to false. But `SignalPath.qml`'s
+    station 1 itself is not gated on `movesDefault`, so a Mac would show it with the warning
+    "Send applications to the silent device instead" — advice that is wrong on the one platform
+    that needs no silent device. The header's claim has been corrected to say what the code does;
+    the QML has not been changed, because that is a layout change nobody here can run the window
+    to look at.
+
+!!! success "Compiled 2026-09-06, and the first thing running it showed"
+
+    Both macOS legs configured, compiled and linked the whole macOS half - the Objective-C++, the
+    Core Audio selectors, the tap description, the availability guards and the OBJCXX CMake - on
+    code written without a Mac. That is Phase 5's exit condition and the only claim it was
+    entitled to make.
+
+    Then the Intel leg ran 1,331 tests and passed them, and the Apple Silicon leg hung. Three of
+    the eleven Qt Quick suites - `firstrun`, `room` and `shell` - sat at ctest's 300-second limit
+    while the other eight passed.
+
+    The three are not the heaviest, the slowest, or the ones that build the window; several
+    suites that do all of those pass. **They are exactly the three that do not install the
+    scripted machine.** Every other suite either replaces the platform services with fakes or
+    never starts the engine, so these three are the only ones that start the engine against the
+    real macOS seams. Each hangs on its first case that does so, whatever else that case
+    contains.
+
+    So the macOS half compiles and, the first time anything ran it, blocked. The hang is in the
+    seams or the Core Audio backend beneath them, on a host with no audio device and no window
+    server session. Which call blocks is not known, and finding it needs a machine that can
+    attach to the process - the same wall the tray crash hit, and the same answer: a runner or a
+    Mac that can be iterated on rather than a twenty-minute round trip.
+
+    The Qt Quick label is excluded on the macOS legs until then, and that exclusion is a defect
+    being worked around rather than a decision about what is worth testing. The legs still prove
+    what they were added to prove, and the other 1,328 cases still run there.
+
+    Worth stating plainly, because it is the whole argument for compiling a platform nobody can
+    run: this was invisible until something ran it, and what ran it was eight test cases on a
+    hosted runner.
 
 ### Phase 6: product qualities
 
@@ -936,19 +1218,101 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     `platform/windows/{default_device,foreground}.cpp` sit near 46%, because their other half
     is what a machine with a real endpoint and a real front window does.
 
-    The Linux platform half does not appear here, and it is worth being exact about why. The
-    Catch2 binary links `tests/crucible/platform_services_stub.cpp`, so no platform directory is
-    compiled into it on any operating system except `x11_foreground.cpp`, which is pure policy
-    over an injected reader. Everything else - the Linux session monitor, default device and
-    silent device - is reached only through the Qt Quick suites, which run the real controller
-    against the real seams. Those numbers therefore exist only where a Qt build runs
-    `crucible-ui`: this Windows machine, the Raspberry Pi and the Linux CI leg. Measuring the
-    Linux side means a coverage build on one of the latter two, and the machine-facing parts of
-    those files stay outside any of it - `tools/checks/crucible_platform_probe.cpp` is what
-    exercises them, by hand, on hardware.
+!!! success "Measured 2026-09-06: the same suite on a runner, and why it reads eight points lower"
 
-    No floor is set. `coverage_report.sh` gates the library per component, and the same is worth
-    doing here once a second measurement says which of these numbers are stable.
+    The first CI run of the coverage gate read **68.5% of lines** (1,401 of 4,442 missed) and
+    **55.1% of branches** over the same two labels on the windows-llvm leg. The eight points
+    between that and the day before are not drift, and they are worth knowing before anyone
+    tries to explain a future dip: they are the Windows platform seams, which cover far more on
+    a machine with a real audio environment than on a headless runner.
+
+    | file | workstation | runner |
+    |---|---|---|
+    | `platform/windows/session_monitor.cpp` | 85.0% | 34.0% |
+    | `platform/windows/default_device.cpp` | 45.8% | 24.7% |
+    | `engine/library_devices.cpp` | 64.3% | 11.9% |
+
+    Those three enumerate endpoints, walk audio sessions and ask the shell about windows. A
+    runner with no sound device and no desktop takes the early return in each, so the code below
+    it never runs. Both readings are honest; the runner's is the one a gate has to hold on, so
+    the floor is calibrated from it and the workstation figure is kept here as the ceiling the
+    same suite reaches when the machine can answer.
+
+    The Linux platform half barely appears here, and it is worth being exact about why. The
+    Catch2 binary links `tests/crucible/platform_services_stub.cpp`, which supplies every
+    `platform_*()` factory, so no platform seam is compiled into it on any operating system.
+    What it does take out of `engine/platform/linux/` is the part of that directory needing
+    neither xcb nor PipeWire: `x11_foreground.cpp`, the X11 Foreground's policy over an
+    injected reader, and - since the seams pass below - `proc_facts.hpp`, the session monitor's
+    /proc readers, its per-process fact cache and the two records a refresh builds, moved into
+    a header so they could be reached at all. Everything else - the rest of the Linux session
+    monitor, the default device and the silent device - is reached only through the Qt Quick
+    suites, which run the real controller against the real seams. Those numbers therefore exist
+    only where a Qt build runs `crucible-ui`: this Windows machine, the Raspberry Pi and the
+    Linux CI leg. Measuring the Linux side means a coverage build on one of the latter two, and
+    the machine-facing parts of those files stay outside any of it -
+    `tools/checks/crucible_platform_probe.cpp` is what exercises them, by hand, on hardware.
+
+    A floor is set from this measurement, and the script that reads it now fails when the
+    number drops. `tools/checks/coverage_crucible.ps1` gates `apps/crucible` at **74% of
+    lines and 60% of branches** - about two points under what was read here, so it holds
+    today's state rather than asking for tests nobody has written - and prints the per-file
+    breakdown under the gate, reported and not gated, so a file at 0% shows as itself rather
+    than averaging away. A failing `ctest` fails the script too, which it did not before: a
+    coverage figure for a suite that had gone red was worth nothing. The floors and their
+    calibration live in that script's own header the way `coverage_report.sh` carries the
+    library's, with the same instruction attached - raise them as the suite grows rather than
+    leaving the headroom in place.
+
+    It runs on the Windows clang-cl leg (`.github/workflows/_build.yml`, "Crucible coverage
+    floor"): a second instrumented tree inside a leg that already has clang-cl, the pinned
+    LLVM and the Qt kit, rather than a job of its own, because on this fleet a queue slot
+    costs more than a core. The Linux figure is still not taken anywhere, for the reason
+    above - it needs a coverage build on the Pi or on the Linux CI leg.
+
+!!! success "Done 2026-09-06: the seams nothing tested"
+
+    An audit found three places under `apps/crucible` with no test at all, and all three are
+    seams - the parts of this application that differ per platform and therefore have the
+    fewest readers.
+
+    **The tray.** `ui/platform/{windows,linux}/tray_support.cpp` are now driven by
+    `ui/tests/qml/tst_platform.qml`, on both platforms, through the same
+    `CrucibleController.trayAvailable`/`trayAbsentReason` the window binds. The invariant it
+    holds everywhere is that a tray which is not published carries a sentence a person can
+    read and one that is published carries none, and on each platform the seam is checked
+    against `Qt.labs.platform.SystemTrayIcon.available` - the question both of them now defer
+    to. The Linux file answered a flat no for a day, and the test with it; what is left of
+    that is `test_theTrayMenuNestsNoSubmenu`, which walks the tray's own items and fails on a
+    `subMenu`, because the crash was a Qt type confusion reached only through a nested one
+    (Phase 4, "The tray, and the Qt bug that took it away for a day").
+
+    **The Linux session monitor.** Its bookkeeping was unreachable rather than untested:
+    `engine/platform/linux/session_monitor.cpp` includes `pipewire_support.hpp`, so nothing in
+    it compiles without the PipeWire headers, and the /proc readers, the per-process fact
+    cache and the record-building sat in an anonymous namespace inside it. They are now
+    `engine/platform/linux/proc_facts.hpp` - the same split `process_tree.hpp` already was -
+    and `tests/crucible/platform/linux/test_session_facts.cpp` drives them on any Linux
+    machine against a `/proc` the test writes itself: a `comm` holding a space, a `stat` line
+    whose comm holds a `)`, a pid with no `exe` link across a sandbox boundary. What it pins:
+    the stat parse starting from the LAST `)`, /proc being read once per process and not once
+    per stream, a second stream back-filling an icon the first did not carry and never
+    overwriting one it did, the eviction of facts for processes that have gone, and the two
+    records - the sounding one and the kept one - including the ancestor list the full-screen
+    rule matches against.
+
+    **The Linux silent device.** `engine/platform/linux/virtual_device.cpp` cannot be reached
+    from the Catch2 binary at all (the stub is linked there, and it needs libpipewire), so
+    what is testable without creating a real node is asserted through the window in the same
+    `tst_platform.qml`: the device is named by the platform that owns it ("Crucible (silent)",
+    not the Windows name the first Linux screenshot showed), its advice mentions no driver
+    because Linux needs none, it reports itself as not from a package, it can create one, and
+    nothing is ever left running after a read. The listing rule rides along, for the same
+    reason - it is the sentence the room shows and the two platforms disagree about it.
+
+    Not done, and only reachable with a daemon: `refresh()` itself, `install()`/`remove()` and
+    the node teardown order, and `node_in_graph()`. Those stay with
+    `tools/checks/crucible_platform_probe.cpp` on hardware.
 
 !!! success "Done 2026-09-05: the accessibility pass"
     The window can be operated without a mouse, and what it offers a screen reader is asserted
@@ -1039,10 +1403,15 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
 !!! note "Still open in Phase 6"
     One of the five items is not done. The **review of the six mechanically translated
     languages** is a pass of its own: the catalogues are stale against the source, fifteen
-    current strings have no entry and sixty-five rename-era entries sit as vanished, and the
-    window has no `LayoutMirroring` root, so Arabic, Hebrew and Yiddish flip their text and keep
-    a left-to-right layout. It lands last, after every item that adds a string - and the
-    accessibility pass above added a good many.
+    current strings have no entry and sixty-five rename-era entries sit as vanished. It lands
+    last, after every item that adds a string - and the accessibility pass above added a good
+    many.
+
+    The right-to-left half of that item is done, and this note said otherwise until 2026-09-06:
+    `ui/qml/Main.qml` took a `LayoutMirroring` root on 2026-09-05, two cases in
+    `ui/tests/qml/tst_shell.qml` hold it - the header title crosses the window under Arabic, the
+    plan's L speaker does not under Hebrew - and [Languages](localisation.md) is the record for
+    what mirrors and what deliberately does not.
 
     No screen reader has been run against this window by anyone. The suites assert that every
     role, name and description exists and follows the live data; whether NVDA or Orca speaks
@@ -1073,10 +1442,18 @@ keeps its records. `mkdocs.yml` gains a "Crucible guide" section beside "CLI ref
 
     Every claim in the guide is one this work verified or one the demo's record verified; the
     platform table on the index says "not yet confirmed" where that is the truth, and the Linux
-    build command in the install page was run before it was written down. Not yet written: the
-    room, output modes and settings pages the GUI guide's shape would want — those describe the
-    window, and the window exists on one platform, so they wait for the pass that reviews it as
-    a product rather than the demo it was.
+    build command in the install page was run before it was written down. Left unwritten at the
+    time: the room, output modes and settings pages the GUI guide's shape would want — those
+    describe the window, and the window then existed on one platform.
+
+!!! success "Done 2026-09-06: the room and the settings pages"
+    The window runs on two platforms now and its Linux half has been read off a receiver, so the
+    two pages were written from the source rather than from this plan: [The room](room.md) and
+    [Settings](settings.md). There is no output-modes page and there will not be one —
+    [The signal path](signal-path.md) already carries the mode table, the no-key refusal and the
+    pin and endpoint controls, and a second page over the same ground would be one more thing to
+    keep true. Where the two platforms differ the pages say which is which, and where something
+    is Windows-only today they say that too.
 
 ### Phase 8: CI and packaging
 
@@ -1104,6 +1481,37 @@ Linux gets AppImage and `.deb` alongside the GUI's.
     stays separate), there is no Linux package or installer for Crucible yet, and macOS has
     nothing to build.
 
+!!! success "Done 2026-09-06: the same pass on aarch64"
+    That pass, and the packaging the DR9 record above added to it, ran on x86_64 alone — and
+    aarch64 is the only hardware the Linux half is on record as having run on. The Pi 4B run in
+    Phase 4 built the window, passed all five Qt Quick suites and produced the aarch64 tarball
+    and the arm64 `.deb` by hand. So the architecture the whole record rests on was the one
+    nothing checked, and an aarch64-only compilation fault would have reached a user through
+    the `.deb` before anyone saw it.
+
+    The "Linux LLVM (arm64)" leg now carries `crucible: true`, and that flag is the whole of
+    the change. The pass is written against `matrix.preset`, so it runs there unchanged: the
+    same apt list, the same configure assertions on the backend, the X11 check and Qt SVG, the
+    same engine and PipeWire-contract tags, the same headless Qt Quick suite, the same `cpack`
+    and the same `check_crucible_package.py`, uploaded as
+    `packages-crucible-linux-llvm-arm64` beside the x86_64 pair. That leg and not "Linux GCC
+    (arm64)", which carries two flags this pass cannot sit beside: `alsa_fallback`, whose
+    assertion that disabling ALSA falls back to posix holds only while no PipeWire headers are
+    installed, and `release_package`, which on a `do_package` run would send the Windows-shaped
+    "was the Crucible packaged" assertion looking on Linux for a `.zip` no Linux leg produces.
+
+    One step is new, and it is there because the pass has a soft path: its Qt guard warns and
+    exits 0 when the Qt it found is below the 6.8 the window needs. A leg that took that path
+    would be green having built no window, run no Qt Quick suite and packaged nothing — which
+    on the one leg that exists to check aarch64 leaves nothing checked at all. The step fails
+    on that instead, and then reads the architecture off the files rather than off their names:
+    `file` on `ac3crucible`, and the `.deb`'s own `Architecture:` field. Every name the pass
+    globs for is computed from `CMAKE_SYSTEM_PROCESSOR`, so a package built for another target
+    would match them all.
+
+    Not done: the leg has not run with the flag on yet, so this is what CI is wired to do
+    rather than something a green run has shown.
+
 ### Phase 9: verification
 
 The hardware matrix, and the roadmap edits that follow from it: DR9's Windows and PipeWire rows,
@@ -1122,7 +1530,7 @@ not.
 | Linux bitstream over PipeWire `iec958` | **confirmed 2026-09-05** - the receiver read "5.1 DD+", and "Atmos/DD+" at 7.1 with objects | none |
 | Windows bitstream to a real receiver | not yet | an HDMI cable; DR9 |
 | Windows driver on a normal machine | not yet | EV certificate and attestation; a separate session |
-| macOS anything, at runtime | **no** | no Mac has ever run this backend; DR9 |
+| macOS anything, at runtime | **no** | CI runs the version gate and the device-watcher contract case and nothing else; no Mac has opened a device, a tap or the application; DR9 |
 | macOS tap consent prompt | **no** | the prompt is keyed to code-signing identity and does not fire unsigned; DR6 |
 | Wayland full-screen foreground detection | **no**, by design | Wayland does not let a client ask about another's windows |
 | X11 full-screen foreground detection | yes, in an X11 session or a nested Xephyr on the Pi | none |
@@ -1139,6 +1547,19 @@ visible from the platform the code was written on.
 The macOS row is the one to hold in mind while reading Phase 5. The code can be written and
 compiled on CI, and its device-free logic can be unit tested, and none of that establishes that
 it works. The demo page's discipline applies: what is claimed is what was checked.
+
+**Both halves of Phase 5 were written on 2026-09-06 and that row still says no.** The library
+gained the Core Audio process tap (`src/audio/src/backend/macos/process_tap.{hpp,mm}`) and now
+reports `process_loopback` available above macOS 14.2; there is a `macos` directory under both
+`apps/crucible/engine/platform/` and `apps/crucible/ui/platform/`; and macOS is a supported
+platform in the root `CMakeLists.txt` rather than an excluded one. Both macOS legs now compile
+and link all of it, after a first attempt that stopped during configure at an install rule. What
+that is worth is what the paragraph above says and no more: compiling on a second platform finds
+defects, and finding none is not evidence that anything works. Of the code itself, two library
+cases run on the runners — the version gate and the device-watcher contract case — and nothing
+else does: no tap has been created, no platform half has executed a line, and the application
+has never been launched. Every file in the new directories opens by saying so, so the caveat
+travels with the code rather than living only here.
 
 ## Coordination with the driver-signing session
 

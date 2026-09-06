@@ -693,26 +693,39 @@ or both). On macOS capture is input-only: no loopback endpoint is ever enumerate
 This is what backs `ac3cli record`/`live` and the GUI's live-session tab.
 
 A third way in, `Capture::start_process_loopback(pid, mode, format)` (roadmap UX11), taps what
-one process and its children render and nothing else, whichever endpoint they render to —
-Windows 10 build 20348+'s process-loopback activation, and the piece the
-[AC3Forge Crucible](../crucible/index.md) is built on. It differs from an
-endpoint loopback in three ways worth knowing before relying on it: the caller states the
-format (there is no endpoint whose mixer format could be asked for; 48 kHz float stereo is the
-default, eight channels is honoured); a muted audio session taps as silence, because the tap sits
-after session volume; and a tap outlives its process, delivering zeros, so "the process stopped
-playing" has to come from the audio session list rather than from the capture. Refusals are
-`kProcessLoopbackUnavailable` (no such tap on this platform or this Windows build —
-`process_loopback_available()` and `audio_backend().process_loopback` say so up front) and
-`kProcessNotFound`, which the library checks itself because the OS does not.
+one process renders and nothing else, whichever endpoint it renders to — and it is the piece the
+[AC3Forge Crucible](../crucible/index.md) is built on. Three backends have one, over three
+different mechanisms: Windows 10 build 20348+'s process-loopback activation, a PipeWire capture
+stream linked to one application node, and (macOS 14.2+) a Core Audio process tap carried by a
+private aggregate device. Only Windows walks the target's children, which is why
+`ProcessLoopbackMode`'s "tree" reads literally there and as "this process" elsewhere.
+
+It differs from an endpoint loopback in ways worth knowing before relying on it. The caller states
+the format, because there is no endpoint whose mixer format could be asked for — 48 kHz float
+stereo is the default, and eight channels is honoured on Windows, where the audio engine
+converts; the macOS tap has no converter behind it and refuses anything but mono or stereo, at
+its own rate (see [macOS](../platforms/macos.md)). On Windows a muted audio session taps as
+silence, because the tap sits after session volume, and a tap outlives its process delivering
+zeros, so "the process stopped playing" has to come from the audio session list rather than from
+the capture. Refusals are `kProcessLoopbackUnavailable` (no such tap on this platform, this
+Windows build or this macOS version — `process_loopback_available()` and
+`audio_backend().process_loopback` say so up front) and `kProcessNotFound`, which the library
+checks itself because the OS does not.
 
 `ac3/audio/device_watcher.hpp`. `DeviceWatcher` (roadmap UX11) delivers endpoint
-added/removed/state-changed and default-changed events on a callback — Windows'
+added/removed/state-changed and default-changed events on a callback, so an application that
+follows the sink can re-probe when something is plugged or unplugged instead of polling
+`enumerate_render_devices()`. Three backends have one, each over its own mechanism: Windows'
 `IMMNotificationClient`, one event per physical change (the console role only; Windows would
-otherwise report every default change three times) — so an application that follows the sink can
-re-probe when something is plugged or unplugged instead of polling `enumerate_render_devices()`.
-The callback runs on a platform thread under the watcher's own lock, which is what lets
-`stop()` promise no callback is in flight when it returns; do the minimum there and never stop
-the watcher from inside it. Every non-Windows backend refuses `start()` with `kNoBackend`.
+otherwise report every default change three times); PipeWire's registry plus the
+`default.audio.sink`/`default.audio.source` metadata keys; and Core Audio property listeners on
+`kAudioObjectSystemObject`, which report only that the device list changed and so are diffed
+against a kept list of device UIDs. `kStateChanged` is a Windows event — on the other two an
+endpoint that goes away leaves the list, and `kRemoved` already says so. The callback runs on a
+platform thread under the watcher's own lock, which is what lets `stop()` promise no callback is
+in flight when it returns; do the minimum there and never stop the watcher from inside it. ALSA
+has no such API and the posix/android backends have no audio backend at all, so those three
+refuse `start()` with `kNoBackend`.
 
 ## Metering: `ac3::analysis`
 

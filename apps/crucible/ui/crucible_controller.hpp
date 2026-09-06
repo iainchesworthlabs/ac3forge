@@ -170,6 +170,24 @@ class CrucibleController : public QObject {
     // Whether this build carries the room's 3D view (Qt Quick 3D found at
     // configure time; the page hides its toggle otherwise).
     Q_PROPERTY(bool has3D READ has3D CONSTANT)
+    // Whether this build can hand decoded objects to the platform's own
+    // object renderer, which is what the headphones mode is
+    // (ac3::audio::audio_backend().spatial). That report answers for the
+    // build, not for one endpoint: whether a particular endpoint has a
+    // spatial format switched on is the per-endpoint `spatial` flag in
+    // `endpoints`, and the two are separate questions. False on every
+    // backend but Windows today, and where it is false the output policy
+    // refuses the headphones mode on every endpoint. OutputPage.qml reads
+    // this and drops the headphones entry from its pin list; the tray's
+    // signal-path menu in Main.qml does not read it yet and offers the entry
+    // on every platform, so a pin the page will not show can still be chosen
+    // from the tray. What that choice does is in engine_pin()'s comment in
+    // the .cpp.
+    Q_PROPERTY(bool spatialAvailable READ spatialAvailable CONSTANT)
+    // Why not, in the backend's own words (Capability::reason, which lives
+    // beside the implementation it is making excuses for). Empty where the
+    // renderer is there.
+    Q_PROPERTY(QString spatialAbsentReason READ spatialAbsentReason CONSTANT)
     // Whether the window publishes a tray icon here (ui/tray_support.hpp,
     // and the platform file beside it for why Linux says no). Where it is
     // false the tray is not created and closing the window quits, because
@@ -258,6 +276,8 @@ public:
     [[nodiscard]] bool silentDeviceFromPackage() const;
     [[nodiscard]] bool silentDeviceCanCreate() const;
     [[nodiscard]] static bool has3D() { return AC3DESK_QUICK3D != 0; }
+    [[nodiscard]] static bool spatialAvailable();
+    [[nodiscard]] static QString spatialAbsentReason();
     [[nodiscard]] static bool trayAvailable();
     [[nodiscard]] static QString trayAbsentReason();
     [[nodiscard]] QString listingRule() const;

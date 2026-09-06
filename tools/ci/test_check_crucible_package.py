@@ -12,7 +12,11 @@ appears as NOTICES.txt; so does one whose Qt Quick 3D section is missing while
 qml/QtQuick3D/ shipped, or present while it did not. Each case here builds
 the smallest archive that has the right shape and the wrong words, and
 asserts the gate refuses it and says why. test_good_shapes_pass guards the
-existing name checks against the same refactor.
+existing name checks against the same refactor, and two more guard the rules
+that are negatives: the driver is not in the package
+(test_windows_zip_must_not_carry_a_driver_inf) and neither is any part of Qt's
+test module (test_windows_zip_must_not_carry_qt_test). Both of those exist to
+go red on the day their subject comes back.
 
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 """
@@ -52,8 +56,12 @@ LINUX_NOTICES = (
 )
 
 
-def windows_zip(directory, notices, quick3d_payload=True):
-    """A zip with every required name, the two QML modules, and this NOTICES.txt."""
+def windows_zip(directory, notices, quick3d_payload=True, extra=()):
+    """A zip with every required name, the two QML modules, and this NOTICES.txt.
+
+    `extra` adds members the required list does not name, which is how the
+    driver-INF rule is exercised: that rule is about what must NOT be there.
+    """
     path = os.path.join(directory, "ac3forge-crucible-test-win64.zip")
     with zipfile.ZipFile(path, "w") as archive:
         for name in gate.REQUIRED:
@@ -61,6 +69,8 @@ def windows_zip(directory, notices, quick3d_payload=True):
         archive.writestr("qml/QtQuick/Controls/qmldir", "")
         if quick3d_payload:
             archive.writestr("qml/QtQuick3D/qmldir", "")
+        for name in extra:
+            archive.writestr(name, "")
     return path
 
 
@@ -169,6 +179,58 @@ class NoticesContentTest(unittest.TestCase):
             )
             self.assertEqual(code, 1)
             self.assertIn("::error::missing share/doc/ac3forge-crucible/copyright", out)
+
+    def test_windows_zip_must_not_carry_a_driver_inf(self):
+        # The negative rule: the zip ships the driver's scripts and no driver,
+        # which is what install.md, the Settings page's driver note and
+        # package_complete() all describe. package_complete() keys on the INF,
+        # so the INF is what the gate watches for. Both arms, because a check
+        # that can only pass proves nothing.
+        with tempfile.TemporaryDirectory() as directory:
+            good = windows_zip(directory, WINDOWS_NOTICES + QUICK3D_SECTION)
+            code, out = run(good)
+            self.assertEqual(code, 0, out)
+            self.assertIn("no driver of its own", out)
+        with tempfile.TemporaryDirectory() as directory:
+            shipped = windows_zip(
+                directory,
+                WINDOWS_NOTICES + QUICK3D_SECTION,
+                extra=("bin/driver/Package/x64/Release/package/Ac3ForgeNullSink.inf",),
+            )
+            code, out = run(shipped)
+            self.assertEqual(code, 1)
+            self.assertIn("carries a driver INF", out)
+            self.assertIn("Ac3ForgeNullSink.inf", out)
+
+    def test_windows_zip_must_not_carry_qt_test(self):
+        # The other negative rule, and the one with a moving part behind it:
+        # Qt deploys qml/QtTest/ into the package because it scans the
+        # application's whole source directory for QML imports and the Qt
+        # Quick Test suites live there, and windeployqt follows the plugin
+        # with Qt6Test.dll and Qt6QuickTest.dll.
+        # cmake/StripQtTestDeployment.cmake deletes all three at install time;
+        # this is what notices the day that stops happening. Each of the three
+        # separately, because a check that only ever sees them together would
+        # pass a partial removal.
+        payloads = (
+            "qml/QtTest/qmldir",
+            "qml/QtTest/quicktestplugin.dll",
+            "bin/Qt6Test.dll",
+            "bin/Qt6QuickTest.dll",
+        )
+        for payload in payloads:
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory:
+                code, out = run(
+                    windows_zip(directory, WINDOWS_NOTICES + QUICK3D_SECTION, extra=(payload,))
+                )
+                self.assertEqual(code, 1)
+                self.assertIn("carries Qt's test module", out)
+                self.assertIn(payload, out)
+        # And the passing arm: a zip whose QML tree is the application's own.
+        with tempfile.TemporaryDirectory() as directory:
+            code, out = run(windows_zip(directory, WINDOWS_NOTICES + QUICK3D_SECTION))
+            self.assertEqual(code, 0, out)
+            self.assertIn("no Qt Test", out)
 
     def test_missing_notices_is_reported_by_name(self):
         with tempfile.TemporaryDirectory() as directory:

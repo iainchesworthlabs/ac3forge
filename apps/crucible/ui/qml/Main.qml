@@ -20,6 +20,26 @@ ApplicationWindow {
     title: qsTr("Crucible")
     color: Theme.bg
 
+    // Right-to-left languages mirror the window: rows reverse and anchors
+    // swap sides under the direction LanguageManager sets from the active
+    // language (apps/gui/language_manager.cpp), and childrenInherit carries
+    // that to every page, the room views included. Padding is not part of
+    // it - neither a Text's nor a Control's swaps on its own - so a control
+    // padded differently on its two sides reads its own mirrored flag and
+    // swaps them itself, the way the combo boxes on the Output and Settings
+    // pages do. What holds still in the room views is their markers and
+    // speakers: those are placed at an explicit x, which mirroring leaves
+    // alone, so the plan stays a map and L stays on the left.
+    // apps/gui/qml/Main.qml carries the same root.
+    LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+    LayoutMirroring.childrenInherit: true
+
+    // What is heard, in one string: the mode, and the endpoint when there
+    // is one. The status pill, the tray tooltip and the announcer each put
+    // it into a whole sentence of their own rather than joining words.
+    readonly property string hearing: CrucibleController.modeName
+        + (CrucibleController.endpointName.length ? " · " + CrucibleController.endpointName : "")
+
     property string page: "room"
     property bool roomThreeD: false
     // A capture run (main.cpp, --shot) sets this before the first event-loop
@@ -115,6 +135,7 @@ ApplicationWindow {
             anchors.rightMargin: Theme.space6
             spacing: Theme.space4
             Text {
+                objectName: "titleText"
                 text: qsTr("Crucible")
                 color: Theme.text
                 font.family: Theme.headingFamily
@@ -144,9 +165,16 @@ ApplicationWindow {
                     // The path in one line: where applications play (a warning
                     // when that is a real device), then what is heard, where.
                     Text {
-                        text: ((CrucibleController.defaultIsNullSink ? qsTr("apps → ") : qsTr("⚠ apps heard direct → "))
-                               + CrucibleController.modeName + (CrucibleController.endpointName.length ? " · " + CrucibleController.endpointName : "")
-                               + (CrucibleController.objectsEnabled ? qsTr(" · objects signed") : qsTr(" · 5.1 bed only"))).toUpperCase()
+                        // One sentence per state, so a translator sees the
+                        // whole line and can order it as the language does.
+                        text: (CrucibleController.defaultIsNullSink
+                               ? (CrucibleController.objectsEnabled
+                                  ? qsTr("apps → %1 · objects signed")
+                                  : qsTr("apps → %1 · 5.1 bed only"))
+                               : (CrucibleController.objectsEnabled
+                                  ? qsTr("⚠ apps heard direct → %1 · objects signed")
+                                  : qsTr("⚠ apps heard direct → %1 · 5.1 bed only"))
+                              ).arg(window.hearing).toUpperCase()
                         color: Theme.text
                         font.family: Theme.monoFamily
                         font.pixelSize: Theme.fontMono
@@ -172,6 +200,7 @@ ApplicationWindow {
                 objectName: "pageChoice"
                 model: [{ label: qsTr("Room"), value: "room" }, { label: qsTr("Signal path"), value: "output" }, { label: qsTr("Settings"), value: "settings" }]
                 currentValue: window.page
+                //: Accessible name of the switch between the three pages of the window
                 accessibleName: qsTr("Page")
                 onSelected: function(value) { window.page = value; }
             }
@@ -255,12 +284,11 @@ ApplicationWindow {
                     announcer.say(engine, failed);
                 }
             }
-            const hearing = CrucibleController.modeName
-                + (CrucibleController.endpointName.length ? " · " + CrucibleController.endpointName : "");
-            if (hearing !== announcer.saidHearing) {
-                announcer.saidHearing = hearing;
+            const heard = window.hearing;
+            if (heard !== announcer.saidHearing) {
+                announcer.saidHearing = heard;
                 if (announcer.primed) {
-                    announcer.say(qsTr("You hear it on %1").arg(hearing), false);
+                    announcer.say(qsTr("You hear it on %1").arg(heard), false);
                 }
             }
             if (CrucibleController.signingStatus !== announcer.saidSigning) {
@@ -391,14 +419,14 @@ ApplicationWindow {
     // --- tray -----------------------------------------------------------------
     Platform.SystemTrayIcon {
         // Only where the platform publishes one (ui/tray_support.hpp, and
-        // the file beside it for the Linux answer). Not Qt's own `available`,
-        // which asks about the desktop rather than about this build: the
-        // Raspberry Pi's own desktop has a StatusNotifier host and answers
-        // yes, and publishing an item there takes the window down with it.
+        // the file beside it for each platform's answer). Not Qt's own
+        // `available`, which asks about the desktop rather than about this
+        // build.
         id: tray
+        objectName: "tray"
         visible: CrucibleController.trayAvailable
         icon.source: "qrc:/qt/qml/Ac3ForgeCrucible/tray.svg"
-        tooltip: qsTr("Crucible") + " · " + CrucibleController.modeName + (CrucibleController.endpointName.length ? " · " + CrucibleController.endpointName : "")
+        tooltip: qsTr("Crucible · %1").arg(window.hearing)
         onActivated: function(reason) {
             if (reason === Platform.SystemTrayIcon.Trigger || reason === Platform.SystemTrayIcon.DoubleClick) {
                 window.show();
@@ -408,25 +436,46 @@ ApplicationWindow {
         }
         menu: Platform.Menu {
             Platform.MenuItem { text: qsTr("Open the room"); onTriggered: { window.page = "room"; window.show(); window.raise(); window.requestActivate(); } }
-            Platform.Menu {
-                title: qsTr("Signal path") + " · " + (CrucibleController.pinned === "auto" ? qsTr("auto") : CrucibleController.pinned)
-                Platform.MenuItemGroup { id: pinGroup }
-                Platform.MenuItem { text: qsTr("Automatic"); checkable: true; checked: CrucibleController.pinned === "auto"; group: pinGroup; onTriggered: CrucibleController.pinned = "auto" }
-                Platform.MenuItem { text: qsTr("Atmos"); checkable: true; checked: CrucibleController.pinned === "atmos"; group: pinGroup; onTriggered: CrucibleController.pinned = "atmos" }
-                Platform.MenuItem { text: qsTr("Dolby Digital Plus 5.1"); checkable: true; checked: CrucibleController.pinned === "ddplus"; group: pinGroup; onTriggered: CrucibleController.pinned = "ddplus" }
-                Platform.MenuItem { text: qsTr("Dolby Digital 5.1"); checkable: true; checked: CrucibleController.pinned === "dd"; group: pinGroup; onTriggered: CrucibleController.pinned = "dd" }
-                Platform.MenuItem { text: qsTr("PCM surround"); checkable: true; checked: CrucibleController.pinned === "pcm"; group: pinGroup; onTriggered: CrucibleController.pinned = "pcm" }
-                Platform.MenuItem { text: qsTr("Headphones"); checkable: true; checked: CrucibleController.pinned === "headphones"; group: pinGroup; onTriggered: CrucibleController.pinned = "headphones" }
-                Platform.MenuItem { text: qsTr("Stereo"); checkable: true; checked: CrucibleController.pinned === "stereo"; group: pinGroup; onTriggered: CrucibleController.pinned = "stereo" }
+            Platform.MenuSeparator {}
+            // The signal path, flat: a heading that reads the current choice
+            // and the choices under it.
+            //
+            // It is flat because a Qt.labs.platform Menu nested inside a tray
+            // icon's menu takes the window down on Linux, and the fault is in
+            // Qt rather than in this file - QDBusPlatformMenu implements no
+            // createSubMenu(), so a nested Menu is handed the QWidget
+            // fallback and then static_cast to the D-Bus one. There is one
+            // shape here rather than one per platform because a submenu is
+            // not worth two: the whole record, with what was measured, is in
+            // ui/platform/linux/tray_support.cpp.
+            Platform.MenuItem {
+                text: qsTr("Signal path · %1").arg(CrucibleController.pinned === "auto" ? qsTr("auto") : CrucibleController.pinned)
+                enabled: false
             }
+            Platform.MenuItemGroup { id: pinGroup }
+            Platform.MenuItem { text: qsTr("Automatic"); checkable: true; checked: CrucibleController.pinned === "auto"; group: pinGroup; onTriggered: CrucibleController.pinned = "auto" }
+            Platform.MenuItem { text: qsTr("Atmos"); checkable: true; checked: CrucibleController.pinned === "atmos"; group: pinGroup; onTriggered: CrucibleController.pinned = "atmos" }
+            Platform.MenuItem { text: qsTr("Dolby Digital Plus 5.1"); checkable: true; checked: CrucibleController.pinned === "ddplus"; group: pinGroup; onTriggered: CrucibleController.pinned = "ddplus" }
+            Platform.MenuItem { text: qsTr("Dolby Digital 5.1"); checkable: true; checked: CrucibleController.pinned === "dd"; group: pinGroup; onTriggered: CrucibleController.pinned = "dd" }
+            Platform.MenuItem { text: qsTr("PCM surround"); checkable: true; checked: CrucibleController.pinned === "pcm"; group: pinGroup; onTriggered: CrucibleController.pinned = "pcm" }
+            // The same flag the Output page's mode list filters on. Without
+            // it the tray offered a pin the page refuses to show, so on a
+            // build with no object renderer a person could choose from here
+            // exactly what the window would not let them choose two clicks
+            // away - and the policy would then fall back on every endpoint
+            // without saying why.
+            Platform.MenuItem { visible: CrucibleController.spatialAvailable; text: qsTr("Headphones"); checkable: true; checked: CrucibleController.pinned === "headphones"; group: pinGroup; onTriggered: CrucibleController.pinned = "headphones" }
+            Platform.MenuItem { text: qsTr("Stereo"); checkable: true; checked: CrucibleController.pinned === "stereo"; group: pinGroup; onTriggered: CrucibleController.pinned = "stereo" }
             Platform.MenuSeparator {}
             Platform.MenuItem {
-                text: CrucibleController.defaultIsNullSink ? qsTr("Default output: ") + CrucibleController.defaultOutputName : qsTr("Move default output to ") + CrucibleController.nullSinkName
+                text: CrucibleController.defaultIsNullSink
+                    ? qsTr("Default output: %1").arg(CrucibleController.defaultOutputName)
+                    : qsTr("Move default output to %1").arg(CrucibleController.nullSinkName)
                 enabled: !CrucibleController.defaultIsNullSink && (CrucibleController.nullSinkPresent || CrucibleController.silentDeviceCanCreate)
                 onTriggered: CrucibleController.moveDefaultToNullSink()
             }
             Platform.MenuItem {
-                text: qsTr("Restore ") + (CrucibleController.previousDefaultName.length ? CrucibleController.previousDefaultName : qsTr("previous default output"))
+                text: qsTr("Restore %1").arg(CrucibleController.previousDefaultName.length ? CrucibleController.previousDefaultName : qsTr("previous default output"))
                 enabled: CrucibleController.defaultIsNullSink && CrucibleController.previousDefaultName.length > 0
                 onTriggered: CrucibleController.restoreDefault()
             }

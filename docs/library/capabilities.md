@@ -10,7 +10,7 @@ Everything below is the library and the shared audio layer beneath it — `ac3::
 siblings, and `ac3::audio`, which belongs to the family rather than to any one member and is
 never installed. [Forge](../forge/index.md) (`ac3cli` and `ac3gui`) and
 [Crucible](../crucible/index.md) reach the codec through the public API described under
-[Conventions](index.md), and link `ac3::audio` directly.
+[What it is](index.md), and link `ac3::audio` directly.
 
 ## What it does
 

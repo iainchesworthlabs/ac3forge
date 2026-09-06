@@ -2,8 +2,7 @@ Qt {{QT_VERSION}}
 ------------------
 
 This package includes the Qt {{QT_VERSION}} libraries, plugins, QML modules
-and translations that ac3crucible.exe loads (bin/Qt6*.dll, plugins/, qml/
-and translations/): Qt Core, Gui, Widgets, Network, OpenGL, Qml (with its
+and translations that {{QT_PAYLOAD}}: Qt Core, Gui, Widgets, Network, OpenGL, Qml (with its
 Models, WorkerScript and Meta libraries), Quick, Quick Controls 2 and its
 styles, Quick Dialogs 2, Quick Effects, Quick Layouts, Quick Shapes, Quick
 Templates 2, Quick Test and Test, Svg, Shader Tools, Qt Labs Platform and
@@ -20,8 +19,7 @@ carries it, is under different terms and has its own section below.
 
 The Qt libraries are linked dynamically. You may replace them with a
 modified Qt 6 that is binary-compatible with this version and the
-application will load it: they are looked up by name from the directories
-bin/qt.conf points at.
+application will load it: {{QT_LOOKUP}}
 
 The complete corresponding source of this exact Qt version is published
 by The Qt Company at

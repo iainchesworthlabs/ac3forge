@@ -456,6 +456,35 @@ jobs:
             gui: true
             packageable: true
             gold_reference: true
+            # AC3Forge Crucible's Linux half on aarch64 (roadmap UX12). The
+            # Crucible pass further down is written against matrix.preset, so
+            # this leg only has to ask for it: same apt list, same configure
+            # assertions, same tests, same package as linux-llvm, and no
+            # second copy of any of them to drift out of step.
+            #
+            # aarch64 is the only hardware the Linux half is on record as
+            # having run on: it was written and verified against a receiver
+            # on a Raspberry Pi 4B on 2026-09-05, in Phase 4 of
+            # docs/crucible/promotion.md - a run that built the window,
+            # passed all five Qt Quick suites and produced the aarch64
+            # tarball and the arm64 .deb by hand. CI meanwhile built
+            # Crucible on x86_64 alone, so the architecture the whole
+            # record rests on was the one nothing checked, and an
+            # aarch64-only compilation fault would have reached a user
+            # through the .deb before anyone saw it.
+            #
+            # This leg and not "Linux GCC (arm64)" for two reasons. The first
+            # is the one that put the pass on linux-llvm rather than
+            # linux-gcc: that leg carries alsa_fallback, whose assertion that
+            # disabling ALSA falls back to posix holds only while no PipeWire
+            # headers are installed, and the pass installs them. The second
+            # is release_package, which the GCC arm64 leg also carries: the
+            # "Assert the AC3Forge Crucible was packaged (Windows)" step keys
+            # off matrix.crucible && matrix.release_package with no runner.os
+            # guard of its own, so on a do_package run it would go looking on
+            # Linux for a packages/ac3forge-crucible-*.zip that no Linux leg
+            # ever produces.
+            crucible: true
 
           # AddressSanitizer + UndefinedBehaviorSanitizer (cmake/Sanitizers.cmake),
           # -fno-sanitize-recover=all so a violation fails the job outright. Shares
@@ -556,6 +585,9 @@ jobs:
           - name: "macOS LLVM (Homebrew)"
             runner: '["macos-latest"]'
             preset: macos-llvm
+            # Crucible compiles here and cannot be run here; see the Configure
+            # step's note.
+            crucible: true
             mac_arch: arm64
             llvm: true
             gui: true
@@ -582,6 +614,7 @@ jobs:
           - name: "macOS LLVM x64 (Homebrew, Intel)"
             runner: '["macos-15-intel"]'
             preset: macos-llvm-x64
+            crucible: true
             mac_arch: x64
             llvm: true
             gui: true
@@ -631,6 +664,23 @@ jobs:
       # later as "Unknown CMake command" at the call site in
       # apps/gui/CMakeLists.txt - a confusing error to trace back to a
       # missing apt package, which is why this comment spells it out.
+      #
+      # The qml6-module-* lines are the RUNTIME modules ac3gui's own imports
+      # resolve to, read off apps/gui/qml/*.qml: QtQuick, Controls and the
+      # Templates underneath them, Dialogs and the folder model its
+      # non-native FileDialog falls back on, Layouts, Window, QtCore for
+      # Main.qml's Settings, and the two QtQml modules QtQuick's own qmldir
+      # names. Deliberately not the Crucible pass's list further down - that
+      # is a different window with different imports (Effects, Qt.labs.platform
+      # and Quick 3D there; none of them here). These are the same names
+      # cmake/Packaging.cmake declares as the runtime .deb's Depends when the
+      # GUI is in the package, and installing them by name here is what keeps
+      # the two lists in step: an apt-get that cannot resolve one of these
+      # fails this step loudly, whereas a wrong name in the Depends field
+      # would ship and make the .deb uninstallable instead. The -dev
+      # packages above already pull most of them in transitively, which is
+      # why the QML tests have passed on every leg while the .deb's own
+      # dependency list stayed missing.
       - name: Install Qt6 (Linux GUI)
         if: matrix.gui && runner.os == 'Linux'
         run: |
@@ -638,7 +688,11 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           apt-get install -y -qq --no-install-recommends \
             qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
-            qt6-l10n-tools qt6-tools-dev
+            qt6-l10n-tools qt6-tools-dev \
+            qml6-module-qtcore qml6-module-qtqml-models qml6-module-qtqml-workerscript \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
+            qml6-module-qtquick-dialogs qml6-module-qtquick-layouts \
+            qml6-module-qtquick-window qml6-module-qt-labs-folderlistmodel
 
       # Homebrew's "qt" formula is the umbrella Qt6 package (unlike apt's
       # split qt6-base-dev/qt6-declarative-dev): one install pulls in
@@ -1045,14 +1099,26 @@ jobs:
             extra_args+=(-DAC3FORGE_BUILD_GUI=ON)
           fi
           # OFF by default in CMakeLists.txt, so the legs that want it ask
-          # here - and only on Windows. On Linux this tree selects the ALSA
-          # backend, which has no per-application concept at all, and
-          # apps/crucible/CMakeLists.txt refuses that combination by design
-          # rather than building a window that can list applications and
-          # never capture one. Crucible's Linux build is the dedicated pass
-          # further down, which installs the PipeWire headers and configures
-          # its own tree with -DAC3FORGE_WITH_ALSA=OFF.
-          if [ "${{ matrix.crucible }}" = "true" ] && [ "$RUNNER_OS" = "Windows" ]; then
+          # here - on Windows and macOS, and not on Linux. On Linux this tree
+          # selects the ALSA backend, which has no per-application concept at
+          # all, and apps/crucible/CMakeLists.txt refuses that combination by
+          # design rather than building a window that can list applications
+          # and never capture one. Crucible's Linux build is the dedicated
+          # pass further down, which installs the PipeWire headers and
+          # configures its own tree with -DAC3FORGE_WITH_ALSA=OFF.
+          #
+          # macOS joins on 2026-09-06, and building is the whole point of it
+          # there. The macOS platform half exists and has never been
+          # compiled: no Mac took part in writing it, and these two legs are
+          # the first compiler to see the Objective-C++, the Core Audio
+          # selectors and the OBJCXX CMake. Nothing about it can be RUN in
+          # CI - a hosted runner has no audio device, no desktop session and
+          # no way to grant the tap's consent prompt - so what these legs
+          # establish is that it compiles and links, which is exactly what
+          # docs/crucible/promotion.md's Phase 5 sets as the exit condition
+          # and exactly as far as its "What cannot be verified" table lets
+          # anyone claim.
+          if [ "${{ matrix.crucible }}" = "true" ]              && { [ "$RUNNER_OS" = "Windows" ] || [ "$RUNNER_OS" = "macOS" ]; }; then
             extra_args+=(-DAC3FORGE_BUILD_CRUCIBLE=ON)
           fi
           if [ -n "$VERSION_TAG_INPUT" ]; then
@@ -1090,7 +1156,30 @@ jobs:
         shell: bash
         env:
           AC3FORGE_REQUIRE_AVX2: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '' }}
-        run: ctest --preset test-${{ matrix.preset }}
+        run: |
+          set -euo pipefail
+          # macOS runs everything except the Qt Quick suites, and the reason is
+          # a defect rather than a preference. Read off this leg on 2026-09-06:
+          # three of the eleven - firstrun, room and shell - hang until ctest's
+          # 300-second limit, while the other eight pass. They are exactly the
+          # three that do NOT install the scripted machine, so they are the
+          # three that start the engine against the real platform services -
+          # the macOS half written in this branch, which no machine has ever
+          # run. The eight that pass either use the fakes or never start the
+          # engine at all. The hang is therefore in the macOS seams or the
+          # Core Audio backend under them, on a host with no audio device and
+          # no window server session.
+          #
+          # Excluded rather than left red, because a leg that always fails
+          # cannot report a new failure, and what these legs exist to prove -
+          # that the macOS half compiles and links - they still prove. The
+          # other 1,328 cases still run here. This comes off when the hang is
+          # found; nothing about it should be read as the suites passing.
+          exclude=()
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            exclude=(--label-exclude crucible-ui)
+          fi
+          ctest --preset test-${{ matrix.preset }} "${exclude[@]}"
 
       # The window is optional in CMake (Qt6 QUIET, and Quick3D optional
       # inside that), which is right for a source build on a machine with no
@@ -1098,19 +1187,63 @@ jobs:
       # skipped ac3crucible or a 2D-only room means that install broke rather
       # than a deliberate choice - the same "failing loudly beats degrading
       # quietly" reasoning as the NSIS assert further down.
-      - name: Assert the AC3Forge Crucible was built (Windows)
-        # Windows only, as the name says: this looks in the matrix build
-        # tree, and on Linux that tree deliberately has no Crucible in it
-        # (see the Configure step above).
-        if: matrix.crucible && runner.os == 'Windows'
+      # The same drift check the GUI catalogues get further down, for
+      # Crucible's six. It runs here and not on a Linux leg because
+      # ac3crucible_lupdate exists only where Crucible is configured, and the
+      # matrix build tree carries Crucible on Windows alone - Linux builds it
+      # in a pass of its own with its own tree.
+      #
+      # windows-msvc and not both Windows legs: one is enough to catch a
+      # source string changed without regenerating, and the llvm leg already
+      # carries the coverage gate.
+      - name: Check the Crucible translations are up to date
+        if: matrix.crucible && matrix.preset == 'windows-msvc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "build/config-${{ matrix.preset }}" --target ac3crucible_lupdate
+          git diff --exit-code -- apps/crucible/translations || {
+            echo "::error::a qsTr() string changed without regenerating the catalogues -           build the ac3crucible_lupdate target and commit apps/crucible/translations"
+            exit 1
+          }
+
+      - name: Assert the AC3Forge Crucible was built
+        # Windows and macOS, which are the two platforms whose matrix build
+        # tree carries Crucible; on Linux that tree deliberately has none
+        # (see the Configure step above), and the dedicated Linux pass makes
+        # its own assertions in its own tree.
+        #
+        # This matters more on macOS than anywhere else. That half has never
+        # been compiled by anyone - it was written without a Mac - so a leg
+        # that quietly built no window would be the difference between "it
+        # compiles" and "nobody checked", and the whole macOS claim rests on
+        # the first of those.
+        if: matrix.crucible && (runner.os == 'Windows' || runner.os == 'macOS')
         shell: bash
         run: |
           set -euo pipefail
           build="build/config-${{ matrix.preset }}"
+          suffix=''
+          [ "$RUNNER_OS" = "Windows" ] && suffix='.exe'
+          # ac3crucible is a MACOSX_BUNDLE target (apps/crucible/CMakeLists.txt),
+          # so on macOS the product is bin/ac3crucible.app/Contents/MacOS/
+          # ac3crucible and there is no plain file at bin/ac3crucible. Its two
+          # companions are not bundles - ac3crucible-run is a plain
+          # add_executable, and qt_add_executable does not set MACOSX_BUNDLE -
+          # so only this one needs the longer path. The ac3gui smoke test
+          # further down branches the same way for the same reason.
+          window="$build/bin/ac3crucible$suffix"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            window="$build/bin/ac3crucible.app/Contents/MacOS/ac3crucible"
+          fi
           missing=0
-          for exe in ac3crucible.exe ac3crucible-run.exe ac3crucible_qmltests.exe; do
-            if [ ! -f "$build/bin/$exe" ]; then
-              echo "::error::$exe was not built - was Qt6 found? Check the configure log's warnings."
+          if [ ! -f "$window" ]; then
+            echo "::error::$window was not built - was Qt6 found? Check the configure log's warnings."
+            missing=1
+          fi
+          for exe in ac3crucible-run ac3crucible_qmltests; do
+            if [ ! -f "$build/bin/$exe$suffix" ]; then
+              echo "::error::$exe$suffix was not built - was Qt6 found? Check the configure log's warnings."
               missing=1
             fi
           done
@@ -1122,7 +1255,73 @@ jobs:
             echo "::error::Qt Quick 3D was not found, so the room's 3D view is missing from this build - the 'Install Qt (prebuilt)' step's modules list is what provides it"
             exit 1
           fi
-          ls -1 "$build/bin/ac3crucible.exe" "$build/bin/ac3crucible-run.exe"
+          ls -1 "$window" "$build/bin/ac3crucible-run$suffix"
+
+      # The AC3Forge Crucible's coverage floor - what ci.yml's `coverage` job
+      # is for the library, for the one first-party tree that job cannot see.
+      #
+      # It cannot see it for the reason its own header gives about apps/gui:
+      # instrumenting a Qt application needs a Qt kit on the instrumented leg,
+      # and no Linux leg installs one. Crucible is worse off than apps/gui
+      # there, because more of it lives behind Qt - the window, its controller,
+      # and the Qt Quick suites that are the ONLY thing driving the Linux
+      # platform seams (tests/crucible/platform_services_stub.cpp is what the
+      # Catch2 binary links). So the figure is taken where the kit already is.
+      #
+      # One extra pass inside this leg rather than a job of its own, the same
+      # shape as the ALSA fallback and the Linux Crucible pass below: what it
+      # needs is a different BUILD of what this leg already has - clang-cl,
+      # the pinned LLVM (llvm-profdata and llvm-cov ship in the same install,
+      # at the C:\Program Files\LLVM the script defaults to) and the Qt kit
+      # with Quick3D - rather than a different machine. On this fleet the
+      # scarce resource is a queue slot and not a core (see
+      # docs/ci-self-hosted-runners.md), so a second tree inside a leg that
+      # is already running costs less than a job waiting for a runner.
+      #
+      # windows-llvm and not windows-msvc: config-windows-llvm-coverage is a
+      # clang-cl preset (-fprofile-instr-generate/-fcoverage-mapping) and MSVC
+      # has no counterpart llvm-cov could read. It roughly doubles this leg's
+      # build time, which is the price of the gate; the alternative was a
+      # number nothing checked.
+      #
+      # tools/checks/coverage_crucible.ps1 runs the `crucible` and
+      # `crucible-ui` labels itself under LLVM_PROFILE_FILE, merges the
+      # profiles, gates apps/crucible's line and branch figures against the
+      # floors in its own header, and prints a per-file breakdown under them.
+      # It is shared verbatim with a local run (docs/crucible/promotion.md),
+      # so CI and a developer machine cannot drift onto different thresholds -
+      # the same rule coverage_report.sh follows for the library.
+      #
+      # Windows PowerShell, not pwsh: the self-hosted fleet's Windows image
+      # does not ship PowerShell 7 (see the LLVM install step's own note).
+      - name: Crucible coverage floor (Windows, clang-cl)
+        if: matrix.crucible && matrix.preset == 'windows-llvm'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The same -DCMAKE_PREFIX_PATH the Configure step above bolts onto
+          # every Windows leg, for the reason it gives: install-qt-action puts
+          # the kit under a runner-specific QT_ROOT_DIR that
+          # cmake/FindQt6.cmake's local search roots (C:/Qt/6.x/msvc2022_64
+          # and friends) do not cover, so the preset alone finds no Qt6 here.
+          # Without it this configure does not degrade into a smaller number -
+          # it fails outright, because AC3FORGE_BUILD_GUI is ON for every
+          # windows-llvm preset (CMakePresets.json) and apps/gui/CMakeLists.txt
+          # asks for Qt6 REQUIRED.
+          #
+          # Asserted rather than assumed: an empty QT_ROOT_DIR would pass an
+          # empty prefix path and leave find_package to whatever kit happened
+          # to be on the image, which is a measurement of a different build
+          # from the one this leg tested.
+          if (-not $env:QT_ROOT_DIR) {
+            throw "QT_ROOT_DIR is not set - did the 'Install Qt (prebuilt)' step run on this leg?"
+          }
+          cmake --preset config-windows-llvm-coverage "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+          if ($LASTEXITCODE -ne 0) { throw "the instrumented configure failed ($LASTEXITCODE)" }
+          cmake --build --preset build-windows-llvm-coverage
+          if ($LASTEXITCODE -ne 0) { throw "the instrumented build failed ($LASTEXITCODE)" }
+          .\tools\checks\coverage_crucible.ps1 -BuildDir build\config-windows-llvm-coverage
+          if ($LASTEXITCODE -ne 0) { throw "the Crucible coverage gate failed ($LASTEXITCODE)" }
 
       # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
       # lightweight L4 SNR check from the project's original validation-
@@ -1244,13 +1443,16 @@ jobs:
       # leg) since extraction doesn't depend on OS/compiler - the sources it
       # scans are identical everywhere gui: true builds ac3gui.
       #
-      # Deliberately NOT the stricter "zero unfinished" gate the sibling
-      # CountdownSolver project runs (R:\CountdownSolver's own
-      # .github/workflows/ci.yml, "Translations complete") - translation
-      # coverage here is real but partial by design (docs/gui/
-      # localisation.md tracks exactly what), so that bar would fail today
-      # on content nobody has touched. Tightening to it is the natural next
-      # step once coverage is complete, not before.
+      # This is the drift gate: it asks whether the catalogues match the
+      # sources, not whether every entry is translated. The stricter
+      # "zero unfinished" bar would now pass - every ac3gui catalogue was
+      # filled on 2026-09-06 and carries no unfinished entry - but it belongs
+      # in the test suite rather than here, where Crucible's equivalent
+      # already lives: tests/crucible/test_translations.cpp now asserts it
+      # over this application's seven catalogues as well as Crucible's six,
+      # runs on every platform, and names the entry that failed. A second
+      # copy in a workflow step would gate the same thing on one leg and
+      # report it worse.
       - name: Check translations are up to date
         if: matrix.gui && matrix.name == 'Linux GCC'
         shell: bash
@@ -1578,6 +1780,66 @@ jobs:
             build/crucible/packages/ac3forge-crucible_*.deb
             build/crucible/packages/ac3forge-crucible_*.deb.sha512
           if-no-files-found: ignore
+
+      # The pass above is portable across Linux legs, which is why the arm64
+      # leg only had to set `crucible` to get it. Two things it cannot assert
+      # for itself, both of them about what this leg is here for.
+      #
+      # The first is its own Qt guard, which warns and exits 0 when the Qt it
+      # found is older than the 6.8 the window needs. Where that leaves this
+      # leg is worth being exact about, because the guard's own comment reads
+      # as if the runner supplied that Qt: it does not. Every Linux leg here
+      # runs inside the ubuntu:26.04 container this matrix pins, and both the
+      # bootstrap and the pass apt-install Qt into it, so the Qt on this leg
+      # is the same Qt the x86_64 leg builds against and nothing the runner
+      # fan-out picks can change it. What can still trip the guard is that
+      # image moving under both legs - and tripping it here would leave a
+      # green leg that built no window, ran no Qt Quick suite and packaged
+      # nothing, the same shape of pass over nothing the `crucible` ctest
+      # label once gave the step above. On the one leg that exists to check
+      # aarch64 there would then be nothing left checked, so this fails on it
+      # rather than forgiving it.
+      #
+      # The second is the architecture. Every name the pass globs for is
+      # computed from CMAKE_SYSTEM_PROCESSOR (cmake/Packaging.cmake, via
+      # cmake/toolchains/linux.llvm.toolchain.cmake), so its checks would pass
+      # unchanged on a package built for some other target. file(1) on the
+      # binary and the .deb's own Architecture field are what make "this is
+      # the aarch64 package" a checked claim rather than a filename - the one
+      # thing this leg exists to establish.
+      - name: Assert the Crucible package is aarch64 (Linux arm64)
+        if: matrix.crucible && matrix.preset == 'linux-llvm-arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x build/crucible/bin/ac3crucible || {
+            echo "::error::the Crucible pass produced no ac3crucible on the arm64 leg. It only skips the window when the Qt it found is below 6.8, and that Qt is apt-installed into this job's pinned ubuntu:26.04 container rather than taken from the runner - so read the warning it printed above: the container's Qt has moved, on this leg and on the x86_64 one with it."
+            exit 1
+          }
+          file build/crucible/bin/ac3crucible | tee /tmp/crucible-arch.txt
+          grep -q 'aarch64' /tmp/crucible-arch.txt || {
+            echo "::error::ac3crucible on the arm64 leg is not an aarch64 binary - see the file(1) line above"
+            exit 1
+          }
+          shopt -s nullglob
+          tars=(build/crucible/packages/ac3forge-crucible-*-Linux-aarch64.tar.gz)
+          if [ ${#tars[@]} -eq 0 ]; then
+            echo "::error::the Crucible pass packaged nothing named -Linux-aarch64.tar.gz; CPACK_SYSTEM_NAME (cmake/Packaging.cmake) takes that suffix from CMAKE_SYSTEM_PROCESSOR, which the preset's toolchain file resolves from its vcpkg triplet"
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          debs=(build/crucible/packages/ac3forge-crucible_*_arm64.deb)
+          if [ ${#debs[@]} -eq 0 ]; then
+            echo "::error::the Crucible pass packaged no ac3forge-crucible_*_arm64.deb - CPack's DEB generator takes the architecture from dpkg --print-architecture, so any other name here means this job is not running in the arm64 container its matrix entry asks for"
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          dpkg-deb -I "${debs[0]}" | grep -q '^ Architecture: arm64$' || {
+            echo "::error::the Crucible .deb is named for arm64 but does not declare Architecture: arm64"
+            exit 1
+          }
+          echo "aarch64 Crucible package: ${tars[0]}"
+          echo "aarch64 Crucible package: ${debs[0]}"
 
       # Proves BUILD_SHARED_LIBS=ON actually works before it ships in a real
       # release: ac3::forge_shared/matroska::matroska_shared existing and

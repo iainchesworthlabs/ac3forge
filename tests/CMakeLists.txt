@@ -259,6 +259,17 @@ target_compile_definitions(ac3tests
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
 
+# crucible/test_translations.cpp reads the Crucible's six Qt Linguist
+# catalogues as files (no Qt in this target), on the same reasoning: a
+# source-tree path, because ctest runs the binary from the build tree.
+target_compile_definitions(ac3tests
+    PRIVATE "AC3FORGE_CRUCIBLE_TS_DIR=\"${CMAKE_SOURCE_DIR}/apps/crucible/translations\""
+    # The GUI's seven catalogues are held to the same two rules as Crucible's
+    # six, from the same parser. They were filled on 2026-09-06 and a rule
+    # that holds them there belongs beside the one that holds Crucible's,
+    # rather than in a workflow step on one leg.
+    PRIVATE "AC3FORGE_GUI_TS_DIR=\"${CMAKE_SOURCE_DIR}/apps/gui/translations\"")
+
 # Where every test that writes a file writes it. Each such file's own scratch_dir()
 # helper appends its own leaf name under here, so the artefacts stay separated by
 # subject the way their old per-subject temp directories were.
@@ -406,12 +417,25 @@ endif()
 # the Python encoder-space fuzzer that first found one (REGRESSION_SEEDS'
 # 3600083275727211684 in tools/ci/fuzz_encoder_space.py) - this file covers it
 # deterministically and without needing ffmpeg on the machine running it.
+# ac3gui's diagnostics module (apps/gui/gui_diagnostics.hpp) rides the same
+# target for the same reason and with the same discipline: it is Qt-free, so
+# the rule it exists to hold - the support file carries no signing key, no
+# environment value and no byte of a loaded source - is checked on every CI
+# leg, including the ones that build no window. The window's Qt Quick suite
+# covers the other half, that the controller fills the report's fields from
+# what the window is actually showing. The file carries a gui_ prefix because
+# this target also compiles the Crucible's own diagnostics.cpp and has both
+# directories on its include path.
 target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
+    gui/test_gui_diagnostics.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp")
-target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
+    "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp")
+target_include_directories(ac3tests PRIVATE
+    "${CMAKE_SOURCE_DIR}/apps/common"
+    "${CMAKE_SOURCE_DIR}/apps/gui")
 
 # AC3Forge Crucible's engine core (roadmap UX11/UX12, apps/crucible/
 # engine/): the slot plan, the bed mixer, placement smoothing and the
@@ -444,6 +468,7 @@ target_sources(ac3tests PRIVATE
     crucible/test_platform_seams.cpp
     crucible/test_diagnostics.cpp
     crucible/test_desktop_entries.cpp
+    crucible/test_translations.cpp
     crucible/platform_services_stub.cpp
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"
@@ -473,9 +498,21 @@ target_include_directories(ac3tests PRIVATE
 # backend: the files live in a platform directory and are compiled nowhere
 # else. Ungated on AC3FORGE_BUILD_CRUCIBLE for the reason the block above
 # gives: the rules are worth holding on a leg that never builds the app.
+#
+# test_session_facts.cpp rides the same block for the same reason, and is why
+# proc_facts.hpp exists: the Linux session monitor's /proc readers, its
+# per-process fact cache and the two records a refresh builds were all inside
+# session_monitor.cpp, which cannot be compiled at all without the PipeWire
+# headers - so none of it could be reached from here. Moved into a header
+# beside it, none of it needs PipeWire and all of it runs on any Linux
+# machine, against a /proc the test writes itself. Unlike x11_foreground.cpp
+# below, no file from apps/crucible is added beside it: the header is compiled
+# into this case, and the .cpp that includes it stays in ac3crucible_engine
+# where libpipewire is.
 if(LINUX)
     target_sources(ac3tests PRIVATE
         crucible/platform/linux/test_x11_foreground.cpp
+        crucible/platform/linux/test_session_facts.cpp
         "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux/x11_foreground.cpp")
     target_include_directories(ac3tests PRIVATE
         "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux")

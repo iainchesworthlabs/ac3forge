@@ -1,10 +1,9 @@
 # ac3gui — localisation
 
-The app's UI chrome (menus, buttons, Preferences) is translated via Qt Linguist, the same
-mechanism and the same canonical language set as the sibling CountdownSolver project. This page
-covers what is translated today, how to update or extend it, and the pseudo-locale QA fixture the
-pipeline itself is tested against — see [Loading a source](loading-a-source.md) and the rest of
-this guide for what the untranslated majority of the app still looks like.
+The app's own text is translated via Qt Linguist, the same mechanism and the same canonical
+language set as the sibling CountdownSolver project. This page covers what is in the catalogues
+today and what that does and does not promise, how to update or extend them, and the pseudo-locale
+QA fixture the pipeline itself is tested against.
 
 ## How it fits together
 
@@ -21,9 +20,10 @@ per language:
 | `yi` | יידיש | `ac3gui_yi.ts` |
 
 English has no `.ts` file — it is the literal `qsTr()` source text. `apps/gui/CMakeLists.txt`'s
-`qt_add_translations()` call wires these in: it scans every QML file `AC3_QML_FILES` lists (the
-only source of `qsTr()` calls in this app — no `.cpp` file has one) for translatable strings, then
-compiles each `.ts` to a `.qm` and embeds it as a resource under `:/i18n` at build time.
+`qt_add_translations()` call wires these in: it scans the target's sources — every QML file
+`AC3_QML_FILES` lists, which is where nearly all of the marked strings are, and the `tr()` calls in
+`encoder_controller.cpp` — for translatable strings, then compiles each `.ts` to a `.qm` and embeds
+it as a resource under `:/i18n` at build time.
 `LanguageManager` (`apps/gui/language_manager.{hpp,cpp}`) loads the matching `.qm` for the active
 language and applies right-to-left layout mirroring for Arabic, Hebrew and Yiddish
 (`Main.qml`'s `LayoutMirroring` root, and the bundled Noto Sans Arabic/Hebrew faces those three
@@ -36,15 +36,32 @@ constructor arguments a singleton factory cannot supply).
 
 ## What's translated today
 
-Coverage is real but **partial by design**, tracked here rather than silently incomplete: 98 of
-758 extracted messages (roughly the app's window chrome, header buttons, tab names, the Guided
-wizard's step titles, and the entire Preferences dialog) are finished per language, identically
-across all six. The remainder — mostly the longer explanatory `PrefsNote`-style paragraphs
-scattered through the Format/Objects/Coding tools/Metadata tabs, and most of the `Accessible.*`
-descriptions the roadmap UX3 accessibility pass added alongside this — stay in English rather
-than showing blank, exactly the fallback a real partial translation gives everywhere else in this
-app. Completing the rest is tracked as follow-on work, not a hidden gap: search any `.ts` file for
-`type="unfinished"` to see exactly what remains.
+Every catalogue is complete. The six files carry 795 messages each — the window chrome, the header
+buttons, the tab names, the Guided wizard, the whole Preferences dialog, the longer explanatory
+`PrefsNote` paragraphs through the Format/Objects/Coding tools/Metadata tabs, and the
+`Accessible.*` names and descriptions — and none of them is left `type="unfinished"`. That
+includes the strings the keyboard and text-size pass of 2026-09-06 added
+([Keyboard & text size](accessibility.md)): the text-size setting, the diagnostics section, and
+the two `tr()` calls in `encoder_controller.cpp`. Nothing in the app falls back to English for
+want of a catalogue entry.
+
+Complete is not the same as reviewed. The renderings are machine-made and no speaker of any of the
+six languages has read them, so a term can be filled in and still be the wrong word, or two words
+for one thing. [Crucible's languages page](../crucible/localisation.md) carries the glossary the
+shared six are held to and what an audit of the mechanical output found; the review that confirms
+or replaces each rendering has not run for either app.
+
+Crucible's window says that in its own note under the language chooser. `ac3gui`'s Preferences note
+has not caught up: it still describes the six as partially translated and untranslated text as
+staying in English, which the refill made wrong. Correcting it edits a `qsTr()` string, so it lands
+together with a catalogue regeneration.
+
+Searching an `apps/gui` `.ts` file for `type="unfinished"` finds nothing today, and nothing in the
+suite holds it that way: `tests/crucible/test_translations.cpp` reads Crucible's six files only, so
+its no-unfinished and no-dead-entry rules do not cover these. What CI does check for `ac3gui` is
+drift — that the committed catalogues match what `lupdate` extracts. Extending that Crucible gate
+over `apps/gui/translations` is the step that would keep the completeness above from quietly
+lapsing.
 
 ## Crucible shares this pipeline
 
@@ -55,7 +72,9 @@ basename (`"ac3gui"` by default, `"ac3crucible"` for Crucible) that names the `.
 loads from `:/i18n/`, and `useSystemLanguage()` forgets a saved override so the app follows the
 system locale again. Crucible ships the same six languages (`apps/crucible/translations/`), has
 its own `ac3crucible_lupdate` target, and honours the same `AC3GUI_LOCALE` override for smoke
-checks. Its translations are mechanical for now.
+checks. What is Crucible's own — the glossary its six languages are held to, the window's
+right-to-left half, and the gate over its catalogues — is on
+[Crucible's languages page](../crucible/localisation.md).
 
 ## Updating an existing translation
 
@@ -67,19 +86,23 @@ checks. Its translations are mechanical for now.
 
    Any new or changed `qsTr()` string shows up as a `<translation type="unfinished">` entry
    (empty, or holding the last-known text) in the relevant `.ts` file(s). CI's own "Check
-   translations are up to date" step (`.github/workflows/_build.yml`) reruns this same target and
-   fails the build if it produces a diff nobody committed — the same drift this step exists to
-   catch.
+   translations are up to date" step (`.github/workflows/_build.yml`, on the Linux GCC leg) reruns
+   this same target and fails the build if it produces a diff nobody committed. Extraction does not
+   depend on the compiler, so one leg is enough; Crucible's six get the same check on the
+   `windows-msvc` leg.
 2. Open the `.ts` file in **Qt Linguist** (ships with Qt), or edit the `<translation>` elements
    directly, and fill in the unfinished entries. Editing by hand, remove the `type="unfinished"`
-   attribute yourself once an entry is genuinely reviewed.
+   attribute yourself once an entry has a rendering you are willing to ship.
 3. Rebuild normally to recompile the `.qm` and pick up the change.
 
 ### Finding a string
 
-`lupdate` groups each `.ts` file's messages into a `<context><name>` block named after the QML
-component it came from (`Main`, `PreferencesDialog`, `GuidedWizard`, `ChannelMeter`, ...) — use
-that to jump straight to the right area of a large `.ts` file.
+`lupdate` groups each `.ts` file's messages into a `<context><name>` block named after the
+component it came from — `AboutDialog`, `AssignmentPanel`, `ChannelMeter`, `EncoderController`
+(the `tr()` calls in the C++), `FirstRunScreen`, `GuidedWizard`, `LoudnessGroup`, `Main`,
+`ObjectInspectorDialog`, `PreferencesDialog`, `QcDialog`, `QcGateMeter`, `SoundfieldView`,
+`StreamPlayerDialog` and `VbrPanel` — which is how to jump straight to the right area of a large
+`.ts` file.
 
 ## Adding a new language
 
@@ -99,18 +122,22 @@ that to jump straight to the right area of a large `.ts` file.
 
 ## The pseudo-locale QA fixture
 
-`apps/gui/translations/ac3gui_xx.ts` is not a real language — "xx" is not an ISO 639 code, and it
-never appears in `LanguageManager::availableLanguages()` or Preferences' picker. It exists purely
-to prove the extraction → compile → load pipeline works end to end without depending on any real
-language's translation being complete, and to catch a string that bypasses `qsTr()` entirely.
+`apps/gui/translations/ac3gui_xx.ts` is not a language — "xx" is not an ISO 639 code, and it
+never appears in `LanguageManager::availableLanguages()` or Preferences' picker. It exists to prove
+the extraction → compile → load pipeline works end to end without depending on any one language's
+catalogue, and to catch a string that bypasses `qsTr()` entirely.
 
-`tools/generators/gen_pseudo_locale.py` reads a real `lupdate` extraction and mechanically
-decorates **every** message — accented characters, a bracketed and length-padded wrapper
-(`[Àccéntéd téxt ~~~~]`) — so the fixture is 100% "complete" by construction, unlike the six real
-languages. A visible string that reaches the screen *without* that decoration under the
-pseudo-locale means it never went through `qsTr()` in the first place.
+`tools/generators/gen_pseudo_locale.py` reads `ac3gui_fr.ts` for the message set and mechanically
+decorates **every** message it finds there — accented characters, a bracketed and length-padded
+wrapper (`[Àccéntéd téxt ~~~~]`) — so what it writes is complete for the extraction it was run
+against. A visible string that reaches the screen *without* that decoration under the
+pseudo-locale either never went through `qsTr()`, or was added after the fixture was last
+generated.
 
-Regenerate it after `ac3gui_lupdate` picks up new source strings:
+The fixture is not in `AC3_TS_FILES`, so `ac3gui_lupdate` does not touch it and CI's drift check
+cannot see it going stale. It is stale now: 766 messages against the six languages' 795, missing
+the keyboard and text-size pass. Regenerate it after `ac3gui_lupdate` picks up new source
+strings:
 
 ```sh
 cmake --build --preset <preset> --target ac3gui_lupdate

@@ -41,10 +41,21 @@ TestCase {
         // The MS-PL section exists exactly where the silent device is a
         // driver from a package; the PipeWire section exactly where the
         // application makes the device itself.
+        //
+        // Two seam facts rather than one, since 2026-09-06: !fromPackage used
+        // to be enough to mean "the application makes the device", because
+        // there were two platforms and the other one was Linux. macOS is a
+        // third answer - it needs no silent device at all, so it makes none
+        // and packages none - and reads !fromPackage the same way Linux does
+        // while carrying no PipeWire section. silentDeviceNeeded is what
+        // separates them, and it is the seam's own word
+        // (VirtualDevice::state's `needed`), so this test still names no
+        // operating system.
         compare(notices.indexOf("Microsoft Public License") >= 0, CrucibleController.silentDeviceFromPackage,
                 "the driver's MS-PL section follows silentDeviceFromPackage");
-        compare(notices.indexOf("libpipewire") >= 0, !CrucibleController.silentDeviceFromPackage,
-                "the PipeWire section follows !silentDeviceFromPackage");
+        const makesItsOwn = CrucibleController.silentDeviceNeeded && !CrucibleController.silentDeviceFromPackage;
+        compare(notices.indexOf("libpipewire") >= 0, makesItsOwn,
+                "the PipeWire section is there exactly where this build makes its own silent device");
     }
 
     function test_quick3dNoticeMatchesTheBuild() {

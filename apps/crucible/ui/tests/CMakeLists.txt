@@ -30,6 +30,11 @@ qt_add_executable(ac3crucible_qmltests
 # under ui/platform/ there belongs here too - the controller is compiled into
 # this binary, so a seam this target does not choose is an unresolved symbol
 # at link time and nothing sooner.
+#
+# The macOS arm carries the OBJCXX standard and the AppKit link with it, for
+# the same reason the window's does: ui/platform/macos/app_icon_provider.mm is
+# Objective-C++, and this is a second, independent embedding rather than a
+# shared library, so nothing is inherited from the other target.
 if(WIN32)
     target_sources(ac3crucible_qmltests PRIVATE ui/platform/windows/app_icon_provider.cpp
                                                 ui/platform/windows/tray_support.cpp)
@@ -37,6 +42,19 @@ elseif(LINUX)
     target_sources(ac3crucible_qmltests PRIVATE ui/platform/linux/app_icon_provider.cpp
                                                 ui/platform/linux/tray_support.cpp)
     target_sources(ac3crucible_qmltests PRIVATE ui/desktop_entries.cpp ui/desktop_entries.hpp)
+elseif(APPLE)
+    target_sources(ac3crucible_qmltests PRIVATE ui/platform/macos/app_icon_provider.mm
+                                                ui/platform/macos/tray_support.cpp)
+    set_target_properties(ac3crucible_qmltests PROPERTIES
+        OBJCXX_STANDARD 23
+        OBJCXX_STANDARD_REQUIRED ON
+        OBJCXX_EXTENSIONS OFF)
+    # The same AppKit-versus-Qt macro collision the window's own arm names
+    # (apps/crucible/CMakeLists.txt's APPLE arms): this target compiles the
+    # same .mm, so it needs the same define, and nothing is inherited.
+    target_compile_definitions(ac3crucible_qmltests
+        PRIVATE __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES=0)
+    target_link_libraries(ac3crucible_qmltests PRIVATE "-framework AppKit" "-framework CoreGraphics")
 endif()
 
 qt_add_qml_module(ac3crucible_qmltests
@@ -114,8 +132,11 @@ qt6_add_resources(ac3crucible_qmltests "ac3crucible_qmltests_translations"
     FILES ${AC3DESK_TEST_QM_FILES})
 
 # One ctest entry per suite (its own process, its own controller), label
-# "desk" so the coverage preset and tools/checks/coverage_crucible.ps1 can
-# select it alongside the "crucible" Catch2 cases. QT_FORCE_STDERR_LOGGING
+# "crucible-ui" so the coverage preset and tools/checks/coverage_crucible.ps1
+# can select it alongside the "crucible" Catch2 cases - both of them read the
+# label written below, so renaming it here means editing that script's
+# -Labels default and CMakePresets.json's test-windows-llvm-coverage filter
+# with it. QT_FORCE_STDERR_LOGGING
 # for the reason apps/gui/tests gives: without it Qt on Windows routes the
 # PASS/FAIL lines away from stderr when it decides no console is attached.
 file(GLOB AC3DESK_QML_TEST_FILES CONFIGURE_DEPENDS
@@ -125,8 +146,18 @@ foreach(test_file IN LISTS AC3DESK_QML_TEST_FILES)
     string(REGEX REPLACE "^tst_" "" suite "${test_name}")
     add_test(NAME ac3crucible_qml_tests_${suite}
         COMMAND ac3crucible_qmltests -input "${test_file}" -platform offscreen)
+    # QT_QUICK_BACKEND=software beside the offscreen platform. Offscreen
+    # stops Qt asking for a window; it does not stop the scene graph asking
+    # for a GPU context, and on a runner with no display server that request
+    # can hang rather than fail. Read off CI on 2026-09-06: three suites -
+    # firstrun, room and shell, the three that build the most - timed out at
+    # 300 seconds each on both macOS legs while the other eight passed, on a
+    # build whose configure and compile had both succeeded. The Linux
+    # Crucible pass already sets this pair together for the same reason
+    # (.github/workflows/_build.yml). Software rendering is slower and the
+    # room's 3D view still runs under it, which the Linux runs show.
     set_tests_properties(ac3crucible_qml_tests_${suite} PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
         TIMEOUT 300
         LABELS "crucible-ui")
     # The icon fixture (ui/tests/fixtures/xdg: a hicolor theme and four

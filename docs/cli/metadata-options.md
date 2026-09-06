@@ -12,9 +12,11 @@ the fixed TS 103 420 shape, so it takes `dialnorm=<n>` and `fast-mdct=off` from 
 nothing else. `atmos`, `atmos-path` and `atmos-encode` all apply `dialnorm=<n>`, `fast-mdct=off`,
 `joc-domain=`
 and the object-signing flags below, and `dialnorm=auto` is silently inert on `atmos`/`atmos-path`
-— of the three Atmos commands, only `atmos-encode` measures, and not when `src=`/`map=` are in play
+— of those three, only `atmos-encode` measures, and not when `src=`/`map=` are in play
 (an assembled object set has no single fixed layout to measure a whole-programme loudness
-against). Every command honors `quiet`, `verbose` and `--help`:
+against). The two ingest commands `atmos-adm` and `atmos-iab` build the same `AtmosEncoder`
+config, so they take `dialnorm=<n>`, `fast-mdct=off`, `joc-domain=` and `numblkscod=` as well, but
+not the object-signing flags. Every command honors `quiet`, `verbose` and `--help`:
 
 ```text
 metadata options (any order, after the positional arguments):
@@ -151,7 +153,8 @@ encoded), and bare `heavy` prefers `compr` where the stream carries it — the d
 of these two tokens is deliberately the mirror of their encode-time meaning. Both apply to
 E-AC-3 decode too, matching the legacy AC-3 decoder — `.ec3` input no longer accepts and silently
 ignores them. `fast-imdct=off` and `mode=` select the inverse transform's evaluation and apply to
-both codecs' decode alike.
+both codecs' decode alike. `monitor` and `spatial` take the same four: all three commands build
+one `ac3::DecoderConfig` from these options and hand it to the same decoder.
 
 See [Metadata](../library/metadata.md) for what each of these fields actually is at the library
 level (`dynrng`, `compr`, `dialnorm`, downmix levels) — the CLI tokens above map directly onto
@@ -400,7 +403,7 @@ which one it means. `objm` folds the whole range into ONE mono object (equal-wei
 than one object per channel the way a plain `obj` range does. Two entries naming the same location,
 or more than one entry per dual-mono programme, is refused.
 
-The `obj`/`objm` destinations are real on the two object-capable commands (roadmap IO9):
+The `obj`/`objm` destinations are acted on by the two object-capable commands (roadmap IO9):
 `atmos-encode` and `live mode=atmos` both assemble them. Each `obj` row becomes its own dynamic
 object; a contiguous `objm` range folds to a single mono object (equal-weight sum, scaled by
 `1/n`); the objects appear in `map=` order — every `obj` row first, in source-then-channel order,
@@ -1065,7 +1068,7 @@ Optional positional arguments, when omitted:
 - `atmos` — 8 s at 448 kbps, 4 objects, 6 s per orbit.
 - `record` — 5 s at 192 kbps from device 0.
 - `live` — 10 s at 192 kbps.
-- `play`, `monitor` — device `-1`, the default output.
+- `play`, `monitor`, `spatial` — device `-1`, the default output.
 - `transcode` — 448 kbps, and the source's own layout (folded to 5.1 when AC-3 cannot code it).
 - `cut` — from 0 s to the end of the stream.
 
@@ -1112,9 +1115,9 @@ Optional positional arguments, when omitted:
   builds, no `CHANNELS="<N>/JOC"` in its playlists, and no "+ Dolby Atmos" from FFmpeg. See
   [Atmos & JOC](../concepts/atmos-joc.md) for why a decoder can tell the difference at all.
 - **`sign-objects`** (with **`signing-key=<path>`**): signs the object container's EMDF protection
-  tag so a validating decoder reconstructs the objects instead of playing the bed. Honored by all
-  three Atmos commands (`atmos`, `atmos-path`, `atmos-encode`). Off unless you pass both —
-  `sign-objects` alone with no key is an error. The key may also come from
+  tag so a validating decoder reconstructs the objects instead of playing the bed. Honored by
+  `atmos`, `atmos-path` and `atmos-encode`; `atmos-adm` and `atmos-iab` do not take it. Off
+  unless you pass both — `sign-objects` alone with no key is an error. The key may also come from
   `AC3FORGE_SIGNING_KEY_FILE` / `AC3FORGE_SIGNING_KEY` instead of `signing-key=`. The key is never
   stored by the tool; the algorithm is in-tree but the key is yours to provision. Full details in
   [Object signing](../concepts/object-signing.md).

@@ -12,7 +12,7 @@ ship in one archive, one Windows installer, one `.deb`, one `.rpm`, one `.dmg` a
 entry. Downloading Forge gets you both.
 
 - `ac3cli` covers synthesis, file encoding and decoding, container wrapping, inspection, QC, and
-  live capture and playback across thirty-nine commands — see the
+  live capture and playback across forty-one commands — see the
   [CLI reference](../cli/index.md).
 - `ac3gui` is a two-pane workbench over the same work: loading a source, choosing format and
   channels, placing and moving objects in a plan view, live capture, metadata, QC, and
@@ -58,7 +58,7 @@ covers every platform today. Three shorter ones exist, at different stages of re
 
 The library ships separately, as the `ac3forge-dev-*` archives and, on Linux, the
 `libac3forge0` runtime package with `libac3forge-dev` (DEB) or `ac3forge-devel` (RPM)
-beside it; [Conventions](../library/index.md) covers consuming it.
+beside it; [What it is](../library/index.md) covers consuming it.
 
 ## Where to go next
 

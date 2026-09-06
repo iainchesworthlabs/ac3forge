@@ -8,12 +8,14 @@ ear.
 A crucible is where separate materials are combined under heat into one melt, which is what this
 does to the sounds on a desk.
 
-!!! note "Status: Windows works; Linux is new; macOS is not built yet"
+!!! note "Status: Windows works; Linux is new; macOS builds and has never made a sound"
     The application began as a Windows demo (roadmap UX11) and was promoted to a product on
     2026-09-04 (roadmap UX12). Windows is the mature platform. The Linux half is new: its
-    per-application capture, silent device and window are confirmed on real hardware, and its
-    bitstream path has reached a receiver's HDMI sink, with the receiver's own lock still to be
-    read off its display. macOS has a design and no implementation.
+    per-application capture, silent device and window are confirmed on real hardware, and on
+    2026-09-05 a receiver's own front panel was read during a Linux stream. The macOS half
+    arrived on 2026-09-06: it compiles on both macOS CI legs and the window's Qt Quick suites
+    run over it there, and that is the whole record — no Mac has run the application, no macOS
+    code has captured or played a sound, and there is no macOS package.
     [Where each platform stands](#where-each-platform-stands) is exact about this, and
     [the promotion plan](promotion.md) carries the full record.
 
@@ -25,7 +27,8 @@ does to the sounds on a desk.
 3. **Crucible taps each one separately** and shows it in a room, as an icon with a level ring.
    Applications appear when they start playing and stay while they run.
 4. **Drag one anywhere** — in plan, and in elevation. That application is now a dynamic object at
-   that position. Drag it back to the tray, and it returns to the bed.
+   that position. Its **Send to bed** button, a double-click on its marker, or `Delete` puts it
+   back in the bed.
 5. **What you hear follows your hardware.** An Atmos receiver over HDMI gets E-AC-3 JOC with the
    objects intact. A Dolby Digital receiver gets AC-3 5.1 with the positions panned onto the ring.
    A TV gets decoded multichannel PCM. Headphones get the decoded objects through the OS
@@ -52,10 +55,10 @@ differently, and [Install and first run](install.md) is mostly about that differ
 
 | | Windows | Linux | macOS |
 |---|---|---|---|
-| Enumerate and tap | yes | yes, confirmed on hardware | designed, not built |
-| Silence | a signed driver, [see below](#the-silent-device) | a PipeWire node, nothing to install | the tap mutes; no device needed |
-| Bitstream to a receiver | not yet confirmed | yes, read off the receiver: 5.1 DD+, and Atmos/DD+ with objects | not built |
-| The window | yes | yes, headless-verified on the Pi | no |
+| Enumerate and tap | yes | yes, confirmed on hardware | compiles; nothing has been captured |
+| Silence | a kernel driver, test-signed only, [see below](#the-silent-device) | a PipeWire node, nothing to install | the tap mutes where it taps; no device needed — compiles; no tap has been created |
+| Bitstream to a receiver | not yet confirmed | yes, read off the receiver: 5.1 DD+, and Atmos/DD+ with objects | nothing has been played |
+| The window | yes | yes, run on the Pi | builds in CI and its suites run there; never launched on a Mac |
 
 **Windows** is the platform the application was built on and the one with the longest record:
 the room, the tray, the driver. Its silent device is a kernel driver that is **test-signed only** today: it
@@ -71,15 +74,23 @@ bed plus objects. That reading matters more than it sounds, because Crucible **c
 ALSA backend
 (no per-application tap), so it is forced onto the one passthrough path this project had not
 confirmed before. [The plan](promotion.md#alsa-or-pipewire) is blunt about that. Application
-icons come from the icon theme and the `.desktop` entries. Two things the Linux window does not
+icons come from the icon theme and the `.desktop` entries. One thing the Linux window does not
 have: the full-screen rule under Wayland, which cannot be answered there, though under X11 the
-rule is on; and a tray icon, because publishing one crashes the window on the desktops it has
-been tried on, so closing the window quits
-([Troubleshooting](troubleshooting.md#linux-there-is-no-tray-icon)).
+rule is on. It publishes a tray icon wherever the desktop has a StatusNotifier host for it, and
+says so where there is none
+([Troubleshooting](troubleshooting.md#there-is-no-tray-icon)).
 
 **macOS** needs no driver — its process taps can mute an application where they tap it, which is
-the job the Windows driver exists to do — but nothing is implemented. It is blocked on a Mac to
-run it and a certificate to sign it, not on knowing what to write.
+the job the Windows driver exists to do. The code for it is written: a Core Audio process tap and
+device watcher in the library, and Crucible's five platform seams and two window files beside
+them. What is established about it is that it builds. On 2026-09-06 both macOS CI legs configured,
+compiled and linked it and ran the test suites over it: every test passed on the Intel leg, and on
+the Apple Silicon leg three of the window's eleven Qt Quick suites timed out. That is the whole
+record. A hosted runner has no audio device, no desktop session and no way to grant the tap's
+consent prompt, so no tap has been created, nothing has been captured or played, and the
+application itself has never been launched. What stays blocked is what was blocked before: a Mac
+with a desktop and an audio device to run it on, and a Developer ID certificate to sign it, since
+the tap's consent prompt does not fire for an unsigned binary.
 
 ## The silent device
 
@@ -92,8 +103,9 @@ given. It arrives with the application and stays installed until you uninstall i
 "Crucible (silent)" while it runs, and the node disappears when it exits. No driver, no signing,
 no password, and nothing left on your machine afterwards.
 
-**On macOS** there will be no silent device at all: the tap mutes each application individually
-as it captures it, so there is no default output to move and nothing to restore.
+**On macOS** there is no silent device at all. The tap is created with `CATapMutedWhenTapped`, so
+each application is muted at the point it is captured, there is no default output to move and
+nothing to restore. That is what the code says; no tap has yet been created on any machine.
 
 ## Objects, and what the bed is
 
@@ -126,7 +138,10 @@ the path to it. See [Object signing](../concepts/object-signing.md).
 ## Where to go next
 
 - [Install and first run](install.md) — per platform, including what to do about the silent device
+- [The room](room.md) — the rail, the views, the ten slots, and the keyboard route through a placement
 - [The signal path](signal-path.md) — the two devices Crucible depends on, and why they are two
+- [Settings](settings.md) — the settings screen block by block, and what each platform does differently
 - [Keyboard and screen readers](accessibility.md) — the key map, the focus order, and what is announced
+- [Languages](localisation.md) — the seven the window ships in, and what changes when one reads right to left
 - [Troubleshooting](troubleshooting.md) — when you hear nothing, or hear everything twice
 - [The promotion plan](promotion.md) — the design record, phase by phase, and what is unverified

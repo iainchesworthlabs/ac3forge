@@ -117,13 +117,16 @@ Flickable {
                 // What a person needs to know, in the order it matters: is the
                 // device there; do applications play to it; and, only while it
                 // is not there, what stands between this machine and one. On
-                // Windows that is a test-signed driver, so a packaged install
-                // carries the signed driver and installs it with the
-                // application (Phase 6), and the source-build tools (the
-                // folder, install, remove) live under Advanced rather than in
-                // the way. On Linux the application makes the device itself,
-                // and the page says so instead of showing a folder that
-                // means nothing there: silentDeviceFromPackage decides.
+                // Windows that is a test-signed driver, which no package ships
+                // yet - the zip carries the install and remove scripts because
+                // this page runs them, and nothing for them to install - so
+                // the source-build tools (the folder, install, remove) live
+                // under Advanced rather than in the way. A packaged install
+                // will carry the driver and install it with the application
+                // once the driver is signed (Phase 6). On Linux the
+                // application makes the device itself, and the page says so
+                // instead of showing a folder that means nothing there:
+                // silentDeviceFromPackage decides.
                 Card {
                     visible: CrucibleController.silentDeviceNeeded
                     ColumnLayout {
@@ -148,13 +151,32 @@ Flickable {
                                 ? CrucibleController.silentDeviceBlocker
                                 : qsTr("This machine can load the silent device.")
                         }
+                        // The last line used to say "this is a build from
+                        // source", which was wrong for the reader most likely
+                        // to see it. driverDir() finds install.ps1 beside a
+                        // packaged executable, so a packaged copy lands on this
+                        // branch too: package_complete()
+                        // (engine/platform/windows/driver_tools.cpp) also wants
+                        // the driver's .inf, and the zip carries no driver at
+                        // all. Told to build one and point Advanced at it, a
+                        // packaged reader has a checkout and the WDK ahead of
+                        // them and no way to know it from this page; told
+                        // instead by the blocker above to turn test signing on,
+                        // they would spend two machine-wide settings and two
+                        // reboots and meet the same greyed button, which is why
+                        // driver_tools.cpp puts the missing package first.
+                        // tools/ci/check_crucible_package.py asserts the
+                        // package still carries no .inf, so this line and
+                        // docs/crucible/install.md get revisited together on
+                        // the day it does.
                         Note {
+                            objectName: "driverPackageNote"
                             visible: !CrucibleController.nullSinkPresent
                             text: !CrucibleController.silentDeviceFromPackage
                                 ? qsTr("Nothing to install: this application makes the silent device itself. Create it now, or it is created when you send applications to it.")
                                 : CrucibleController.driverPackageFound
                                     ? qsTr("A built driver package is in the driver folder, ready to install.")
-                                    : qsTr("An installed copy of this application brings the driver with it. This is a build from source: build the driver, then point Advanced at its folder, or put a built package there.")
+                                    : qsTr("No built driver package in the driver folder. No download carries the driver itself, only the scripts that install it: it is test-signed only, and shipping it waits on an EV certificate and attestation. Until then it has to be built from a source tree, with Advanced pointed at the folder holding the build.")
                         }
                         Flow {
                             Layout.fillWidth: true
@@ -323,8 +345,11 @@ Flickable {
                         Connections { target: CrucibleController; function onSettingsChanged() { bitrateBox.sync(); } }
                         font.pixelSize: Theme.fontSmall
                         background: Rectangle { color: Theme.neutral100; border.color: bitrateBox.activeFocus ? Theme.focusRing : Theme.divider; border.width: 1 }
-                        contentItem: Text { id: bitrateText; leftPadding: 10; text: bitrateBox.displayText; color: Theme.text; font.family: Theme.monoFamily; font.pixelSize: Theme.fontSmall; verticalAlignment: Text.AlignVCenter }
-                        indicator: Text { x: bitrateBox.width - 22; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: Theme.fontNormal }
+                        // Anchored rather than placed at an x, and padded by
+                        // the side the control is on, so both follow the
+                        // window's mirroring under a right-to-left language.
+                        contentItem: Text { id: bitrateText; leftPadding: bitrateBox.mirrored ? 26 : 10; rightPadding: bitrateBox.mirrored ? 10 : 26; text: bitrateBox.displayText; color: Theme.text; font.family: Theme.monoFamily; font.pixelSize: Theme.fontSmall; verticalAlignment: Text.AlignVCenter }
+                        indicator: Text { anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: Theme.fontNormal }
                         popup.background: Rectangle { color: Theme.surface; border.color: Theme.divider; border.width: 1 }
                         delegate: ItemDelegate {
                             required property var modelData
@@ -356,7 +381,13 @@ Flickable {
                 SettingRow {
                     label: qsTr("Palette")
                     SegmentedControl {
-                        model: [{ label: qsTr("System"), value: "system" }, { label: qsTr("Signal"), value: "signal" }, { label: qsTr("Ink"), value: "ink" }, { label: qsTr("Console"), value: "console" }]
+                        model: [{ label: qsTr("System"), value: "system" },
+                                //: Palette name. A product name: leave it as it is unless the language has an established rendering of its own.
+                                { label: qsTr("Signal"), value: "signal" },
+                                //: Palette name, as "Signal" above.
+                                { label: qsTr("Ink"), value: "ink" },
+                                //: Palette name, as "Signal" above.
+                                { label: qsTr("Console"), value: "console" }]
                         currentValue: CrucibleController.palette
                         accessibleName: qsTr("Palette")
                         onSelected: function(value) { CrucibleController.palette = value; }
@@ -384,8 +415,10 @@ Flickable {
                         onActivated: currentValue === "" ? LanguageManager.useSystemLanguage() : LanguageManager.setLanguage(currentValue)
                         font.pixelSize: Theme.fontBody
                         background: Rectangle { color: Theme.neutral100; border.color: languageBox.activeFocus ? Theme.focusRing : Theme.divider; border.width: 1 }
-                        contentItem: Text { id: languageText; leftPadding: 10; text: languageBox.displayText; color: Theme.text; font.pixelSize: Theme.fontBody; verticalAlignment: Text.AlignVCenter }
-                        indicator: Text { x: languageBox.width - 22; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: Theme.fontNormal }
+                        // The chevron and the padding, mirrored the same way
+                        // as the bitrate box above.
+                        contentItem: Text { id: languageText; leftPadding: languageBox.mirrored ? 26 : 10; rightPadding: languageBox.mirrored ? 10 : 26; text: languageBox.displayText; color: Theme.text; font.pixelSize: Theme.fontBody; verticalAlignment: Text.AlignVCenter }
+                        indicator: Text { anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: Theme.fontNormal }
                         popup.background: Rectangle { color: Theme.surface; border.color: Theme.divider; border.width: 1 }
                         delegate: ItemDelegate {
                             required property var modelData
@@ -396,7 +429,13 @@ Flickable {
                             highlighted: languageBox.highlightedIndex === index
                         }
                     }
-                    Note { text: qsTr("System follows Windows; the translations are mechanical for now") }
+                    // QLocale::system(), which is the desktop's own language
+                    // setting wherever the window runs (LanguageManager::
+                    // useSystemLanguage); it used to say "follows Windows".
+                    // The second sentence stays true after the mechanical
+                    // pass: machine-made is what those catalogues are until
+                    // a speaker of each language has read them.
+                    Note { text: qsTr("System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.") }
                 }
                 SettingRow {
                     label: qsTr("Text size")

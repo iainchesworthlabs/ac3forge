@@ -4,10 +4,12 @@
 // aid: `--shot <path.png>` grabs the window after it has settled and quits,
 // the way ac3gui's smoke modes do, so a headless check can see the screen;
 // `--page settings` (or output, room, room3d; about, licences or firstrun for
-// that dialog over the room) picks the page it shows first, and
-// `--place Name=x,y,z` positions a listed application before the capture. A
-// `--shot` run never shows the first-run dialog unless `--page firstrun` asked
-// for it, so a capture against a fresh settings store is clean.
+// that dialog over the room) picks the page it shows first,
+// `--place Name=x,y,z` positions a listed application before the capture, and
+// `--language ar` runs the window in one of the languages it ships so a
+// capture can show that language and its layout. A `--shot` run never shows
+// the first-run dialog unless `--page firstrun` asked for it, so a capture
+// against a fresh settings store is clean.
 
 #include <QFont>
 #include <QFontDatabase>
@@ -157,6 +159,7 @@ int main(int argc, char** argv) {
 
     QString shot_path;
     QString page;
+    QString language;
     QStringList placements;
     const QStringList args = QCoreApplication::arguments();
     for (qsizetype i = 1; i + 1 < args.size(); ++i) {
@@ -166,7 +169,18 @@ int main(int argc, char** argv) {
             page = args[i + 1];  // room, output or settings
         } else if (args[i] == QLatin1String("--place")) {
             placements.push_back(args[i + 1]);  // name=x,y,z, applied before the shot
+        } else if (args[i] == QLatin1String("--language")) {
+            language = args[i + 1];  // en, fr, de, es, ar, he, yi
         }
+    }
+    // A capture in one language, with the person's own settings left
+    // alone: AC3GUI_LOCALE is the override LanguageManager already reads
+    // ahead of the saved key (apps/gui/language_manager.cpp), so setting it
+    // here shows the window in that language without writing language/code
+    // to the store the way setLanguage() would. An unsupported code is
+    // ignored by the manager and the run falls back to the saved language.
+    if (!language.isEmpty()) {
+        qputenv("AC3GUI_LOCALE", language.toUtf8());
     }
 
     QQmlApplicationEngine engine;

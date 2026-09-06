@@ -45,11 +45,11 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   since ALSA has no per-application streams to tap. The window builds and its Qt Quick
   tests pass on Linux; the `crucible` CPack component produces an
   `ac3forge-crucible-<version>-Linux-<arch>.tar.gz` and an `ac3forge-crucible` `.deb`
-  (depending on `pipewire` and a session manager, carrying no Qt of its own). Both ship in a
-  release: the release legs build against ALSA and cannot produce them, but the Linux LLVM leg's
-  Crucible pass uploads them under the artifact name the release job collects. They are the one
-  package a release is not guaranteed to carry, since that step skips itself on a runner whose Qt
-  is older than 6.8. Settings on
+  (depending on `pipewire` and a session manager, carrying no Qt of its own), for x86_64 and
+  aarch64 alike. Both ship in a release: the release legs build against ALSA and cannot produce
+  them, but the Linux LLVM legs' Crucible pass uploads them under the artifact name the release
+  job collects. They are the one package a release is not guaranteed to carry, since that step
+  skips itself on a runner whose Qt is older than 6.8. Settings on
   Linux say "Create device" where Windows says "Install driver", and show no driver folder.
   On 2026-09-05 the whole path was confirmed against a receiver: an application tapped through
   PipeWire, encoded live as E-AC-3 with a JOC object layer and a signed object container, read
@@ -351,6 +351,31 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   Windows build found and fixed a real portability bug (bindgen types C enums `i32` on MSVC,
   `u32` elsewhere — `Error::Other` had baked the Linux answer in).
 
+### Documentation
+
+- **The Crucible guide gained the two pages it was missing**, written from the window rather
+  than from the plan: [The room](docs/crucible/room.md), and
+  [Settings](docs/crucible/settings.md). There is no output-modes page and there will not be
+  one; the signal path page already carries the modes.
+
+- **The library is presented as a member in its own right.** Its page opens by saying what it
+  is before it says what to link, its navigation entry reads "What it is" like its two
+  siblings, the home page paragraph carries a download route as theirs do, and the site
+  description names all three members instead of describing a codec only. Both first screens'
+  status paragraphs now say where Crucible is built and tested rather than passing over it.
+
+- **The published-asset table matches the pipeline.** It gained a Windows arm64 row and rows
+  for Crucible, and four claims that had gone stale were corrected: that the Linux Crucible
+  package cannot reach a release, that a `.rpm` is produced for it in CI, that every
+  `release_package` leg carries the GUI, and that a failure on the experimental arm64 leg
+  fails the leg like any other.
+
+- **The CLI reference lists all forty-one commands.** The `spatial` command was undocumented
+  and every command count in the reference was stale. The browser demo pages no longer call
+  the WebAssembly decoder published: it is packed on every pull request and has never been
+  pushed to the registry, and the pages now say what a reader can do today instead of linking
+  an entry that returns nothing.
+
 ### Fixed
 
 - **Every Linux and macOS package shipped without the `ac3cli` man page or any of the four
@@ -419,12 +444,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   graph with no PulseAudio application in it costs the tap what it always did.
 
 - **Crucible could not start on a Linux desktop with a system tray** (`apps/crucible/ui/`).
-  Publishing a StatusNotifierItem took the process down with `SIGBUS` inside Qt's own D-Bus
-  delivery, before the window drew a frame, on nine or ten launches out of ten on the Raspberry
-  Pi OS desktop. The Linux build no longer publishes a tray icon: `ui/tray_support.hpp` is a
-  platform seam like the icon provider beside it, the Settings page shows the platform's reason
-  where the "keep running in the tray" setting used to be, and closing the window quits. The
-  measurements and what has been ruled out are in `docs/crucible/promotion.md`.
+  Publishing a StatusNotifierItem took the process down before the window drew a frame, on nine
+  or ten launches out of ten. It is a type confusion in Qt: `QDBusPlatformMenu` implements no
+  `createSubMenu()`, so a `Qt.labs.platform` `Menu` nested inside a tray icon's menu is handed
+  Qt Labs Platform's QWidget fallback and then `static_cast` to the D-Bus one, and the panel's
+  first request for the menu layout reads a `QWidgetPlatformMenu` as a `QDBusPlatformMenu`. The
+  tray's menu is now flat on every platform — the signal path is a heading and seven choices
+  rather than a submenu — and Linux publishes a tray again, with both platforms answering
+  `ui/tray_support.hpp` from `QSystemTrayIcon::isSystemTrayAvailable()`.
+  `tst_platform.qml` fails on a tray menu item with a `subMenu`, so the constraint cannot be
+  lost. `apps/linux/tray-vm/` is the scripted Debian guest that found it — Qt debug symbols and
+  valgrind, which the 2 GB Raspberry Pi the crash was first read on could not give — and it
+  reproduces on demand: ten launches of ten survive as shipped, none with a submenu put back.
+  `docs/crucible/promotion.md` has the finding.
 
 - **The room page described Windows' application list on Linux.** Windows keeps an audio session
   while an application holds the device open, so a paused player stays listed and greys;

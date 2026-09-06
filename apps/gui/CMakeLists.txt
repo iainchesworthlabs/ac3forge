@@ -9,6 +9,15 @@
 # ---------------------------------------------------------------------------
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent LinguistTools)
 
+# The kit's version, out to the top level, for apps/notices/notices.cmake's Qt
+# section: that file is include()d from the top-level CMakeLists.txt and cannot
+# read Qt6_VERSION, which find_package set in THIS directory's scope only.
+# PARENT_SCOPE for exactly the reason apps/crucible/CMakeLists.txt exports
+# AC3FORGE_CRUCIBLE_X11_BACKEND the same way. REQUIRED above is what lets the
+# notices treat AC3FORGE_BUILD_GUI=ON as "a Qt kit was found": the two cannot
+# disagree, because a missing kit fails the configure on this line.
+set(AC3FORGE_GUI_QT_VERSION "${Qt6_VERSION}" PARENT_SCOPE)
+
 qt_standard_project_setup(REQUIRES 6.5)
 
 qt_add_executable(ac3gui
@@ -23,6 +32,8 @@ qt_add_executable(ac3gui
     stream_player_controller.hpp
     channel_geometry.cpp
     channel_geometry.hpp
+    gui_diagnostics.cpp
+    gui_diagnostics.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp
@@ -191,10 +202,19 @@ qt_add_resources(ac3gui "ac3gui_icons"
 # relying on the deferred/auto-collected path here either, so this avoids
 # the failure mode outright rather than trusting the scopes stay aligned).
 # ---------------------------------------------------------------------------
+# -no-obsolete, the same as apps/crucible's call, and for the same reason:
+# an entry whose source string is gone is kept as translation memory
+# otherwise, and git history is that memory. It also matters to the gate -
+# tests/crucible/test_translations.cpp holds these seven catalogues to
+# carrying nothing unfinished and nothing dead, and without this flag a
+# reworded string leaves its old self behind as a vanished entry and fails
+# that case. Which is how this was found, on 2026-09-06: one note was
+# reworded, six catalogues kept the old wording, and the case named all six.
 qt_add_translations(ac3gui
     IMMEDIATE_CALL
     SOURCE_TARGETS ac3gui
     TS_FILES ${AC3_TS_FILES}
+    LUPDATE_OPTIONS -no-obsolete
     LUPDATE_TARGET ac3gui_lupdate
     LRELEASE_TARGET ac3gui_lrelease)
 
@@ -443,12 +463,17 @@ endif()
 # path lookup and breaks QtQuick.Controls at startup - confirmed empirically
 # in CountdownSolver (R:\CountdownSolver\src\app\CMakeLists.txt), which hit
 # this exact bug and documents it in the same place. Linux packaging instead
-# relies on a declared Qt6 runtime dependency in cmake/Packaging.cmake's DEB
-# generator plus the system's own Qt6 install - not implemented yet here
-# because AC3FORGE_BUILD_GUI defaults OFF on every Linux preset (see
-# CMakePresets.json), so this bug cannot bite in CI until someone turns it on
-# for a packaging build. Do not "fix" this by adding the WIN32 OR APPLE
-# guard below back in for Linux too.
+# relies on the system's own Qt6 install plus a declared runtime dependency on
+# it in cmake/Packaging.cmake's DEB generator, which is now written: see that
+# file's CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS block for the qml6-module-* list
+# and, more to the point, for why dpkg-shlibdeps cannot work that list out on
+# its own whatever the Qt kit came from. This comment used to say the
+# dependency was not implemented "yet" and could not bite in CI because
+# AC3FORGE_BUILD_GUI defaults OFF on every Linux preset. Both halves had gone
+# stale: .github/workflows/_build.yml's four Linux legs carry `gui: true`
+# alongside `packageable: true`, so ac3gui has been going into a released .deb
+# with nothing declaring the QML runtime it needs. Do not "fix" the qt.conf
+# problem above by adding the WIN32 OR APPLE guard below back in for Linux too.
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
 
@@ -476,6 +501,23 @@ if(WIN32 OR APPLE)
     # Without this, that install would silently skip the whole deploy step
     # and stage an ac3gui.app with no Qt inside it.
     install(SCRIPT "${AC3_GUI_DEPLOY_SCRIPT}" COMPONENT runtime)
+endif()
+
+# The same defect the Crucible has, in the same place and for the same reason:
+# the deploy script above scans THIS directory for QML imports, tests/qml/
+# tst_*.qml all `import QtTest`, and the runtime zip and the NSIS installer
+# have been carrying qml/QtTest/, Qt6Test.dll and Qt6QuickTest.dll ever since.
+# Only ac3gui_qmltests loads any of it, and that binary is not installed.
+# cmake/StripQtTestDeployment.cmake has the measurement.
+#
+# WIN32 only, not WIN32 OR APPLE like the block above: a macOS .app keeps its
+# deployed Qt inside the bundle, and there is no macOS host here to confirm
+# where these three land in it (the same reason the DragNDrop generator's
+# shape in cmake/Packaging.cmake is reasoned about rather than measured). The
+# .dmg still carries Qt Test until someone can check that on a Mac.
+if(WIN32)
+    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/StripQtTestDeployment.cmake"
+        COMPONENT runtime)
 endif()
 
 # ---------------------------------------------------------------------------

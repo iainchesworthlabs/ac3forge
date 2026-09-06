@@ -64,7 +64,7 @@ live demos, with the npm package listed among the library's bindings.
 | Tests and checks | most of `ac3tests`; `tests/capi`, `python/tests`, `apps/wasm/tests`; coverage floors `src/*` (`tools/checks/coverage_report.sh:108-116`); abi-gate; fuzz.yml; interop.yml | `tests/cli`, `tests/gui`, `ac3gui_qmltests` (label `gui`); floor `apps/cli` (:117); `.clang-tidy:95` | `tests/crucible` (compiled into `ac3tests`, `tests/CMakeLists.txt:436-456`), `ac3crucible_qmltests`; labels `crucible`, `crucible-ui`; `tools/ci/check_crucible_package.py`; `tools/checks/coverage_crucible.ps1`, `crucible_platform_probe.cpp` |
 | Docs | Library (22 pages), Concepts (4), Validation, Threat model, Conformance vectors, Performance & quality (6), `platforms/wasm.md`, the two WASM demo pages | CLI reference (3), GUI guide (12) | Crucible guide (5), `platforms/windows-demo.md` (the record), `platforms/windows-driver-acx.md` |
 | Packages | `ac3forge-dev-<full>-<sys>`; DEB `libac3forge0`, `libac3forge-dev`; RPM `libac3forge0`, `ac3forge-devel`; PyPI `ac3forge` (live); npm `ac3forge-wasm-decoder` (unpublished); crates `ac3forge`, `ac3forge-sys` (unpublished); vcpkg port and Conan recipe `ac3forge` (staged); `ac3forge-conformance-vectors-<ver>.tar.gz` | component `runtime`: `ac3forge-<M.m.p>-<sys>` zip/tgz, NSIS `.exe`, DEB/RPM `ac3forge`, `.dmg`; `ac3gui-*.AppImage`; winget `iainchesworthlabs.ac3forge` (4 versions staged); Homebrew formula `ac3forge` and cask `ac3gui` (live tap) | component `crucible`: `ac3forge-crucible-<full>-<sys>` zip/tgz, DEB/RPM `ac3forge-crucible` (no tag contains it yet) |
-| CI | all 11 matrix legs; `build-rust`, `build-wasm`, `build-footprint`; wheels.yml, npm.yml | legs with `gui: true` (Linux GCC/LLVM, both arm64, both macOS; Windows always); `linux-appimage`; ffmpeg-validate builds `ac3cli` | `crucible: true` on windows-msvc, windows-llvm, linux-llvm (`_build.yml:329,342,430`); `windows-driver` |
+| CI | all 11 matrix legs; `build-rust`, `build-wasm`, `build-footprint`; wheels.yml, npm.yml | legs with `gui: true` (Linux GCC/LLVM, both arm64, both macOS; Windows always); `linux-appimage`; ffmpeg-validate builds `ac3cli` | `crucible: true` on windows-msvc, windows-llvm, linux-llvm, linux-llvm-arm64 (`_build.yml:329,342,430,487`); `windows-driver` |
 | Settings and ids | none | QSettings `ac3forge`/`ac3forge`; bundle id `com.iainchesworthlabs.ac3gui`; ProgID `AC3Forge.Stream` | QSettings `ac3forge`/`Crucible` (migrated from `DesktopAtmos`, `apps/crucible/ui/main.cpp:38-60`); no bundle id yet |
 
 Three things do not sit in one column and the plan says where they go.
@@ -162,21 +162,31 @@ page rather than discovered.
 | driver `Ac3ForgeNullSink` (`.sln`, `.inx`, `.sys`, `.cat`, service, `ROOT\Ac3ForgeNullSink`); INF strings "Desktop Atmos"; artifact `ac3forge-nullsink-driver-testsigned` | Crucible | `apps/windows/driver`; `_build.yml:3111` | test-signed; frozen | strings change at signing time, ids kept | frozen after attestation is paid for |
 | release-wide `ac3forge-<bare>.spdx.json`, `ac3forge-signing-key.asc`, `ac3forge-conformance-vectors-<ver>.tar.gz`, `SHA512SUMS`, `gh attestation verify --repo iainchesworthlabs/ac3forge` | family | `release.yml:370,394`; `_build.yml:1325`; docs/releasing.md | shipped | unchanged | the verify snippets users may have saved |
 
-Three release-shape facts are open and the first tag that contains Crucible freezes them
-([decision 13](#decisions)):
+The first tag that contains Crucible freezes three release-shape facts ([decision
+13](#decisions)). All three are settled: two changed, and one was examined and deliberately left
+as it is.
 
-1. **The Linux Crucible package is a run artifact, not a release asset.** The linux-llvm leg
-   uploads it as `ac3forge-crucible-linux-<preset>` (`_build.yml:1507`), outside the
-   `packages-*` pattern release.yml downloads (`release.yml:279`); docs/releasing.md:578-581
-   records this as the next step. A `packages-crucible-<preset>` name is the one-line fix, and
-   the `.deb`, `.tar.gz` globs in release.yml's signing and attestation steps already cover it.
-2. **Two version-string styles in one release.** The runtime archive, `.exe` and `.dmg` carry
+1. **The Linux Crucible package is a release asset.** *Settled.* Both linux-llvm legs package the
+   component on every run and upload it as `packages-crucible-<preset>`
+   (`_build.yml:1652-1660`, renamed in 99d08210), which is the `packages-*` pattern release.yml
+   downloads (`release.yml:275-279`) and attaches file by file (`:538-549`); the `.deb` and
+   `.tar.gz` globs in release.yml's checksum, signing, provenance and SBOM steps cover both
+   files. One thing stays true of that route: neither leg carries `release_package`, so the
+   packages ride on the artifact glob rather than on a release gate. The other qualification
+   recorded here — that the leg was x86_64 alone, so no release carried an aarch64 Linux Crucible
+   package — closed on 2026-09-06, when linux-llvm-arm64 took the same pass and its own pair
+   joined the same artifact glob ([the promotion plan](../crucible/promotion.md), Phase 8,
+   records what that took and what it asserts). No tag has been cut since, so the route is
+   wired and not yet exercised by a published release.
+2. **Two version-string styles in one release.** *Deliberate*, and [decision
+   13](#decisions) says why. The runtime archive, `.exe` and `.dmg` carry
    `M.m.p` (`cmake/Packaging.cmake:357-360`; the cask parses it, `Casks/ac3gui.rb:45-54`); the
    `crucible` and `dev` archives carry `PROJECT_VERSION_FULL` with the prerelease suffix
    (:363-365).
-3. **docs/releasing.md:644 and :785 say no leg is `experimental: true`**, while
-   `windows-msvc-arm64` is both `experimental: true` and `release_package: true`
-   (`_build.yml:388-393`). One of them is wrong.
+3. **The experimental claim.** *Settled.* docs/releasing.md said no leg was `experimental: true`
+   while `windows-msvc-arm64` was both `experimental: true` and `release_package: true`
+   (`_build.yml:388-393`). That page now says what the workflow does: the leg ships packages,
+   and `continue-on-error` means a failure there does not block the release.
 
 A fourth, cosmetic and already noted in `cmake/Packaging.cmake:183-191`: every DEB component's
 one-line synopsis is the library's `PROJECT_DESCRIPTION`, so `apt show ac3forge-crucible` opens
@@ -315,8 +325,8 @@ jobs; `ci.yml` aggregates 22 jobs behind the required check `CI Status`
 | windows-llvm | library, Forge, Crucible | `packageable`, `crucible` |
 | windows-msvc-arm64 | library, Forge (CLI only) | `experimental`, `packageable`, `release_package` |
 | linux-gcc, linux-gcc-arm64 | library, Forge | `gui`, `packageable`, `release_package` |
-| linux-llvm | library, Forge, Crucible (the only PipeWire pass) | `gui`, `packageable`, `crucible` |
-| linux-llvm-arm64 | library, Forge | `gui`, `packageable` |
+| linux-llvm | library, Forge, Crucible (the PipeWire pass, x86_64) | `gui`, `packageable`, `crucible` |
+| linux-llvm-arm64 | library, Forge, Crucible (the same pass, aarch64) | `gui`, `packageable`, `crucible` |
 | linux-llvm-asan-ubsan, linux-llvm-tsan | library | |
 | macos-llvm, macos-llvm-x64 | library, Forge | `gui`, `packageable` |
 | package-macos-universal, linux-appimage | Forge | |
@@ -365,7 +375,6 @@ state true everywhere before the family is drawn over it.
   the mark as a generic name; `Application audio mixer` or similar. The six
   `ac3crucible_*.ts` files still carry `Desktop Atmos` as source text (13 in `ac3crucible_de.ts`):
   `cmake --build <dir> --target ac3crucible_lupdate` regenerates them.
-- `docs/releasing.md:644,785` against `_build.yml:388-393`: the experimental claim.
 - The four CHANGELOG links to `docs/project/history.md` and the three `docs/RESEARCH.md` comments
   in `verify_gold_reference.sh`.
 
@@ -381,7 +390,7 @@ comments and the coverage header describe the tree as it is.
 
 **Verified by:** `cmake --preset config-windows-msvc -DAC3FORGE_BUILD_CRUCIBLE=ON`, build, and
 `ctest --preset test-windows-msvc -L crucible` plus `-L crucible-ui`; the same on Linux with the
-command `docs/crucible/install.md:77-81` gives (`config-linux-gcc`, `-DAC3FORGE_WITH_ALSA=OFF
+command `docs/crucible/install.md:84-90` gives (`config-linux-gcc`, `-DAC3FORGE_WITH_ALSA=OFF
 -DAC3FORGE_WITH_PIPEWIRE=ON`); `mkdocs build --strict`; the greps above; the `.ts` diff shows
 only source-string changes.
 
@@ -450,17 +459,70 @@ link fixes and the wrapper note.
 opening `ROADMAP.md` on GitHub and following each of the DR8 links; a one-off count of
 `**XXn (` lines per section against the table.
 
+!!! success "Done 2026-09-06"
+    `ROADMAP.md` carries a Member column and per-item tags. Each theme states its member once,
+    under the heading, and an item belonging to a different one carries its own tag in the
+    `**UX12 (XL, Crucible)**` form; the rule is written into the file's opening so the next
+    author does not have to infer it from the tags. Forty-eight existing items carry one —
+    every IM, AP, UX and DR item, as decision 9 asked, plus the four IO items that reach the
+    CLI (IO1, IO2, IO8, IO9) and the four VX items that reach an application or the whole
+    repository (VX14, VX15, VX22, VX23), without which those two theme headings would have
+    been false.
+
+    **The recount.** Counted off the sections rather than trusted. Eight themes were right;
+    VX was not — its Shipped column read 19 against 20 items in the section, the drift left by
+    VX22 and VX23 landing after the table was last touched. The UX row this page's design
+    section flagged as 9/0/1 had already been corrected to 9/1/2 by Phase 1, so the only number
+    changed here is VX's.
+
+    **The `CR` code.** `## CR. Crucible` sits between UX and DR. UX11 and UX12 stay where they
+    were written, because their IDs are cited in commits, in CI and in the CHANGELOG, and the
+    new section points back at them; anything opened after the promotion that belongs to
+    `apps/crucible` alone is numbered here instead. It opens with one item, `CR1` — the six
+    mechanically translated languages, regenerated and read by someone who speaks each of
+    them, which is the one item of [the promotion plan](../crucible/promotion.md)'s Phase 6
+    still open — so the new Overview row has something to count. The right-to-left half that
+    note pairs with it is not open: the window took its `LayoutMirroring` root on 2026-09-05
+    and two cases in `tst_shell.qml` hold it, so `CR1` says so and the note is corrected.
+
+    **The links and the wrapper note** were already in, landed with Phase 1's path repointing
+    on 2026-09-05: the two DR8 record links are absolute
+    `https://github.com/.../blob/main/docs/...` URLs and `docs/roadmap.md` carries the rule
+    for the next author. Re-checked here — all nine `](…)` hrefs in the file are absolute, so
+    the exit condition holds.
+
+    **What this week had made false**, corrected while reading the file: UX12 said the
+    receiver's lock was not yet read off its display, which DR9's own row in the same file
+    already contradicted, so the reading ("Atmos/DD+" at 7.1) now appears in both; the
+    accessibility pass was listed as still open and landed 2026-09-05; and the 2026-09-06 work
+    — the room and settings pages of the guide, and the tests over the tray, the Linux session
+    monitor and the Linux silent device — was not in the entry at all.
+
+    **What the review pass then found**, all of it claims the file made about itself. UX12 said
+    the Linux package was not yet a release asset; the pre-tag section above already records
+    that as settled - the leg uploads it as `packages-crucible-<preset>`, which is
+    `release.yml`'s `packages-*` pattern - so the entry now says what the workflow does. DR9's
+    one-line summary still read "PipeWire remain unconfirmed" against its own record's
+    "PipeWire: confirmed 2026-09-05", and the re-wrap had joined its hard-wrapped `Windows/`
+    and `WASAPI` with a space. Two theme headings overstated themselves: UX's said Forge,
+    Crucible or the library while four of its items are the library's and two are shared, and
+    IM's said both its tagged items land in the CLI when IM7 lands in the GUI's live room.
+
+    Every summary that gained a tag was re-wrapped to the file's own 94-column measure, so the
+    tags added no over-long line to a file that already had eight.
+
 ### Phase 6: packaging and release shape
 
-Depends on decisions 5, 6, 13 and 14. Under S1 nothing renames; this phase lands the three
-pre-tag facts: the `packages-crucible-<preset>` artifact name and its row in docs/releasing.md's
-table (:548-554), one version-string style in `cmake/Packaging.cmake:357-365` with the two
-asserts in `_build.yml:1478-1500` and `tools/ci/check_crucible_package.py`'s docstring following,
-and the experimental claim reconciled. `CPACK_COMPONENT_<C>_DESCRIPTION` strings say which member
-each component is, for the generators that show them.
+Depends on decisions 5, 6, 13 and 14. Under S1 nothing renames. Two of the three pre-tag facts
+are in already: the artifact is `packages-crucible-<preset>` (`_build.yml:1652-1660`), and
+docs/releasing.md's table (:571-581) carries a row for each Linux Crucible package, x86_64 and
+aarch64, and one for the Windows zip. The third, one version-string style in
+`cmake/Packaging.cmake:357-365`, was examined under decision 13 and refused, and the two styles
+are documented instead. What is left for this phase is the `CPACK_COMPONENT_<C>_DESCRIPTION`
+strings, which say which member each component is, for the generators that show them.
 
-**Exit:** a release dry run publishes `ac3forge-crucible-*` for Linux beside the Windows zip, and
-every filename in the release follows one rule.
+**Exit:** a release dry run produces `ac3forge-crucible-*` for Linux beside the Windows zip among
+its collected artifacts, and each component's description names its member.
 
 **Verified by:** `cpack --preset pack-windows-msvc` and
 `python tools/ci/check_crucible_package.py packages/ac3forge-crucible-*.zip` locally; the

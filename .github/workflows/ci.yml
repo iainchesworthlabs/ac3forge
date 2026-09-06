@@ -660,6 +660,16 @@ jobs:
       # Qt-free class (RecordingSink) is already in ac3tests. See
       # tools/checks/coverage_report.sh's header for the same note beside the
       # threshold table.
+      #
+      # apps/crucible is the other tree missing from this table, and for the
+      # same reason - but it IS gated, elsewhere. Its floor lives in
+      # tools/checks/coverage_crucible.ps1 (line and branch over apps/crucible,
+      # calibrated 2026-09-05) and runs on the Windows clang-cl leg, where the
+      # Qt kit already is: _build.yml's "Crucible coverage floor" step. The
+      # Qt Quick suites are the only thing that drives Crucible's platform
+      # seams at all, so a Linux figure taken in this job would cover the
+      # platform-free engine core alone while calling itself the
+      # application's coverage.
 
       - name: Upload coverage report
         if: always()

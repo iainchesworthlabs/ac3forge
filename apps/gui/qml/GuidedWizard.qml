@@ -377,7 +377,7 @@ ColumnLayout {
                     Text {
                         anchors.centerIn: parent
                         text: stepEntry.index + 1
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontMono
                         font.family: Theme.monoFamily
                         color: stepEntry.current || stepEntry.completed ? Theme.bg : Theme.text
                     }
@@ -392,7 +392,7 @@ ColumnLayout {
                 }
                 Text {
                     text: stepEntry.modelData.label
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontBody
                     font.weight: stepEntry.current ? Font.DemiBold : Font.Normal
                     color: Theme.text
                     opacity: stepEntry.current ? 1.0 : 0.6
@@ -442,7 +442,7 @@ ColumnLayout {
 
             Text {
                 text: qsTr("Where is the audio coming from?")
-                font.pixelSize: 30
+                font.pixelSize: Math.round(30 * Theme.fontScale)
                 font.family: Theme.headingFamily
                 font.weight: Font.ExtraBold
                 color: Theme.text
@@ -451,7 +451,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: qsTr("A file you already have, or whatever is playing on this machine right now. You can listen before committing to anything.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontNormal
                 color: Theme.neutral700
             }
 
@@ -494,7 +494,7 @@ ColumnLayout {
                         spacing: 2
                         Text {
                             text: qsTr("Files on this computer")
-                            font.pixelSize: 15
+                            font.pixelSize: Theme.fontHeading
                             font.weight: Font.DemiBold
                             color: Theme.text
                         }
@@ -502,7 +502,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: qsTr("One WAV of any width, or several — a 5.1 mix plus the separate sounds you want moving over it.")
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             color: Theme.neutral700
                         }
                     }
@@ -511,7 +511,7 @@ ColumnLayout {
                               ? qsTr("%1 file%2").arg(EncoderController.sourceModel.length)
                                 .arg(EncoderController.sourceModel.length === 1 ? "" : qsTr("s"))
                               : qsTr("choose…")
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSmall
                         font.family: Theme.monoFamily
                         color: Theme.accent700
                     }
@@ -568,7 +568,7 @@ ColumnLayout {
                         spacing: 2
                         Text {
                             text: qsTr("Whatever is playing right now")
-                            font.pixelSize: 15
+                            font.pixelSize: Theme.fontHeading
                             font.weight: Font.DemiBold
                             color: Theme.text
                         }
@@ -576,7 +576,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: qsTr("Captures this machine's own output. Nothing is recorded until you say so.")
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             color: Theme.neutral700
                         }
                     }
@@ -602,14 +602,14 @@ ColumnLayout {
 
                 Text {
                     text: qsTr("What each sound does")
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontHeading
                     font.weight: Font.DemiBold
                     color: Theme.text
                 }
                 Text {
                     Layout.fillWidth: true
                     text: qsTr("Set it here, or leave it — anything unset is flagged before you encode.")
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     elide: Text.ElideRight
                     color: Theme.textMuted
                 }
@@ -629,13 +629,13 @@ ColumnLayout {
                 Text {
                     Layout.fillWidth: true
                     text: qsTr("The meters on the left follow these choices — if they move, you are good.")
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     color: Theme.textMuted
                 }
                 Text {
                     objectName: "wizardOpenAssignments"
                     text: qsTr("Open the full assignment table →")
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.weight: Font.DemiBold
                     color: Theme.accent700
                     Accessible.role: Accessible.Link
@@ -664,7 +664,7 @@ ColumnLayout {
 
             Text {
                 text: qsTr("What are you playing it back on?")
-                font.pixelSize: 30
+                font.pixelSize: Math.round(30 * Theme.fontScale)
                 font.family: Theme.headingFamily
                 font.weight: Font.ExtraBold
                 color: Theme.text
@@ -673,7 +673,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: qsTr("Pick the room you actually have. This sets the channels — you never have to name them yourself.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontHeading
                 color: Theme.neutral700
             }
 
@@ -729,7 +729,7 @@ ColumnLayout {
 
                             Text {
                                 text: setupCard.modelData.title
-                                font.pixelSize: 15
+                                font.pixelSize: Theme.fontHeading
                                 font.weight: Font.DemiBold
                                 color: Theme.text
                             }
@@ -737,13 +737,13 @@ ColumnLayout {
                                 Layout.fillWidth: true
                                 text: setupCard.modelData.body
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSmall
                                 color: Theme.neutral700
                             }
                             Item { Layout.fillHeight: true }
                             Text {
                                 text: setupCard.modelData.detail
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 font.family: Theme.monoFamily
                                 color: Theme.neutral600
                             }
@@ -761,7 +761,7 @@ ColumnLayout {
                 text: qsTr("Currently building %1 · %2 speakers. The plan above the tabs always shows what you will get.")
                       .arg(EncoderController.channelShapeName)
                       .arg(EncoderController.renderedChannelCount)
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 color: Theme.neutral700
             }
 
@@ -772,7 +772,7 @@ ColumnLayout {
                 Text {
                     objectName: "wizardRoomPickerLink"
                     text: qsTr("Pick speakers myself →")
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.weight: Font.DemiBold
                     color: Theme.accent700
                     Accessible.role: Accessible.Link
@@ -787,7 +787,7 @@ ColumnLayout {
                 Text {
                     objectName: "wizardEverythingLink"
                     text: qsTr("Everything, in channel names →")
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.weight: Font.DemiBold
                     color: Theme.accent700
                     Accessible.role: Accessible.Link
@@ -823,7 +823,7 @@ ColumnLayout {
 
             Text {
                 text: qsTr("Tap what is in your room.")
-                font.pixelSize: 30
+                font.pixelSize: Math.round(30 * Theme.fontScale)
                 font.family: Theme.headingFamily
                 font.weight: Font.ExtraBold
                 color: Theme.text
@@ -832,7 +832,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: qsTr("Front left and right are always there. Everything else is yours to add — pairs go in together, because half a pair does not exist.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontNormal
                 color: Theme.neutral700
             }
 
@@ -843,9 +843,24 @@ ColumnLayout {
                 rowSpacing: Theme.space3
                 enabled: !roomPickerScreen.roomLocked
 
-                Text { text: qsTr("A pair of front speakers"); font.pixelSize: 13; font.weight: Font.DemiBold; color: Theme.text }
+                // Each of these four groups answers a question that is only
+                // written in the label in the column beside it - "Yes" and
+                // "No" say nothing on their own - so without a name a reader
+                // announces four unnamed groups of radio buttons and the
+                // person is choosing blind. The name is BOUND to that label
+                // rather than typed again, which is what SegmentedControl.qml's
+                // own accessibleName comment asks callers to do: the two
+                // cannot drift, and it costs no second catalogue entry.
+                Text {
+                    id: roomFrontsLabel
+                    text: qsTr("A pair of front speakers")
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Font.DemiBold
+                    color: Theme.text
+                }
                 SegmentedControl {
                     objectName: "roomFronts"
+                    accessibleName: roomFrontsLabel.text
                     model: [ { value: "on", label: qsTr("Yes") }, { value: "off", label: qsTr("Centre only") } ]
                     currentValue: wizard.roomFronts ? "on" : "off"
                     onSelected: (value) => {
@@ -865,14 +880,16 @@ ColumnLayout {
                 }
 
                 Text {
+                    id: roomCentreLabel
                     text: qsTr("A centre speaker")
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontBody
                     font.weight: Font.DemiBold
                     color: Theme.text
                     opacity: wizard.roomFronts ? 1.0 : 0.4
                 }
                 SegmentedControl {
                     objectName: "roomCentre"
+                    accessibleName: roomCentreLabel.text
                     // A centre-only room IS the centre; only fronts make this
                     // a real choice.
                     enabled: wizard.roomFronts
@@ -884,14 +901,16 @@ ColumnLayout {
                 }
 
                 Text {
+                    id: roomSurroundLabel
                     text: qsTr("Surround speakers")
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontBody
                     font.weight: Font.DemiBold
                     color: Theme.text
                     opacity: wizard.roomFronts ? 1.0 : 0.4
                 }
                 SegmentedControl {
                     objectName: "roomSurround"
+                    accessibleName: roomSurroundLabel.text
                     enabled: wizard.roomFronts
                     opacity: wizard.roomFronts ? 1.0 : 0.4
                     model: [
@@ -904,9 +923,16 @@ ColumnLayout {
                                     wizard.bedFrom(wizard.roomCentre, value, true))
                 }
 
-                Text { text: qsTr("A subwoofer"); font.pixelSize: 13; font.weight: Font.DemiBold; color: Theme.text }
+                Text {
+                    id: roomSubsLabel
+                    text: qsTr("A subwoofer")
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Font.DemiBold
+                    color: Theme.text
+                }
                 SegmentedControl {
                     objectName: "roomSubs"
+                    accessibleName: roomSubsLabel.text
                     model: [
                         { value: "0", label: qsTr("No sub") },
                         { value: "1", label: qsTr("One sub") },
@@ -921,7 +947,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: qsTr("Two subs means two independent low-frequency channels carrying different signal — and, like everything below, it needs Dolby Digital Plus, which the codec follows on its own.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontMono
                 color: Theme.textMuted
             }
 
@@ -933,7 +959,7 @@ ColumnLayout {
 
                 Text {
                     text: qsTr("Anything overhead or extra")
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontBody
                     font.weight: Font.DemiBold
                     color: Theme.text
                 }
@@ -943,7 +969,7 @@ ColumnLayout {
                           .arg(EncoderController.channelBudgetUsed)
                           .arg(EncoderController.channelBudgetMax)
                           .arg(EncoderController.channelShapeName)
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontMono
                     font.family: Theme.monoFamily
                     color: Theme.neutral700
                 }
@@ -988,7 +1014,7 @@ ColumnLayout {
                                 Layout.fillWidth: true
                                 text: roomExtraRow.roomLabels[roomExtraRow.modelData.id]
                                       || roomExtraRow.modelData.label
-                                font.pixelSize: 13
+                                font.pixelSize: Theme.fontBody
                                 font.weight: Font.DemiBold
                                 color: Theme.text
                             }
@@ -1008,7 +1034,7 @@ ColumnLayout {
                                     }
                                     return "";
                                 }
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.textMuted
                             }
                         }
@@ -1023,7 +1049,7 @@ ColumnLayout {
 
                 Text {
                     text: qsTr("This room is a %1.").arg(EncoderController.channelShapeName)
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontHeading
                     font.family: Theme.headingFamily
                     font.weight: Font.ExtraBold
                     color: Theme.text
@@ -1036,7 +1062,7 @@ ColumnLayout {
                 }
                 Text {
                     text: qsTr("Everything, in channel names →")
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.weight: Font.DemiBold
                     color: Theme.accent700
                     Accessible.role: Accessible.Link
@@ -1063,7 +1089,7 @@ ColumnLayout {
                       ? qsTr("Movement is on, so the room is fixed at 5.1 — objects carry the height instead of ceiling speakers.")
                       : qsTr("Dual mono has no room to pick — it is two programmes, not a soundstage.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 color: Theme.accent700
             }
         }
@@ -1076,7 +1102,7 @@ ColumnLayout {
 
             Text {
                 text: qsTr("How good should it sound?")
-                font.pixelSize: 30
+                font.pixelSize: Math.round(30 * Theme.fontScale)
                 font.family: Theme.headingFamily
                 font.weight: Font.ExtraBold
                 color: Theme.text
@@ -1085,7 +1111,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: qsTr("All three make a real Dolby stream any receiver will play. The difference is file size and how much detail survives.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontHeading
                 color: Theme.neutral700
             }
 
@@ -1141,7 +1167,7 @@ ColumnLayout {
 
                             Text {
                                 text: rateCard.modelData.title
-                                font.pixelSize: 18
+                                font.pixelSize: Theme.fontArrow
                                 font.family: Theme.headingFamily
                                 font.weight: Font.ExtraBold
                                 color: Theme.text
@@ -1150,7 +1176,7 @@ ColumnLayout {
                                 Layout.fillWidth: true
                                 text: rateCard.modelData.body
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.neutral700
                             }
                             Item { Layout.fillHeight: true }
@@ -1158,7 +1184,7 @@ ColumnLayout {
                                 text: wizard.vbrQualityMode
                                       ? qsTr("VBR quality %1").arg(rateCard.modelData.vbrQuality)
                                       : rateCard.modelData.detail
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 font.family: Theme.monoFamily
                                 color: Theme.neutral600
                             }
@@ -1188,7 +1214,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: qsTr("Objects over a 5.1 bed want 384 kbps or better — the metadata competes with the audio for the same frame.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 color: Theme.accent700
             }
 
@@ -1204,7 +1230,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: qsTr("A wide room asks more of Good than 192 kbps can give it — the encoder will refuse outright long before it sounds right.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 color: Theme.accent700
             }
         }
@@ -1217,7 +1243,7 @@ ColumnLayout {
 
             Text {
                 text: qsTr("Should anything move?")
-                font.pixelSize: 30
+                font.pixelSize: Math.round(30 * Theme.fontScale)
                 font.family: Theme.headingFamily
                 font.weight: Font.ExtraBold
                 color: Theme.text
@@ -1226,7 +1252,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: qsTr("Sounds can sit in fixed speakers, or travel through the room as objects. Pick a movement and watch it in the room below.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontHeading
                 color: Theme.neutral700
             }
 
@@ -1258,7 +1284,7 @@ ColumnLayout {
 
                         Text {
                             text: qsTr("Stay put")
-                            font.pixelSize: 15
+                            font.pixelSize: Theme.fontHeading
                             font.weight: Font.DemiBold
                             color: Theme.text
                         }
@@ -1266,7 +1292,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: qsTr("Every sound keeps the speaker the assignments gave it. A plain channel bed — smallest, simplest, plays everywhere.")
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             color: Theme.neutral700
                         }
                     }
@@ -1305,7 +1331,7 @@ ColumnLayout {
 
                         Text {
                             text: qsTr("Move around the room")
-                            font.pixelSize: 15
+                            font.pixelSize: Theme.fontHeading
                             font.weight: Font.DemiBold
                             color: Theme.text
                         }
@@ -1313,7 +1339,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: qsTr("Sounds become Dolby Atmos objects with a place — and a path — in the room. Fixes the stream at Dolby Digital Plus over a 5.1 bed and raises the rate to at least 384 kbps.")
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             color: Theme.neutral700
                         }
                     }
@@ -1338,7 +1364,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: qsTr("Adding objects auto-selected the 5.1 bed and E-AC-3 — that is the format objects ride in, not a preference.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 color: Theme.textMuted
             }
 
@@ -1355,7 +1381,7 @@ ColumnLayout {
 
                 Text {
                     text: qsTr("WHAT SHOULD MOVE")
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontMicro
                     font.letterSpacing: 1.5
                     color: Theme.textMuted
                 }
@@ -1387,7 +1413,7 @@ ColumnLayout {
 
                             Text {
                                 text: qsTr("Everything moves")
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontNormal
                                 font.weight: Font.DemiBold
                                 color: Theme.text
                             }
@@ -1395,7 +1421,7 @@ ColumnLayout {
                                 Layout.fillWidth: true
                                 text: qsTr("Every loaded channel becomes its own object — there is no bed left underneath them.")
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.neutral700
                             }
                         }
@@ -1430,7 +1456,7 @@ ColumnLayout {
 
                             Text {
                                 text: qsTr("Keep the bed, add movers")
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontNormal
                                 font.weight: Font.DemiBold
                                 color: Theme.text
                             }
@@ -1438,7 +1464,7 @@ ColumnLayout {
                                 Layout.fillWidth: true
                                 text: qsTr("Leaves an existing mix exactly where it is; only channels not yet assigned to anything — a file added since — become objects.")
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.neutral700
                             }
                         }
@@ -1453,7 +1479,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     text: qsTr("This edits the same per-channel destinations step 1's assignment table shows — change any one there afterwards and it sticks.")
                     wrapMode: Text.WordWrap
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontMono
                     color: Theme.textMuted
                 }
             }
@@ -1468,7 +1494,7 @@ ColumnLayout {
 
                 Text {
                     text: qsTr("GIVE THEM A PATH")
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontMicro
                     font.letterSpacing: 1.5
                     color: Theme.textMuted
                 }
@@ -1522,7 +1548,7 @@ ColumnLayout {
 
                                 Text {
                                     text: trajCard.modelData.title
-                                    font.pixelSize: 14
+                                    font.pixelSize: Theme.fontNormal
                                     font.weight: Font.DemiBold
                                     color: Theme.text
                                 }
@@ -1530,7 +1556,7 @@ ColumnLayout {
                                     Layout.fillWidth: true
                                     text: trajCard.modelData.body
                                     wrapMode: Text.WordWrap
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontMono
                                     color: Theme.neutral700
                                 }
                             }
@@ -1559,7 +1585,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     text: qsTr("A preset is a starting point: every key it writes is on the Objects tab's timeline, where paths are refined one object at a time.")
                     wrapMode: Text.WordWrap
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontMono
                     color: Theme.textMuted
                 }
 
@@ -1575,7 +1601,7 @@ ColumnLayout {
 
                         Text {
                             text: qsTr("PREVIEW — PLAN")
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontMicro
                             font.letterSpacing: 1
                             color: Theme.textMuted
                         }
@@ -1627,7 +1653,7 @@ ColumnLayout {
                               : qsTr("%1 objects on their paths across the programme — the room on the left meters the same encode.")
                                     .arg(EncoderController.objectCount)
                         wrapMode: Text.WordWrap
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSmall
                         color: Theme.neutral700
                     }
                 }
@@ -1642,7 +1668,7 @@ ColumnLayout {
 
             Text {
                 text: qsTr("Where should it go?")
-                font.pixelSize: 30
+                font.pixelSize: Math.round(30 * Theme.fontScale)
                 font.family: Theme.headingFamily
                 font.weight: Font.ExtraBold
                 color: Theme.text
@@ -1651,7 +1677,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 text: qsTr("Save it as a file, or send it straight to a receiver and listen on the real thing.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontHeading
                 color: Theme.neutral700
             }
 
@@ -1683,7 +1709,7 @@ ColumnLayout {
 
                         Text {
                             text: qsTr("Save a file")
-                            font.pixelSize: 15
+                            font.pixelSize: Theme.fontHeading
                             font.weight: Font.DemiBold
                             color: Theme.text
                         }
@@ -1691,7 +1717,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: qsTr("Keeps everything — every channel and every object move.")
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             color: Theme.neutral700
                         }
                         Item { Layout.fillHeight: true }
@@ -1703,7 +1729,7 @@ ColumnLayout {
                                 void EncoderController.containerIndex;
                                 return EncoderController.suggestedOutputName();
                             }
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontMono
                             font.family: Theme.monoFamily
                             color: Theme.neutral600
                         }
@@ -1735,7 +1761,7 @@ ColumnLayout {
 
                         Text {
                             text: qsTr("Play it on my receiver")
-                            font.pixelSize: 15
+                            font.pixelSize: Theme.fontHeading
                             font.weight: Font.DemiBold
                             color: Theme.text
                         }
@@ -1743,7 +1769,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: qsTr("Encodes the same file, then bitstreams it over HDMI as IEC 61937 bursts — the run strip's Play does the sending.")
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             color: Theme.neutral700
                         }
                         Item { Layout.fillHeight: true }
@@ -1761,7 +1787,7 @@ ColumnLayout {
                                     : qsTr("no device here can take this stream")
                             elide: Text.ElideRight
                             Layout.fillWidth: true
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontMono
                             font.family: Theme.monoFamily
                             color: wizard.ampDeviceIndex >= 0 ? Theme.neutral600 : Theme.accent700
                         }
@@ -1782,7 +1808,7 @@ ColumnLayout {
                 Text {
                     objectName: "wizardAmpDeviceChange"
                     text: qsTr("Choose a different device →")
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.weight: Font.DemiBold
                     color: Theme.accent700
                     Accessible.role: Accessible.Link
@@ -1821,7 +1847,7 @@ ColumnLayout {
                          && wizard.ampDeviceIndex < 0
                 text: qsTr("None of the output devices here can bitstream this stream — Play will stay greyed. Pick a different layout or codec, or save a file instead.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 color: Theme.accent700
             }
 
@@ -1829,7 +1855,7 @@ ColumnLayout {
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
             Text {
                 text: qsTr("WHAT YOU ARE ABOUT TO MAKE")
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontMicro
                 font.letterSpacing: 1
                 color: Theme.textMuted
             }
@@ -1874,7 +1900,7 @@ ColumnLayout {
 
                         Text {
                             text: parent.modelData.label
-                            font.pixelSize: 9
+                            font.pixelSize: Theme.fontFine
                             font.letterSpacing: 1
                             color: Theme.textMuted
                         }
@@ -1882,7 +1908,7 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: parent.modelData.value
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             font.family: Theme.monoFamily
                             color: Theme.text
                         }
@@ -1899,7 +1925,7 @@ ColumnLayout {
                 visible: !EncoderController.dualMono && !EncoderController.loudnessTouched
                 text: qsTr("Loudness is measured from the programme and film-standard compression applied — Guided handles this for you.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontMono
                 color: Theme.textMuted
             }
             Text {
@@ -1907,7 +1933,7 @@ ColumnLayout {
                 visible: EncoderController.dualMono && !EncoderController.loudnessTouched
                 text: qsTr("Loudness is measured from each programme on its own and film-standard compression applied to both — Guided handles this for you.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontMono
                 color: Theme.textMuted
             }
 
@@ -1920,7 +1946,7 @@ ColumnLayout {
                     Layout.fillWidth: true
                     text: qsTr("⚠ %1").arg(modelData)
                     wrapMode: Text.WordWrap
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     color: Theme.accent700
                 }
             }
@@ -1968,7 +1994,7 @@ ColumnLayout {
             anchors.margins: Theme.space3
             text: parent.noticeText
             wrapMode: Text.WordWrap
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             color: Theme.accent800
         }
     }
@@ -2008,7 +2034,7 @@ ColumnLayout {
         Text {
             Layout.fillWidth: true
             text: wizard.currentStep.assistant
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             elide: Text.ElideRight
             color: Theme.textMuted
         }

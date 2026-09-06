@@ -32,9 +32,9 @@ standards in C++23, and the two applications built on it.
 
 | Member | What it is | How to get it | Docs |
 |---|---|---|---|
-| **The library** — `ac3::forge` | The codec: encodes and decodes AC-3 and E-AC-3, every coding mode and layout the standards define, every Annex E tool, and Atmos objects via JOC — with MKV/MP4/MPEG-TS muxing, IAB and ADM/BW64 reading, IAMF writing, an AC-4 inspector, live capture and passthrough, loudness QC and object signing beside it. C, Python, Rust and WebAssembly bindings. | `ac3forge-dev-*` archives, and `libac3forge0` plus `libac3forge-dev` (DEB) or `ac3forge-devel` (RPM), from each [release](https://github.com/iainchesworthlabs/ac3forge/releases); `pip install ac3forge`; or build from source | [docs/library/](docs/library/index.md), with the full [capability tables](docs/library/capabilities.md) |
-| **Forge** — `ac3cli` + `ac3gui` | The tooling over the library: a thirty-nine-command CLI, and a Qt Quick workbench with a plan view for placing objects and channel-level metering. One release download carries both. | A release `.zip`/`.tar.gz`/`.dmg`, or the Windows `.exe` installer from the next release tag on; on macOS `brew install iainchesworthlabs/ac3forge/ac3forge` for the CLI and `brew install --cask iainchesworthlabs/ac3forge/ac3gui` for the GUI; the winget submission is blocked on roadmap DR4 | [docs/forge/](docs/forge/index.md), then the [CLI](docs/cli/index.md) and [GUI](docs/gui/index.md) guides |
-| **Crucible** — `ac3crucible` | A desktop application for Windows and Linux that makes every application playing sound an Atmos object the listener places in a room, streamed live over HDMI or decoded to whatever the endpoint takes. Ships its own silent virtual output device on Windows; taps PipeWire on Linux. | Build from source with `-DAC3FORGE_BUILD_CRUCIBLE=ON`; the `ac3forge-crucible-*` archive, `.deb` and `.rpm` ship from the next release tag | [docs/crucible/](docs/crucible/index.md) |
+| **The library** — `ac3::forge` | The codec: encodes and decodes AC-3 and E-AC-3, every coding mode and layout the standards define, every Annex E tool, and Atmos objects via JOC, with loudness metering and the QC gates inside it — and MKV/MP4/MPEG-TS muxing, IAB and ADM/BW64 reading, IAMF writing, an AC-4 inspector, live capture and passthrough, and object signing beside it. C, Python, Rust and WebAssembly bindings. | `ac3forge-dev-*` archives, and `libac3forge0` plus `libac3forge-dev` (DEB) or `ac3forge-devel` (RPM), from each [release](https://github.com/iainchesworthlabs/ac3forge/releases); `pip install ac3forge`; or build from source | [docs/library/](docs/library/index.md), with the full [capability tables](docs/library/capabilities.md) |
+| **Forge** — `ac3cli` + `ac3gui` | The tooling over the library: a forty-one-command CLI, and a Qt Quick workbench with a plan view for placing objects and channel-level metering. One release download carries both. | A release `.zip`/`.tar.gz`/`.dmg`, or the Windows `.exe` installer from the next release tag on; on macOS `brew install iainchesworthlabs/ac3forge/ac3forge` for the CLI and `brew install --cask iainchesworthlabs/ac3forge/ac3gui` for the GUI; the winget submission is blocked on roadmap DR4 | [docs/forge/](docs/forge/index.md), then the [CLI](docs/cli/index.md) and [GUI](docs/gui/index.md) guides |
+| **Crucible** — `ac3crucible` | A desktop application that makes every application playing sound an Atmos object the listener places in a room, streamed live over HDMI or decoded to whatever the endpoint takes. It runs on Windows, where it ships its own silent virtual output device, and on Linux, where it taps PipeWire. A macOS platform half compiles on the two macOS CI legs, where the window's test suites run over it; nobody has launched it on a Mac, and its Core Audio tap has never captured anything. | Build from source with `-DAC3FORGE_BUILD_CRUCIBLE=ON`; from the next release tag, the `ac3forge-crucible-*` archive — a `.zip` on Windows x64, and a `.tar.gz` with a `.deb` beside it on Linux x86_64 and aarch64. CPack carries `.rpm` settings for the component, but no CI leg builds one: an `.rpm` comes from a local `cpack` on a machine with `rpmbuild`. There is no macOS package. | [docs/crucible/](docs/crucible/index.md) |
 
 Nothing here links FFmpeg or any other codec library. The FFmpeg command-line tools are used
 during development as an independent decoder to check output against; the build does not
@@ -58,10 +58,21 @@ your use is your problem to assess, not something this project resolves.
 **Status.** The API is not stable — releases so far are 0.x betas; the Latest release badge
 above shows the current one, and [CHANGELOG.md](CHANGELOG.md) records what each contains. CI
 requires Windows (MSVC, clang-cl), Linux (GCC and Clang, x64 and arm64) and macOS (Homebrew
-LLVM) — CLI and GUI alike on every platform — plus an
-ASan+UBSan leg, a coverage gate over the library, a per-platform
-gold-reference quality gate, dedicated Linux FFmpeg- and ADM-validation legs, and a required
-Android build leg for the Shield TV demo app under `apps/android/`. See
+LLVM, arm64 and Intel), covering the library and Forge's CLI and GUI alike on every one of them.
+Crucible's CI is narrower, and covers the three platforms unevenly: it is built and tested on
+both Windows legs, on both Linux Clang legs against PipeWire, and on both macOS legs, and
+packaged from the Windows MSVC leg and both Linux Clang legs. The macOS legs joined on
+2026-09-06: the first configure there stopped at an install rule, and with that fixed both legs
+compiled and linked the macOS platform half and ran the suites over it — every test passed on
+the Intel leg, and three of Crucible's eleven Qt Quick suites timed out on the Apple Silicon
+one. What a runner cannot do is put any of it near sound: it has no audio device, no desktop
+session and no way to grant the process tap's consent prompt. So no macOS code has captured or
+played anything, and the application has never been launched on a Mac.
+Crucible's Windows null-sink driver has a job of its own, which builds and test-signs the driver
+package and fails on any defect the WDK's driver rule set reports. Beside all that sit an
+ASan+UBSan leg, a coverage gate over the library, a per-platform gold-reference quality gate,
+dedicated Linux FFmpeg- and ADM-validation legs, and a required Android build leg for the Shield
+TV demo app under `apps/android/`. See
 [docs/building.md](docs/building.md#verified-configuration) for exact toolchain versions and
 what each CI leg covers.
 
@@ -81,9 +92,12 @@ An operator who has one can sign with it — see
 indexes a fixed table rather than stating a word count, so it stays CBR; E-AC-3 supports both.
 Enhanced coupling and transient pre-noise processing have no external decode oracle at all, so
 they are scored through the in-repo decoder rather than FFmpeg. Linux audio output has reached
-a real receiver on one machine only, a Raspberry Pi 4B over ALSA; the PipeWire backend has
-not, and macOS output has not been confirmed against hardware at all. No listening test has
-been run anywhere — the quality numbers below are waveform metrics.
+a real receiver on one machine only, a Raspberry Pi 4B: over ALSA on 2026-08-20, and over
+PipeWire on 2026-09-05, where the receiver's own front panel read "5.1 DD+" from a pre-encoded
+fixture and "Atmos/DD+" at 7.1 from Crucible's live path. Windows has not reached a receiver,
+and macOS output has not been confirmed against hardware at all — its Core Audio process tap has
+never captured anything. No listening test has been run anywhere — the quality numbers below are
+waveform metrics.
 
 What that means for object reconstruction, which streams FFmpeg can check independently versus
 which only the in-repo decoder can, and what has and hasn't been confirmed against real audio
@@ -195,9 +209,11 @@ apps/common/    the recording sink, fMP4 folder writer and container input the C
                 Crucible compile in directly; no library target of its own
 
 # Crucible — the desktop application and its Windows driver
-apps/crucible/  AC3Forge Crucible, Windows and Linux: the engine, the ac3crucible-run runner,
-                the ac3crucible window, its translations and packaging, and the spikes the
-                plan was measured with
+apps/crucible/  AC3Forge Crucible: the engine, the ac3crucible-run runner, the ac3crucible
+                window, its translations and packaging, and the spikes the plan was measured
+                with. Windows and Linux run it; the macOS platform half beside them, under
+                engine/platform/macos and ui/platform/macos, compiles and is exercised by the
+                CI suites; the application itself has never been launched on a Mac
 apps/windows/   the Windows-only pieces of Crucible: the Ac3ForgeNullSink driver (MS-PL,
                 separately licensed) and the VMware guest it is verified in
 

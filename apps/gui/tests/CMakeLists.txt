@@ -32,6 +32,8 @@ qt_add_executable(ac3gui_qmltests
     stream_player_controller.hpp
     channel_geometry.cpp
     channel_geometry.hpp
+    gui_diagnostics.cpp
+    gui_diagnostics.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp

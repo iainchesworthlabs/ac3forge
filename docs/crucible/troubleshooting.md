@@ -133,17 +133,21 @@ on the strength of a connect alone, because PipeWire's adapter will accept an IE
 on an analogue jack and render the bursts as noise. If you see a bitstream mode on a
 headphone jack, that gate has been bypassed; report it.
 
-## Linux: there is no tray icon
+## There is no tray icon
 
-There is none to find. The window publishes a tray icon on Windows and not on Linux, and the
-"Keep running in the tray when the window is closed" setting is greyed out there with the reason
-on it. Closing the window quits, and the engine stops with it.
+Crucible publishes one wherever the desktop has somewhere to put it, on both platforms. If none
+appears, your session has no StatusNotifier host — no panel that shows tray icons — and Crucible
+says so: the "Keep running in the tray when the window is closed" setting is greyed out with that
+sentence beside it, and closing the window quits rather than hiding it somewhere you could not
+get it back from.
 
-This is a defect rather than a decision about what Linux users want. Publishing a
-StatusNotifierItem from this window kills the process on the desktops it has been tried on: the
-Raspberry Pi OS desktop took it down on nine or ten launches out of ten, inside Qt's own D-Bus
-delivery, before the window had drawn a frame. `docs/crucible/promotion.md` carries the
-measurements and what has been ruled out.
+Most Linux panels are hosts; some minimal window managers are not. `busctl --user list | grep
+StatusNotifier` says whether anything on your session owns the name.
+
+Builds before 2026-09-06 published no tray on Linux at all, because doing so crashed the window.
+That was a Qt bug — a menu nested inside a tray icon's menu is handed the wrong kind of handle —
+and the tray menu is flat now so it cannot happen. `docs/crucible/promotion.md` has the whole
+finding.
 
 ## Saving a diagnostics file
 

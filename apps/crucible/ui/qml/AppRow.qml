@@ -14,7 +14,31 @@ Rectangle {
     readonly property bool placed: app.slot >= 0
     readonly property string detail: placed
         ? RoomWords.placement(app) + " · " + RoomWords.numbers(app.x, app.y, app.z)
-        : qsTr("bed") + (app.fullscreen ? qsTr(" · full-screen") : "") + (app.silent ? qsTr(" · no audio") : (app.active ? "" : qsTr(" · idle"))) + (app.tapped || app.silent ? "" : qsTr(" · no tap")) + (app.background ? qsTr(" · background") : "")
+        : root.badges()
+
+    // What an unplaced application's line says: the bed it is in, then
+    // whatever else is true of it. Each badge is a word of its own and the
+    // separator is punctuation, so a translator is never handed " · idle"
+    // and left to guess what it attaches to.
+    function badges() {
+        const parts = [qsTr("bed")];
+        if (root.app.fullscreen) {
+            parts.push(qsTr("full-screen"));
+        }
+        if (root.app.silent) {
+            parts.push(qsTr("no audio"));
+        } else if (!root.app.active) {
+            parts.push(qsTr("idle"));
+        }
+        if (!root.app.tapped && !root.app.silent) {
+            parts.push(qsTr("no tap"));
+        }
+        if (root.app.background) {
+            parts.push(qsTr("background"));
+        }
+        return parts.join(" · ");
+    }
+
     implicitHeight: row.implicitHeight + Theme.space4
     color: selected ? Theme.neutral100 : "transparent"
     border.color: selected ? Theme.accent : "transparent"

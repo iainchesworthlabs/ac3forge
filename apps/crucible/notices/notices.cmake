@@ -72,8 +72,25 @@ ac3_generate_notices("${AC3CRUCIBLE_NOTICES_FILE}"
         "VERSION=${PROJECT_VERSION_FULL}"
         "PLATFORM=${AC3CRUCIBLE_NOTICES_PLATFORM}"
         "LOCATION=${AC3CRUCIBLE_NOTICES_LOCATION}"
+        # Which binaries the shared fmt and fonts fragments are talking about.
+        # Those two name no application otherwise, so apps/notices/ (Forge)
+        # takes them verbatim through cmake/Notices.cmake's FRAGMENT_DIR search
+        # path and passes its own values here - see that module's header. The
+        # fonts one stays "The executable" rather than naming ac3crucible: this
+        # package has two binaries and only the window carries the faces, and
+        # the reader is holding the window.
+        "FMT_USERS=ac3crucible and ac3crucible-run"
+        "FONT_USER=The executable"
         "QT_VERSION=${Qt6_VERSION}"
         "QT_SERIES=${AC3CRUCIBLE_QT_SERIES}"
+        # Where this build's Qt sits and how the loader finds it: two
+        # sentences of the shared qt-bundled fragment that are the platform's
+        # to write, set by platform/<os>/components.cmake. Empty on Linux,
+        # whose package bundles no Qt and therefore carries no such fragment -
+        # ac3_generate_notices ignores a token no fragment mentions, which is
+        # why this is passed unconditionally.
+        "QT_PAYLOAD=${AC3CRUCIBLE_QT_PAYLOAD}"
+        "QT_LOOKUP=${AC3CRUCIBLE_QT_LOOKUP}"
         "FMT_VERSION=${AC3CRUCIBLE_FMT_VERSION}"
         "PIPEWIRE_VERSION=${AC3CRUCIBLE_PIPEWIRE_VERSION}"
         "TRACY_VERSION=${AC3CRUCIBLE_TRACY_VERSION}"

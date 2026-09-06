@@ -17,6 +17,9 @@ placement in an E-AC-3 + JOC stream. The third surface is
 push-frame API, a realtime AudioWorklet pipeline, and an hls.js/MSE bridge, answering the fact
 that **Chrome still cannot decode EC-3**
 ([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297) is open).
+That package is named but **not published**: this repository has never released it to npm, so
+building it from `js/` is the only way to get it — see [Publishing](#publishing-roadmap-ux5)
+below.
 The decode demo consumes the package (see "What's reused, what's new" below) rather than
 reimplementing it — see [js/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md)
 for the package's own API docs. The demos exist to prove the codec runs correctly outside a
@@ -132,8 +135,9 @@ in place. Everything the OLD whole-file Embind `Decoder` class used to accumulat
 channel/energy buffers, object position/audio bookkeeping, the stereo fold) now lives in
 `js/src/decode-file.ts`, built on top of `PushDecoder` rather than duplicating it.
 
-`js/` is the published package: `push-decoder.ts` (the typed wrapper over the Embind class above),
-`decode-file.ts` (the whole-file convenience helper the demo's scrub/solo experience needs),
+`js/` is the package itself (not published — see [Publishing](#publishing-roadmap-ux5) below):
+`push-decoder.ts` (the typed wrapper over the Embind class above), `decode-file.ts` (the
+whole-file convenience helper the demo's scrub/solo experience needs),
 `ring-buffer.ts`/`decoder-worker.ts`/`worklet-processor.ts`/`decoder-node.ts` (the realtime
 AudioWorklet pipeline - decode runs in a Worker, since `AudioWorkletGlobalScope` has neither
 `fetch()` nor `TextDecoder`, both of which the Emscripten glue needs; only a lock-free
@@ -210,10 +214,23 @@ pin against yet; whatever `$EMSDK` resolves to is what gets used.
 
 ## Publishing (roadmap UX5)
 
-`ac3forge-wasm-decoder` is **not on the npm registry yet.** The machinery is in place: when
-publishing is turned on the package versions from the same release tag the `ac3forge` PyPI package
-uses (see [docs/releasing.md](../releasing.md#publishing-to-npm)) — `js/package.json` carries a
-`0.0.0-dev` placeholder in the tree, and `npm.yml`'s `publish` job stamps the real version
+`ac3forge-wasm-decoder` has **never been published to npm**, so there is no release of it to
+install; the two things holding that are set out at the end of this section. What the CI does
+today is build, test and `npm pack` the tarball on every pull request and every push to `main`
+touching `js/`, and upload it as an Actions artefact; the `publish` job below it runs only on a
+manual `workflow_dispatch` against a `v*` tag. No date is set for that changing.
+
+Until it does, the way to use the package is to build it from source:
+`cd js && npm ci && npm run build` — the same install and build the `build-wasm` job runs, which
+follows them with `npm test` — then depend on the resulting `js/dist/`. The package embeds no
+`.wasm` of its own, so a consumer also needs the decoder module from `apps/wasm/` (see Build and
+run above). A reader who only wants to see the decoder work needs neither: the [live decode
+demo](../wasm-demo.md) runs it in the browser with nothing installed.
+
+The versioning machinery is in place for the day publishing is turned on: the package would
+version from the same release tag the `ac3forge` PyPI package uses (see
+[docs/releasing.md](../releasing.md#publishing-to-npm)) — `js/package.json` carries a
+`0.0.0-dev` placeholder in the tree, and `npm.yml`'s `publish` job stamps the release version
 immediately before publishing, mirroring CMake's own untagged-build fallback.
 
 Two separate things hold it, and both must be cleared before a tag will publish anything. The
@@ -299,8 +316,8 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
 !!! note "Automated in CI (roadmap VX18a)"
     `apps/wasm/tests/` is a Playwright harness `build-wasm` now runs on every push, right after the
     demo artifact uploads: two projects, one per demo, each serving its own just-built directory.
-    `decode.spec.js` loads `index.html` in a headless Chromium and drives the published
-    package (`js/`'s `decodeFile()` and `Ac3ForgeDecoderNode` — the same calls `demo.js` itself
+    `decode.spec.js` loads `index.html` in a headless Chromium and drives the packaged decoder
+    (`js/`'s `decodeFile()` and `Ac3ForgeDecoderNode` — the same calls `demo.js` itself
     makes) to decode the bundled fixture and assert on its values — `48000 Hz, 6 channels,
     3 Atmos objects, 8.0s`, that the same object's decoded position differs between its
     first and last frame, and — new for roadmap UX5 — that the AudioWorklet pipeline (a Worker
