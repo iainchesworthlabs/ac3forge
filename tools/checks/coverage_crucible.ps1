@@ -137,30 +137,34 @@ Write-Host "`nHTML report: $html\index.html"
 # Component floors, one row per component: <path> <line%> <branch%>, the
 # shape tools/checks/coverage_report.sh uses for src/* and apps/cli.
 #
-# Calibrated 2026-09-05 against the first measurement taken after the Forge
-# recast (docs/crucible/promotion.md, "Measured 2026-09-05"): the `crucible`
-# and `crucible-ui` labels, 99 cases, over a config-windows-llvm-coverage
-# build on the development workstation (clang-cl, Qt 6.10, Quick3D and Qt SVG
-# both present), reading 76.3% of lines (1,036 of 4,369 missed) and 62.2% of
-# branches.
+# Calibrated 2026-09-06 against the first CI run of this gate, on the
+# windows-llvm leg it runs on: 68.5% of lines (1,401 of 4,442 missed) and
+# 55.1% of branches, over the `crucible` and `crucible-ui` labels.
 #
-# The floors sit about two points under that, deliberately close: this exists
-# to hold today's state, not to demand tests nobody has written. Raise them as
-# the suite grows rather than leaving the headroom in place indefinitely -
-# the same instruction coverage_report.sh's own table carries.
+# The number measured on the development workstation the day before was 76.3%
+# and 62.2%, and the eight points between them are not drift. They are the
+# Windows platform seams, which cover far more on a machine with a real audio
+# environment than on a headless runner: session_monitor.cpp read 85.0% of
+# lines here and 34.0% there, default_device.cpp 45.8% and 24.7%,
+# library_devices.cpp 64.3% and 11.9%. Those files enumerate endpoints, walk
+# audio sessions and ask the shell about windows; a runner with no sound
+# device and no desktop takes the early return in each. The workstation figure
+# was the more flattering of two honest measurements, and the gate has to hold
+# on the machine that runs it.
 #
-# Two points and not the library's four to eight, because the sources of drift
-# are different. The library's margin mostly covers gcov reading a couple of
-# points higher under WSL than on a hosted runner; there is no such split here
-# - llvm-cov counts regions off the same instrumented binaries wherever it
-# runs. What CAN move this number is the kit: Qt Quick 3D and Qt SVG are both
+# So the floors are set from the CI reading, about a point and a half under
+# it. That margin is deliberately close: this exists to hold today's state,
+# not to demand tests nobody has written. Raise it as the suite grows rather
+# than leaving headroom in place indefinitely - the same instruction
+# coverage_report.sh's own table carries.
+#
+# What can still move this number is the kit. Qt Quick 3D and Qt SVG are both
 # optional (apps/crucible/CMakeLists.txt), and a build without Quick3D leaves
-# Room3DView.qml and its controller path out of the denominator rather than
-# out of the numerator. Both were present for the measurement and both are
-# present on the CI leg that runs this. If the margin proves too tight on the
-# first CI run, that is the thing to check before lowering anything.
+# Room3DView.qml and its controller path out of the denominator. Both were
+# present on the run this was calibrated against; if the margin ever proves
+# too tight, check that before lowering anything.
 $componentFloors = @(
-    [pscustomobject]@{ Path = 'apps/crucible'; Line = 74.0; Branch = 60.0 }
+    [pscustomobject]@{ Path = 'apps/crucible'; Line = 67.0; Branch = 53.5 }
 )
 
 $exportText = (& $cov export @common '-summary-only' $sources) -join "`n"

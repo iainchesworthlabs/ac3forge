@@ -944,6 +944,26 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     `platform/windows/{default_device,foreground}.cpp` sit near 46%, because their other half
     is what a machine with a real endpoint and a real front window does.
 
+!!! success "Measured 2026-09-06: the same suite on a runner, and why it reads eight points lower"
+
+    The first CI run of the coverage gate read **68.5% of lines** (1,401 of 4,442 missed) and
+    **55.1% of branches** over the same two labels on the windows-llvm leg. The eight points
+    between that and the day before are not drift, and they are worth knowing before anyone
+    tries to explain a future dip: they are the Windows platform seams, which cover far more on
+    a machine with a real audio environment than on a headless runner.
+
+    | file | workstation | runner |
+    |---|---|---|
+    | `platform/windows/session_monitor.cpp` | 85.0% | 34.0% |
+    | `platform/windows/default_device.cpp` | 45.8% | 24.7% |
+    | `engine/library_devices.cpp` | 64.3% | 11.9% |
+
+    Those three enumerate endpoints, walk audio sessions and ask the shell about windows. A
+    runner with no sound device and no desktop takes the early return in each, so the code below
+    it never runs. Both readings are honest; the runner's is the one a gate has to hold on, so
+    the floor is calibrated from it and the workstation figure is kept here as the ceiling the
+    same suite reaches when the machine can answer.
+
     The Linux platform half barely appears here, and it is worth being exact about why. The
     Catch2 binary links `tests/crucible/platform_services_stub.cpp`, which supplies every
     `platform_*()` factory, so no platform seam is compiled into it on any operating system.
