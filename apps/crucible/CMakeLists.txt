@@ -562,7 +562,17 @@ else()
     # targets the build tree). COMPONENT crucible, not runtime: the demo is
     # its own download rather than something an ac3cli/ac3gui user is given
     # (cmake/Packaging.cmake).
-    install(TARGETS ac3crucible RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT crucible)
+    # BUNDLE DESTINATION as well as RUNTIME, because MACOSX_BUNDLE is on for
+    # this target above and CMake refuses an install() of a bundle executable
+    # that does not say where the .app goes - which is exactly how the first
+    # macOS configure of this application failed, on 2026-09-06. The dot is
+    # the archive root, the same place apps/gui puts ac3gui.app, so a .dmg
+    # opens on the application rather than on a bin/ directory. RUNTIME is
+    # still needed: it is what Windows and Linux use, where the target is not
+    # a bundle and this keyword is ignored.
+    install(TARGETS ac3crucible
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT crucible
+        BUNDLE DESTINATION "." COMPONENT crucible)
     # Only where the package carries its own Qt. On Linux the system's Qt is
     # the one the binary was built against and the loader finds it, so the
     # package ships none (docs/releasing.md); left to run there, this script

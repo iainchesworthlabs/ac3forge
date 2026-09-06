@@ -1563,6 +1563,20 @@ jobs:
       - name: Build AC3Forge Crucible (Linux, PipeWire)
         if: matrix.crucible && runner.os == 'Linux'
         shell: bash
+        # This tree configures itself rather than reusing the matrix Configure
+        # step's, so it needs that step's version override too - and needs it
+        # through env: for the same template-injection reason (zizmor). Without
+        # it, the packages this step cpacks below carry whatever `git describe`
+        # finds, which on release.yml's workflow_dispatch path is the PREVIOUS
+        # release: the tag is pushed only after build/package/sign/attest all
+        # succeed, so it does not exist while this runs (see
+        # cmake/GitVersionDerivation.cmake). This step has no do_package or
+        # release_package gate and its upload below uses the packages-* name
+        # release.yml collects, so a mis-stamped ac3forge-crucible-<previous
+        # version> would be attached to the release beside correctly versioned
+        # assets.
+        env:
+          VERSION_TAG_INPUT: ${{ inputs.version_tag }}
         run: |
           set -euo pipefail
           if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
@@ -1594,9 +1608,17 @@ jobs:
             qml6-module-qtquick-dialogs qml6-module-qt-labs-folderlistmodel \
             qml6-module-qt-labs-platform qml6-module-qtqml-workerscript qml6-module-qtqml-models \
             qml6-module-qtquick3d qml6-module-qttest
+          # Passed unconditionally rather than through the optional-argument
+          # array the other two configure sites build up: they accumulate
+          # several optional arguments, this has exactly one, and an EMPTY
+          # override is explicitly a no-op - cmake/GitVersionDerivation.cmake
+          # tests `NOT "${DERIVED_VERSION_OVERRIDE}" STREQUAL ""` and falls
+          # through to `git describe` when it is, which is what every ordinary
+          # CI run wants.
           cmake --preset config-${{ matrix.preset }} -B build/crucible \
             -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_BUILD_TESTS=ON \
             -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON \
+            -DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT" \
             2>&1 | tee /tmp/crucible-configure.log
           grep -q 'Audio backend  : pipewire' /tmp/crucible-configure.log || {
             echo "::error::Crucible was configured but the PipeWire backend was not selected; \
@@ -1684,24 +1706,38 @@ jobs:
             exit 1
           }
 
-      # A release asset: packages-*, because that is the pattern release.yml
-      # downloads, so the tarball and the .deb are attached to the release,
-      # checksummed, signed and attested beside every other package. No tag
-      # has been cut since the rename, so the route is wired rather than
-      # exercised. Empty on the Qt-too-old skip above, on purpose -
-      # if-no-files-found: ignore lets a release publish without them rather
-      # than fail on something unrelated to the change.
+      # packages-*, because that is the pattern release.yml downloads
       # (release.yml's "pattern: packages-*"). Under the old name the Linux
       # Crucible package was built and checked on every run and then collected
       # by nothing, so a release could not carry it however green the leg was.
+      #
+      # With that name it IS a release asset: release.yml merges every
+      # packages-* artifact into one directory and attaches every file it
+      # finds there, so this rides along without being a release_package leg -
+      # which is why the configure above has to pass the version override like
+      # any other release-bound build. What it is not is a GUARANTEED asset:
+      # this step is skipped whole on a runner whose Qt is too old (see the
+      # step above), and if-no-files-found stays `ignore` for exactly that
+      # case, so release.yml's completeness check deliberately does not
+      # require it.
       - name: Upload the AC3Forge Crucible Linux package
         if: matrix.crucible && runner.os == 'Linux'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: packages-crucible-${{ matrix.preset }}
+          # The .sha512 side-cars too, the same way the main "Upload package
+          # artifacts" step above lists one per extension: cpack writes a
+          # checksum beside every package it produces
+          # (CPACK_PACKAGE_CHECKSUM in cmake/Packaging.cmake), and
+          # docs/releasing.md says every package ships with one. Listing only
+          # the packages themselves left both checksums behind on the runner,
+          # so these two assets alone reached a release without the per-file
+          # checksum every other asset carries.
           path: |
             build/crucible/packages/ac3forge-crucible-*.tar.gz
+            build/crucible/packages/ac3forge-crucible-*.tar.gz.sha512
             build/crucible/packages/ac3forge-crucible_*.deb
+            build/crucible/packages/ac3forge-crucible_*.deb.sha512
           if-no-files-found: ignore
 
       # The pass above is portable across Linux legs, which is why the arm64

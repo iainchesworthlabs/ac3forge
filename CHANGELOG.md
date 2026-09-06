@@ -36,13 +36,12 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   needs the PipeWire backend: a Crucible build against ALSA is refused at configure time,
   since ALSA has no per-application streams to tap. The window builds and its Qt Quick
   tests pass on Linux; the `crucible` CPack component produces an
-  `ac3forge-crucible-<version>-Linux-x86_64.tar.gz` and an `ac3forge-crucible` `.deb`
-  (depending on `pipewire` and a session manager, carrying no Qt of its own), and a release
-  carries both - the Linux LLVM leg is the one leg built against PipeWire, and it uploads
-  them under the `packages-*` name the release workflow collects. That leg is x86_64, so
-  there is no aarch64 Linux package, and it carries no `release_package`, so the two files
-  ride on the artifact glob rather than on a release gate. No tag has been cut since that
-  wiring landed, so the route is configured rather than exercised. Settings on
+  `ac3forge-crucible-<version>-Linux-<arch>.tar.gz` and an `ac3forge-crucible` `.deb`
+  (depending on `pipewire` and a session manager, carrying no Qt of its own), for x86_64 and
+  aarch64 alike. Both ship in a release: the release legs build against ALSA and cannot produce
+  them, but the Linux LLVM legs' Crucible pass uploads them under the artifact name the release
+  job collects. They are the one package a release is not guaranteed to carry, since that step
+  skips itself on a runner whose Qt is older than 6.8. Settings on
   Linux say "Create device" where Windows says "Install driver", and show no driver folder.
   On 2026-09-05 the whole path was confirmed against a receiver: an application tapped through
   PipeWire, encoded live as E-AC-3 with a JOC object layer and a signed object container, read
@@ -343,6 +342,40 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **Every Linux and macOS package shipped without the `ac3cli` man page or any of the four
+  shell completions** (`apps/cli/CMakeLists.txt`). The generated `ac3cli.1` and the
+  bash/zsh/fish/PowerShell completion scripts were guarded by `if(CMAKE_CROSSCOMPILING)` on the
+  understanding that this meant the arm64 cross legs. It does not: CMake sets that flag whenever
+  a toolchain file supplies `CMAKE_SYSTEM_NAME`, whether or not the target differs from the host,
+  and every Linux and macOS preset chainloads a toolchain file that sets it unconditionally. So
+  both Linux `.tar.gz`, both `.deb`, both `.rpm` and the universal `.dmg` carried none of the
+  five files. Windows was unaffected (its toolchains set only `CMAKE_SYSTEM_PROCESSOR`), and the
+  Homebrew formula was the one build that got them - it passes no toolchain file, which is why
+  the only test asserting they exist kept passing. The guard now asks the question it meant to
+  ask, comparing host and target system name and processor, and the configure log says which way
+  it went. `man ac3cli` and tab completion work from a distribution package again; a genuine
+  cross build still skips them, as does Emscripten.
+
+- **A dispatched release would have published the Linux AC3Forge Crucible package stamped with
+  the previous release's version** (`.github/workflows/_build.yml`). That package is built by a
+  step that configures its own tree, and unlike the other two configure sites it passed no
+  `DERIVED_VERSION_OVERRIDE`. On the `workflow_dispatch` release path the tag is pushed only
+  after build, package, sign and attest all succeed, so `git describe` finds the previous release
+  while the build runs - and the step has no release gate, while its artifact name is one
+  `release.yml` collects and attaches. An `ac3forge-crucible-<previous version>` would have gone
+  out beside correctly versioned assets. The same override is now passed there.
+
+- **Three smaller gaps on the same release path** (`.github/workflows/`). The Linux Crucible
+  upload listed only the `.tar.gz` and `.deb`, leaving cpack's `.sha512` side-cars on the runner,
+  so those two assets alone reached a release without the per-file checksum every other asset
+  carries. The `SHA512SUMS` generator's glob omitted `*.AppImage`, alone among five otherwise
+  identical globs, so the AppImage had a side-car but no line in the aggregate manifest.
+  And the release job asserted only that at least one package existed, so an `experimental` leg
+  dying - which `continue-on-error` keeps out of the job's own status - would have published a
+  release silently missing that platform, while `docs/releasing.md` told the maintainer that
+  could not happen. It now names every package the documentation promises and fails on whatever
+  is absent, listing what did arrive.
+
 - **Crucible listed every PulseAudio application on Linux as one entry, and could tap none of
   them** (`src/audio/src/backend/pipewire/pipewire_support.hpp`). PipeWire records the process
   behind a client from the socket credentials, and the session list and the per-process tap both
@@ -368,6 +401,15 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   start playing and leave when they stop. The sentence is now `SessionMonitor::listing_rule()`,
   one paragraph from each platform, and `docs/crucible/troubleshooting.md` leads with it.
 
+- The three unlabelled `<input>` elements in the WASM demos now carry an `aria-label`: the
+  stream picker and the seek slider in the decode demo, and the WAV picker in the encode one.
+  A screen reader announced them by type alone ("file upload button", "slider"), with the
+  surrounding text giving the only clue what they were for. `aria-label` rather than a visible
+  `<label>` so nothing moves on the page; the `Format` control beside them already used the
+  wrapping-`<label>` form and keeps it. Found by the first SonarCloud scan
+  (`Web:InputWithoutLabelCheck`). `docs/assets/wasm-decode-demo/` and
+  `docs/assets/wasm-encode-demo/` are re-copied to match, which `docs.yml` compares byte for
+  byte.
 - **The README's decode-accuracy badge disagreed with the page it links to.** Per-channel SNR
   floors taught `docs/performance-quality.md`'s Decode accuracy card to pick a check by its
   tightest per-channel *margin* and report the channel that owns it, but
