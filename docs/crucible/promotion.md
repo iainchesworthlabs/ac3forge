@@ -786,8 +786,27 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     What is left is a timing window. The minimal application survives, so it is reached through
     this window's shape; but removing any one of several unrelated QML blocks moves it, and a
     `Qt.callLater` with an empty body is enough to bring it back, which is the signature of a
-    schedule rather than of a culprit in our own data. That is as far as bisection goes without
-    a sanitiser on a desktop of this kind, and that is the next step.
+    schedule rather than of a culprit in our own data.
+
+    **A second round, 2026-09-06, ruled out four more and left one clue.** glibc's own heap
+    checking, both `MALLOC_CHECK_=3` and `glibc.malloc.check=3`, reports nothing before the
+    fault. The faulting pointer is byte-identical with `MALLOC_PERTURB_` set, so it is not
+    memory that was freed and read back. The binary is built against the same Qt it loads,
+    6.8.2, from the one kit on the machine, so it is not a layout mismatch. And a build
+    configured and compiled from scratch in a fresh tree crashes at the same rate, one launch in
+    eight, so it is not stale generated code in a build directory that has been incrementally
+    built for days.
+
+    The clue is the pointer itself. `0xf9000bf3910003fd` is two AArch64 instructions,
+    `str x19, [sp, #16]` and `mov x29, sp`, which is the opening of a function prologue.
+    Something reads a field, gets code bytes back as a pointer, and dereferences it — a structure
+    read through a pointer that names a function rather than an object.
+
+    That is as far as this hardware takes it. The next step needs Qt debug symbols or an address
+    sanitiser over Qt itself, on a desktop with a StatusNotifier host, and a 2 GB Pi gives
+    neither. The reproducer is small: restore `visible: true` on the `SystemTrayIcon` in
+    `Main.qml`, launch ten times, count. Until someone runs it, the Linux build publishes no
+    tray and says so.
 
     So the Linux build does not publish a tray. `ui/tray_support.hpp` is the seam, one file per
     platform beside `ui/platform/<os>/app_icon_provider.cpp`: Windows asks Qt about the

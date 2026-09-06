@@ -27,11 +27,31 @@
 // moves it, which is the signature of a timing window rather than of a
 // culprit in our own data.
 //
-// So the window does not publish one here. Closing it quits, which
-// Main.qml's onClosing does when this is false, and the Settings page says
-// why rather than offering a setting that cannot work. The next step is a
-// sanitiser build on a desktop of this kind; docs/crucible/promotion.md
-// carries the record.
+// Four more explanations were tested on 2026-09-06 and none of them holds.
+// glibc's own heap checking (MALLOC_CHECK_=3, glibc.malloc.check=3) reports
+// nothing before the fault. The faulting pointer is byte-identical with
+// MALLOC_PERTURB_ set, so it is not memory that was freed and read back. The
+// binary is built against the same Qt it loads, 6.8.2, from the one kit on
+// the machine, so it is not a layout mismatch. And a build configured and
+// compiled from scratch in a fresh tree crashes the same way, one launch in
+// eight, so it is not stale generated code in a long-lived build directory.
+//
+// What the pointer is, is the one solid clue. 0xf9000bf3910003fd is two
+// AArch64 instructions - str x19, [sp, #16] and mov x29, sp - which is the
+// opening of a function prologue. Something reads a field, gets code bytes
+// back as a pointer, and dereferences it. That is a structure read through a
+// pointer that names a function rather than an object, inside Qt's own
+// dbusmenu path, reached by this window's object graph and not by a minimal
+// one.
+//
+// So the window does not publish a tray here, and that stands until someone
+// can run the next step, which needs a machine this size cannot give: Qt
+// debug symbols, or an address sanitiser over Qt itself, on a desktop with a
+// StatusNotifier host. The reproducer is small - restore `visible: true` on
+// the SystemTrayIcon in Main.qml, run it ten times, and count. Closing the
+// window quits, which Main.qml's onClosing does when this returns false, and
+// the Settings page says why rather than offering a setting that cannot
+// work. docs/crucible/promotion.md carries the measurements.
 
 namespace ac3::crucible::ui {
 
