@@ -91,10 +91,22 @@ TestCase {
     }
 
     function test_driverBlockReadsTheMachine() {
-        // The silent device is a real thing on this platform, so the block
-        // shows at all. On macOS it would not: the taps mute each
-        // application where they tap it and there is no device to install.
-        verify(CrucibleController.silentDeviceNeeded);
+        // Whether the silent device is a real thing here at all, from the
+        // seam rather than from a platform name. Windows and Linux both need
+        // one; macOS does not, because its taps mute each application where
+        // they tap it, so `needed` is false and the whole block hides.
+        //
+        // This asserted `needed` outright until 2026-09-06, when there were
+        // two platforms and both answered yes; the comment beside it already
+        // said what macOS would do. Now that the third arm exists, the pair
+        // of facts that go with a false answer are asserted instead: there is
+        // no package to install from and nothing for the application to
+        // create either, so neither branch of the install UI is offered.
+        verify(typeof CrucibleController.silentDeviceNeeded === "boolean");
+        if (!CrucibleController.silentDeviceNeeded) {
+            compare(CrucibleController.silentDeviceFromPackage, false);
+            compare(CrucibleController.silentDeviceCanCreate, false);
+        }
         // The blocker is the platform's own sentence and is empty when
         // nothing is in the way, so its content is the machine's business
         // and not this test's - what matters is that it is a string the

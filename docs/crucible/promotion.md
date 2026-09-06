@@ -414,7 +414,10 @@ places one, and encodes; the signal path renders with the null sink as the defau
     no PipeWire session everything degrades by saying so: "no render endpoint can carry any
     mode", no signing key, no applications. The root guard is now
     `WIN32 OR (UNIX AND NOT APPLE)`; macOS is excluded until Phase 5 gives it a platform half,
-    rather than being allowed to configure and then fail to link.
+    rather than being allowed to configure and then fail to link. (Superseded 2026-09-06: Phase
+    5's application half landed and the guard is now `WIN32 OR APPLE OR LINUX`. The reason for
+    having a guard at all is unchanged — a platform with no arm in
+    `apps/crucible/CMakeLists.txt` would configure and then fail to link.)
 
     Two decisions were taken rather than deferred, both stated in the code:
 
@@ -829,6 +832,119 @@ pinned here.
 
 **Exit:** compiles and links on both macOS CI legs and survives the universal merge. **It cannot
 be run**; see below.
+
+!!! note "Written 2026-09-06: the application half exists and has never executed"
+    `apps/crucible/engine/platform/macos/` and `apps/crucible/ui/platform/macos/` are written,
+    and the root guard in `CMakeLists.txt` is now `WIN32 OR APPLE OR LINUX` — macOS is a
+    supported platform rather than an excluded one. **Not one line of it has run.** No Mac has
+    executed any part of this application, the macOS row in
+    [What cannot be verified](#what-cannot-be-verified-and-why) is unchanged, and the most that
+    a green macOS CI leg establishes is that this compiles and links. Every file under both new
+    directories says so at its head, in those words, so a reader who opens one of them first is
+    told before they read anything else.
+
+    The five seams, and what each is over:
+
+    - **`SessionMonitor`** reads `kAudioHardwarePropertyProcessObjectList` and, per process
+      object, `kAudioProcessPropertyPID`, `…BundleID` and `…IsRunningOutput`. Its
+      `listing_rule()` is closer to Linux's than to Windows': the list follows what is using the
+      sound hardware rather than what has a window. It says *both* halves — listed while macOS
+      holds sound open for it, greyed while nothing is coming out — and claims nothing about how
+      long a paused player lingers, because that is exactly the thing one launch would settle
+      and no launch has happened. The macOS 14.0 floor is a real runtime gate
+      (`__builtin_available`, the shape `system_audio_tap_api_available()` already uses), since
+      the deployment target is 13.3; below it the list is empty and the rule says why rather
+      than leaving an empty room unexplained. An application's identity comes from the
+      *outermost* `.app` bundle its executable lies in, which is what puts a browser's audio
+      helper in the room as the browser: Windows' same-image process walk finds nothing here,
+      because the helper is a different binary with a different name inside the same bundle.
+    - **`Foreground`** asks NSWorkspace for the frontmost application and then reports that it
+      **cannot answer**, with which of two reasons applies decided by that call — there is a
+      window session but macOS will not say whether anything fills the screen, or there is no
+      window session at all. It deliberately does not hand back the frontmost pid: the engine
+      pins whatever this returns to the bed, so answering "the window with focus" would move a
+      person's mixer around as they clicked between applications and `support()` would be
+      reporting availability while doing it. `foreground.hpp`'s own rule. What would answer the
+      question is `CGWindowListCopyWindowInfo` bounds against `CGDisplayBounds`, and the file
+      says so, why it was not written here (that family is being deprecated in favour of
+      ScreenCaptureKit, and a deprecation warning is a failed build under `-Werror`, which would
+      break the one claim this code can carry) and what to do about it with a Mac in front of
+      you.
+    - **`DefaultDevice`** reads `kAudioHardwarePropertyDefaultOutputDevice` and never writes it.
+      `moves_default()` is **false**, the only platform where it is, and that is the point: the
+      tap mutes where it taps, so nothing has to be moved and nothing has to be restored on
+      quit. `set_default()` refuses with a sentence saying it does not need to.
+      `FirstRunDialog.qml` was checked before this was relied on — it already computes
+      `movesDefault && silentDeviceNeeded` and renders "Applications are silenced where they are
+      tapped" with "Nothing in your sound settings changes here" when that is false, hiding the
+      device status, the blocker, Send and the restore row with it. No QML needed changing.
+    - **`VirtualDevice`** answers `needed = false`. `how_to_get_one()` is written to read as
+      "nothing to do here" rather than as a missing feature, by naming what happens instead:
+      "nothing to install: macOS silences each application at the point Crucible taps it, so no
+      silent device is needed". `device_name()` is **empty**, because there is no endpoint to
+      name and inventing one would put a device in the room's vocabulary that is not on the
+      machine; every consumer already guards an empty search before using it.
+    - **`AudioDevices`** needed nothing new. That seam is the one platform service that is not
+      per-platform — `engine/library_devices.cpp` forwards it to `ac3::audio`, whose macOS
+      backend already answers — so a `macos/audio_devices.cpp` would have been a duplicate
+      definition of `platform_audio_devices()` and a link error, not a gap.
+
+    The window half is two files. `tray_support.cpp` answers **yes**, through Qt's own
+    `isSystemTrayAvailable()` as Windows does, and the file records why Linux's no was not
+    inherited: every part of the fault measured there is in Qt's D-Bus and dbusmenu path, and
+    macOS puts a `QSystemTrayIcon` in the menu bar as an `NSStatusItem` with no D-Bus anywhere.
+    That is a reason not to copy Linux's refusal and it is **not** evidence that this works;
+    whoever runs Crucible on a Mac first should run the Linux file's own reproducer — ten
+    launches, count the survivors — before trusting it, and the file says so.
+    `app_icon_provider.mm` asks NSWorkspace for a bundle's icon in three rungs (the `.app` path,
+    then the bundle identifier through `URLForApplicationWithBundleIdentifier:`, then the
+    monogram) and follows the Linux provider's threading discipline exactly: parse on Qt Quick's
+    pixmap-reader thread, hop to the GUI thread for every AppKit call with the same bounded
+    2 s wait and the same shared block, cache the null as an answer, scale per request. The
+    reason for the rule differs — AppKit is main-thread-only where `QIconLoader` is an unlocked
+    process-wide cache — and the consequence is identical.
+
+    Two things this needed elsewhere in the tree, both because a third platform arrived where
+    the code had assumed two. `tst_about.qml` inferred "the application makes its own silent
+    device" from `!silentDeviceFromPackage`, which macOS also answers while carrying no PipeWire
+    section, so it now reads `silentDeviceNeeded && !silentDeviceFromPackage`.
+    `tst_settings.qml` asserted `silentDeviceNeeded` outright, in a case whose own comment
+    already said what macOS would do. `tst_platform.qml` gains three macOS cases beside the
+    Linux and Windows ones. None of those has run on a Mac either, and a green run of them
+    would say that the seams say what they were written to say — nothing more.
+
+    Two consequences worth naming. Objective-C++ enters the tree for the first time:
+    `foreground.mm` and `app_icon_provider.mm`, with `enable_language(OBJCXX)` in
+    `apps/crucible/CMakeLists.txt`'s APPLE arm and `CMAKE_OBJCXX_COMPILER` pinned to the C++
+    compiler the toolchain file chose, so the two halves of one target cannot end up built
+    against two standard libraries. And `notices/platform/macos/components.cmake` had to exist
+    or a macOS configure would stop dead: the two Windows-specific sentences in the shared
+    `qt-bundled` fragment are now tokens each platform supplies, and Windows' `NOTICES.txt` is
+    byte-for-byte what it was.
+
+    **Not done.** The library half of Phase 5 — the process tap itself, and the `DeviceWatcher`
+    over the two property listeners — is untouched, so `ac3::audio` still reports
+    `process_loopback` unavailable on macOS and the room lists applications this build cannot
+    capture. `cmake/Packaging.cmake` still gates the Crucible component on `WIN32 OR LINUX`, so
+    there is no macOS package. `SettingsPage.qml`'s two-stage note is not gated on
+    `silentDeviceNeeded` the way the block below it is and would print an empty pair of quotes
+    where the device has no name.
+
+    And the signal path's first station is still drawn where it should not be. `moves_default()`
+    is the first seam answer to come back false, and `default_device.hpp` has said since the
+    seams were extracted on 2026-09-04 that the window "drops the whole first station of the
+    signal path" when it does — which turned out on 2026-09-06 to be the intention rather than
+    the code. What the window really
+    does, read rather than assumed: `FirstRunDialog.qml` branches correctly and hides the whole
+    device step; every "Send applications to …" control in `SignalPath.qml`, `OutputPage.qml`
+    and the tray menu is disabled, because each gates on
+    `nullSinkPresent || silentDeviceCanCreate` and both are false here; the launch-time move sits
+    behind `behaviour/moveDefaultOnLaunch`, which defaults to false. But `SignalPath.qml`'s
+    station 1 itself is not gated on `movesDefault`, so a Mac would show it with the warning
+    "Send applications to the silent device instead" — advice that is wrong on the one platform
+    that needs no silent device. The header's claim has been corrected to say what the code does;
+    the QML has not been changed, because that is a layout change nobody here can run the window
+    to look at.
 
 ### Phase 6: product qualities
 
@@ -1294,6 +1410,15 @@ visible from the platform the code was written on.
 The macOS row is the one to hold in mind while reading Phase 5. The code can be written and
 compiled on CI, and its device-free logic can be unit tested, and none of that establishes that
 it works. The demo page's discipline applies: what is claimed is what was checked.
+
+**The application half of Phase 5 was written on 2026-09-06 and that row did not move.** There
+is now a `macos` directory under both `apps/crucible/engine/platform/` and
+`apps/crucible/ui/platform/`, and macOS is a supported platform in the root `CMakeLists.txt`
+rather than an excluded one — and not one line of any of it has executed. Existing is not
+running. The most a green macOS CI leg can say is that this compiles and links, which is worth
+having for the reason the paragraph below gives and is not worth mistaking for anything else;
+every file in both directories opens by saying so in those words, so the caveat travels with
+the code rather than living only here.
 
 ## Coordination with the driver-signing session
 

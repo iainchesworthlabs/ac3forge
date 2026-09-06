@@ -88,6 +88,16 @@ endif()
 
 set(CMAKE_C_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 set(CMAKE_CXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
+# Objective-C++ is a C++ dialect and has to be given the same C++ standard
+# library, or one target ends up with two. Added 2026-09-06, when
+# apps/crucible/CMakeLists.txt's APPLE arm became the first enable_language(OBJCXX)
+# in the tree: OBJCXX picks up CMAKE_OSX_ARCHITECTURES on its own, but nothing
+# copies CMAKE_CXX_FLAGS_INIT across, so without this the .mm halves of
+# ac3crucible_engine and ac3crucible would compile against whichever libc++ the
+# compiler defaults to while every .cpp beside them uses the one selected
+# below. Inert on a configure that never enables the language. Untested: no
+# macOS build of Crucible has been run from this tree.
+set(CMAKE_OBJCXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 
 # OBJCXX is enabled by src/audio/CMakeLists.txt's APPLE block for exactly one
 # file - src/audio/src/backend/macos/process_tap.mm, the Core Audio process
@@ -115,12 +125,14 @@ if(EXISTS "${_LLVM_LIBCXX_INCLUDE}")
 
     string(APPEND CMAKE_CXX_FLAGS_INIT
         " -nostdinc++ -isystem ${_LLVM_LIBCXX_INCLUDE} -D_LIBCPP_DISABLE_AVAILABILITY")
-    # The same three flags for Objective-C++, so that process_tap.mm resolves
-    # <string>/<vector> to the same libc++ headers, with the same availability
-    # macro, as the .cpp files it shares coreaudio_support.hpp with. Two
-    # translation units disagreeing about which libc++ they are compiling
-    # against is a link error or an ODR surprise rather than a compile error,
-    # which is the kind that survives a green build - see docs/platforms/macos.md.
+    # The same three flags for Objective-C++, so that a .mm resolves <string>
+    # and <vector> to the same libc++ headers, with the same availability
+    # macro, as the .cpp files it shares headers with. This is the half that
+    # would fail quietly: the headers are still found either way, and only
+    # some inline definition differs, so two translation units disagreeing
+    # about which libc++ they compile against is a link error or an ODR
+    # surprise rather than a compile error - the kind that survives a green
+    # build. See docs/platforms/macos.md.
     string(APPEND CMAKE_OBJCXX_FLAGS_INIT
         " -nostdinc++ -isystem ${_LLVM_LIBCXX_INCLUDE} -D_LIBCPP_DISABLE_AVAILABILITY")
 

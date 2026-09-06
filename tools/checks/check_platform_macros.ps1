@@ -64,14 +64,17 @@ if (Test-Path $appsRoot) {
     $scanRoots += $appsRoot
 }
 
-# '*.mm' is on the list for one file: src/audio/src/backend/macos/process_tap.mm,
-# the Objective-C++ seam for Core Audio's process tap (CATapDescription has no
-# C entry point). It is compiled source under src/ like any other, so the rule
-# this script holds applies to it, and an extension the scan does not know
-# about is a hole in that rule rather than an exemption from it. Objective-C++
-# has its own reason to reach for a conditional - @available handles the
-# runtime version question, but __IPHONE_OS_VERSION_MIN_REQUIRED and friends
-# are right there - so this is worth scanning rather than assuming.
+# '*.mm' was added on 2026-09-06 with the first Objective-C++ in the tree:
+# src/audio/src/backend/macos/process_tap.mm, the seam for Core Audio's
+# process tap, and apps/crucible's foreground.mm and app_icon_provider.mm.
+# Those files say in their own headers that this check holds the no-#ifdef
+# rule over them, and that was not true while the extension list stopped at
+# the C and C++ ones. A .mm is where an #ifdef would be most tempting, since
+# it is the one language here that only ever compiles on one operating
+# system, and it has its own conditionals to reach for - @available answers
+# the runtime version question, but __IPHONE_OS_VERSION_MIN_REQUIRED and its
+# neighbours are right there. `#import` is not a conditional and does not
+# match the directive pattern.
 $files = Get-ChildItem -Path $scanRoots -Recurse -File -Include '*.h', '*.hpp', '*.cpp', '*.cc', '*.cxx', '*.inl', '*.mm'
 
 # apps/windows/driver/ is Microsoft's Simple Audio Sample under its own MS-PL
