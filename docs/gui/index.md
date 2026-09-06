@@ -153,7 +153,10 @@ see [Dual mono](format-and-channels.md#dual-mono) for why nothing is shared betw
 
 A real dialog, persisted across sessions (QSettings), three columns:
 
-- **Appearance** — theme (Light / Dark / System) and the **palette** (Signal / Ink / Console /
+- **Appearance** — theme (Light / Dark / System); **Text size** (100% / 125% / 150% / 175% /
+  System, the same five Crucible offers — every size in the window is a multiple of it; see
+  [Keyboard & text size](accessibility.md#text-size) for which panels still hold a fixed height);
+  the **palette** (Signal / Ink / Console /
   System — the last follows the desktop's accent colour where the platform exposes one);
   **Language** (System / English / Français / Deutsch / Español / العربية / עברית / יידיש),
   switching live with no restart — Arabic, Hebrew and Yiddish also mirror the whole window
@@ -181,7 +184,11 @@ A real dialog, persisted across sessions (QSettings), three columns:
   of the session, exactly as the loudness contract already promises for Loudness/Metadata.
   **Capture** — start monitoring as soon as a device is chosen, and whether Record asks for a
   filename or writes straight to the output folder under a timestamped take name. **Command
-  line** — keep the `ac3cli` line visible.
+  line** — keep the `ac3cli` line visible. **Diagnostics** — **Save diagnostics…** writes a
+  plain-text file for a bug report: the versions, the platform, what is loaded, the settings in
+  force and the last messages the window logged. It carries no audio, no part of any file you
+  loaded and no signing key, it is written where you choose, and nothing is sent anywhere — see
+  [Saving a diagnostics file](accessibility.md#saving-a-diagnostics-file).
 
 ## Next
 
@@ -206,6 +213,8 @@ The rest of the guide, in reading order:
     header's own dialog or a finished run's own **More…** menu
 11. [Localisation](localisation.md) — what's translated today, the pseudo-locale QA fixture, and
     how to update or add a language
+12. [Keyboard & text size](accessibility.md) — what can be done without a mouse, what a screen
+    reader is told, the text-size setting, the diagnostics file, and what is still mouse-only
 
 Or start with [Concepts](../concepts/index.md) if terms like "dependent substream" or "JOC" are
 unfamiliar — the GUI uses the same vocabulary as the standards it implements.

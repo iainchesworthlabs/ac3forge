@@ -254,11 +254,40 @@ QtObject {
     readonly property int shadowBlurLg: 32
 
     // ---- type -----------------------------------------------------------
-    // Every size in the app comes from this scale, and the scale is
-    // multiplied by fontScale, which the shell sets from a setting (Crucible:
-    // Settings > Appearance > Text size, "System" reading the platform
-    // theme's own font size). A literal pixelSize in a view is a size that
-    // cannot follow the person's text-size setting, so there are none.
+    // Every size in both windows comes from this scale, and the scale is
+    // multiplied by fontScale, which each shell sets from its own setting -
+    // Crucible: Settings > Appearance > Text size; ac3gui: Preferences >
+    // Appearance > Text size - both reading "System" as the platform theme's
+    // own point size. A literal pixelSize in a view is a size that cannot
+    // follow the person's text-size setting.
+    //
+    // That sentence used to end "so there are none", which was close to true
+    // of Crucible's own views and had never been true of ac3gui. On 2026-09-06
+    // ac3gui's QML still held 377 literal type sizes - 376 font.pixelSize
+    // values and one SegmentedControl.fontSize - and had no text-size setting
+    // at all, so fontScale sat at 1.0 for the life of that process. Two of
+    // those 377 were in RailBlock.qml, which Crucible's build copies into its
+    // own module, so Crucible was carrying them too. The sweep on that date
+    // moved all 377 onto the tokens below; the six one-off sizes the
+    // scale has no rung for (8, 19, 20, 26, 30 and 52) are written inline as
+    // Math.round(n * Theme.fontScale), the form Crucible's own Main.qml
+    // already used for its status pill. Before trusting the claim again:
+    //   grep -n "font.pixelSize: [0-9]" apps/gui/qml/*.qml apps/crucible/ui/qml/*.qml
+    // Three hits are expected and correct: Room3DView.qml sizes text that is a
+    // face INSIDE the 3D scene, in scene units against the room's own 400-unit
+    // width rather than in screen pixels, and each of the three says so where
+    // it stands. Any hit outside that file is a size that has stopped
+    // following the person's setting.
+    //
+    // Type size is only half of it: a control whose HEIGHT is a literal grows
+    // its label inside a box that does not. ac3gui's bed and low-frequency
+    // chips, its command-line chip and its Encode button take their heights
+    // from their own labels, the way Crucible's controls do; the tab bar and
+    // the runs strip are fixed lanes by design (the runs lane's cap is what
+    // stops a layout feedback loop), so they multiply their lane height by
+    // this scale instead. The Guided wizard, the Objects and Live session
+    // tabs and the dialogs do neither yet, and can clip at 175%.
+    // docs/gui/accessibility.md carries that list.
     property real fontScale: 1.0
     readonly property int fontTitle: Math.round(22 * fontScale)
     readonly property int fontArrow: Math.round(18 * fontScale)

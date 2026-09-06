@@ -43,14 +43,14 @@ Dialog {
 
     component AboutKicker: Text {
         Layout.topMargin: Theme.space2
-        font.pixelSize: 10
+        font.pixelSize: Theme.fontMicro
         font.letterSpacing: 1.2
         color: Theme.textMuted
     }
     component AboutBody: Text {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         color: Theme.textMuted
         onLinkActivated: (link) => Qt.openUrlExternally(link)
     }
@@ -82,7 +82,7 @@ Dialog {
 
                 Text {
                     text: qsTr("Forge")
-                    font.pixelSize: 22
+                    font.pixelSize: Theme.fontTitle
                     font.family: Theme.headingFamily
                     font.weight: Font.ExtraBold
                     color: Theme.text
@@ -94,14 +94,14 @@ Dialog {
                     // ac3cli + ac3gui pair; "AC3Forge Forge" is never written.
                     Layout.fillWidth: true
                     text: qsTr("the AC3Forge encoder tools, %1").arg(root.headlineVersion)
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     wrapMode: Text.WordWrap
                     color: Theme.neutral700
                 }
                 Text {
                     Layout.fillWidth: true
                     text: qsTr("Clean-room AC-3 / E-AC-3 encoder — ATSC A/52, ETSI TS 103 420")
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     wrapMode: Text.WordWrap
                     color: Theme.neutral700
                 }
@@ -116,7 +116,7 @@ Dialog {
             Layout.fillWidth: true
             text: appVersionDetails
             font.family: Theme.monoFamily
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             color: Theme.text
             wrapMode: Text.WordWrap
         }

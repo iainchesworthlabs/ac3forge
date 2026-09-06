@@ -27,8 +27,11 @@
 # either putting Qt on the coverage job or standing up a second instrumented
 # leg - a separate decision with its own runner-time cost, not something to
 # smuggle in behind a threshold table. apps/gui's interactive surfaces are
-# covered by its own Qt Quick tests, and its one Qt-free class
-# (RecordingSink) is already in ac3tests.
+# covered by its own Qt Quick tests, and its Qt-free pieces are exercised by
+# ac3tests on every leg even though no row below gates them: RecordingSink
+# (since moved to apps/common) and, from 2026-09-06,
+# apps/gui/gui_diagnostics.cpp, whose whole reason for being Qt-free is that
+# the no-secrets rule it holds is checked on legs that build no window.
 #
 # apps/crucible is out of scope here for the same reason and gated anyway,
 # somewhere else: tools/checks/coverage_crucible.ps1 holds its line and branch

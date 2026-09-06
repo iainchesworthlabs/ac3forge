@@ -412,12 +412,25 @@ endif()
 # the Python encoder-space fuzzer that first found one (REGRESSION_SEEDS'
 # 3600083275727211684 in tools/ci/fuzz_encoder_space.py) - this file covers it
 # deterministically and without needing ffmpeg on the machine running it.
+# ac3gui's diagnostics module (apps/gui/gui_diagnostics.hpp) rides the same
+# target for the same reason and with the same discipline: it is Qt-free, so
+# the rule it exists to hold - the support file carries no signing key, no
+# environment value and no byte of a loaded source - is checked on every CI
+# leg, including the ones that build no window. The window's Qt Quick suite
+# covers the other half, that the controller fills the report's fields from
+# what the window is actually showing. The file carries a gui_ prefix because
+# this target also compiles the Crucible's own diagnostics.cpp and has both
+# directories on its include path.
 target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
+    gui/test_gui_diagnostics.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp")
-target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/apps/common")
+    "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp")
+target_include_directories(ac3tests PRIVATE
+    "${CMAKE_SOURCE_DIR}/apps/common"
+    "${CMAKE_SOURCE_DIR}/apps/gui")
 
 # AC3Forge Crucible's engine core (roadmap UX11/UX12, apps/crucible/
 # engine/): the slot plan, the bed mixer, placement smoothing and the

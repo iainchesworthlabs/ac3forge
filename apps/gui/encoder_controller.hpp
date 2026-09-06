@@ -36,6 +36,8 @@
 #include "ac3/audio/monitor.hpp"
 #include "ac3/audio/passthrough.hpp"
 
+#include "gui_diagnostics.hpp"
+
 // The QObject facade the QML layer talks to. All codec and capture work
 // happens in ac3::forge; this type owns nothing but the presentation state
 // and the workers that keep encoding off the GUI thread.
@@ -118,6 +120,9 @@ class EncoderController : public QObject {
                    NOTIFY keepPartialOutputChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    // What the last exportDiagnostics() call did, in one sentence for the
+    // Preferences dialog to show under its button. Empty until one has run.
+    Q_PROPERTY(QString diagnosticsMessage READ diagnosticsMessage NOTIFY diagnosticsChanged)
     // See loudnessTouchedChanged()'s own comment. Written by LoudnessGroup.qml's
     // interactive handlers only - never by the setters those handlers call,
     // and never by guided's own contract application.
@@ -642,6 +647,20 @@ public:
     [[nodiscard]] bool keepPartialOutput() const { return keep_partial_output_; }
     void setKeepPartialOutput(bool keep);
     [[nodiscard]] QString status() const { return status_; }
+    [[nodiscard]] QString diagnosticsMessage() const { return diagnostics_message_; }
+    // The support file, as text (docs/gui/accessibility.md, "Saving a
+    // diagnostics file"). The rule it holds - no signing key, no environment
+    // value, no byte of anything loaded - lives in gui_diagnostics.hpp, not here;
+    // this composes the named facts that module renders. Invokable so the
+    // Qt Quick suite can read the text without writing a file.
+    Q_INVOKABLE QString diagnosticsReport() const;
+    // A file: URL under the person's Documents folder (Home when there is
+    // none), named ac3gui-diagnostics-<stamp>.txt - what the Save dialog
+    // opens with, the same shape and stem convention Crucible uses.
+    Q_INVOKABLE QString suggestedDiagnosticsFile() const;
+    // Writes the report as UTF-8 with LF endings, whatever the platform.
+    // Sets diagnosticsMessage either way and returns whether it landed.
+    Q_INVOKABLE bool exportDiagnostics(const QString& fileUrl);
     [[nodiscard]] bool busy() const { return busy_; }
     [[nodiscard]] bool loudnessTouched() const { return loudness_touched_; }
     void setLoudnessTouched(bool touched);
@@ -1245,6 +1264,7 @@ signals:
     // because a status line the run strip has scrolled away is not a home
     // for a refusal (the mockup gives every failure the banner).
     void encodeRefused(const QString& reason);
+    void diagnosticsChanged();
     void liveActiveChanged();
     void liveStatsChanged();
     void liveReconnectingChanged();
@@ -1454,6 +1474,17 @@ private:
                                       std::uint32_t sample_rate, int channels) const;
 
     void setStatus(const QString& text);
+    // The last few refusals and failures, oldest first, for the report's
+    // "last errors" section - the same text setStatus() showed, kept because
+    // a status line the run strip has scrolled past is gone by the time
+    // anyone asks for a diagnostics file. Every status change is also noted
+    // in the message ring; this is the subset a person would call an error.
+    void noteError(const QString& text);
+    // The named facts the report is composed from - see gui_diagnostics.hpp for
+    // why it is composed rather than dumped.
+    [[nodiscard]] ac3gui::ReportFacts buildReportFacts() const;
+    // Every spelling of a value the report must not carry.
+    [[nodiscard]] ac3gui::Secrets diagnosticsSecrets() const;
     void setBusy(bool busy);
     // Adds a new "encoding" entry to runs_ and remembers its id, so the
     // encodeFinished this run eventually emits (there are several call
@@ -1697,6 +1728,18 @@ private:
         int selected_index = 0;
     };
     std::optional<LiveObjectBackup> live_object_backup_;
+
+    // The process-wide message ring and what the report says about the last
+    // export. The ring is a reference to a leaked singleton (gui_diagnostics.hpp)
+    // so a note written while this object is being destroyed cannot reach a
+    // dead log.
+    ac3gui::MessageLog& log_;
+    QString diagnostics_message_;
+    // Bounded: a session that refuses the same thing repeatedly must not
+    // push the first failure - usually the interesting one - out of a file
+    // the report also carries the whole ring in.
+    static constexpr int kMaxRememberedErrors = 20;
+    QStringList errors_;
 
     QVariantList runs_;
     int current_run_id_ = -1;
