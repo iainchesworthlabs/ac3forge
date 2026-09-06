@@ -405,6 +405,15 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   (`Web:InputWithoutLabelCheck`). `docs/assets/wasm-decode-demo/` and
   `docs/assets/wasm-encode-demo/` are re-copied to match, which `docs.yml` compares byte for
   byte.
+
+- The four copies of the IAB `BitWriter::push_plex` test helper could shift by 64. `width`
+  doubles on every escape - 4, 8, 16, 32, **64** - and `std::uint64_t{1} << 64` is undefined,
+  so a value at or above `0xFFFFFFFE` walked straight into it. The reader these helpers exist
+  to feed has always had the bound: `BitReader::read_plex` (`src/ac3iab/src/bitreader.cpp`)
+  stops at `width >= 32` and returns `kBadEscape`, on §5.2's guarantee that a Plex symbol
+  never exceeds `0xFFFFFFFE`. The writers now stop at the same place, so they cannot invoke
+  undefined behaviour and cannot emit an escape chain this project's own reader would reject.
+  Unreachable for the values these fixtures encode, so no test expectation changes.
 - **The README's decode-accuracy badge disagreed with the page it links to.** Per-channel SNR
   floors taught `docs/performance-quality.md`'s Decode accuracy card to pick a check by its
   tightest per-channel *margin* and report the channel that owns it, but
