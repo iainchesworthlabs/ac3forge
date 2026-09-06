@@ -1202,8 +1202,23 @@ jobs:
           build="build/config-${{ matrix.preset }}"
           suffix=''
           [ "$RUNNER_OS" = "Windows" ] && suffix='.exe'
+          # ac3crucible is a MACOSX_BUNDLE target (apps/crucible/CMakeLists.txt),
+          # so on macOS the product is bin/ac3crucible.app/Contents/MacOS/
+          # ac3crucible and there is no plain file at bin/ac3crucible. Its two
+          # companions are not bundles - ac3crucible-run is a plain
+          # add_executable, and qt_add_executable does not set MACOSX_BUNDLE -
+          # so only this one needs the longer path. The ac3gui smoke test
+          # further down branches the same way for the same reason.
+          window="$build/bin/ac3crucible$suffix"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            window="$build/bin/ac3crucible.app/Contents/MacOS/ac3crucible"
+          fi
           missing=0
-          for exe in ac3crucible ac3crucible-run ac3crucible_qmltests; do
+          if [ ! -f "$window" ]; then
+            echo "::error::$window was not built - was Qt6 found? Check the configure log's warnings."
+            missing=1
+          fi
+          for exe in ac3crucible-run ac3crucible_qmltests; do
             if [ ! -f "$build/bin/$exe$suffix" ]; then
               echo "::error::$exe$suffix was not built - was Qt6 found? Check the configure log's warnings."
               missing=1
@@ -1217,7 +1232,7 @@ jobs:
             echo "::error::Qt Quick 3D was not found, so the room's 3D view is missing from this build - the 'Install Qt (prebuilt)' step's modules list is what provides it"
             exit 1
           fi
-          ls -1 "$build/bin/ac3crucible$suffix" "$build/bin/ac3crucible-run$suffix"
+          ls -1 "$window" "$build/bin/ac3crucible-run$suffix"
 
       # The AC3Forge Crucible's coverage floor - what ci.yml's `coverage` job
       # is for the library, for the one first-party tree that job cannot see.
