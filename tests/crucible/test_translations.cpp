@@ -51,12 +51,18 @@ constexpr std::array<std::string_view, 10> kBrandTerms{
 // state of a freshly extracted string, and a vanished one is the state of a
 // string this pass reworded, so the two cases below stand written and idle.
 //
-// Turn this on in the commit that lands the refilled catalogues, and take
-// "(idle until refilled)" out of the two case names when you do. From then
-// on an entry left unfinished, or a dead entry left in the file, fails the
-// build. Until then the two cases report the count and pass, and the names
-// say so rather than claiming a guarantee the bodies do not give.
-constexpr bool kCatalogueRefilled = false;
+// Turned on 2026-09-06, the day the catalogues were refilled: the six
+// Crucible files carry 385 messages each and the six ac3gui files 767, none
+// of them unfinished and none vanished. From here an entry left unfinished,
+// or a dead entry left behind, fails the build.
+//
+// The translations behind that are machine-made and have not been read by a
+// speaker of any of the six languages, which the window says in its own
+// language note. This flag asserts that every entry HAS a translation, which
+// is a different and smaller claim than that every translation is right; the
+// review pass docs/crucible/localisation.md describes is what settles the
+// second one, and turning this on does not pre-empt it.
+constexpr bool kCatalogueRefilled = true;
 
 struct Message {
     std::string context;
@@ -233,7 +239,7 @@ struct Message {
 
 }  // namespace
 
-TEST_CASE("crucible translation catalogues carry no unfinished entry (idle until refilled)",
+TEST_CASE("crucible translation catalogues carry no unfinished entry",
           "[crucible][translations]") {
     const auto unfinished = entries_marked("unfinished");
     if (!unfinished.empty()) {
@@ -248,7 +254,7 @@ TEST_CASE("crucible translation catalogues carry no unfinished entry (idle until
     CHECK((unfinished.empty() || !kCatalogueRefilled));
 }
 
-TEST_CASE("crucible translation catalogues carry no dead entry (idle until refilled)",
+TEST_CASE("crucible translation catalogues carry no dead entry",
           "[crucible][translations]") {
     auto dead = entries_marked("vanished");
     const auto obsolete = entries_marked("obsolete");

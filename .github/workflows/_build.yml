@@ -1119,6 +1119,26 @@ jobs:
       # skipped ac3crucible or a 2D-only room means that install broke rather
       # than a deliberate choice - the same "failing loudly beats degrading
       # quietly" reasoning as the NSIS assert further down.
+      # The same drift check the GUI catalogues get further down, for
+      # Crucible's six. It runs here and not on a Linux leg because
+      # ac3crucible_lupdate exists only where Crucible is configured, and the
+      # matrix build tree carries Crucible on Windows alone - Linux builds it
+      # in a pass of its own with its own tree.
+      #
+      # windows-msvc and not both Windows legs: one is enough to catch a
+      # source string changed without regenerating, and the llvm leg already
+      # carries the coverage gate.
+      - name: Check the Crucible translations are up to date
+        if: matrix.crucible && matrix.preset == 'windows-msvc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "build/config-${{ matrix.preset }}" --target ac3crucible_lupdate
+          git diff --exit-code -- apps/crucible/translations || {
+            echo "::error::a qsTr() string changed without regenerating the catalogues -           build the ac3crucible_lupdate target and commit apps/crucible/translations"
+            exit 1
+          }
+
       - name: Assert the AC3Forge Crucible was built (Windows)
         # Windows only, as the name says: this looks in the matrix build
         # tree, and on Linux that tree deliberately has no Crucible in it

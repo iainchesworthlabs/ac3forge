@@ -6,12 +6,12 @@
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="49"/>
         <source>About Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>וועגן Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="60"/>
         <source>AC3Forge Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>AC3Forge Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="61"/>
@@ -41,17 +41,17 @@
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="75"/>
         <source>AC3Forge Crucible and the ac3forge library are free software under the GNU General Public License, version 3 or later; the full text is LICENSE.txt in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.</source>
-        <translation type="unfinished"></translation>
+        <translation>AC3Forge Crucible און די ביבליאָטעק ac3forge זײַנען פֿרײַע סאָפֿטווער אונטער דער GNU General Public License, ווערסיע 3 אָדער שפּעטער; דער פֿולער טעקסט איז LICENSE.txt אין דעם פּעקל. Dolby, Dolby Atmos און Dolby Digital Plus זײַנען האַנדלס־מאַרקן פֿון Dolby Laboratories; דאָס איז אַ ריין־צימער־אימפּלעמענטאַציע פֿון פּובליקירטע סטאַנדאַרטן און איז נישט פֿאַרבונדן מיט Dolby.</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="81"/>
         <source>What this build carries from others - Qt, the {fmt} library, the Archivo and Noto Sans typefaces, and what the silent device needs on this platform - is listed with each licence under Licences; the same text ships in the package as NOTICES.txt.</source>
-        <translation type="unfinished"></translation>
+        <translation>וואָס דער דאָזיקער בוי טראָגט פֿון אַנדערע - Qt, די ביבליאָטעק {fmt}, די שריפֿטן Archivo און Noto Sans, און וואָס דער שטילער מכשיר דאַרף אויף דער דאָזיקער פּלאַטפֿאָרמע - איז אויסגערעכנט מיט יעדער ליצענץ אונטער ליצענצן; דער זעלביקער טעקסט קומט מיט אין דעם פּעקל ווי NOTICES.txt.</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="92"/>
         <source>Licences…</source>
-        <translation type="unfinished"></translation>
+        <translation>ליצענצן…</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="93"/>
@@ -75,22 +75,22 @@
     <message>
         <location filename="../ui/qml/AppRow.qml" line="29"/>
         <source>no audio</source>
-        <translation type="unfinished"></translation>
+        <translation>אָן קלאַנג</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="31"/>
         <source>idle</source>
-        <translation type="unfinished"></translation>
+        <translation>אומטעטיק</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="34"/>
         <source>no tap</source>
-        <translation type="unfinished"></translation>
+        <translation>אָן אָפּנעמער</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="37"/>
         <source>background</source>
-        <translation type="unfinished"></translation>
+        <translation>הינטערגרונט</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="88"/>
@@ -103,17 +103,17 @@
     <message>
         <location filename="../ui/qml/BedChip.qml" line="23"/>
         <source>%1, in the bed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1, אין בעט</translation>
     </message>
     <message>
         <location filename="../ui/qml/BedChip.qml" line="25"/>
         <source>full-screen: stays in the bed</source>
-        <translation type="unfinished">פֿולער עקראַן: בלײַבט אין בעט</translation>
+        <translation>פֿולער עקראַן: בלײַבט אין בעט</translation>
     </message>
     <message>
         <location filename="../ui/qml/BedChip.qml" line="26"/>
         <source>Enter places it in the centre of the room</source>
-        <translation type="unfinished"></translation>
+        <translation>Enter שטעלט עס אין מיטן צימער</translation>
     </message>
 </context>
 <context>
@@ -156,17 +156,17 @@
     <message>
         <location filename="../ui/crucible_controller.cpp" line="722"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
-        <translation type="unfinished"></translation>
+        <translation>דער דאָזיקער בוי טראָגט נישט קיין אײַנגעבויטע נאָטיצן־טעקע (:/notices/NOTICES.txt איז נישט אַרײַנקאָמפּילירט געוואָרן); די NOTICES.txt לעבן דער אַפּליקאַציע און דער LICENSE פֿון דעם רעפּאָזיטאָריע זאָגן וואָס עס קומט מיט.</translation>
     </message>
     <message>
         <location filename="../ui/crucible_controller.cpp" line="1215"/>
         <source>saved to %1</source>
-        <translation type="unfinished"></translation>
+        <translation>אָפּגעהיט אין %1</translation>
     </message>
     <message>
         <location filename="../ui/crucible_controller.cpp" line="1218"/>
         <source>could not write %1: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>האָט נישט געקענט שרײַבן %1: %2</translation>
     </message>
     <message>
         <location filename="../ui/crucible_controller.cpp" line="1008"/>
@@ -199,113 +199,113 @@
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="21"/>
         <source>your previous default output</source>
-        <translation type="unfinished"></translation>
+        <translation>אײַער פֿריִערדיקער דיפֿאָלט־אַרויסגאַנג</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="98"/>
         <location filename="../ui/qml/FirstRunDialog.qml" line="108"/>
         <source>What Crucible does to your sound settings</source>
-        <translation type="unfinished"></translation>
+        <translation>וואָס Crucible טוט מיט אײַערע קלאַנג־אײַנשטעלונגען</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="101"/>
         <source>FIRST RUN</source>
-        <translation type="unfinished"></translation>
+        <translation>ערשטער לויף</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="121"/>
         <source>Applications are sent to a silent device</source>
-        <translation type="unfinished"></translation>
+        <translation>אַפּליקאַציעס ווערן געשיקט צו אַ שטילן מכשיר</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="121"/>
         <source>Applications are silenced where they are tapped</source>
-        <translation type="unfinished"></translation>
+        <translation>אַפּליקאַציעס ווערן פֿאַרשטילט דאָרט וווּ מען נעמט זיי אָפּ</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="123"/>
         <source>Your default output becomes &quot;%1&quot;, a device nothing is heard from. Every application then plays into it and Crucible taps each one there.</source>
-        <translation type="unfinished"></translation>
+        <translation>אײַער דיפֿאָלט־אַרויסגאַנג ווערט &quot;%1&quot;, אַ מכשיר פֿון וועלכן מען הערט גאָרנישט. יעדע אַפּליקאַציע שפּילט דעמאָלט אַרײַן אין אים און Crucible נעמט דאָרט אָפּ יעדע איינע.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="124"/>
         <source>Nothing in your sound settings changes here: each application is silenced where Crucible taps it.</source>
-        <translation type="unfinished"></translation>
+        <translation>גאָרנישט אין אײַערע קלאַנג־אײַנשטעלונגען בײַט זיך דאָ: יעדע אַפּליקאַציע ווערט פֿאַרשטילט דאָרט וווּ Crucible נעמט זי אָפּ.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="129"/>
         <source>&quot;%1&quot; is on this machine.</source>
-        <translation type="unfinished"></translation>
+        <translation>&quot;%1&quot; איז דאָ אויף דער דאָזיקער מאַשין.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="130"/>
         <source>There is no &quot;%1&quot; yet: %2.</source>
-        <translation type="unfinished"></translation>
+        <translation>עס איז נאָך נישטאָ קיין &quot;%1&quot;: %2.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="144"/>
         <source>You hear one endpoint</source>
-        <translation type="unfinished"></translation>
+        <translation>איר הערט איין ענדפּונקט</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="145"/>
         <source>Crucible encodes the room and sends it to the receiver, TV, headphones or speakers it chooses; you can pin either on the Signal path page. A receiver over HDMI is opened exclusively, so nothing else can play to it while Crucible runs.</source>
-        <translation type="unfinished"></translation>
+        <translation>Crucible קאָדירט דעם צימער און שיקט אים צו דעם רעסיווער, טעלעוויזאָר, קאָפּהערער אָדער לאַוטשפּרעכער וואָס עס קלײַבט אויס; איר קענט פֿעסטשטעלן סײַ דעם איינעם סײַ דעם אַנדערן אויף דעם בלאַט סיגנאַל־וועג. אַ רעסיווער איבער HDMI ווערט געעפֿנט עקסקלוסיוו, אַזוי אַז גאָרנישט אַנדערש קען צו אים שפּילן בשעת Crucible לויפֿט.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="153"/>
         <source>It is put back when Crucible quits</source>
-        <translation type="unfinished"></translation>
+        <translation>עס ווערט צוריקגעשטעלט ווען Crucible גייט אַרויס</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="160"/>
         <source>Quitting from the tray restores %1. Closing the window only hides it while &quot;Keep running in the tray&quot; is on, so applications stay on the silent device until you quit or press Restore.</source>
-        <translation type="unfinished"></translation>
+        <translation>אַרויסגיין פֿון דער טאַץ שטעלט צוריק %1. פֿאַרמאַכן דאָס פֿענצטער באַהאַלט עס בלויז, כּל־זמן &quot;בלײַב לויפֿן אין דער טאַץ&quot; איז אײַנגעשאַלטן, אַזוי אַז אַפּליקאַציעס בלײַבן אויף דעם שטילן מכשיר ביז איר גייט אַרויס אָדער דריקט צוריקשטעלן.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="161"/>
         <source>Closing the window quits Crucible and restores %1. There is no tray icon on this desktop, so there is nothing left running behind the window.</source>
-        <translation type="unfinished"></translation>
+        <translation>פֿאַרמאַכן דאָס פֿענצטער ענדיקט Crucible און שטעלט צוריק %1. עס איז נישטאָ קיין טאַץ־איקאָנע אויף דעם דאָזיקן דעסקטאָפּ, אַזוי אַז עס בלײַבט גאָרנישט לויפֿן הינטער דעם פֿענצטער.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="166"/>
         <source>Installing the silent device is a separate step in Settings that asks for administrator rights, and it stays installed until you remove it.</source>
-        <translation type="unfinished"></translation>
+        <translation>אינסטאַלירן דעם שטילן מכשיר איז אַ באַזונדערער טריט אין אײַנשטעלונגען וואָס בעט אַדמיניסטראַטאָר־רעכט, און ער בלײַבט אינסטאַלירט ביז איר נעמט אים אַראָפּ.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="173"/>
         <source>Your settings from the earlier demo were carried over.</source>
-        <translation type="unfinished"></translation>
+        <translation>אײַערע אײַנשטעלונגען פֿון דער פֿריִערדיקער דעמאָ זײַנען אַריבערגעטראָגן געוואָרן.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="182"/>
         <source>Do this every time Crucible starts</source>
-        <translation type="unfinished"></translation>
+        <translation>טוט דאָס יעדעס מאָל וואָס Crucible הייבט זיך אָן</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="183"/>
         <source>Off: Crucible asks with the button on the Room page each time.</source>
-        <translation type="unfinished"></translation>
+        <translation>אויסגעשאַלטן: Crucible פֿרעגט מיט דעם קנעפּל אויף דעם בלאַט צימער יעדעס מאָל.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="194"/>
         <source>Open Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>עפֿנט אײַנשטעלונגען</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="200"/>
         <source>Not now</source>
-        <translation type="unfinished"></translation>
+        <translation>נישט איצט</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="211"/>
         <source>Send applications to %1</source>
-        <translation type="unfinished">שיק אַפּליקאַציעס צו %1</translation>
+        <translation>שיק אַפּליקאַציעס צו %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="211"/>
         <source>No silent device yet</source>
-        <translation type="unfinished"></translation>
+        <translation>נאָך קיין שטילער מכשיר נישטאָ</translation>
     </message>
 </context>
 <context>
@@ -313,17 +313,17 @@
     <message>
         <location filename="../ui/qml/LicencesDialog.qml" line="33"/>
         <source>Third-party licences</source>
-        <translation type="unfinished"></translation>
+        <translation>ליצענצן פֿון דריטע צדדים</translation>
     </message>
     <message>
         <location filename="../ui/qml/LicencesDialog.qml" line="35"/>
         <source>THIRD-PARTY LICENCES</source>
-        <translation type="unfinished"></translation>
+        <translation>ליצענצן פֿון דריטע צדדים</translation>
     </message>
     <message>
         <location filename="../ui/qml/LicencesDialog.qml" line="60"/>
         <source>Close</source>
-        <translation type="unfinished">פֿאַרמאַכן</translation>
+        <translation>פֿאַרמאַכן</translation>
     </message>
 </context>
 <context>
@@ -388,57 +388,57 @@
         <location filename="../ui/qml/Main.qml" line="20"/>
         <location filename="../ui/qml/Main.qml" line="139"/>
         <source>Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="172"/>
         <source>apps → %1 · objects signed</source>
-        <translation type="unfinished"></translation>
+        <translation>אַפּליקאַציעס → %1 · אָביעקטן סיגנירט</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="173"/>
         <source>apps → %1 · 5.1 bed only</source>
-        <translation type="unfinished"></translation>
+        <translation>אַפּליקאַציעס → %1 · נאָר 5.1 בעט</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="175"/>
         <source>⚠ apps heard direct → %1 · objects signed</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ אַפּליקאַציעס הערט מען דירעקט → %1 · אָביעקטן סיגנירט</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="176"/>
         <source>⚠ apps heard direct → %1 · 5.1 bed only</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ אַפּליקאַציעס הערט מען דירעקט → %1 · נאָר 5.1 בעט</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="212"/>
         <source>About Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>וועגן Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="279"/>
         <source>Engine error: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>מאָטאָר־פֿעלער: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="280"/>
         <source>Engine running</source>
-        <translation type="unfinished"></translation>
+        <translation>מאָטאָר לויפֿט</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="280"/>
         <source>Engine stopped</source>
-        <translation type="unfinished"></translation>
+        <translation>מאָטאָר אָפּגעשטעלט</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="291"/>
         <source>You hear it on %1</source>
-        <translation type="unfinished"></translation>
+        <translation>איר הערט עס אויף %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="305"/>
         <source>Applications play to %1</source>
-        <translation type="unfinished"></translation>
+        <translation>אַפּליקאַציעס שפּילן צו %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="378"/>
@@ -488,7 +488,7 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="429"/>
         <source>Crucible · %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Crucible · %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="438"/>
@@ -503,7 +503,7 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="440"/>
         <source>Signal path · %1</source>
-        <translation type="unfinished"></translation>
+        <translation>סיגנאַל־וועג · %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="442"/>
@@ -543,12 +543,12 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="453"/>
         <source>Default output: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>דיפֿאָלט־אַרויסגאַנג: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="454"/>
         <source>Move default output to %1</source>
-        <translation type="unfinished"></translation>
+        <translation>רוקט דעם דיפֿאָלט־אַרויסגאַנג צו %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="459"/>
@@ -558,7 +558,7 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="459"/>
         <source>Restore %1</source>
-        <translation type="unfinished">צוריקשטעלן %1</translation>
+        <translation>צוריקשטעלן %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="464"/>
@@ -606,17 +606,17 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="48"/>
         <source>Every application plays into the system default output. With the silent &quot;%1&quot; device as that default, nothing is heard from it; this app taps each application there, places it in the room, encodes the scene, and sends the result to the endpoint the pin and the hardware choose. That endpoint is the only thing you hear.</source>
-        <translation type="unfinished"></translation>
+        <translation>יעדע אַפּליקאַציע שפּילט אַרײַן אין דעם סיסטעם־דיפֿאָלט־אַרויסגאַנג. מיט דעם שטילן מכשיר &quot;%1&quot; ווי דעם דיפֿאָלט, הערט מען פֿון אים גאָרנישט; די דאָזיקע אַפּליקאַציע נעמט דאָרט אָפּ יעדע אַפּליקאַציע, שטעלט זי אין צימער, קאָדירט די סצענע, און שיקט דעם רעזולטאַט צו דעם ענדפּונקט וואָס דער פֿעסטשטעל און די האַרדווער קלײַבן אויס. יענער ענדפּונקט איז דאָס איינציקע וואָס איר הערט.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="70"/>
         <source>%1 · E-AC-3 JOC over HDMI</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 · E-AC-3 JOC איבער HDMI</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="71"/>
         <source>%1 The endpoint follows the hardware: pull HDMI and it moves to the next best one below.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 דער ענדפּונקט גייט נאָך דער האַרדווער: ציט אַרויס HDMI און ער רוקט זיך צו דעם ווײַטער בעסטן אונטן.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="79"/>
@@ -627,7 +627,7 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="85"/>
         <source>Pin</source>
-        <translation type="unfinished"></translation>
+        <translation>פֿעסטשטעלן</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="102"/>
@@ -657,57 +657,57 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="107"/>
         <source>Headphones · spatial sound</source>
-        <translation type="unfinished"></translation>
+        <translation>קאָפּהערער · רוימלעכער קלאַנג</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="164"/>
         <source>What the probe found on each render endpoint. &quot;Hear it here&quot; chooses one: it gets the best mode it can carry, the pin when it can, and &quot;Automatic&quot; hands the choice back (the best endpoint for the best mode, a receiver first). &quot;Send applications here&quot; is the other stage, the system default: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
-        <translation type="unfinished"></translation>
+        <translation>וואָס די פּראָבע האָט געפֿונען אויף יעדן רענדער־ענדפּונקט. &quot;הערט עס דאָ&quot; קלײַבט אויס איינעם: ער באַקומט דעם בעסטן מאָדוס וואָס ער קען טראָגן, דעם פֿעסטשטעל ווען ער קען, און &quot;אויטאָמאַטיש&quot; גיט די ברירה צוריק (דער בעסטער ענדפּונקט פֿאַרן בעסטן מאָדוס, אַ רעסיווער פֿריִער). &quot;שיקט אַפּליקאַציעס אַהער&quot; איז די אַנדערע סטאַדיע, דער סיסטעם־דיפֿאָלט: אויף אַן עכטן מכשיר וואָלט איר געהערט יעדע אַפּליקאַציע דירעקט, אַזוי אַז דער שטילער מכשיר איז דער וואָס מען דאַרף זיי צו אים שיקן.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="176"/>
         <source>Endpoints</source>
-        <translation type="unfinished"></translation>
+        <translation>ענדפּונקטן</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="211"/>
         <source>no E-AC-3</source>
-        <translation type="unfinished"></translation>
+        <translation>אָן E-AC-3</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="212"/>
         <source>no AC-3</source>
-        <translation type="unfinished"></translation>
+        <translation>אָן AC-3</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="213"/>
         <source>%1 PCM channels</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 PCM־קאַנאַלן</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="213"/>
         <source>no PCM</source>
-        <translation type="unfinished"></translation>
+        <translation>אָן PCM</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="214"/>
         <source>spatial</source>
-        <translation type="unfinished"></translation>
+        <translation>רוימלעך</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="275"/>
         <source>the silent device · applications play here · never heard</source>
-        <translation type="unfinished"></translation>
+        <translation>דער שטילער מכשיר · אַפּליקאַציעס שפּילן דאָ · מען הערט עס קיין מאָל נישט</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="276"/>
         <source>the silent device · never heard</source>
-        <translation type="unfinished"></translation>
+        <translation>דער שטילער מכשיר · מען הערט עס קיין מאָל נישט</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="321"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the system default output and the silent device: nothing is heard from it, and this app taps each application there.</source>
-        <translation type="unfinished"></translation>
+        <translation>אַפּליקאַציעס שפּילן צו &lt;b&gt;%1&lt;/b&gt;, דעם סיסטעם־דיפֿאָלט־אַרויסגאַנג און דעם שטילן מכשיר: מען הערט פֿון אים גאָרנישט, און די דאָזיקע אַפּליקאַציע נעמט דאָרט אָפּ יעדע אַפּליקאַציע.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="108"/>
@@ -722,7 +722,7 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="147"/>
         <source>No headphones entry here — %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>קיין קאָפּהערער־אײַנטראָג איז דאָ נישטאָ — %1.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="158"/>
@@ -772,7 +772,7 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="322"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the system default output, which is a real device: you hear each application directly as well as through this app, and a receiver on it cannot be opened exclusively while they do.</source>
-        <translation type="unfinished"></translation>
+        <translation>אַפּליקאַציעס שפּילן צו &lt;b&gt;%1&lt;/b&gt;, דעם סיסטעם־דיפֿאָלט־אַרויסגאַנג, וואָס איז אַן עכטער מכשיר: איר הערט יעדע אַפּליקאַציע דירעקט אַזוי ווי אויך דורך דער דאָזיקער אַפּליקאַציע, און אַ רעסיווער אויף אים קען מען נישט עפֿענען עקסקלוסיוו בשעת זיי שפּילן.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="331"/>
@@ -844,22 +844,22 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="285"/>
         <source>you hear it here · your choice · exclusive mode</source>
-        <translation type="unfinished"></translation>
+        <translation>איר הערט עס דאָ · אײַער ברירה · עקסקלוסיווער מאָדוס</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="286"/>
         <source>you hear it here · your choice</source>
-        <translation type="unfinished"></translation>
+        <translation>איר הערט עס דאָ · אײַער ברירה</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="288"/>
         <source>you hear it here · automatic · exclusive mode</source>
-        <translation type="unfinished"></translation>
+        <translation>איר הערט עס דאָ · אויטאָמאַטיש · עקסקלוסיווער מאָדוס</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="289"/>
         <source>you hear it here · automatic</source>
-        <translation type="unfinished"></translation>
+        <translation>איר הערט עס דאָ · אויטאָמאַטיש</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="296"/>
@@ -897,7 +897,7 @@
     <message>
         <location filename="../ui/platform/windows/tray_support.cpp" line="17"/>
         <source>This session has no notification area, so closing the window quits.</source>
-        <translation type="unfinished"></translation>
+        <translation>די דאָזיקע סעסיע האָט נישט קיין מעלדונג־געגנט, אַזוי אַז פֿאַרמאַכן דאָס פֿענצטער ענדיקט די אַפּליקאַציע.</translation>
     </message>
 </context>
 <context>
@@ -970,12 +970,12 @@
     <message>
         <location filename="../ui/qml/Room3DView.qml" line="100"/>
         <source>drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom · arrow keys move the selected application</source>
-        <translation type="unfinished"></translation>
+        <translation>שלעפּט אַן אַפּליקאַציע כּדי זי צו רוקן · רעכט־שלעפּ אָדער Shift פֿאַר דער הייך · שלעפּט דעם ליידיקן אָרט כּדי אַרומצוקרײַזן · ראָד פֿאַר זום · פֿײַל־קנעפּלעך רוקן די אויסגעקליבענע אַפּליקאַציע</translation>
     </message>
     <message>
         <location filename="../ui/qml/Room3DView.qml" line="131"/>
         <source>%1 placed. Choose an application in the applications list and use the arrow keys to move it; the picture follows.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 געשטעלט. קלײַבט אויס אַן אַפּליקאַציע אין דער אַפּליקאַציע־רשימה און ניצט די פֿײַל־קנעפּלעך זי צו רוקן; דאָס בילד גייט נאָך.</translation>
     </message>
 </context>
 <context>
@@ -983,54 +983,54 @@
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="46"/>
         <source>Room</source>
-        <translation type="unfinished">צימער</translation>
+        <translation>צימער</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="48"/>
         <source>%1 selected. Arrow keys move it, Page Up and Page Down change its height, Home recentres it, Enter places it, Delete returns it to the bed, plus and minus change its size.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 אויסגעקליבן. פֿײַל־קנעפּלעך רוקן זי, Page Up און Page Down בײַטן איר הייך, Home צענטרירט זי אויף ס&apos;נײַ, Enter שטעלט זי, Delete גיט זי צוריק אין בעט, פּלוס און מינוס בײַטן איר גרייס.</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="49"/>
         <source>No application selected: choose one in the applications list.</source>
-        <translation type="unfinished"></translation>
+        <translation>קיין אַפּליקאַציע נישט אויסגעקליבן: קלײַבט אויס איינע אין דער אַפּליקאַציע־רשימה.</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="89"/>
         <source>%1: %2, %3</source>
-        <translation type="unfinished"></translation>
+        <translation>%1: %2, %3</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="96"/>
         <location filename="../ui/qml/RoomKeys.qml" line="138"/>
         <source>No application selected</source>
-        <translation type="unfinished"></translation>
+        <translation>קיין אַפּליקאַציע נישט אויסגעקליבן</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="100"/>
         <location filename="../ui/qml/RoomKeys.qml" line="142"/>
         <source>%1 is full-screen and stays in the bed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 איז פֿול־עקראַן און בלײַבט אין בעט</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="108"/>
         <source>height has no effect while the stream is bed only</source>
-        <translation type="unfinished"></translation>
+        <translation>די הייך האָט נישט קיין ווירקונג כּל־זמן דער סטרים איז נאָר בעט</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="145"/>
         <source>%1 placed in the centre of the room</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 געשטעלט אין מיטן צימער</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="148"/>
         <source>%1: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>%1: %2</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="157"/>
         <source>%1 returned to the bed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 צוריקגעגעבן אין בעט</translation>
     </message>
 </context>
 <context>
@@ -1126,7 +1126,7 @@
         <location filename="../ui/qml/RoomPage.qml" line="399"/>
         <location filename="../ui/qml/RoomPage.qml" line="406"/>
         <source>for %1</source>
-        <translation type="unfinished"></translation>
+        <translation>פֿאַר %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="390"/>
@@ -1199,7 +1199,7 @@
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="441"/>
         <source>put %1 %2</source>
-        <translation type="unfinished"></translation>
+        <translation>שטעלט %1 %2</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="448"/>
@@ -1226,7 +1226,7 @@
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="489"/>
         <source>%1%</source>
-        <translation type="unfinished"></translation>
+        <translation>%1%</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="510"/>
@@ -1287,28 +1287,28 @@
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="90"/>
         <source>%1 applications · %2 with sound</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 אַפּליקאַציעס · %2 מיט קלאַנג</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="125"/>
         <source>Applications</source>
-        <translation type="unfinished"></translation>
+        <translation>אַפּליקאַציעס</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="144"/>
         <location filename="../ui/qml/RoomPage.qml" line="550"/>
         <source>%1 placed in the centre of the room</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 געשטעלט אין מיטן צימער</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="176"/>
         <source>The full-screen rule is off here: %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>דער פֿול־עקראַן־כּלל איז דאָ אויסגעשאַלטן: %1.</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="213"/>
         <source>%1 of 10 slots placed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 פֿון 10 שטעלן געשטעלט</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="425"/>
@@ -1389,12 +1389,12 @@
     <message>
         <location filename="../ui/qml/RoomView.qml" line="99"/>
         <source>%1 speaker</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 לאַוטשפּרעכער</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomView.qml" line="133"/>
         <source>, split pair</source>
-        <translation type="unfinished"></translation>
+        <translation>, צעטיילטע פּאָר</translation>
     </message>
 </context>
 <context>
@@ -1403,87 +1403,87 @@
         <location filename="../ui/qml/RoomWords.qml" line="32"/>
         <source>up, %1</source>
         <extracomment>%1 is a position (&quot;in front of you, to the left&quot;); this adds that it is above ear level</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>אויבן, %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="36"/>
         <source>low, %1</source>
         <extracomment>%1 is a position (&quot;in front of you, to the left&quot;); this adds that it is below ear level</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>נידעריק, %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="49"/>
         <source>in front of you, to the left</source>
         <extracomment>Position in the room: ahead of the listener and to their left</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>פֿאַר אײַך, לינקס</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="51"/>
         <source>behind you, to the left</source>
         <extracomment>Position in the room: behind the listener and to their left</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>הינטער אײַך, לינקס</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="53"/>
         <source>beside you, to the left</source>
         <extracomment>Position in the room: level with the listener, to their left</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>בײַ אײַך, לינקס</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="57"/>
         <source>in front of you, to the right</source>
         <extracomment>Position in the room: ahead of the listener and to their right</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>פֿאַר אײַך, רעכטס</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="59"/>
         <source>behind you, to the right</source>
         <extracomment>Position in the room: behind the listener and to their right</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>הינטער אײַך, רעכטס</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="61"/>
         <source>beside you, to the right</source>
         <extracomment>Position in the room: level with the listener, to their right</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>בײַ אײַך, רעכטס</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="64"/>
         <source>in front of you</source>
         <extracomment>Position in the room: ahead of the listener, neither left nor right</extracomment>
-        <translation type="unfinished">פֿאַר דיר</translation>
+        <translation>פֿאַר דיר</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="66"/>
         <source>behind you</source>
         <extracomment>Position in the room: behind the listener, neither left nor right</extracomment>
-        <translation type="unfinished">הינטער דיר</translation>
+        <translation>הינטער דיר</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="68"/>
         <source>beside you</source>
         <extracomment>Position in the room: level with the listener, neither left nor right</extracomment>
-        <translation type="unfinished">לעבן דיר</translation>
+        <translation>לעבן דיר</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="74"/>
         <source>x %1 · y %2 · z %3</source>
-        <translation type="unfinished"></translation>
+        <translation>x %1 · y %2 · z %3</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="99"/>
         <source>in the bed</source>
-        <translation type="unfinished">אין בעט</translation>
+        <translation>אין בעט</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="102"/>
         <source>slots %1+%2</source>
-        <translation type="unfinished"></translation>
+        <translation>שטעלן %1+%2</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="103"/>
         <source>slot %1</source>
-        <translation type="unfinished"></translation>
+        <translation>שטעל %1</translation>
     </message>
 </context>
 <context>
@@ -1496,52 +1496,52 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="30"/>
         <source>Save diagnostics</source>
-        <translation type="unfinished"></translation>
+        <translation>היט אָפּ די דיאַגנאָסטיק</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="33"/>
         <source>Text files (*.txt)</source>
-        <translation type="unfinished"></translation>
+        <translation>טעקסט־טעקעס (*.txt)</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="33"/>
         <source>All files (*)</source>
-        <translation type="unfinished"></translation>
+        <translation>אַלע טעקעס (*)</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="116"/>
         <source>Sound takes two stages here. Applications play into the system default output; this app taps them there and sends the result to the endpoint you hear. For the first stage to be silent, the default must be a device that discards what it is given: &quot;%1&quot;. Until it is there, any silent endpoint whose name matches the filter under Advanced stands in.</source>
-        <translation type="unfinished"></translation>
+        <translation>דער קלאַנג גייט דאָ דורך צוויי סטאַדיעס. אַפּליקאַציעס שפּילן אַרײַן אין דעם סיסטעם־דיפֿאָלט־אַרויסגאַנג; די דאָזיקע אַפּליקאַציע נעמט זיי דאָרט אָפּ און שיקט דעם רעזולטאַט צו דעם ענדפּונקט וואָס איר הערט. כּדי די ערשטע סטאַדיע זאָל זײַן שטיל, מוז דער דיפֿאָלט זײַן אַ מכשיר וואָס וואַרפֿט אַוועק וואָס מען גיט אים: &quot;%1&quot;. ביז ער איז דאָ, שטייט אין זײַן אָרט וועלכער עס איז שטילער ענדפּונקט וואָס זײַן נאָמען פּאַסט צום פֿילטער אונטער אַוואַנסירט.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="140"/>
         <source>Applications play to it: it is the system default output.</source>
-        <translation type="unfinished"></translation>
+        <translation>אַפּליקאַציעס שפּילן צו אים: ער איז דער סיסטעם־דיפֿאָלט־אַרויסגאַנג.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="140"/>
         <source>Applications do not play to it yet: the system default output is %1. Send them there from the Room or Signal path page.</source>
-        <translation type="unfinished"></translation>
+        <translation>אַפּליקאַציעס שפּילן נאָך נישט צו אים: דער סיסטעם־דיפֿאָלט־אַרויסגאַנג איז %1. שיקט זיי אַהין פֿון דעם בלאַט צימער אָדער סיגנאַל־וועג.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="152"/>
         <source>This machine can load the silent device.</source>
-        <translation type="unfinished"></translation>
+        <translation>די דאָזיקע מאַשין קען לאָדן דעם שטילן מכשיר.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="176"/>
         <source>Nothing to install: this application makes the silent device itself. Create it now, or it is created when you send applications to it.</source>
-        <translation type="unfinished"></translation>
+        <translation>גאָרנישט צו אינסטאַלירן: די דאָזיקע אַפּליקאַציע מאַכט אַליין דעם שטילן מכשיר. שאַפֿט אים איצט, אָדער ער ווערט געשאַפֿן ווען איר שיקט צו אים אַפּליקאַציעס.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="179"/>
         <source>No built driver package in the driver folder. No download carries the driver itself, only the scripts that install it: it is test-signed only, and shipping it waits on an EV certificate and attestation. Until then it has to be built from a source tree, with Advanced pointed at the folder holding the build.</source>
-        <translation type="unfinished"></translation>
+        <translation>קיין געבויט דרײַווער־פּעקל אין דער דרײַווער־פּאַפּקע איז נישטאָ. קיין אַראָפּלאָדונג טראָגט נישט דעם דרײַווער אַליין, בלויז די סקריפּטן וואָס אינסטאַלירן אים: ער איז נאָר טעסט־סיגנירט, און זײַן פֿאַרשפּרייטונג וואַרט אויף אַן EV־צערטיפֿיקאַט און אויף אַטעסטאַציע. ביז דעמאָלט מוז מען אים בויען פֿון אַ מקור־בוים, מיט אַוואַנסירט אָנגעוויזן אויף דער פּאַפּקע וווּ עס ליגט דער בוי.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="184"/>
         <source>Create device</source>
-        <translation type="unfinished"></translation>
+        <translation>שאַפֿט מכשיר</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="185"/>
@@ -1557,12 +1557,12 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="206"/>
         <source>expanded</source>
-        <translation type="unfinished"></translation>
+        <translation>אויסגעשפּרייט</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="206"/>
         <source>collapsed</source>
-        <translation type="unfinished"></translation>
+        <translation>צונויפֿגעלייגט</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="239"/>
@@ -1577,7 +1577,7 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="244"/>
         <source>Remove device</source>
-        <translation type="unfinished"></translation>
+        <translation>נעמט אַראָפּ דעם מכשיר</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="246"/>
@@ -1587,7 +1587,7 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="246"/>
         <source>Removes this application&apos;s own silent device; it also goes when the application does.</source>
-        <translation type="unfinished"></translation>
+        <translation>נעמט אַראָפּ דעם אייגענעם שטילן מכשיר פֿון דער דאָזיקער אַפּליקאַציע; ער גייט אויך אַוועק ווען די אַפּליקאַציע גייט אַוועק.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="257"/>
@@ -1703,18 +1703,18 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="438"/>
         <source>System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.</source>
-        <translation type="unfinished"></translation>
+        <translation>סיסטעם גייט נאָך דער שפּראַך אויף וועלכער דער דעסקטאָפּ איז אײַנגעשטעלט. די איבערזעצונגען זײַנען מאַשין־געמאַכט און קיין רעדער האָט זיי נישט איבערגעלייענט.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="441"/>
         <location filename="../ui/qml/SettingsPage.qml" line="448"/>
         <source>Text size</source>
-        <translation type="unfinished"></translation>
+        <translation>טעקסט־גרייס</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="451"/>
         <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too.</source>
-        <translation type="unfinished"></translation>
+        <translation>יעדע גרייס אין דעם פֿענצטער גייט נאָך דעם; 100% איז די גרייס אין וועלכער עס ווערט געצייכנט. סיסטעם נעמט די טעקסט־גרייס וואָס דער דעסקטאָפּ מעלדט און רעכנט 9 pt ווי 100%, אַזוי אַז אויף אַ דעסקטאָפּ מיט אַ גרעסערער יסוד־גרייס הייבט זיך דאָס פֿענצטער אויך אָן גרעסער.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="491"/>
@@ -1739,17 +1739,17 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="511"/>
         <source>DIAGNOSTICS</source>
-        <translation type="unfinished"></translation>
+        <translation>דיאַגנאָסטיק</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="512"/>
         <source>A text file for a bug report: the version and platform, the engine&apos;s counters, the endpoints the probe found, the two devices of the signal path, this app&apos;s settings and its recent messages. It does not carry the signing key, the path to it, or any environment variable&apos;s value; it does name your audio devices and running applications, so read it before you attach it.</source>
-        <translation type="unfinished"></translation>
+        <translation>אַ טעקסט־טעקע פֿאַר אַ באַג־באַריכט: די ווערסיע און די פּלאַטפֿאָרמע, די ציילער פֿון דעם מאָטאָר, די ענדפּונקטן וואָס די פּראָבע האָט געפֿונען, די צוויי מכשירים פֿון דעם סיגנאַל־וועג, די אײַנשטעלונגען פֿון דער דאָזיקער אַפּליקאַציע און אירע לעצטע מעלדונגען. עס טראָגט נישט דעם סיגנירונג־שליסל, נישט דעם וועג צו אים, און נישט דעם ווערט פֿון וועלכער עס איז סבֿיבֿה־וואַריאַבל; עס דערמאָנט יאָ אײַערע אַודיאָ־מכשירים און לויפֿנדיקע אַפּליקאַציעס, טאָ לייענט עס איבער איידער איר צוגיט עס.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="516"/>
         <source>Save diagnostics…</source>
-        <translation type="unfinished"></translation>
+        <translation>היט אָפּ די דיאַגנאָסטיק…</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="365"/>
@@ -1928,12 +1928,12 @@
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="58"/>
         <source>Warning: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>וואָרענונג: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="82"/>
         <source>Warning. %1</source>
-        <translation type="unfinished"></translation>
+        <translation>וואָרענונג. %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="114"/>
@@ -1963,27 +1963,27 @@
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="136"/>
         <source>There is no silent device to send them to: %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>עס איז נישטאָ קיין שטילער מכשיר צו וועמען זיי צו שיקן: %1.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="154"/>
         <source>2 · CRUCIBLE</source>
-        <translation type="unfinished"></translation>
+        <translation>2 · CRUCIBLE</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="155"/>
         <source>%1 with sound · %2 placed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 מיט קלאַנג · %2 געשטעלט</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="185"/>
         <source>endpoint: your choice · pin: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>ענדפּונקט: אײַער ברירה · פֿעסטשטעל: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="185"/>
         <source>endpoint: automatic · pin: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>ענדפּונקט: אויטאָמאַטיש · פֿעסטשטעל: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="141"/>

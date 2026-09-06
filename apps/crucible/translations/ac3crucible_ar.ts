@@ -6,12 +6,12 @@
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="49"/>
         <source>About Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>حول Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="60"/>
         <source>AC3Forge Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>AC3Forge Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="61"/>
@@ -41,17 +41,17 @@
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="75"/>
         <source>AC3Forge Crucible and the ac3forge library are free software under the GNU General Public License, version 3 or later; the full text is LICENSE.txt in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.</source>
-        <translation type="unfinished"></translation>
+        <translation>يُعدّ AC3Forge Crucible ومكتبة ac3forge برنامجين حرّين بموجب رخصة GNU General Public License، الإصدار 3 أو ما بعده؛ والنص الكامل هو LICENSE.txt في الحزمة. أما Dolby وDolby Atmos وDolby Digital Plus فهي علامات تجارية لشركة Dolby Laboratories؛ وهذا تنفيذ من غرفة نظيفة لمعايير منشورة، ولا صلة له بشركة Dolby.</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="81"/>
         <source>What this build carries from others - Qt, the {fmt} library, the Archivo and Noto Sans typefaces, and what the silent device needs on this platform - is listed with each licence under Licences; the same text ships in the package as NOTICES.txt.</source>
-        <translation type="unfinished"></translation>
+        <translation>ما يحمله هذا البناء من أعمال الآخرين - Qt ومكتبة {fmt} وخطَّا Archivo وNoto Sans وما يحتاجه الجهاز الصامت على هذه المنصة - مذكور مع رخصة كلٍّ منها ضمن الرخص؛ والنص نفسه يُشحن في الحزمة باسم NOTICES.txt.</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="92"/>
         <source>Licences…</source>
-        <translation type="unfinished"></translation>
+        <translation>الرخص…</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="93"/>
@@ -75,22 +75,22 @@
     <message>
         <location filename="../ui/qml/AppRow.qml" line="29"/>
         <source>no audio</source>
-        <translation type="unfinished"></translation>
+        <translation>بلا صوت</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="31"/>
         <source>idle</source>
-        <translation type="unfinished"></translation>
+        <translation>خامل</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="34"/>
         <source>no tap</source>
-        <translation type="unfinished"></translation>
+        <translation>بلا التقاط</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="37"/>
         <source>background</source>
-        <translation type="unfinished"></translation>
+        <translation>في الخلفية</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="88"/>
@@ -103,17 +103,17 @@
     <message>
         <location filename="../ui/qml/BedChip.qml" line="23"/>
         <source>%1, in the bed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1، في الطبقة الأساسية</translation>
     </message>
     <message>
         <location filename="../ui/qml/BedChip.qml" line="25"/>
         <source>full-screen: stays in the bed</source>
-        <translation type="unfinished">ملء الشاشة: يبقى في القاعدة</translation>
+        <translation>ملء الشاشة: يبقى في القاعدة</translation>
     </message>
     <message>
         <location filename="../ui/qml/BedChip.qml" line="26"/>
         <source>Enter places it in the centre of the room</source>
-        <translation type="unfinished"></translation>
+        <translation>يضعه Enter في وسط الغرفة</translation>
     </message>
 </context>
 <context>
@@ -156,17 +156,17 @@
     <message>
         <location filename="../ui/crucible_controller.cpp" line="722"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
-        <translation type="unfinished"></translation>
+        <translation>لا يحمل هذا البناء ملف إشعارات مضمَّنًا (لم يُصرَّف :/notices/NOTICES.txt ضمنه)؛ وملف NOTICES.txt المجاور للتطبيق وملف LICENSE في المستودع يوضّحان ما يشحنه.</translation>
     </message>
     <message>
         <location filename="../ui/crucible_controller.cpp" line="1215"/>
         <source>saved to %1</source>
-        <translation type="unfinished"></translation>
+        <translation>حُفظ في %1</translation>
     </message>
     <message>
         <location filename="../ui/crucible_controller.cpp" line="1218"/>
         <source>could not write %1: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>تعذّرت كتابة %1: %2</translation>
     </message>
     <message>
         <location filename="../ui/crucible_controller.cpp" line="1008"/>
@@ -199,113 +199,113 @@
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="21"/>
         <source>your previous default output</source>
-        <translation type="unfinished"></translation>
+        <translation>المخرج الافتراضي السابق لديك</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="98"/>
         <location filename="../ui/qml/FirstRunDialog.qml" line="108"/>
         <source>What Crucible does to your sound settings</source>
-        <translation type="unfinished"></translation>
+        <translation>ما يفعله Crucible بإعدادات الصوت لديك</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="101"/>
         <source>FIRST RUN</source>
-        <translation type="unfinished"></translation>
+        <translation>التشغيل الأول</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="121"/>
         <source>Applications are sent to a silent device</source>
-        <translation type="unfinished"></translation>
+        <translation>تُرسَل التطبيقات إلى الجهاز الصامت</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="121"/>
         <source>Applications are silenced where they are tapped</source>
-        <translation type="unfinished"></translation>
+        <translation>تُكتَم التطبيقات في موضع التقاطها</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="123"/>
         <source>Your default output becomes &quot;%1&quot;, a device nothing is heard from. Every application then plays into it and Crucible taps each one there.</source>
-        <translation type="unfinished"></translation>
+        <translation>يصبح المخرج الافتراضي لديك &quot;%1&quot;، وهو جهاز لا يُسمع منه شيء. عندئذٍ يُخرج كل تطبيق صوته إليه ويلتقط Crucible كلًّا منها هناك.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="124"/>
         <source>Nothing in your sound settings changes here: each application is silenced where Crucible taps it.</source>
-        <translation type="unfinished"></translation>
+        <translation>لا يتغيّر شيء في إعدادات الصوت لديك هنا: يُكتَم كل تطبيق في موضع التقاط Crucible له.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="129"/>
         <source>&quot;%1&quot; is on this machine.</source>
-        <translation type="unfinished"></translation>
+        <translation>&quot;%1&quot; موجود على هذا الحاسوب.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="130"/>
         <source>There is no &quot;%1&quot; yet: %2.</source>
-        <translation type="unfinished"></translation>
+        <translation>لا يوجد &quot;%1&quot; بعد: %2.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="144"/>
         <source>You hear one endpoint</source>
-        <translation type="unfinished"></translation>
+        <translation>تسمع نقطة نهاية واحدة</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="145"/>
         <source>Crucible encodes the room and sends it to the receiver, TV, headphones or speakers it chooses; you can pin either on the Signal path page. A receiver over HDMI is opened exclusively, so nothing else can play to it while Crucible runs.</source>
-        <translation type="unfinished"></translation>
+        <translation>يرمّز Crucible الغرفة ويرسلها إلى جهاز الاستقبال أو التلفاز أو سماعات الرأس أو المكبرات التي يختارها؛ ويمكنك تثبيت أيٍّ منهما في صفحة مسار الإشارة. ويُفتح جهاز الاستقبال عبر HDMI في النمط الحصري، فلا يستطيع شيء آخر أن يُخرج صوته إليه ما دام Crucible يعمل.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="153"/>
         <source>It is put back when Crucible quits</source>
-        <translation type="unfinished"></translation>
+        <translation>يُعاد كما كان عند إنهاء Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="160"/>
         <source>Quitting from the tray restores %1. Closing the window only hides it while &quot;Keep running in the tray&quot; is on, so applications stay on the silent device until you quit or press Restore.</source>
-        <translation type="unfinished"></translation>
+        <translation>الإنهاء من شريط النظام يستعيد %1. أما إغلاق النافذة فيخفيها فقط ما دام خيار &quot;الاستمرار في العمل في شريط النظام&quot; مفعَّلًا، فتبقى التطبيقات على الجهاز الصامت حتى تُنهي البرنامج أو تضغط &quot;استعد&quot;.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="161"/>
         <source>Closing the window quits Crucible and restores %1. There is no tray icon on this desktop, so there is nothing left running behind the window.</source>
-        <translation type="unfinished"></translation>
+        <translation>إغلاق النافذة يُنهي Crucible ويستعيد %1. لا توجد أيقونة في شريط النظام على سطح المكتب هذا، فلا يبقى شيء يعمل خلف النافذة.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="166"/>
         <source>Installing the silent device is a separate step in Settings that asks for administrator rights, and it stays installed until you remove it.</source>
-        <translation type="unfinished"></translation>
+        <translation>تنصيب الجهاز الصامت خطوة منفصلة في الإعدادات تطلب صلاحيات المسؤول، ويبقى منصَّبًا حتى تزيله.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="173"/>
         <source>Your settings from the earlier demo were carried over.</source>
-        <translation type="unfinished"></translation>
+        <translation>نُقلت إعداداتك من العرض التوضيحي السابق.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="182"/>
         <source>Do this every time Crucible starts</source>
-        <translation type="unfinished"></translation>
+        <translation>افعل هذا في كل مرة يبدأ فيها Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="183"/>
         <source>Off: Crucible asks with the button on the Room page each time.</source>
-        <translation type="unfinished"></translation>
+        <translation>عند الإيقاف: يسأل Crucible بالزر في صفحة الغرفة في كل مرة.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="194"/>
         <source>Open Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>افتح الإعدادات</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="200"/>
         <source>Not now</source>
-        <translation type="unfinished"></translation>
+        <translation>ليس الآن</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="211"/>
         <source>Send applications to %1</source>
-        <translation type="unfinished">إرسال التطبيقات إلى %1</translation>
+        <translation>إرسال التطبيقات إلى %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="211"/>
         <source>No silent device yet</source>
-        <translation type="unfinished"></translation>
+        <translation>لا يوجد جهاز صامت بعد</translation>
     </message>
 </context>
 <context>
@@ -313,17 +313,17 @@
     <message>
         <location filename="../ui/qml/LicencesDialog.qml" line="33"/>
         <source>Third-party licences</source>
-        <translation type="unfinished"></translation>
+        <translation>رخص الأطراف الثالثة</translation>
     </message>
     <message>
         <location filename="../ui/qml/LicencesDialog.qml" line="35"/>
         <source>THIRD-PARTY LICENCES</source>
-        <translation type="unfinished"></translation>
+        <translation>رخص الأطراف الثالثة</translation>
     </message>
     <message>
         <location filename="../ui/qml/LicencesDialog.qml" line="60"/>
         <source>Close</source>
-        <translation type="unfinished">إغلاق</translation>
+        <translation>إغلاق</translation>
     </message>
 </context>
 <context>
@@ -388,57 +388,57 @@
         <location filename="../ui/qml/Main.qml" line="20"/>
         <location filename="../ui/qml/Main.qml" line="139"/>
         <source>Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="172"/>
         <source>apps → %1 · objects signed</source>
-        <translation type="unfinished"></translation>
+        <translation>التطبيقات ← %1 · الكائنات موقَّعة</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="173"/>
         <source>apps → %1 · 5.1 bed only</source>
-        <translation type="unfinished"></translation>
+        <translation>التطبيقات ← %1 · الطبقة الأساسية 5.1 فقط</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="175"/>
         <source>⚠ apps heard direct → %1 · objects signed</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ التطبيقات مسموعة مباشرة ← %1 · الكائنات موقَّعة</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="176"/>
         <source>⚠ apps heard direct → %1 · 5.1 bed only</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ التطبيقات مسموعة مباشرة ← %1 · الطبقة الأساسية 5.1 فقط</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="212"/>
         <source>About Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>حول Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="279"/>
         <source>Engine error: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>خطأ في المحرك: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="280"/>
         <source>Engine running</source>
-        <translation type="unfinished"></translation>
+        <translation>المحرك يعمل</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="280"/>
         <source>Engine stopped</source>
-        <translation type="unfinished"></translation>
+        <translation>المحرك متوقف</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="291"/>
         <source>You hear it on %1</source>
-        <translation type="unfinished"></translation>
+        <translation>تسمعه على %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="305"/>
         <source>Applications play to %1</source>
-        <translation type="unfinished"></translation>
+        <translation>تُخرج التطبيقات صوتها إلى %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="378"/>
@@ -488,7 +488,7 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="429"/>
         <source>Crucible · %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Crucible · %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="438"/>
@@ -503,7 +503,7 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="440"/>
         <source>Signal path · %1</source>
-        <translation type="unfinished"></translation>
+        <translation>مسار الإشارة · %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="442"/>
@@ -543,12 +543,12 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="453"/>
         <source>Default output: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>المخرج الافتراضي: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="454"/>
         <source>Move default output to %1</source>
-        <translation type="unfinished"></translation>
+        <translation>انقل المخرج الافتراضي إلى %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="459"/>
@@ -558,7 +558,7 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="459"/>
         <source>Restore %1</source>
-        <translation type="unfinished">استعادة %1</translation>
+        <translation>استعادة %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="464"/>
@@ -606,17 +606,17 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="48"/>
         <source>Every application plays into the system default output. With the silent &quot;%1&quot; device as that default, nothing is heard from it; this app taps each application there, places it in the room, encodes the scene, and sends the result to the endpoint the pin and the hardware choose. That endpoint is the only thing you hear.</source>
-        <translation type="unfinished"></translation>
+        <translation>يُخرج كل تطبيق صوته إلى المخرج الافتراضي للنظام. وحين يكون الجهاز الصامت &quot;%1&quot; هو ذلك الافتراضي، لا يُسمع منه شيء؛ فيلتقط هذا البرنامج كل تطبيق هناك، ويضعه في الغرفة، ويرمّز المشهد، ويرسل النتيجة إلى نقطة النهاية التي يختارها التثبيت والعتاد. ونقطة النهاية تلك هي الشيء الوحيد الذي تسمعه.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="70"/>
         <source>%1 · E-AC-3 JOC over HDMI</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 · E-AC-3 JOC عبر HDMI</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="71"/>
         <source>%1 The endpoint follows the hardware: pull HDMI and it moves to the next best one below.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 تتبع نقطة النهاية العتاد: افصل HDMI فتنتقل إلى الأفضل التالي أدناه.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="79"/>
@@ -627,7 +627,7 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="85"/>
         <source>Pin</source>
-        <translation type="unfinished"></translation>
+        <translation>تثبيت</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="102"/>
@@ -657,57 +657,57 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="107"/>
         <source>Headphones · spatial sound</source>
-        <translation type="unfinished"></translation>
+        <translation>سماعات الرأس · صوت مكاني</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="164"/>
         <source>What the probe found on each render endpoint. &quot;Hear it here&quot; chooses one: it gets the best mode it can carry, the pin when it can, and &quot;Automatic&quot; hands the choice back (the best endpoint for the best mode, a receiver first). &quot;Send applications here&quot; is the other stage, the system default: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
-        <translation type="unfinished"></translation>
+        <translation>ما وجده الفحص على كل نقطة نهاية تشغيل. يختار &quot;اسمعه هنا&quot; واحدة منها: فتحصل على أفضل نمط تستطيع حمله، ومعه التثبيت متى أمكن، بينما يعيد &quot;تلقائي&quot; الاختيار إلى البرنامج (أفضل نقطة نهاية لأفضل نمط، وجهاز الاستقبال أولًا). أما &quot;أرسل التطبيقات هنا&quot; فهو المرحلة الأخرى، أي المخرج الافتراضي للنظام: فعلى جهاز حقيقي ستسمع كل تطبيق مباشرة، ولذلك فإن الجهاز الصامت هو ما يجب أن تُرسلها إليه.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="176"/>
         <source>Endpoints</source>
-        <translation type="unfinished"></translation>
+        <translation>نقاط النهاية</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="211"/>
         <source>no E-AC-3</source>
-        <translation type="unfinished"></translation>
+        <translation>بلا E-AC-3</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="212"/>
         <source>no AC-3</source>
-        <translation type="unfinished"></translation>
+        <translation>بلا AC-3</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="213"/>
         <source>%1 PCM channels</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 قناة PCM</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="213"/>
         <source>no PCM</source>
-        <translation type="unfinished"></translation>
+        <translation>بلا PCM</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="214"/>
         <source>spatial</source>
-        <translation type="unfinished"></translation>
+        <translation>مكاني</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="275"/>
         <source>the silent device · applications play here · never heard</source>
-        <translation type="unfinished"></translation>
+        <translation>الجهاز الصامت · التطبيقات تُخرج صوتها هنا · لا يُسمع أبدًا</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="276"/>
         <source>the silent device · never heard</source>
-        <translation type="unfinished"></translation>
+        <translation>الجهاز الصامت · لا يُسمع أبدًا</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="321"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the system default output and the silent device: nothing is heard from it, and this app taps each application there.</source>
-        <translation type="unfinished"></translation>
+        <translation>تُخرج التطبيقات صوتها إلى &lt;b&gt;%1&lt;/b&gt;، وهو المخرج الافتراضي للنظام والجهاز الصامت: لا يُسمع منه شيء، ويلتقط هذا البرنامج كل تطبيق هناك.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="108"/>
@@ -722,7 +722,7 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="147"/>
         <source>No headphones entry here — %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>لا يوجد بند لسماعات الرأس هنا — %1.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="158"/>
@@ -772,7 +772,7 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="322"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the system default output, which is a real device: you hear each application directly as well as through this app, and a receiver on it cannot be opened exclusively while they do.</source>
-        <translation type="unfinished"></translation>
+        <translation>تُخرج التطبيقات صوتها إلى &lt;b&gt;%1&lt;/b&gt;، وهو المخرج الافتراضي للنظام، وهو جهاز حقيقي: فتسمع كل تطبيق مباشرة كما تسمعه عبر هذا البرنامج، ولا يمكن فتح جهاز استقبال عليه في النمط الحصري ما دامت كذلك.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="331"/>
@@ -844,22 +844,22 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="285"/>
         <source>you hear it here · your choice · exclusive mode</source>
-        <translation type="unfinished"></translation>
+        <translation>تسمعه هنا · اختيارك · النمط الحصري</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="286"/>
         <source>you hear it here · your choice</source>
-        <translation type="unfinished"></translation>
+        <translation>تسمعه هنا · اختيارك</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="288"/>
         <source>you hear it here · automatic · exclusive mode</source>
-        <translation type="unfinished"></translation>
+        <translation>تسمعه هنا · تلقائي · النمط الحصري</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="289"/>
         <source>you hear it here · automatic</source>
-        <translation type="unfinished"></translation>
+        <translation>تسمعه هنا · تلقائي</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="296"/>
@@ -897,7 +897,7 @@
     <message>
         <location filename="../ui/platform/windows/tray_support.cpp" line="17"/>
         <source>This session has no notification area, so closing the window quits.</source>
-        <translation type="unfinished"></translation>
+        <translation>لا تحتوي هذه الجلسة على منطقة إشعارات، لذا فإن إغلاق النافذة يُنهي البرنامج.</translation>
     </message>
 </context>
 <context>
@@ -970,12 +970,12 @@
     <message>
         <location filename="../ui/qml/Room3DView.qml" line="100"/>
         <source>drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom · arrow keys move the selected application</source>
-        <translation type="unfinished"></translation>
+        <translation>اسحب تطبيقًا لتحريكه · اسحب بالزر الأيمن أو مع Shift للارتفاع · اسحب المساحة الفارغة للدوران حول المشهد · العجلة للتكبير والتصغير · مفاتيح الأسهم تحرّك التطبيق المحدد</translation>
     </message>
     <message>
         <location filename="../ui/qml/Room3DView.qml" line="131"/>
         <source>%1 placed. Choose an application in the applications list and use the arrow keys to move it; the picture follows.</source>
-        <translation type="unfinished"></translation>
+        <translation>وُضع %1. اختر تطبيقًا من قائمة التطبيقات واستخدم مفاتيح الأسهم لتحريكه؛ والصورة تتبع ذلك.</translation>
     </message>
 </context>
 <context>
@@ -983,54 +983,54 @@
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="46"/>
         <source>Room</source>
-        <translation type="unfinished">الغرفة</translation>
+        <translation>الغرفة</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="48"/>
         <source>%1 selected. Arrow keys move it, Page Up and Page Down change its height, Home recentres it, Enter places it, Delete returns it to the bed, plus and minus change its size.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 محدَّد. تحرّكه مفاتيح الأسهم، ويغيّر Page Up وPage Down ارتفاعه، ويعيده Home إلى الوسط، ويضعه Enter، ويعيده Delete إلى الطبقة الأساسية، ويغيّر مفتاحا الزائد والناقص حجمه.</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="49"/>
         <source>No application selected: choose one in the applications list.</source>
-        <translation type="unfinished"></translation>
+        <translation>لا تطبيق محدَّد: اختر واحدًا من قائمة التطبيقات.</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="89"/>
         <source>%1: %2, %3</source>
-        <translation type="unfinished"></translation>
+        <translation>%1: %2، %3</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="96"/>
         <location filename="../ui/qml/RoomKeys.qml" line="138"/>
         <source>No application selected</source>
-        <translation type="unfinished"></translation>
+        <translation>لا تطبيق محدَّد</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="100"/>
         <location filename="../ui/qml/RoomKeys.qml" line="142"/>
         <source>%1 is full-screen and stays in the bed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 بملء الشاشة ويبقى في الطبقة الأساسية</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="108"/>
         <source>height has no effect while the stream is bed only</source>
-        <translation type="unfinished"></translation>
+        <translation>لا أثر للارتفاع ما دام البث في الطبقة الأساسية فقط</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="145"/>
         <source>%1 placed in the centre of the room</source>
-        <translation type="unfinished"></translation>
+        <translation>وُضع %1 في وسط الغرفة</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="148"/>
         <source>%1: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>%1: %2</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="157"/>
         <source>%1 returned to the bed</source>
-        <translation type="unfinished"></translation>
+        <translation>أُعيد %1 إلى الطبقة الأساسية</translation>
     </message>
 </context>
 <context>
@@ -1126,7 +1126,7 @@
         <location filename="../ui/qml/RoomPage.qml" line="399"/>
         <location filename="../ui/qml/RoomPage.qml" line="406"/>
         <source>for %1</source>
-        <translation type="unfinished"></translation>
+        <translation>لـ %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="390"/>
@@ -1199,7 +1199,7 @@
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="441"/>
         <source>put %1 %2</source>
-        <translation type="unfinished"></translation>
+        <translation>ضع %1 %2</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="448"/>
@@ -1226,7 +1226,7 @@
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="489"/>
         <source>%1%</source>
-        <translation type="unfinished"></translation>
+        <translation>%1%</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="510"/>
@@ -1287,28 +1287,28 @@
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="90"/>
         <source>%1 applications · %2 with sound</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 تطبيقات · %2 بصوت</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="125"/>
         <source>Applications</source>
-        <translation type="unfinished"></translation>
+        <translation>التطبيقات</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="144"/>
         <location filename="../ui/qml/RoomPage.qml" line="550"/>
         <source>%1 placed in the centre of the room</source>
-        <translation type="unfinished"></translation>
+        <translation>وُضع %1 في وسط الغرفة</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="176"/>
         <source>The full-screen rule is off here: %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>قاعدة ملء الشاشة معطّلة هنا: %1.</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="213"/>
         <source>%1 of 10 slots placed</source>
-        <translation type="unfinished"></translation>
+        <translation>وُضع %1 من 10 فتحات</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="425"/>
@@ -1389,12 +1389,12 @@
     <message>
         <location filename="../ui/qml/RoomView.qml" line="99"/>
         <source>%1 speaker</source>
-        <translation type="unfinished"></translation>
+        <translation>مكبر الصوت %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomView.qml" line="133"/>
         <source>, split pair</source>
-        <translation type="unfinished"></translation>
+        <translation>، زوج مقسوم</translation>
     </message>
 </context>
 <context>
@@ -1403,87 +1403,87 @@
         <location filename="../ui/qml/RoomWords.qml" line="32"/>
         <source>up, %1</source>
         <extracomment>%1 is a position (&quot;in front of you, to the left&quot;); this adds that it is above ear level</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>مرتفع، %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="36"/>
         <source>low, %1</source>
         <extracomment>%1 is a position (&quot;in front of you, to the left&quot;); this adds that it is below ear level</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>منخفض، %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="49"/>
         <source>in front of you, to the left</source>
         <extracomment>Position in the room: ahead of the listener and to their left</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>أمامك، إلى اليسار</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="51"/>
         <source>behind you, to the left</source>
         <extracomment>Position in the room: behind the listener and to their left</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>خلفك، إلى اليسار</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="53"/>
         <source>beside you, to the left</source>
         <extracomment>Position in the room: level with the listener, to their left</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>بجانبك، إلى اليسار</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="57"/>
         <source>in front of you, to the right</source>
         <extracomment>Position in the room: ahead of the listener and to their right</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>أمامك، إلى اليمين</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="59"/>
         <source>behind you, to the right</source>
         <extracomment>Position in the room: behind the listener and to their right</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>خلفك، إلى اليمين</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="61"/>
         <source>beside you, to the right</source>
         <extracomment>Position in the room: level with the listener, to their right</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>بجانبك، إلى اليمين</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="64"/>
         <source>in front of you</source>
         <extracomment>Position in the room: ahead of the listener, neither left nor right</extracomment>
-        <translation type="unfinished">أمامك</translation>
+        <translation>أمامك</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="66"/>
         <source>behind you</source>
         <extracomment>Position in the room: behind the listener, neither left nor right</extracomment>
-        <translation type="unfinished">خلفك</translation>
+        <translation>خلفك</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="68"/>
         <source>beside you</source>
         <extracomment>Position in the room: level with the listener, neither left nor right</extracomment>
-        <translation type="unfinished">بجانبك</translation>
+        <translation>بجانبك</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="74"/>
         <source>x %1 · y %2 · z %3</source>
-        <translation type="unfinished"></translation>
+        <translation>x %1 · y %2 · z %3</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="99"/>
         <source>in the bed</source>
-        <translation type="unfinished">في القاعدة</translation>
+        <translation>في القاعدة</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="102"/>
         <source>slots %1+%2</source>
-        <translation type="unfinished"></translation>
+        <translation>الفتحتان %1+%2</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="103"/>
         <source>slot %1</source>
-        <translation type="unfinished"></translation>
+        <translation>الفتحة %1</translation>
     </message>
 </context>
 <context>
@@ -1496,52 +1496,52 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="30"/>
         <source>Save diagnostics</source>
-        <translation type="unfinished"></translation>
+        <translation>حفظ التشخيصات</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="33"/>
         <source>Text files (*.txt)</source>
-        <translation type="unfinished"></translation>
+        <translation>ملفات نصية (*.txt)</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="33"/>
         <source>All files (*)</source>
-        <translation type="unfinished"></translation>
+        <translation>كل الملفات (*)</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="116"/>
         <source>Sound takes two stages here. Applications play into the system default output; this app taps them there and sends the result to the endpoint you hear. For the first stage to be silent, the default must be a device that discards what it is given: &quot;%1&quot;. Until it is there, any silent endpoint whose name matches the filter under Advanced stands in.</source>
-        <translation type="unfinished"></translation>
+        <translation>يمرّ الصوت هنا بمرحلتين. تُخرج التطبيقات صوتها إلى المخرج الافتراضي للنظام؛ ويلتقطها هذا البرنامج هناك ويرسل النتيجة إلى نقطة النهاية التي تسمعها. ولكي تكون المرحلة الأولى صامتة، يجب أن يكون الافتراضي جهازًا يتخلّص مما يُعطى له: &quot;%1&quot;. وإلى أن يوجد، تنوب عنه أي نقطة نهاية صامتة يطابق اسمها المرشِّح الموجود ضمن &quot;متقدم&quot;.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="140"/>
         <source>Applications play to it: it is the system default output.</source>
-        <translation type="unfinished"></translation>
+        <translation>تُخرج التطبيقات صوتها إليه: فهو المخرج الافتراضي للنظام.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="140"/>
         <source>Applications do not play to it yet: the system default output is %1. Send them there from the Room or Signal path page.</source>
-        <translation type="unfinished"></translation>
+        <translation>لا تُخرج التطبيقات صوتها إليه بعد: فالمخرج الافتراضي للنظام هو %1. أرسلها إلى هناك من صفحة الغرفة أو صفحة مسار الإشارة.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="152"/>
         <source>This machine can load the silent device.</source>
-        <translation type="unfinished"></translation>
+        <translation>يستطيع هذا الحاسوب تحميل الجهاز الصامت.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="176"/>
         <source>Nothing to install: this application makes the silent device itself. Create it now, or it is created when you send applications to it.</source>
-        <translation type="unfinished"></translation>
+        <translation>لا شيء لتنصيبه: هذا التطبيق يصنع الجهاز الصامت بنفسه. أنشئه الآن، أو سيُنشأ عندما ترسل التطبيقات إليه.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="179"/>
         <source>No built driver package in the driver folder. No download carries the driver itself, only the scripts that install it: it is test-signed only, and shipping it waits on an EV certificate and attestation. Until then it has to be built from a source tree, with Advanced pointed at the folder holding the build.</source>
-        <translation type="unfinished"></translation>
+        <translation>لا توجد حزمة مبنية لبرنامج التشغيل في مجلد برنامج التشغيل. ولا يحمل أي تنزيل برنامج التشغيل نفسه، بل النصوص البرمجية التي تنصّبه فقط: فهو موقَّع للاختبار فقط، وشحنه ينتظر شهادة EV والتصديق. وإلى ذلك الحين يجب بناؤه من شجرة مصدر، مع توجيه &quot;متقدم&quot; إلى المجلد الذي يحوي البناء.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="184"/>
         <source>Create device</source>
-        <translation type="unfinished"></translation>
+        <translation>أنشئ الجهاز</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="185"/>
@@ -1557,12 +1557,12 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="206"/>
         <source>expanded</source>
-        <translation type="unfinished"></translation>
+        <translation>موسَّع</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="206"/>
         <source>collapsed</source>
-        <translation type="unfinished"></translation>
+        <translation>مطوي</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="239"/>
@@ -1577,7 +1577,7 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="244"/>
         <source>Remove device</source>
-        <translation type="unfinished"></translation>
+        <translation>أزل الجهاز</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="246"/>
@@ -1587,7 +1587,7 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="246"/>
         <source>Removes this application&apos;s own silent device; it also goes when the application does.</source>
-        <translation type="unfinished"></translation>
+        <translation>يزيل الجهاز الصامت الخاص بهذا التطبيق؛ وهو يزول أيضًا عندما يزول التطبيق.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="257"/>
@@ -1703,18 +1703,18 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="438"/>
         <source>System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.</source>
-        <translation type="unfinished"></translation>
+        <translation>يتبع خيار النظام اللغة المضبوطة على سطح المكتب. والترجمات آلية ولم يقرأها ناطق باللغة.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="441"/>
         <location filename="../ui/qml/SettingsPage.qml" line="448"/>
         <source>Text size</source>
-        <translation type="unfinished"></translation>
+        <translation>حجم النص</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="451"/>
         <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too.</source>
-        <translation type="unfinished"></translation>
+        <translation>كل حجم في النافذة يتبع هذا؛ و100% هو الحجم الذي تُرسم به. ويأخذ خيار النظام حجم النص الذي يبلّغ عنه سطح المكتب ويعدّ 9 pt مساويًا لـ100%، فعلى سطح مكتب حجمه الأساسي أكبر تبدأ النافذة أكبر أيضًا.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="491"/>
@@ -1739,17 +1739,17 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="511"/>
         <source>DIAGNOSTICS</source>
-        <translation type="unfinished"></translation>
+        <translation>التشخيصات</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="512"/>
         <source>A text file for a bug report: the version and platform, the engine&apos;s counters, the endpoints the probe found, the two devices of the signal path, this app&apos;s settings and its recent messages. It does not carry the signing key, the path to it, or any environment variable&apos;s value; it does name your audio devices and running applications, so read it before you attach it.</source>
-        <translation type="unfinished"></translation>
+        <translation>ملف نصي لتقرير علة: الإصدار والمنصة، وعدّادات المحرك، ونقاط النهاية التي وجدها الفحص، وجهازا مسار الإشارة، وإعدادات هذا البرنامج ورسائله الأخيرة. وهو لا يحمل مفتاح التوقيع ولا المسار إليه ولا قيمة أي متغيّر بيئة؛ لكنه يذكر أسماء أجهزة الصوت لديك والتطبيقات قيد التشغيل، فاقرأه قبل أن ترفقه.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="516"/>
         <source>Save diagnostics…</source>
-        <translation type="unfinished"></translation>
+        <translation>احفظ التشخيصات…</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="365"/>
@@ -1928,12 +1928,12 @@
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="58"/>
         <source>Warning: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>تحذير: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="82"/>
         <source>Warning. %1</source>
-        <translation type="unfinished"></translation>
+        <translation>تحذير. %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="114"/>
@@ -1963,27 +1963,27 @@
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="136"/>
         <source>There is no silent device to send them to: %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>لا يوجد جهاز صامت لإرسالها إليه: %1.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="154"/>
         <source>2 · CRUCIBLE</source>
-        <translation type="unfinished"></translation>
+        <translation>2 · CRUCIBLE</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="155"/>
         <source>%1 with sound · %2 placed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 بصوت · %2 موضوع</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="185"/>
         <source>endpoint: your choice · pin: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>نقطة النهاية: اختيارك · التثبيت: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="185"/>
         <source>endpoint: automatic · pin: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>نقطة النهاية: تلقائي · التثبيت: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="141"/>

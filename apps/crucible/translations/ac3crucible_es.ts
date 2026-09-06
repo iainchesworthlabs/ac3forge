@@ -6,12 +6,12 @@
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="49"/>
         <source>About Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>Acerca de Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="60"/>
         <source>AC3Forge Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>AC3Forge Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="61"/>
@@ -41,17 +41,17 @@
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="75"/>
         <source>AC3Forge Crucible and the ac3forge library are free software under the GNU General Public License, version 3 or later; the full text is LICENSE.txt in the package. Dolby, Dolby Atmos and Dolby Digital Plus are trademarks of Dolby Laboratories; this is a clean-room implementation of published standards and is not affiliated with Dolby.</source>
-        <translation type="unfinished"></translation>
+        <translation>AC3Forge Crucible y la biblioteca ac3forge son software libre bajo la Licencia Pública General de GNU, versión 3 o posterior; el texto completo está en LICENSE.txt dentro del paquete. Dolby, Dolby Atmos y Dolby Digital Plus son marcas comerciales de Dolby Laboratories; esta es una implementación de sala limpia de normas publicadas y no está afiliada a Dolby.</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="81"/>
         <source>What this build carries from others - Qt, the {fmt} library, the Archivo and Noto Sans typefaces, and what the silent device needs on this platform - is listed with each licence under Licences; the same text ships in the package as NOTICES.txt.</source>
-        <translation type="unfinished"></translation>
+        <translation>Lo que esta compilación toma de terceros - Qt, la biblioteca {fmt}, las tipografías Archivo y Noto Sans, y lo que el dispositivo silencioso necesita en esta plataforma - se enumera junto a cada licencia en Licencias; el mismo texto se distribuye en el paquete como NOTICES.txt.</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="92"/>
         <source>Licences…</source>
-        <translation type="unfinished"></translation>
+        <translation>Licencias…</translation>
     </message>
     <message>
         <location filename="../ui/qml/AboutDialog.qml" line="93"/>
@@ -75,22 +75,22 @@
     <message>
         <location filename="../ui/qml/AppRow.qml" line="29"/>
         <source>no audio</source>
-        <translation type="unfinished"></translation>
+        <translation>sin audio</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="31"/>
         <source>idle</source>
-        <translation type="unfinished"></translation>
+        <translation>inactiva</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="34"/>
         <source>no tap</source>
-        <translation type="unfinished"></translation>
+        <translation>sin toma</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="37"/>
         <source>background</source>
-        <translation type="unfinished"></translation>
+        <translation>en segundo plano</translation>
     </message>
     <message>
         <location filename="../ui/qml/AppRow.qml" line="88"/>
@@ -103,17 +103,17 @@
     <message>
         <location filename="../ui/qml/BedChip.qml" line="23"/>
         <source>%1, in the bed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1, en la cama</translation>
     </message>
     <message>
         <location filename="../ui/qml/BedChip.qml" line="25"/>
         <source>full-screen: stays in the bed</source>
-        <translation type="unfinished">pantalla completa: se queda en la cama</translation>
+        <translation>pantalla completa: se queda en la cama</translation>
     </message>
     <message>
         <location filename="../ui/qml/BedChip.qml" line="26"/>
         <source>Enter places it in the centre of the room</source>
-        <translation type="unfinished"></translation>
+        <translation>Intro la coloca en el centro de la sala</translation>
     </message>
 </context>
 <context>
@@ -156,17 +156,17 @@
     <message>
         <location filename="../ui/crucible_controller.cpp" line="722"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
-        <translation type="unfinished"></translation>
+        <translation>Esta compilación no lleva ningún archivo de avisos incrustado (:/notices/NOTICES.txt no se compiló); el NOTICES.txt que está junto a la aplicación y el LICENSE del repositorio indican lo que se distribuye.</translation>
     </message>
     <message>
         <location filename="../ui/crucible_controller.cpp" line="1215"/>
         <source>saved to %1</source>
-        <translation type="unfinished"></translation>
+        <translation>guardado en %1</translation>
     </message>
     <message>
         <location filename="../ui/crucible_controller.cpp" line="1218"/>
         <source>could not write %1: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>no se pudo escribir %1: %2</translation>
     </message>
     <message>
         <location filename="../ui/crucible_controller.cpp" line="1008"/>
@@ -199,113 +199,113 @@
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="21"/>
         <source>your previous default output</source>
-        <translation type="unfinished"></translation>
+        <translation>tu salida predeterminada anterior</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="98"/>
         <location filename="../ui/qml/FirstRunDialog.qml" line="108"/>
         <source>What Crucible does to your sound settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Lo que Crucible hace con tu configuración de sonido</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="101"/>
         <source>FIRST RUN</source>
-        <translation type="unfinished"></translation>
+        <translation>PRIMERA EJECUCIÓN</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="121"/>
         <source>Applications are sent to a silent device</source>
-        <translation type="unfinished"></translation>
+        <translation>Las aplicaciones se envían a un dispositivo silencioso</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="121"/>
         <source>Applications are silenced where they are tapped</source>
-        <translation type="unfinished"></translation>
+        <translation>Las aplicaciones se silencian donde se toman</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="123"/>
         <source>Your default output becomes &quot;%1&quot;, a device nothing is heard from. Every application then plays into it and Crucible taps each one there.</source>
-        <translation type="unfinished"></translation>
+        <translation>Tu salida predeterminada pasa a ser &quot;%1&quot;, un dispositivo del que no se oye nada. A partir de ahí cada aplicación reproduce en él y Crucible toma cada una allí.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="124"/>
         <source>Nothing in your sound settings changes here: each application is silenced where Crucible taps it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Aquí no cambia nada en tu configuración de sonido: cada aplicación se silencia donde Crucible la toma.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="129"/>
         <source>&quot;%1&quot; is on this machine.</source>
-        <translation type="unfinished"></translation>
+        <translation>&quot;%1&quot; está en esta máquina.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="130"/>
         <source>There is no &quot;%1&quot; yet: %2.</source>
-        <translation type="unfinished"></translation>
+        <translation>Todavía no hay ningún &quot;%1&quot;: %2.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="144"/>
         <source>You hear one endpoint</source>
-        <translation type="unfinished"></translation>
+        <translation>Oyes un punto de salida</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="145"/>
         <source>Crucible encodes the room and sends it to the receiver, TV, headphones or speakers it chooses; you can pin either on the Signal path page. A receiver over HDMI is opened exclusively, so nothing else can play to it while Crucible runs.</source>
-        <translation type="unfinished"></translation>
+        <translation>Crucible codifica la sala y la envía al receptor, televisor, auriculares o altavoces que elige; puedes fijar cualquiera de los dos en la página Ruta de la señal. Un receptor por HDMI se abre en modo exclusivo, así que nada más puede reproducir en él mientras Crucible está en marcha.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="153"/>
         <source>It is put back when Crucible quits</source>
-        <translation type="unfinished"></translation>
+        <translation>Se restaura cuando Crucible se cierra</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="160"/>
         <source>Quitting from the tray restores %1. Closing the window only hides it while &quot;Keep running in the tray&quot; is on, so applications stay on the silent device until you quit or press Restore.</source>
-        <translation type="unfinished"></translation>
+        <translation>Salir desde la bandeja restaura %1. Cerrar la ventana solo la oculta mientras &quot;Seguir en la bandeja&quot; está activado, así que las aplicaciones permanecen en el dispositivo silencioso hasta que salgas o pulses Restaurar.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="161"/>
         <source>Closing the window quits Crucible and restores %1. There is no tray icon on this desktop, so there is nothing left running behind the window.</source>
-        <translation type="unfinished"></translation>
+        <translation>Cerrar la ventana cierra Crucible y restaura %1. En este escritorio no hay icono de bandeja, así que no queda nada en marcha detrás de la ventana.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="166"/>
         <source>Installing the silent device is a separate step in Settings that asks for administrator rights, and it stays installed until you remove it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Instalar el dispositivo silencioso es un paso aparte, en Configuración, que pide permisos de administrador, y queda instalado hasta que lo quites.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="173"/>
         <source>Your settings from the earlier demo were carried over.</source>
-        <translation type="unfinished"></translation>
+        <translation>Se conservó tu configuración de la demo anterior.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="182"/>
         <source>Do this every time Crucible starts</source>
-        <translation type="unfinished"></translation>
+        <translation>Hacer esto cada vez que Crucible se inicie</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="183"/>
         <source>Off: Crucible asks with the button on the Room page each time.</source>
-        <translation type="unfinished"></translation>
+        <translation>Desactivado: Crucible lo pregunta cada vez con el botón de la página Sala.</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="194"/>
         <source>Open Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Abrir Configuración</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="200"/>
         <source>Not now</source>
-        <translation type="unfinished"></translation>
+        <translation>Ahora no</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="211"/>
         <source>Send applications to %1</source>
-        <translation type="unfinished">Enviar las aplicaciones a %1</translation>
+        <translation>Enviar las aplicaciones a %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/FirstRunDialog.qml" line="211"/>
         <source>No silent device yet</source>
-        <translation type="unfinished"></translation>
+        <translation>Aún no hay dispositivo silencioso</translation>
     </message>
 </context>
 <context>
@@ -313,17 +313,17 @@
     <message>
         <location filename="../ui/qml/LicencesDialog.qml" line="33"/>
         <source>Third-party licences</source>
-        <translation type="unfinished"></translation>
+        <translation>Licencias de terceros</translation>
     </message>
     <message>
         <location filename="../ui/qml/LicencesDialog.qml" line="35"/>
         <source>THIRD-PARTY LICENCES</source>
-        <translation type="unfinished"></translation>
+        <translation>LICENCIAS DE TERCEROS</translation>
     </message>
     <message>
         <location filename="../ui/qml/LicencesDialog.qml" line="60"/>
         <source>Close</source>
-        <translation type="unfinished">Cerrar</translation>
+        <translation>Cerrar</translation>
     </message>
 </context>
 <context>
@@ -388,57 +388,57 @@
         <location filename="../ui/qml/Main.qml" line="20"/>
         <location filename="../ui/qml/Main.qml" line="139"/>
         <source>Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="172"/>
         <source>apps → %1 · objects signed</source>
-        <translation type="unfinished"></translation>
+        <translation>aplicaciones → %1 · objetos firmados</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="173"/>
         <source>apps → %1 · 5.1 bed only</source>
-        <translation type="unfinished"></translation>
+        <translation>aplicaciones → %1 · solo cama 5.1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="175"/>
         <source>⚠ apps heard direct → %1 · objects signed</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ aplicaciones oídas directamente → %1 · objetos firmados</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="176"/>
         <source>⚠ apps heard direct → %1 · 5.1 bed only</source>
-        <translation type="unfinished"></translation>
+        <translation>⚠ aplicaciones oídas directamente → %1 · solo cama 5.1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="212"/>
         <source>About Crucible</source>
-        <translation type="unfinished"></translation>
+        <translation>Acerca de Crucible</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="279"/>
         <source>Engine error: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Error del motor: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="280"/>
         <source>Engine running</source>
-        <translation type="unfinished"></translation>
+        <translation>Motor en marcha</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="280"/>
         <source>Engine stopped</source>
-        <translation type="unfinished"></translation>
+        <translation>Motor detenido</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="291"/>
         <source>You hear it on %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Lo oyes en %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="305"/>
         <source>Applications play to %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Las aplicaciones reproducen en %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="378"/>
@@ -488,7 +488,7 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="429"/>
         <source>Crucible · %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Crucible · %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="438"/>
@@ -503,7 +503,7 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="440"/>
         <source>Signal path · %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Ruta de la señal · %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="442"/>
@@ -543,12 +543,12 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="453"/>
         <source>Default output: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Salida predeterminada: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="454"/>
         <source>Move default output to %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Mover la salida predeterminada a %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="459"/>
@@ -558,7 +558,7 @@
     <message>
         <location filename="../ui/qml/Main.qml" line="459"/>
         <source>Restore %1</source>
-        <translation type="unfinished">Restaurar %1</translation>
+        <translation>Restaurar %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/Main.qml" line="464"/>
@@ -606,17 +606,17 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="48"/>
         <source>Every application plays into the system default output. With the silent &quot;%1&quot; device as that default, nothing is heard from it; this app taps each application there, places it in the room, encodes the scene, and sends the result to the endpoint the pin and the hardware choose. That endpoint is the only thing you hear.</source>
-        <translation type="unfinished"></translation>
+        <translation>Cada aplicación reproduce en la salida predeterminada del sistema. Con el dispositivo silencioso &quot;%1&quot; como esa predeterminada, no se oye nada de él; esta aplicación toma allí cada aplicación, la coloca en la sala, codifica la escena y envía el resultado al punto de salida que eligen la fijación y el hardware. Ese punto de salida es lo único que oyes.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="70"/>
         <source>%1 · E-AC-3 JOC over HDMI</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 · E-AC-3 JOC por HDMI</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="71"/>
         <source>%1 The endpoint follows the hardware: pull HDMI and it moves to the next best one below.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 El punto de salida sigue al hardware: desconecta HDMI y pasa al siguiente mejor de abajo.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="79"/>
@@ -627,7 +627,7 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="85"/>
         <source>Pin</source>
-        <translation type="unfinished"></translation>
+        <translation>Fijar</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="102"/>
@@ -657,57 +657,57 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="107"/>
         <source>Headphones · spatial sound</source>
-        <translation type="unfinished"></translation>
+        <translation>Auriculares · sonido espacial</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="164"/>
         <source>What the probe found on each render endpoint. &quot;Hear it here&quot; chooses one: it gets the best mode it can carry, the pin when it can, and &quot;Automatic&quot; hands the choice back (the best endpoint for the best mode, a receiver first). &quot;Send applications here&quot; is the other stage, the system default: on a real device you would hear every application directly, so the silent device is the one to send them to.</source>
-        <translation type="unfinished"></translation>
+        <translation>Lo que la sonda encontró en cada punto de salida de reproducción. &quot;Oírlo aquí&quot; elige uno: recibe el mejor modo que puede transportar, y la fijación cuando puede; &quot;Automático&quot; devuelve la elección (el mejor punto de salida para el mejor modo, primero un receptor). &quot;Enviar aquí las aplicaciones&quot; es la otra etapa, la predeterminada del sistema: en un dispositivo real oirías cada aplicación directamente, así que el dispositivo silencioso es al que hay que enviarlas.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="176"/>
         <source>Endpoints</source>
-        <translation type="unfinished"></translation>
+        <translation>Puntos de salida</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="211"/>
         <source>no E-AC-3</source>
-        <translation type="unfinished"></translation>
+        <translation>sin E-AC-3</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="212"/>
         <source>no AC-3</source>
-        <translation type="unfinished"></translation>
+        <translation>sin AC-3</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="213"/>
         <source>%1 PCM channels</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 canales PCM</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="213"/>
         <source>no PCM</source>
-        <translation type="unfinished"></translation>
+        <translation>sin PCM</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="214"/>
         <source>spatial</source>
-        <translation type="unfinished"></translation>
+        <translation>espacial</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="275"/>
         <source>the silent device · applications play here · never heard</source>
-        <translation type="unfinished"></translation>
+        <translation>el dispositivo silencioso · las aplicaciones reproducen aquí · nunca se oye</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="276"/>
         <source>the silent device · never heard</source>
-        <translation type="unfinished"></translation>
+        <translation>el dispositivo silencioso · nunca se oye</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="321"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the system default output and the silent device: nothing is heard from it, and this app taps each application there.</source>
-        <translation type="unfinished"></translation>
+        <translation>Las aplicaciones reproducen en &lt;b&gt;%1&lt;/b&gt;, la salida predeterminada del sistema y el dispositivo silencioso: no se oye nada de él, y esta aplicación toma allí cada aplicación.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="108"/>
@@ -722,7 +722,7 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="147"/>
         <source>No headphones entry here — %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>Aquí no hay entrada de auriculares — %1.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="158"/>
@@ -772,7 +772,7 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="322"/>
         <source>Applications play to &lt;b&gt;%1&lt;/b&gt;, the system default output, which is a real device: you hear each application directly as well as through this app, and a receiver on it cannot be opened exclusively while they do.</source>
-        <translation type="unfinished"></translation>
+        <translation>Las aplicaciones reproducen en &lt;b&gt;%1&lt;/b&gt;, la salida predeterminada del sistema, que es un dispositivo real: oyes cada aplicación directamente además de a través de esta aplicación, y un receptor conectado a él no se puede abrir en modo exclusivo mientras eso ocurre.</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="331"/>
@@ -844,22 +844,22 @@
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="285"/>
         <source>you hear it here · your choice · exclusive mode</source>
-        <translation type="unfinished"></translation>
+        <translation>lo oyes aquí · tu elección · modo exclusivo</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="286"/>
         <source>you hear it here · your choice</source>
-        <translation type="unfinished"></translation>
+        <translation>lo oyes aquí · tu elección</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="288"/>
         <source>you hear it here · automatic · exclusive mode</source>
-        <translation type="unfinished"></translation>
+        <translation>lo oyes aquí · automático · modo exclusivo</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="289"/>
         <source>you hear it here · automatic</source>
-        <translation type="unfinished"></translation>
+        <translation>lo oyes aquí · automático</translation>
     </message>
     <message>
         <location filename="../ui/qml/OutputPage.qml" line="296"/>
@@ -897,7 +897,7 @@
     <message>
         <location filename="../ui/platform/windows/tray_support.cpp" line="17"/>
         <source>This session has no notification area, so closing the window quits.</source>
-        <translation type="unfinished"></translation>
+        <translation>Esta sesión no tiene área de notificación, así que cerrar la ventana cierra la aplicación.</translation>
     </message>
 </context>
 <context>
@@ -970,12 +970,12 @@
     <message>
         <location filename="../ui/qml/Room3DView.qml" line="100"/>
         <source>drag an application to move it · right-drag or Shift for height · drag space to orbit · wheel to zoom · arrow keys move the selected application</source>
-        <translation type="unfinished"></translation>
+        <translation>arrastra una aplicación para moverla · arrastra con el botón derecho o Mayús para la altura · arrastra el espacio para orbitar · rueda para acercar · las teclas de flecha mueven la aplicación seleccionada</translation>
     </message>
     <message>
         <location filename="../ui/qml/Room3DView.qml" line="131"/>
         <source>%1 placed. Choose an application in the applications list and use the arrow keys to move it; the picture follows.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 colocadas. Elige una aplicación en la lista de aplicaciones y usa las teclas de flecha para moverla; la imagen la sigue.</translation>
     </message>
 </context>
 <context>
@@ -983,54 +983,54 @@
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="46"/>
         <source>Room</source>
-        <translation type="unfinished">Sala</translation>
+        <translation>Sala</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="48"/>
         <source>%1 selected. Arrow keys move it, Page Up and Page Down change its height, Home recentres it, Enter places it, Delete returns it to the bed, plus and minus change its size.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 seleccionada. Las teclas de flecha la mueven, Re Pág y Av Pág cambian su altura, Inicio la vuelve a centrar, Intro la coloca, Supr la devuelve a la cama, más y menos cambian su tamaño.</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="49"/>
         <source>No application selected: choose one in the applications list.</source>
-        <translation type="unfinished"></translation>
+        <translation>Ninguna aplicación seleccionada: elige una en la lista de aplicaciones.</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="89"/>
         <source>%1: %2, %3</source>
-        <translation type="unfinished"></translation>
+        <translation>%1: %2, %3</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="96"/>
         <location filename="../ui/qml/RoomKeys.qml" line="138"/>
         <source>No application selected</source>
-        <translation type="unfinished"></translation>
+        <translation>Ninguna aplicación seleccionada</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="100"/>
         <location filename="../ui/qml/RoomKeys.qml" line="142"/>
         <source>%1 is full-screen and stays in the bed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 está en pantalla completa y permanece en la cama</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="108"/>
         <source>height has no effect while the stream is bed only</source>
-        <translation type="unfinished"></translation>
+        <translation>la altura no tiene efecto mientras el flujo es solo cama</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="145"/>
         <source>%1 placed in the centre of the room</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 colocada en el centro de la sala</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="148"/>
         <source>%1: %2</source>
-        <translation type="unfinished"></translation>
+        <translation>%1: %2</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomKeys.qml" line="157"/>
         <source>%1 returned to the bed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 devuelta a la cama</translation>
     </message>
 </context>
 <context>
@@ -1126,7 +1126,7 @@
         <location filename="../ui/qml/RoomPage.qml" line="399"/>
         <location filename="../ui/qml/RoomPage.qml" line="406"/>
         <source>for %1</source>
-        <translation type="unfinished"></translation>
+        <translation>para %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="390"/>
@@ -1199,7 +1199,7 @@
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="441"/>
         <source>put %1 %2</source>
-        <translation type="unfinished"></translation>
+        <translation>coloca %1 %2</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="448"/>
@@ -1226,7 +1226,7 @@
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="489"/>
         <source>%1%</source>
-        <translation type="unfinished"></translation>
+        <translation>%1%</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="510"/>
@@ -1287,28 +1287,28 @@
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="90"/>
         <source>%1 applications · %2 with sound</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 aplicaciones · %2 con sonido</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="125"/>
         <source>Applications</source>
-        <translation type="unfinished"></translation>
+        <translation>Aplicaciones</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="144"/>
         <location filename="../ui/qml/RoomPage.qml" line="550"/>
         <source>%1 placed in the centre of the room</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 colocada en el centro de la sala</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="176"/>
         <source>The full-screen rule is off here: %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>Aquí la regla de pantalla completa está desactivada: %1.</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="213"/>
         <source>%1 of 10 slots placed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 de 10 ranuras colocadas</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="425"/>
@@ -1389,12 +1389,12 @@
     <message>
         <location filename="../ui/qml/RoomView.qml" line="99"/>
         <source>%1 speaker</source>
-        <translation type="unfinished"></translation>
+        <translation>altavoz %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomView.qml" line="133"/>
         <source>, split pair</source>
-        <translation type="unfinished"></translation>
+        <translation>, par dividido</translation>
     </message>
 </context>
 <context>
@@ -1403,87 +1403,87 @@
         <location filename="../ui/qml/RoomWords.qml" line="32"/>
         <source>up, %1</source>
         <extracomment>%1 is a position (&quot;in front of you, to the left&quot;); this adds that it is above ear level</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>arriba, %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="36"/>
         <source>low, %1</source>
         <extracomment>%1 is a position (&quot;in front of you, to the left&quot;); this adds that it is below ear level</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>abajo, %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="49"/>
         <source>in front of you, to the left</source>
         <extracomment>Position in the room: ahead of the listener and to their left</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>delante de ti, a la izquierda</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="51"/>
         <source>behind you, to the left</source>
         <extracomment>Position in the room: behind the listener and to their left</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>detrás de ti, a la izquierda</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="53"/>
         <source>beside you, to the left</source>
         <extracomment>Position in the room: level with the listener, to their left</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>junto a ti, a la izquierda</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="57"/>
         <source>in front of you, to the right</source>
         <extracomment>Position in the room: ahead of the listener and to their right</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>delante de ti, a la derecha</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="59"/>
         <source>behind you, to the right</source>
         <extracomment>Position in the room: behind the listener and to their right</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>detrás de ti, a la derecha</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="61"/>
         <source>beside you, to the right</source>
         <extracomment>Position in the room: level with the listener, to their right</extracomment>
-        <translation type="unfinished"></translation>
+        <translation>junto a ti, a la derecha</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="64"/>
         <source>in front of you</source>
         <extracomment>Position in the room: ahead of the listener, neither left nor right</extracomment>
-        <translation type="unfinished">delante de ti</translation>
+        <translation>delante de ti</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="66"/>
         <source>behind you</source>
         <extracomment>Position in the room: behind the listener, neither left nor right</extracomment>
-        <translation type="unfinished">detrás de ti</translation>
+        <translation>detrás de ti</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="68"/>
         <source>beside you</source>
         <extracomment>Position in the room: level with the listener, neither left nor right</extracomment>
-        <translation type="unfinished">a tu lado</translation>
+        <translation>a tu lado</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="74"/>
         <source>x %1 · y %2 · z %3</source>
-        <translation type="unfinished"></translation>
+        <translation>x %1 · y %2 · z %3</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="99"/>
         <source>in the bed</source>
-        <translation type="unfinished">en la cama</translation>
+        <translation>en la cama</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="102"/>
         <source>slots %1+%2</source>
-        <translation type="unfinished"></translation>
+        <translation>ranuras %1+%2</translation>
     </message>
     <message>
         <location filename="../ui/qml/RoomWords.qml" line="103"/>
         <source>slot %1</source>
-        <translation type="unfinished"></translation>
+        <translation>ranura %1</translation>
     </message>
 </context>
 <context>
@@ -1496,52 +1496,52 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="30"/>
         <source>Save diagnostics</source>
-        <translation type="unfinished"></translation>
+        <translation>Guardar el diagnóstico</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="33"/>
         <source>Text files (*.txt)</source>
-        <translation type="unfinished"></translation>
+        <translation>Archivos de texto (*.txt)</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="33"/>
         <source>All files (*)</source>
-        <translation type="unfinished"></translation>
+        <translation>Todos los archivos (*)</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="116"/>
         <source>Sound takes two stages here. Applications play into the system default output; this app taps them there and sends the result to the endpoint you hear. For the first stage to be silent, the default must be a device that discards what it is given: &quot;%1&quot;. Until it is there, any silent endpoint whose name matches the filter under Advanced stands in.</source>
-        <translation type="unfinished"></translation>
+        <translation>Aquí el sonido pasa por dos etapas. Las aplicaciones reproducen en la salida predeterminada del sistema; esta aplicación las toma allí y envía el resultado al punto de salida que oyes. Para que la primera etapa sea silenciosa, la predeterminada debe ser un dispositivo que descarte lo que recibe: &quot;%1&quot;. Hasta que esté ahí, hace de sustituto cualquier punto de salida silencioso cuyo nombre coincida con el filtro de Avanzado.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="140"/>
         <source>Applications play to it: it is the system default output.</source>
-        <translation type="unfinished"></translation>
+        <translation>Las aplicaciones reproducen en él: es la salida predeterminada del sistema.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="140"/>
         <source>Applications do not play to it yet: the system default output is %1. Send them there from the Room or Signal path page.</source>
-        <translation type="unfinished"></translation>
+        <translation>Las aplicaciones todavía no reproducen en él: la salida predeterminada del sistema es %1. Envíalas allí desde la página Sala o Ruta de la señal.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="152"/>
         <source>This machine can load the silent device.</source>
-        <translation type="unfinished"></translation>
+        <translation>Esta máquina puede cargar el dispositivo silencioso.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="176"/>
         <source>Nothing to install: this application makes the silent device itself. Create it now, or it is created when you send applications to it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Nada que instalar: esta aplicación crea el dispositivo silencioso por sí misma. Créalo ahora, o se crea cuando le envíes las aplicaciones.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="179"/>
         <source>No built driver package in the driver folder. No download carries the driver itself, only the scripts that install it: it is test-signed only, and shipping it waits on an EV certificate and attestation. Until then it has to be built from a source tree, with Advanced pointed at the folder holding the build.</source>
-        <translation type="unfinished"></translation>
+        <translation>No hay ningún paquete de controlador compilado en la carpeta del controlador. Ninguna descarga lleva el controlador en sí, solo los scripts que lo instalan: está firmado únicamente para pruebas, y distribuirlo espera un certificado EV y la atestación. Hasta entonces hay que compilarlo desde un árbol de código, con Avanzado apuntando a la carpeta que contiene la compilación.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="184"/>
         <source>Create device</source>
-        <translation type="unfinished"></translation>
+        <translation>Crear el dispositivo</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="185"/>
@@ -1557,12 +1557,12 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="206"/>
         <source>expanded</source>
-        <translation type="unfinished"></translation>
+        <translation>expandido</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="206"/>
         <source>collapsed</source>
-        <translation type="unfinished"></translation>
+        <translation>contraído</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="239"/>
@@ -1577,7 +1577,7 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="244"/>
         <source>Remove device</source>
-        <translation type="unfinished"></translation>
+        <translation>Quitar el dispositivo</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="246"/>
@@ -1587,7 +1587,7 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="246"/>
         <source>Removes this application&apos;s own silent device; it also goes when the application does.</source>
-        <translation type="unfinished"></translation>
+        <translation>Quita el dispositivo silencioso propio de esta aplicación; también desaparece cuando desaparece la aplicación.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="257"/>
@@ -1703,18 +1703,18 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="438"/>
         <source>System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.</source>
-        <translation type="unfinished"></translation>
+        <translation>Sistema sigue el idioma configurado en el escritorio. Las traducciones están hechas por una máquina y no las ha leído ningún hablante.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="441"/>
         <location filename="../ui/qml/SettingsPage.qml" line="448"/>
         <source>Text size</source>
-        <translation type="unfinished"></translation>
+        <translation>Tamaño del texto</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="451"/>
         <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too.</source>
-        <translation type="unfinished"></translation>
+        <translation>Todos los tamaños de la ventana siguen esto; 100 % es el tamaño con el que se dibuja. Sistema toma el tamaño de texto que informa el escritorio y cuenta 9 pt como 100 %, así que en un escritorio cuyo tamaño base sea mayor la ventana también empieza más grande.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="491"/>
@@ -1739,17 +1739,17 @@
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="511"/>
         <source>DIAGNOSTICS</source>
-        <translation type="unfinished"></translation>
+        <translation>DIAGNÓSTICO</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="512"/>
         <source>A text file for a bug report: the version and platform, the engine&apos;s counters, the endpoints the probe found, the two devices of the signal path, this app&apos;s settings and its recent messages. It does not carry the signing key, the path to it, or any environment variable&apos;s value; it does name your audio devices and running applications, so read it before you attach it.</source>
-        <translation type="unfinished"></translation>
+        <translation>Un archivo de texto para un informe de error: la versión y la plataforma, los contadores del motor, los puntos de salida que encontró la sonda, los dos dispositivos de la ruta de la señal, la configuración de esta aplicación y sus mensajes recientes. No lleva la clave de firma, ni la ruta hasta ella, ni el valor de ninguna variable de entorno; sí nombra tus dispositivos de audio y las aplicaciones en marcha, así que léelo antes de adjuntarlo.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="516"/>
         <source>Save diagnostics…</source>
-        <translation type="unfinished"></translation>
+        <translation>Guardar el diagnóstico…</translation>
     </message>
     <message>
         <location filename="../ui/qml/SettingsPage.qml" line="365"/>
@@ -1928,12 +1928,12 @@
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="58"/>
         <source>Warning: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Advertencia: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="82"/>
         <source>Warning. %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Advertencia. %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="114"/>
@@ -1963,27 +1963,27 @@
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="136"/>
         <source>There is no silent device to send them to: %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>No hay ningún dispositivo silencioso al que enviarlas: %1.</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="154"/>
         <source>2 · CRUCIBLE</source>
-        <translation type="unfinished"></translation>
+        <translation>2 · CRUCIBLE</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="155"/>
         <source>%1 with sound · %2 placed</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 con sonido · %2 colocadas</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="185"/>
         <source>endpoint: your choice · pin: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>punto de salida: tu elección · fijación: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="185"/>
         <source>endpoint: automatic · pin: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>punto de salida: automático · fijación: %1</translation>
     </message>
     <message>
         <location filename="../ui/qml/SignalPath.qml" line="141"/>
