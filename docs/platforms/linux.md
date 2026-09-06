@@ -322,7 +322,9 @@ are mutually exclusive: Clang refuses `-fsanitize=address,thread`.
 Two more legs, `linux-gcc-arm64` and `linux-llvm-arm64`, run the same matrix on real ARM hardware
 (GitHub's `ubuntu-24.04-arm` hosted runner, not QEMU emulation) — see
 [Raspberry Pi](raspberry-pi.md), which is the hardware this arch target is validated
-against.
+against. `linux-llvm-arm64` also carries the Crucible pass, so the window, its Qt Quick suite and
+its `.deb` are built and checked on aarch64 as well as on x86_64 — aarch64 being the
+architecture Crucible's Linux half was verified on in the first place.
 
 A fifth Linux leg, `linux-appimage`, is separate from all of the above: an `ubuntu:22.04`
 container (deliberately older than `ubuntu:26.04`) building `ac3gui`'s AppImage and then

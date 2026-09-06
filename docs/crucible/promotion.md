@@ -712,15 +712,16 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     `release.yml` downloads (`release.yml:275-279`) and attaches file by file (`:538-549`), so
     both files are release assets, checksummed, signed and attested with every other package.
     No tag has been cut since that landed, so that is what CI is wired to do rather than
-    something a published release has been seen to carry. Two qualifications stay true of the
-    route: the leg is x86_64, so no release carries an aarch64 Linux Crucible package, and it
-    carries no `release_package`, so the package rides on the artifact glob rather than on a
-    release gate. The fleet's Linux image is Ubuntu 26.04 with Qt 6.10; when
+    something a published release has been seen to carry. One qualification stays true of the
+    route: the leg carries no `release_package`, so the package rides on the artifact glob
+    rather than on a release gate. The other — that the leg was x86_64, so no release could
+    carry an aarch64 Linux Crucible package — closed on 2026-09-06, and Phase 8 below records
+    what closed it. The fleet's Linux image is Ubuntu 26.04 with Qt 6.10; when
     `decide-runner` falls back to GitHub's 24.04 and its Qt 6.4, below the window's 6.8, the
     step warns by name and skips the window half rather than fail the leg for something
     unrelated to the change — and with it the package, which the upload's
     `if-no-files-found: ignore` lets pass quietly, so a release cut on that fallback carries no
-    Linux Crucible package.
+    x86_64 Linux Crucible package.
 
     **The Pulse relay, and what a person sees of it.** Playing something on the Pi found two
     things, one of them a bug with a wrong session list and a tap that captured nothing.
@@ -1182,6 +1183,37 @@ Linux gets AppImage and `.deb` alongside the GUI's.
     Not done: Windows packaging is unchanged (the driver is still test-signed, so the archive
     stays separate), there is no Linux package or installer for Crucible yet, and macOS has
     nothing to build.
+
+!!! success "Done 2026-09-06: the same pass on aarch64"
+    That pass, and the packaging the DR9 record above added to it, ran on x86_64 alone — and
+    aarch64 is the only hardware the Linux half is on record as having run on. The Pi 4B run in
+    Phase 4 built the window, passed all five Qt Quick suites and produced the aarch64 tarball
+    and the arm64 `.deb` by hand. So the architecture the whole record rests on was the one
+    nothing checked, and an aarch64-only compilation fault would have reached a user through
+    the `.deb` before anyone saw it.
+
+    The "Linux LLVM (arm64)" leg now carries `crucible: true`, and that flag is the whole of
+    the change. The pass is written against `matrix.preset`, so it runs there unchanged: the
+    same apt list, the same configure assertions on the backend, the X11 check and Qt SVG, the
+    same engine and PipeWire-contract tags, the same headless Qt Quick suite, the same `cpack`
+    and the same `check_crucible_package.py`, uploaded as
+    `packages-crucible-linux-llvm-arm64` beside the x86_64 pair. That leg and not "Linux GCC
+    (arm64)", which carries two flags this pass cannot sit beside: `alsa_fallback`, whose
+    assertion that disabling ALSA falls back to posix holds only while no PipeWire headers are
+    installed, and `release_package`, which on a `do_package` run would send the Windows-shaped
+    "was the Crucible packaged" assertion looking on Linux for a `.zip` no Linux leg produces.
+
+    One step is new, and it is there because the pass has a soft path: its Qt guard warns and
+    exits 0 when the Qt it found is below the 6.8 the window needs. A leg that took that path
+    would be green having built no window, run no Qt Quick suite and packaged nothing — which
+    on the one leg that exists to check aarch64 leaves nothing checked at all. The step fails
+    on that instead, and then reads the architecture off the files rather than off their names:
+    `file` on `ac3crucible`, and the `.deb`'s own `Architecture:` field. Every name the pass
+    globs for is computed from `CMAKE_SYSTEM_PROCESSOR`, so a package built for another target
+    would match them all.
+
+    Not done: the leg has not run with the flag on yet, so this is what CI is wired to do
+    rather than something a green run has shown.
 
 ### Phase 9: verification
 

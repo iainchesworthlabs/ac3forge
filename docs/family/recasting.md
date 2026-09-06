@@ -64,7 +64,7 @@ live demos, with the npm package listed among the library's bindings.
 | Tests and checks | most of `ac3tests`; `tests/capi`, `python/tests`, `apps/wasm/tests`; coverage floors `src/*` (`tools/checks/coverage_report.sh:108-116`); abi-gate; fuzz.yml; interop.yml | `tests/cli`, `tests/gui`, `ac3gui_qmltests` (label `gui`); floor `apps/cli` (:117); `.clang-tidy:95` | `tests/crucible` (compiled into `ac3tests`, `tests/CMakeLists.txt:436-456`), `ac3crucible_qmltests`; labels `crucible`, `crucible-ui`; `tools/ci/check_crucible_package.py`; `tools/checks/coverage_crucible.ps1`, `crucible_platform_probe.cpp` |
 | Docs | Library (22 pages), Concepts (4), Validation, Threat model, Conformance vectors, Performance & quality (6), `platforms/wasm.md`, the two WASM demo pages | CLI reference (3), GUI guide (12) | Crucible guide (5), `platforms/windows-demo.md` (the record), `platforms/windows-driver-acx.md` |
 | Packages | `ac3forge-dev-<full>-<sys>`; DEB `libac3forge0`, `libac3forge-dev`; RPM `libac3forge0`, `ac3forge-devel`; PyPI `ac3forge` (live); npm `ac3forge-wasm-decoder` (unpublished); crates `ac3forge`, `ac3forge-sys` (unpublished); vcpkg port and Conan recipe `ac3forge` (staged); `ac3forge-conformance-vectors-<ver>.tar.gz` | component `runtime`: `ac3forge-<M.m.p>-<sys>` zip/tgz, NSIS `.exe`, DEB/RPM `ac3forge`, `.dmg`; `ac3gui-*.AppImage`; winget `iainchesworthlabs.ac3forge` (4 versions staged); Homebrew formula `ac3forge` and cask `ac3gui` (live tap) | component `crucible`: `ac3forge-crucible-<full>-<sys>` zip/tgz, DEB/RPM `ac3forge-crucible` (no tag contains it yet) |
-| CI | all 11 matrix legs; `build-rust`, `build-wasm`, `build-footprint`; wheels.yml, npm.yml | legs with `gui: true` (Linux GCC/LLVM, both arm64, both macOS; Windows always); `linux-appimage`; ffmpeg-validate builds `ac3cli` | `crucible: true` on windows-msvc, windows-llvm, linux-llvm (`_build.yml:329,342,430`); `windows-driver` |
+| CI | all 11 matrix legs; `build-rust`, `build-wasm`, `build-footprint`; wheels.yml, npm.yml | legs with `gui: true` (Linux GCC/LLVM, both arm64, both macOS; Windows always); `linux-appimage`; ffmpeg-validate builds `ac3cli` | `crucible: true` on windows-msvc, windows-llvm, linux-llvm, linux-llvm-arm64 (`_build.yml:329,342,430,487`); `windows-driver` |
 | Settings and ids | none | QSettings `ac3forge`/`ac3forge`; bundle id `com.iainchesworthlabs.ac3gui`; ProgID `AC3Forge.Stream` | QSettings `ac3forge`/`Crucible` (migrated from `DesktopAtmos`, `apps/crucible/ui/main.cpp:38-60`); no bundle id yet |
 
 Three things do not sit in one column and the plan says where they go.
@@ -166,14 +166,17 @@ The first tag that contains Crucible freezes three release-shape facts ([decisio
 13](#decisions)). All three are settled: two changed, and one was examined and deliberately left
 as it is.
 
-1. **The Linux Crucible package is a release asset.** *Settled.* The linux-llvm leg packages the
-   component on every run and uploads it as `packages-crucible-<preset>`
-   (`_build.yml:1533-1541`, renamed in 99d08210), which is the `packages-*` pattern release.yml
+1. **The Linux Crucible package is a release asset.** *Settled.* Both linux-llvm legs package the
+   component on every run and upload it as `packages-crucible-<preset>`
+   (`_build.yml:1652-1660`, renamed in 99d08210), which is the `packages-*` pattern release.yml
    downloads (`release.yml:275-279`) and attaches file by file (`:538-549`); the `.deb` and
    `.tar.gz` globs in release.yml's checksum, signing, provenance and SBOM steps cover both
-   files. Two things stay true of that route: the leg is x86_64, so no release carries an
-   aarch64 Linux Crucible package, and it carries no `release_package`, so the package rides on
-   the artifact glob rather than on a release gate. No tag has been cut since, so the route is
+   files. One thing stays true of that route: neither leg carries `release_package`, so the
+   packages ride on the artifact glob rather than on a release gate. The other qualification
+   recorded here — that the leg was x86_64 alone, so no release carried an aarch64 Linux Crucible
+   package — closed on 2026-09-06, when linux-llvm-arm64 took the same pass and its own pair
+   joined the same artifact glob ([the promotion plan](../crucible/promotion.md), Phase 8,
+   records what that took and what it asserts). No tag has been cut since, so the route is
    wired and not yet exercised by a published release.
 2. **Two version-string styles in one release.** *Deliberate*, and [decision
    13](#decisions) says why. The runtime archive, `.exe` and `.dmg` carry
@@ -322,8 +325,8 @@ jobs; `ci.yml` aggregates 22 jobs behind the required check `CI Status`
 | windows-llvm | library, Forge, Crucible | `packageable`, `crucible` |
 | windows-msvc-arm64 | library, Forge (CLI only) | `experimental`, `packageable`, `release_package` |
 | linux-gcc, linux-gcc-arm64 | library, Forge | `gui`, `packageable`, `release_package` |
-| linux-llvm | library, Forge, Crucible (the only PipeWire pass) | `gui`, `packageable`, `crucible` |
-| linux-llvm-arm64 | library, Forge | `gui`, `packageable` |
+| linux-llvm | library, Forge, Crucible (the PipeWire pass, x86_64) | `gui`, `packageable`, `crucible` |
+| linux-llvm-arm64 | library, Forge, Crucible (the same pass, aarch64) | `gui`, `packageable`, `crucible` |
 | linux-llvm-asan-ubsan, linux-llvm-tsan | library | |
 | macos-llvm, macos-llvm-x64 | library, Forge | `gui`, `packageable` |
 | package-macos-universal, linux-appimage | Forge | |
@@ -459,12 +462,12 @@ opening `ROADMAP.md` on GitHub and following each of the DR8 links; a one-off co
 ### Phase 6: packaging and release shape
 
 Depends on decisions 5, 6, 13 and 14. Under S1 nothing renames. Two of the three pre-tag facts
-are in already: the artifact is `packages-crucible-<preset>` (`_build.yml:1533-1541`), and
-docs/releasing.md's table (:570-579) carries a row for the Linux Crucible package and one for the
-Windows zip. The third, one version-string style in `cmake/Packaging.cmake:357-365`, was examined
-under decision 13 and refused, and the two styles are documented instead. What is left for this
-phase is the `CPACK_COMPONENT_<C>_DESCRIPTION` strings, which say which member each component
-is, for the generators that show them.
+are in already: the artifact is `packages-crucible-<preset>` (`_build.yml:1652-1660`), and
+docs/releasing.md's table (:571-581) carries a row for each Linux Crucible package, x86_64 and
+aarch64, and one for the Windows zip. The third, one version-string style in
+`cmake/Packaging.cmake:357-365`, was examined under decision 13 and refused, and the two styles
+are documented instead. What is left for this phase is the `CPACK_COMPONENT_<C>_DESCRIPTION`
+strings, which say which member each component is, for the generators that show them.
 
 **Exit:** a release dry run produces `ac3forge-crucible-*` for Linux beside the Windows zip among
 its collected artifacts, and each component's description names its member.
