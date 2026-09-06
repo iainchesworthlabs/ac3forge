@@ -10,19 +10,29 @@ day or two), **L** (a focused week), **XL** (several PRs). The full record for a
 measurements, file paths, dead ends — sits behind its "Full record" toggle; nothing has been
 cut, just moved out of the way of a first read.
 
+Each item also says which member of the family it belongs to — **the library**, **Forge**
+(`ac3cli` and `ac3gui`) or **Crucible** — or **shared**, where the work landed in more than one
+of them. A theme whose items are all the same member says so once, under its heading, and only
+an item that differs carries its own tag: `**UX12 (XL, Crucible)**`. IM, AP, UX and DR tag
+every item; each of those headings says why.
+
 ## Overview
 
-| Theme | Shipped | In progress | Considering |
-|---|---|---|---|
-| EQ — Encoder decision quality | 12 | 0 | 2 |
-| DC — Decoder and consumer output | 10 | 0 | 0 |
-| IO — Streams in and out | 12 | 0 | 0 |
-| IM — Immersive and other formats | 5 | 1 | 1 |
-| VX — Verification and oracles | 19 | 2 | 1 |
-| PF — Performance and portability | 8 | 0 | 0 |
-| AP — Library surface, bindings and v1.0 | 9 | 1 | 2 |
-| UX — Applications | 9 | 1 | 2 |
-| DR — Distribution, release engineering and hardware | 5 | 1 | 3 |
+| Theme | Member | Shipped | In progress | Considering |
+|---|---|---|---|---|
+| EQ — Encoder decision quality | the library | 12 | 0 | 2 |
+| DC — Decoder and consumer output | the library | 10 | 0 | 0 |
+| IO — Streams in and out | the library, Forge | 12 | 0 | 0 |
+| IM — Immersive and other formats | the library | 5 | 1 | 1 |
+| VX — Verification and oracles | shared | 20 | 2 | 1 |
+| PF — Performance and portability | the library | 8 | 0 | 0 |
+| AP — Library surface, bindings and v1.0 | the library | 9 | 1 | 2 |
+| UX — Applications | Forge, Crucible, the library | 9 | 1 | 2 |
+| CR — Crucible | Crucible | 0 | 0 | 1 |
+| DR — Distribution, release engineering and hardware | shared | 5 | 1 | 3 |
+
+The Member column is the theme's. Where a theme's items differ, the item's own tag is the
+answer; the counts are of the sections below, and each was recounted against them on 2026-09-06.
 
 ## Where this starts from
 
@@ -50,6 +60,8 @@ room is, which the tree mostly names itself:
 - The v1.0 freeze has its mechanical pieces and none of its decisions.
 
 ## EQ. Encoder decision quality
+
+**Member:** the library.
 
 The 0.7.0 AC-3 work (dbpbcod, LFE exponent refresh, LFE fine offset, delta bit allocation
 weighed against its cost) moved the AC-3 5.1/448 leg to +0.9 dB over FFmpeg. E-AC-3 got none of
@@ -501,6 +513,8 @@ dead-end comment named — comes after a criterion worth wiring exists.
 
 ## DC. Decoder and consumer output
 
+**Member:** the library.
+
 Both decoders walk every metadata payload correctly and, outside the downmix levels DC1 now
 keeps, still discard almost all of it. The output stage and §7.10 concealment landed with
 DC1/DC2, so no consumer surface improvises a fold any more; what remains here is the metadata
@@ -679,15 +693,18 @@ says nothing about how Dolby's own reconstruction reads this matrix.
 
 ## IO. Streams in and out
 
+**Member:** the library, and Forge where an item says so — the readers, writers and meters
+belong to the library, the commands over them to the CLI.
+
 `mp4.hpp` and `mpegts.hpp` both say "a container writer and nothing more", `matroska::` exposes
 `mux()`/`Writer` only, `ac3::iec61937` only wraps, and the CLI has no inspector, no
 machine-readable output and a single failure exit code. Users arrive with containers.
 
 ### Shipped
 
-**IO1 (M)** — `ac3cli probe` with JSON output: layout, tools in use per block, dialnorm/compr/
-DRC presence, authenticity tag, CRC validity. Versioned (`ac3forge.probe/1`) and documented as
-a contract.
+**IO1 (M, shared)** — `ac3cli probe` with JSON output: layout, tools in use per block,
+dialnorm/compr/DRC presence, authenticity tag, CRC validity. Versioned (`ac3forge.probe/1`)
+and documented as a contract.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -705,9 +722,9 @@ consumer of this document rather than part of it, and IO5 already owns the `ceao
 signalling half of the same question.
 </details>
 
-**IO2 (XL)** — Container readers for Matroska, MP4 and MPEG-TS, plus remux and a shared
-container-sniffing layer — `decode`/`qc`/`levels`/`play`/`monitor` and both GUI pickers all
-take a `.mkv`/`.mp4`/`.ts` directly now.
+**IO2 (XL, shared)** — Container readers for Matroska, MP4 and MPEG-TS, plus remux and a
+shared container-sniffing layer — `decode`/`qc`/`levels`/`play`/`monitor` and both GUI pickers
+all take a `.mkv`/`.mp4`/`.ts` directly now.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -803,7 +820,7 @@ rather than passed through, which DC6 (widening the object parsers to real third
 content) is the natural place to revisit.
 </details>
 
-**IO8 (M)** — CLI scripting ergonomics — a real exit-code scheme, `help <command>`, a
+**IO8 (M, Forge)** — CLI scripting ergonomics — a real exit-code scheme, `help <command>`, a
 generated man page and shell completions.
 <details markdown="1">
 <summary>Full record</summary>
@@ -816,8 +833,8 @@ table and are generated and installed by the build (the Homebrew formula places 
 halves); `quiet`/`verbose` plus a stderr progress line on long encodes and decodes.
 </details>
 
-**IO9 (M)** — CLI live/record parity with the GUI session — any layout up to 7.1.4, all four
-containers, a silence watchdog; receiver hot-swap stays GUI-only.
+**IO9 (M, Forge)** — CLI live/record parity with the GUI session — any layout up to 7.1.4, all
+four containers, a silence watchdog; receiver hot-swap stays GUI-only.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -891,10 +908,13 @@ dropping content.
 
 ## IM. Immersive and other formats
 
+**Member:** the library; each item is tagged, because two of them land in Forge as well — IM4
+in `ac3cli probe`, IM7 in the GUI's live room.
+
 ### Shipped
 
-**IM1 (XL)** — IAB (SMPTE ST 2098-2) reader, all three phases complete. Parsed header matches
-the DTS `iab-validator`'s own reference JSON exactly on all 10 sampled streams.
+**IM1 (XL, the library)** — IAB (SMPTE ST 2098-2) reader, all three phases complete. Parsed
+header matches the DTS `iab-validator`'s own reference JSON exactly on all 10 sampled streams.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -929,8 +949,8 @@ exactly on all 10 streams sampled, and every frame across all ten streams parses
 (one stream alone carries 720 real AudioDataDLC elements and 240 ObjectDefinitions).
 </details>
 
-**IM2 (L)** — JOC → ADM BWF writer, also the practical IAMF bridge (AOM's `iamf-tools` takes
-ADM-BWF input directly).
+**IM2 (L, the library)** — JOC → ADM BWF writer, also the practical IAMF bridge (AOM's
+`iamf-tools` takes ADM-BWF input directly).
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -946,7 +966,7 @@ libbw64/libadm writers were unused before this; both are now driven by `ac3adm`'
 side. Inherits the `AC3FORGE_BUILD_ADM` gate.
 </details>
 
-**IM7 (M)** — A public object-scene timeline type (`ObjectScene`), shared by the
+**IM7 (M, shared)** — A public object-scene timeline type (`ObjectScene`), shared by the
 station-broadcast example, the GUI live room, `atmos-path` and UX4's live seam.
 <details markdown="1">
 <summary>Full record</summary>
@@ -960,8 +980,9 @@ still reads byte-identically, and `SceneCursor` is the live seam UX4 plugs into.
 per-frame encode loops still build `ObjectPath`s directly — a follow-up, not a gap in the type.
 </details>
 
-**IM4 (L)** — AC-4 parse-and-inspect, complete: TOC/presentation/substream-group parsing for
-both channel-coded and A-JOC/object paths, and the MP4/MPEG-TS/DASH carriage slice.
+**IM4 (L, shared)** — AC-4 parse-and-inspect, complete: TOC/presentation/substream-group
+parsing for both channel-coded and A-JOC/object paths, and the MP4/MPEG-TS/DASH carriage
+slice.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1000,11 +1021,12 @@ drops the wrapper and CRC by design) into a stream `ac4::scan` parses identicall
 frame.
 </details>
 
-**IM3 (XL)** — IAMF / Eclipsa Audio interop. Phase 1 — the channel-based OBU/ISOBMFF writer —
-shipped, and it is the whole scope reachable today: phases 2–3 (object elements, an OBU
-reader) were gated on IAMF v2.0 being final, and it is not (re-verified 2026-09-02: the AOM
-spec still carries Working Group Draft boilerplate and `AOMediaCodec/iamf`'s latest release
-remains v1.1.0). They re-open as their own entry when v2.0 lands.
+**IM3 (XL, the library)** — IAMF / Eclipsa Audio interop. Phase 1 — the channel-based
+OBU/ISOBMFF writer — shipped, and it is the whole scope reachable today: phases 2–3 (object
+elements, an OBU reader) were gated on IAMF v2.0 being final, and it is not (re-verified
+2026-09-02: the AOM spec still carries Working Group Draft boilerplate and
+`AOMediaCodec/iamf`'s latest release remains v1.1.0). They re-open as their own entry when
+v2.0 lands.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1048,9 +1070,9 @@ its object half. The channel-based writer above is complete against v1.1.0, whic
 
 ### In progress
 
-**IM5 (L)** — Land the TrueHD/MLP branch as an explicitly experimental module. A substantial
-internal codec already exists on a long-lived branch; needs a rebase, its own build target, and
-honest output labelling before it can merge.
+**IM5 (L, the library)** — Land the TrueHD/MLP branch as an explicitly experimental module. A
+substantial internal codec already exists on a long-lived branch; needs a rebase, its own
+build target, and honest output labelling before it can merge.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1074,8 +1096,9 @@ CHANGELOG/docs rows the branch lacks. UX10 carries its front ends.
 
 ### Considering
 
-**IM6 (XL, blocked)** — Real TrueHD interoperability. Blocked on sources that aren't public
-(the DVD Forum's MLP reference information) and on a clean-room ruling that doesn't exist yet.
+**IM6 (XL, blocked, the library)** — Real TrueHD interoperability. Blocked on sources that
+aren't public (the DVD Forum's MLP reference information) and on a clean-room ruling that
+doesn't exist yet.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1088,6 +1111,9 @@ Stays blocked until those exist; listed so the state is recorded rather than red
 </details>
 
 ## VX. Verification and oracles
+
+**Member:** shared. An untagged item verifies the library; the ones that reach an application
+or the repository around it say which.
 
 Nine required build legs, sanitizers, per-component coverage floors, a gold-reference gate on
 every leg, eleven libFuzzer harnesses (one of them opt-in) and an AC-3 input-space fuzzer
@@ -1301,8 +1327,8 @@ showed. Making `Fuzz Regress` a required check is a repository-admin ruleset edi
 a human.
 </details>
 
-**VX14 (S)** — Lint and scan the non-C++ code — `ruff`/`shellcheck`/`actionlint`, plus CodeQL
-for Python and JS/TS. `java-kotlin` needs a real Gradle build, done separately as VX21.
+**VX14 (S, shared)** — Lint and scan the non-C++ code — `ruff`/`shellcheck`/`actionlint`, plus
+CodeQL for Python and JS/TS. `java-kotlin` needs a real Gradle build, done separately as VX21.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1317,7 +1343,7 @@ JDK 17, the pinned NDK and Gradle. Split out as **VX21** below, which first put 
 gave it a leg of its own here after all.
 </details>
 
-**VX15 (M)** — Coverage floors for `apps/cli` and `python/`, gated at 40/34% against a
+**VX15 (M, shared)** — Coverage floors for `apps/cli` and `python/`, gated at 40/34% against a
 measured 54.0/46.5%. GUI C++ coverage stays out of scope.
 <details markdown="1">
 <summary>Full record</summary>
@@ -1433,8 +1459,8 @@ analysis engine. The APK build and the emulator tests stay in `build-android`, a
 `security-events: write` came back off all three permission blocks with the scan.
 </details>
 
-**VX23 (S)** — SonarCloud (SonarQube Cloud) as a fourth analysis engine, nightly against
-`main`.
+**VX23 (S, shared)** — SonarCloud (SonarQube Cloud) as a fourth analysis engine, nightly
+against `main`.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1460,8 +1486,8 @@ unknowns will show up in the first run's log: whether the scan action runs clean
 this repo's `ubuntu:26.04` container, and whether the CFamily analyser accepts GCC 16.
 </details>
 
-**VX22 (S)** — CLI tests for the container commands, client-side coverage which library-level
-tests never touched.
+**VX22 (S, Forge)** — CLI tests for the container commands, client-side coverage which
+library-level tests never touched.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1684,6 +1710,8 @@ through it - see `gen_external_baseline.py`'s module docstring.
 
 ## PF. Performance and portability
 
+**Member:** the library.
+
 At 2faf352 on linux-gcc: `plain_51` encodes at 0.49 ms/frame (65× real time), `atmos_4obj` at
 0.31 ms; a 180-second 5.1 decode takes 0.79 s since the fast IMDCT became the default. PF5 has
 since put 128-bit SIMD behind the transform kernels through a CMake-selected architecture
@@ -1858,10 +1886,13 @@ way) that actually reconstructs in the MDCT-band domain.
 
 ## AP. Library surface, bindings and v1.0
 
+**Member:** the library, every one of them. Each item says so anyway, because this is the theme
+the v1.0 freeze runs through and its blast radius should not have to be inferred.
+
 ### Shipped
 
-**AP2 (M)** — Naming and error-type sweep before the freeze — three real fixes, one deliberate
-non-fix (written down as a convention, not left as an inconsistency).
+**AP2 (M, the library)** — Naming and error-type sweep before the freeze — three real fixes,
+one deliberate non-fix (written down as a convention, not left as an inconsistency).
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1881,8 +1912,8 @@ now written down as a convention in `docs/library/index.md` alongside the codec-
 namespace split.
 </details>
 
-**AP3 (L)** — Pimpl sweep — every exported class with non-trivial state now hides it; five
-plain config aggregates stay value types on purpose.
+**AP3 (L, the library)** — Pimpl sweep — every exported class with non-trivial state now hides
+it; five plain config aggregates stay value types on purpose.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1896,8 +1927,8 @@ used — `ac3::FrameEncoder` and `ac3::eac3::FrameEncoder` (finished from their 
 why `EncoderConfig`'s `verify::FrameTrace*` (and its siblings) are not part of that promise.
 </details>
 
-**AP4 (M)** — An ABI gate — `abidiff` plus a checked-in symbol allowlist, advisory until AP1's
-freeze. Demonstrated locally: catches a stray accidental export.
+**AP4 (M, the library)** — An ABI gate — `abidiff` plus a checked-in symbol allowlist,
+advisory until AP1's freeze. Demonstrated locally: catches a stray accidental export.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1918,8 +1949,9 @@ ac3::internal::resolve_operating_mode(ac3::DecoderConfig const&) (newly exported
 allowlist)`; reverted before merging.
 </details>
 
-**AP5 (L)** — C API completeness — an E-AC-3 encoder (plain and wide layouts), `scan`,
-caller-buffer decode forms, and loudness/level/QC metering all now mirror the C++ surface.
+**AP5 (L, the library)** — C API completeness — an E-AC-3 encoder (plain and wide layouts),
+`scan`, caller-buffer decode forms, and loudness/level/QC metering all now mirror the C++
+surface.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1939,9 +1971,9 @@ string/geometry helpers, `AccessUnitTiming`'s one-line seconds/timescale convers
 the custom DRC profile, still a deliberate omission to revisit at 1.0.
 </details>
 
-**AP7 (M)** — Install and export completeness — pkg-config files, `ac3adm`/`admbridge` now
-install/export, a `capi` vcpkg/Conan feature, and the licence-identifier drift fixed; CI now
-fails on future drift instead of missing it.
+**AP7 (M, the library)** — Install and export completeness — pkg-config files,
+`ac3adm`/`admbridge` now install/export, a `capi` vcpkg/Conan feature, and the
+licence-identifier drift fixed; CI now fails on future drift instead of missing it.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1959,8 +1991,8 @@ licence/feature/pkg-config drift and a missing `abi-allowlist` entry (found stal
 `ac3iab`, fixed alongside) fail CI instead of going unnoticed.
 </details>
 
-**AP11 (S)** — A consumer-facing diagnostic sink — a null-by-default callback for CRC
-mismatches and unknown EMDF payloads, usable from the minimal decoder build.
+**AP11 (S, the library)** — A consumer-facing diagnostic sink — a null-by-default callback for
+CRC mismatches and unknown EMDF payloads, usable from the minimal decoder build.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1976,8 +2008,9 @@ a payload id this decoder does not interpret (anything but OAMD/JOC), which prev
 trace anywhere at all. Null by default on both decoders.
 </details>
 
-**AP12 (S)** — Research instrumentation export — per-frame bap/exponent/SNR-offset/masking
-curves as CSV/JSON-lines, reachable from Python (Parquet via pandas, not a second writer).
+**AP12 (S, the library)** — Research instrumentation export — per-frame
+bap/exponent/SNR-offset/masking curves as CSV/JSON-lines, reachable from Python (Parquet via
+pandas, not a second writer).
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1997,9 +2030,9 @@ Python as `ac3.verify.trace_to_csv`/`trace_to_json_lines`, then
 support, not a second one grown here for one research-only export path.
 </details>
 
-**AP6 (L)** — Python completeness, complete: E-AC-3 encoder, `scan`, zero-copy numpy,
-containers, metering/QC, signing, the decoder context manager, `stubtest` in CI, and the two
-missing wheel platforms (manylinux aarch64, Intel macOS).
+**AP6 (L, the library)** — Python completeness, complete: E-AC-3 encoder, `scan`, zero-copy
+numpy, containers, metering/QC, signing, the decoder context manager, `stubtest` in CI, and
+the two missing wheel platforms (manylinux aarch64, Intel macOS).
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2035,9 +2068,10 @@ joined the hash-pinned pytest lock), and the wheel matrix gained `ubuntu-24.04-a
 aarch64 — Raspberry Pi is a documented platform and finally has a wheel) and `macos-15-intel`.
 Still C++-only, recorded in `docs/library/python-api.md` as the boundary: the incremental
 container `Reader`/`Writer` classes and the fragmented-MP4/HLS/DASH surface.
-**AP9 (L)** — A first non-Python binding over the C API (Rust), complete: the `-sys` crate, a
-safe wrapper over the whole codec surface (wide layouts, Atmos objects, framing/scan, metering),
-CI on all three desktop OSes — and two real portability findings for the header's record.
+**AP9 (L, the library)** — A first non-Python binding over the C API (Rust), complete: the
+`-sys` crate, a safe wrapper over the whole codec surface (wide layouts, Atmos objects,
+framing/scan, metering), CI on all three desktop OSes — and two real portability findings for
+the header's record.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2086,9 +2120,9 @@ rust/README.md, exactly the class of cross-boundary fact AP9 exists to surface.
 
 ### In progress
 
-**AP1 (L)** — API freeze → v1.0.0. The tiering, SemVer policy, and release criteria are
-written down; `SOVERSION`/ABI-tagging changes are deliberately deferred to the v1.0.0 cut
-itself, sequenced with AP4's ABI gate going required.
+**AP1 (L, the library)** — API freeze → v1.0.0. The tiering, SemVer policy, and release
+criteria are written down; `SOVERSION`/ABI-tagging changes are deliberately deferred to the
+v1.0.0 cut itself, sequenced with AP4's ABI gate going required.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2115,7 +2149,7 @@ criteria rather than a separate, unlinked concern.
 
 ### Considering
 
-**AP8 (M)** — A generated API reference and versioned docs. Unstarted.
+**AP8 (M, the library)** — A generated API reference and versioned docs. Unstarted.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2124,8 +2158,9 @@ Doxygen into mkdocs (the header comments are already the reference) and versione
 invisible until a release). Note in `header-map.md` that `ac3/audio` is not installed.
 </details>
 
-**AP10 (L)** — An out-of-tree GStreamer element or FFmpeg external-encoder wrapper, the way
->5.1 and JOC encode would reach the transcode ecosystem. Needs AP5 (now done); unstarted.
+**AP10 (L, the library)** — An out-of-tree GStreamer element or FFmpeg external-encoder
+wrapper, the way >5.1 and JOC encode would reach the transcode ecosystem. Needs AP5 (now
+done); unstarted.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2138,10 +2173,13 @@ an oracle for the codec itself.
 
 ## UX. Applications
 
+**Member:** per item — Forge, Crucible, the library, or shared where the work landed in more
+than one of them. Crucible work opened after the promotion is numbered under `CR` instead.
+
 ### Shipped
 
-**UX1 (M)** — A GUI player/monitor for an existing stream, with decode-to-WAV and object
-export, and QC/Inspect shortcuts.
+**UX1 (M, Forge)** — A GUI player/monitor for an existing stream, with decode-to-WAV and
+object export, and QC/Inspect shortcuts.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2150,7 +2188,7 @@ yet. The `MonitorSink` plumbing is already owned by the object-decode controller
 file-driven transport and UI were missing.
 </details>
 
-**UX2 (M)** — Desktop integration — drag-and-drop, file associations, and the Linux
+**UX2 (M, Forge)** — Desktop integration — drag-and-drop, file associations, and the Linux
 `.desktop`/AppStream entries that were missing entirely.
 <details markdown="1">
 <summary>Full record</summary>
@@ -2160,9 +2198,9 @@ Drag-and-drop, `ac3gui <file>`, file associations (the installer's registry keys
 `.deb`/`.rpm` — `ac3gui` was absent from Linux application menus).
 </details>
 
-**UX3 (M)** — Localisation and accessibility foundations — six languages (98/758 messages each,
-rest left in English), full RTL support, and `Accessible.role`/`name`/`description` on every
-custom control.
+**UX3 (M, Forge)** — Localisation and accessibility foundations — six languages (98/758
+messages each, rest left in English), full RTL support, and
+`Accessible.role`/`name`/`description` on every custom control.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2195,8 +2233,8 @@ has to attach to its `contentItem`, not the `Dialog` itself, or it throws a runt
 every window that ever instantiates the dialog, not just when it opens.
 </details>
 
-**UX4 (M)** — A real live object-position source (OSC) for `live mode=atmos` and the GUI live
-room.
+**UX4 (M, shared)** — A real live object-position source (OSC) for `live mode=atmos` and the
+GUI live room.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2219,9 +2257,9 @@ schemes, not a new token), but neither is implemented — the Shield app stays t
 controller-driven path anywhere in the project until one is.
 </details>
 
-**UX5 (L)** — WASM as a reusable streaming decoder (`ac3forge-wasm-decoder`) — push-frame
-decode in a Worker over a `SharedArrayBuffer` ring buffer, an hls.js/MSE bridge. npm publishing
-gated on a not-yet-provisioned environment.
+**UX5 (L, the library)** — WASM as a reusable streaming decoder (`ac3forge-wasm-decoder`) —
+push-frame decode in a Worker over a `SharedArrayBuffer` ring buffer, an hls.js/MSE bridge.
+npm publishing gated on a not-yet-provisioned environment.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2246,9 +2284,9 @@ ffmpeg-remuxed fMP4 fixture) versus what hasn't (a live hls.js instance against 
 server).
 </details>
 
-**UX8 (L)** — A Windows Spatial Sound object sink — confirmed against a real spatial endpoint
-(4-object stream, 250 access units, zero underruns); not a measurement of Dolby's own JOC
-reconstruction.
+**UX8 (L, the library)** — A Windows Spatial Sound object sink — confirmed against a real
+spatial endpoint (4-object stream, 250 access units, zero underruns); not a measurement of
+Dolby's own JOC reconstruction.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2265,7 +2303,7 @@ project's matrix, since Windows Spatial Sound renders the PCM and positions it i
 than re-deriving objects from the matrix itself.
 </details>
 
-**UX9 (M)** — `play` that follows the sink — EDID-driven format choice plus automatic
+**UX9 (M, shared)** — `play` that follows the sink — EDID-driven format choice plus automatic
 transcode-to-passthrough; not yet verified against real EDID/ELD hardware.
 <details markdown="1">
 <summary>Full record</summary>
@@ -2283,9 +2321,9 @@ refusal `play` always gave. Not verified against real EDID/ELD hardware this rou
 box in the loop) - see `docs/platforms/linux.md`.
 </details>
 
-**UX6 (XL)** — In-browser encoding, shipped end to end: the encode module and drop-a-WAV page
-(385×/120×/82× real-time for AC-3/E-AC-3/4-object Atmos, no threads needed), the wide
-7.1/5.1.4/7.1.4 layouts, measured dialnorm, live microphone capture, and an Atmos
+**UX6 (XL, the library)** — In-browser encoding, shipped end to end: the encode module and
+drop-a-WAV page (385×/120×/82× real-time for AC-3/E-AC-3/4-object Atmos, no threads needed),
+the wide 7.1/5.1.4/7.1.4 layouts, measured dialnorm, live microphone capture, and an Atmos
 object-authoring page.
 <details markdown="1">
 <summary>Full record</summary>
@@ -2324,17 +2362,17 @@ canvas drag-by-pointer itself and real microphone hardware remain manual-only ch
 `wasm.md`'s "Not yet verified" note.
 </details>
 
-**UX11 (XL)** — Desktop Atmos Demo for Windows: the PC's applications as Atmos objects. Landed
-2026-09-03 through Phase 5: `ac3windemo` and `ac3desk` (six languages), the `Ac3ForgeNullSink`
-driver verified in a guest under Driver Verifier and KASAN, split per application, the 3D room
-and object size. Phase 6's CI landed 2026-09-04: both Windows legs build and test the demo, the
-MSVC leg packages it as `ac3forge-desktop-atmos-*-win64.zip`, and a `windows-driver` job
-builds and test-signs the driver itself from the WDK's NuGet packages. The driver moved from
-PortCls to ACX the same day, before attestation signing is paid for, and is verified on both
-tiers there (`docs/platforms/windows-driver-acx.md`). The
-bitstream modes still wait on DR9's receiver. Design and phase record in
-`docs/platforms/windows-demo.md`. Renamed to **AC3Forge Crucible** and made cross-platform by
-UX12 on 2026-09-04; the names in this record are the ones it shipped with.
+**UX11 (XL, Crucible)** — Desktop Atmos Demo for Windows: the PC's applications as Atmos
+objects. Landed 2026-09-03 through Phase 5: `ac3windemo` and `ac3desk` (six languages), the
+`Ac3ForgeNullSink` driver verified in a guest under Driver Verifier and KASAN, split per
+application, the 3D room and object size. Phase 6's CI landed 2026-09-04: both Windows legs
+build and test the demo, the MSVC leg packages it as `ac3forge-desktop-atmos-*-win64.zip`, and
+a `windows-driver` job builds and test-signs the driver itself from the WDK's NuGet packages.
+The driver moved from PortCls to ACX the same day, before attestation signing is paid for, and
+is verified on both tiers there (`docs/platforms/windows-driver-acx.md`). The bitstream modes
+still wait on DR9's receiver. Design and phase record in `docs/platforms/windows-demo.md`.
+Renamed to **AC3Forge Crucible** and made cross-platform by UX12 on 2026-09-04; the names in
+this record are the ones it shipped with.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2424,28 +2462,33 @@ against a receiver still waits on the HDMI cable (DR9).
 
 ### In progress
 
-**UX12 (XL)** — Promote the Windows Desktop Atmos Demo to **AC3Forge Crucible**, a desktop
-product on Windows, Linux and macOS. Landed 2026-09-05: the rename; all four platform seams;
-PipeWire per-application capture and device notifications; a Linux platform half; the window
-on Linux with its Qt Quick suite passing there; a Linux package (`ac3forge-crucible` tarball
-and `.deb`, not yet a release asset); a Linux CI pass that builds, tests and packages the
-window; a settings page worded by the platform rather than by Windows; and a user guide under
-`docs/crucible/`. **Verified on the Pi** against a live PipeWire session — the tap captures a
-real application, the silent device is a real graph node, the watcher sees it come and go, and
-the passthrough offers a bitstream on the HDMI sink and refuses it on the headphone jack, from
-the codecs WirePlumber reads off the receiver's EDID — runs that found defects no build could,
-several pre-existing in the library's PipeWire backend. E-AC-3 bursts have reached the
-receiver's sink from PipeWire; whether the receiver locked is not yet read off its display.
-Most of the product-quality pass (Phase 6) landed the same day: a first-run explanation of what
-Crucible does to the sound settings, and the restore on quit that four places already promised;
-a diagnostics file that carries neither the signing key nor the path to it; third-party licence
-notices generated per platform, with a Licences view over About; the full-screen rule answered
-under X11 through libxcb and refused with its reason elsewhere; and application icons on Linux
-from the icon theme and the `.desktop` entries. Still open: the receiver's own reading (DR9's
-row, on Crucible's critical path since it cannot use ALSA), macOS (compile-only; blocked on DR6
-and DR9), the Linux package as a release asset, and the last two Phase 6 items - the review of
-the six mechanically translated languages and the accessibility pass. Plan and phase record in
-`docs/crucible/promotion.md`.
+**UX12 (XL, Crucible)** — Promote the Windows Desktop Atmos Demo to **AC3Forge Crucible**, a
+desktop product on Windows, Linux and macOS. Landed 2026-09-05: the rename; all four platform
+seams; PipeWire per-application capture and device notifications; a Linux platform half; the
+window on Linux with its Qt Quick suite passing there; a Linux package (`ac3forge-crucible`
+tarball and `.deb`, uploaded as `packages-crucible-<preset>`, which is the `packages-*`
+pattern `release.yml` downloads, though no tag has been cut since); a Linux CI pass that
+builds, tests and packages the window; a settings page worded by the platform rather than by
+Windows; and a user guide under `docs/crucible/`. **Verified on the Pi** against a live
+PipeWire session — the tap captures a real application, the silent device is a real graph
+node, the watcher sees it come and go, and the passthrough offers a bitstream on the HDMI sink
+and refuses it on the headphone jack, from the codecs WirePlumber reads off the receiver's
+EDID — runs that found defects no build could, several pre-existing in the library's PipeWire
+backend. The receiver's own display was read that evening — "Atmos/DD+" at 7.1, for Crucible's
+engine encoding a live application as E-AC-3 JOC with a signed object container — which closed
+DR9's PipeWire row. The product-quality pass (Phase 6) landed the same day but for one item: a
+first-run explanation of what Crucible does to the sound settings, and the restore on quit
+that four places already promised; a diagnostics file that carries neither the signing key nor
+the path to it; third-party licence notices generated per platform, with a Licences view over
+About; the full-screen rule answered under X11 through libxcb and refused with its reason
+elsewhere; application icons on Linux from the icon theme and the `.desktop` entries; and the
+accessibility pass, which made every hand-drawn control a tab stop and gave the room its own
+key map. Two follow-ons landed 2026-09-06: the room and settings pages of the guide, written
+from the window rather than from this plan, and tests over the three seams that had none — the
+tray on both platforms, the Linux session monitor's `/proc` readers, and what the Linux silent
+device can be asked without a daemon. Still open: macOS (compile-only; blocked on DR6 and DR9)
+and the review of the six mechanically translated languages, now carried as CR1. Plan and
+phase record in `docs/crucible/promotion.md`.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2505,8 +2548,9 @@ worked in a separate session.
 
 ### Considering
 
-**UX7 (M)** — macOS loopback capture through Core Audio process/system taps. Blocked on a real
-Mac and on DR6's code signing; only documentation and an OS-version gate landed without one.
+**UX7 (M, the library)** — macOS loopback capture through Core Audio process/system taps.
+Blocked on a real Mac and on DR6's code signing; only documentation and an OS-version gate
+landed without one.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2521,8 +2565,8 @@ CI-verified OS-version gate a future implementation should refuse on before ever
 `CATapDescription` (`ac3::coreaudio::system_audio_tap_api_available()`).
 </details>
 
-**UX10 (rides IM5)** — The TrueHD front ends on the IM5 branch — needs its own PR split, a
-QML test leg, and docs once IM5 lands.
+**UX10 (rides IM5, Forge)** — The TrueHD front ends on the IM5 branch — needs its own PR
+split, a QML test leg, and docs once IM5 lands.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2530,7 +2574,41 @@ The lossless-lab dialog, its QML test, the CLI rows get their own PR split, a QM
 `docs/gui`/`docs/cli` pages.
 </details>
 
+## CR. Crucible
+
+**Member:** Crucible.
+
+Crucible's own code. The two entries it grew out of stay where they were written — UX11, the
+Windows demo, and UX12, the promotion that made it a product on two platforms — because those
+IDs are cited in commits, in CI and in the CHANGELOG, and an ID here is a label rather than a
+filing decision. Anything opened after the promotion that belongs to `apps/crucible` and to
+nothing else is numbered here instead.
+
+### Considering
+
+**CR1 (M, Crucible)** — The six mechanically translated languages, regenerated from the
+current source and read by someone who speaks each of them. Sequenced last on purpose: every
+item that adds a string makes this pass stale again, and the accessibility work added a good
+many.
+<details markdown="1">
+<summary>Full record</summary>
+
+Carried out of the promotion plan's Phase 6, the one item of five left open there. As of
+2026-09-06 the six `ac3crucible_*.ts` catalogues are stale against the source: fifteen current
+strings have no entry at all and sixty-five rename-era entries sit as vanished, so a reader in
+any of the six languages meets a mixture of translated and English text that does not match
+what the window says in English either. Two rules in `tests/crucible/test_translations.cpp`
+are written and switched off until this lands — no entry left `type="unfinished"`, no dead
+entry left in a file — and turning them on is the end of the item. Right-to-left is not part
+of it: `apps/crucible/ui/qml/Main.qml` took a `LayoutMirroring` root on 2026-09-05 and two
+cases in `apps/crucible/ui/tests/qml/tst_shell.qml` hold it, the way the GUI (UX3) is held.
+`docs/crucible/localisation.md` is the record for the mirroring and for the glossary the
+review is held to; `docs/crucible/promotion.md`'s Phase 6 note carries the counts.
+</details>
+
 ## DR. Distribution, release engineering and hardware
+
+**Member:** per item, and mostly shared — release engineering serves the three members at once.
 
 Where `F4` actually stands on 2026-08-23, per tool: PyPI is live (`ac3forge` 0.9.0b1, published
 by the tag run; the `pypi` environment exists). The Homebrew tap `iainchesworthlabs/homebrew-ac3forge`
@@ -2543,8 +2621,8 @@ submitted. All four staged manifests and the tap now point at v0.9.0-beta.1 (DR1
 
 ### Shipped
 
-**DR1 (S)** — Bump the four package manifests and the tap to the current release — cross-checked
-against the release's own published SHA512SUMS, not fabricated.
+**DR1 (S, shared)** — Bump the four package manifests and the tap to the current release —
+cross-checked against the release's own published SHA512SUMS, not fabricated.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2557,9 +2635,9 @@ live tap (`iainchesworthlabs/homebrew-ac3forge`) is pushed to match. Still the s
 a row these went stale — DR2 is the fix for that.
 </details>
 
-**DR2 (M)** — Automate the post-release manifest bump — a dry-runnable workflow that downloads
-real release assets, cross-checks digests, and opens the bump PR; the upstream fork PRs stay
-manual since they write to repos this project doesn't own.
+**DR2 (M, shared)** — Automate the post-release manifest bump — a dry-runnable workflow that
+downloads real release assets, cross-checks digests, and opens the bump PR; the upstream fork
+PRs stay manual since they write to repos this project doesn't own.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2585,7 +2663,8 @@ vcpkg/Conan/winget upstream fork PRs, and Homebrew's local macOS-only `brew audi
 install`/`brew test` validation. See `docs/releasing.md`'s Post-release section.
 </details>
 
-**DR5 (S)** — Fix the docs that shipped work made false — nine separate stale claims corrected.
+**DR5 (S, shared)** — Fix the docs that shipped work made false — nine separate stale claims
+corrected.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2607,8 +2686,8 @@ section all now reflect ALSA/Raspberry Pi's real HDMI-to-receiver confirmation i
 contradicting it.
 </details>
 
-**DR7 (S)** — The Windows installer — a real `.exe` now comes out of `cpack`, verified in CI;
-still unsigned (DR6).
+**DR7 (S, shared)** — The Windows installer — a real `.exe` now comes out of `cpack`, verified
+in CI; still unsigned (DR6).
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2631,8 +2710,8 @@ false positive already blocking DR4's winget resubmission — DR7 fixes the buil
 story; DR4 stays blocked on DR6.
 </details>
 
-**DR8 (M)** — Reach: AppImage, Windows ARM64 (CLI-only), and macOS universal binaries — all
-three landed and promoted out of experimental.
+**DR8 (M, Forge)** — Reach: AppImage, Windows ARM64 (CLI-only), and macOS universal binaries —
+all three landed and promoted out of experimental.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2679,8 +2758,9 @@ Restated per sub-item now that all three have landed:
 
 ### In progress
 
-**DR9** — Hardware confirmation, per backend. Linux/ALSA confirmed on real hardware; Windows/
-WASAPI exclusive and PipeWire remain unconfirmed; CoreAudio is blocked on real Mac hardware.
+**DR9 (shared)** — Hardware confirmation, per backend. Linux/ALSA and PipeWire confirmed on
+real hardware; Windows/WASAPI exclusive remains unconfirmed; CoreAudio is blocked on real Mac
+hardware.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2717,8 +2797,9 @@ WASAPI exclusive and PipeWire remain unconfirmed; CoreAudio is blocked on real M
 
 ### Considering
 
-**DR3 (S)** — A vcpkg git registry, so consumers get `vcpkg install ac3forge` without an
-overlay-port source clone — keeps the existing draft PR alive as a re-request around 2027-02.
+**DR3 (S, the library)** — A vcpkg git registry, so consumers get `vcpkg install ac3forge`
+without an overlay-port source clone — keeps the existing draft PR alive as a re-request
+around 2027-02.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2728,8 +2809,9 @@ draft to re-request around 2027-02. The reviewer also cited prerelease-only hist
 timing interacts.
 </details>
 
-**DR4 (M)** — winget and ConanCenter submissions. winget needs the CLA signed and the Defender
-hit resolved (likely DR6); ConanCenter expects pushback on the recipe's `cmake_find_mode`.
+**DR4 (M, shared)** — winget and ConanCenter submissions. winget needs the CLA signed and the
+Defender hit resolved (likely DR6); ConanCenter expects pushback on the recipe's
+`cmake_find_mode`.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2739,8 +2821,9 @@ resubmit at the current release. ConanCenter: bump, run the three `conan create`
 `cmake_find_mode = "none"`.
 </details>
 
-**DR6 (M, needs accounts)** — Code signing — Developer ID/notarisation for macOS, Authenticode
-for Windows. Blocked on certificates, not code; a Known gap in every release since 0.8.0-beta.2.
+**DR6 (M, needs accounts, shared)** — Code signing — Developer ID/notarisation for macOS,
+Authenticode for Windows. Blocked on certificates, not code; a Known gap in every release
+since 0.8.0-beta.2.
 <details markdown="1">
 <summary>Full record</summary>
 

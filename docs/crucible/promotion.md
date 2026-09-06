@@ -1110,10 +1110,15 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
 !!! note "Still open in Phase 6"
     One of the five items is not done. The **review of the six mechanically translated
     languages** is a pass of its own: the catalogues are stale against the source, fifteen
-    current strings have no entry and sixty-five rename-era entries sit as vanished, and the
-    window has no `LayoutMirroring` root, so Arabic, Hebrew and Yiddish flip their text and keep
-    a left-to-right layout. It lands last, after every item that adds a string - and the
-    accessibility pass above added a good many.
+    current strings have no entry and sixty-five rename-era entries sit as vanished. It lands
+    last, after every item that adds a string - and the accessibility pass above added a good
+    many.
+
+    The right-to-left half of that item is done, and this note said otherwise until 2026-09-06:
+    `ui/qml/Main.qml` took a `LayoutMirroring` root on 2026-09-05, two cases in
+    `ui/tests/qml/tst_shell.qml` hold it - the header title crosses the window under Arabic, the
+    plan's L speaker does not under Hebrew - and [Languages](localisation.md) is the record for
+    what mirrors and what deliberately does not.
 
     No screen reader has been run against this window by anyone. The suites assert that every
     role, name and description exists and follows the live data; whether NVDA or Orca speaks

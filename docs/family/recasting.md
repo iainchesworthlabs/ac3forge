@@ -456,6 +456,58 @@ link fixes and the wrapper note.
 opening `ROADMAP.md` on GitHub and following each of the DR8 links; a one-off count of
 `**XXn (` lines per section against the table.
 
+!!! success "Done 2026-09-06"
+    `ROADMAP.md` carries a Member column and per-item tags. Each theme states its member once,
+    under the heading, and an item belonging to a different one carries its own tag in the
+    `**UX12 (XL, Crucible)**` form; the rule is written into the file's opening so the next
+    author does not have to infer it from the tags. Forty-eight existing items carry one —
+    every IM, AP, UX and DR item, as decision 9 asked, plus the four IO items that reach the
+    CLI (IO1, IO2, IO8, IO9) and the four VX items that reach an application or the whole
+    repository (VX14, VX15, VX22, VX23), without which those two theme headings would have
+    been false.
+
+    **The recount.** Counted off the sections rather than trusted. Eight themes were right;
+    VX was not — its Shipped column read 19 against 20 items in the section, the drift left by
+    VX22 and VX23 landing after the table was last touched. The UX row this page's design
+    section flagged as 9/0/1 had already been corrected to 9/1/2 by Phase 1, so the only number
+    changed here is VX's.
+
+    **The `CR` code.** `## CR. Crucible` sits between UX and DR. UX11 and UX12 stay where they
+    were written, because their IDs are cited in commits, in CI and in the CHANGELOG, and the
+    new section points back at them; anything opened after the promotion that belongs to
+    `apps/crucible` alone is numbered here instead. It opens with one item, `CR1` — the six
+    mechanically translated languages, regenerated and read by someone who speaks each of
+    them, which is the one item of [the promotion plan](../crucible/promotion.md)'s Phase 6
+    still open — so the new Overview row has something to count. The right-to-left half that
+    note pairs with it is not open: the window took its `LayoutMirroring` root on 2026-09-05
+    and two cases in `tst_shell.qml` hold it, so `CR1` says so and the note is corrected.
+
+    **The links and the wrapper note** were already in, landed with Phase 1's path repointing
+    on 2026-09-05: the two DR8 record links are absolute
+    `https://github.com/.../blob/main/docs/...` URLs and `docs/roadmap.md` carries the rule
+    for the next author. Re-checked here — all nine `](…)` hrefs in the file are absolute, so
+    the exit condition holds.
+
+    **What this week had made false**, corrected while reading the file: UX12 said the
+    receiver's lock was not yet read off its display, which DR9's own row in the same file
+    already contradicted, so the reading ("Atmos/DD+" at 7.1) now appears in both; the
+    accessibility pass was listed as still open and landed 2026-09-05; and the 2026-09-06 work
+    — the room and settings pages of the guide, and the tests over the tray, the Linux session
+    monitor and the Linux silent device — was not in the entry at all.
+
+    **What the review pass then found**, all of it claims the file made about itself. UX12 said
+    the Linux package was not yet a release asset; the pre-tag section above already records
+    that as settled - the leg uploads it as `packages-crucible-<preset>`, which is
+    `release.yml`'s `packages-*` pattern - so the entry now says what the workflow does. DR9's
+    one-line summary still read "PipeWire remain unconfirmed" against its own record's
+    "PipeWire: confirmed 2026-09-05", and the re-wrap had joined its hard-wrapped `Windows/`
+    and `WASAPI` with a space. Two theme headings overstated themselves: UX's said Forge,
+    Crucible or the library while four of its items are the library's and two are shared, and
+    IM's said both its tagged items land in the CLI when IM7 lands in the GUI's live room.
+
+    Every summary that gained a tag was re-wrapped to the file's own 94-column measure, so the
+    tags added no over-long line to a file that already had eight.
+
 ### Phase 6: packaging and release shape
 
 Depends on decisions 5, 6, 13 and 14. Under S1 nothing renames. Two of the three pre-tag facts
