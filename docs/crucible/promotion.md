@@ -166,14 +166,15 @@ became false and is corrected as part of this work whatever else lands.
 | `passthrough` | yes | yes | yes | yes | yes | no |
 | `monitor` | yes | yes | yes | yes | yes | no |
 | `spatial` | yes | **no, and no plan** | no | **no, and no plan** | no | no |
-| `process_loopback` | yes | **Phase 3** | no, no per-app concept | **Phase 5**[^tap] | no | no |
+| `process_loopback` | yes | **Phase 3** | no, no per-app concept | **Phase 5, then refused** | no | no |
 | `device_watch` | yes | **Phase 3** | no, would be a udev listener | **Phase 5** | no | no |
 
-[^tap]: Written in Phase 5 and reported **not available** since 2026-09-06: the first machine to
-    run the path never returned from `AudioDeviceCreateIOProcID` on the tap's aggregate device.
-    The refusal, the observation behind it and the `AC3FORGE_MACOS_PROCESS_TAP` opt-in that
-    reverses it are in `src/audio/src/backend/macos/coreaudio_names.hpp`; the stack is in the
-    Phase 5 record below.
+The macOS `process_loopback` cell says two things because two things happened. It was written in
+Phase 5, and since 2026-09-06 it reports **not available**: the first machine ever to run the
+path never returned from `AudioDeviceCreateIOProcID` on the tap's aggregate device. The refusal,
+the observation behind it and the `AC3FORGE_MACOS_PROCESS_TAP` opt-in that reverses it are in
+`src/audio/src/backend/macos/coreaudio_names.hpp`; the stack is in the
+[Phase 5](#phase-5-macos) record.
 
 ### ALSA or PipeWire
 
