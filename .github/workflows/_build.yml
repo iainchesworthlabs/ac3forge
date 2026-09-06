@@ -1700,6 +1700,61 @@ jobs:
           # failure mode here, not an empty one - see the script's own header.
           python tools/ci/check_crucible_package.py "${zips[0]}"
 
+      # The counterpart to the two Windows asserts above, for the files that
+      # had no assertion at all: ac3cli's generated man page and its four
+      # shell completions (apps/cli/CMakeLists.txt, roadmap IO8). Those are
+      # produced by running the freshly built ac3cli, so a cross build skips
+      # them - and until #527 that test was CMAKE_CROSSCOMPILING, which is
+      # TRUE on every native Linux and macOS build here (each
+      # cmake/toolchains/{linux.gcc,linux.llvm,macos.llvm}.toolchain.cmake
+      # sets CMAKE_SYSTEM_NAME unconditionally, and every Linux/macOS preset
+      # chainloads one). Both .tar.gz, both .deb, both .rpm and the universal
+      # .dmg shipped none of the five files, and no gate noticed: the only
+      # test asserting they exist is packaging/homebrew/Formula/ac3forge.rb's
+      # `test do` block, and a Homebrew build passes no toolchain file, so it
+      # went on passing throughout.
+      #
+      # The two OSes reach this at different times, which is worth knowing
+      # when reading a red run. The Package step above runs on the macOS legs
+      # on every ordinary push, so macOS is the per-PR guard; the Linux legs
+      # package only on a release run (inputs.do_package), so Linux is
+      # checked before a release ships rather than on every commit. Between
+      # them the regression cannot reach a published artifact.
+      #
+      # This asserts on the arm64 release leg too, which is correct because
+      # linux-gcc-arm64 runs on ubuntu-24.04-arm - real aarch64 hardware, so
+      # host and target match and the files are produced like anywhere else.
+      # Were that leg ever moved to an x86_64 host, the files would go missing
+      # from the arm64 release package for a reason this step should still
+      # report rather than excuse.
+      - name: Assert the CLI man page and completions were packaged (Linux/macOS)
+        if: >-
+          matrix.packageable && runner.os != 'Windows' &&
+          ((inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # The runtime component's own archive. The [0-9] is what keeps this
+          # off the sibling ac3forge-dev-* and ac3forge-crucible-* archives,
+          # which are different components with different contents and are
+          # not expected to carry these files (cmake/Packaging.cmake names
+          # all three). Linux gets a TGZ, macOS only ever a ZIP - see that
+          # file's own APPLE/UNIX generator branches.
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            archives=(packages/ac3forge-[0-9]*.tar.gz)
+          else
+            archives=(packages/ac3forge-[0-9]*.zip)
+          fi
+          if [ ${#archives[@]} -eq 0 ]; then
+            echo "::error::no runtime archive in packages/ - the runtime component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake), or CPACK_ARCHIVE_RUNTIME_FILE_NAME no longer produces the ac3forge-<version>-<system> name this looks for."
+            ls -1 packages/ || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${archives[@]}"
+          python3 tools/ci/check_cli_docs_package.py "${archives[0]}"
+
       - name: Upload package artifacts
         if: >-
           matrix.packageable &&
@@ -1971,6 +2026,20 @@ jobs:
           else
             echo "::warning::ad-hoc re-sign of the merged ac3gui.app failed - shipping it with a stale single-architecture signature instead. Gatekeeper already refuses an unsigned/ad-hoc app outright (see the Homebrew Cask's caveats and DR6), so this does not change what a downloader has to do to run it."
           fi
+
+      # The universal .dmg is the one macOS artifact a release actually
+      # publishes, and it is built below from `merged/` rather than by cpack,
+      # so the packaging-leg assertion on ac3cli's man page and completions
+      # (see the build job's own step) never sees it. This tree has two ways
+      # to lose those files: the install steps that fed it (`cmake --install
+      # --component runtime`, which is where an install(SCRIPT) with no
+      # COMPONENT was already found to be skipped - see that step's comment),
+      # and the lipo-merge above, which walks the arm64 tree and copies
+      # through what it finds. Checking here, before hdiutil, keeps the .dmg
+      # from being the one published package that ships without them.
+      - name: Assert the merged tree carries the CLI man page and completions
+        shell: bash
+        run: python3 tools/ci/check_cli_docs_package.py merged
 
       # hdiutil, not cpack: CPack's DragNDrop generator only ever packages a
       # tree IT installed from a single build - there is no CPack entry point

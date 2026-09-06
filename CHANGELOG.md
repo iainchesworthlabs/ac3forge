@@ -138,6 +138,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **CI now asserts that Linux and macOS packages carry the `ac3cli` man page and the four
+  shell completions** (`tools/ci/check_cli_docs_package.py`, run from `_build.yml`), so the
+  packaging bug in Fixed below cannot come back unseen. Nothing checked these five files
+  before: the only test asserting they exist is the Homebrew formula's `test do` block, and
+  a Homebrew build passes no toolchain file, so it kept passing throughout. The gate reads
+  the runtime archive after `cpack` - on the macOS legs on every push, on the Linux legs on
+  a release run - and also the lipo-merged tree the universal `.dmg` is built from, which
+  `cpack` never packages and which can drop the files at its own two steps. It reads the
+  archive rather than the `.deb`/`.rpm`, which come from the same install tree in the same
+  `cpack` run; the RPM generator gzips the man page to `ac3cli.1.gz`, so checking those too
+  would make the expected names generator-specific for no further failure mode caught.
+
 - **Crucible can be operated without a mouse, and says what it is doing to a screen reader**
   ([Keyboard and screen readers](docs/crucible/accessibility.md)). Every button, checkbox, bed
   chip, the header pill and the Advanced disclosure are tab stops that Space and Return press;
