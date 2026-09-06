@@ -221,6 +221,7 @@ EOF
 # --- what is here -----------------------------------------------------------
 {
     echo "provisioned $(date -Is)"
+    # shellcheck disable=SC1091  # /etc/os-release is the guest's, not in this tree
     echo "debian: $(. /etc/os-release; echo "$PRETTY_NAME")"
     echo "kernel: $(uname -srm)"
     echo "qmake6: $(qmake6 -query QT_VERSION 2>/dev/null || echo none)"

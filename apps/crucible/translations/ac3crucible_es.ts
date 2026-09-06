@@ -258,52 +258,52 @@
         <translation>Se restaura cuando Crucible se cierra</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="160"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="161"/>
         <source>Quitting from the tray restores %1. Closing the window only hides it while &quot;Keep running in the tray&quot; is on, so applications stay on the silent device until you quit or press Restore.</source>
         <translation>Salir desde la bandeja restaura %1. Cerrar la ventana solo la oculta mientras &quot;Seguir en la bandeja&quot; está activado, así que las aplicaciones permanecen en el dispositivo silencioso hasta que salgas o pulses Restaurar.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="161"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="162"/>
         <source>Closing the window quits Crucible and restores %1. There is no tray icon on this desktop, so there is nothing left running behind the window.</source>
         <translation>Cerrar la ventana cierra Crucible y restaura %1. En este escritorio no hay icono de bandeja, así que no queda nada en marcha detrás de la ventana.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="166"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="167"/>
         <source>Installing the silent device is a separate step in Settings that asks for administrator rights, and it stays installed until you remove it.</source>
         <translation>Instalar el dispositivo silencioso es un paso aparte, en Configuración, que pide permisos de administrador, y queda instalado hasta que lo quites.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="173"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="174"/>
         <source>Your settings from the earlier demo were carried over.</source>
         <translation>Se conservó tu configuración de la demo anterior.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="182"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="183"/>
         <source>Do this every time Crucible starts</source>
         <translation>Hacer esto cada vez que Crucible se inicie</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="183"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="184"/>
         <source>Off: Crucible asks with the button on the Room page each time.</source>
         <translation>Desactivado: Crucible lo pregunta cada vez con el botón de la página Sala.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="194"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="195"/>
         <source>Open Settings</source>
         <translation>Abrir Configuración</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="200"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="201"/>
         <source>Not now</source>
         <translation>Ahora no</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="211"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="212"/>
         <source>Send applications to %1</source>
         <translation>Enviar las aplicaciones a %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="211"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="212"/>
         <source>No silent device yet</source>
         <translation>Aún no hay dispositivo silencioso</translation>
     </message>
@@ -496,92 +496,92 @@
         <translation>Abrir la sala</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="440"/>
+        <location filename="../ui/qml/Main.qml" line="452"/>
         <source>auto</source>
         <translation>auto</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="440"/>
+        <location filename="../ui/qml/Main.qml" line="452"/>
         <source>Signal path · %1</source>
         <translation>Ruta de la señal · %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="442"/>
+        <location filename="../ui/qml/Main.qml" line="456"/>
         <source>Automatic</source>
         <translation>Automático</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="443"/>
+        <location filename="../ui/qml/Main.qml" line="457"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="444"/>
+        <location filename="../ui/qml/Main.qml" line="458"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="445"/>
+        <location filename="../ui/qml/Main.qml" line="459"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="446"/>
+        <location filename="../ui/qml/Main.qml" line="460"/>
         <source>PCM surround</source>
         <translation>Surround PCM</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="453"/>
+        <location filename="../ui/qml/Main.qml" line="467"/>
         <source>Headphones</source>
         <translation>Auriculares</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="454"/>
+        <location filename="../ui/qml/Main.qml" line="468"/>
         <source>Stereo</source>
         <translation>Estéreo</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="459"/>
+        <location filename="../ui/qml/Main.qml" line="472"/>
         <source>Default output: %1</source>
         <translation>Salida predeterminada: %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="460"/>
+        <location filename="../ui/qml/Main.qml" line="473"/>
         <source>Move default output to %1</source>
         <translation>Mover la salida predeterminada a %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="465"/>
+        <location filename="../ui/qml/Main.qml" line="478"/>
         <source>previous default output</source>
         <translation>la salida predeterminada anterior</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="465"/>
+        <location filename="../ui/qml/Main.qml" line="478"/>
         <source>Restore %1</source>
         <translation>Restaurar %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="470"/>
+        <location filename="../ui/qml/Main.qml" line="483"/>
         <source>Objects on · key loaded</source>
         <translation>Objetos activados · clave cargada</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="470"/>
+        <location filename="../ui/qml/Main.qml" line="483"/>
         <source>Objects off · no key</source>
         <translation>Objetos desactivados · sin clave</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="471"/>
+        <location filename="../ui/qml/Main.qml" line="484"/>
         <source>Settings…</source>
         <translation>Ajustes…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="472"/>
+        <location filename="../ui/qml/Main.qml" line="485"/>
         <source>About…</source>
         <translation>Acerca de…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="474"/>
+        <location filename="../ui/qml/Main.qml" line="487"/>
         <source>Quit</source>
         <translation>Salir</translation>
     </message>
