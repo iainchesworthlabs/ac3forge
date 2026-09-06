@@ -457,6 +457,15 @@ target_include_directories(ac3tests PRIVATE
 # (a null `devices` in its config) is a path the tests do not take, so the
 # reference resolves to the stub below on every platform and to the real
 # thing in the app.
+#
+# engine.cpp - the frame loop itself, and the signing hook it needs - joined
+# them for crucible/test_engine.cpp, which starts a whole Engine over those
+# fakes and asserts what it does about opening taps. It names no operating
+# system either: the platform seams it would otherwise reach for are the ones
+# platform_services_stub.cpp answers, and every case passes fakes instead. Its
+# one extra requirement is the ac3/internal/profiling.hpp variant below, which
+# is on a private include path of forge_objects rather than an installed one -
+# apps/crucible/CMakeLists.txt adds the same directory for the same reason.
 target_sources(ac3tests PRIVATE
     crucible/test_slots.cpp
     crucible/test_bed_mixer.cpp
@@ -464,6 +473,7 @@ target_sources(ac3tests PRIVATE
     crucible/test_output_policy.cpp
     crucible/test_tap_pool.cpp
     crucible/test_output_stage.cpp
+    crucible/test_engine.cpp
     crucible/test_nullsink_position.cpp
     crucible/test_platform_seams.cpp
     crucible/test_diagnostics.cpp
@@ -477,6 +487,8 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/tap_pool.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/diagnostics.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/signing_hook.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/engine.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/ui/desktop_entries.cpp")
 # The null-sink driver's position clock (apps/windows/driver/Source/Main/
 # position.h) is a header with no kernel dependencies, kept that way so the
@@ -488,7 +500,8 @@ target_sources(ac3tests PRIVATE
 target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine"
     "${CMAKE_SOURCE_DIR}/apps/crucible/ui"
-    "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main")
+    "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main"
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
 
 # The Linux Foreground's X11 half has a pure policy (x11_foreground.cpp: when
 # a read yields a pid, when a lost display becomes a reason) over an injected

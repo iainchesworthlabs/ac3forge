@@ -342,6 +342,20 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **Crucible tapped applications before it had anywhere to play them**
+  (`apps/crucible/engine/engine.cpp`). The frame loop refreshed the session list and opened a tap
+  per application earlier in the frame than the block that applies an endpoint probe, and a probe
+  is requested rather than applied at construction - so the first frame tapped whatever was
+  playing and only then went looking for an output. On macOS that is audible: the Core Audio
+  process tap is created with `CATapMutedWhenTapped`, which is what lets that platform do
+  without a silent device, so on a Mac whose output policy finds nothing usable Crucible would
+  have muted the user's applications and delivered their audio nowhere. Taps are now opened only
+  while the output stage has an endpoint and released as soon as it has none, checked on every
+  frame so an endpoint that appears or vanishes between session refreshes is followed at once.
+  Windows and Linux hear no difference - a WASAPI process-loopback activation and a PipeWire link
+  to a sink monitor both capture without muting - and the rule only stops a tap being opened to
+  be thrown away.
+
 - **Every Linux and macOS package shipped without the `ac3cli` man page or any of the four
   shell completions** (`apps/cli/CMakeLists.txt`). The generated `ac3cli.1` and the
   bash/zsh/fish/PowerShell completion scripts were guarded by `if(CMAKE_CROSSCOMPILING)` on the

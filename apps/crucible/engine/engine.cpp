@@ -12,6 +12,7 @@
 #include <functional>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -101,6 +102,7 @@ struct Engine::Impl {
     std::vector<AppId> keep_ids;  // placed applications, for the monitor to keep listed
     std::shared_ptr<AudioDevices> devices;
     TapPool taps;
+    std::vector<AppId> wanted_taps;  // what the last session list said is worth tapping
     SlotAllocator slots;
     PlacementSmoother placement;
     BedMix bed;
@@ -130,6 +132,11 @@ struct Engine::Impl {
     // frames, noted on the transition only.
     std::unordered_set<AppId> tap_refused;
     bool encode_refusing = false;
+    // Whether taps were allowed to be open when sync_taps() last ran; the
+    // frame loop runs it again as soon as this and output_has_endpoint()
+    // disagree. Down here beside encode_refusing rather than up beside
+    // wanted_taps so that the two flags share one slot of padding.
+    bool taps_allowed = false;
 
     explicit Impl(EngineConfig c)
         : config(std::move(c)),
@@ -230,6 +237,64 @@ struct Engine::Impl {
         slots.set_width(app, split ? 2 : 1);
     }
 
+    // Whether the output stage has somewhere to play. OutputMode::kNone is
+    // all three of "the policy found no endpoint that can carry anything",
+    // "the chosen sink refused to start" and - the case the rule below
+    // exists for - "no probe has been applied yet", which is where the stage
+    // sits on the first frame.
+    [[nodiscard]] bool output_has_endpoint() const {
+        return output && output->status().mode != OutputMode::kNone;
+    }
+
+    // Opens and closes taps to follow `wanted_taps`, but only while the
+    // output stage has an endpoint; with none, every tap is released and
+    // none is opened.
+    //
+    // Without that condition taps are opened before the first endpoint probe
+    // has even been started, let alone applied: want_reprobe is true at
+    // construction and refresh_sessions() runs earlier in the frame than the
+    // block that applies a probe, so the first frame taps whatever the
+    // session monitor listed and only then goes looking for somewhere to
+    // play it.
+    //
+    // Which platform this protects, and from what:
+    //
+    //   macOS - correctness. The Core Audio process tap is created with
+    //     muteBehavior = CATapMutedWhenTapped
+    //     (src/audio/src/backend/macos/process_tap.mm), so tapping an
+    //     application silences it at the point the tap takes its audio.
+    //     That is deliberate - it is why this platform needs no silent
+    //     device at all (docs/platforms/macos.md, "Per-application
+    //     capture") - and it is exactly what makes an ungated tap harmful:
+    //     on a machine where the policy lands on kNone, Crucible would mute
+    //     the user's applications and deliver their audio nowhere.
+    //
+    //   Windows, Linux - nothing audible changes. A WASAPI process-loopback
+    //     activation and a PipeWire link to the application's sink monitor
+    //     are both pure captures: the application is heard the same whether
+    //     or not anyone is reading the tap, which is why those two need a
+    //     silent device in the first place. The rule only stops a tap being
+    //     opened to be thrown away, so while there is no output the meters
+    //     read silence instead of levels for audio nobody can hear.
+    void sync_taps() {
+        const bool allowed = output_has_endpoint();
+        if (allowed != taps_allowed) {
+            note(allowed ? "output endpoint available: tapping applications"
+                         : "no output endpoint: taps released until there is somewhere to play");
+        }
+        taps_allowed = allowed;
+        const std::span<const AppId> want =
+            allowed ? std::span<const AppId>{wanted_taps} : std::span<const AppId>{};
+        for (const AppId app : taps.sync(want)) {
+            if (tap_refused.insert(app).second) {
+                note("tap refused for app " + std::to_string(app) + " (" + name_of(app) + ")");
+            }
+        }
+        // Once the tap opens, or the application leaves, the refusal is over
+        // and a later one is worth a note again.
+        std::erase_if(tap_refused, [this](AppId app) { return taps.has(app) || !known.contains(app); });
+    }
+
     // Called every frame: nothing to do unless the monitor's thread has a
     // new list.
     void refresh_sessions() {
@@ -281,14 +346,8 @@ struct Engine::Impl {
             sizes.erase(app);
             levels.erase(app);
         }
-        for (const AppId app : taps.sync(ids)) {
-            if (tap_refused.insert(app).second) {
-                note("tap refused for app " + std::to_string(app) + " (" + name_of(app) + ")");
-            }
-        }
-        // Once the tap opens, or the application leaves, the refusal is over
-        // and a later one is worth a note again.
-        std::erase_if(tap_refused, [this](AppId app) { return taps.has(app) || !known.contains(app); });
+        wanted_taps = std::move(ids);
+        sync_taps();
 
         // The full-screen rule. The pid was read on the monitor's thread in
         // the same pass as this list, so it is matched against the processes
@@ -564,6 +623,14 @@ struct Engine::Impl {
                              "\" - " + applied.reason);
                     }
                 }
+            }
+            // The tap gate (sync_taps): an endpoint can appear or go away
+            // between session refreshes - the block above has just applied
+            // one such change - so it is checked every frame rather than
+            // only when the monitor brings a new list. Half a second of
+            // muted applications on macOS is half a second too many.
+            if (output_has_endpoint() != taps_allowed) {
+                sync_taps();
             }
 
             // Taps in, slots out.

@@ -242,6 +242,12 @@ public:
     // Applied to the next sink/tap created.
     bool refuse_next_start = false;
     int refuse_next_submits = 0;
+    // Applied to every sink created while it is set, taps aside: an endpoint
+    // that is listed and cannot be opened, which is how the output stage ends
+    // up reporting no endpoint with one in front of it. Unlike the one-shot
+    // above it survives a re-probe, so a stage that keeps retrying keeps
+    // being refused.
+    bool refuse_sink_starts = false;
 
     std::vector<DeviceFacts> render_devices(std::uint32_t) override {
         const std::lock_guard lock(mutex);
@@ -278,7 +284,7 @@ public:
 private:
     std::shared_ptr<SinkRecord> fresh_sink() {
         auto record = std::make_shared<SinkRecord>();
-        record->refuse_start = refuse_next_start;
+        record->refuse_start = refuse_next_start || refuse_sink_starts;
         record->refuse_submits = refuse_next_submits;
         refuse_next_start = false;
         refuse_next_submits = 0;
