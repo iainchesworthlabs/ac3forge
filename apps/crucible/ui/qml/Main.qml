@@ -419,11 +419,11 @@ ApplicationWindow {
     // --- tray -----------------------------------------------------------------
     Platform.SystemTrayIcon {
         // Only where the platform publishes one (ui/tray_support.hpp, and
-        // the file beside it for the Linux answer). Not Qt's own `available`,
-        // which asks about the desktop rather than about this build: the
-        // Raspberry Pi's own desktop has a StatusNotifier host and answers
-        // yes, and publishing an item there takes the window down with it.
+        // the file beside it for each platform's answer). Not Qt's own
+        // `available`, which asks about the desktop rather than about this
+        // build.
         id: tray
+        objectName: "tray"
         visible: CrucibleController.trayAvailable
         icon.source: "qrc:/qt/qml/Ac3ForgeCrucible/tray.svg"
         tooltip: qsTr("Crucible · %1").arg(window.hearing)
@@ -436,17 +436,30 @@ ApplicationWindow {
         }
         menu: Platform.Menu {
             Platform.MenuItem { text: qsTr("Open the room"); onTriggered: { window.page = "room"; window.show(); window.raise(); window.requestActivate(); } }
-            Platform.Menu {
-                title: qsTr("Signal path · %1").arg(CrucibleController.pinned === "auto" ? qsTr("auto") : CrucibleController.pinned)
-                Platform.MenuItemGroup { id: pinGroup }
-                Platform.MenuItem { text: qsTr("Automatic"); checkable: true; checked: CrucibleController.pinned === "auto"; group: pinGroup; onTriggered: CrucibleController.pinned = "auto" }
-                Platform.MenuItem { text: qsTr("Atmos"); checkable: true; checked: CrucibleController.pinned === "atmos"; group: pinGroup; onTriggered: CrucibleController.pinned = "atmos" }
-                Platform.MenuItem { text: qsTr("Dolby Digital Plus 5.1"); checkable: true; checked: CrucibleController.pinned === "ddplus"; group: pinGroup; onTriggered: CrucibleController.pinned = "ddplus" }
-                Platform.MenuItem { text: qsTr("Dolby Digital 5.1"); checkable: true; checked: CrucibleController.pinned === "dd"; group: pinGroup; onTriggered: CrucibleController.pinned = "dd" }
-                Platform.MenuItem { text: qsTr("PCM surround"); checkable: true; checked: CrucibleController.pinned === "pcm"; group: pinGroup; onTriggered: CrucibleController.pinned = "pcm" }
-                Platform.MenuItem { text: qsTr("Headphones"); checkable: true; checked: CrucibleController.pinned === "headphones"; group: pinGroup; onTriggered: CrucibleController.pinned = "headphones" }
-                Platform.MenuItem { text: qsTr("Stereo"); checkable: true; checked: CrucibleController.pinned === "stereo"; group: pinGroup; onTriggered: CrucibleController.pinned = "stereo" }
+            Platform.MenuSeparator {}
+            // The signal path, flat: a heading that reads the current choice
+            // and the choices under it.
+            //
+            // It is flat because a Qt.labs.platform Menu nested inside a tray
+            // icon's menu takes the window down on Linux, and the fault is in
+            // Qt rather than in this file - QDBusPlatformMenu implements no
+            // createSubMenu(), so a nested Menu is handed the QWidget
+            // fallback and then static_cast to the D-Bus one. There is one
+            // shape here rather than one per platform because a submenu is
+            // not worth two: the whole record, with what was measured, is in
+            // ui/platform/linux/tray_support.cpp.
+            Platform.MenuItem {
+                text: qsTr("Signal path · %1").arg(CrucibleController.pinned === "auto" ? qsTr("auto") : CrucibleController.pinned)
+                enabled: false
             }
+            Platform.MenuItemGroup { id: pinGroup }
+            Platform.MenuItem { text: qsTr("Automatic"); checkable: true; checked: CrucibleController.pinned === "auto"; group: pinGroup; onTriggered: CrucibleController.pinned = "auto" }
+            Platform.MenuItem { text: qsTr("Atmos"); checkable: true; checked: CrucibleController.pinned === "atmos"; group: pinGroup; onTriggered: CrucibleController.pinned = "atmos" }
+            Platform.MenuItem { text: qsTr("Dolby Digital Plus 5.1"); checkable: true; checked: CrucibleController.pinned === "ddplus"; group: pinGroup; onTriggered: CrucibleController.pinned = "ddplus" }
+            Platform.MenuItem { text: qsTr("Dolby Digital 5.1"); checkable: true; checked: CrucibleController.pinned === "dd"; group: pinGroup; onTriggered: CrucibleController.pinned = "dd" }
+            Platform.MenuItem { text: qsTr("PCM surround"); checkable: true; checked: CrucibleController.pinned === "pcm"; group: pinGroup; onTriggered: CrucibleController.pinned = "pcm" }
+            Platform.MenuItem { text: qsTr("Headphones"); checkable: true; checked: CrucibleController.pinned === "headphones"; group: pinGroup; onTriggered: CrucibleController.pinned = "headphones" }
+            Platform.MenuItem { text: qsTr("Stereo"); checkable: true; checked: CrucibleController.pinned === "stereo"; group: pinGroup; onTriggered: CrucibleController.pinned = "stereo" }
             Platform.MenuSeparator {}
             Platform.MenuItem {
                 text: CrucibleController.defaultIsNullSink

@@ -223,6 +223,14 @@ already does for `ac3gui`. It belongs in the same commit as the refilled catalog
 against the tree as it stands it would be red on the first run. It is what turns a forgotten
 regeneration into a red check rather than a quietly stale catalogue.
 
+**`lupdate` sees only the platform it runs on, and deletes what it cannot see.** The seams under
+`ui/platform/<os>/` are one file per platform with one compiled, so `tray_support.cpp`'s
+`tr()` reaches `lupdate` on exactly one of them. Running it on Linux drops the Windows sentence —
+translated, in every catalogue — and replaces it with the Linux one, unfinished; running it on
+Windows does the reverse. Nothing warns. Until that CI step exists and knows what to do about it,
+read the diff before committing a regeneration: a `-` on a translated `<source>` you did not
+touch is this, and the fix is to put the other platform's message back rather than to accept it.
+
 The rules that read a translation skip an entry marked unfinished: an entry nobody has translated
 yet is empty or holds the previous language's text, and failing the placeholder rule on it would
 say nothing about the pass.

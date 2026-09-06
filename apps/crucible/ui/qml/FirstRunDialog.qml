@@ -153,9 +153,10 @@ Dialog {
             heading: qsTr("It is put back when Crucible quits")
             // Two readings, because the way out differs by platform: with a
             // tray the window can be closed and left running, and without
-            // one - which is every Linux desktop, see ui/tray_support.hpp -
-            // closing the window IS quitting, and telling a person otherwise
-            // on their first screen is the worst place to be wrong.
+            // one - a session with no notification area or no StatusNotifier
+            // host, see ui/tray_support.hpp - closing the window IS quitting,
+            // and telling a person otherwise on their first screen is the
+            // worst place to be wrong.
             body: CrucibleController.trayAvailable
                 ? qsTr("Quitting from the tray restores %1. Closing the window only hides it while \"Keep running in the tray\" is on, so applications stay on the silent device until you quit or press Restore.").arg(root.previousOutput)
                 : qsTr("Closing the window quits Crucible and restores %1. There is no tray icon on this desktop, so there is nothing left running behind the window.").arg(root.previousOutput)
