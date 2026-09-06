@@ -1105,7 +1105,8 @@ run by anyone here**; see below.
     The three are not "the three that do not install the scripted machine, each hanging on its
     first case that starts the engine". `Main.qml`'s `Component.onCompleted` calls `start()`, so
     every case that builds the window starts the engine against the real seams - and four of them
-    pass in `tst_shell` before the hang, five in `tst_firstrun`. What the hanging case has in each
+    pass in `tst_shell` before the hang, and five run in `tst_firstrun` (four passing, one
+    skipping on a platform that never moves the default). What the hanging case has in each
     suite is that it leaves the engine RUNNING: `tryVerify(framesEncoded > 0, 5000)` in `room` and
     `shell`, a second shell and `wait(300)` in `firstrun`. The others start and stop it inside a
     few tens of milliseconds, before the session monitor's first list reaches the frame thread and
