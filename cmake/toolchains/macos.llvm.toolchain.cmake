@@ -89,6 +89,17 @@ endif()
 set(CMAKE_C_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 set(CMAKE_CXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 
+# OBJCXX is enabled by src/audio/CMakeLists.txt's APPLE block for exactly one
+# file - src/audio/src/backend/macos/process_tap.mm, the Core Audio process
+# tap's Objective-C++ seam (CATapDescription has no C entry point). CMake
+# applies CMAKE_CXX_FLAGS to CXX sources only, so without this line that .mm
+# would be compiled by the same clang++ as its neighbours but with a
+# different standard library configuration - see the libc++ block below,
+# which is the part that actually matters. Set unconditionally: these
+# variables mean nothing at all unless OBJCXX is enabled, and are read when
+# it is, wherever that enable_language() call happens to sit.
+set(CMAKE_OBJCXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
+
 # Prefer LLVM's own libc++ over the SDK's when the chosen clang ships one.
 # _LIBCPP_DISABLE_AVAILABILITY drops the vendor availability annotations, which
 # otherwise gate library features on the deployment target even though we link
@@ -103,6 +114,14 @@ if(EXISTS "${_LLVM_LIBCXX_INCLUDE}")
     message(STATUS "Using LLVM libc++ headers: ${_LLVM_LIBCXX_INCLUDE}")
 
     string(APPEND CMAKE_CXX_FLAGS_INIT
+        " -nostdinc++ -isystem ${_LLVM_LIBCXX_INCLUDE} -D_LIBCPP_DISABLE_AVAILABILITY")
+    # The same three flags for Objective-C++, so that process_tap.mm resolves
+    # <string>/<vector> to the same libc++ headers, with the same availability
+    # macro, as the .cpp files it shares coreaudio_support.hpp with. Two
+    # translation units disagreeing about which libc++ they are compiling
+    # against is a link error or an ODR surprise rather than a compile error,
+    # which is the kind that survives a green build - see docs/platforms/macos.md.
+    string(APPEND CMAKE_OBJCXX_FLAGS_INIT
         " -nostdinc++ -isystem ${_LLVM_LIBCXX_INCLUDE} -D_LIBCPP_DISABLE_AVAILABILITY")
 
     set(CMAKE_EXE_LINKER_FLAGS_INIT
