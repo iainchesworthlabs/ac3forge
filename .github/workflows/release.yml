@@ -279,25 +279,99 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
-      - name: Verify at least one package was built
+      # "At least one package" was the whole check here, and it is not the
+      # claim docs/releasing.md makes to a maintainer: its Troubleshooting
+      # section says a missing platform package "is a failure to investigate
+      # rather than an expected gap", and one leg is `experimental: true`
+      # (windows-msvc-arm64), which _build.yml runs under continue-on-error.
+      # An experimental leg that dies reports green to the reusable workflow,
+      # so with only a count to check, a release would publish silently
+      # missing that platform's packages - the exact situation the docs say
+      # cannot happen. So: name what a release is documented to ship, and
+      # fail on whatever is absent.
+      #
+      # Each entry is one glob and the human name for what produces it. The
+      # arch-qualified archive is the per-leg sentinel because the archive
+      # generator is the only one CPack always has - DEB/RPM/NSIS each sit
+      # behind a find_program() gate in cmake/Packaging.cmake - so a missing
+      # archive means that leg produced nothing at all. The DEB/RPM/NSIS
+      # entries are checked as well, because that gate degrading silently is
+      # a real failure mode this repo has already shipped once (roadmap DR7,
+      # the installer-less Windows releases).
+      #
+      # Deliberately NOT required: the macOS `ac3forge-dev-*` archive, which
+      # package-macos-universal documents as best-effort; and the Linux
+      # AC3Forge Crucible package, whose leg skips itself whole on a runner
+      # with too old a Qt (see _build.yml's own comment on that upload).
+      # Both are absences a maintainer is told to expect.
+      - name: Verify every documented package was built
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
-          artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
-                     release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
-                     release-artifacts/*.AppImage release-artifacts/*.apk)
-          if [ ${#artifacts[@]} -eq 0 ]; then
-            echo "::error::no package artifacts were downloaded - every platform failed to build"
+
+          # ac3forge-[0-9]*, not ac3forge-*, wherever the runtime package is
+          # meant: cmake/Packaging.cmake's CPACK_PACKAGE_FILE_NAME is
+          # ac3forge-<M>.<m>.<p>-<system>, so a digit follows the hyphen, and
+          # the looser glob would also match ac3forge-dev-* and
+          # ac3forge-crucible-* - letting one of those stand in for a runtime
+          # package that never got built, which is the failure this whole step
+          # exists to catch.
+          expected=(
+            "release-artifacts/ac3forge-[0-9]*-win64.zip|Windows x64 archive (windows-msvc)"
+            "release-artifacts/ac3forge-[0-9]*-win64.exe|Windows x64 NSIS installer (windows-msvc)"
+            "release-artifacts/ac3forge-dev-*-win64.zip|Windows x64 library archive (windows-msvc)"
+            "release-artifacts/ac3forge-[0-9]*-win-arm64.zip|Windows arm64 archive (windows-msvc-arm64, experimental)"
+            "release-artifacts/ac3forge-[0-9]*-win-arm64.exe|Windows arm64 NSIS installer (windows-msvc-arm64, experimental)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-x86_64.tar.gz|Linux x86_64 archive (linux-gcc)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-x86_64-runtime.deb|Linux x86_64 .deb (linux-gcc)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-x86_64-runtime.rpm|Linux x86_64 .rpm (linux-gcc)"
+            "release-artifacts/ac3forge-dev-*-Linux-x86_64.tar.gz|Linux x86_64 library archive (linux-gcc)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-aarch64.tar.gz|Linux aarch64 archive (linux-gcc-arm64)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-aarch64-runtime.deb|Linux aarch64 .deb (linux-gcc-arm64)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-aarch64-runtime.rpm|Linux aarch64 .rpm (linux-gcc-arm64)"
+            "release-artifacts/ac3forge-dev-*-Linux-aarch64.tar.gz|Linux aarch64 library archive (linux-gcc-arm64)"
+            "release-artifacts/ac3forge-[0-9]*-Darwin.dmg|macOS universal disk image (package-macos-universal)"
+            "release-artifacts/ac3gui-*.AppImage|Linux AppImage (linux-appimage)"
+            "release-artifacts/*.apk|Android APK (build-android)"
+          )
+
+          missing=()
+          for entry in "${expected[@]}"; do
+            pattern="${entry%%|*}"
+            what="${entry#*|}"
+            # Unquoted on purpose: $pattern is a glob that has to be EXPANDED
+            # here, which is the whole mechanism. `shopt -s nullglob` above
+            # makes a pattern that matches nothing produce an empty array
+            # rather than the pattern itself, which is what the test below
+            # relies on. No package filename contains whitespace.
+            # shellcheck disable=SC2206
+            found=($pattern)
+            if [ ${#found[@]} -eq 0 ]; then
+              missing+=("$what  (no match for $pattern)")
+            else
+              printf 'OK       %s\n' "${found[@]}"
+            fi
+          done
+
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::this release is missing packages it is documented to publish (docs/releasing.md#what-gets-published). Check the build-packages run - an experimental leg failing does NOT fail that job."
+            printf 'MISSING  %s\n' "${missing[@]}"
+            echo
+            echo "Everything that was downloaded:"
+            ls -1 release-artifacts
             exit 1
           fi
-          printf '%s\n' "${artifacts[@]}"
 
-      # Deliberately after the "at least one package" check above rather than
-      # merged into the same download: the vector bundle is a .tar.gz, and
-      # that check's own glob counts .tar.gz files - downloading it first
-      # would let it stand in for a platform package and turn "every platform
-      # failed to build" into a green release. It lands in the same directory
+      # Deliberately after the completeness check above rather than merged
+      # into the same download: the vector bundle is a .tar.gz, and that check
+      # used to count .tar.gz files, so downloading it first would let it
+      # stand in for a platform package and turn "every platform failed to
+      # build" into a green release. The check now matches each package by its
+      # own name, which the bundle cannot satisfy, so the ordering is defence
+      # in depth rather than the load-bearing thing it was - keep it anyway,
+      # since it costs nothing and the next rewrite of that check should not
+      # have to rediscover the trap. It lands in the same directory
       # so it picks up the GPG signature, the SHA512SUMS line, the SBOM and
       # both attestations from the steps below, exactly as every package does.
       - name: Download conformance vectors
@@ -318,9 +392,14 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
+          # *.AppImage belongs here like every other extension. It was the one
+          # omission among these globs, so the AppImage shipped with its own
+          # cpack-style .sha512 side-car but no line in the aggregate manifest -
+          # the file docs/releasing.md tells a downloader to verify against, and
+          # the one manifest-bump.yml reads.
           artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
                      release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
-                     release-artifacts/*.apk)
+                     release-artifacts/*.AppImage release-artifacts/*.apk)
           ( cd release-artifacts && sha512sum "${artifacts[@]##release-artifacts/}" > SHA512SUMS )
 
       - name: Import GPG signing key

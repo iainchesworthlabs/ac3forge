@@ -274,10 +274,12 @@ endif()
 # generated ac3cli.1 man page and the bash/zsh/fish/PowerShell completion
 # scripts - all install()'d with COMPONENT runtime from
 # apps/cli/CMakeLists.txt, so every generator below picks them up with the
-# binary rather than needing a component of their own. They are absent from a
-# CROSS build's packages by construction: they are produced by running the
-# freshly built ac3cli, which a cross build cannot do (see that file's own
-# CMAKE_CROSSCOMPILING branch for why that is the chosen trade).
+# binary rather than needing a component of their own. They are absent only
+# from a package built where the host cannot run the target's binary - they are
+# produced by running the freshly built ac3cli - which is a host/target
+# comparison, not CMAKE_CROSSCOMPILING (see that file's own guard for why the
+# difference matters: testing the flag instead left them out of every Linux and
+# macOS package for as long as it stood).
 set(CPACK_COMPONENTS_ALL runtime library libruntime)
 
 # The Windows AC3Forge Crucible (roadmap UX11) as a fourth component, and so
