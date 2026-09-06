@@ -1092,6 +1092,15 @@ run by anyone here**; see below.
     `kAudioTapPropertyFormat` read back. The TCC consent prompt the code comments expected to be
     the wall was never the wall.
 
+    **What the machine actually is**, since three assumptions about it turned out to be wrong.
+    `macos-latest` is macOS 26.6.2 (25G83) on arm64. It has an audio device: `Apple Virtual
+    Sound Device`, two output channels at 48 kHz, both default output and default system output
+    - which is what the tap's aggregate names as its main sub-device and is clocked by. It has a
+    window session: `launchctl managername` answers `Aqua`. And it granted the tap without a
+    prompt. Whether a virtualised sound device is *why* the IOProc registration never completes
+    is not established here; it is the most obvious candidate and the first thing to try on real
+    hardware.
+
     **The window froze because that request wedged the whole HAL client.** `CrucibleController::poll()`
     calls `refreshDefault()`, which is an ordinary `enumerate_render_devices()` on the GUI thread;
     on the first poll after `start()` it blocked in `mach_msg2_trap` too, behind the outstanding
@@ -1591,8 +1600,9 @@ not.
 | Linux bitstream over PipeWire `iec958` | **confirmed 2026-09-05** - the receiver read "5.1 DD+", and "Atmos/DD+" at 7.1 with objects | none |
 | Windows bitstream to a real receiver | not yet | an HDMI cable; DR9 |
 | Windows driver on a normal machine | not yet | EV certificate and attestation; a separate session |
-| macOS anything, at runtime | **no** | CI runs the version gate and the device-watcher contract case and nothing else; no Mac has opened a device, a tap or the application; DR9 |
-| macOS tap consent prompt | **no** | the prompt is keyed to code-signing identity and does not fire unsigned; DR6 |
+| macOS platform halves, at runtime | **partly, on CI since 2026-09-06** | the Crucible Qt Quick suites drive the session monitor, foreground, default device, virtual device, tray seam, icon provider, device watcher and output stage on both legs; nobody has launched the application, and no Mac has taken a sample through a tap; DR9 |
+| macOS process tap end to end | **no, and now for a measured reason** | the tap, its aggregate device and its format all come back on a runner; `AudioDeviceCreateIOProcID` on that aggregate does not return, so the path is refused by default (Phase 5 record) |
+| macOS tap consent prompt | **untested, and not what blocks** | it never fired: an unsigned binary declaring no `NSAudioCaptureUsageDescription` got a tap anyway. Still keyed to a signing identity these binaries lack; DR6 |
 | Wayland full-screen foreground detection | **no**, by design | Wayland does not let a client ask about another's windows |
 | X11 full-screen foreground detection | yes, in an X11 session or a nested Xephyr on the Pi | none |
 | Linux application icons, per application | yes, on a desktop with applications playing | needs the Pi; which rung each hits is machine-dependent |
@@ -1609,18 +1619,29 @@ The macOS row is the one to hold in mind while reading Phase 5. The code can be 
 compiled on CI, and its device-free logic can be unit tested, and none of that establishes that
 it works. The demo page's discipline applies: what is claimed is what was checked.
 
-**Both halves of Phase 5 were written on 2026-09-06 and that row still says no.** The library
-gained the Core Audio process tap (`src/audio/src/backend/macos/process_tap.{hpp,mm}`) and now
-reports `process_loopback` available above macOS 14.2; there is a `macos` directory under both
-`apps/crucible/engine/platform/` and `apps/crucible/ui/platform/`; and macOS is a supported
-platform in the root `CMakeLists.txt` rather than an excluded one. Both macOS legs now compile
-and link all of it, after a first attempt that stopped during configure at an install rule. What
-that is worth is what the paragraph above says and no more: compiling on a second platform finds
-defects, and finding none is not evidence that anything works. Of the code itself, two library
-cases run on the runners — the version gate and the device-watcher contract case — and nothing
-else does: no tap has been created, no platform half has executed a line, and the application
-has never been launched. Every file in the new directories opens by saying so, so the caveat
-travels with the code rather than living only here.
+**Both halves of Phase 5 were written on 2026-09-06, and the same day something ran them.** The
+library gained the Core Audio process tap (`src/audio/src/backend/macos/process_tap.{hpp,mm}`);
+there is a `macos` directory under both `apps/crucible/engine/platform/` and
+`apps/crucible/ui/platform/`; and macOS is a supported platform in the root `CMakeLists.txt`
+rather than an excluded one. Both legs compile and link all of it, after a first attempt that
+stopped during configure at an install rule.
+
+Then the Qt Quick suites drove the platform halves for real, and the tap hung the process. That
+is recorded in full in Phase 5 below. What matters for this table is that three of its long-held
+assumptions about what a hosted runner is were **wrong**, and the runner said so when it was
+finally asked:
+
+- It has an audio device — `Apple Virtual Sound Device`, two channels at 48 kHz, default output
+  and default system output.
+- It has a window session — `launchctl managername` answers `Aqua`.
+- The consent prompt did not stand in the way; the tap came back to an unsigned binary.
+
+So "CI has no audio device, no desktop session and no way to grant the tap's consent prompt" was
+three guesses in a row, each of them load-bearing for a decision, and none of them checked until
+a stack forced the question. The caution the paragraph above states is unchanged and is the
+reason this went the way it did: compiling on a second platform finds defects, and finding none
+is not evidence that anything works. Every file in the new directories opens by saying what has
+run there and what has not.
 
 ## Coordination with the driver-signing session
 

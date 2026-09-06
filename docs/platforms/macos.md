@@ -201,8 +201,12 @@ turned out not to be walls:
   `NSAudioCaptureUsageDescription`, and `AudioHardwareCreateProcessTap` returned a tap anyway.
   `AudioHardwareCreateAggregateDevice` returned the private aggregate, and
   `kAudioTapPropertyFormat` read back. Everything up to the IOProc registration worked.
-- **The runner does have a default output device.** `create_process_tap()` refuses with
-  `kNoDefaultOutputDevice` before it builds anything if there is none, and it did not.
+- **The runner does have a default output device**, and a window session. `system_profiler`
+  names it `Apple Virtual Sound Device`, two channels at 48 kHz, default output and default
+  system output; `launchctl managername` answers `Aqua`. That virtual device is what the tap's
+  aggregate names as its main sub-device and is clocked by, which makes it the first thing to
+  suspect and the first thing to retry on real hardware - though nothing here establishes it as
+  the cause.
 
 The missing `NSAudioCaptureUsageDescription` is still a real gap and still needs no Mac to add;
 what has changed is that it is no longer the first thing in the way. DR9 still records what CI
