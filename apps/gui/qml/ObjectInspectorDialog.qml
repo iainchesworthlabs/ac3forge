@@ -114,7 +114,7 @@ Dialog {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("Inspect objects")
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontArrow
                 font.weight: Font.ExtraBold
                 font.family: Theme.headingFamily
                 color: Theme.text
@@ -129,7 +129,7 @@ Dialog {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             text: qsTr("Decodes an already-encoded E-AC-3 file and shows the Dolby Atmos object metadata (OAMD) and per-object audio (JOC) actually recovered from it — not what a source or a plan says, what the bitstream itself carries.")
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             color: Theme.neutral700
         }
 
@@ -149,7 +149,7 @@ Dialog {
                 text: ObjectDecodeController.filePath.length > 0
                       ? ObjectDecodeController.filePath : qsTr("No file chosen yet")
                 color: Theme.neutral700
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 font.family: Theme.monoFamily
             }
             BusyIndicator {
@@ -170,7 +170,7 @@ Dialog {
             wrapMode: Text.WordWrap
             text: ObjectDecodeController.error
             color: Theme.bad
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
         }
 
         Text {
@@ -180,7 +180,7 @@ Dialog {
             Layout.fillHeight: true
             text: qsTr("Choose an E-AC-3 file above to see the objects decoded out of it.")
             color: Theme.textMuted
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             verticalAlignment: Text.AlignTop
         }
 
@@ -199,7 +199,7 @@ Dialog {
                     objectName: "oiSummaryText"
                     Layout.fillWidth: true
                     text: ObjectDecodeController.summaryLine
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.family: Theme.monoFamily
                     font.weight: Font.DemiBold
                     color: Theme.text
@@ -261,7 +261,7 @@ Dialog {
                                     .arg(root.frameIndex + 1)
                                     .arg(ObjectDecodeController.frameCount)
                               : ""
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontMicro
                         font.family: Theme.monoFamily
                         color: Theme.textMuted
                     }
@@ -280,7 +280,7 @@ Dialog {
                         Text {
                             text: qsTr("ROOM — PLAN (top-down)")
                             color: Theme.neutral600
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontMicro
                         }
                         Rectangle {
                             id: room
@@ -320,7 +320,7 @@ Dialog {
                                 anchors.margins: 6
                                 text: qsTr("front")
                                 color: Theme.neutral500
-                                font.pixelSize: 9
+                                font.pixelSize: Theme.fontFine
                             }
                             Text {
                                 anchors.left: parent.left
@@ -328,7 +328,7 @@ Dialog {
                                 anchors.margins: 6
                                 text: qsTr("rear")
                                 color: Theme.neutral500
-                                font.pixelSize: 9
+                                font.pixelSize: Theme.fontFine
                             }
 
                             Repeater {
@@ -374,7 +374,7 @@ Dialog {
                                             ? planMarker.modelData.label
                                             : String(planMarker.index + 1)
                                         color: Theme.textMuted
-                                        font.pixelSize: 9
+                                        font.pixelSize: Theme.fontFine
                                         font.family: Theme.monoFamily
                                     }
                                 }
@@ -385,7 +385,7 @@ Dialog {
                             Layout.topMargin: Theme.space2
                             text: qsTr("ROOM — ELEVATION (side-on)")
                             color: Theme.neutral600
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontMicro
                         }
                         Rectangle {
                             id: elevation
@@ -419,7 +419,7 @@ Dialog {
                                 x: 4; y: 2
                                 text: qsTr("ceiling")
                                 color: Theme.neutral500
-                                font.pixelSize: 9
+                                font.pixelSize: Theme.fontFine
                             }
                             Rectangle {
                                 x: 0; width: parent.width
@@ -430,20 +430,20 @@ Dialog {
                                 x: 4; y: elevation.earY - 12
                                 text: qsTr("ear level")
                                 color: Theme.neutral500
-                                font.pixelSize: 9
+                                font.pixelSize: Theme.fontFine
                             }
                             Text {
                                 x: 4; y: parent.height - 13
                                 text: qsTr("front")
                                 color: Theme.neutral500
-                                font.pixelSize: 9
+                                font.pixelSize: Theme.fontFine
                             }
                             Text {
                                 x: parent.width - implicitWidth - 4
                                 y: parent.height - 13
                                 text: qsTr("rear")
                                 color: Theme.neutral500
-                                font.pixelSize: 9
+                                font.pixelSize: Theme.fontFine
                             }
 
                             Repeater {
@@ -469,7 +469,7 @@ Dialog {
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: String(elevationMarker.index + 1)
                                         color: Theme.textMuted
-                                        font.pixelSize: 9
+                                        font.pixelSize: Theme.fontFine
                                         font.family: Theme.monoFamily
                                     }
                                 }
@@ -486,7 +486,7 @@ Dialog {
                         Text {
                             text: qsTr("OBJECTS")
                             color: Theme.neutral600
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontMicro
                         }
 
                         Repeater {
@@ -532,7 +532,7 @@ Dialog {
                                     // A bed channel names itself ("L", "Tfr");
                                     // a dynamic object only has an index.
                                     text: objectRow.label
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontSmall
                                     font.family: Theme.monoFamily
                                     color: Theme.text
                                 }
@@ -542,14 +542,14 @@ Dialog {
                                               .arg(objectRow.modelData.x.toFixed(2))
                                               .arg(objectRow.modelData.y.toFixed(2))
                                               .arg(objectRow.modelData.z.toFixed(2))
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontMicro
                                     font.family: Theme.monoFamily
                                     color: Theme.neutral700
                                 }
                                 Text {
                                     Layout.preferredWidth: 70
                                     text: qsTr("%1 dB").arg(objectRow.modelData.gainDb.toFixed(1))
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontMicro
                                     font.family: Theme.monoFamily
                                     color: Theme.neutral700
                                 }
@@ -573,7 +573,7 @@ Dialog {
                                         }
                                         return parts.join("  ");
                                     }
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontMicro
                                     font.family: Theme.monoFamily
                                     color: Theme.neutral700
                                 }
@@ -595,7 +595,7 @@ Dialog {
                             Layout.topMargin: Theme.space2
                             wrapMode: Text.WordWrap
                             text: qsTr("Positions, gain, extent and channel lock are OAMD, read straight off this frame's own metadata. A named row is a bed channel, drawn at the nominal room position of the speaker its label names rather than at a transmitted one. Audition plays JOC's reconstructed audio for that one object — a parametric estimate, not the original source (see docs/library/spatial-and-atmos.md).")
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontMicro
                             color: Theme.neutral500
                         }
                     }

@@ -6,9 +6,18 @@ import Ac3Forge
 // control and it draws just outside that control's own border while the
 // control has active focus:
 //
-//     Rectangle { ... CrucibleButton's fill and border ...
+//     Rectangle { ... the chip's own fill and border ...
 //         FocusRing {}
 //     }
+//
+// Shared by both windows (apps/crucible/CMakeLists.txt copies this file into
+// the Crucible's own QML module and rewrites the import), so the examples
+// name neither: Crucible's CrucibleButton/CrucibleCheck and ac3gui's bed,
+// low-frequency, tab, run and command-line chips all carry one the same way.
+// The controls that are not hand-drawn - ac3gui's extras checkboxes, every
+// plain Button - draw the style's own focus indicator instead and have no
+// ring of their own; SegmentedControl draws a third kind, on whichever
+// segment is current, for the reason its own comment gives.
 //
 // Zero radius and the accent-derived focusRing colour, per the design
 // system; the offset keeps it clear of the control's 1 px border instead of

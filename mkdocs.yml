@@ -132,6 +132,7 @@ nav:
           - Inspect objects: gui/inspect-objects.md
           - Open stream: gui/open-stream.md
           - Localisation: gui/localisation.md
+          - Keyboard & text size: gui/accessibility.md
   - Crucible:
       - What it is: crucible/index.md
       - Install & first run: crucible/install.md

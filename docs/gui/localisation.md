@@ -46,6 +46,14 @@ than showing blank, exactly the fallback a real partial translation gives everyw
 app. Completing the rest is tracked as follow-on work, not a hidden gap: search any `.ts` file for
 `type="unfinished"` to see exactly what remains.
 
+Those two figures are from before the keyboard and text-size pass of 2026-09-06
+([Keyboard & text size](accessibility.md)), which added a text-size setting, a diagnostics
+section, and twenty-eight new strings — twenty-six `qsTr` in QML, most of them
+`Accessible.name`/`description` text, and two `tr` in `encoder_controller.cpp` — without
+regenerating the catalogues. The denominator is therefore larger than 758 today and the numerator
+is unchanged; `cmake --build <dir> --target ac3gui_lupdate` refreshes both, and this
+paragraph's figures should be re-read off the `.ts` files at the same time.
+
 ## Crucible shares this pipeline
 
 Everything above is `ac3gui`, half of [Forge](../forge/index.md).
