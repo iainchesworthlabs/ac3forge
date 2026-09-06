@@ -258,52 +258,52 @@
         <translation>يُعاد كما كان عند إنهاء Crucible</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="160"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="161"/>
         <source>Quitting from the tray restores %1. Closing the window only hides it while &quot;Keep running in the tray&quot; is on, so applications stay on the silent device until you quit or press Restore.</source>
         <translation>الإنهاء من شريط النظام يستعيد %1. أما إغلاق النافذة فيخفيها فقط ما دام خيار &quot;الاستمرار في العمل في شريط النظام&quot; مفعَّلًا، فتبقى التطبيقات على الجهاز الصامت حتى تُنهي البرنامج أو تضغط &quot;استعد&quot;.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="161"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="162"/>
         <source>Closing the window quits Crucible and restores %1. There is no tray icon on this desktop, so there is nothing left running behind the window.</source>
         <translation>إغلاق النافذة يُنهي Crucible ويستعيد %1. لا توجد أيقونة في شريط النظام على سطح المكتب هذا، فلا يبقى شيء يعمل خلف النافذة.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="166"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="167"/>
         <source>Installing the silent device is a separate step in Settings that asks for administrator rights, and it stays installed until you remove it.</source>
         <translation>تنصيب الجهاز الصامت خطوة منفصلة في الإعدادات تطلب صلاحيات المسؤول، ويبقى منصَّبًا حتى تزيله.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="173"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="174"/>
         <source>Your settings from the earlier demo were carried over.</source>
         <translation>نُقلت إعداداتك من العرض التوضيحي السابق.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="182"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="183"/>
         <source>Do this every time Crucible starts</source>
         <translation>افعل هذا في كل مرة يبدأ فيها Crucible</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="183"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="184"/>
         <source>Off: Crucible asks with the button on the Room page each time.</source>
         <translation>عند الإيقاف: يسأل Crucible بالزر في صفحة الغرفة في كل مرة.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="194"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="195"/>
         <source>Open Settings</source>
         <translation>افتح الإعدادات</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="200"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="201"/>
         <source>Not now</source>
         <translation>ليس الآن</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="211"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="212"/>
         <source>Send applications to %1</source>
         <translation>إرسال التطبيقات إلى %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/FirstRunDialog.qml" line="211"/>
+        <location filename="../ui/qml/FirstRunDialog.qml" line="212"/>
         <source>No silent device yet</source>
         <translation>لا يوجد جهاز صامت بعد</translation>
     </message>
@@ -496,92 +496,92 @@
         <translation>فتح الغرفة</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="440"/>
+        <location filename="../ui/qml/Main.qml" line="452"/>
         <source>auto</source>
         <translation>تلقائي</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="440"/>
+        <location filename="../ui/qml/Main.qml" line="452"/>
         <source>Signal path · %1</source>
         <translation>مسار الإشارة · %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="442"/>
+        <location filename="../ui/qml/Main.qml" line="456"/>
         <source>Automatic</source>
         <translation>تلقائي</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="443"/>
+        <location filename="../ui/qml/Main.qml" line="457"/>
         <source>Atmos</source>
         <translation>Atmos</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="444"/>
+        <location filename="../ui/qml/Main.qml" line="458"/>
         <source>Dolby Digital Plus 5.1</source>
         <translation>Dolby Digital Plus 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="445"/>
+        <location filename="../ui/qml/Main.qml" line="459"/>
         <source>Dolby Digital 5.1</source>
         <translation>Dolby Digital 5.1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="446"/>
+        <location filename="../ui/qml/Main.qml" line="460"/>
         <source>PCM surround</source>
         <translation>محيطي PCM</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="453"/>
+        <location filename="../ui/qml/Main.qml" line="467"/>
         <source>Headphones</source>
         <translation>سماعات الرأس</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="454"/>
+        <location filename="../ui/qml/Main.qml" line="468"/>
         <source>Stereo</source>
         <translation>استيريو</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="459"/>
+        <location filename="../ui/qml/Main.qml" line="472"/>
         <source>Default output: %1</source>
         <translation>المخرج الافتراضي: %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="460"/>
+        <location filename="../ui/qml/Main.qml" line="473"/>
         <source>Move default output to %1</source>
         <translation>انقل المخرج الافتراضي إلى %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="465"/>
+        <location filename="../ui/qml/Main.qml" line="478"/>
         <source>previous default output</source>
         <translation>الإخراج الافتراضي السابق</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="465"/>
+        <location filename="../ui/qml/Main.qml" line="478"/>
         <source>Restore %1</source>
         <translation>استعادة %1</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="470"/>
+        <location filename="../ui/qml/Main.qml" line="483"/>
         <source>Objects on · key loaded</source>
         <translation>الكائنات مفعلة · المفتاح محمّل</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="470"/>
+        <location filename="../ui/qml/Main.qml" line="483"/>
         <source>Objects off · no key</source>
         <translation>الكائنات معطلة · لا مفتاح</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="471"/>
+        <location filename="../ui/qml/Main.qml" line="484"/>
         <source>Settings…</source>
         <translation>الإعدادات…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="472"/>
+        <location filename="../ui/qml/Main.qml" line="485"/>
         <source>About…</source>
         <translation>حول…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/Main.qml" line="474"/>
+        <location filename="../ui/qml/Main.qml" line="487"/>
         <source>Quit</source>
         <translation>إنهاء</translation>
     </message>

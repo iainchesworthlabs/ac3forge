@@ -20,7 +20,10 @@ set -uo pipefail
 # reach the same display and the same bus.
 env_file=$HOME/.crucible-session-env
 if [ -f "$env_file" ]; then
-    set -a; . "$env_file"; set +a
+    set -a
+    # shellcheck source=/dev/null  # written by the session at login, not in this tree
+    . "$env_file"
+    set +a
 fi
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 export DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}
@@ -60,9 +63,10 @@ if [ -z "$host" ]; then
     exit 1
 fi
 echo "StatusNotifier host:"
-sed 's/^/  /' <<< "$host"
+while IFS= read -r line; do echo "  $line"; done <<< "$host"
 echo "session: ${XDG_SESSION_TYPE:-unknown}, ${XDG_CURRENT_DESKTOP:-unknown}, display ${WAYLAND_DISPLAY:-${DISPLAY:-none}}"
 echo "binary:  $binary"
+# shellcheck disable=SC1091  # /etc/os-release is the guest's, not in this tree
 echo "arch:    $(uname -m), $(. /etc/os-release; echo "$PRETTY_NAME"), Qt $(qmake6 -query QT_VERSION 2>/dev/null)"
 echo "qpa:     $QT_QPA_PLATFORM, LIBGL_ALWAYS_SOFTWARE=$LIBGL_ALWAYS_SOFTWARE"
 
