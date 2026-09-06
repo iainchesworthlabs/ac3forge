@@ -82,7 +82,12 @@ TEST_CASE("a gui note is one line and no longer than the cap", "[gui][diagnostic
     log.note(std::string(MessageLog::kMaxLine - 5, 'x') + "\xC2\xA3" + std::string(64, 'y'));
     const auto lines = log.lines();
     REQUIRE(lines.size() == 2);
-    REQUIRE(has(lines[0], "first second third"));
+    // Two spaces between "first" and "second", not one: one_line() maps each
+    // control character to its own space rather than collapsing a run of
+    // them, so a line keeps the width of what was logged and a reader can see
+    // that something was taken out. apps/crucible/engine/diagnostics.cpp does
+    // the same, and this helper is a copy of it.
+    REQUIRE(has(lines[0], "first  second third"));
     REQUIRE(lines[0].find('\n') == std::string::npos);
     REQUIRE(lines[0].find('\r') == std::string::npos);
     // One byte short of the cap: the walk backed off the continuation byte
