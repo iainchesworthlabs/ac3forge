@@ -74,6 +74,17 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   documentation people copy from, which is an argument for analysing them. The coverage figure
   is unaffected: `sonar.coverage.exclusions` already lists `examples/**`, so they stay
   unmeasured rather than reading as 0%.
+- **`process_loopback` is reported unavailable on macOS**, where the version gate alone used to
+  report it available on macOS 14.2 and up. The Core Audio process tap is written and stays in
+  the tree; what changed is the claim made for it. The first machine ever to run the path - the
+  Apple Silicon CI leg, macOS 26.6.2 - never returned from `AudioDeviceCreateIOProcID` on the
+  tap's aggregate device, and while that request was outstanding the whole process's Core Audio
+  client was unusable, so an unrelated device enumeration on another thread blocked behind it
+  and the application froze rather than reporting a failed tap. `Capture::start_process_loopback()`
+  now refuses before that call, `audio_backend().process_loopback` carries the reason, and
+  `AC3FORGE_MACOS_PROCESS_TAP` in the environment turns the path back on for anyone with a Mac
+  to settle it on. Crucible on macOS therefore lists the applications using sound and taps none
+  of them, and says so. No other platform changes.
 - Code analysis runs nightly against `main` instead of on every pull request, push and
   merge-queue entry: CodeQL (`codeql.yml`, 02:17 UTC), MSVC Code Analysis
   (`msvc-analysis.yml`, 02:23 UTC) and clang-tidy, which moved out of `ci.yml`'s
