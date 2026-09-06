@@ -213,11 +213,12 @@ std::string_view describe(CaptureError error) {
                    "mono or stereo only, at the machine's own rate)";
         case CaptureError::kAlreadyRunning: return "capture is already running";
         case CaptureError::kProcessLoopbackUnavailable:
-            // One sentence, written once, next to the gate that decides it -
-            // see coreaudio_names.hpp. audio_backend()'s capability reason is
-            // the same constant, so the two reports of this fact cannot say
-            // different things.
-            return coreaudio::kSystemAudioTapVersionRefusal;
+            // Whichever of the two gates turned the caller away, in that
+            // gate's own words - see coreaudio_names.hpp, where both live
+            // beside the argument for them. audio_backend()'s capability
+            // reason calls the same function, so the two reports of this fact
+            // cannot say different things.
+            return coreaudio::system_audio_tap_refusal();
         case CaptureError::kProcessNotFound:
             return "no process has the requested id, or it has one and has never played audio: "
                    "Core Audio has an audio process object only for a process that has opened "
@@ -439,7 +440,11 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
 // argued once beside the gate itself - coreaudio_names.hpp's
 // kSystemAudioTapMinimumOs.
 bool process_loopback_available() {
-    return coreaudio::system_audio_tap_api_available();
+    // Two gates, and the second one is not a version test: see
+    // coreaudio_names.hpp's system_audio_tap_enabled() for the machine that
+    // hung and why the default is off. Both are read here so that this
+    // function stays the single answer capture.hpp promises it is.
+    return coreaudio::system_audio_tap_api_available() && coreaudio::system_audio_tap_enabled();
 }
 
 std::expected<void, CaptureError> Capture::start_process_loopback(
@@ -452,9 +457,11 @@ std::expected<void, CaptureError> Capture::start_process_loopback(
     // backend takes and for the same reason: a machine that cannot do this at
     // all should say so whatever it was asked. It is also what
     // tests/audio/test_audio_backend.cpp's "process loopback refusals agree
-    // with the reported capability" case depends on - where the capability IS
-    // available, process id 0 has to come back kProcessNotFound rather than
-    // kProcessLoopbackUnavailable, and that case runs on every macOS CI leg.
+    // with the reported capability" case depends on - the two have to agree
+    // on which of kProcessNotFound and kProcessLoopbackUnavailable comes
+    // back. Since 2026-09-06 the macOS CI legs take the unavailable branch,
+    // because the second gate is off by default (coreaudio_names.hpp's
+    // system_audio_tap_enabled(), and the hang that put it there).
     if (!process_loopback_available()) {
         return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
     }

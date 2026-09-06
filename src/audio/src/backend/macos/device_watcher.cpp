@@ -90,9 +90,14 @@
 // case this shape does not cover, and the header already tells a caller not
 // to drive it that way.
 //
-// Nothing in this file has been run. No Mac has ever run this backend
-// (ROADMAP.md DR9); what is claimed here is that it compiles. Written
-// 2026-09-06.
+// This runs on CI and on nobody's desk. The library's own device-watcher
+// contract case starts and stops a watcher on both macOS runners, and since
+// 2026-09-06 the Crucible Qt Quick suites do too, through the engine's
+// watcher.start() - so registration, unregistration and the stop() ordering
+// below execute. What has never been observed is a NOTIFICATION: a hosted
+// runner's device list does not change while a test runs, so handle(),
+// diff_devices() and every emit() in this file are still unexecuted, and
+// nothing here is a report of what they do. Written 2026-09-06.
 
 #include <CoreAudio/CoreAudio.h>
 

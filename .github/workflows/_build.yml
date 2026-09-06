@@ -1143,88 +1143,6 @@ jobs:
         shell: bash
         run: cmake --build --preset build-${{ matrix.preset }} -- -k 0
 
-      # TEMPORARY, 2026-09-06. The three Crucible Qt Quick suites that hang on
-      # the Apple Silicon leg (firstrun, room, shell) are the only three that
-      # start the engine over the REAL macOS seams, and which call blocks is
-      # not known. `sample` needs no debugger and no entitlements, so this
-      # runs each suite on its own with a short ctest timeout and takes a
-      # five-second stack of every thread while the process is still stuck.
-      #
-      # It runs on BOTH macOS legs on purpose: the Intel leg passed all eleven
-      # on 2026-09-06 and whether that is an architecture difference or luck
-      # is one of the things this is here to answer. A leg where the suite
-      # finishes before the sample says so and takes no stack.
-      #
-      # continue-on-error, because this step exists to produce a log and must
-      # never be the reason a leg goes red. It comes out with the label
-      # exclusion in the Test step below.
-      - name: Sample the hung Crucible Qt Quick suites (temporary)
-        if: runner.os == 'macOS' && matrix.crucible
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -uo pipefail
-          echo "::group::this machine"
-          sw_vers || true
-          uname -m || true
-          echo "--- audio devices ---"
-          system_profiler SPAudioDataType 2>/dev/null | head -60 || echo "(none reported)"
-          echo "--- window session ---"
-          # A hosted runner may or may not have a logged-in seat; NSWorkspace
-          # behaves differently either way and foreground.mm calls it.
-          launchctl managername 2>/dev/null || echo "(launchctl managername unavailable)"
-          echo "::endgroup::"
-
-          mkdir -p /tmp/hang
-
-          probe() {
-            suite="$1"
-            echo "::group::${suite}"
-            ctest --preset test-${{ matrix.preset }} -R "^ac3crucible_qml_tests_${suite}$" \
-              --timeout 60 > "/tmp/hang/ctest-${suite}.log" 2>&1 &
-            ctest_pid=$!
-
-            pid=""
-            for _ in $(seq 1 30); do
-              sleep 1
-              pid=$(pgrep -x ac3crucible_qmltests | head -1 || true)
-              [ -n "$pid" ] && break
-            done
-
-            if [ -z "$pid" ]; then
-              echo "no ac3crucible_qmltests process was seen for ${suite}"
-            else
-              echo "ac3crucible_qmltests is pid ${pid}; letting it reach the hang"
-              sleep 25
-              if kill -0 "$pid" 2>/dev/null; then
-                echo "still alive after 25 s - sampling"
-                sample "$pid" 5 -file "/tmp/hang/sample-${suite}.txt" >/dev/null 2>&1 \
-                  || sudo sample "$pid" 5 -file "/tmp/hang/sample-${suite}.txt" >/dev/null 2>&1 \
-                  || echo "sample refused"
-                echo "----- stack: ${suite} -----"
-                cat "/tmp/hang/sample-${suite}.txt" 2>/dev/null || echo "(no sample file)"
-              else
-                echo "${suite} finished inside 25 s: it does not hang on this leg"
-              fi
-            fi
-
-            wait "$ctest_pid" || true
-            echo "----- ctest: ${suite} -----"
-            cat "/tmp/hang/ctest-${suite}.log" || true
-            echo "::endgroup::"
-          }
-
-          for s in room shell firstrun; do probe "$s"; done
-
-      - name: Upload the hang stacks (temporary)
-        if: runner.os == 'macOS' && matrix.crucible
-        continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: crucible-macos-hang-${{ matrix.preset }}
-          path: /tmp/hang
-          if-no-files-found: warn
-
       # AC3FORGE_REQUIRE_AVX2 turns tests/core/test_simd_kernels.cpp's [avx2]
       # probe case from a loud skip into a hard failure - only safe to set on
       # a leg pinned to `runner: '["ubuntu-latest"]'` above rather than the
@@ -1240,28 +1158,7 @@ jobs:
           AC3FORGE_REQUIRE_AVX2: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '' }}
         run: |
           set -euo pipefail
-          # macOS runs everything except the Qt Quick suites, and the reason is
-          # a defect rather than a preference. Read off this leg on 2026-09-06:
-          # three of the eleven - firstrun, room and shell - hang until ctest's
-          # 300-second limit, while the other eight pass. They are exactly the
-          # three that do NOT install the scripted machine, so they are the
-          # three that start the engine against the real platform services -
-          # the macOS half written in this branch, which no machine has ever
-          # run. The eight that pass either use the fakes or never start the
-          # engine at all. The hang is therefore in the macOS seams or the
-          # Core Audio backend under them, on a host with no audio device and
-          # no window server session.
-          #
-          # Excluded rather than left red, because a leg that always fails
-          # cannot report a new failure, and what these legs exist to prove -
-          # that the macOS half compiles and links - they still prove. The
-          # other 1,328 cases still run here. This comes off when the hang is
-          # found; nothing about it should be read as the suites passing.
-          exclude=()
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            exclude=(--label-exclude crucible-ui)
-          fi
-          ctest --preset test-${{ matrix.preset }} "${exclude[@]}"
+          ctest --preset test-${{ matrix.preset }}
 
       # The window is optional in CMake (Qt6 QUIET, and Quick3D optional
       # inside that), which is right for a source build on a machine with no

@@ -25,10 +25,12 @@
 // The macOS AppIconProvider: an application's icon from its bundle, through
 // NSWorkspace (docs/crucible/promotion.md, Phase 5).
 //
-// **THIS HAS NEVER BEEN RUN.** Written 2026-09-06; the only thing that will
-// read it before somebody has a Mac is the macOS CI compiler
-// (docs/crucible/promotion.md, "What cannot be verified, and why"). No icon
-// has been drawn by this code.
+// **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 without a
+// Mac; since the same day tst_icons.qml creates AppIcon items on both macOS
+// legs, so requestImage() below answers for real
+// (docs/crucible/promotion.md, Phase 5). What no test can check is whether
+// what it drew is the right icon: the suite asserts that an image came back,
+// not what is in it, and nobody has looked at one.
 //
 // Objective-C++ because NSWorkspace and NSImage have no C entry point, the
 // same wall engine/platform/macos/foreground.mm hits. The file's path is what

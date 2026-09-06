@@ -166,8 +166,14 @@ became false and is corrected as part of this work whatever else lands.
 | `passthrough` | yes | yes | yes | yes | yes | no |
 | `monitor` | yes | yes | yes | yes | yes | no |
 | `spatial` | yes | **no, and no plan** | no | **no, and no plan** | no | no |
-| `process_loopback` | yes | **Phase 3** | no, no per-app concept | **Phase 5** | no | no |
+| `process_loopback` | yes | **Phase 3** | no, no per-app concept | **Phase 5**[^tap] | no | no |
 | `device_watch` | yes | **Phase 3** | no, would be a udev listener | **Phase 5** | no | no |
+
+[^tap]: Written in Phase 5 and reported **not available** since 2026-09-06: the first machine to
+    run the path never returned from `AudioDeviceCreateIOProcID` on the tap's aggregate device.
+    The refusal, the observation behind it and the `AC3FORGE_MACOS_PROCESS_TAP` opt-in that
+    reverses it are in `src/audio/src/backend/macos/coreaudio_names.hpp`; the stack is in the
+    Phase 5 record below.
 
 ### ALSA or PipeWire
 
@@ -908,16 +914,25 @@ run by anyone here**; see below.
       during configure, at an `install(TARGETS ac3crucible)` rule that named no
       `BUNDLE DESTINATION` for a target with `MACOSX_BUNDLE` on. With that fixed, both macOS legs
       built every source of both halves — the three `.mm` files among them — and linked
-      `bin/ac3crucible.app/Contents/MacOS/ac3crucible`. The universal merge that follows has not
-      run yet: its job needs both legs green, and the Apple Silicon leg was red on three Qt Quick
-      test timeouts (see [macOS](../platforms/macos.md#ci-what-has-and-has-not-been-verified)).
-    - **Run**, almost none of it. Two library cases execute macOS backend code on the runners: the
-      version gate, and the device-watcher contract case, which starts and stops a watcher on the
-      runner. Nothing else does. No Mac has executed one line of either platform half — the seam
-      tests link the stub and the Qt Quick tests drive fakes — and nobody has launched the
-      application. The macOS row in
-      [What cannot be verified](#what-cannot-be-verified-and-why) is unchanged: CI has no audio
-      device, no desktop session and no way to grant the tap's consent prompt.
+      `bin/ac3crucible.app/Contents/MacOS/ac3crucible`. The universal merge that follows needs
+      both legs green, which they are again since the Qt Quick timeouts were traced and fixed
+      (see [macOS](../platforms/macos.md#ci-what-has-and-has-not-been-verified)).
+    - **Run**, more of it than this note first claimed, and that is how the hang was found. The
+      eleven Crucible Qt Quick suites run on both macOS legs, and eight of them drive the real
+      platform seams: `Main.qml` starts the engine whenever the window is built, so the session
+      monitor, the foreground, the default device, the virtual device and the output stage all
+      execute there. Two library cases execute backend code besides — the version gate, and the
+      device-watcher contract case, which starts and stops a watcher on the runner. What has
+      still never run is a tap: it is refused before the blocking call now (see the Phase 5
+      record below), and no Mac has ever taken samples through one. Nobody has launched the
+      application on a desktop Mac.
+    - Two lines of the macOS row in [What cannot be verified](#what-cannot-be-verified-and-why)
+      were wrong and are corrected by what the runners did. CI **does** have a default output
+      device: `create_process_tap()` refuses with `kNoDefaultOutputDevice` before it builds
+      anything, and it did not. And the tap's consent prompt was **not** the wall — Crucible is
+      unsigned and declares no `NSAudioCaptureUsageDescription`, and
+      `AudioHardwareCreateProcessTap` returned a tap anyway. What is in the way is one step
+      further on, and is written down where it was found.
 
     Every file under the new directories says as much at its head, so a reader who opens one of
     them first is told before they read anything else.
@@ -1063,26 +1078,71 @@ run by anyone here**; see below.
     the eleven Qt Quick suites - `firstrun`, `room` and `shell` - sat at ctest's 300-second limit
     while the other eight passed.
 
-    The three are not the heaviest, the slowest, or the ones that build the window; several
-    suites that do all of those pass. **They are exactly the three that do not install the
-    scripted machine.** Every other suite either replaces the platform services with fakes or
-    never starts the engine, so these three are the only ones that start the engine against the
-    real macOS seams. Each hangs on its first case that does so, whatever else that case
-    contains.
+!!! success "Found 2026-09-06: the call that blocks, from a stack"
 
-    So the macOS half compiles and, the first time anything ran it, blocked. The hang is in the
-    seams or the Core Audio backend beneath them, on a host with no audio device and no window
-    server session. Which call blocks is not known, and finding it needs a machine that can
-    attach to the process - the same wall the tray crash hit, and the same answer: a runner or a
-    Mac that can be iterated on rather than a twenty-minute round trip.
+    A temporary CI step ran each of the three suites on its own and took a five-second `sample`
+    of the stuck process on both macOS legs. Three processes, three stacks, one shape.
 
-    The Qt Quick label is excluded on the macOS legs until then, and that exclusion is a defect
-    being worked around rather than a decision about what is worth testing. The legs still prove
-    what they were added to prove, and the other 1,328 cases still run there.
+    **`AudioDeviceCreateIOProcID` on the process tap's aggregate device does not return.** The
+    engine's frame thread is parked in `mach_msg2_trap` inside
+    `HALC_ProxyIOContext::_TellServerAboutStreamUsage`, waiting on a reply from `coreaudiod`,
+    reached through `Engine::Impl::refresh_sessions` → `TapPool::sync` → `Capture::start_process_loopback`.
+    Everything before it succeeded: the pid translated to a process object, `AudioHardwareCreateProcessTap`
+    returned a tap, `AudioHardwareCreateAggregateDevice` returned the private aggregate, and
+    `kAudioTapPropertyFormat` read back. The TCC consent prompt the code comments expected to be
+    the wall was never the wall.
+
+    **The window froze because that request wedged the whole HAL client.** `CrucibleController::poll()`
+    calls `refreshDefault()`, which is an ordinary `enumerate_render_devices()` on the GUI thread;
+    on the first poll after `start()` it blocked in `mach_msg2_trap` too, behind the outstanding
+    tap request. So Qt's event loop never returned, `tryVerify`'s own five-second timeout could
+    never fire, and ctest's 300 seconds is what ended it. The same enumeration runs on the GUI
+    thread in every passing suite and returns in milliseconds, which is what says it is blocked
+    behind the tap rather than slow on its own.
+
+    **Two things the earlier record got wrong, and the PASS lines say so.**
+
+    The three are not "the three that do not install the scripted machine, each hanging on its
+    first case that starts the engine". `Main.qml`'s `Component.onCompleted` calls `start()`, so
+    every case that builds the window starts the engine against the real seams - and four of them
+    pass in `tst_shell` before the hang, five in `tst_firstrun`. What the hanging case has in each
+    suite is that it leaves the engine RUNNING: `tryVerify(framesEncoded > 0, 5000)` in `room` and
+    `shell`, a second shell and `wait(300)` in `firstrun`. The others start and stop it inside a
+    few tens of milliseconds, before the session monitor's first list reaches the frame thread and
+    a tap is attempted.
+
+    And the two legs differ by more than their CPU. `macos-latest` is **macOS 26.6.2** and
+    `macos-15-intel` is **macOS 15.7.9**; the arm64 leg hung on both runs it has had, the Intel
+    leg passed all eleven and finished `room` in 10.65 s. Two variables separate them and nothing
+    here can say which one matters, so neither "Apple Silicon" nor "macOS 26" is the finding. What
+    is known is that one host wedged and the other did not.
+
+!!! success "Fixed 2026-09-06: the tap is not entered until a Mac has completed it"
+
+    `process_loopback_available()` on macOS took a version test as its whole answer, and reported
+    the capability available on the strength of it. That was the thing that turned out to be
+    wrong: every documented precondition was satisfied on the machine that hung. So the backend
+    now carries a second gate beside the version one
+    (`src/audio/src/backend/macos/coreaudio_names.hpp`), the capability reports **not available**
+    with a reason that names the hang, and `Capture::start_process_loopback()` refuses before it
+    reaches the blocking call. `AC3FORGE_MACOS_PROCESS_TAP` in the environment turns the path back
+    on for whoever has a Mac to settle it on.
+
+    A refusal is what the rest of the stack was already written for. `TapPool::sync` returns the
+    applications whose tap was refused and the engine notes each once; the frame loop carries on
+    and encodes, the window renders, and the eleven suites run. Nothing was given the scripted
+    machine to make that happen - the session monitor, the default device, the virtual device, the
+    foreground and the output stage all still run for real on those legs, which is the coverage
+    the three suites exist for.
+
+    What Crucible on macOS can do today is therefore smaller than Phase 5 claimed and is stated
+    rather than discovered: it lists the applications using sound, draws them in the room, and
+    taps none of them. The `--label-exclude crucible-ui` in `.github/workflows/_build.yml` is
+    gone with the hang it was working around.
 
     Worth stating plainly, because it is the whole argument for compiling a platform nobody can
-    run: this was invisible until something ran it, and what ran it was eight test cases on a
-    hosted runner.
+    run: this was invisible until something ran it, what ran it was eight test cases on a hosted
+    runner, and what identified it was one `sample` on the way past.
 
 ### Phase 6: product qualities
 

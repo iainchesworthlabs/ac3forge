@@ -5,11 +5,14 @@
 
 // macOS: the menu bar's status area, which Qt reaches through NSStatusItem.
 //
-// **THIS HAS NEVER BEEN RUN.** Written 2026-09-06; the only thing that will
-// read it before somebody has a Mac is the macOS CI compiler
-// (docs/crucible/promotion.md, "What cannot be verified, and why"). No tray
-// icon has been published on a Mac by this application, and the sentence below
-// is not a report that one was.
+// **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 without a
+// Mac; tst_platform.qml reads CrucibleController.trayAvailable on both macOS
+// legs, which is tray_is_published() below
+// (docs/crucible/promotion.md, Phase 5). On those runners it answers false -
+// Qt reports no native SystemTrayIcon implementation under the offscreen
+// platform - so what has been exercised is the refusal, not the publish. No
+// tray icon has been published on a Mac by this application, and the sentence
+// below is not a report that one was.
 //
 // The answer here is the same as Windows' and, since 2026-09-06, the same as
 // Linux's. This file was written while Linux still refused, and the Linux
