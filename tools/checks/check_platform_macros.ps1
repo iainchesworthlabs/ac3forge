@@ -64,7 +64,15 @@ if (Test-Path $appsRoot) {
     $scanRoots += $appsRoot
 }
 
-$files = Get-ChildItem -Path $scanRoots -Recurse -File -Include '*.h', '*.hpp', '*.cpp', '*.cc', '*.cxx', '*.inl'
+# '*.mm' is on the list for one file: src/audio/src/backend/macos/process_tap.mm,
+# the Objective-C++ seam for Core Audio's process tap (CATapDescription has no
+# C entry point). It is compiled source under src/ like any other, so the rule
+# this script holds applies to it, and an extension the scan does not know
+# about is a hole in that rule rather than an exemption from it. Objective-C++
+# has its own reason to reach for a conditional - @available handles the
+# runtime version question, but __IPHONE_OS_VERSION_MIN_REQUIRED and friends
+# are right there - so this is worth scanning rather than assuming.
+$files = Get-ChildItem -Path $scanRoots -Recurse -File -Include '*.h', '*.hpp', '*.cpp', '*.cc', '*.cxx', '*.inl', '*.mm'
 
 # apps/windows/driver/ is Microsoft's Simple Audio Sample under its own MS-PL
 # licence (see its README): a separate kernel-mode work that shares no code

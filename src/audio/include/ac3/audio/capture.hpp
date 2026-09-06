@@ -72,6 +72,17 @@ enum class ProcessLoopbackMode : std::uint8_t {
 // states what it wants and the audio engine converts to it. 48 kHz float
 // stereo is the shape a live encoder wants; eight channels is granted too,
 // and is how a surround-rendering application's tap reaches a bed intact.
+//
+// That is WASAPI's account of it, and it is the widest of the three. Core
+// Audio has no converter behind a tap at all: its mixdown descriptions are
+// mono and stereo, and a mixdown runs at the rate of the device it mixes down
+// to rather than one the caller picks. So the macOS backend accepts channels
+// of 1 or 2 and refuses anything else with kFormatUnsupported, and refuses a
+// sample_rate its tap does not already deliver rather than resampling to it -
+// which is how start_process_loopback()'s "at exactly `format`" below stays
+// true there. See docs/platforms/macos.md, and
+// src/audio/src/backend/macos/capture.cpp's own header comment, for the rest
+// of that platform's narrower contract.
 struct ProcessLoopbackFormat {
     std::uint32_t sample_rate = 48000;
     std::uint16_t channels = 2;

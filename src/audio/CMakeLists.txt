@@ -77,6 +77,13 @@ target_sources(ac3audio PRIVATE src/live_positions.cpp)
 # adding a platform means adding a directory rather than editing conditionals
 # scattered through the sources.
 #
+# A directory may carry more than that fixed set. alsa/, pipewire/ and macos/
+# each have a support header their own files share, and macos/ additionally
+# has process_tap.{hpp,mm} - the project's only Objective-C++ translation
+# unit, for the one CoreAudio type with no C entry point (see the APPLE block
+# below). Anything extra is listed by the block that selects its directory
+# and nowhere else, so "exactly one directory" still holds.
+#
 # The axis is the audio subsystem rather than the operating system, because
 # that is where the answers actually differ: windows/ is WASAPI, alsa/ and
 # pipewire/ are Linux's two real backends, macos/ is CoreAudio, and posix/ is
@@ -307,6 +314,83 @@ if(APPLE)
     # from - see src/backend/macos/audio_backend.cpp's own comment on what
     # "available" still does and does not promise.
     # -----------------------------------------------------------------------
+
+    # -----------------------------------------------------------------------
+    # Objective-C++, enabled for exactly one file.
+    #
+    # This is the only place in the whole project that needs a second compiled
+    # language (examples/CMakeLists.txt enables C for the C API example, and
+    # apps/gui + apps/crucible enable RC for a Windows version resource; there
+    # is no OBJC or OBJCXX anywhere else). The reason is narrow and is argued
+    # in src/backend/macos/process_tap.hpp: Core Audio's process tap is
+    # described by CATapDescription, an Objective-C class with no C entry
+    # point at all, so the tap cannot be built from a .cpp however the calls
+    # around it are spelled. process_tap.mm is that one file; everything else
+    # in the directory stays plain C++ and includes process_tap.hpp, which
+    # names nothing Objective-C.
+    #
+    # Enabled HERE rather than in the top-level project() call. ac3audio is
+    # the only target in the tree with an OBJCXX source and it is defined in
+    # this file, so this is the directory that compiles the language.
+    #
+    # Read the CMake documentation for enable_language() before moving this,
+    # because it asks for something slightly wider than that: the highest
+    # directory common to every target using the language "directly for
+    # compiling sources or indirectly through link dependencies". ac3cli,
+    # ac3gui, ac3crucible and ac3tests all link ac3audio from sibling
+    # directories, so by that reading the call belongs at the top level under
+    # if(APPLE). It is here instead because the language registration itself
+    # is global to the generator and the only OBJCXX compile happens in this
+    # directory - but that is a reading, not something anyone here has
+    # configured a Mac to confirm. If a macOS leg fails at generate time with
+    # anything about OBJCXX being unknown or unconfigured in another
+    # directory, moving these three statements verbatim into the top-level
+    # CMakeLists.txt under if(APPLE) is the fix; nothing else about this
+    # block would change.
+    #
+    # The compiler is pinned to the C++ one rather than left to CMake's own
+    # search, which matters specifically for this project: the macos-llvm
+    # presets chainload cmake/toolchains/macos.llvm.toolchain.cmake, which
+    # resolves a Homebrew/MacPorts clang++ (and, deliberately, its libc++)
+    # rather than /usr/bin/c++. CMake's OBJCXX search would find Apple's
+    # clang++ instead, and the two would meet across coreaudio_support.hpp's
+    # std::string and std::vector - the same standard-library types compiled
+    # by two toolchains against two libc++ headers. The FLAGS that go with
+    # that libc++ are the toolchain file's own half of this: it sets
+    # CMAKE_OBJCXX_FLAGS_INIT beside CMAKE_CXX_FLAGS_INIT for the same
+    # reason, because CMake applies CMAKE_CXX_FLAGS to CXX sources only. A
+    # plain configure with no toolchain file finds the same compiler for both
+    # and neither half changes anything there.
+    if(NOT CMAKE_OBJCXX_COMPILER)
+        set(CMAKE_OBJCXX_COMPILER "${CMAKE_CXX_COMPILER}")
+    endif()
+    enable_language(OBJCXX)
+
+    # target_compile_features(... cxx_std_23) above governs the CXX sources
+    # only; OBJCXX carries its own standard property and would otherwise take
+    # the compiler's default, which for every Clang this project builds with
+    # is gnu++17. process_tap.mm shares coreaudio_support.hpp with the .cpp
+    # files beside it, so it compiles at the same dialect they do rather than
+    # meeting them across two readings of the same standard-library headers.
+    #
+    # OBJCXX_STANDARD 23 needs a CMake whose Compiler/Clang-OBJCXX module
+    # routes through __compiler_clang_cxx_standards(), which is what defines
+    # CMAKE_OBJCXX23_STANDARD_COMPILE_OPTION for Clang and AppleClang;
+    # checked against the modules shipped with CMake 4.4 while writing this.
+    # An older CMake that has not got it fails the configure outright with
+    # "OBJCXX_STANDARD is set to invalid value '23'". That is the wanted
+    # outcome rather than a problem to route around: this project is C++23
+    # throughout (see the top-level CMakeLists.txt), so a CMake that cannot
+    # ask for C++23 on the one Objective-C++ file should say so at configure
+    # time rather than quietly build that file at a different dialect from
+    # every other file in the same archive. CMakePresets.json's floor is
+    # 3.28; if a leg on that floor turns out to reject this, the floor is
+    # what moves.
+    set_target_properties(ac3audio PROPERTIES
+        OBJCXX_STANDARD 23
+        OBJCXX_STANDARD_REQUIRED ON
+        OBJCXX_EXTENSIONS OFF)
+
     target_sources(ac3audio
         PRIVATE
             src/backend/macos/audio_backend.cpp
@@ -315,14 +399,31 @@ if(APPLE)
             src/backend/macos/monitor.cpp
             src/backend/macos/sink_capabilities.cpp
             src/backend/macos/spatial.cpp
-            src/backend/macos/device_watcher.cpp)
+            src/backend/macos/device_watcher.cpp
+            src/backend/macos/process_tap.mm)
+
+    # ARC, on the one Objective-C++ file and nowhere else. Without it the
+    # objects process_tap.mm creates would need hand-written retain/release
+    # and a toll-free bridge spelled as a C cast; with it the compiler owns
+    # both, which is one fewer thing to get wrong in a file that cannot be
+    # run to find out (no Mac has ever run this backend - ROADMAP.md DR9).
+    # A file property rather than a target one: every other source here is
+    # C++ and -fobjc-arc means nothing to them.
+    set_source_files_properties(src/backend/macos/process_tap.mm
+        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 
     # CoreAudio: the Audio HAL itself. CoreFoundation: CFStringRef, used
     # throughout coreaudio_support.hpp for every device's persistent UID and
-    # friendly name. Apple frameworks are linked as plain "-framework <name>"
-    # strings rather than through find_library/find_package - there is
-    # nothing to find, they ship with every macOS SDK.
-    target_link_libraries(ac3audio PRIVATE "-framework CoreAudio" "-framework CoreFoundation")
+    # friendly name. Foundation: NSUUID, NSString, NSArray and NSDictionary,
+    # which is what CATapDescription and the aggregate-device description are
+    # built out of in process_tap.mm - it arrives with Objective-C++ rather
+    # than being an extra dependency in any meaningful sense, but it is named
+    # here because nothing links itself. Apple frameworks are linked as plain
+    # "-framework <name>" strings rather than through
+    # find_library/find_package - there is nothing to find, they ship with
+    # every macOS SDK.
+    target_link_libraries(ac3audio
+        PRIVATE "-framework CoreAudio" "-framework CoreFoundation" "-framework Foundation")
 
     set(AC3FORGE_AUDIO_BACKEND macos)
 endif(APPLE)
