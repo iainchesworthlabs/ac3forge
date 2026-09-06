@@ -58,6 +58,79 @@ if(WIN32)
         set(CPACK_NSIS_MUI_ICON "${PROJECT_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
         set(CPACK_NSIS_MUI_UNIICON "${PROJECT_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
 
+        # Start Menu entries. Until this, the installer laid ac3cli.exe and
+        # ac3gui.exe down under $INSTDIR\bin and created nothing anywhere a
+        # user looks - the Start Menu folder CPack always makes held nothing
+        # but the Uninstall shortcut, so an installed copy was reachable only
+        # by browsing to the folder it went into. The Linux .deb has had a
+        # menu entry since roadmap UX2 (apps/gui/packaging/linux/ac3gui.desktop);
+        # Windows had never been given the same thing.
+        #
+        # CPACK_PACKAGE_EXECUTABLES is the shape CPack's NSIS generator wants:
+        # a flat list of <executable-name-without-.exe>;<menu label> pairs,
+        # from which it writes both the CreateShortCut lines in the installer
+        # and the matching Delete lines in the uninstaller - so a shortcut
+        # cannot be created here and then left behind on uninstall, which is
+        # the failure mode of writing the CreateShortCut by hand. It resolves
+        # each name as $INSTDIR\<CPACK_NSIS_EXECUTABLES_DIRECTORY>\<name>.exe,
+        # and that variable's default is "bin" - the same "bin" GNUInstallDirs
+        # gives CMAKE_INSTALL_BINDIR on Windows and the same one both
+        # applications' install(TARGETS ... RUNTIME DESTINATION) use, so the
+        # default is correct here rather than merely untouched.
+        #
+        # The label is "ac3gui" and not a product name because that is what
+        # the Linux launcher's Name= already says: the two menus name the same
+        # application and should not disagree, and choosing a new published
+        # name for it is not this file's decision to take
+        # (docs/family/recasting.md).
+        #
+        # ac3gui alone in that list, because it is the only windowed
+        # application the installer carries (the Crucible is kept out of this
+        # installer entirely - cmake/CPackProjectConfig.cmake says why). A
+        # .lnk straight to ac3cli.exe would open a console, print the usage
+        # text and close it again before anyone could read a line of it, so
+        # the console tool gets the entry it can actually use instead: a
+        # command prompt that already has $INSTDIR\bin on PATH. That has no
+        # CPack variable of its own, hence raw NSIS through
+        # CPACK_NSIS_CREATE_ICONS_EXTRA - which is injected inside the block
+        # where $STARTMENU_FOLDER is in scope, unlike
+        # CPACK_NSIS_EXTRA_INSTALL_COMMANDS below - and its uninstall half in
+        # CPACK_NSIS_DELETE_ICONS_EXTRA, which runs in the uninstaller where
+        # the same folder is $MUI_TEMP instead. The two name the same .lnk and
+        # are one change; editing either alone leaves a shortcut behind.
+        #
+        # SetOutPath is there because NSIS gives a .lnk the CURRENT output
+        # path as its working directory: without the first line the prompt
+        # would open in $INSTDIR rather than beside the binaries. The second
+        # puts it back for the shortcut CPack writes immediately after this
+        # hook - CMake's own NSIS.template.in orders the core section
+        # @CPACK_NSIS_CREATE_ICONS@, this, then `CreateShortCut ...
+        # Uninstall.lnk` - so the uninstaller entry keeps the $INSTDIR working
+        # directory every other CPack installer gives it. Nothing else in that
+        # section is affected either way: @CPACK_NSIS_FULL_INSTALL@ lays the
+        # files down at the top of it, long before this runs. Bracket
+        # arguments for the same reason the file-association block below uses
+        # them - the NSIS command syntax needs both quote kinds nested, and
+        # escaping that through CMake's quoting rules is where this sort of
+        # thing goes wrong.
+        #
+        # Deliberately not CPACK_CREATE_DESKTOP_LINKS: the defect is that the
+        # applications are not findable, and a desktop icon nobody asked for
+        # is a different decision from a Start Menu entry.
+        if(TARGET ac3gui)
+            set(CPACK_PACKAGE_EXECUTABLES "ac3gui" "ac3gui")
+        endif()
+        if(TARGET ac3cli)
+            set(CPACK_NSIS_CREATE_ICONS_EXTRA [[
+            SetOutPath "$INSTDIR\bin"
+            CreateShortCut "$SMPROGRAMS\$STARTMENU_FOLDER\ac3cli command prompt.lnk" "$SYSDIR\cmd.exe" '/K "set PATH=$INSTDIR\bin;%PATH%"' "$INSTDIR\bin\ac3cli.exe" 0
+            SetOutPath "$INSTDIR"
+            ]])
+            set(CPACK_NSIS_DELETE_ICONS_EXTRA [[
+            Delete "$SMPROGRAMS\$MUI_TEMP\ac3cli command prompt.lnk"
+            ]])
+        endif()
+
         # Roadmap UX2: .ac3/.ec3 open in ac3gui - the same "double-click a
         # stream you already have" gesture the app's own DropArea and
         # `ac3gui <file>` launch handling (roadmap UX2's other two legs)
@@ -290,6 +363,39 @@ elseif(UNIX)
         # distributions' package layouts rather than measured: this project
         # has no RPM host, and `rpm -qp --requires` on a built package is
         # what would confirm it.
+        #
+        # The Crucible RPM is a local-only product, and deliberately so - the
+        # three settings below produce one for `cpack` on a developer's
+        # machine and never in CI. Written down here because the reason is not
+        # what it looks like from this file, and an audit reading only this
+        # block reasonably concluded the RPM generator was missing a tool:
+        #
+        #   - rpmbuild is NOT absent from the Linux image. .github/workflows/
+        #     _build.yml's "Bootstrap container" step installs the `rpm`
+        #     package, which is where rpmbuild comes from on Debian/Ubuntu,
+        #     and the Package leg's upload allowlist already collects
+        #     packages/*.rpm - the library and runtime components' RPMs are
+        #     built and attached to releases today.
+        #   - What excludes the Crucible is the Crucible pass's own cpack
+        #     call, which names its generators on the command line:
+        #     `cpack -D CPACK_COMPONENTS_ALL=crucible -G "TGZ;DEB"`. A -G on
+        #     the command line overrides CPACK_GENERATOR computed here (the
+        #     same override this file's header documents for packagePresets),
+        #     so the RPM generator never runs in that pass however available
+        #     rpmbuild is.
+        #   - And the legs that DO run a full `cpack --preset pack-linux-*`,
+        #     where CPACK_GENERATOR from this file applies in full, configure
+        #     their build tree without -DAC3FORGE_BUILD_CRUCIBLE=ON, so
+        #     `crucible` is not in CPACK_COMPONENTS_ALL there at all (see the
+        #     list(APPEND) further down).
+        #
+        # Nothing here is worth "fixing" by adding RPM to that pass: a .deb
+        # exercises the same component install and the same install rules, the
+        # runner is Debian-derived so only the .deb is installable on it, and
+        # there is no RPM host in this project to test the result on - the
+        # same gap CPACK_RPM_PACKAGE_AUTOREQPROV's reasoning above already
+        # names. docs/releasing.md tells a release manager the same thing in
+        # the reader's own words.
         set(CPACK_RPM_CRUCIBLE_PACKAGE_NAME "ac3forge-crucible")
         set(CPACK_RPM_CRUCIBLE_FILE_NAME RPM-DEFAULT)
         set(CPACK_RPM_CRUCIBLE_PACKAGE_REQUIRES "pipewire, wireplumber")
