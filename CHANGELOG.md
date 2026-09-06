@@ -14,6 +14,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- Four places now use the idiom SonarCloud's first scan asked for, because it is better code
+  and not only a quieter report. `*opt = v` is defined only while an optional is engaged, so
+  it depends silently on a guard staying put: `BitReservoir::commit`'s clamp and
+  `Eac3Decoder`'s pending-slot handover assign the optional instead (`cpp:S6427`). And
+  `WavStreamWriter::close()`, `WavPcm16StreamWriter::close()` and `WavStreamReader::close()`
+  are `noexcept`, which is what their destructors have always required of them (`cpp:S1048`);
+  `noexcept` is not mangled under either the Itanium or the MSVC ABI, so nothing about the
+  exported interface changes.
 - **The Desktop Atmos Demo is now AC3Forge Crucible** (roadmap UX12; `apps/crucible/`, the
   [Crucible guide](docs/crucible/index.md)): a desktop application rather than a Windows
   demo, with the same idea - every application that is playing sound becomes an Atmos

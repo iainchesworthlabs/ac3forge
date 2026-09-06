@@ -3004,7 +3004,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
 
     if (pending_slot.has_value()) {
         DecodedSubstream ready = std::move(*pending_slot);
-        *pending_slot = std::move(out);
+        // Assign the optional, not through it - `*opt = v` needs the optional
+        // engaged, which here is only true because of the has_value() above.
+        pending_slot = std::move(out);
         return std::optional<DecodedSubstream>(std::move(ready));
     }
     if (frm->transproce) {

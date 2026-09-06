@@ -157,7 +157,7 @@ class AC3FORGE_EXPORT WavStreamWriter {
 
     // Finalizes the header (same as flush_header()) and closes the file.
     // Safe to call when not open, and safe to call more than once.
-    void close();
+    void close() noexcept;
 
     [[nodiscard]] bool is_open() const;
     [[nodiscard]] std::uint16_t channels() const;
@@ -198,7 +198,7 @@ class AC3FORGE_EXPORT WavPcm16StreamWriter {
     // its comment; a long take should call this every second or so.
     void flush_header();
 
-    void close();
+    void close() noexcept;
 
     [[nodiscard]] bool is_open() const;
     [[nodiscard]] std::uint64_t bytes_written() const;
@@ -252,7 +252,7 @@ class AC3FORGE_EXPORT WavStreamReader {
     [[nodiscard]] std::expected<std::size_t, WavError> read_planar(
         std::span<const std::span<float>> channels, std::size_t frames);
 
-    void close();
+    void close() noexcept;
 
    private:
     struct Impl;
