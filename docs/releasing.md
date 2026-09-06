@@ -560,6 +560,7 @@ components instead of `runtime`) but is best-effort - see `package-macos-univers
 | Platform | Arch | Leg | End-user packages | Library (`ac3forge-dev-*`) |
 |---|---|---|---|---|
 | Windows | x64 | windows-msvc | `.zip`, `.exe` (NSIS) | `.zip` |
+| Windows | arm64 | windows-msvc-arm64 (`experimental: true`, see below) | `.zip`, `.exe` (NSIS) | `.zip` |
 | Linux | x86_64 | linux-gcc | `.tar.gz`, `.deb`, `.rpm` | `.tar.gz`, plus real system packages: `libac3forge0`/`ac3forge-devel` (RPM) and `libac3forge0`/`libac3forge-dev` (DEB) |
 | Linux | aarch64 (Raspberry Pi 4/5 and other arm64 targets) | linux-gcc-arm64 | `.tar.gz`, `.deb`, `.rpm` | same split as x86_64, above |
 | macOS | arm64 + x86_64 (universal) | macos-llvm + macos-llvm-x64, merged by `package-macos-universal` | `.dmg` | `.zip`, best-effort (see above) |
@@ -593,8 +594,12 @@ Two things to know. The component is packaged only from a PipeWire build, which 
 build Crucible accepts on Linux ([why](crucible/promotion.md#alsa-or-pipewire)), so the
 existing Linux release legs - which build ALSA - do not produce it. The Linux LLVM leg's
 Crucible pass does build and package it, and uploads it as `packages-crucible-<preset>`, which
-is the pattern `release.yml` collects; what stands between that and a release asset is only
-that the leg is not a `release_package` one. And the `.deb`'s one-line synopsis is the library's, not Crucible's: CPack's
+is the pattern `release.yml` collects - so it ships as a release asset without that leg being a
+`release_package` one, and its configure step passes the same `DERIVED_VERSION_OVERRIDE` every
+other release-bound build does, or it would stamp the previous release's version. What it is not
+is guaranteed: the step skips itself whole on a runner whose Qt is older than 6.8, so the
+completeness check deliberately does not require it, and a release can go out without it.
+And the `.deb`'s one-line synopsis is the library's, not Crucible's: CPack's
 DEB generator headlines every component's package with the project summary and offers no
 per-component override that takes effect, so `apt show ac3forge-crucible` opens with
 "Clean-room AC-3 encoder" and says what the package actually is on the next line. The same
@@ -660,8 +665,12 @@ See [Conformance vectors](conformance-vectors.md) for what is in it and how a de
 uses it.
 
 One leg is still `experimental: true`, `windows-msvc-arm64` on its own runner label
-(`_build.yml`'s matrix comment says why), and it carries `release_package: true` as well: its
-packages ship, and a failure there fails the leg like any other. The other four package
+(`_build.yml`'s matrix comment says why), and it carries `release_package: true` as well, so its
+packages ship. What `experimental` costs is the leg's own failure signal: `_build.yml` runs it
+under `continue-on-error`, so it can die and still report green to the reusable workflow. That is
+why `release.yml`'s "Verify every documented package was built" step names each package this
+section promises and fails on whatever is absent, rather than counting files - a release cannot
+quietly go out missing this platform. The other four package
 for real rather than best-effort - a packaging failure on any of them blocks the release the
 same as a build or test failure would. Every package - end-user or library - gets a `.sha512`
 (`CPACK_PACKAGE_CHECKSUM` in `cmake/Packaging.cmake`), an aggregate `SHA512SUMS` manifest,
@@ -801,10 +810,15 @@ you dispatched from) hasn't been merged to `main` yet.
 or delete the existing tag first if it was created in error:
 `git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z`.
 
-**No package for a platform in the release** - that leg's `build-packages` job failed for real.
-Every packaging leg, `windows-msvc-arm64` included, carries `release_package: true` (see
-[What gets published](#what-gets-published) above), so a missing package is a failure to
-investigate rather than an expected gap - check the run's `build-packages` job.
+**"this release is missing packages it is documented to publish"** - the `github-release` job's
+completeness check found that a package listed under
+[What gets published](#what-gets-published) never arrived, and stopped before the release was
+created. Its log names each missing one and lists everything that did arrive. Start at the
+`build-packages` run: the usual cause is that leg failing, and on `windows-msvc-arm64` that
+failure does not turn the job red by itself (`experimental: true`, so `continue-on-error`) - the
+step exists to catch exactly that. Two absences are expected and deliberately not required: the
+macOS `ac3forge-dev-*` archive (best-effort, see above) and the Linux AC3Forge Crucible package,
+whose leg skips itself on a runner with too old a Qt.
 
 ## What's deliberately not here
 
