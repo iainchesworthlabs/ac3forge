@@ -585,6 +585,9 @@ jobs:
           - name: "macOS LLVM (Homebrew)"
             runner: '["macos-latest"]'
             preset: macos-llvm
+            # Crucible compiles here and cannot be run here; see the Configure
+            # step's note.
+            crucible: true
             mac_arch: arm64
             llvm: true
             gui: true
@@ -611,6 +614,7 @@ jobs:
           - name: "macOS LLVM x64 (Homebrew, Intel)"
             runner: '["macos-15-intel"]'
             preset: macos-llvm-x64
+            crucible: true
             mac_arch: x64
             llvm: true
             gui: true
@@ -1095,14 +1099,26 @@ jobs:
             extra_args+=(-DAC3FORGE_BUILD_GUI=ON)
           fi
           # OFF by default in CMakeLists.txt, so the legs that want it ask
-          # here - and only on Windows. On Linux this tree selects the ALSA
-          # backend, which has no per-application concept at all, and
-          # apps/crucible/CMakeLists.txt refuses that combination by design
-          # rather than building a window that can list applications and
-          # never capture one. Crucible's Linux build is the dedicated pass
-          # further down, which installs the PipeWire headers and configures
-          # its own tree with -DAC3FORGE_WITH_ALSA=OFF.
-          if [ "${{ matrix.crucible }}" = "true" ] && [ "$RUNNER_OS" = "Windows" ]; then
+          # here - on Windows and macOS, and not on Linux. On Linux this tree
+          # selects the ALSA backend, which has no per-application concept at
+          # all, and apps/crucible/CMakeLists.txt refuses that combination by
+          # design rather than building a window that can list applications
+          # and never capture one. Crucible's Linux build is the dedicated
+          # pass further down, which installs the PipeWire headers and
+          # configures its own tree with -DAC3FORGE_WITH_ALSA=OFF.
+          #
+          # macOS joins on 2026-09-06, and building is the whole point of it
+          # there. The macOS platform half exists and has never been
+          # compiled: no Mac took part in writing it, and these two legs are
+          # the first compiler to see the Objective-C++, the Core Audio
+          # selectors and the OBJCXX CMake. Nothing about it can be RUN in
+          # CI - a hosted runner has no audio device, no desktop session and
+          # no way to grant the tap's consent prompt - so what these legs
+          # establish is that it compiles and links, which is exactly what
+          # docs/crucible/promotion.md's Phase 5 sets as the exit condition
+          # and exactly as far as its "What cannot be verified" table lets
+          # anyone claim.
+          if [ "${{ matrix.crucible }}" = "true" ]              && { [ "$RUNNER_OS" = "Windows" ] || [ "$RUNNER_OS" = "macOS" ]; }; then
             extra_args+=(-DAC3FORGE_BUILD_CRUCIBLE=ON)
           fi
           if [ -n "$VERSION_TAG_INPUT" ]; then
@@ -1168,19 +1184,28 @@ jobs:
             exit 1
           }
 
-      - name: Assert the AC3Forge Crucible was built (Windows)
-        # Windows only, as the name says: this looks in the matrix build
-        # tree, and on Linux that tree deliberately has no Crucible in it
-        # (see the Configure step above).
-        if: matrix.crucible && runner.os == 'Windows'
+      - name: Assert the AC3Forge Crucible was built
+        # Windows and macOS, which are the two platforms whose matrix build
+        # tree carries Crucible; on Linux that tree deliberately has none
+        # (see the Configure step above), and the dedicated Linux pass makes
+        # its own assertions in its own tree.
+        #
+        # This matters more on macOS than anywhere else. That half has never
+        # been compiled by anyone - it was written without a Mac - so a leg
+        # that quietly built no window would be the difference between "it
+        # compiles" and "nobody checked", and the whole macOS claim rests on
+        # the first of those.
+        if: matrix.crucible && (runner.os == 'Windows' || runner.os == 'macOS')
         shell: bash
         run: |
           set -euo pipefail
           build="build/config-${{ matrix.preset }}"
+          suffix=''
+          [ "$RUNNER_OS" = "Windows" ] && suffix='.exe'
           missing=0
-          for exe in ac3crucible.exe ac3crucible-run.exe ac3crucible_qmltests.exe; do
-            if [ ! -f "$build/bin/$exe" ]; then
-              echo "::error::$exe was not built - was Qt6 found? Check the configure log's warnings."
+          for exe in ac3crucible ac3crucible-run ac3crucible_qmltests; do
+            if [ ! -f "$build/bin/$exe$suffix" ]; then
+              echo "::error::$exe$suffix was not built - was Qt6 found? Check the configure log's warnings."
               missing=1
             fi
           done
@@ -1192,7 +1217,7 @@ jobs:
             echo "::error::Qt Quick 3D was not found, so the room's 3D view is missing from this build - the 'Install Qt (prebuilt)' step's modules list is what provides it"
             exit 1
           fi
-          ls -1 "$build/bin/ac3crucible.exe" "$build/bin/ac3crucible-run.exe"
+          ls -1 "$build/bin/ac3crucible$suffix" "$build/bin/ac3crucible-run$suffix"
 
       # The AC3Forge Crucible's coverage floor - what ci.yml's `coverage` job
       # is for the library, for the one first-party tree that job cannot see.
