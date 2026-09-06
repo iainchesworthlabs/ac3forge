@@ -448,6 +448,16 @@ else()
             OUTPUT_SCRIPT AC3DESK_DEPLOY_SCRIPT
             NO_UNSUPPORTED_PLATFORM_ERROR)
         install(SCRIPT "${AC3DESK_DEPLOY_SCRIPT}" COMPONENT crucible)
+        # Immediately after it, and only after it: that script deploys Qt's
+        # test module into the package, because Qt scans this whole directory
+        # for QML imports and ui/tests/qml/tst_*.qml all `import QtTest`.
+        # Nothing a user runs loads qml/QtTest, Qt6Test.dll or
+        # Qt6QuickTest.dll - only ac3crucible_qmltests does, and that binary
+        # is never installed. cmake/StripQtTestDeployment.cmake carries the
+        # whole measurement, including why the Qt Quick Test binary's own
+        # location in bin/ has nothing to do with it and does not move.
+        install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/StripQtTestDeployment.cmake"
+            COMPONENT crucible)
     endif()
 endif()
 
