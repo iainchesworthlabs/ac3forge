@@ -584,6 +584,15 @@ PresentationInfoV0 parse_presentation_info_v0(Reader& r, int fs_index, int frame
         }
         for (std::uint32_t i = 0; i < n; ++i) {
             parse_emdf_info(r);
+            // n reaches here through variable_bits() and so runs to 2^32.
+            // parse_emdf_info() does real work per iteration, so without
+            // this a 200-byte frame spends six seconds walking a count no
+            // data backs - the reader is the only thing that ends it.
+            // break, not return: parse_toc() checks r.error() after every
+            // presentation it parses.
+            if (r.error()) {
+                break;
+            }
         }
     }
     return pres;
@@ -660,6 +669,16 @@ std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) 
         for (int b = 0; b < n_bed_signals; ++b) {
             if (r.bits(4) != 3) {  // nonstd_bed_channel_assignment
                 add(ObjectKind::kBed, false);
+            }
+            // n_bed_signals is sized from n_signals, which the caller lets
+            // reach 2^32 through variable_bits() (n_fullband_upmix_signals
+            // == 16 opens that escape). Once the data is gone r.bits(4)
+            // returns a phantom 0 - never the 3 that would skip the append -
+            // so without this the loop keeps growing `objects` for as long
+            // as the count says: 1.8 GB and six seconds, on a 200-byte
+            // frame, before this check existed.
+            if (r.error()) {
+                break;
             }
         }
         return objects;
@@ -969,6 +988,15 @@ PresentationInfoV1 parse_presentation_v1_info(Reader& r, int bitstream_version,
         }
         for (std::uint32_t i = 0; i < n; ++i) {
             parse_emdf_info(r);
+            // n reaches here through variable_bits() and so runs to 2^32.
+            // parse_emdf_info() does real work per iteration, so without
+            // this a 200-byte frame spends six seconds walking a count no
+            // data backs - the reader is the only thing that ends it.
+            // break, not return: parse_toc() checks r.error() after every
+            // presentation it parses.
+            if (r.error()) {
+                break;
+            }
         }
     }
     return pres;

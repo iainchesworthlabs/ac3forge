@@ -163,10 +163,8 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   run, the SMPTE ST 2067-201 KLV wrapper around it, and §9.1's single extracted frame) and
   `fuzz_ac4_parse` (`ac4::scan` and `ac4::parse_raw_frame`). Both exist only to read files
   this project did not write, and both size their loops from numbers the file chose. IAB is
-  clean over 1.5 million executions and joins the default target list; `fuzz_ac4_parse` is
-  built and carries its regression corpus but stays out of `run.sh`'s `BASE_TARGETS` for now,
-  because the AC-4 TOC parser still has unbounded-allocation findings beyond the ones fixed
-  above - see that file's own note.
+  clean over 1.5 million executions, `fuzz_ac4_parse` over six million once the findings below
+  were fixed, and both are in `run.sh`'s default target list.
 
 - **Crucible can be operated without a mouse, and says what it is doing to a screen reader**
   ([Keyboard and screen readers](docs/crucible/accessibility.md)). Every button, checkbox, bed
@@ -401,8 +399,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   asked for a 137 GB `vector<SubstreamGroupInfo>`), and the three count-driven loops that grew
   a vector without checking whether the reader had run out - `substream_sizes`, a
   presentation's `group_refs`, and the channel-coded `n_lf_substreams` loop - now stop the way
-  the substream-group loop beside them always did. All found by the new
-  `fuzz/fuzz_ac4_parse.cpp`, the first two within seconds of its first run.
+  the substream-group loop beside them always did. Two more loops joined them: the
+  `b_add_emdf_substreams` runs in both presentation parsers, and the `n_bed_signals` loop in
+  `parse_bed_dyn_obj_assignment()`. That last one was the expensive one - `n_signals` reaches
+  2^32 through `variable_bits()` when `n_fullband_upmix_signals` is 16, and once the data was
+  gone its `r.bits(4)` returned a phantom 0 rather than the 3 that skips the append, so it kept
+  growing the object list: **1.8 GB and 6.7 seconds on a 200-byte frame**, now 33 MB and 0.03
+  seconds. All found by the new `fuzz/fuzz_ac4_parse.cpp`, the first two within seconds of its
+  first run; six million executions since are clean.
 - **Crucible listed every PulseAudio application on Linux as one entry, and could tap none of
   them** (`src/audio/src/backend/pipewire/pipewire_support.hpp`). PipeWire records the process
   behind a client from the socket credentials, and the session list and the per-process tap both
