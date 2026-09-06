@@ -27,7 +27,7 @@ every item; each of those headings says why.
 | VX — Verification and oracles | shared | 20 | 2 | 1 |
 | PF — Performance and portability | the library | 8 | 0 | 0 |
 | AP — Library surface, bindings and v1.0 | the library | 9 | 1 | 2 |
-| UX — Applications | Forge, Crucible, the library | 9 | 1 | 2 |
+| UX — Applications | Forge, Crucible, the library | 9 | 2 | 1 |
 | CR — Crucible | Crucible | 0 | 0 | 1 |
 | DR — Distribution, release engineering and hardware | shared | 5 | 1 | 3 |
 
@@ -2068,6 +2068,8 @@ joined the hash-pinned pytest lock), and the wheel matrix gained `ubuntu-24.04-a
 aarch64 — Raspberry Pi is a documented platform and finally has a wheel) and `macos-15-intel`.
 Still C++-only, recorded in `docs/library/python-api.md` as the boundary: the incremental
 container `Reader`/`Writer` classes and the fragmented-MP4/HLS/DASH surface.
+</details>
+
 **AP9 (L, the library)** — A first non-Python binding over the C API (Rust), complete: the
 `-sys` crate, a safe wrapper over the whole codec surface (wide layouts, Atmos objects,
 framing/scan, metering), CI on all three desktop OSes — and two real portability findings for
@@ -2198,9 +2200,9 @@ Drag-and-drop, `ac3gui <file>`, file associations (the installer's registry keys
 `.deb`/`.rpm` — `ac3gui` was absent from Linux application menus).
 </details>
 
-**UX3 (M, Forge)** — Localisation and accessibility foundations — six languages (98/758
-messages each, rest left in English), full RTL support, and
-`Accessible.role`/`name`/`description` on every custom control.
+**UX3 (M, Forge)** — Localisation and accessibility foundations — six languages, full RTL
+support, and `Accessible.role`/`name`/`description` on every custom control. The catalogues
+were partial when this landed and are full now; CR1 is the reading of them.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2209,28 +2211,48 @@ messages each, rest left in English), full RTL support, and
 at startup and on a live Preferences switch, and RTL layout mirroring plus bundled Noto Sans
 Arabic/Hebrew faces cover Arabic, Hebrew and Yiddish. The canonical language set — French,
 German, Spanish, Arabic, Hebrew, Yiddish — matches the one the sibling CountdownSolver project
-already ships, rather than inventing a second one; coverage today is 98 of 758 extracted
-messages per language (window chrome, tab names, the Guided wizard's step titles, all of
-Preferences), the rest left in English exactly like any real partial translation — see
-`docs/gui/localisation.md` for the tracked remainder, and completing it is the natural
-follow-on, not a hidden gap. A pseudo-locale QA fixture
+already ships, rather than inventing a second one. Coverage when this item landed was 98 of
+758 extracted messages per language — window chrome, tab names, the Guided wizard's step
+titles, all of Preferences — with the rest left in English and tracked in
+`docs/gui/localisation.md`. The catalogues were filled on 2026-09-06: each of the six now
+carries 795 messages, every one of them translated but a single entry per file whose source
+string is itself empty (`QcDialog.qml` line 276). Those translations are machine-made and have
+not been read by a speaker of any of the six languages, which is what CR1 is for.
+A pseudo-locale QA fixture
 (`tools/generators/gen_pseudo_locale.py`, `ac3gui_xx.ts`) mechanically decorates every
 extracted string and is loaded only under `AC3GUI_LOCALE=xx` in `tst_localisation_pipeline.qml`,
 proving the whole pipeline end to end independent of the six real languages' completeness and
 catching any string that bypasses `qsTr()` entirely. CI's "Check translations are up to date"
-step reruns `lupdate` and fails on drift — the literal ask behind the item's original wording —
-deliberately short of CountdownSolver's own stricter "zero unfinished" gate, since that would
-fail today on content nobody has touched yet.
+step reruns `lupdate` and fails on drift — the literal ask behind the item's original wording.
+It stops short of CountdownSolver's own stricter "zero unfinished" gate, which was the right
+call while coverage was partial and is a gap now that it is not: Crucible's catalogues carry
+that gate (`tests/crucible/test_translations.cpp`, CR1) and the GUI's do not.
 
 Every custom control and every ad-hoc control in `Main.qml` now carries `Accessible.role`/
 `name`/`description`, built from the same live properties the visual state already reads (never
 a static duplicate of a label) — the QC preset regression's own lesson, now enforced by
 `tst_accessibility.qml` and targeted additions to `tst_main_shell.qml`/`tst_qc_panel.qml`. Two
-genuine Qt API surprises found doing this, both worth knowing before touching this again:
+Qt API surprises found doing this, both worth knowing before touching this again:
 `Accessible` has no `disabled` property (Qt's own accessibility bridge reads the item's real
 `enabled` state instead), and a `Dialog`/`Popup` root is not itself an `Item` — `Accessible.*`
 has to attach to its `contentItem`, not the `Dialog` itself, or it throws a runtime warning on
 every window that ever instantiates the dialog, not just when it opens.
+
+Extended 2026-09-06, after Crucible's own accessibility pass found the gap. `Theme.qml` is
+shared between the two windows and claimed every size in both came from its scale; in `ac3gui`
+377 literal type sizes sat outside it and the scale never moved off 1.0. All 377 are on the
+scale now, behind the same five-value Text size control Crucible offers, and at scale 1.0 every
+token equals the literal it replaced, so the window is pixel-identical by default. Type size is
+only half of it: the Guided wizard, the Objects and Live session tabs and the dialogs still take
+their heights from literals and can clip at 175%, which `docs/gui/accessibility.md` lists. The
+controls also gained accessible names and roles, a visible focus ring (`qml/FocusRing.qml`) and
+a tab order meant to reach what a mouse reaches, and there is a diagnostics export
+(`gui_diagnostics.cpp`) carrying versions, settings and the last errors, and no file contents
+and no key material. What is asserted is narrower than that list reads: the suites cover a few
+named tab stops and the accessible names beside them, and the rest of the chain is in the
+documentation by reading rather than by assertion, which `docs/gui/accessibility.md` separates
+row by row. No screen reader has been through the window, on either platform, and it has not
+been driven by keyboard alone at 175%.
 </details>
 
 **UX4 (M, shared)** — A real live object-position source (OSC) for `live mode=atmos` and the
@@ -2468,8 +2490,10 @@ seams; PipeWire per-application capture and device notifications; a Linux platfo
 window on Linux with its Qt Quick suite passing there; a Linux package (`ac3forge-crucible`
 tarball and `.deb`, uploaded as `packages-crucible-<preset>`, which is the `packages-*`
 pattern `release.yml` downloads, though no tag has been cut since); a Linux CI pass that
-builds, tests and packages the window; a settings page worded by the platform rather than by
-Windows; and a user guide under `docs/crucible/`. **Verified on the Pi** against a live
+builds, tests and packages the window, on x86_64 from the start and on arm64 from 2026-09-06,
+which is the architecture the Pi run itself used and the one nothing had been building; a
+settings page worded by the platform rather than by Windows; and a user guide under
+`docs/crucible/`. **Verified on the Pi** against a live
 PipeWire session — the tap captures a real application, the silent device is a real graph
 node, the watcher sees it come and go, and the passthrough offers a bitstream on the HDMI sink
 and refuses it on the headphone jack, from the codecs WirePlumber reads off the receiver's
@@ -2486,9 +2510,16 @@ accessibility pass, which made every hand-drawn control a tab stop and gave the 
 key map. Two follow-ons landed 2026-09-06: the room and settings pages of the guide, written
 from the window rather than from this plan, and tests over the three seams that had none — the
 tray on both platforms, the Linux session monitor's `/proc` readers, and what the Linux silent
-device can be asked without a daemon. Still open: macOS (compile-only; blocked on DR6 and DR9)
-and the review of the six mechanically translated languages, now carried as CR1. Plan and
-phase record in `docs/crucible/promotion.md`.
+device can be asked without a daemon. The macOS platform half was written the same day — five
+engine seams and two window ones, macOS a supported platform in CMake rather than an excluded
+one, and both macOS CI legs asking for `AC3FORGE_BUILD_CRUCIBLE` — and none of it has been
+compiled or run. One CI configure has seen it: it detected the Objective-C++ toolchain and
+reached the install rules, where it failed on a `MACOSX_BUNDLE` target given no
+`BUNDLE DESTINATION`. That is fixed and CI has not reported back since, so whether the macOS
+half compiles is unknown as this is written; running it needs a Mac (DR9), and the tap's
+consent prompt needs code signing (DR6). Still open, then: macOS, and the reading of the six
+mechanically translated languages, now carried as CR1. Plan and phase record in
+`docs/crucible/promotion.md`.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2529,41 +2560,81 @@ default device in the runner and in the UI controller, and the driver tools in t
 controller's *header*, which is the one that stops that controller compiling anywhere else.
 
 **Library additions.** `process_loopback` and `device_watch` for the PipeWire and CoreAudio
-backends, and `device_watch` for ALSA. One capability string is corrected whatever else lands:
-`process_loopback`'s reason on every non-Windows backend reads "no other backend has an
-equivalent", which stopped being true when PipeWire gained per-node capture and macOS shipped
-process taps in 14.2. `spatial` is the one capability with no cross-platform answer — neither
-Linux nor macOS exposes an OS object renderer a third party can hand Atmos objects to — so the
-headphone route decodes and folds on those platforms and the mode table loses its Headphones
+backends. Where those stand: PipeWire has both and they have been run against a live session;
+CoreAudio has both in the tree and neither has compiled (UX7); ALSA has neither. What this item
+once counted as ALSA's `device_watch` is a documented refusal: libasound has no endpoint-change
+API, so a watcher there would be a udev listener, and
+`src/audio/src/backend/alsa/device_watcher.cpp` says so and fails every entry point with
+`kNoBackend` rather than the header disappearing. One capability string was corrected whatever
+else landed: `process_loopback`'s reason on every non-Windows backend read "no other backend
+has an equivalent", which stopped being true when PipeWire gained per-node capture and macOS
+shipped process taps in 14.2. Each of those reasons now names what the other platforms do.
+`spatial` is the one capability with no cross-platform answer — neither Linux nor macOS
+exposes an OS object renderer a third party can hand Atmos objects to — so the headphone route
+decodes and folds on those platforms and the mode table loses its Headphones
 row. The roadmap's existing ruling against an in-repo binaural renderer is not reopened.
 
-**What this will not be able to claim.** No Mac has ever run the CoreAudio backend (DR9) and
-the tap's TCC consent prompt is keyed to code-signing identity and does not fire unsigned
-(DR6), so the macOS phase compiles on CI, unit-tests its device-free logic, and is otherwise
-unrunnable. Wayland gives a client no way to ask about another's windows, so the full-screen
+**What this cannot claim.** No Mac has ever run the CoreAudio backend (DR9) and the tap's TCC
+consent prompt is keyed to code-signing identity and does not fire unsigned (DR6), so the most
+the macOS phase was ever going to establish is that it compiles and that its device-free logic
+passes its unit tests. It has not established even that yet: the one configure that reached it
+failed at an install rule, and the retry has not come back (see this item's summary and UX7).
+Wayland gives a client no way to ask about another's windows, so the full-screen
 foreground rule is X11-only and refuses cleanly elsewhere. The Windows driver still loads only
 where test signing is on, and its own subtree is deliberately left un-renamed while signing is
 worked in a separate session.
 </details>
 
-### Considering
-
 **UX7 (M, the library)** — macOS loopback capture through Core Audio process/system taps.
-Blocked on a real Mac and on DR6's code signing; only documentation and an OS-version gate
-landed without one.
+Written on this branch and not yet compiled: no Mac has run any part of it, and the one CI
+configure that has seen it failed at an install rule before any build step began.
 <details markdown="1">
 <summary>Full record</summary>
 
-Through `AudioHardwareCreateProcessTap`/`CATapDescription`, macOS 14.2+. Capture is still
-input-only there and `start()` still refuses `kLoopback`: the tap itself needs an Objective-C
-class, a real-time TCC consent prompt under `SystemAudioCaptureRequests`, and — since that
-prompt is keyed to code-signing identity and does not fire unsigned — DR6 resolved first or
-nothing to grant it to. Needs a real Mac (DR9) either way; not attempted without one. What
-landed without one: the loopback gap's documentation corrected (it previously cited macOS
-14.4, not the API's real 14.2) and expanded (`docs/platforms/macos.md`), and a pure,
-CI-verified OS-version gate a future implementation should refuse on before ever touching
-`CATapDescription` (`ac3::coreaudio::system_audio_tap_api_available()`).
+`AudioHardwareCreateProcessTap` over a `CATapDescription`, macOS 14.2 and up, carried by a
+private aggregate device with `muteBehavior` `CATapMutedWhenTapped`, which Apple documents as
+silencing the tapped application at the point the tap takes its audio — the job the Windows
+null-sink driver exists to do, so no default output has to move and no kernel extension is
+needed.
+`src/audio/src/backend/macos/process_tap.mm` holds the Objective-C++ half, because
+`CATapDescription` has no C entry point, and it is the library's only `.mm` — `apps/crucible`
+has two more of its own for AppKit — while every other file in that directory stays plain C++
+and includes `process_tap.hpp`.
+`capture.cpp`'s `Capture::start_process_loopback()` is the caller, and `audio_backend.cpp` now
+reports `process_loopback` available on a machine at 14.2 or above instead of refusing
+outright. The contract is deliberately narrower than the Windows one it copies: one process
+rather than a process tree, mono or stereo only (a `CATapDescription`'s mixdown descriptions
+offer nothing else), and the tap's own sample rate checked and refused rather than resampled,
+which is what keeps `capture.hpp`'s promise that capture arrives at exactly the format asked
+for.
+
+**What that is worth, exactly.** Nothing here has run. There is no Mac on this machine, and a
+hosted runner has no audio device, no desktop session and no way to grant the tap's consent
+prompt. Nor has any of it compiled: one CI configure has seen it, and that configure detected
+the Objective-C++ toolchain, generated the notices and reached the install rules, where it
+failed on a `MACOSX_BUNDLE` target given no `BUNDLE DESTINATION` — Crucible's target, not this
+code's. That fix is in and CI has not reported back since, so whether this compiles past
+configure is unknown as this is written. Three things only a Mac can settle: the
+Objective-C surface, where a wrong selector or header name is a hard error; whether
+`enable_language(OBJCXX)` in `src/audio` satisfies CMake's rule about the highest common
+directory; and whether `OBJCXX_STANDARD 23` is expressible on the CMake each leg runs. Running
+it needs a Mac (DR9), and even a Mac is not enough on its own: the TCC consent prompt sits
+under its own permission category (`SystemAudioCaptureRequests`), is driven by an
+`NSAudioCaptureUsageDescription` Info.plist key that no bundle in this tree declares, and is
+keyed to a code-signing identity these binaries do not have (DR6). A denied prompt and a
+prompt that never appeared arrive identically, as one refusal reported as `kComFailure`.
+
+**What landed before any of that**: the loopback gap's documentation corrected (it had cited
+macOS 14.4 rather than the API's annotated 14.2) and expanded (`docs/platforms/macos.md`), and
+the OS-version gate `ac3::coreaudio::system_audio_tap_api_available()`, which is what both the
+capability table and `start_process_loopback()` refuse on. That gate is pure, and its cases in
+`tests/backend/macos/test_macos_support.cpp` have run on the macOS legs since they landed; the
+cases this branch added beside them for the tap have not, for the reason above. The
+device watcher over HAL property listeners came in the same commit as the tap and stands in the
+same place: written, never compiled, never run.
 </details>
+
+### Considering
 
 **UX10 (rides IM5, Forge)** — The TrueHD front ends on the IM5 branch — needs its own PR
 split, a QML test leg, and docs once IM5 lands.
@@ -2579,31 +2650,42 @@ The lossless-lab dialog, its QML test, the CLI rows get their own PR split, a QM
 **Member:** Crucible.
 
 Crucible's own code. The two entries it grew out of stay where they were written — UX11, the
-Windows demo, and UX12, the promotion that made it a product on two platforms — because those
-IDs are cited in commits, in CI and in the CHANGELOG, and an ID here is a label rather than a
-filing decision. Anything opened after the promotion that belongs to `apps/crucible` and to
-nothing else is numbered here instead.
+Windows demo, and UX12, the promotion that made it a product on Windows and Linux, with a
+macOS half written and not yet compiled — because those IDs are cited in commits, in CI and in
+the CHANGELOG, and an ID here is a label rather than a filing decision. Anything opened after
+the promotion that belongs to `apps/crucible` and to nothing else is numbered here instead.
 
 ### Considering
 
-**CR1 (M, Crucible)** — The six mechanically translated languages, regenerated from the
-current source and read by someone who speaks each of them. Sequenced last on purpose: every
-item that adds a string makes this pass stale again, and the accessibility work added a good
-many.
+**CR1 (M, Crucible)** — The six mechanically translated languages, read by someone who speaks
+each of them. The catalogues are full as of 2026-09-06; what is left is the reading.
 <details markdown="1">
 <summary>Full record</summary>
 
-Carried out of the promotion plan's Phase 6, the one item of five left open there. As of
-2026-09-06 the six `ac3crucible_*.ts` catalogues are stale against the source: fifteen current
-strings have no entry at all and sixty-five rename-era entries sit as vanished, so a reader in
-any of the six languages meets a mixture of translated and English text that does not match
-what the window says in English either. Two rules in `tests/crucible/test_translations.cpp`
-are written and switched off until this lands — no entry left `type="unfinished"`, no dead
-entry left in a file — and turning them on is the end of the item. Right-to-left is not part
-of it: `apps/crucible/ui/qml/Main.qml` took a `LayoutMirroring` root on 2026-09-05 and two
-cases in `apps/crucible/ui/tests/qml/tst_shell.qml` hold it, the way the GUI (UX3) is held.
-`docs/crucible/localisation.md` is the record for the mirroring and for the glossary the
-review is held to; `docs/crucible/promotion.md`'s Phase 6 note carries the counts.
+Carried out of the promotion plan's Phase 6, the one item of five left open there. The refill
+landed on 2026-09-06 and every catalogue is complete: each of the six `ac3crucible_*.ts` files
+carries 385 messages and each of the six translated `ac3gui_*.ts` files 795 — the `xx`
+pseudo-locale is generated and is not one of them — with no entry marked `type="unfinished"`,
+none marked `type="vanished"`, and a translation on every entry but one per GUI file, an
+lupdate artefact whose own source string is empty. The two rules in
+`tests/crucible/test_translations.cpp` that stood written and idle are on — no unfinished
+entry, no dead entry — and a lupdate-and-diff step on the `windows-msvc` leg fails
+if a `qsTr()` string changes without the catalogues being regenerated, the same shape the GUI
+catalogues have had on the Linux GCC leg.
+
+What is left is what the item was always for. Those translations are machine-made and have not
+been read by a speaker of any of the six languages; the window says so under its own language
+chooser. Four things the gate asserts of the Crucible files, none of them a claim about
+quality: every entry has a translation, placeholders survive it, brand terms survive it, and
+all six share one source set. A reading by someone who speaks each language is what settles
+whether each rendering is right, and it is still sequenced last, because every item that adds a
+string sends new entries through the machine ahead of it — the accessibility pass put 28 more
+into the GUI catalogues after they were first filled.
+
+Right-to-left is not part of it: `apps/crucible/ui/qml/Main.qml` took a `LayoutMirroring` root
+on 2026-09-05 and two cases in `apps/crucible/ui/tests/qml/tst_shell.qml` hold it, the way the
+GUI (UX3) is held. `docs/crucible/localisation.md` is the record for the mirroring and for the
+glossary the reading is held to.
 </details>
 
 ## DR. Distribution, release engineering and hardware
@@ -2788,11 +2870,14 @@ hardware.
   WirePlumber's hot-plug activation had silently failed after a long uptime and needed a
   restart before any HDMI sink existed at all. The `iec958Codecs` rule turned out not to be
   needed on a receiver that advertises its codecs — WirePlumber reads them from the EDID. A
-  PipeWire CI pass now exists on the Linux LLVM leg (roadmap UX12): it builds Crucible's
-  engine, runner and window, runs the PipeWire contract tests and the window's Qt Quick suite
-  headless, and packages the Linux tarball and `.deb`.
-- **CoreAudio: blocked** — CI-only, no Mac has ever run it. Also outstanding: a Pi 5 and a
-  second Android TV device.
+  PipeWire CI pass now exists on the two Linux LLVM legs, x86_64 and arm64 (roadmap UX12): it
+  builds Crucible's engine, runner and window, runs the PipeWire contract tests and the
+  window's Qt Quick suite headless, and packages the Linux tarball and `.deb`.
+- **CoreAudio: blocked** — no Mac has ever run it, and as this is written nothing has
+  compiled it either. The process tap, the device watcher and Crucible's macOS half are all in
+  the tree (UX7, UX12); the one CI configure that reached them failed at an install rule, which
+  is fixed, and CI has not reported back since. Also outstanding: a Pi 5 and a second Android
+  TV device.
 </details>
 
 ### Considering

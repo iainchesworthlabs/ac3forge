@@ -158,19 +158,33 @@ message(STATUS "Forge notices  : ${AC3FORGE_NOTICES_PLATFORM} build, sections: $
 # built application bundles - Qt, the fonts, the Windows runtime - and none
 # of that is in a library package.
 # ---------------------------------------------------------------------------
-if(WIN32 OR APPLE)
-    set(AC3FORGE_LIBRARY_LICENCE_DESTINATION ".")
-else()
-    set(AC3FORGE_LIBRARY_LICENCE_DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/ac3forge")
-endif()
+# Each component's copyright goes under its OWN package name, because that
+# is the only path dpkg and lintian look at: /usr/share/doc/<binary package>/
+# copyright. A copy under share/doc/ac3forge/ satisfies the runtime package
+# and nothing else, so libac3forge-dev and libac3forge0 would each ship a
+# GPL library with no copyright file of their own - which is the omission
+# this block exists to close, appearing to be closed. The names come from
+# cmake/Packaging.cmake's CPACK_DEBIAN_<COMPONENT>_PACKAGE_NAME.
+#
+# LICENSE.txt is a different matter: it is for a person who unpacked an
+# archive, so it goes where they will look, and one shared directory is
+# right for it.
 foreach(_ac3forge_lib_component library libruntime)
-    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
-        DESTINATION "${AC3FORGE_LIBRARY_LICENCE_DESTINATION}" RENAME "LICENSE.txt"
-        COMPONENT ${_ac3forge_lib_component})
-    if(NOT (WIN32 OR APPLE))
+    if(_ac3forge_lib_component STREQUAL "library")
+        set(_ac3forge_lib_package "libac3forge-dev")
+    else()
+        set(_ac3forge_lib_package "libac3forge0")
+    endif()
+    if(WIN32 OR APPLE)
         install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
-            DESTINATION "${AC3FORGE_LIBRARY_LICENCE_DESTINATION}" RENAME "copyright"
+            DESTINATION "." RENAME "LICENSE.txt" COMPONENT ${_ac3forge_lib_component})
+    else()
+        install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/ac3forge" RENAME "LICENSE.txt"
             COMPONENT ${_ac3forge_lib_component})
+        install(FILES "${CMAKE_SOURCE_DIR}/LICENSE"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/${_ac3forge_lib_package}"
+            RENAME "copyright" COMPONENT ${_ac3forge_lib_component})
     endif()
 endforeach()
 if(WIN32 OR APPLE)

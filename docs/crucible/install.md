@@ -1,7 +1,7 @@
 # Install and first run
 
 Mostly this is about the silent device — the thing that stops you hearing every application
-twice. It works differently on each platform, and on one of them there is nothing to do at all.
+twice. It works differently on each platform, and on two of them there is nothing to install.
 
 ## Windows
 
@@ -152,24 +152,37 @@ ac3crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE]
   status                    one line of engine state
 ```
 
-Two gaps worth knowing before you start:
+Two things worth knowing before you start:
 
 - **The full-screen rule is off under Wayland.** The rule makes the full-screen application the
   bed. Under X11 it is on: Crucible reads the active window's `_NET_WM_STATE` and `_NET_WM_PID`
   through libxcb. No Wayland client can ask which window is full-screen — that is Wayland's
   security model — so there the rule is off, and the Room page says which reason applies
   (Wayland, no display, or a build without libxcb) rather than silently dropping the rule.
-- **A bitstream has reached a receiver's HDMI sink from Linux, but its lock is not yet
-  confirmed.** WirePlumber enables a sink's compressed codecs from the display's own EDID (the
-  `iec958.codecs` property), so on a receiver that advertises them nothing needs configuring by
-  hand — and Crucible only offers a bitstream mode on a sink that has them. What is not yet
-  written down is a receiver's display reading "Dolby Digital Plus" during a Linux stream.
+- **The bitstream path has been read off a receiver, on one machine.** WirePlumber enables a
+  sink's compressed codecs from the display's own EDID (the `iec958.codecs` property), so on a
+  receiver that advertises them nothing needs configuring by hand — and Crucible only offers a
+  bitstream mode on a sink that has them. On 2026-09-05, on a Raspberry Pi 4B, the receiver's own
+  front panel read **5.1 DD+** from a pre-encoded fixture and **Atmos/DD+** at 7.1 from
+  Crucible's engine with a key loaded and an application placed. That is one machine and one
+  receiver; nothing says how another behaves.
 
 ## macOS
 
-Not built. The design is settled and needs no driver — macOS process taps can mute an application
-where they capture it — but it is blocked on a Mac to run it and a Developer ID certificate to
-sign it, since the tap's consent prompt does not fire for an unsigned binary.
+Builds, and is not packaged. The library's Core Audio process tap and device watcher, and
+Crucible's macOS platform half, are in the tree, and on 2026-09-06 both macOS CI legs configured,
+compiled and linked them and ran the test suites over them: every test passed on the Intel leg,
+and three of the window's eleven Qt Quick suites timed out on the Apple Silicon one. Nothing
+beyond that — a hosted runner has no audio device and no desktop session, so no tap has been
+created, nothing has been captured or played, and the application itself has never been launched
+on a Mac. There is no macOS package either — CPack's Crucible component is gated to Windows and
+Linux — so the only route is a source build with `-DAC3FORGE_BUILD_CRUCIBLE=ON`, which is what
+those two CI legs do.
+
+When it does run it needs no driver: macOS process taps mute an application where they capture
+it, so there is no silent device to install and no default output to move. What stays blocked is
+a Mac with a desktop and an audio device to run it on, and a Developer ID certificate to sign it,
+since the tap's consent prompt does not fire for an unsigned binary.
 
 [The plan](promotion.md) has the detail.
 
@@ -208,8 +221,10 @@ applications stay on the silent device until you quit or press Restore. On a ses
 tray there is no such setting and closing the window is quitting; see
 [Troubleshooting](troubleshooting.md#there-is-no-tray-icon).
 
-On a platform that never moves the default (macOS, when its half exists), the dialog says that
-nothing in the sound settings changes and offers no Send.
+On a platform that never moves the default, the dialog says that nothing in the sound settings
+changes and offers no Send. macOS is written to be that platform — the dialog already computed
+this case, and a macOS CI suite reads that answer, so no QML changed for it — but no Mac has
+shown the dialog to anybody.
 
 ## A signing key, on any platform
 

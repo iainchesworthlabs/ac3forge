@@ -1202,8 +1202,23 @@ jobs:
           build="build/config-${{ matrix.preset }}"
           suffix=''
           [ "$RUNNER_OS" = "Windows" ] && suffix='.exe'
+          # ac3crucible is a MACOSX_BUNDLE target (apps/crucible/CMakeLists.txt),
+          # so on macOS the product is bin/ac3crucible.app/Contents/MacOS/
+          # ac3crucible and there is no plain file at bin/ac3crucible. Its two
+          # companions are not bundles - ac3crucible-run is a plain
+          # add_executable, and qt_add_executable does not set MACOSX_BUNDLE -
+          # so only this one needs the longer path. The ac3gui smoke test
+          # further down branches the same way for the same reason.
+          window="$build/bin/ac3crucible$suffix"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            window="$build/bin/ac3crucible.app/Contents/MacOS/ac3crucible"
+          fi
           missing=0
-          for exe in ac3crucible ac3crucible-run ac3crucible_qmltests; do
+          if [ ! -f "$window" ]; then
+            echo "::error::$window was not built - was Qt6 found? Check the configure log's warnings."
+            missing=1
+          fi
+          for exe in ac3crucible-run ac3crucible_qmltests; do
             if [ ! -f "$build/bin/$exe$suffix" ]; then
               echo "::error::$exe$suffix was not built - was Qt6 found? Check the configure log's warnings."
               missing=1
@@ -1217,7 +1232,7 @@ jobs:
             echo "::error::Qt Quick 3D was not found, so the room's 3D view is missing from this build - the 'Install Qt (prebuilt)' step's modules list is what provides it"
             exit 1
           fi
-          ls -1 "$build/bin/ac3crucible$suffix" "$build/bin/ac3crucible-run$suffix"
+          ls -1 "$window" "$build/bin/ac3crucible-run$suffix"
 
       # The AC3Forge Crucible's coverage floor - what ci.yml's `coverage` job
       # is for the library, for the one first-party tree that job cannot see.
@@ -1405,13 +1420,16 @@ jobs:
       # leg) since extraction doesn't depend on OS/compiler - the sources it
       # scans are identical everywhere gui: true builds ac3gui.
       #
-      # Deliberately NOT the stricter "zero unfinished" gate the sibling
-      # CountdownSolver project runs (R:\CountdownSolver's own
-      # .github/workflows/ci.yml, "Translations complete") - translation
-      # coverage here is real but partial by design (docs/gui/
-      # localisation.md tracks exactly what), so that bar would fail today
-      # on content nobody has touched. Tightening to it is the natural next
-      # step once coverage is complete, not before.
+      # This is the drift gate: it asks whether the catalogues match the
+      # sources, not whether every entry is translated. The stricter
+      # "zero unfinished" bar would now pass - every ac3gui catalogue was
+      # filled on 2026-09-06 and carries no unfinished entry - but it belongs
+      # in the test suite rather than here, where Crucible's equivalent
+      # already lives: tests/crucible/test_translations.cpp now asserts it
+      # over this application's seven catalogues as well as Crucible's six,
+      # runs on every platform, and names the entry that failed. A second
+      # copy in a workflow step would gate the same thing on one leg and
+      # report it worse.
       - name: Check translations are up to date
         if: matrix.gui && matrix.name == 'Linux GCC'
         shell: bash

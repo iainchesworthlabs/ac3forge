@@ -141,25 +141,28 @@ recommendation for; the reviewer chooses it and it goes in here.
 | stream | Stream | flux | flujo | البث | זרם | — |
 | address form | Sie | vous | tú | masculine singular imperative | plural imperative | איר |
 
-What the audit found and the review has to settle, per language:
+What the audit found and the review has to settle, per language. The counts were re-read off the
+filled catalogues on 2026-09-06, so they are what a reviewer will find in the files today:
 
-- **fr** — "endpoint" is rendered two ways (`point de sortie` and `point de terminaison`), and
-  "receiver" two ways (`récepteur` and `ampli`). "underrun" became `sous-alimentation`, which is
-  undernourishment.
-- **es** — "endpoint" is rendered three ways (`punto de salida`, `punto final`, bare `salida`).
-  "underrun" became `subdesbordamiento`.
-- **de** — "silent device" is `stilles Gerät` in most entries and `stummes Gerät` in five. "pin"
-  appears as `FESTLEGEN`, `Festlegung` and the bare loan `Pin`.
-- **ar** — "bed" is `القاعدة` in nineteen entries and `سرير` (a sleeping bed) in two. "mode" and
-  "place" both became `وضع`, so "best mode" and "place an application" read alike. "underrun"
-  became a feeding deficiency.
-- **he** — "bed" is `מיטה`, a sleeping bed, in fourteen entries. "pin" is both `הצמדה` and
-  `נעיצה`. The address form is singular in some entries and plural in others. "Centre", the
-  button, was translated as the noun.
-- **yi** — "device" is `מכשיר` in sixteen entries and `מיטל` (means, medium) in eleven.
-  "endpoint" is both `ענדפּונקט` and `ענדפּוינט`. Compounds join with an ASCII hyphen in some
-  entries and a maqaf (U+05BE) in others; the maqaf is the one to keep. The address form is both
-  `דו` and `איר`.
+- **fr** — "endpoint" is rendered `point de sortie` in nine entries and `point de terminaison` in
+  two, and "receiver" `récepteur` in five and `ampli` in two. "underrun" became
+  `sous-alimentation`, which is undernourishment.
+- **es** — "endpoint" is rendered `punto de salida` in nine entries, `punto final` in one, and
+  bare `salida` elsewhere. "underrun" became `subdesbordamiento`.
+- **de** — "silent device" is `stilles Gerät`, declined to its case, in nineteen entries and
+  `Stummes Gerät` in one: the Advanced row's label on the Settings page, which is also that
+  field's accessible name. "pin" is two stems for one term — `anheften` / `Anheftung` in six
+  entries, against `FESTLEGEN` on the kicker and `Festlegung` in a sentence.
+- **ar** — "bed" is `القاعدة` in thirteen entries, `الطبقة الأساسية` in seven and `سرير` (a
+  sleeping bed) in two. "mode" and "place" both became `وضع`, so "best mode" and "place an
+  application" read alike. "underrun" became a feeding deficiency.
+- **he** — "bed" is `מיטה`, a sleeping bed, in fifteen entries against `שכבת הבסיס` in seven.
+  The address form is singular in some entries and plural in others. "Centre", the button, is
+  `מרכז`, the noun, where the extracomment says it is a verb.
+- **yi** — "device" is `מכשיר` in twenty-eight entries and `מיטל` (means, medium) in five.
+  "endpoint" is `ענדפּונקט` in twelve and `ענדפּוינט` in five. Compounds join with an ASCII hyphen
+  in some entries and a maqaf (U+05BE) in others; the maqaf is the one to keep. The address form
+  is mostly `איר`, with `דו` in one entry.
 
 ## Regenerating the catalogues
 
@@ -176,25 +179,26 @@ where there was one. `LUPDATE_OPTIONS -no-obsolete` on the `qt_add_translations(
 translation memory: git history is the memory, and the dead-entry rule below wants the files
 clean after every regeneration.
 
-Two things to expect from the first regeneration after the source pass:
+The six files were regenerated from the current source and filled on 2026-09-06. Each carries 385
+messages, none marked `unfinished`, `vanished` or `obsolete`, and the six hold the same set of
+(context, source) pairs. That is the state the gate below now enforces, so a regeneration that
+adds a string leaves the tree red until the new entry is filled.
 
-- The position phrases moved from `RoomPage.qml` into `RoomWords.qml` after the last extraction,
-  and `lupdate` matches an entry on its context and its source. They arrive under a new
-  `RoomWords` context, unfinished, even where the English did not change, and `-no-obsolete`
-  drops the `RoomPage` originals. The previous renderings are in
-  `apps/crucible/translations/ac3crucible_<code>.ts` at commit `c5c9df76`, under `RoomPage`, and
-  can be pasted across before the review reads them.
-- Around forty entries per language are newly unfinished because the English was reworded into
-  whole sentences, on top of the fifteen strings the catalogues never had.
+Filled is not reviewed. The renderings are machine-made and no speaker of any of the six languages
+has read them; the window says so in its own language note under the chooser. The glossary above
+is what a review holds them to.
 
-Fill the unfinished entries in **Qt Linguist**, or by editing the `<translation>` elements
-directly; when editing by hand, remove the `type="unfinished"` attribute once the entry has
-been read by someone who reads the language. Rebuild to recompile the `.qm` files, which
-are embedded as resources under `:/i18n`.
+Fill a newly extracted entry in **Qt Linguist**, or by editing the `<translation>` elements
+directly; when editing by hand, remove the `type="unfinished"` attribute once the entry has a
+rendering. Rebuild to recompile the `.qm` files, which are embedded as resources under `:/i18n`.
 
-`lupdate` groups the messages by the QML component they came from — `Main`, `OutputPage`,
-`RoomPage`, `RoomWords`, `SettingsPage`, `SignalPath` — which is how to find a string in a large
-file.
+`lupdate` groups the messages by the component they came from, which is how to find a string in a
+large file. The sixteen contexts in the files today are `AboutDialog`, `AppRow`, `BedChip`,
+`CrucibleController` (the `tr()` calls in `crucible_controller.cpp`), `FirstRunDialog`,
+`LicencesDialog`, `Main`, `OutputPage`, `QObject`, `Room3DView`, `RoomKeys`, `RoomPage`,
+`RoomView`, `RoomWords`, `SettingsPage` and `SignalPath`. The position phrases live under
+`RoomWords` since they moved out of `RoomPage.qml`; the renderings they had before that move are
+in `apps/crucible/translations/ac3crucible_<code>.ts` at commit `c5c9df76`, under `RoomPage`.
 
 ## What the gate checks
 
@@ -207,33 +211,38 @@ plain `ac3tests` binary, so a developer's own `ctest` sees it:
 | The `%1`..`%9` placeholders of a source all appear in its translation | live |
 | A brand term in a source appears in the translation | live |
 | All six files hold the same set of (context, source) pairs | live |
-| No entry is left `type="unfinished"` | written, off |
-| No dead entry (`type="vanished"` or `type="obsolete"`) is left in a file | written, off |
+| No entry is left `type="unfinished"` | live |
+| No dead entry (`type="vanished"` or `type="obsolete"`) is left in a file | live |
 
-The last two are the rules the regeneration turns on. Until the catalogues have been regenerated
-from the current source and the review has filled them, an unfinished entry is the expected state
-of a freshly extracted string; the two cases say how many they are tolerating and pass, and their
-names carry "(idle until refilled)" so a green run is not read as a guarantee. The constant
-`kCatalogueRefilled` at the top of the file is what turns them on, in the commit that lands the
-refilled catalogues; the names lose the parenthesis with it.
+The last two were written idle and armed on 2026-09-06, when the catalogues were filled. The
+constant `kCatalogueRefilled` at the top of the file is the switch, and it is now `true`; the two
+case names no longer carry the "(idle until refilled)" caveat they were given while they tolerated
+what they found. What they assert is that every entry has a translation, which is a smaller claim
+than that every translation is right — the review the glossary describes is what settles that, and
+arming these rules does not stand in for it.
 
-One check is not written yet: a CI step that runs `ac3crucible_lupdate` and then
-`git diff --exit-code -- apps/crucible/translations`, the way `.github/workflows/_build.yml`
-already does for `ac3gui`. It belongs in the same commit as the refilled catalogues, because
-against the tree as it stands it would be red on the first run. It is what turns a forgotten
-regeneration into a red check rather than a quietly stale catalogue.
+`.github/workflows/_build.yml` also runs `ac3crucible_lupdate` and then
+`git diff --exit-code -- apps/crucible/translations`, the way it already does for `ac3gui`. It
+runs on the `windows-msvc` leg alone, because the `ac3crucible_lupdate` target exists only where
+Crucible is configured and the matrix build tree carries Crucible on Windows; one leg is enough,
+since extraction does not depend on the compiler. It turns a forgotten regeneration into a red
+check rather than a quietly stale catalogue.
 
 **`lupdate` sees only the platform it runs on, and deletes what it cannot see.** The seams under
-`ui/platform/<os>/` are one file per platform with one compiled, so `tray_support.cpp`'s
-`tr()` reaches `lupdate` on exactly one of them. Running it on Linux drops the Windows sentence —
+`ui/platform/<os>/` are one file per platform with one compiled, so `tray_support.cpp`'s `tr()`
+reaches `lupdate` on exactly one of them. Running it on Linux drops the Windows sentence —
 translated, in every catalogue — and replaces it with the Linux one, unfinished; running it on
-Windows does the reverse. Nothing warns. Until that CI step exists and knows what to do about it,
-read the diff before committing a regeneration: a `-` on a translated `<source>` you did not
-touch is this, and the fix is to put the other platform's message back rather than to accept it.
+macOS does the same with its own. Nothing warns. That the gate above runs on `windows-msvc`
+alone is what settles it: the catalogues hold Windows' sentence, a regeneration there produces
+no diff, and the other two platforms' tray sentences are simply not in them. So regenerate on
+Windows, and if you regenerate anywhere else, read the diff before committing it — a `-` on a
+translated `<source>` you did not touch is this, and the fix is to put the other platform's
+message back rather than to accept it.
 
-The rules that read a translation skip an entry marked unfinished: an entry nobody has translated
-yet is empty or holds the previous language's text, and failing the placeholder rule on it would
-say nothing about the pass.
+The rules that read a translation skip an entry marked unfinished. No entry is marked that way
+today, so the exemption applies to nothing in the tree; it is there for the window between a
+regeneration that extracts a string and the edit that fills it, where failing the placeholder rule
+on an empty entry would say nothing about the pass.
 
 ## Screenshots in one language
 

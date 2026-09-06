@@ -89,25 +89,27 @@ endif()
 set(CMAKE_C_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 set(CMAKE_CXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 # Objective-C++ is a C++ dialect and has to be given the same C++ standard
-# library, or one target ends up with two. Added 2026-09-06, when
-# apps/crucible/CMakeLists.txt's APPLE arm became the first enable_language(OBJCXX)
-# in the tree: OBJCXX picks up CMAKE_OSX_ARCHITECTURES on its own, but nothing
-# copies CMAKE_CXX_FLAGS_INIT across, so without this the .mm halves of
-# ac3crucible_engine and ac3crucible would compile against whichever libc++ the
-# compiler defaults to while every .cpp beside them uses the one selected
-# below. Inert on a configure that never enables the language. Untested: no
-# macOS build of Crucible has been run from this tree.
-set(CMAKE_OBJCXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
-
-# OBJCXX is enabled by src/audio/CMakeLists.txt's APPLE block for exactly one
-# file - src/audio/src/backend/macos/process_tap.mm, the Core Audio process
-# tap's Objective-C++ seam (CATapDescription has no C entry point). CMake
-# applies CMAKE_CXX_FLAGS to CXX sources only, so without this line that .mm
-# would be compiled by the same clang++ as its neighbours but with a
-# different standard library configuration - see the libc++ block below,
-# which is the part that actually matters. Set unconditionally: these
-# variables mean nothing at all unless OBJCXX is enabled, and are read when
-# it is, wherever that enable_language() call happens to sit.
+# library, or one target ends up with two. Added 2026-09-06, when the tree
+# gained Objective-C++ at all.
+#
+# Two directories enable the language and three .mm files exist:
+# src/audio/CMakeLists.txt's APPLE block, for the Core Audio process tap's
+# seam (src/audio/src/backend/macos/process_tap.mm - CATapDescription has no C
+# entry point), and apps/crucible/CMakeLists.txt's APPLE arm, for Crucible's
+# two AppKit seams (engine/platform/macos/foreground.mm and
+# ui/platform/macos/app_icon_provider.mm - NSWorkspace and NSImage have none
+# either).
+#
+# CMake applies CMAKE_CXX_FLAGS to CXX sources only, so without this line
+# those three .mm files would be compiled by the same clang++ as their
+# neighbours but with a different standard library configuration - see the
+# libc++ block below, which is the part that actually matters. Set
+# unconditionally: these variables mean nothing unless OBJCXX is enabled, and
+# are read when it is, wherever the enable_language() call happens to sit.
+# All three .mm files have since compiled and linked on both macOS CI legs, so
+# this line has been exercised; what nobody has checked is the thing it exists
+# to prevent, since a target built against two standard libraries would show
+# up at link or at run time and neither leg has been made to do it deliberately.
 set(CMAKE_OBJCXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 
 # Prefer LLVM's own libc++ over the SDK's when the chosen clang ships one.

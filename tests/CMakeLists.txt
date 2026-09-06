@@ -263,7 +263,12 @@ target_compile_definitions(ac3tests
 # catalogues as files (no Qt in this target), on the same reasoning: a
 # source-tree path, because ctest runs the binary from the build tree.
 target_compile_definitions(ac3tests
-    PRIVATE "AC3FORGE_CRUCIBLE_TS_DIR=\"${CMAKE_SOURCE_DIR}/apps/crucible/translations\"")
+    PRIVATE "AC3FORGE_CRUCIBLE_TS_DIR=\"${CMAKE_SOURCE_DIR}/apps/crucible/translations\""
+    # The GUI's seven catalogues are held to the same two rules as Crucible's
+    # six, from the same parser. They were filled on 2026-09-06 and a rule
+    # that holds them there belongs beside the one that holds Crucible's,
+    # rather than in a workflow step on one leg.
+    PRIVATE "AC3FORGE_GUI_TS_DIR=\"${CMAKE_SOURCE_DIR}/apps/gui/translations\"")
 
 # Where every test that writes a file writes it. Each such file's own scratch_dir()
 # helper appends its own leaf name under here, so the artefacts stay separated by

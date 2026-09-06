@@ -81,14 +81,27 @@ std::optional<OutputMode> mode_from_key(const QString& key) {
 // decoded objects to the platform's own object renderer, and
 // ac3::audio::audio_backend().spatial.available is true only on the Windows
 // backend. Where it is false the policy refuses that mode on every endpoint
-// anyway - library_devices.cpp never sets EndpointFacts::spatial, because
+// anyway - library_devices.cpp never sets DeviceFacts::spatial, the flag
+// output_stage.cpp copies into EndpointFacts::spatial, because
 // probe_spatial_capability() answers kNoBackend - and says so in a sentence
-// written for a platform this is not (output_policy.cpp's describe() and its
-// pinned-mode fallback both name Windows Spatial Sound). The Output page does
-// not offer the entry there either, so this catches only a store that already
-// held it - one carried over, or edited by hand. The setting itself is left as
-// it was found: reading a pin is not the moment to rewrite someone's settings,
-// and the same store on a machine that has the renderer still gets the pin.
+// written for a platform this is not (output_policy.cpp's describe() names
+// Windows Spatial Sound, and the pinned-mode fallback at choose_output()
+// prints describe() as its preamble).
+//
+// Three things can put that key in the store on a machine with no renderer:
+// a store carried over from a machine that had one, a store edited by hand,
+// and the window itself. The two controls that offer a pin do not agree yet.
+// OutputPage.qml filters the headphones entry out of its list on
+// spatialAvailable and prints the backend's reason under the box; the tray's
+// signal-path menu in Main.qml lists it unconditionally, so a person on a
+// machine with no renderer can pick from the tray what the page will not show
+// them. Until that menu reads the same flag, this is what stops the choice
+// reaching the engine, and setPinned() below puts the drop in the diagnostics
+// ring so a report shows why the pin looks ignored.
+//
+// The setting itself is left as it was found: reading a pin is not the moment
+// to rewrite someone's settings, and the same store on a machine that has the
+// renderer still gets the pin.
 std::optional<OutputMode> engine_pin(const QString& key) {
     const auto mode = mode_from_key(key);
     if (mode == OutputMode::kHeadphones && !ac3::audio::audio_backend().spatial.available) {
@@ -445,6 +458,19 @@ void CrucibleController::setPinned(const QString& mode) {
     }
     settings_.setValue(QStringLiteral("output/pinned"), mode);
     log_.note("setting output/pinned = " + mode.toStdString());
+    // A mode this build cannot reach is stored as it was chosen and dropped
+    // on the way to the engine (engine_pin above, which says where such a
+    // choice comes from). Nothing on screen says that has happened - the
+    // signal path prints the stored pin, and the engine's reason names the
+    // mode it settled on rather than the one it was refused - so the ring
+    // carries it and the diagnostics file shows it. The condition asks
+    // engine_pin() rather than naming the headphones key; the reason printed
+    // is the spatial one, which is the only way a mode is dropped today.
+    if (mode_from_key(mode) && !engine_pin(mode)) {
+        log_.note("output/pinned = " + mode.toStdString() +
+                  " is not reachable in this build (" + spatialAbsentReason().toStdString() +
+                  "); the engine is given no pin");
+    }
     if (engine_) {
         engine_->pin(engine_pin(mode));
     }

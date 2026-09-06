@@ -77,12 +77,15 @@ column of a dozen identical "Remove"s tells a reader nothing, and that is what t
 
 Where a control has a visible label to borrow, its name comes from the same data that label reads
 rather than from a second copy typed beside it — every per-source and per-run control, the extras
-checkboxes, the bed chips and the Guided wizard's four room questions. The Qt Quick suites
-(`tst_accessibility.qml`, `tst_keyboard.qml`) change the backing data and assert the accessible
-text changes with it, so those names cannot drift away from what is on screen without a test
-failing. A few controls have no visible label of their own — the File / Live capture switch, the
-meters' Coded / Rendered switch — and carry a short written name instead, which is the one case
-where the two can be edited apart.
+checkboxes, the bed chips and the Guided wizard's four room questions. Two of those are held by a
+test: `tst_keyboard.qml` reads the model row the first two extras checkboxes draw, and the choice
+list a bed chip draws, and compares the accessible name against that rather than against a literal
+typed into the test. That catches a name that has drifted from the data; it would not catch a
+second copy that still happens to match it. The per-source controls, the per-run controls and the
+wizard's four room questions are written the same way and checked by reading the code — a name
+typed a second time in one of those would fail no test. A few controls have no visible label of
+their own — the File / Live capture switch, the meters' Coded / Rendered switch — and carry a
+short written name instead, which is the one case where the two can be edited apart.
 
 Two kinds of control were silently unnamed before this pass and are not now. The extras
 checkboxes, whose labels are Texts beside the box rather than the box's own `text`, take their
@@ -111,6 +114,18 @@ It does not carry:
   written as `<withheld>` whatever value reached the renderer;
 - the value of any other environment variable — the environment is never enumerated;
 - one sample of audio, or any part of a file you loaded.
+
+It does name your machine and the folder you write into. The platform section carries the OS name
+and version, the kernel, the CPU architecture, the Qt version, the QPA plugin and the system
+locale, and how many capture and output devices this machine offers — counts, not device names.
+The settings section carries twenty-two `workbench/` keys as they stand, and two of them hold text
+of your own rather than a choice from a fixed list: `outputFolder`, the folder runs are written
+into, printed as the `file:///…` URL the folder picker returned, which on most machines contains
+your account name (a store that has never held that key reads `(default)` instead); and
+`namePattern`, the naming rule saves follow. The plan carries the output file's base name; each
+run in the history is listed by number, base name and status, with its rate, duration and any
+failure text; and the recent messages are the window's own status lines. Read the file before you
+attach it to an issue.
 
 Sources are named the way the input rail names them, by base name and shape rather than by the
 folder they were opened from. The status messages the log carries name files the same way today —
@@ -155,16 +170,48 @@ the tier the window opens in.
 
 ## What has not been checked
 
-The names, roles and tab stops on this page are asserted by the Qt Quick suites
-(`tst_accessibility.qml`, `tst_keyboard.qml`, `tst_diagnostics.qml`) on every build. Those suites
-run under the offscreen platform, which has no accessibility bridge, so they prove that the window
-offers the right things and not that a particular screen reader speaks them as intended.
+Most of what this page describes is checked by reading the code. The Qt Quick suites hold a named,
+countable part of it, and that part is a good deal smaller than **What can be done without a mouse**
+and **What a screen reader is told** above. They are built where the window is built with
+`AC3FORGE_BUILD_TESTS` on, one ctest entry per `tst_*.qml` (`apps/gui/tests/CMakeLists.txt`), and
+they run under the offscreen platform, which has no accessibility bridge, so they read the
+properties a bridge would read and leave what a screen reader does with them untested.
+
+What they hold, in full:
+
+- `tst_keyboard.qml` takes six controls — the `3/2` and `1+1` bed chips, the 0 and 1 low-frequency
+  chips, the Format tab and the command-line chip — and asserts of each that it is in the tab
+  chain, that it carries `FocusRing.qml`'s ring, and that its accessible name is not empty. It also
+  asserts that the bed and low-frequency chips leave the tab chain while object mode locks them;
+  that the first two extras checkboxes take their name and their channel tokens from the model row;
+  that a bed chip's name follows the choice it draws, and that it reports the Button role and is
+  checkable; and that six segmented groups — the tier switch, the File / Live capture switch and
+  the Guided wizard's four room questions — are named, with no two names alike.
+- `tst_accessibility.qml` works on four controls built on their own rather than in the window: the
+  channel meter (its name follows the channel, its description follows the live reading, and the
+  CLIP box reports checked), the QC gate meter (the description says within or outside limit, and
+  `n/a` where there is no value), a segmented control the test names itself (that name reaches
+  `Accessible.name`, and which segment reports checked follows `currentValue`), and the card (its
+  name follows the title).
+- `tst_main_shell.qml` asserts that the three tier segments are named and that the first of them
+  reports the RadioButton role, and `tst_qc_panel.qml` asserts the gate meter's pass and fail
+  wording.
+- `tst_localisation_pipeline.qml` runs with `AC3GUI_LOCALE=xx`, the pseudo-locale that decorates
+  every string `lupdate` found, and asserts that the Guided segment's accessible name carries that
+  decoration — so that name is the translated label rather than an English copy typed beside it.
+
+That is the whole of it. Nothing asserts the tab chain for the rest of the table under **What can be
+done without a mouse** — the header buttons, the input rail, the presets, the codec, rate and
+container controls, the other tabs, the Encode button and the runs strip are in that table by
+reading, not by assertion. Nothing asserts the accessible name of a per-source or per-run control.
+And `tst_diagnostics.qml` covers the diagnostics file rather than the window's controls: it asserts
+nothing about a name, a role or a tab stop.
 
 **No manual screen-reader pass has been run.** Neither NVDA on Windows nor Orca on Linux has been
 through this window. That check is still to do, and until it is, treat the screen-reader behaviour
 described here as designed rather than as observed.
 
-Nor has the window been driven end to end by keyboard alone at 175% on a desktop. The suites
-assert that the controls are in the tab chain and that the sizes follow the scale; they do not
+Nor has the window been driven end to end by keyboard alone at 175% on a desktop. The suites assert
+that those six controls are in the tab chain and that the type sizes follow the scale; they do not
 assert that the resulting window is comfortable to use, and the fixed-height panels listed under
 **Text size** above are the reason to expect it is not, yet.

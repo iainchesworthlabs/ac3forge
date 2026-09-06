@@ -59,13 +59,28 @@
 # surgical fix. tools/ci/check_crucible_package.py asserts the absence on the
 # Crucible zip in CI, so this staying wired is checked rather than assumed.
 #
-# Windows only in practice: it is the platform whose packages carry their own
-# Qt at all (Linux finds the system's), and a macOS .app puts these somewhere
-# this script does not look. apps/gui narrows its call to WIN32 for exactly
-# that reason. apps/crucible's sits inside the WIN32 OR APPLE deploy block it
-# follows and is not narrowed further, because the Crucible has no macOS build
-# to reach the APPLE arm with: the top-level CMakeLists.txt adds it only under
-# WIN32 OR (UNIX AND NOT APPLE).
+# Windows only in effect: it is the platform whose packages carry their own Qt
+# at all (Linux finds the system's), and a macOS .app keeps its deployed Qt
+# inside the bundle - Contents/Frameworks/ and Contents/Resources/qml/ - which
+# is not where any path below looks. apps/gui narrows its call to WIN32 for
+# exactly that reason.
+#
+# apps/crucible's is NOT narrowed, and now reaches macOS: the top-level
+# CMakeLists.txt adds Crucible under WIN32 OR APPLE OR LINUX since the macOS
+# platform half landed on 2026-09-06, so this script's install(SCRIPT) sits
+# inside a WIN32 OR APPLE deploy block whose APPLE arm both macOS CI legs have
+# now configured through. Neither has reached an install step yet, so this file
+# has never executed on macOS, and what it would do there is nothing: every
+# path below is the Windows package layout, so each if(EXISTS) is false and a
+# .app keeps its deployed Qt Test, the same way ac3gui's .dmg does. That is a
+# gap rather than a hazard - it
+# removes nothing it should not - and it stays open for the same reason
+# apps/gui's does: nobody here has a Mac to check where those files land in a
+# bundle. It is also not reachable through CPack yet, since
+# cmake/Packaging.cmake still adds the crucible component only under
+# WIN32 OR LINUX. Narrowing this call to WIN32 would match apps/gui and lose
+# nothing; leaving it is what lets a macOS bundle be fixed here once someone
+# can see one.
 # ---------------------------------------------------------------------------
 
 # $ENV{DESTDIR} the way every hand-written install script has to: install(FILES)

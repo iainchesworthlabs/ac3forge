@@ -458,7 +458,13 @@ ApplicationWindow {
             Platform.MenuItem { text: qsTr("Dolby Digital Plus 5.1"); checkable: true; checked: CrucibleController.pinned === "ddplus"; group: pinGroup; onTriggered: CrucibleController.pinned = "ddplus" }
             Platform.MenuItem { text: qsTr("Dolby Digital 5.1"); checkable: true; checked: CrucibleController.pinned === "dd"; group: pinGroup; onTriggered: CrucibleController.pinned = "dd" }
             Platform.MenuItem { text: qsTr("PCM surround"); checkable: true; checked: CrucibleController.pinned === "pcm"; group: pinGroup; onTriggered: CrucibleController.pinned = "pcm" }
-            Platform.MenuItem { text: qsTr("Headphones"); checkable: true; checked: CrucibleController.pinned === "headphones"; group: pinGroup; onTriggered: CrucibleController.pinned = "headphones" }
+            // The same flag the Output page's mode list filters on. Without
+            // it the tray offered a pin the page refuses to show, so on a
+            // build with no object renderer a person could choose from here
+            // exactly what the window would not let them choose two clicks
+            // away - and the policy would then fall back on every endpoint
+            // without saying why.
+            Platform.MenuItem { visible: CrucibleController.spatialAvailable; text: qsTr("Headphones"); checkable: true; checked: CrucibleController.pinned === "headphones"; group: pinGroup; onTriggered: CrucibleController.pinned = "headphones" }
             Platform.MenuItem { text: qsTr("Stereo"); checkable: true; checked: CrucibleController.pinned === "stereo"; group: pinGroup; onTriggered: CrucibleController.pinned = "stereo" }
             Platform.MenuSeparator {}
             Platform.MenuItem {
