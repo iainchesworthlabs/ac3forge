@@ -123,6 +123,14 @@ public:
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
 
+    // Starts the frame loop and waits, briefly, for it to say whether this
+    // machine can carry the stream: the error is what the window's status
+    // strip prints when it cannot. It blocks the caller for a fraction of a
+    // second at most, and engine.cpp's kBuildDeadline and kProbeDeadline
+    // say exactly how long and why. It refuses when nothing here can take
+    // the stream, when a sink would not open, and when the worker does not
+    // come up at all - the last of which a platform call that never returns
+    // looks like from here.
     [[nodiscard]] std::expected<void, std::string> start();
     void stop();
 

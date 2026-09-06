@@ -1084,6 +1084,49 @@ run by anyone here**; see below.
     run: this was invisible until something ran it, and what ran it was eight test cases on a
     hosted runner.
 
+!!! note "2026-09-07: `Engine::start()` can now refuse, and what that does and does not fix"
+    The principle the hang above argues for - a window that says it could not start beats one
+    that hangs - was not something `Engine::start()` could express. It spawned the worker and
+    returned `{}` unconditionally, while everything that can fail (the output stage, the first
+    enumeration, opening a sink) happened on that thread afterwards. So `CrucibleController`
+    set `running = true` and left `lastError` empty on a machine with no audio endpoint at all,
+    the status strip had nothing to print, and the "the engine did not start here" skip in
+    `tst_room.qml` and the `running || lastError.length > 0` disjunction in `tst_shell.qml`
+    were both dead branches: the left side was always true.
+
+    `start()` now waits for the worker to say what happened, under two deadlines that mean
+    different things and are set out in `engine.cpp` beside the constants. The build half - the
+    output stage, the encoder, the session monitor's thread, none of which touches a device -
+    has to report inside `kBuildDeadline`, and not reporting is a refusal. The first probe's
+    verdict has `kProbeDeadline`, and *not* answering in time is not a refusal: PipeWire spends
+    two seconds per endpoint, so the machines slow to answer are the ones that have endpoints
+    to answer with, and refusing them would be a false refusal on every working Linux desktop.
+    A working start costs a frame; the worst a healthy machine pays is `kProbeDeadline`.
+
+    A refusal reports; it does not stop the frame loop. Both callers - the window and
+    `ac3crucible-run` - discard an engine whose `start()` refused, so leaving would never be
+    needed, and it would be actively wrong on the one path where the probe's verdict lands
+    after `kProbeDeadline` has passed: a loop that left there would be a machine that never
+    notices the endpoint appearing, or the default being moved off the one endpoint that was
+    blocking it.
+
+    What this does not do is rescue the hang above. A worker wedged inside a platform call
+    still has to be joined by `stop()`, so that refusal is a hang deferred rather than one
+    avoided, and abandoning the thread instead needs the Mac this phase does not have. What it
+    does buy is every refusal that reports rather than wedges - no usable endpoint, a sink that
+    will not open - which is the case the window and the QML suites were written for and could
+    not reach. `tests/crucible/test_engine_start.cpp` holds all of it over the fakes (which is
+    why `engine.cpp` now compiles into `ac3tests`), and `TestServices.scriptMachineWithNoOutput()`
+    lets a QML suite script the refusal rather than wait for a seat that happens to have no
+    sound card.
+
+    Writing those cases found a second thing, which is the usual argument for writing them: an
+    `Engine` stopped and started again never enumerated. `want_reprobe` was set once at
+    construction and cleared by the first frame, so the second run built a fresh `OutputStage`
+    and then never asked it anything, and sat in "none" whatever the machine had. Nothing
+    shipped takes that path - the window builds a new engine on every restart - so it had never
+    shown up. Each run now asks for its own first probe.
+
 ### Phase 6: product qualities
 
 First-run explanation of what the application is about to do to the sound settings; a log export

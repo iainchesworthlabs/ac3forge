@@ -144,6 +144,14 @@ TestCase {
     // puts them back at the spread either side of the centre.
     function test_pairSidesPlaceOnTheirOwnAndResetToTheSpread() {
         CrucibleController.start();
+        // The same refusal the cases above honour. Without this the skip
+        // below fires with the wrong sentence - an engine that never
+        // started has no applications either, and "no application with
+        // sound" would be the reported reason for a machine that has no
+        // output at all.
+        if (!CrucibleController.running) {
+            skip("the engine did not start here: " + CrucibleController.lastError);
+        }
         wait(800);
         const app = CrucibleController.apps.length ? CrucibleController.apps[0].app : -1;
         if (app < 0) { skip("no application with sound to place"); return; }

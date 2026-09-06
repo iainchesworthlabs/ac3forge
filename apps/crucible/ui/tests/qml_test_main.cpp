@@ -56,10 +56,10 @@
 // sound and one stereo endpoint" and then drive the real controller and the
 // real engine over that.
 //
-// A suite that never calls scriptSessions() sees the machine, exactly as
-// before: this changes nothing for the suites that were written against it.
-// One process per suite (one ctest entry each), so a scripted room in one
-// cannot reach another.
+// A suite that never calls scriptSessions() or scriptMachineWithNoOutput()
+// sees the machine, exactly as before: this changes nothing for the suites
+// that were written against it. One process per suite (one ctest entry
+// each), so a scripted room in one cannot reach another.
 class TestServices : public QObject {
     Q_OBJECT
 
@@ -70,52 +70,17 @@ public:
     // controller singleton cannot be reached, so a suite can skip rather
     // than fail on a harness that did not register it.
     Q_INVOKABLE bool scriptSessions(const QVariantList& apps) {
-        auto* controller = find_controller();
-        if (controller == nullptr) {
-            return false;
-        }
-        auto sessions = std::make_shared<ac3::crucible::testing::FakeSessionMonitor>();
-        std::vector<ac3::crucible::AppSession> listed;
-        listed.reserve(static_cast<std::size_t>(apps.size()));
-        for (const QVariant& entry : apps) {
-            const QVariantMap fields = entry.toMap();
-            ac3::crucible::AppSession session;
-            session.app = static_cast<ac3::crucible::AppId>(fields.value(QStringLiteral("app")).toUInt());
-            session.name = fields.value(QStringLiteral("name")).toString().toStdString();
-            session.active = fields.value(QStringLiteral("active"), true).toBool();
-            session.has_window = true;
-            session.has_session = true;
-            session.session_pids.push_back(session.app);
-            listed.push_back(std::move(session));
-        }
-        sessions->set_apps(std::move(listed));
-
         // One real endpoint and one silent device, which is the least a
         // start() needs to choose an output and open a sink.
-        auto devices = std::make_shared<ac3::crucible::testing::FakeDevices>();
-        devices->devices = {ac3::crucible::testing::realtek_default(),
-                            ac3::crucible::testing::null_sink()};
-
-        auto foreground = std::make_shared<ac3::crucible::testing::FakeForeground>();
-
-        auto default_device = std::make_shared<ac3::crucible::testing::FakeDefaultDevice>();
-        default_device->set_endpoints({{.id = "realtek", .name = "Speakers (Realtek)", .is_default = true},
-                                       {.id = "null", .name = "Speakers (Desktop Atmos)", .is_default = false}});
-
-        auto virtual_device = std::make_shared<ac3::crucible::testing::FakeVirtualDevice>();
-        virtual_device->set_device_name("Desktop Atmos");
-        virtual_device->set_state({.needed = true,
-                                   .present = true,
-                                   .in_use = false,
-                                   .can_install = false,
-                                   .blocker = {},
-                                   .detail = {}});
-
-        controller->set_test_services(std::move(sessions), std::move(devices), std::move(foreground),
-                                      std::move(default_device), std::move(virtual_device));
-        scripted_ = true;
-        return true;
+        return script(apps, {ac3::crucible::testing::realtek_default(),
+                             ac3::crucible::testing::null_sink()});
     }
+
+    // The same machine with nothing to play into. start() refuses on this,
+    // which is the branch every engine-driving suite has a skip for and no
+    // real machine here produces to order: a developer's box has endpoints,
+    // and whether a CI runner does is not a thing a test should rest on.
+    Q_INVOKABLE bool scriptMachineWithNoOutput() { return script({}, {}); }
 
     // The machine back. Every scripted suite calls this in cleanup(),
     // because two of the five seams are held by the controller rather than
@@ -138,6 +103,57 @@ public:
     }
 
 private:
+    bool script(const QVariantList& apps, const std::vector<ac3::crucible::DeviceFacts>& endpoints) {
+        auto* controller = find_controller();
+        if (controller == nullptr) {
+            return false;
+        }
+        auto sessions = std::make_shared<ac3::crucible::testing::FakeSessionMonitor>();
+        std::vector<ac3::crucible::AppSession> listed;
+        listed.reserve(static_cast<std::size_t>(apps.size()));
+        for (const QVariant& entry : apps) {
+            const QVariantMap fields = entry.toMap();
+            ac3::crucible::AppSession session;
+            session.app = static_cast<ac3::crucible::AppId>(fields.value(QStringLiteral("app")).toUInt());
+            session.name = fields.value(QStringLiteral("name")).toString().toStdString();
+            session.active = fields.value(QStringLiteral("active"), true).toBool();
+            session.has_window = true;
+            session.has_session = true;
+            session.session_pids.push_back(session.app);
+            listed.push_back(std::move(session));
+        }
+        sessions->set_apps(std::move(listed));
+
+        auto devices = std::make_shared<ac3::crucible::testing::FakeDevices>();
+        devices->devices = endpoints;
+
+        auto foreground = std::make_shared<ac3::crucible::testing::FakeForeground>();
+
+        // The sound settings agree with what the engine can see, so a
+        // machine with no output has an empty endpoint list there too.
+        auto default_device = std::make_shared<ac3::crucible::testing::FakeDefaultDevice>();
+        std::vector<ac3::crucible::RenderEndpoint> in_settings;
+        in_settings.reserve(endpoints.size());
+        for (const auto& endpoint : endpoints) {
+            in_settings.push_back({.id = endpoint.id, .name = endpoint.name, .is_default = endpoint.is_default});
+        }
+        default_device->set_endpoints(std::move(in_settings));
+
+        auto virtual_device = std::make_shared<ac3::crucible::testing::FakeVirtualDevice>();
+        virtual_device->set_device_name("Desktop Atmos");
+        virtual_device->set_state({.needed = true,
+                                   .present = true,
+                                   .in_use = false,
+                                   .can_install = false,
+                                   .blocker = {},
+                                   .detail = {}});
+
+        controller->set_test_services(std::move(sessions), std::move(devices), std::move(foreground),
+                                      std::move(default_device), std::move(virtual_device));
+        scripted_ = true;
+        return true;
+    }
+
     [[nodiscard]] CrucibleController* find_controller() const {
         return engine_->singletonInstance<CrucibleController*>(QStringLiteral("Ac3ForgeCrucible"),
                                                                QStringLiteral("CrucibleController"));

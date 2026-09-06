@@ -457,6 +457,14 @@ target_include_directories(ac3tests PRIVATE
 # (a null `devices` in its config) is a path the tests do not take, so the
 # reference resolves to the stub below on every platform and to the real
 # thing in the app.
+#
+# engine.cpp itself joined them for the same reason, once start() had an
+# answer worth asserting: with all three seams injected it runs its worker,
+# its session monitor and its probe over the fakes on any machine, and
+# crucible/test_engine_start.cpp is what holds the refusal reachable - the
+# case the window's status strip and the QML suites' skip branches depend
+# on. signing_hook.cpp comes with it because the engine's loop loads a key
+# (finding none, here) before it builds the encoder.
 target_sources(ac3tests PRIVATE
     crucible/test_slots.cpp
     crucible/test_bed_mixer.cpp
@@ -464,6 +472,7 @@ target_sources(ac3tests PRIVATE
     crucible/test_output_policy.cpp
     crucible/test_tap_pool.cpp
     crucible/test_output_stage.cpp
+    crucible/test_engine_start.cpp
     crucible/test_nullsink_position.cpp
     crucible/test_platform_seams.cpp
     crucible/test_diagnostics.cpp
@@ -477,6 +486,8 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/tap_pool.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/diagnostics.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/signing_hook.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/engine.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/ui/desktop_entries.cpp")
 # The null-sink driver's position clock (apps/windows/driver/Source/Main/
 # position.h) is a header with no kernel dependencies, kept that way so the
@@ -488,7 +499,11 @@ target_sources(ac3tests PRIVATE
 target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine"
     "${CMAKE_SOURCE_DIR}/apps/crucible/ui"
-    "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main")
+    "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main"
+    # engine.cpp's Tracy zones, the same pair apps/crucible/CMakeLists.txt
+    # puts on ac3crucible_engine and for the same reason: the header exists
+    # in two directories and one of them is always on the path.
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
 
 # The Linux Foreground's X11 half has a pure policy (x11_foreground.cpp: when
 # a read yields a pid, when a lost display becomes a reason) over an injected
