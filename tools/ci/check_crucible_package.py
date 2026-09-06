@@ -31,6 +31,10 @@ section must be present exactly when the payload is.
 The third is a negative: the Windows zip carries no driver .inf. See
 FORBIDDEN_WINDOWS_SUFFIX below for why a check exists to assert that something
 is missing.
+
+The fourth is another negative, and the one most likely to come back: the zip
+carries no part of Qt's test module. See FORBIDDEN_WINDOWS_QT_TEST_QML and
+FORBIDDEN_WINDOWS_QT_TEST_DLLS.
 """
 
 from __future__ import annotations
@@ -80,6 +84,25 @@ REQUIRED = (
 # revisited alongside this check - which no positive check would ever prompt
 # anyone to do.
 FORBIDDEN_WINDOWS_SUFFIX = ".inf"
+
+# Qt's test module is NOT in the package either, and this rule is what keeps it
+# out. It used to ship: Qt deploys the QML modules that qmlimportscanner found
+# for the application, Qt runs that scanner over the application's whole source
+# directory, and apps/crucible/ui/tests/qml/tst_*.qml all `import QtTest` - so
+# qml/QtTest/ went into every zip, and windeployqt followed the plugin in it
+# with Qt6Test.dll and Qt6QuickTest.dll. Only ac3crucible_qmltests loads any of
+# that, and it is never installed. cmake/StripQtTestDeployment.cmake deletes
+# the three at install time and carries the measurement behind them.
+#
+# This is asserted here rather than trusted because the removal is a deletion
+# after the fact: it is silently undone by a Qt version that deploys to a
+# different path, by an application whose install rules stop calling the
+# script, or by a second module arriving the same way. None of those would
+# fail a build - the package would get bigger again, which is precisely
+# what went unnoticed until an audit weighed the zip.
+FORBIDDEN_WINDOWS_QT_TEST_QML = "qml/QtTest/"
+FORBIDDEN_WINDOWS_QT_TEST_DLLS = ("qt6test.dll", "qt6testd.dll",
+                                  "qt6quicktest.dll", "qt6quicktestd.dll")
 
 # QML modules the window imports directly. QtQuick3D earns its own line: the
 # room's 3D view is optional at build time (apps/crucible/CMakeLists.txt skips
@@ -232,6 +255,15 @@ def main(argv: list[str]) -> int:
         for name in names
         if name.lower().endswith(FORBIDDEN_WINDOWS_SUFFIX)
     ]
+    problems += [
+        f"the package carries Qt's test module ({name}): nothing a user runs loads it, and "
+        "cmake/StripQtTestDeployment.cmake should have removed it at install time - check that "
+        "apps/crucible/CMakeLists.txt still runs that script after the Qt deploy script, and "
+        "that Qt still deploys these to the paths it names"
+        for name in names
+        if name.startswith(FORBIDDEN_WINDOWS_QT_TEST_QML)
+        or name.rsplit("/", 1)[-1].lower() in FORBIDDEN_WINDOWS_QT_TEST_DLLS
+    ]
     if notices is not None:
         ships_quick3d = any(n.startswith("qml/QtQuick3D/") for n in names)
         problems += check_notices(notices, NOTICES_WINDOWS, NOTICES_NOT_WINDOWS, ships_quick3d)
@@ -240,7 +272,7 @@ def main(argv: list[str]) -> int:
     if problems:
         return 1
     print("ok: the Windows package holds the window, its Qt, the driver scripts, the licence and a "
-          "notices file written for it, and no driver of its own")
+          "notices file written for it, and no driver of its own and no Qt Test")
     return 0
 
 

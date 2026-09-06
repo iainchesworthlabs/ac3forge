@@ -15,10 +15,20 @@ namespace ac3::audio {
 // in order to re-probe and switch outputs, instead of polling
 // enumerate_render_devices() on a timer and hoping to notice.
 //
-// Windows only for now, over IMMNotificationClient. Every other backend
-// refuses start() with kNoBackend, the way the rest of this tree does - the
-// API stays, the answer is no. Ask audio_backend().device_watch first if the
-// answer wants to be a sentence rather than an error code.
+// Three backends implement it, each over the notification mechanism its own
+// audio system offers: Windows over IMMNotificationClient, Linux/PipeWire
+// over the registry and the default.audio.sink/source metadata keys, and
+// macOS over Core Audio property listeners on kAudioObjectSystemObject. ALSA
+// has no such API (that is udev's job on Linux) and posix/android have no
+// backend at all, so those three refuse start() with kNoBackend, the way the
+// rest of this tree does - the API stays, the answer is no. Ask
+// audio_backend().device_watch first if the answer wants to be a sentence
+// rather than an error code.
+//
+// kStateChanged is a Windows event. An endpoint can stay in that
+// enumerator while becoming disabled, unplugged or not-present, which is a
+// state to report; on the other two an endpoint that goes away leaves the
+// list, and kRemoved already says so.
 
 enum class DeviceWatchError : std::uint8_t {
     kNoBackend,       // built without a device-notification backend

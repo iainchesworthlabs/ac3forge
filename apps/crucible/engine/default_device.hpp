@@ -54,8 +54,15 @@ public:
         std::string_view endpoint_id) = 0;
 
     // Whether moving the default is part of this platform's model at all.
-    // False on macOS; the UI drops the whole first station of the signal
-    // path rather than showing a stage that does not exist there.
+    // False on macOS. This said the UI "drops the whole first station of the
+    // signal path" until 2026-09-06, written before any platform answered
+    // false; when one did, that turned out to be the intention rather than
+    // the code. What the window does today: FirstRunDialog.qml branches on it
+    // and hides the whole device step, and every Send control is disabled
+    // because there is no silent device to send to - but SignalPath.qml's
+    // station 1 is still drawn and still advises sending applications to one
+    // (engine/platform/macos/default_device.cpp records the reading, and
+    // docs/crucible/promotion.md's Phase 5 carries the gap).
     [[nodiscard]] virtual bool moves_default() const = 0;
 
     // The endpoint whose friendly name contains `name_substring`

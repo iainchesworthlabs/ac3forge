@@ -15,13 +15,20 @@ import Ac3ForgeCrucibleLanguage
 // seams, so this file is where ui/platform/<os>/tray_support.cpp and the
 // Linux VirtualDevice are reached.
 //
-// Three of them live here. The tray, which asks Qt the same question on both
-// platforms, and whose menu must stay flat for a reason the Linux file
-// records. The silent device, whose
-// name and whose advice are the platform's own words and were Windows' words
-// everywhere on the first Linux run. And the listing rule, the sentence the
-// room shows about which applications appear in it, which the two platforms
-// disagree about because they are really different.
+// Three of them live here. The tray, which asks Qt the same question on every
+// platform, and whose menu must stay flat for a reason the Linux file
+// records. The silent device, whose name and whose advice are the platform's
+// own words and were Windows' words everywhere on the first Linux run. And
+// the listing rule, the sentence the room shows about which applications
+// appear in it, which the platforms disagree about because they are really
+// different.
+//
+// A third platform joined on 2026-09-06 and none of it has run. macOS's arms
+// below assert the sentences and the flags its seams return, which is what a
+// suite can hold without a machine; nothing here has been executed on a Mac,
+// and passing on the macOS CI leg would say that the seams say what they were
+// written to say and nothing about whether any of it works
+// (docs/crucible/promotion.md, "What cannot be verified, and why").
 //
 // Nothing here starts the engine or touches an audio device, and nothing
 // installs or creates anything: install()/create is what puts a real node in
@@ -35,6 +42,12 @@ TestCase {
 
     readonly property bool isLinux: Qt.platform.os === "linux"
     readonly property bool isWindows: Qt.platform.os === "windows"
+    // Qt's documented value for macOS is "osx". Both spellings are accepted
+    // because nobody here can run this to see which one Qt 6 hands back, and
+    // getting it wrong fails quietly rather than loudly: every macOS case
+    // below would skip, and a suite of skips reads as a pass. If the macOS
+    // cases are all skipping on a Mac, this line is the first thing to check.
+    readonly property bool isMacos: Qt.platform.os === "osx" || Qt.platform.os === "macos"
 
     Component { id: settingsPage; SettingsPage { width: 1480; height: 700 } }
     Component { id: shell; Main {} }
@@ -141,6 +154,73 @@ TestCase {
         }
     }
 
+    function test_macosFollowsTheMenuBar() {
+        if (!isMacos) skip("the menu bar status area is the macOS file's");
+        // Qt's own question is the right one here, as it is on Windows and
+        // now on Linux: the menu bar is where an NSStatusItem goes, and a
+        // session without one - the offscreen platform these suites run
+        // under - answers no. The Linux refusal that this file was written
+        // beside is gone, and the fault behind it lands one rung short of
+        // this platform rather than nowhere near it
+        // (ui/platform/macos/tray_support.cpp carries the reasoning, and the
+        // reproducer to run before trusting any of it).
+        const probe = createTemporaryObject(trayProbe, testCase);
+        verify(probe, "a SystemTrayIcon was created");
+        compare(CrucibleController.trayAvailable, probe.available);
+        if (!CrucibleController.trayAvailable) {
+            verify(CrucibleController.trayAbsentReason.indexOf("menu bar") >= 0,
+                   CrucibleController.trayAbsentReason);
+            verify(CrucibleController.trayAbsentReason.indexOf("quits") >= 0,
+                   CrucibleController.trayAbsentReason);
+        }
+    }
+
+    function test_macosNeedsNoSilentDeviceAndMovesNothing() {
+        if (!isMacos) skip("the no-device answer is the macOS file's");
+        // The one platform where the silent device is absent because nothing
+        // needs it, rather than missing. A process tap carries
+        // muteBehavior, so each application is silenced where it is tapped:
+        // nothing is installed, nothing is created, and the system default
+        // output is never touched.
+        compare(CrucibleController.silentDeviceNeeded, false);
+        compare(CrucibleController.silentDeviceFromPackage, false);
+        compare(CrucibleController.silentDeviceCanCreate, false);
+        compare(CrucibleController.movesDefault, false);
+        // The sentence a person is shown has to read as "nothing to do",
+        // not as a missing feature: it says so, and it says what happens
+        // instead. Fragments and not the whole sentence, so rewording is free
+        // and dropping either half is not.
+        const advice = CrucibleController.silentDeviceAdvice;
+        verify(advice.indexOf("nothing to install") >= 0, advice);
+        verify(advice.indexOf("tap") >= 0, advice);
+        verify(advice.indexOf("driver") < 0,
+               "macOS needs no driver and must not be told to install one: " + advice);
+    }
+
+    function test_macosCannotAnswerTheFullScreenQuestion() {
+        if (!isMacos) skip("the foreground answer is the macOS file's");
+        // NSWorkspace names the application in front; AppKit gives one
+        // application no way to ask about another's windows, so there is no
+        // full-screen answer here and the seam says so rather than reporting
+        // the frontmost pid as if it were one. The same distinction the
+        // Wayland arm holds on Linux: "nothing is full-screen" and "this
+        // platform cannot tell" are different claims.
+        //
+        // The report is where that reaches a person (diagnostics.cpp's
+        // "full-screen rule" row). Only the unavailability is asserted, not
+        // the sentence: this suite never starts the engine, so the seam has
+        // not been polled and the reason is still its before-the-first-poll
+        // one rather than either of the two NSWorkspace decides between.
+        const report = CrucibleController.diagnosticsReport();
+        const label = "full-screen rule: ";  // diagnostics.cpp's row() writes "<name>: <value>"
+        const at = report.indexOf(label);
+        verify(at >= 0, report);
+        const value = report.substring(at + label.length);
+        verify(value.indexOf("unavailable") === 0,
+               "the macOS foreground seam must report itself unavailable, with a reason: " +
+               value.substring(0, 120));
+    }
+
     function test_theKeepRunningRowFollowsTheTraySeam() {
         // Parented to the window's root item rather than to the TestCase,
         // which is invisible by design (tst_settings.qml).
@@ -174,6 +254,13 @@ TestCase {
             compare(CrucibleController.nullSinkName, "Crucible (silent)");
         } else if (isWindows) {
             compare(CrucibleController.nullSinkName, "Desktop Atmos");
+        } else if (isMacos) {
+            // No endpoint, so no name for one. Empty rather than a
+            // placeholder, because a placeholder would put a device in the
+            // room's vocabulary that is not on the machine; every consumer
+            // guards an empty search before using it
+            // (engine/platform/macos/virtual_device.cpp lists them).
+            compare(CrucibleController.nullSinkName, "");
         }
 
         // One sentence on how a person gets one, shown by the signal path
@@ -197,7 +284,13 @@ TestCase {
         // in the first case (tst_settings.qml asserts the page; this asserts
         // the seam under it).
         verify(typeof CrucibleController.silentDeviceFromPackage === "boolean");
-        compare(CrucibleController.silentDeviceNeeded, true);
+        // Two of the three need a device at all; macOS's own case above holds
+        // the third answer, and this one asserts nothing about a device that
+        // is not there.
+        compare(CrucibleController.silentDeviceNeeded, !isMacos);
+        if (isMacos) {
+            return;
+        }
         if (isLinux) {
             compare(CrucibleController.silentDeviceFromPackage, false);
             // Nothing is installed yet in this process, so the application
@@ -217,10 +310,10 @@ TestCase {
 
     function test_theListingRuleIsThePlatformsOwn() {
         // The paragraph the room shows about which applications appear in
-        // it. The two platforms disagree because they really differ - a
-        // Windows session outlives the sound, a PipeWire stream does not -
-        // and the room says its own platform's answer rather than asserting
-        // Windows' everywhere.
+        // it. The platforms disagree because they differ - a Windows session
+        // outlives the sound, a PipeWire stream does not - and the room says
+        // its own platform's answer rather than asserting Windows'
+        // everywhere.
         const rule = CrucibleController.listingRule;
         verify(rule.length > 0, "the platform gave no listing rule");
         if (isLinux) {
@@ -228,6 +321,24 @@ TestCase {
             verify(rule.indexOf("PipeWire") >= 0, rule);
         } else if (isWindows) {
             verify(rule.indexOf("with a window is listed") >= 0, rule);
+            verify(rule.indexOf("greyed") >= 0, rule);
+        } else if (isMacos && rule.indexOf("older than 14.0") >= 0) {
+            // Below the version floor: Core Audio has no process object class
+            // before macOS 14.0 and this build's deployment target is 13.3
+            // (cmake/toolchains/macos.llvm.toolchain.cmake), so a machine that
+            // can launch it but not list on it is reachable. The rule says
+            // that rather than describing a list nobody will see.
+            verify(rule.indexOf("no application can be listed") >= 0, rule);
+        } else if (isMacos) {
+            // Closer to Linux's than to Windows': the list follows what is
+            // using the sound hardware, not what has a window. The greying
+            // half is asserted too, because on this platform the two are
+            // separate questions - Core Audio holds a process object while a
+            // process is using audio and answers separately about whether
+            // sound is coming out of it now. Which of those a paused player
+            // does is exactly what one launch on a Mac would settle, so the
+            // sentence claims neither and neither does this.
+            verify(rule.indexOf("sound hardware") >= 0, rule);
             verify(rule.indexOf("greyed") >= 0, rule);
         }
         // Both say what happens to something already placed, because that is

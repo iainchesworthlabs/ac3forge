@@ -8,9 +8,10 @@
 // (docs/crucible/promotion.md, "The platform tree").
 //
 // The question is whether this session has somewhere to put an icon, and Qt
-// answers it: QSystemTrayIcon::isSystemTrayAvailable(). Both platforms ask
-// it and neither adds anything, which is what a seam should look like when
-// the platforms agree.
+// answers it: QSystemTrayIcon::isSystemTrayAvailable(). All three platforms
+// ask it and none adds anything, which is what a seam should look like when
+// the platforms agree - the notification area, the menu bar's status area
+// and a StatusNotifier host are the same question asked of three desktops.
 //
 // It has not always. Linux answered a flat no for a while, because
 // publishing an item killed the window - the Linux file has that record,

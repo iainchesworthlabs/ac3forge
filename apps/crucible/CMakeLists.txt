@@ -1,14 +1,18 @@
-# The Windows AC3Forge Crucible (roadmap UX11): docs/platforms/windows-demo.md.
+# AC3Forge Crucible (roadmap UX11 and UX12): docs/crucible/promotion.md, and
+# docs/platforms/windows-demo.md for the demo it grew out of. Windows, Linux
+# and macOS - the third arrived on 2026-09-06 and has never been run, only
+# compiled.
 #
 # engine/ is the headless part - what the UI drives and the spikes proved -
 # split in two the way the CLI's own platform/ directory is: the pure modules
-# (slot plan, bed mixer, placement, output policy) have no Windows in them and
-# are ALSO compiled into ac3tests on every platform (tests/CMakeLists.txt);
-# the modules under engine/platform/windows/ talk to the session manager, the
-# policy-config interface and the shell, and only ever build here. The rest
-# of engine/ (taps, output stage, signing hook, the frame loop) is written
-# against ac3::audio and ac3::signing and would compile anywhere, but only
-# makes sense here, so it rides the same option.
+# (slot plan, bed mixer, placement, output policy) name no operating system
+# and are ALSO compiled into ac3tests on every platform (tests/CMakeLists.txt);
+# the modules under engine/platform/<os>/ talk to that platform's session
+# enumeration, default device and silent device, and exactly one directory of
+# them is ever compiled. The rest of engine/ (taps, output stage, signing
+# hook, the frame loop) is written against ac3::audio and ac3::signing and
+# would compile anywhere, but only makes sense here, so it rides the same
+# option.
 
 add_library(ac3crucible_engine STATIC
     engine/slots.cpp
@@ -33,11 +37,17 @@ target_link_libraries(ac3crucible_engine
 
 # The platform half, selected the way apps/cli/CMakeLists.txt selects its
 # platform/ directory: a platform is a directory, never a conditional inside
-# a source file. Two arms now (roadmap UX12) - Windows over COM and WASAPI,
-# Linux over PipeWire. The application talks to PipeWire directly here for
-# the same reason it talks to COM directly on Windows: session enumeration,
-# the default device and the silent device are demo policy rather than audio
-# I/O, and ac3::audio deliberately does not carry them.
+# a source file. Three arms now (roadmap UX12) - Windows over COM and WASAPI,
+# Linux over PipeWire, macOS over the CoreAudio HAL and AppKit. The
+# application talks to each of those directly here for the same reason it
+# talks to COM directly on Windows: session enumeration, the default device
+# and the silent device are demo policy rather than audio I/O, and ac3::audio
+# deliberately does not carry them.
+#
+# The macOS arm compiles but has never run: no Mac has executed any part of
+# this application, which is what docs/crucible/promotion.md's "What cannot be
+# verified, and why" table says and what every file under
+# engine/platform/macos/ repeats at its head.
 if(WIN32)
     target_sources(ac3crucible_engine PRIVATE
         engine/platform/windows/session_monitor.cpp
@@ -118,6 +128,101 @@ elseif(UNIX AND NOT APPLE)
     endif()
     # This platform's notices directory (notices/notices.cmake).
     set(AC3CRUCIBLE_PLATFORM_DIR linux)
+elseif(APPLE)
+    # macOS (roadmap UX12, docs/crucible/promotion.md's Phase 5). The four
+    # seams are the CoreAudio HAL's process object list, NSWorkspace, the HAL's
+    # default output device, and a silent device that does not exist because
+    # this platform silences at the tap instead. Read the header of each file
+    # under engine/platform/macos/ before changing anything here: none of it
+    # has been run, and each says so.
+    #
+    # AudioDevices is deliberately NOT in this list. That seam is the one
+    # platform service that is not per-platform: engine/library_devices.cpp
+    # forwards it to ac3::audio, whose macOS backend
+    # (src/audio/src/backend/macos/) already answers for render devices, sinks
+    # and the tap - so a macos/audio_devices.cpp would be a second definition
+    # of platform_audio_devices() and a duplicate symbol at link, not a gap.
+    # What that backend cannot do yet, it refuses through the library's own
+    # Capability: process_loopback is unavailable there, so the room lists
+    # applications this build cannot capture (docs/platforms/macos.md,
+    # "Loopback capture: not yet implemented").
+    #
+    # OBJCXX, and why this directory turns it on. NSWorkspace and NSImage have
+    # no C entry point, so the Foreground and the icon provider are .mm
+    # translation units - the first two in the tree. enable_language() from a
+    # subdirectory rather than from the root is what this file already does
+    # further down, in the window's own icon block, where the WIN32 arm calls
+    # enable_language(RC) before compiling ac3crucible.rc (apps/gui does the
+    # same); the precedent is the call site, not the compiler pin below it,
+    # which has none.
+    #
+    # CMAKE_OBJCXX_COMPILER is pinned to the C++ compiler the toolchain file
+    # chose (cmake/toolchains/macos.llvm.toolchain.cmake finds Homebrew's
+    # clang++ and prefers its libc++ over the SDK's). Without the pin, CMake
+    # would search for an Objective-C++ compiler of its own and find Apple's
+    # clang++ on PATH instead, and the two halves of one target would then be
+    # built against two standard libraries. Set before enable_language(),
+    # which is when the variable is read.
+    if(NOT CMAKE_OBJCXX_COMPILER)
+        set(CMAKE_OBJCXX_COMPILER "${CMAKE_CXX_COMPILER}")
+    endif()
+    enable_language(OBJCXX)
+    target_sources(ac3crucible_engine PRIVATE
+        engine/platform/macos/session_monitor.cpp
+        engine/platform/macos/default_device.cpp
+        engine/platform/macos/virtual_device.cpp
+        engine/platform/macos/foreground.mm
+        engine/platform/macos/bundle_facts.hpp
+        engine/platform/macos/process_facts.hpp)
+    # target_compile_features(... cxx_std_23) at the top of this file speaks
+    # for CXX only; the .mm sources need the same standard said again for
+    # their own language, because platform_services.hpp reaches them through
+    # std::expected.
+    set_target_properties(ac3crucible_engine PROPERTIES
+        OBJCXX_STANDARD 23
+        OBJCXX_STANDARD_REQUIRED ON
+        OBJCXX_EXTENSIONS OFF)
+    # The library's own CoreAudio helpers (address(), get_property<T>(),
+    # CFOwned, to_utf8, device_uid, default_device) are reused rather than
+    # reimplemented, exactly as the Linux arm reuses ac3::pipewire's, so this
+    # needs that private header's directory.
+    target_include_directories(ac3crucible_engine
+        PRIVATE "${CMAKE_SOURCE_DIR}/src/audio/src/backend/macos")
+    # Apple's <AssertMacros.h> - reached from AppKit through
+    # ApplicationServices and CarbonCore/Debugging.h - defines function-like
+    # macros called check(), verify() and require() unless this is 0. Qt's own
+    # headers declare and call a private member `verify(pos, n)` - eleven
+    # QtCore headers do, qbytearray.h, qstring.h, qlist.h and qspan.h among
+    # them, grepped out of the Qt 6.8.3 headers on this machine on 2026-09-06 -
+    # so a one-parameter macro of that name turns every one of them into "too
+    # many arguments provided to function-like macro invocation" the moment a
+    # Qt header is first read AFTER an AppKit import. Setting it to 0 is
+    # Apple's own documented opt-out, and is the same kind of
+    # header-configuration define as the WIN32 arm's WIN32_LEAN_AND_MEAN and
+    # NOMINMAX, which is why it lives here rather than as a #define at the top
+    # of a .mm.
+    #
+    # The engine's own headers use none of those three names today, so today's
+    # include order in foreground.mm may well survive without this; the point
+    # is that nothing here can be run to find out, and the next include added
+    # after that #import would be the one to break it.
+    target_compile_definitions(ac3crucible_engine
+        PRIVATE __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES=0)
+    # CoreAudio for the HAL, CoreFoundation for the CFStringRef every property
+    # read hands back, AppKit for NSWorkspace. Apple frameworks are linked as
+    # plain "-framework <name>" strings rather than through find_library -
+    # there is nothing to find, they ship with every macOS SDK
+    # (src/audio/CMakeLists.txt's APPLE block says the same).
+    #
+    # AppKit reaches ac3crucible-run, the console runner, along with the rest
+    # of this static library. That is a GUI framework in a command-line
+    # binary, which is worth naming: it is linked, not initialised, and
+    # -[NSWorkspace frontmostApplication] answering nil without a window
+    # session is one of the two reasons the Foreground publishes.
+    target_link_libraries(ac3crucible_engine PRIVATE
+        "-framework CoreAudio" "-framework CoreFoundation" "-framework AppKit")
+    # This platform's notices directory (notices/notices.cmake).
+    set(AC3CRUCIBLE_PLATFORM_DIR macos)
 endif()
 # The profiling header pair, on every platform: the engine loop and the
 # controller carry Tracy zones whichever platform half is compiled in. This
@@ -268,13 +373,21 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/tray_support.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/app_entry.hpp"
     )
-    # The application-icon provider is the one part of the window that talks
-    # to the operating system directly, so it is a platform directory like
-    # engine/platform/: Windows asks the shell for an executable's icon;
-    # Linux resolves the icon theme and the .desktop entries (see
-    # ui/platform/linux/app_icon_provider.cpp for the four rungs), and the
+    # The application-icon provider and the tray answer are the two parts of
+    # the window that talk to the operating system directly, so they are a
+    # platform directory like engine/platform/: Windows asks the shell for an
+    # executable's icon; Linux resolves the icon theme and the .desktop entries
+    # (see ui/platform/linux/app_icon_provider.cpp for the four rungs), and the
     # Qt-free reader for those entries (ui/desktop_entries.cpp) is compiled
-    # here beside it and into ac3tests on every platform.
+    # here beside it and into ac3tests on every platform; macOS asks
+    # NSWorkspace for a bundle's icon, which needs Objective-C++ and so needs
+    # the OBJCXX language the engine's APPLE arm above turned on.
+    #
+    # EVERY file added under ui/platform/ here has to be added to
+    # ui/tests/CMakeLists.txt as well: that target compiles the same
+    # controller, so a seam it does not choose is an unresolved symbol at link
+    # and nothing sooner. That is the mistake this pair of blocks exists to
+    # stop being made again.
     if(WIN32)
         target_sources(ac3crucible PRIVATE ui/platform/windows/app_icon_provider.cpp
                                            ui/platform/windows/tray_support.cpp)
@@ -282,6 +395,20 @@ else()
         target_sources(ac3crucible PRIVATE ui/platform/linux/app_icon_provider.cpp
                                            ui/platform/linux/tray_support.cpp)
         target_sources(ac3crucible PRIVATE ui/desktop_entries.cpp ui/desktop_entries.hpp)
+    elseif(APPLE)
+        target_sources(ac3crucible PRIVATE ui/platform/macos/app_icon_provider.mm
+                                           ui/platform/macos/tray_support.cpp)
+        set_target_properties(ac3crucible PROPERTIES
+            OBJCXX_STANDARD 23
+            OBJCXX_STANDARD_REQUIRED ON
+            OBJCXX_EXTENSIONS OFF)
+        # AppKit's check()/verify()/require() macros against Qt's own
+        # verify(pos, n) - see the engine's APPLE arm above for the whole
+        # reasoning. This target is where it matters most: app_icon_provider.mm
+        # reads a dozen Qt headers after its #import.
+        target_compile_definitions(ac3crucible
+            PRIVATE __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES=0)
+        target_link_libraries(ac3crucible PRIVATE "-framework AppKit" "-framework CoreGraphics")
     endif()
     qt_add_qml_module(ac3crucible
         URI Ac3ForgeCrucible
@@ -435,7 +562,17 @@ else()
     # targets the build tree). COMPONENT crucible, not runtime: the demo is
     # its own download rather than something an ac3cli/ac3gui user is given
     # (cmake/Packaging.cmake).
-    install(TARGETS ac3crucible RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT crucible)
+    # BUNDLE DESTINATION as well as RUNTIME, because MACOSX_BUNDLE is on for
+    # this target above and CMake refuses an install() of a bundle executable
+    # that does not say where the .app goes - which is exactly how the first
+    # macOS configure of this application failed, on 2026-09-06. The dot is
+    # the archive root, the same place apps/gui puts ac3gui.app, so a .dmg
+    # opens on the application rather than on a bin/ directory. RUNTIME is
+    # still needed: it is what Windows and Linux use, where the target is not
+    # a bundle and this keyword is ignored.
+    install(TARGETS ac3crucible
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT crucible
+        BUNDLE DESTINATION "." COMPONENT crucible)
     # Only where the package carries its own Qt. On Linux the system's Qt is
     # the one the binary was built against and the loader finds it, so the
     # package ships none (docs/releasing.md); left to run there, this script
@@ -448,6 +585,16 @@ else()
             OUTPUT_SCRIPT AC3DESK_DEPLOY_SCRIPT
             NO_UNSUPPORTED_PLATFORM_ERROR)
         install(SCRIPT "${AC3DESK_DEPLOY_SCRIPT}" COMPONENT crucible)
+        # Immediately after it, and only after it: that script deploys Qt's
+        # test module into the package, because Qt scans this whole directory
+        # for QML imports and ui/tests/qml/tst_*.qml all `import QtTest`.
+        # Nothing a user runs loads qml/QtTest, Qt6Test.dll or
+        # Qt6QuickTest.dll - only ac3crucible_qmltests does, and that binary
+        # is never installed. cmake/StripQtTestDeployment.cmake carries the
+        # whole measurement, including why the Qt Quick Test binary's own
+        # location in bin/ has nothing to do with it and does not move.
+        install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/StripQtTestDeployment.cmake"
+            COMPONENT crucible)
     endif()
 endif()
 

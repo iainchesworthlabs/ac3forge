@@ -13,16 +13,29 @@ add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp .
 # for turning a container file into an elementary stream instead.
 target_include_directories(ac3cli PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
-# ac3cli's platform-specific code: putting stdin/stdout into binary mode for
-# the "-" stdin/stdout file-argument convention (see platform/stdio_binary.hpp
-# for why Windows needs a real call and POSIX doesn't). Selected here rather
-# than behind an #ifdef in main.cpp, the same platform-tree pattern ac3::audio
-# uses for WASAPI/ALSA (src/audio/CMakeLists.txt) - tools/checks/check_platform_macros.ps1
-# enforces there being no third option.
+# ac3cli's platform-specific code, two seams' worth: putting stdin/stdout into
+# binary mode for the "-" stdin/stdout file-argument convention (see
+# platform/stdio_binary.hpp for why Windows needs a call there and POSIX
+# does not), and putting the console on UTF-8 so the section signs in this
+# CLI's specification citations render (platform/console_encoding.hpp for what
+# was going wrong and why a redirect is untouched by the fix). Selected here
+# rather than behind an #ifdef in main.cpp, the same platform-tree pattern
+# ac3::audio uses for WASAPI/ALSA (src/audio/CMakeLists.txt) -
+# tools/checks/check_platform_macros.ps1 enforces there being no third option.
+#
+# WIN32_LEAN_AND_MEAN/NOMINMAX are here rather than #define'd above the
+# <windows.h> include for the same reason and by the same rule: that script's
+# header comment says header-configuration defines belong in
+# target_compile_definitions, and src/audio/CMakeLists.txt is the example it
+# names. PRIVATE and inside the WIN32 arm, so no other configuration sees a
+# definition that means nothing to it.
 if(WIN32)
-    target_sources(ac3cli PRIVATE platform/windows/stdio_binary.cpp)
+    target_sources(ac3cli PRIVATE platform/windows/stdio_binary.cpp
+                                  platform/windows/console_encoding.cpp)
+    target_compile_definitions(ac3cli PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 else()
-    target_sources(ac3cli PRIVATE platform/posix/stdio_binary.cpp)
+    target_sources(ac3cli PRIVATE platform/posix/stdio_binary.cpp
+                                  platform/posix/console_encoding.cpp)
 endif()
 
 # main.cpp's 'atmos-adm' command (roadmap B1 phase 3) needs ac3adm::ac3adm/ac3::admbridge - this
@@ -139,18 +152,45 @@ install(TARGETS ac3cli
 # --help text at once and cannot be forgotten in one of them. That is the
 # whole reason to generate rather than check in five hand-maintained files.
 #
-# The cost of generating from the binary is that the binary has to run, which
-# a cross build cannot do - the linux-gcc-arm64/linux-llvm-arm64 presets build
-# aarch64 objects on an x86_64 host, and Emscripten builds no ac3cli at all.
-# There, these files are simply not produced and not installed: a packaging
-# run on the target arch (or a native build of the same source) produces
-# them, and a cross-built .deb without a man page is a smaller loss than a
-# build that fails outright or a checked-in file that silently goes stale.
-# The status message says which happened rather than leaving it to be
-# discovered from a missing file.
-if(CMAKE_CROSSCOMPILING)
-    message(STATUS "  CLI man page   : skipped (cross build cannot run ac3cli)")
+# The cost of generating from the binary is that the binary has to run, so the
+# question this guard has to answer is "can this host execute a binary built
+# for this target". That is a host/target comparison, and NOT
+# CMAKE_CROSSCOMPILING, which is a much broader flag: CMakeDetermineSystem sets
+# it TRUE whenever CMAKE_SYSTEM_NAME arrives from a toolchain file rather than
+# from the host, whether or not the target differs from the host at all. Every
+# Linux and macOS preset here chainloads a toolchain file that sets
+# CMAKE_SYSTEM_NAME unconditionally (cmake/toolchains/linux.gcc, linux.llvm,
+# macos.llvm), so testing CMAKE_CROSSCOMPILING skipped these files on every
+# native Linux and macOS build too - both .tar.gz, both .deb, both .rpm and the
+# universal .dmg shipped without a man page or completions, and only the
+# Homebrew formula (which passes no toolchain file, so its own test still found
+# them) got them at all. The Windows toolchains set only
+# CMAKE_SYSTEM_PROCESSOR, which is why Windows never showed the symptom.
+#
+# Comparing the two pairs directly answers the real question and keeps the
+# genuine cases out: Emscripten (Emscripten vs Windows/Linux/Darwin, and no
+# ac3cli built there anyway) and any future host-arch/target-arch mismatch,
+# such as an x86_64 box configuring for aarch64. The two arm64 Linux presets
+# are NOT that case in CI - they run on native aarch64 runners
+# (.github/workflows/_build.yml pins them to ubuntu-24.04-arm), so they now
+# produce and ship these files like every other native leg.
+#
+# Where the host cannot run the target's binary, the files are not produced and
+# not installed: a packaging run on the target arch (or a native build of the
+# same source) produces them, and a cross-built .deb without a man page is a
+# smaller loss than a build that fails outright or a checked-in file that
+# silently goes stale. The status message says which happened rather than
+# leaving it to be discovered from a missing file.
+if(NOT "${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "${CMAKE_SYSTEM_NAME}"
+        OR NOT "${CMAKE_HOST_SYSTEM_PROCESSOR}" STREQUAL "${CMAKE_SYSTEM_PROCESSOR}")
+    message(STATUS "  CLI man page   : skipped (a ${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_HOST_SYSTEM_PROCESSOR} "
+                   "host cannot run a ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR} ac3cli)")
 else()
+    # The other half of "the status message says which happened": a
+    # configure log that says nothing at all is how the skip above went
+    # unnoticed on Linux and macOS for as long as it did.
+    message(STATUS "  CLI man page   : generated (with bash/zsh/fish/PowerShell completions)")
+
     set(AC3CLI_DOC_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
     file(MAKE_DIRECTORY "${AC3CLI_DOC_DIR}")
 

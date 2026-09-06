@@ -1,9 +1,16 @@
 #include "encoder_controller.hpp"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
+#include <QLocale>
 #include <QRegularExpression>
+#include <QSaveFile>
+#include <QSettings>
+#include <QStandardPaths>
+#include <QSysInfo>
 #include <QTimer>
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -22,6 +29,7 @@
 #include <numbers>
 #include <optional>
 #include <span>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -41,6 +49,7 @@
 #include "ac3/oba/scene.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "ac3/spatial/spatial.hpp"
+#include "ac3/version.hpp"
 #include "matroska/matroska.hpp"
 #include "mp4/dash.hpp"
 #include "mp4/hls.hpp"
@@ -535,12 +544,25 @@ struct EncoderController::LiveOutputWriters {
     std::unique_ptr<ac3::io::WavStreamWriter> wav_safety;  // null when not requested
 };
 
-EncoderController::EncoderController(QObject* parent) : QObject(parent) {
+EncoderController::EncoderController(QObject* parent)
+    : QObject(parent), log_(ac3gui::process_diagnostics()) {
     // Every encodeFinished emission (there are several call sites, one per
     // early-exit failure plus the two workers' own completions) settles
     // whichever run startRun() most recently opened, without each site
     // having to say so itself.
     connect(this, &EncoderController::encodeFinished, this, &EncoderController::finishRun);
+    // Every refusal, and every finish that did not land, also reaches the
+    // diagnostics file's "last errors" section - connected here rather than
+    // called from each of the emission sites for the same reason finishRun()
+    // is: there are a dozen of them and one of them would eventually forget.
+    connect(this, &EncoderController::encodeRefused, this,
+            [this](const QString& reason) { noteError(reason); });
+    connect(this, &EncoderController::encodeFinished, this, [this](bool ok, const QString& message) {
+        if (!ok) {
+            noteError(message);
+        }
+    });
+    log_.note("ac3gui: controller created");
     // The trailing edge of notifyObjectsChangedSoon()'s coalescing window.
     object_notify_timer_.setSingleShot(true);
     object_notify_timer_.setInterval(16);
@@ -2983,7 +3005,27 @@ void EncoderController::setStatus(const QString& text) {
         return;
     }
     status_ = text;
+    // The message ring gets every status the window actually showed. This is
+    // the one hook the diagnostics file needs to carry the sequence of events
+    // rather than only the last one: setStatus already refuses a repeat, and
+    // none of its fifty-odd callers runs per frame or per meter tick, so the
+    // ring records what happened rather than filling up with a clock.
+    log_.note(("status: " + text).toStdString());
     emit statusChanged();
+}
+
+void EncoderController::noteError(const QString& text) {
+    if (text.isEmpty()) {
+        return;
+    }
+    // Oldest out first: a session that refuses the same thing over and over
+    // must not push the FIRST failure - usually the one worth reading - out
+    // of the file. The whole ring is in the report as well, so nothing is
+    // lost until the ring itself wraps.
+    while (errors_.size() >= kMaxRememberedErrors) {
+        errors_.removeFirst();
+    }
+    errors_.append(text);
 }
 
 void EncoderController::setLoudnessTouched(bool touched) {
@@ -6936,4 +6978,224 @@ void EncoderController::encodeObjects(const QString& path,
             emit encodeFinished(!cancelled && problem.isEmpty(), status());
         });
     });
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics. The rule lives in gui_diagnostics.hpp, not here: the report is
+// composed from named fields; the environment's values have none; the
+// settings are a fixed list rather than QSettings::allKeys(); and every
+// spelling of the two signing values is scrubbed from the finished text.
+// This file's job is only to fill those fields from state the window already
+// shows, so the report and the window cannot disagree about what is loaded.
+// ---------------------------------------------------------------------------
+
+ac3gui::Secrets EncoderController::diagnosticsSecrets() const {
+    ac3gui::Secrets out;
+    auto add = [&out](const QString& value) {
+        if (!value.isEmpty()) {
+            out.strings.push_back(value.toStdString());
+        }
+    };
+    // A path in every spelling it could arrive in - a message in the ring
+    // could name it with either separator, or after resolution.
+    auto add_path = [&add](const QString& path) {
+        add(path);
+        add(QDir::fromNativeSeparators(path));
+        add(QDir::toNativeSeparators(path));
+        if (!path.isEmpty()) {
+            const QString canonical = QFileInfo(path).canonicalFilePath();
+            add(canonical);
+            add(QDir::toNativeSeparators(canonical));
+        }
+    };
+    // Read here so they can be REMOVED from the text, and nowhere else.
+    add_path(qEnvironmentVariable("AC3FORGE_SIGNING_KEY_FILE"));
+    add(qEnvironmentVariable("AC3FORGE_SIGNING_KEY"));
+    return out;
+}
+
+ac3gui::ReportFacts EncoderController::buildReportFacts() const {
+    ac3gui::ReportFacts facts;
+    facts.written_at = QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toStdString();
+    const auto started_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(log_.started_at().time_since_epoch())
+            .count();
+    facts.log_started_at = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(started_ms))
+                               .toString(Qt::ISODateWithMs)
+                               .toStdString();
+    facts.version = ac3::version_details();
+
+    auto platform_row = [&facts](const char* name, const QString& value) {
+        facts.platform.emplace_back(name, value.toStdString());
+    };
+    platform_row("os", QSysInfo::prettyProductName());
+    platform_row("kernel", QSysInfo::kernelType() + QLatin1Char(' ') + QSysInfo::kernelVersion());
+    platform_row("cpu", QSysInfo::currentCpuArchitecture());
+    platform_row("qt", QString::fromLatin1(qVersion()) + QStringLiteral(" (built against ") +
+                           QString::fromLatin1(QT_VERSION_STR) + QLatin1Char(')'));
+    platform_row("qpa", QGuiApplication::platformName());
+    platform_row("locale", QLocale::system().name());
+    // Counts, not names: how many devices a machine offers is the shape of
+    // the problem, and the one actually in use is named in the plan rows.
+    platform_row("capture devices", QString::number(captureDevices().size()));
+    platform_row("output devices", QString::number(outputDevices().size()));
+
+    // Whether the variables are set is read; their values never are.
+    facts.env_key_file_set = qEnvironmentVariableIsSet("AC3FORGE_SIGNING_KEY_FILE");
+    facts.env_key_inline_set = qEnvironmentVariableIsSet("AC3FORGE_SIGNING_KEY");
+
+    // Built from sourceModel(), the same list the input rail draws, so the
+    // report cannot describe a different set of sources from the window - and
+    // so "base name, never the folder" is held in the one place that already
+    // decides how a source is named.
+    for (const QVariant& entry : sourceModel()) {
+        const QVariantMap row = entry.toMap();
+        ac3gui::SourceFacts source;
+        source.name = row.value(QStringLiteral("label")).toString().toStdString();
+        source.channels = row.value(QStringLiteral("channels")).toInt();
+        source.rate_hz = static_cast<std::uint32_t>(row.value(QStringLiteral("rate")).toUInt());
+        source.seconds = row.value(QStringLiteral("seconds")).toDouble();
+        source.offset_seconds = row.value(QStringLiteral("offsetSeconds")).toDouble();
+        source.resample = row.value(QStringLiteral("resampleLabel")).toString().toStdString();
+        facts.sources.push_back(std::move(source));
+    }
+
+    auto plan_row = [&facts](const char* name, const QString& value) {
+        facts.plan.emplace_back(name, value.toStdString());
+    };
+    auto flag = [](bool on) { return on ? QStringLiteral("yes") : QStringLiteral("no"); };
+    plan_row("codec", codecNames().value(codecIndex()));
+    plan_row("container", containerNames().value(containerIndex()));
+    plan_row("bit rate", vbrEnabled() ? vbrToken() : QStringLiteral("%1 kbps").arg(bitrateKbps()));
+    plan_row("channels", channelShapeName());
+    plan_row("layout", layoutName());
+    plan_row("coded / rendered channels",
+             QStringLiteral("%1 / %2").arg(codedChannelCount()).arg(renderedChannelCount()));
+    plan_row("object mode", flag(atmosEnabled()));
+    plan_row("objects", QString::number(objectCount()));
+    plan_row("assignment", mapToken());
+    plan_row("coding tools", toolsToken());
+    plan_row("metadata", metaTokens());
+    plan_row("dialnorm", QString::number(dialnorm()));
+    plan_row("routing", routingSummary());
+    plan_row("source", sourceInfo());
+    // The name only: the folder a run writes into is the person's own
+    // outputFolder setting, which the settings section carries as a setting.
+    plan_row("output name", QFileInfo(outputPath()).fileName());
+    plan_row("state", QStringLiteral("ready %1, busy %2, recording %3, live %4, playing %5")
+                          .arg(flag(sourceReady()), flag(busy()), flag(recording()),
+                               flag(liveActive()), flag(playing())));
+    plan_row("status", status());
+
+    // A fixed list, read from the same store Main.qml's Settings element
+    // writes to. A default-constructed QSettings reads whatever organisation
+    // and application names the process set: main.cpp sets "ac3forge" for
+    // both, so an interactive run lands in the person's own store, and
+    // apps/gui/tests/qml_test_main.cpp sets "ac3forge-tests"/"ac3gui_qmltests"
+    // with QSettings::setPath pointed at a QTemporaryDir, so the Qt Quick
+    // suite reads a store on disk that evaporates with the process - which is
+    // what lets tst_diagnostics.qml assert on a value that harness itself
+    // wrote (workbench/restoreSession = false). A key that was never changed
+    // is reported as "(default)" rather than by repeating the default QML
+    // declares: two copies of a default drift apart, and a report that
+    // confidently states the wrong default is worse than one that says it
+    // does not know.
+    //
+    // The session* keys are deliberately not here. They are JSON blobs of
+    // source paths, assignment tokens and past runs - the sources and runs
+    // sections above already say what is loaded and what ran, in the form
+    // this file is allowed to say it in.
+    static constexpr std::array<const char*, 22> kReportedSettings{
+        "theme",
+        "palette",
+        "textScale",
+        "controlsOnOpen",
+        "lastTier",
+        "meterMode",
+        "showExplanations",
+        "warnCodecChange",
+        "restoreSession",
+        "restoreScreen",
+        "outputFolder",
+        "namePattern",
+        "keepPartial",
+        "showCli",
+        "defaultContainerIndex",
+        "defaultVbr",
+        "defaultBitrateKbps",
+        "defaultVbrQuality",
+        "defaultDrcIndex",
+        "defaultMeasureDialnorm",
+        "autoMonitor",
+        "askRecordName"};
+    QSettings store;
+    store.beginGroup(QStringLiteral("workbench"));
+    for (const char* key : kReportedSettings) {
+        const QVariant value = store.value(QLatin1String(key));
+        facts.settings.emplace_back(std::string("workbench/") + key,
+                                    value.isValid() ? value.toString().toStdString()
+                                                    : std::string("(default)"));
+    }
+    store.endGroup();
+
+    // Named fields only: a run row also carries its output path and the
+    // ac3cli line it was started with, and neither is read here.
+    for (const QVariant& entry : runs_) {
+        const QVariantMap row = entry.toMap();
+        ac3gui::RunFacts run;
+        run.id = row.value(QStringLiteral("id")).toInt();
+        run.status = row.value(QStringLiteral("status")).toString().toStdString();
+        run.filename = row.value(QStringLiteral("filename")).toString().toStdString();
+        run.rate_text = row.value(QStringLiteral("rateText")).toString().toStdString();
+        run.duration_text = row.value(QStringLiteral("durationText")).toString().toStdString();
+        run.detail = row.value(QStringLiteral("detail")).toString().toStdString();
+        facts.runs.push_back(std::move(run));
+    }
+
+    for (const QString& error : errors_) {
+        facts.errors.push_back(error.toStdString());
+    }
+    return facts;
+}
+
+QString EncoderController::diagnosticsReport() const {
+    return QString::fromStdString(
+        ac3gui::render_report(buildReportFacts(), log_, diagnosticsSecrets()));
+}
+
+QString EncoderController::suggestedDiagnosticsFile() const {
+    QString folder = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (folder.isEmpty()) {
+        folder = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    }
+    const QString name = QStringLiteral("ac3gui-diagnostics-") +
+                         QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")) +
+                         QStringLiteral(".txt");
+    return QUrl::fromLocalFile(QDir(folder).filePath(name)).toString();
+}
+
+bool EncoderController::exportDiagnostics(const QString& fileUrl) {
+    // The window's rule for a dialog's answer: a file: URL becomes a local
+    // path, anything else is taken as one already.
+    const QUrl url(fileUrl);
+    const QString path = url.isLocalFile() ? url.toLocalFile() : fileUrl;
+    const QString shown = QDir::toNativeSeparators(path);
+    // UTF-8 with LF line endings on every platform: written as bytes, not
+    // through a text-mode translation, so a file written on Windows and one
+    // written on Linux read the same to whoever opens the bug report.
+    const QByteArray report = diagnosticsReport().toUtf8();
+    QSaveFile file(path);
+    bool ok = file.open(QIODevice::WriteOnly);
+    if (ok) {
+        ok = file.write(report) == static_cast<qint64>(report.size()) && file.commit();
+    }
+    if (ok) {
+        diagnostics_message_ = tr("Saved to %1").arg(shown);
+        log_.note("diagnostics saved");
+    } else {
+        diagnostics_message_ = tr("Could not write %1: %2").arg(shown, file.errorString());
+        log_.note("diagnostics export failed: " + file.errorString().toStdString());
+    }
+    emit diagnosticsChanged();
+    return ok;
 }

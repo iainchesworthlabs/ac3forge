@@ -137,7 +137,7 @@ ColumnLayout {
 
             Text {
                 text: qsTr("EAR LEVEL")
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontMicro
                 font.letterSpacing: 1
                 color: Theme.textMuted
             }
@@ -253,7 +253,7 @@ ColumnLayout {
                         .arg(count).arg(Math.round(field.azimuthDeg || 0))
                       : qsTr("%1 speakers · %2").arg(count).arg(root.fedCaption(root.earSpeakers))
                 font.family: Theme.monoFamily
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontMicro
                 color: Theme.textMuted
             }
         }
@@ -265,7 +265,7 @@ ColumnLayout {
 
             Text {
                 text: qsTr("CEILING")
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontMicro
                 font.letterSpacing: 1
                 color: Theme.textMuted
             }
@@ -352,7 +352,7 @@ ColumnLayout {
                       .arg(root.ceilingSpeakers.length)
                       .arg(root.fedCaption(root.ceilingSpeakers))
                 font.family: Theme.monoFamily
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontMicro
                 color: Theme.textMuted
             }
         }
@@ -373,7 +373,7 @@ ColumnLayout {
                   ? qsTr("two independent low-frequency channels · no direction")
                   : qsTr("one low-frequency channel · no direction")
             font.family: Theme.monoFamily
-            font.pixelSize: 10
+            font.pixelSize: Theme.fontMicro
             color: Theme.textMuted
         }
     }
@@ -385,7 +385,7 @@ ColumnLayout {
               ? root.atmosCaption
               : qsTr("Solid dots are fed by a source. Hollow dots are positions the stream carries silent.")
         wrapMode: Text.WordWrap
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         color: Theme.textMuted
     }
 }

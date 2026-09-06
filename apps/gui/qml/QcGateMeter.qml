@@ -51,7 +51,7 @@ RowLayout {
         Layout.preferredWidth: 130
         text: root.label
         color: Theme.text
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         font.family: Theme.monoFamily
         horizontalAlignment: Text.AlignRight
     }
@@ -112,7 +112,7 @@ RowLayout {
         Layout.preferredWidth: 96
         text: root.hasValue ? (root.value.toFixed(2) + " " + root.unit) : qsTr("n/a")
         color: root.gated && root.hasValue ? (root.pass ? Theme.good : Theme.bad) : Theme.text
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         font.family: Theme.monoFamily
         horizontalAlignment: Text.AlignRight
     }

@@ -32,6 +32,8 @@ qt_add_executable(ac3gui
     stream_player_controller.hpp
     channel_geometry.cpp
     channel_geometry.hpp
+    gui_diagnostics.cpp
+    gui_diagnostics.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp
@@ -490,6 +492,23 @@ if(WIN32 OR APPLE)
     # Without this, that install would silently skip the whole deploy step
     # and stage an ac3gui.app with no Qt inside it.
     install(SCRIPT "${AC3_GUI_DEPLOY_SCRIPT}" COMPONENT runtime)
+endif()
+
+# The same defect the Crucible has, in the same place and for the same reason:
+# the deploy script above scans THIS directory for QML imports, tests/qml/
+# tst_*.qml all `import QtTest`, and the runtime zip and the NSIS installer
+# have been carrying qml/QtTest/, Qt6Test.dll and Qt6QuickTest.dll ever since.
+# Only ac3gui_qmltests loads any of it, and that binary is not installed.
+# cmake/StripQtTestDeployment.cmake has the measurement.
+#
+# WIN32 only, not WIN32 OR APPLE like the block above: a macOS .app keeps its
+# deployed Qt inside the bundle, and there is no macOS host here to confirm
+# where these three land in it (the same reason the DragNDrop generator's
+# shape in cmake/Packaging.cmake is reasoned about rather than measured). The
+# .dmg still carries Qt Test until someone can check that on a Mac.
+if(WIN32)
+    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/StripQtTestDeployment.cmake"
+        COMPONENT runtime)
 endif()
 
 # ---------------------------------------------------------------------------
