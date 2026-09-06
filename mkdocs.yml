@@ -139,6 +139,7 @@ nav:
       - The signal path: crucible/signal-path.md
       - Settings: crucible/settings.md
       - Keyboard & screen readers: crucible/accessibility.md
+      - Languages: crucible/localisation.md
       - Troubleshooting: crucible/troubleshooting.md
       - Promotion plan & record: crucible/promotion.md
       - The Windows demo, the record: platforms/windows-demo.md

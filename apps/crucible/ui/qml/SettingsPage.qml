@@ -345,8 +345,11 @@ Flickable {
                         Connections { target: CrucibleController; function onSettingsChanged() { bitrateBox.sync(); } }
                         font.pixelSize: Theme.fontSmall
                         background: Rectangle { color: Theme.neutral100; border.color: bitrateBox.activeFocus ? Theme.focusRing : Theme.divider; border.width: 1 }
-                        contentItem: Text { id: bitrateText; leftPadding: 10; text: bitrateBox.displayText; color: Theme.text; font.family: Theme.monoFamily; font.pixelSize: Theme.fontSmall; verticalAlignment: Text.AlignVCenter }
-                        indicator: Text { x: bitrateBox.width - 22; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: Theme.fontNormal }
+                        // Anchored rather than placed at an x, and padded by
+                        // the side the control is on, so both follow the
+                        // window's mirroring under a right-to-left language.
+                        contentItem: Text { id: bitrateText; leftPadding: bitrateBox.mirrored ? 26 : 10; rightPadding: bitrateBox.mirrored ? 10 : 26; text: bitrateBox.displayText; color: Theme.text; font.family: Theme.monoFamily; font.pixelSize: Theme.fontSmall; verticalAlignment: Text.AlignVCenter }
+                        indicator: Text { anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: Theme.fontNormal }
                         popup.background: Rectangle { color: Theme.surface; border.color: Theme.divider; border.width: 1 }
                         delegate: ItemDelegate {
                             required property var modelData
@@ -378,7 +381,13 @@ Flickable {
                 SettingRow {
                     label: qsTr("Palette")
                     SegmentedControl {
-                        model: [{ label: qsTr("System"), value: "system" }, { label: qsTr("Signal"), value: "signal" }, { label: qsTr("Ink"), value: "ink" }, { label: qsTr("Console"), value: "console" }]
+                        model: [{ label: qsTr("System"), value: "system" },
+                                //: Palette name. A product name: leave it as it is unless the language has an established rendering of its own.
+                                { label: qsTr("Signal"), value: "signal" },
+                                //: Palette name, as "Signal" above.
+                                { label: qsTr("Ink"), value: "ink" },
+                                //: Palette name, as "Signal" above.
+                                { label: qsTr("Console"), value: "console" }]
                         currentValue: CrucibleController.palette
                         accessibleName: qsTr("Palette")
                         onSelected: function(value) { CrucibleController.palette = value; }
@@ -406,8 +415,10 @@ Flickable {
                         onActivated: currentValue === "" ? LanguageManager.useSystemLanguage() : LanguageManager.setLanguage(currentValue)
                         font.pixelSize: Theme.fontBody
                         background: Rectangle { color: Theme.neutral100; border.color: languageBox.activeFocus ? Theme.focusRing : Theme.divider; border.width: 1 }
-                        contentItem: Text { id: languageText; leftPadding: 10; text: languageBox.displayText; color: Theme.text; font.pixelSize: Theme.fontBody; verticalAlignment: Text.AlignVCenter }
-                        indicator: Text { x: languageBox.width - 22; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: Theme.fontNormal }
+                        // The chevron and the padding, mirrored the same way
+                        // as the bitrate box above.
+                        contentItem: Text { id: languageText; leftPadding: languageBox.mirrored ? 26 : 10; rightPadding: languageBox.mirrored ? 10 : 26; text: languageBox.displayText; color: Theme.text; font.pixelSize: Theme.fontBody; verticalAlignment: Text.AlignVCenter }
+                        indicator: Text { anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.textMuted; font.pixelSize: Theme.fontNormal }
                         popup.background: Rectangle { color: Theme.surface; border.color: Theme.divider; border.width: 1 }
                         delegate: ItemDelegate {
                             required property var modelData
@@ -421,7 +432,10 @@ Flickable {
                     // QLocale::system(), which is the desktop's own language
                     // setting wherever the window runs (LanguageManager::
                     // useSystemLanguage); it used to say "follows Windows".
-                    Note { text: qsTr("System follows the desktop's own language; the translations are mechanical for now") }
+                    // The second sentence stays true after the mechanical
+                    // pass: machine-made is what those catalogues are until
+                    // a speaker of each language has read them.
+                    Note { text: qsTr("System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.") }
                 }
                 SettingRow {
                     label: qsTr("Text size")

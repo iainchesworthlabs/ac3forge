@@ -85,7 +85,9 @@ Item {
                     label: qsTr("APPLICATIONS")
                     Layout.fillWidth: true
                     Text {
-                        text: CrucibleController.apps.length === 0 ? qsTr("no applications") : CrucibleController.apps.length + qsTr(" applications · ") + CrucibleController.soundingCount + qsTr(" with sound")
+                        text: CrucibleController.apps.length === 0
+                            ? qsTr("no applications")
+                            : qsTr("%1 applications · %2 with sound").arg(CrucibleController.apps.length).arg(CrucibleController.soundingCount)
                         color: Theme.textMuted
                         font.family: Theme.monoFamily
                         font.pixelSize: Theme.fontMono
@@ -208,7 +210,7 @@ Item {
                     Layout.fillHeight: false
                     label: qsTr("ROOM")
                     Layout.fillWidth: true
-                    Text { text: CrucibleController.placedCount + qsTr(" of 10 slots placed"); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMono }
+                    Text { text: qsTr("%1 of 10 slots placed").arg(CrucibleController.placedCount); color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontMono }
                 }
                 // Bed only: placement pans within 5.1, and height does nothing.
                 // Said here, where the placing happens, rather than left for
@@ -291,6 +293,7 @@ Item {
                         rowSpacing: Theme.space4
                         RoomView {
                             id: plan
+                            objectName: "roomPlan"
                             Layout.preferredWidth: centre.viewSide
                             Layout.preferredHeight: centre.viewSide + 22
                             Layout.alignment: Qt.AlignTop
@@ -383,6 +386,7 @@ Item {
                             }
                             CrucibleButton {
                                 objectName: "centreButton"
+                                //: Button: move the selected application to the centre of the room. A verb.
                                 text: qsTr("Centre")
                                 enabled: page.selected !== null && page.selected.slot >= 0
                                 Accessible.description: page.selected ? qsTr("for %1").arg(page.selected.name) : ""
@@ -407,17 +411,27 @@ Item {
                         Flow {
                             Layout.fillWidth: true
                             spacing: Theme.space2
+                            //: Label in front of the row of buttons below it: put the selected application at one of these places. A verb.
                             Text { height: Math.max(26, implicitHeight); verticalAlignment: Text.AlignVCenter; text: qsTr("Put"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall }
                             Repeater {
                                 model: [
+                                    //: Placement button: in front of the listener
                                     { label: qsTr("in front"), x: 0.5, y: 0.1, z: 0.0 },
+                                    //: Placement button: behind the listener
                                     { label: qsTr("behind"), x: 0.5, y: 0.9, z: 0.0 },
+                                    //: Placement button: to the listener's left
                                     { label: qsTr("left"), x: 0.1, y: 0.5, z: 0.0 },
+                                    //: Placement button: to the listener's right
                                     { label: qsTr("right"), x: 0.9, y: 0.5, z: 0.0 },
+                                    //: Placement button: above the listener
                                     { label: qsTr("overhead"), x: 0.5, y: 0.5, z: 0.8 },
+                                    //: Placement button: the front left corner of the room
                                     { label: qsTr("front left"), x: 0.15, y: 0.15, z: 0.0 },
+                                    //: Placement button: the front right corner of the room
                                     { label: qsTr("front right"), x: 0.85, y: 0.15, z: 0.0 },
+                                    //: Placement button: the rear left corner of the room
                                     { label: qsTr("rear left"), x: 0.15, y: 0.85, z: 0.0 },
+                                    //: Placement button: the rear right corner of the room
                                     { label: qsTr("rear right"), x: 0.85, y: 0.85, z: 0.0 }]
                                 delegate: CrucibleButton {
                                     required property var modelData
@@ -470,6 +484,7 @@ Item {
                                 Accessible.role: Accessible.Slider
                                 Accessible.name: qsTr("Object size")
                                 Accessible.focusable: true
+                                //: Object size readout: the object is a point source rather than a percentage of the room
                                 Accessible.description: page.selected
                                     ? (page.selected.size === 0 ? qsTr("point") : qsTr("%1%").arg(Math.round(page.selected.size * 100)))
                                     : ""

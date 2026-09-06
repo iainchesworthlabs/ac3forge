@@ -364,8 +364,14 @@ else()
     # lupdate scans this target's QML and C++, lrelease compiles the .ts
     # into :/i18n/ac3crucible_<code>.qm, which the shared LanguageManager loads
     # (main.cpp passes it the "ac3crucible" basename). Regenerate with
-    # `cmake --build <dir> --target ac3crucible_lupdate`; the translations are
-    # mechanical for now (docs/gui/localisation.md).
+    # `cmake --build <dir> --target ac3crucible_lupdate`.
+    #
+    # -no-obsolete drops an entry whose source string is gone rather than
+    # keeping it as translation memory: git history is that memory, and
+    # tests/crucible/test_translations.cpp wants the files clean after a
+    # regeneration. The catalogues in the tree predate the rewording of the
+    # source strings, so they have been neither regenerated nor read against
+    # the glossary they are held to (docs/crucible/localisation.md).
     set(AC3DESK_TS_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3crucible_fr.ts"
         "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3crucible_de.ts"
@@ -377,6 +383,7 @@ else()
         IMMEDIATE_CALL
         SOURCE_TARGETS ac3crucible
         TS_FILES ${AC3DESK_TS_FILES}
+        LUPDATE_OPTIONS -no-obsolete
         LUPDATE_TARGET ac3crucible_lupdate
         LRELEASE_TARGET ac3crucible_lrelease)
 

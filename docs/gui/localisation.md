@@ -55,7 +55,9 @@ basename (`"ac3gui"` by default, `"ac3crucible"` for Crucible) that names the `.
 loads from `:/i18n/`, and `useSystemLanguage()` forgets a saved override so the app follows the
 system locale again. Crucible ships the same six languages (`apps/crucible/translations/`), has
 its own `ac3crucible_lupdate` target, and honours the same `AC3GUI_LOCALE` override for smoke
-checks. Its translations are mechanical for now.
+checks. What is Crucible's own — the glossary its six languages are held to, the window's
+right-to-left half, and the gate over its catalogues — is on
+[Crucible's languages page](../crucible/localisation.md).
 
 ## Updating an existing translation
 
