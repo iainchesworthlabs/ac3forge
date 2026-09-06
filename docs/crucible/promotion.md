@@ -1052,6 +1052,38 @@ run by anyone here**; see below.
     the QML has not been changed, because that is a layout change nobody here can run the window
     to look at.
 
+!!! success "Compiled 2026-09-06, and the first thing running it showed"
+
+    Both macOS legs configured, compiled and linked the whole macOS half - the Objective-C++, the
+    Core Audio selectors, the tap description, the availability guards and the OBJCXX CMake - on
+    code written without a Mac. That is Phase 5's exit condition and the only claim it was
+    entitled to make.
+
+    Then the Intel leg ran 1,331 tests and passed them, and the Apple Silicon leg hung. Three of
+    the eleven Qt Quick suites - `firstrun`, `room` and `shell` - sat at ctest's 300-second limit
+    while the other eight passed.
+
+    The three are not the heaviest, the slowest, or the ones that build the window; several
+    suites that do all of those pass. **They are exactly the three that do not install the
+    scripted machine.** Every other suite either replaces the platform services with fakes or
+    never starts the engine, so these three are the only ones that start the engine against the
+    real macOS seams. Each hangs on its first case that does so, whatever else that case
+    contains.
+
+    So the macOS half compiles and, the first time anything ran it, blocked. The hang is in the
+    seams or the Core Audio backend beneath them, on a host with no audio device and no window
+    server session. Which call blocks is not known, and finding it needs a machine that can
+    attach to the process - the same wall the tray crash hit, and the same answer: a runner or a
+    Mac that can be iterated on rather than a twenty-minute round trip.
+
+    The Qt Quick label is excluded on the macOS legs until then, and that exclusion is a defect
+    being worked around rather than a decision about what is worth testing. The legs still prove
+    what they were added to prove, and the other 1,328 cases still run there.
+
+    Worth stating plainly, because it is the whole argument for compiling a platform nobody can
+    run: this was invisible until something ran it, and what ran it was eight test cases on a
+    hosted runner.
+
 ### Phase 6: product qualities
 
 First-run explanation of what the application is about to do to the sound settings; a log export
