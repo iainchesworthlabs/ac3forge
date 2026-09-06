@@ -388,12 +388,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   graph with no PulseAudio application in it costs the tap what it always did.
 
 - **Crucible could not start on a Linux desktop with a system tray** (`apps/crucible/ui/`).
-  Publishing a StatusNotifierItem took the process down with `SIGBUS` inside Qt's own D-Bus
-  delivery, before the window drew a frame, on nine or ten launches out of ten on the Raspberry
-  Pi OS desktop. The Linux build no longer publishes a tray icon: `ui/tray_support.hpp` is a
-  platform seam like the icon provider beside it, the Settings page shows the platform's reason
-  where the "keep running in the tray" setting used to be, and closing the window quits. The
-  measurements and what has been ruled out are in `docs/crucible/promotion.md`.
+  Publishing a StatusNotifierItem took the process down before the window drew a frame, on nine
+  or ten launches out of ten. It is a type confusion in Qt: `QDBusPlatformMenu` implements no
+  `createSubMenu()`, so a `Qt.labs.platform` `Menu` nested inside a tray icon's menu is handed
+  Qt Labs Platform's QWidget fallback and then `static_cast` to the D-Bus one, and the panel's
+  first request for the menu layout reads a `QWidgetPlatformMenu` as a `QDBusPlatformMenu`. The
+  tray's menu is now flat on every platform — the signal path is a heading and seven choices
+  rather than a submenu — and Linux publishes a tray again, with both platforms answering
+  `ui/tray_support.hpp` from `QSystemTrayIcon::isSystemTrayAvailable()`.
+  `tst_platform.qml` fails on a tray menu item with a `subMenu`, so the constraint cannot be
+  lost. `apps/linux/tray-vm/` is the scripted Debian guest that found it — Qt debug symbols and
+  valgrind, which the 2 GB Raspberry Pi the crash was first read on could not give — and it
+  reproduces on demand: ten launches of ten survive as shipped, none with a submenu put back.
+  `docs/crucible/promotion.md` has the finding.
 
 - **The room page described Windows' application list on Linux.** Windows keeps an audio session
   while an application holds the device open, so a paused player stays listed and greys;

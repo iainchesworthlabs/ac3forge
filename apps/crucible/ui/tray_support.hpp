@@ -7,12 +7,16 @@
 // file per operating system, exactly one compiled, no #ifdefs
 // (docs/crucible/promotion.md, "The platform tree").
 //
-// The question is not "does this desktop have a tray". Qt answers that with
-// QSystemTrayIcon::isSystemTrayAvailable(), and on the Raspberry Pi's own
-// desktop the answer is yes - wf-panel-pi owns
-// org.kde.StatusNotifierWatcher. The question is whether publishing one is
-// safe here, and on Linux today it is not: see the Linux file for what was
-// measured and what was ruled out.
+// The question is whether this session has somewhere to put an icon, and Qt
+// answers it: QSystemTrayIcon::isSystemTrayAvailable(). All three platforms
+// ask it and none adds anything, which is what a seam should look like when
+// the platforms agree - the notification area, the menu bar's status area
+// and a StatusNotifier host are the same question asked of three desktops.
+//
+// It has not always. Linux answered a flat no for a while, because
+// publishing an item killed the window - the Linux file has that record,
+// which is still worth reading: the constraint it leaves behind is that the
+// tray's menu in Main.qml must not nest a submenu.
 
 namespace ac3::crucible::ui {
 

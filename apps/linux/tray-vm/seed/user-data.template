@@ -1,0 +1,49 @@
+#cloud-config
+# The NoCloud seed for the Crucible tray-crash guest. New-SeedIso.ps1 fills
+# each SCRIPT placeholder below with base64 of the matching file under
+# guest/, and the PUBKEY one with a key it generates beside the VM, so the
+# shell scripts stay shell scripts and the host can drive the guest over ssh
+# without a password prompt. (Placeholder names are not spelled out in this
+# comment: the substitution is a plain string replace and would rewrite them
+# here too.)
+#
+# Everything slow lives in provision.sh rather than in this file's `packages`
+# list, so it can be re-run by hand after an edit without recreating the VM.
+hostname: crucible-tray
+users:
+  - name: crucible
+    gecos: Crucible tray test
+    shell: /bin/bash
+    sudo: 'ALL=(ALL) NOPASSWD:ALL'
+    lock_passwd: false
+    # Deliberately trivial, like the Windows guest's: this VM is NAT-only and
+    # nothing on it is worth anything.
+    plain_text_passwd: crucible
+    groups: [sudo, audio, video, render, nopasswdlogin, autologin]
+    ssh_authorized_keys:
+      - __SSH_PUBKEY__
+ssh_pwauth: true
+chpasswd:
+  expire: false
+
+write_files:
+  - path: /usr/local/sbin/crucible-provision
+    permissions: '0755'
+    encoding: b64
+    content: |
+      __SCRIPT_PROVISION__
+  - path: /usr/local/bin/crucible-build
+    permissions: '0755'
+    encoding: b64
+    content: |
+      __SCRIPT_BUILD_CRUCIBLE__
+  - path: /usr/local/bin/crucible-trials
+    permissions: '0755'
+    encoding: b64
+    content: |
+      __SCRIPT_RUN_TRIALS__
+
+runcmd:
+  - [ /usr/local/sbin/crucible-provision ]
+
+final_message: "cloud-init done after $UPTIME seconds; crucible-provision writes its own marker"

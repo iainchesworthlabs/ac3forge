@@ -228,6 +228,17 @@ Crucible is configured and the matrix build tree carries Crucible on Windows; on
 since extraction does not depend on the compiler. It turns a forgotten regeneration into a red
 check rather than a quietly stale catalogue.
 
+**`lupdate` sees only the platform it runs on, and deletes what it cannot see.** The seams under
+`ui/platform/<os>/` are one file per platform with one compiled, so `tray_support.cpp`'s `tr()`
+reaches `lupdate` on exactly one of them. Running it on Linux drops the Windows sentence —
+translated, in every catalogue — and replaces it with the Linux one, unfinished; running it on
+macOS does the same with its own. Nothing warns. That the gate above runs on `windows-msvc`
+alone is what settles it: the catalogues hold Windows' sentence, a regeneration there produces
+no diff, and the other two platforms' tray sentences are simply not in them. So regenerate on
+Windows, and if you regenerate anywhere else, read the diff before committing it — a `-` on a
+translated `<source>` you did not touch is this, and the fix is to put the other platform's
+message back rather than to accept it.
+
 The rules that read a translation skip an entry marked unfinished. No entry is marked that way
 today, so the exemption applies to nothing in the tree; it is there for the window between a
 regeneration that extracts a string and the edit that fills it, where failing the placeholder rule

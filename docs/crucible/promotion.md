@@ -757,12 +757,11 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     the same pattern as `VirtualDevice::how_to_get_one()`. `troubleshooting.md` leads with it
     under "An application is not in the list".
 
-    **The tray, and why Linux does not get one.** The window would not start on a real Linux
-    desktop. Every launch on the Pi died with `SIGBUS` on the main thread, inside `libQt6Gui`
-    reached from `libQt6DBus` delivering the panel's `GetLayout` call on the tray's
+    **The tray, and the Qt bug that took it away for a day.** The window would not start on a
+    real Linux desktop. Every launch on the Pi died with `SIGBUS` on the main thread, inside
+    `libQt6Gui` reached from `libQt6DBus` delivering the panel's `GetLayout` call on the tray's
     `com.canonical.dbusmenu` object. The faulting instruction is an `ldaxr` — a refcount — on a
-    pointer holding two AArch64 instruction words, so something is refcounting an object after
-    something else has written over it.
+    pointer holding two AArch64 instruction words.
 
     The first reading of it was wrong and is worth recording as such: the Pi's compositor is
     labwc, which looked like a session with no host for a StatusNotifierItem, so the fix was
@@ -770,54 +769,111 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     `org.kde.StatusNotifierWatcher` on that session and Qt answers yes; the item registers, the
     panel asks for the menu, and the process dies.
 
-    It is a race, so every single launch is evidence of nothing. Measured over ten launches per
-    arm, on the Pi, 2026-09-06:
+    The second reading was wrong too, and that one cost more. Measured over ten launches per arm
+    the window survived 0–2 of 10 with the tray and 10 of 10 without, which reads as a race; and
+    since a minimal Qt application publishing the same tray and the same menu on the same
+    session survived 10 of 10, it read as a race reached through this window's shape. So the
+    hunt was for a schedule. Ruled out, each over ten launches: the icon format (SVG and PNG die
+    alike, and this system ships no Qt 6 SVG icon engine at all); the menu's contents, with
+    every binding replaced by a literal; the application-icon provider and its
+    `QIcon::fromTheme` calls; Qt's accessibility bridge; the Qt Quick render loop, basic and
+    threaded; PipeWire's RTKit D-Bus client; the engine, which need not be running; the window's
+    header, footer, pages, dialogs and announcer, each removed in turn; any symbol this binary
+    exports over one Qt resolves, of which there are none; glibc's own heap checking
+    (`MALLOC_CHECK_=3`, `glibc.malloc.check=3`); a use-after-free, since the faulting pointer is
+    byte-identical with `MALLOC_PERTURB_` set; a Qt version or layout mismatch; and stale
+    generated code, since a fresh tree crashes at the same rate.
+
+    All of that is consistent with what it turned out to be, and none of it points at it,
+    because a 2 GB Pi could not run the one thing that would: an address sanitiser, or Qt's own
+    debug symbols. So the next step was a machine that could.
+
+    **The VM.** [`apps/linux/tray-vm/`](../../apps/linux/tray-vm/) is a scripted VMware guest,
+    the same shape as the Windows driver guest in `apps/windows/driver-vm/`: Debian 13, which
+    carries the Pi's exact Qt (6.8.2) and publishes matching `-dbgsym` packages, on labwc with
+    waybar as the panel — the Pi's own stack a step out, since `wf-panel-pi` has no amd64 build
+    and waybar is linked against the same `libdbusmenu-gtk3` that makes the call. x86_64, so the
+    architecture differs from the Pi's on purpose: if a fault does not cross, that is a finding
+    too. `Test-Tray.ps1` builds the window twice, with and without the reproducer, launches each
+    ten times and counts.
+
+    It crossed. Same fault, 9–10 deaths in 10, and the signal differs only because the AArch64
+    read was an `ldaxr`, which faults unaligned as `SIGBUS` where x86-64 faults unmapped as
+    `SIGSEGV`. With `-dbgsym` the backtrace is the whole answer:
+
+    ```
+    QDBusPlatformMenu::items                       qdbusplatformmenu.cpp:258
+    QDBusMenuLayoutItem::populate(menu,  depth=-2) qdbusmenutypes.cpp:94
+    QDBusMenuLayoutItem::populate(item,  depth=-1) qdbusmenutypes.cpp:110
+    QDBusMenuLayoutItem::populate(menu,  depth=-1) qdbusmenutypes.cpp:97
+    QDBusMenuAdaptor::GetLayout(parentId=0)        qdbusmenuadaptor.cpp:118
+    ```
+
+    The item at `qdbusmenutypes.cpp:110` is the "Signal path · auto" `MenuItem`, and its
+    `m_subMenu` is a `QWidgetPlatformMenu` — Qt Labs Platform's QWidget fallback — being read as
+    a `QDBusPlatformMenu`.
+
+    **It is a type confusion in Qt, and it is not a race.** `QQuickLabsPlatformMenu::create()`
+    gives a `Menu` nested inside another `Menu` the handle its parent's handle makes, through
+    `QPlatformMenu::createSubMenu()`. `QDBusPlatformMenu` implements no `createSubMenu()`, so the
+    base class answers, nothing native comes back, the platform theme's `createPlatformMenu()`
+    returns nothing either, and Labs Platform falls through to its own QWidget fallback. Then
+    `QDBusPlatformMenuItem::setMenu()` `static_cast`s that to `QDBusPlatformMenu` and writes
+    `m_containingMenuItem` through it, off the end of the object — valgrind catches that write
+    inside `QQmlObjectCreator::finalize`, before the window is on screen:
+
+    ```
+    Invalid write of size 8
+       at QDBusPlatformMenuItem::setMenu(QPlatformMenu*)   qdbusplatformmenu.cpp:58
+       by  ??? (libQt6LabsPlatform.so.6.8.2)
+       by  QQmlObjectCreator::finalize                     qqmlobjectcreator.cpp:1573
+       ...
+     Address 0x1ea1cd10 is 32 bytes before a block of size 128
+    ```
+
+    The bad `static_cast` is then kept, and when the panel asks the tray for its layout,
+    `QDBusMenuLayoutItem::populate` reads `QDBusPlatformMenu::m_items` out of a
+    `QWidgetPlatformMenu`. The `QList`'s `d` pointer is whatever that object holds at the offset
+    — `0xe` in the dump above, two instruction words on the Pi — and refcounting it is the
+    crash.
+
+    Which is why it looked like a race and is not one. The read is always wrong; whether it
+    faults depends on what the bytes at that offset happen to be. Removing an unrelated QML
+    block, or adding a `Qt.callLater` with an empty body, moved it because those change the
+    heap, not the schedule — and the minimal application survived because its menu had no
+    submenu in it.
+
+    **The fix is the menu's shape.** Measured on the VM, ten launches per arm, 2026-09-06:
 
     | arm | survived |
     |---|---|
-    | the window as it shipped | 0–2 of 10 |
-    | the same window, tray not published | 10 of 10 |
-    | a minimal Qt application, same tray, same menu, same session | 10 of 10 |
+    | the tray's menu with one nested `Menu` | 0 of 10, then 1 of 10 |
+    | the same menu with that submenu's items lifted to the top level | 10 of 10 |
+    | the tray with no menu at all | 10 of 10 |
+    | no tray published | 10 of 10 |
 
-    Ruled out, each over ten launches: the icon format (SVG and PNG die alike, and this system
-    ships no Qt 6 SVG icon engine at all — there is no `iconengines` directory); the menu's
-    contents, with every binding replaced by a literal; the application-icon provider and its
-    `QIcon::fromTheme` calls; Qt's accessibility bridge; the Qt Quick render loop, basic and
-    threaded; PipeWire's RTKit D-Bus client; the engine, which need not be running; the window's
-    header, footer, pages, dialogs and announcer, each removed in turn; and any symbol this
-    binary exports over one Qt resolves, of which there are none.
+    So the Linux build publishes a tray again, and `Main.qml`'s tray menu is flat: the signal
+    path is a disabled heading that reads the current choice, with the seven choices under it.
+    One shape rather than one per platform, because a submenu is not worth two menus to
+    maintain, and because the same Qt defect is reachable on any platform whose theme provides
+    no native menu. `tst_platform.qml`'s `test_theTrayMenuNestsNoSubmenu` walks the tray's items
+    and fails on a `subMenu`, so putting one back fails a test rather than a person's session.
+    Verified afterwards on the VM: 20 of 20 launches survived, valgrind reports no invalid read
+    or write in 180 seconds, and `GetLayout` called by hand returns all nineteen items.
 
-    What is left is a timing window. The minimal application survives, so it is reached through
-    this window's shape; but removing any one of several unrelated QML blocks moves it, and a
-    `Qt.callLater` with an empty body is enough to bring it back, which is the signature of a
-    schedule rather than of a culprit in our own data.
+    `ui/tray_support.hpp` is still the seam, one file per platform beside
+    `ui/platform/<os>/app_icon_provider.cpp` — but both platforms now answer it with
+    `QSystemTrayIcon::isSystemTrayAvailable()`, which is what a seam should look like when the
+    platforms agree. Where a session has no tray at all, the sentence beside the greyed "keep
+    running in the tray" setting is still the platform's own, and `onClosing` still quits rather
+    than hiding a window with no way back to it.
 
-    **A second round, 2026-09-06, ruled out four more and left one clue.** glibc's own heap
-    checking, both `MALLOC_CHECK_=3` and `glibc.malloc.check=3`, reports nothing before the
-    fault. The faulting pointer is byte-identical with `MALLOC_PERTURB_` set, so it is not
-    memory that was freed and read back. The binary is built against the same Qt it loads,
-    6.8.2, from the one kit on the machine, so it is not a layout mismatch. And a build
-    configured and compiled from scratch in a fresh tree crashes at the same rate, one launch in
-    eight, so it is not stale generated code in a build directory that has been incrementally
-    built for days.
-
-    The clue is the pointer itself. `0xf9000bf3910003fd` is two AArch64 instructions,
-    `str x19, [sp, #16]` and `mov x29, sp`, which is the opening of a function prologue.
-    Something reads a field, gets code bytes back as a pointer, and dereferences it — a structure
-    read through a pointer that names a function rather than an object.
-
-    That is as far as this hardware takes it. The next step needs Qt debug symbols or an address
-    sanitiser over Qt itself, on a desktop with a StatusNotifier host, and a 2 GB Pi gives
-    neither. The reproducer is small: restore `visible: true` on the `SystemTrayIcon` in
-    `Main.qml`, launch ten times, count. Until someone runs it, the Linux build publishes no
-    tray and says so.
-
-    So the Linux build does not publish a tray. `ui/tray_support.hpp` is the seam, one file per
-    platform beside `ui/platform/<os>/app_icon_provider.cpp`: Windows asks Qt about the
-    notification area, Linux answers no and says why in a sentence the Settings page shows in
-    place of the "keep running in the tray" setting. `Main.qml` reads
-    `CrucibleController.trayAvailable` rather than Qt's `available`, and `onClosing` quits
-    instead of hiding a window with no way back to it.
+    **Not reported upstream yet.** The report is the two blocks above: `QDBusPlatformMenu` has
+    no `createSubMenu()`, and `QDBusPlatformMenuItem::setMenu()` `static_cast`s whatever it is
+    handed. Either half alone would be enough to fix it — a `createSubMenu()` that returns a new
+    `QDBusPlatformMenu`, or a `qobject_cast` in `setMenu()` that refuses what it cannot use.
+    Reproduced on Qt 6.8.2 on two architectures; `apps/linux/tray-vm/` builds the machine that
+    shows it.
 
 ### Phase 5: macOS
 
@@ -1192,13 +1248,12 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     `ui/tests/qml/tst_platform.qml`, on both platforms, through the same
     `CrucibleController.trayAvailable`/`trayAbsentReason` the window binds. The invariant it
     holds everywhere is that a tray which is not published carries a sentence a person can
-    read and one that is published carries none; on Linux it additionally holds
-    `trayAvailable` to false and the sentence to its two facts - that there is no tray here,
-    and that closing the window therefore quits. That assertion is about a defect, not a
-    preference: publishing a StatusNotifierItem from this window kills the process, and the
-    file beside it carries the measurement and everything ruled out. On Windows the seam is
-    checked against `Qt.labs.platform.SystemTrayIcon.available`, which is the right question
-    there and the wrong one on Linux.
+    read and one that is published carries none, and on each platform the seam is checked
+    against `Qt.labs.platform.SystemTrayIcon.available` - the question both of them now defer
+    to. The Linux file answered a flat no for a day, and the test with it; what is left of
+    that is `test_theTrayMenuNestsNoSubmenu`, which walks the tray's own items and fails on a
+    `subMenu`, because the crash was a Qt type confusion reached only through a nested one
+    (Phase 4, "The tray, and the Qt bug that took it away for a day").
 
     **The Linux session monitor.** Its bookkeeping was unreachable rather than untested:
     `engine/platform/linux/session_monitor.cpp` includes `pipewire_support.hpp`, so nothing in

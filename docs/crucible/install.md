@@ -215,11 +215,11 @@ The header then shows the path as a single line — `apps → stereo · Your Rec
 Room rail carries the one button that fixes it.
 
 Quitting restores the previous default output when Crucible moved it; a default you moved by
-hand is left where you put it. On Windows, quitting means quitting from the tray, or closing the
-window with "Keep running in the tray" off — closing it while that setting is on only hides the
-window, so applications stay on the silent device until you quit or press Restore. On Linux
-there is no tray icon and no such setting, so closing the window is quitting; see
-[Troubleshooting](troubleshooting.md#linux-there-is-no-tray-icon) for why.
+hand is left where you put it. Quitting means quitting from the tray, or closing the window with
+"Keep running in the tray" off — closing it while that setting is on only hides the window, so
+applications stay on the silent device until you quit or press Restore. On a session with no
+tray there is no such setting and closing the window is quitting; see
+[Troubleshooting](troubleshooting.md#there-is-no-tray-icon).
 
 On a platform that never moves the default, the dialog says that nothing in the sound settings
 changes and offers no Send. macOS is written to be that platform — the dialog already computed

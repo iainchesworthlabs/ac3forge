@@ -57,16 +57,21 @@ namespace Ac3Forge {
 }
 
 $image = New-Object -ComObject IMAPI2FS.MsftFileSystemImage
+# The default "media" is a CD; tell it the image is a plain file on disk and
+# lift the block limit, or a Windows ISO overflows it. This comes FIRST:
+# ChooseImageDefaultsForMediaType overwrites FileSystemsToCreate with its own
+# choice for the media (UDF, for a disk image), so setting the filesystem
+# before it silently has no effect. That is how every data CD from here was
+# UDF for a while, -Udf or not, which Windows reads without noticing and
+# cloud-init's NoCloud datasource refuses - it takes vfat or ISO 9660 only.
+$image.ChooseImageDefaultsForMediaType(12)  # IMAPI_MEDIA_TYPE_DISK
+$image.FreeMediaBlocks = 0x7FFFFFFF
 if ($Udf) {
     $image.FileSystemsToCreate = 4          # FsiFileSystemUDF
     $image.UDFRevision = 0x102              # 1.02, what Setup media ships with
 } else {
     $image.FileSystemsToCreate = 3          # ISO9660 + Joliet
 }
-# The default "media" is a CD; tell it the image is a plain file on disk and
-# lift the block limit, or a Windows ISO overflows it.
-$image.ChooseImageDefaultsForMediaType(12)  # IMAPI_MEDIA_TYPE_DISK
-$image.FreeMediaBlocks = 0x7FFFFFFF
 $image.VolumeName = $Label
 
 if ($BootImage) {

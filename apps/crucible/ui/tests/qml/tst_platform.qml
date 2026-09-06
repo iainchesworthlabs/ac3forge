@@ -15,12 +15,13 @@ import Ac3ForgeCrucibleLanguage
 // seams, so this file is where ui/platform/<os>/tray_support.cpp and the
 // Linux VirtualDevice are reached.
 //
-// Three of them live here. The tray, which on Linux is a defect being worked
-// around rather than a preference and needs saying so. The silent device,
-// whose name and whose advice are the platform's own words and were Windows'
-// words everywhere on the first Linux run. And the listing rule, the sentence
-// the room shows about which applications appear in it, which the platforms
-// disagree about because they are really different.
+// Three of them live here. The tray, which asks Qt the same question on every
+// platform, and whose menu must stay flat for a reason the Linux file
+// records. The silent device, whose name and whose advice are the platform's
+// own words and were Windows' words everywhere on the first Linux run. And
+// the listing rule, the sentence the room shows about which applications
+// appear in it, which the platforms disagree about because they are really
+// different.
 //
 // A third platform joined on 2026-09-06 and none of it has run. macOS's arms
 // below assert the sentences and the flags its seams return, which is what a
@@ -49,11 +50,11 @@ TestCase {
     readonly property bool isMacos: Qt.platform.os === "osx" || Qt.platform.os === "macos"
 
     Component { id: settingsPage; SettingsPage { width: 1480; height: 700 } }
+    Component { id: shell; Main {} }
 
-    // Created only where the platform publishes a tray. On Linux publishing
-    // one takes the process down (ui/platform/linux/tray_support.cpp), and
-    // while an invisible item is not a published one, a suite that builds
-    // one anyway would be a step towards finding that out the hard way.
+    // Qt's own answer to "has this session somewhere to put an icon", which
+    // both platforms' seams now defer to. Invisible: this asks the question,
+    // it does not publish anything.
     Component { id: trayProbe; Platform.SystemTrayIcon { visible: false } }
 
     function init() {
@@ -86,35 +87,55 @@ TestCase {
         }
     }
 
-    function test_linuxPublishesNoTrayAndSaysItIsAFault() {
+    function test_linuxFollowsTheDesktopsTray() {
         if (!isLinux) skip("the Linux tray answer is the Linux file's");
-        // Not a preference and not a missing feature. Publishing a
-        // StatusNotifierItem from this window kills the process: SIGBUS on
-        // the main thread inside libQt6Gui, read off a Raspberry Pi 4B
-        // (labwc, wf-panel-pi, Qt 6.8.2) on 2026-09-06, surviving 0 to 2
-        // launches in ten with the tray and 10 in 10 without it. The icon
-        // format, the menu's contents, the icon provider, accessibility, the
-        // render loop and the RTKit client were each ruled out by
-        // measurement; ui/platform/linux/tray_support.cpp carries the whole
-        // record. This assertion is here so that a change which starts
-        // publishing one again fails a test rather than a person's session.
-        compare(CrucibleController.trayAvailable, false);
-        verify(CrucibleController.trayAbsentReason.length > 0);
-        // The two things the sentence has to leave a person knowing: that
-        // there is no tray here, and that closing the window therefore quits
-        // rather than hiding. Fragments and not the whole sentence, so
-        // rewording it is free and dropping either fact is not.
-        const reason = CrucibleController.trayAbsentReason;
-        verify(reason.indexOf("no tray icon") >= 0, reason);
-        verify(reason.indexOf("quits") >= 0, reason);
+        // Linux publishes a tray again, and asks Qt the same question
+        // Windows does, so the seam and Qt must not drift apart. It refused
+        // for a while: publishing a StatusNotifierItem killed the window,
+        // and ui/platform/linux/tray_support.cpp carries that record and
+        // what it was - a Qt type confusion reached only through a Menu
+        // nested inside the tray's menu, which is why
+        // test_theTrayMenuNestsNoSubmenu below is the assertion that matters
+        // now.
+        const probe = createTemporaryObject(trayProbe, testCase);
+        verify(probe, "a SystemTrayIcon was created");
+        compare(CrucibleController.trayAvailable, probe.available);
+        if (!CrucibleController.trayAvailable) {
+            // A session with no StatusNotifier host - a headless runner is
+            // one - greys the setting and says so.
+            const reason = CrucibleController.trayAbsentReason;
+            verify(reason.indexOf("no system tray") >= 0, reason);
+            verify(reason.indexOf("quits") >= 0, reason);
+        }
+    }
 
-        // And the answer is this build's, not the desktop's. Qt's own
-        // question has a different answer on a desktop with a StatusNotifier
-        // host - the Pi's own panel owns org.kde.StatusNotifierWatcher and
-        // says yes - which is exactly why the window asks the seam instead.
-        // Deliberately not asserted as "Qt says yes here": a headless runner
-        // has no panel and says no, and the case worth pinning is that ours
-        // is false whatever Qt answers.
+    function test_theTrayMenuNestsNoSubmenu() {
+        // The one thing left over from the crash that took the Linux tray
+        // away, and the reason that file is still worth reading:
+        // QDBusPlatformMenu implements no createSubMenu(), so a Qt.labs
+        // Menu nested inside a tray icon's menu is handed Qt Labs Platform's
+        // QWidget fallback and then static_cast to the D-Bus one. The window
+        // dies on the panel's first request for its layout - nine or ten
+        // launches in ten, measured both ways on two machines
+        // (ui/platform/linux/tray_support.cpp). The menu is flat everywhere
+        // rather than on one platform, because one shape is worth more than
+        // a submenu. This is here so that adding one back fails a test
+        // rather than a person's session.
+        const shellItem = createTemporaryObject(shell, testCase.parent);
+        verify(shellItem, "the window was created");
+        const trayIcon = findChild(shellItem, "tray");
+        verify(trayIcon, "the tray carries objectName tray");
+        verify(trayIcon.menu, "the tray has a menu");
+        verify(trayIcon.menu.items.length > 0, "the tray menu has items");
+        for (let i = 0; i < trayIcon.menu.items.length; ++i) {
+            // A nested Menu shows up as the item that opens it, carrying
+            // subMenu; a plain item's is null. That is the thing to assert
+            // rather than the QML type, because it is what Qt hands the
+            // platform.
+            const item = trayIcon.menu.items[i];
+            verify(!item.subMenu,
+                   "the tray menu nests a submenu at item " + i + ": " + item.text);
+        }
     }
 
     function test_windowsFollowsTheNotificationArea() {
@@ -135,13 +156,14 @@ TestCase {
 
     function test_macosFollowsTheMenuBar() {
         if (!isMacos) skip("the menu bar status area is the macOS file's");
-        // Qt's own question is the right one here, as it is on Windows: the
-        // menu bar is where an NSStatusItem goes, and a session without one -
-        // the offscreen platform these suites run under - answers no. The
-        // Linux refusal is not inherited: every part of the fault recorded
-        // there is in Qt's D-Bus and dbusmenu path, which this platform does
-        // not use (ui/platform/macos/tray_support.cpp carries the reasoning,
-        // and the reproducer to run before trusting any of it).
+        // Qt's own question is the right one here, as it is on Windows and
+        // now on Linux: the menu bar is where an NSStatusItem goes, and a
+        // session without one - the offscreen platform these suites run
+        // under - answers no. The Linux refusal that this file was written
+        // beside is gone, and the fault behind it lands one rung short of
+        // this platform rather than nowhere near it
+        // (ui/platform/macos/tray_support.cpp carries the reasoning, and the
+        // reproducer to run before trusting any of it).
         const probe = createTemporaryObject(trayProbe, testCase);
         verify(probe, "a SystemTrayIcon was created");
         compare(CrucibleController.trayAvailable, probe.available);
