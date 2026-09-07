@@ -136,6 +136,12 @@ created at run time, so that the sound reaches the mixer instead of the speakers
 rides on the tap itself. Nothing in the sound settings changes and there is nothing to restore on
 quit.
 
+It also makes an open tap something Crucible has to be careful about holding. Its engine opens no
+tap while its output stage has no endpoint, and releases any it holds when one goes away
+(`Impl::sync_taps()` in `apps/crucible/engine/engine.cpp`), so a Mac where the output policy finds
+nothing usable is not one where every application it listed falls silent. The same code runs on
+Windows and Linux, where a tap mutes nothing and the rule costs nothing.
+
 **Three ways this contract is narrower than the Windows one**, all of them properties of the API
 rather than shortcuts:
 

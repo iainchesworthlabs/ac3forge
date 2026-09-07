@@ -464,9 +464,12 @@ target_include_directories(ac3tests PRIVATE
 # sessions, foreground), so with fakes in all three it runs here as plain C++
 # on any platform - and until crucible/test_engine.cpp nothing in the suite
 # constructed an Engine at all, which is how a probe thread that was never
-# joined reached a released branch. The one platform piece it does touch is
-# ac3::audio's DeviceWatcher, which is linked below and answers with
-# kNoBackend where there is none; the engine notes that and carries on.
+# joined reached a released branch. That file also asserts what the loop does
+# about opening taps: the platform seams it would otherwise reach for are the
+# ones platform_services_stub.cpp answers, and every case passes fakes
+# instead. The one platform piece it does touch is ac3::audio's DeviceWatcher,
+# which is linked below and answers with kNoBackend where there is none; the
+# engine notes that and carries on.
 target_sources(ac3tests PRIVATE
     crucible/test_slots.cpp
     crucible/test_bed_mixer.cpp
