@@ -36,6 +36,7 @@
 #include "ac3/decoder/decoder.hpp"
 
 #include "fixture.hpp"
+#include "probe.hpp"
 
 namespace {
 
@@ -49,6 +50,34 @@ std::size_t g_alloc_calls = 0;
 std::size_t g_free_calls = 0;
 std::size_t g_live_bytes = 0;
 std::size_t g_peak_bytes = 0;
+
+// --- where the peak actually is --------------------------------------------
+// A peak-heap number says how much, never what. That is fine while the number
+// only has to be under a ceiling, and useless the moment somebody has to make
+// it smaller - which is exactly the position the ESP32-S3 port is in, with
+// 270,886 bytes of peak against 160,764 bytes of free internal SRAM.
+//
+// So: live bytes by allocation size, in power-of-two buckets, snapshotted at
+// the instant the peak is set. Maintained incrementally (one add per new, one
+// subtract per delete) rather than by walking a list of live blocks, so it
+// costs a shift and an add on each side and cannot itself allocate.
+//
+// Bucket i holds allocations of 2^i .. 2^(i+1)-1 bytes. 32 buckets covers
+// every size a 32-bit size_t can express.
+constexpr std::size_t kBuckets = 32;
+std::array<std::size_t, kBuckets> g_live_by_bucket{};
+std::array<std::size_t, kBuckets> g_peak_by_bucket{};
+std::array<std::size_t, kBuckets> g_live_count_by_bucket{};
+std::array<std::size_t, kBuckets> g_peak_count_by_bucket{};
+std::size_t g_largest_alloc = 0;
+
+std::size_t size_bucket(std::size_t size) {
+    std::size_t bucket = 0;
+    while (bucket + 1 < kBuckets && (std::size_t{1} << (bucket + 1)) <= size) {
+        ++bucket;
+    }
+    return bucket;
+}
 
 // Two words of bookkeeping per block so operator delete knows the size even
 // when the sized form is not the one called.
@@ -73,8 +102,16 @@ void* operator new(std::size_t size) {
     *static_cast<std::size_t*>(raw) = size;
     ++g_alloc_calls;
     g_live_bytes += size;
+    const std::size_t bucket = size_bucket(size);
+    g_live_by_bucket[bucket] += size;
+    ++g_live_count_by_bucket[bucket];
+    if (size > g_largest_alloc) {
+        g_largest_alloc = size;
+    }
     if (g_live_bytes > g_peak_bytes) {
         g_peak_bytes = g_live_bytes;
+        g_peak_by_bucket = g_live_by_bucket;
+        g_peak_count_by_bucket = g_live_count_by_bucket;
     }
     return static_cast<std::byte*>(raw) + kHeaderBytes;
 }
@@ -86,7 +123,11 @@ void operator delete(void* p) noexcept {
         return;
     }
     void* raw = static_cast<std::byte*>(p) - kHeaderBytes;
-    g_live_bytes -= *static_cast<std::size_t*>(raw);
+    const std::size_t size = *static_cast<std::size_t*>(raw);
+    const std::size_t bucket = size_bucket(size);
+    g_live_bytes -= size;
+    g_live_by_bucket[bucket] -= size;
+    --g_live_count_by_bucket[bucket];
     ++g_free_calls;
     std::free(raw);
 }
@@ -168,6 +209,11 @@ struct Churn {
     std::size_t first_frame_allocs = 0;
     std::size_t steady_allocs = 0;
     int frames = 0;
+    // Time inside decode_frame_into / decode_access_unit_into only. The level
+    // accumulation and the allocation bookkeeping around it are the PROBE's
+    // cost, not the decoder's, and folding them in would flatter or slander the
+    // decoder depending on how expensive they happen to be on a given target.
+    std::uint64_t decode_us = 0;
 };
 
 void report_churn(const char* codec, const Churn& churn) {
@@ -181,6 +227,27 @@ void report_churn(const char* codec, const Churn& churn) {
                                                ? churn.steady_allocs /
                                                      static_cast<std::size_t>(steady_frames)
                                                : 0));
+}
+
+// A frame is 1536 samples at 48 kHz - 32 ms of audio. Real time means decoding
+// one in less than that, so the ratio is the headline: below 1.0 the target
+// keeps up, above 1.0 it does not. Reported as a permille integer because
+// newlib-nano's printf has no floating-point support unless -u _printf_float is
+// linked in, and a probe whose subject is footprint should not drag that in
+// just to print a number (the same reason fixture.hpp stores RMS scaled by 1e6).
+constexpr std::uint64_t kFrameDurationUs = 32000;
+
+void report_timing(const char* codec, const Churn& churn) {
+    if (churn.frames <= 0) {
+        return;
+    }
+    const std::uint64_t per_frame = churn.decode_us / static_cast<std::uint64_t>(churn.frames);
+    const std::uint64_t permille = (churn.decode_us * 1000) /
+                                   (kFrameDurationUs * static_cast<std::uint64_t>(churn.frames));
+    std::printf("%s.decode_us=%lu %s.us_per_frame=%lu %s.realtime_permille=%lu\n", codec,
+                static_cast<unsigned long>(churn.decode_us), codec,
+                static_cast<unsigned long>(per_frame), codec,
+                static_cast<unsigned long>(permille));
 }
 
 int decode_ac3() {
@@ -201,7 +268,9 @@ int decode_ac3() {
     int index = 0;
     int channels = 0;
     for (const auto frame : *frames) {
+        const std::uint64_t started_us = ac3probe::now_us();
         const auto decoded = decoder.decode_frame_into(frame, g_pcm_spans);
+        churn.decode_us += ac3probe::now_us() - started_us;
         if (!decoded) {
             std::printf("check=ac3.decode status=fail frame=%d error=%d\n", index,
                         static_cast<int>(decoded.error()));
@@ -228,6 +297,7 @@ int decode_ac3() {
     }
     report_levels("ac3", levels, ac3probe::kAc3Rms);
     report_churn("ac3", churn);
+    report_timing("ac3", churn);
     return 0;
 }
 
@@ -249,7 +319,9 @@ int decode_eac3() {
     int index = 0;
     int channels = 0;
     for (const auto unit : *units) {
+        const std::uint64_t started_us = ac3probe::now_us();
         const auto decoded = decoder.decode_access_unit_into(unit, g_pcm_spans);
+        churn.decode_us += ac3probe::now_us() - started_us;
         if (!decoded) {
             std::printf("check=eac3.decode status=fail unit=%d error=%d\n", index,
                         static_cast<int>(decoded.error()));
@@ -282,6 +354,7 @@ int decode_eac3() {
     }
     report_levels("eac3", levels, ac3probe::kEac3Rms);
     report_churn("eac3", churn);
+    report_timing("eac3", churn);
     return 0;
 }
 
@@ -310,7 +383,7 @@ void check_reference_transform_refused() {
 
 }  // namespace
 
-int main() {
+int ac3probe::run() {
     // Nothing here reads ac3/internal/profile.hpp, deliberately: that header
     // states what the build INTENDED, and a probe reporting its own intentions
     // back would prove nothing. Every claim below is observed - the levels
@@ -336,6 +409,17 @@ int main() {
                 static_cast<unsigned long>(g_alloc_calls),
                 static_cast<unsigned long>(g_free_calls),
                 static_cast<unsigned long>(g_live_bytes));
+    std::printf("heap.largest_alloc_bytes=%lu\n",
+                static_cast<unsigned long>(g_largest_alloc));
+    for (std::size_t bucket = 0; bucket < kBuckets; ++bucket) {
+        if (g_peak_by_bucket[bucket] == 0) {
+            continue;
+        }
+        std::printf("heap.peak_bucket[%lu]=%lu count=%lu\n",
+                    static_cast<unsigned long>(std::size_t{1} << bucket),
+                    static_cast<unsigned long>(g_peak_by_bucket[bucket]),
+                    static_cast<unsigned long>(g_peak_count_by_bucket[bucket]));
+    }
     if (g_live_bytes != 0) {
         fail("heap.leaked", static_cast<long>(g_live_bytes), 0);
     }
