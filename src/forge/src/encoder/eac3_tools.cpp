@@ -122,8 +122,11 @@ double spx_attenuation(int spxattencod, int index) {
                      static_cast<double>(tap + 1) / 15.0);
 }
 
-void spx_apply_notch(std::span<double> synth, int startmant, const BandLayout& bands,
-                     std::span<const bool> wrapflag, int spxattencod) {
+namespace {
+
+template <typename Scalar>
+void spx_apply_notch_impl(std::span<Scalar> synth, int startmant, const BandLayout& bands,
+                          std::span<const bool> wrapflag, int spxattencod) {
     if (spxattencod < 0) {
         return;
     }
@@ -133,7 +136,9 @@ void spx_apply_notch(std::span<double> synth, int startmant, const BandLayout& b
             if (at < 0 || at >= static_cast<int>(synth.size())) {
                 continue;
             }
-            synth[static_cast<std::size_t>(at)] *= spx_attenuation(spxattencod, tap);
+            synth[static_cast<std::size_t>(at)] = static_cast<Scalar>(
+                static_cast<double>(synth[static_cast<std::size_t>(at)]) *
+                spx_attenuation(spxattencod, tap));
         }
     };
     notch(startmant);
@@ -142,6 +147,18 @@ void spx_apply_notch(std::span<double> synth, int startmant, const BandLayout& b
             notch(bands.start[static_cast<std::size_t>(bnd)]);
         }
     }
+}
+
+}  // namespace
+
+void spx_apply_notch(std::span<double> synth, int startmant, const BandLayout& bands,
+                     std::span<const bool> wrapflag, int spxattencod) {
+    spx_apply_notch_impl<double>(synth, startmant, bands, wrapflag, spxattencod);
+}
+
+void spx_apply_notch(std::span<float> synth, int startmant, const BandLayout& bands,
+                     std::span<const bool> wrapflag, int spxattencod) {
+    spx_apply_notch_impl<float>(synth, startmant, bands, wrapflag, spxattencod);
 }
 
 double spx_noise_ratio(int band_start, int band_size, int endmant, int blend) {

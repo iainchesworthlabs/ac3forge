@@ -71,6 +71,43 @@ std::array<std::size_t, kBuckets> g_live_count_by_bucket{};
 std::array<std::size_t, kBuckets> g_peak_count_by_bucket{};
 std::size_t g_largest_alloc = 0;
 
+// Exact sizes of the big allocations, not just their bucket.
+//
+// The buckets answer "how much, in what size range"; they do not answer "which
+// buffer", and a 112,640-byte bucket holding eight allocations could be eight
+// of one thing or four each of two. Distinguishing those decides which member
+// to change, so the exact sizes are worth the eighteen words of storage.
+//
+// Only allocations at or above the threshold are tracked - the small ones are
+// the per-block churn PF7's gap is about, and their sizes are not the question.
+constexpr std::size_t kLargeAllocBytes = 8192;
+constexpr std::size_t kLargeSlots = 12;
+std::array<std::size_t, kLargeSlots> g_large_size{};
+std::array<std::size_t, kLargeSlots> g_large_live{};
+std::array<std::size_t, kLargeSlots> g_large_peak{};
+
+void note_large_alloc(std::size_t size, bool freeing) {
+    if (size < kLargeAllocBytes) {
+        return;
+    }
+    for (std::size_t i = 0; i < kLargeSlots; ++i) {
+        if (g_large_size[i] == 0) {
+            g_large_size[i] = size;
+        }
+        if (g_large_size[i] == size) {
+            if (freeing) {
+                --g_large_live[i];
+            } else {
+                ++g_large_live[i];
+                if (g_large_live[i] > g_large_peak[i]) {
+                    g_large_peak[i] = g_large_live[i];
+                }
+            }
+            return;
+        }
+    }
+}
+
 std::size_t size_bucket(std::size_t size) {
     std::size_t bucket = 0;
     while (bucket + 1 < kBuckets && (std::size_t{1} << (bucket + 1)) <= size) {
@@ -108,6 +145,7 @@ void* operator new(std::size_t size) {
     if (size > g_largest_alloc) {
         g_largest_alloc = size;
     }
+    note_large_alloc(size, false);
     if (g_live_bytes > g_peak_bytes) {
         g_peak_bytes = g_live_bytes;
         g_peak_by_bucket = g_live_by_bucket;
@@ -128,6 +166,7 @@ void operator delete(void* p) noexcept {
     g_live_bytes -= size;
     g_live_by_bucket[bucket] -= size;
     --g_live_count_by_bucket[bucket];
+    note_large_alloc(size, true);
     ++g_free_calls;
     std::free(raw);
 }
@@ -141,10 +180,27 @@ namespace {
 // --- caller-owned PCM ------------------------------------------------------
 // The decode_frame_into / decode_access_unit_into forms write through spans
 // the caller owns, which is what an embedded integrator has: one static block,
-// sized once, reused every frame. Sixteen channels covers §E3.8.2's cap.
-constexpr std::size_t kMaxChannels = 16;
+// sized once, reused every frame.
+//
+// Eight channels, not §E3.8.2's cap of sixteen. This block is the CALLER's, not
+// the library's, and an integrator decoding 5.1 allocates six - so provisioning
+// for a stream the fixture does not contain was inflating the probe's own .bss
+// by 49,152 bytes and making the profile look more expensive than it is. Eight
+// still covers 7.1, which is a layout that exists.
+//
+// The static_assert below is what keeps this honest rather than merely smaller:
+// regenerate fixture.hpp with a wider layout and the build stops here, instead
+// of the decode writing past the end of a span.
+constexpr std::size_t kMaxChannels = 8;
 std::array<std::array<float, ac3::kSamplesPerFrame>, kMaxChannels> g_pcm{};
 std::array<std::span<float>, kMaxChannels> g_pcm_spans{};
+
+static_assert(ac3probe::kAc3Rms.size() <= kMaxChannels,
+              "the AC-3 fixture has more channels than the probe's PCM block holds - raise "
+              "kMaxChannels");
+static_assert(ac3probe::kEac3Rms.size() <= kMaxChannels,
+              "the E-AC-3 fixture has more channels than the probe's PCM block holds - raise "
+              "kMaxChannels");
 
 void bind_pcm_spans() {
     for (std::size_t ch = 0; ch < kMaxChannels; ++ch) {
@@ -419,6 +475,13 @@ int ac3probe::run() {
                     static_cast<unsigned long>(std::size_t{1} << bucket),
                     static_cast<unsigned long>(g_peak_by_bucket[bucket]),
                     static_cast<unsigned long>(g_peak_count_by_bucket[bucket]));
+    }
+    for (std::size_t i = 0; i < kLargeSlots && g_large_size[i] != 0; ++i) {
+        std::printf("heap.large[%lu]=%lu peak_live=%lu total=%lu\n",
+                    static_cast<unsigned long>(i),
+                    static_cast<unsigned long>(g_large_size[i]),
+                    static_cast<unsigned long>(g_large_peak[i]),
+                    static_cast<unsigned long>(g_large_size[i] * g_large_peak[i]));
     }
     if (g_live_bytes != 0) {
         fail("heap.leaked", static_cast<long>(g_live_bytes), 0);
