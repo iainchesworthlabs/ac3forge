@@ -1,10 +1,12 @@
 #include "ac3/core/mdct.hpp"
 
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <numbers>
 #include <span>
+#include <type_traits>
 
 #include "ac3/core/window.hpp"
 #include "ac3/internal/arch/simd.hpp"
@@ -67,6 +69,35 @@ template <typename Scalar = double>
 const Twiddles2<Scalar>& twiddles2() {
     static const Twiddles2<Scalar> t;
     return t;
+}
+
+// §7.9.4.1 step 5's window, in the transform's own scalar type.
+//
+// kAnalysisWindow is consteval and double (ac3/core/window.hpp), which is the
+// right thing for it to be: it is generated from a Kaiser-Bessel derivation
+// whose intermediate sums want every bit they can get. A float32 transform
+// still wants the correctly-rounded float OF that table rather than a table
+// re-derived in float, so the double one stays the source and this narrows it
+// once, lazily, in the builds that ask for it. The double case returns a
+// reference to the constexpr table and copies nothing.
+template <typename Scalar>
+const std::array<Scalar, static_cast<std::size_t>(kN)>& analysis_window();
+
+template <>
+const std::array<double, static_cast<std::size_t>(kN)>& analysis_window<double>() {
+    return kAnalysisWindow;
+}
+
+template <>
+const std::array<float, static_cast<std::size_t>(kN)>& analysis_window<float>() {
+    static const std::array<float, static_cast<std::size_t>(kN)> narrowed = [] {
+        std::array<float, static_cast<std::size_t>(kN)> out{};
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            out[i] = static_cast<float>(kAnalysisWindow[i]);
+        }
+        return out;
+    }();
+    return narrowed;
 }
 
 // --- §7.9.4 fast N/4-FFT structure (the encoder-config default; see
@@ -331,9 +362,28 @@ void mdct256_forward_second(std::span<const double, 256> windowed, std::span<dou
     internal::reference_mdct256_forward_second(windowed, coeffs);
 }
 
-void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 512> x,
-                       bool fast) {
-    const auto& tw = twiddles();
+// Scalar (roadmap PF7's float32 gap). The vectorised sections below are
+// double-only - the AVX2 tier's kernels take double spans, and the arch seam
+// carries an f64x2 and no f32 equivalent - so a float instantiation takes a
+// plain scalar loop at each of them, behind `if constexpr`. That is not a
+// concession: the profile this exists for (arm-none-eabi, and now Xtensa) has
+// has_avx2() constant-false and the generic f64x2, which is itself scalar, so
+// nothing is lost that those targets ever had. Giving float32 a vector type of
+// its own is roadmap PF7's PIE-SIMD step and belongs with the architecture
+// that can execute it.
+//
+// `if constexpr` rather than a preprocessor conditional, so
+// tools/checks/check_platform_macros.ps1 stays satisfied and both arms are
+// still parsed and type-checked on every build.
+template <typename Scalar>
+void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scalar, 512> x,
+                            bool fast) {
+    constexpr bool kWide = std::is_same_v<Scalar, double>;
+    // The float32 entry point below has no `fast` parameter precisely because
+    // there is no choice to offer: the direct form is double-only. Nothing can
+    // reach here asking for it, and this says so rather than trusting it.
+    assert(kWide || fast);
+    const auto& tw = twiddles<Scalar>();
     constexpr int kQuarter = kN / 4;  // 128
     constexpr int kEighth = kN / 8;   // 64
 
@@ -354,10 +404,10 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     // conjugation pass and the bit-reversal pass the previous core ran
     // (fft_kernel.hpp); the direct branch needs neither, so it writes
     // Z[k] straight.
-    std::array<double, kQuarter> z_re{};
-    std::array<double, kQuarter> z_im{};
-    std::array<double, kQuarter> t_re{};
-    std::array<double, kQuarter> t_im{};
+    std::array<Scalar, kQuarter> z_re{};
+    std::array<Scalar, kQuarter> z_im{};
+    std::array<Scalar, kQuarter> t_re{};
+    std::array<Scalar, kQuarter> t_im{};
     if (fast) {
         // Two (four under AVX2) k at a time through the arch seam (ROADMAP
         // PF5, ac3::internal::cpu::has_avx2()), the same gather-compute-
@@ -367,8 +417,19 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
         // between them go wide. kQuarter is 128, a multiple of 4, so
         // neither width leaves a tail. See dct4_scaled's own comment for
         // the bit-exactness argument this shares.
-        const auto& fft = fast_mdct_tables<512>().fft;
-        if (internal::cpu::has_avx2()) {
+        const auto& fft = fast_mdct_tables<512, Scalar>().fft;
+        if constexpr (!kWide) {
+            constexpr std::size_t kHalfN = static_cast<std::size_t>(kN) / 2;
+            for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); ++k) {
+                const Scalar a = coeffs[kHalfN - 2 * k - 1];
+                const Scalar b = coeffs[2 * k];
+                const Scalar c = tw.cos1[k];
+                const Scalar sn = tw.sin1[k];
+                const std::size_t d = fft.bitrev[k];
+                z_re[d] = a * c - b * sn;
+                z_im[d] = -(b * c + a * sn);
+            }
+        } else if (internal::cpu::has_avx2()) {
             internal::avx2::imdct512_pre_twiddle(coeffs, tw.cos1, tw.sin1, fft.bitrev, z_re,
                                                  z_im);
         } else {
@@ -389,10 +450,15 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
                 z_im[d1] = zi.lane1();
             }
         }
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter), double>(fft, z_re, z_im);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kQuarter), Scalar>(fft, z_re, z_im);
         // Unit stride throughout, so this negation goes wide with nothing
         // to gather or scatter.
-        if (internal::cpu::has_avx2()) {
+        if constexpr (!kWide) {
+            for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); ++n) {
+                t_re[n] = z_re[n];
+                t_im[n] = -z_im[n];
+            }
+        } else if (internal::cpu::has_avx2()) {
             internal::avx2::imdct512_negate_copy(z_re, z_im, t_re, t_im);
         } else {
             for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
@@ -400,7 +466,14 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
                 (-internal::arch::f64x2::load(&z_im[n])).store(&t_im[n]);
             }
         }
-    } else {
+    } else if constexpr (kWide) {
+        // The direct form is double-only, and deliberately: it is the spec's
+        // own evaluation and the oracle the fast path is measured against, so
+        // narrowing it would remove the very thing it exists to be. A float32
+        // caller asking for it is refused at the entry point below rather than
+        // silently served something else - the same contract
+        // src/core/reference_transform.hpp already states for the profile that
+        // omits the tables.
         for (int k = 0; k < kQuarter; ++k) {
             const double a = coeffs[static_cast<std::size_t>(kN / 2 - 2 * k - 1)];
             const double b = coeffs[static_cast<std::size_t>(2 * k)];
@@ -415,9 +488,14 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     // Step 4: post-transform complex multiply. y[n] = z[n] * (xcos1[n] + j*xsin1[n])
     // Unit stride on every one of the six arrays, so this one vectorises
     // with nothing to gather or scatter (ROADMAP PF5, wide under AVX2).
-    std::array<double, kQuarter> y_re{};
-    std::array<double, kQuarter> y_im{};
-    if (internal::cpu::has_avx2()) {
+    std::array<Scalar, kQuarter> y_re{};
+    std::array<Scalar, kQuarter> y_im{};
+    if constexpr (!kWide) {
+        for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); ++n) {
+            y_re[n] = t_re[n] * tw.cos1[n] - t_im[n] * tw.sin1[n];
+            y_im[n] = t_im[n] * tw.cos1[n] + t_re[n] * tw.sin1[n];
+        }
+    } else if (internal::cpu::has_avx2()) {
         internal::avx2::imdct512_post_twiddle(tw.cos1, tw.sin1, t_re, t_im, y_re, y_im);
     } else {
         for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 2) {
@@ -431,7 +509,7 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     }
 
     // Step 5: windowing and de-interleaving, transcribed field-for-field.
-    const auto& w = kAnalysisWindow;
+    const auto& w = analysis_window<Scalar>();
     const auto yr = [&](int i) { return y_re[static_cast<std::size_t>(i)]; };
     const auto yi = [&](int i) { return y_im[static_cast<std::size_t>(i)]; };
     for (int n = 0; n < kEighth; ++n) {
@@ -466,6 +544,20 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
 // have to be resolved here and passed down as plain spans/a plain-old-data
 // reference, the same pattern every other AVX2 kernel call site in this
 // file already uses.
+void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 512> x,
+                       bool fast) {
+    imdct512_windowed_impl<double>(coeffs, x, fast);
+}
+
+// The float32 form (roadmap PF7). No `fast` parameter: the direct-form
+// evaluation is the spec's own and is the oracle the fast path is measured
+// against, so it stays double - narrowing it would remove the thing it exists
+// to be. Leaving the parameter off is the honest way to say a caller has no
+// choice here, rather than accepting a `false` and quietly ignoring it.
+void imdct512_windowed(std::span<const float, 256> coeffs, std::span<float, 512> x) {
+    imdct512_windowed_impl<float>(coeffs, x, true);
+}
+
 void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
                               std::span<const double, 256> coeffs1,
                               std::span<const double, 256> coeffs2,
