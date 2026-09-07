@@ -586,15 +586,59 @@ flagged row is a real change in allocation behaviour, not runner noise. The
 memory-usage optimization programme's phases land as visible downward steps in
 these series - that is what this table exists to show.
 
+Two limits on that gate are worth knowing when reading these series. It runs
+in `persist-performance-trend`, which is `push` to `main` only, so it reports
+a step on the trunk after the merge rather than on the pull request that
+caused it; `ac3membench` has no pre-merge counterpart to the
+`Performance vs merge base` job that covers `ac3bench` and `ac3kernelbench`.
+And the series it compares against is per branch, so a branch rename or a
+gitflow-to-trunk switch starts one from empty - the trailing window now widens
+to the sibling branch series when a branch's own file holds fewer than three
+records, and a workload with no history anywhere is annotated as ungated
+rather than passing quietly.
+
 Two landed programmes are the biggest steps in these series. The 2026-08
 memory-usage programme cut steady-state allocator traffic per frame by 85-88%
-on the encode series (on the measured `linux-gcc` runner: AC-3 encode
-225,028 → 26,778 bytes/frame and 286 → 86 allocations; E-AC-3
-214,808 → 28,792 and 157 → 67; Atmos 218,960 → 32,656 and 196 → 106) and
-54-61% on the decode series - and, outside these tables, took every
-output-producing CLI command memory-flat at any programme length (a 3-minute
-5.1 encode peaked at 437.8 MiB before the programme and 9.3 MiB after;
-decode 217 → 28.5 MiB, `spdif` 225.7 → 18.0 MiB).
+on the encode series (**as measured when it landed**, on the `linux-gcc`
+runner: AC-3 encode 225,028 → 26,778 bytes/frame and 286 → 86 allocations;
+E-AC-3 214,808 → 28,792 and 157 → 67; Atmos 218,960 → 32,656 and
+196 → 106) and 54-61% on the decode series - and, outside these tables, took
+every output-producing CLI command memory-flat at any programme length (a
+3-minute 5.1 encode peaked at 437.8 MiB before the programme and 9.3 MiB
+after; decode 217 → 28.5 MiB, `spdif` 225.7 → 18.0 MiB).
+
+Two of those three encode figures no longer describe the code. At `main` =
+`e982712b` the same leg records E-AC-3 encode at 53,845.7 bytes/frame and
+199.11 allocations, and Atmos at 53,606.4 and 219.10 - both of them above the
+*pre*-programme baselines quoted above, 157 and 196 allocations. The decode
+series is unaffected, and so is AC-3 encode, which still reads 26,778.5 and
+86.04. That last row is why the other two can be read at all: a workload that
+still matches its landed figure to the decimal, on the same leg, rules out
+platform, stdlib and measurement-context drift. Without that control the two
+divergences would be arguable; with it, what moved is the code the other two
+share.
+
+It is one step rather than a drift. Both E-AC-3-family workloads sit flat at
+the old values through every record up to `3aedec41` and flat at the new ones
+from `83546721` (2026-08-25) onward. Bisecting `ac3membench` brackets the
+step to PR #352's per-channel exponent-run planner: the commit before it
+(`f54ea929`) measures 95.0 allocations/frame for `eac3_51_encode`, and
+`fb58aa62` measures 248.2 (a windows-msvc build - the leg differs from this
+table's, the step does not). AC-3 encode is untouched because it plans its
+exponent runs through its own encoder.
+
+The extra churn is a defect rather than the planner's intended cost, and is
+tracked as [#544](https://github.com/iainchesworthlabs/ac3forge/issues/544).
+`encode_run` in `src/forge/src/encoder/eac3_frame.cpp` assigns the by-value
+return of `ac3::encode_exponents`, which owns a `std::vector`, so each run
+reallocates that buffer on every frame; the planner multiplied the number of
+runs from one per channel to one per run per channel. The bench's own columns
+carry the signature. Before the step each encode workload's steady-state
+count sat below its first frame's (E-AC-3 134 first, 67.00 steady), which is
+warm-up followed by reuse. After it the steady-state count exceeds the first
+frame's (159 first, 199.11 steady), which is a path allocating fresh storage
+every frame. `run.decoded` and `run.bap` in the same function reuse their
+capacity correctly, as does `ChannelPlan::runs`.
 
 The fast-IMDCT rollout that followed
 ([Validation → Performance and reference modes](verification.md#performance-and-reference-modes))

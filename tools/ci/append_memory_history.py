@@ -10,7 +10,7 @@ This is the memory half of the trend machinery (docs/performance-trend.md's
 counts every heap allocation the codec makes per frame, per workload, and
 this script keeps the series. Mirrors append_performance_history.py by
 design (same JSONL-on-quality-history mechanics, same trailing window, same
-percentage tiers) with two memory-specific differences:
+percentage tiers) with three memory-specific differences:
 
 - TWO churn metrics per record are checked against their own trailing
   means, not one: allocs_per_frame (allocator round-trips) and
@@ -25,6 +25,17 @@ percentage tiers) with two memory-specific differences:
   still held after 199 steady-state frames is a leak signal, and a leak is
   a leak regardless of what last week's runs did. Warn above 4 KiB, hard
   above 1 MiB.
+
+- The trailing window SURVIVES A BRANCH-TOPOLOGY CHANGE, and a series
+  with no window at all says so out loud. Both are baseline_for(): a
+  branch file holding fewer than MIN_TRAILING_RECORDS records widens to
+  its siblings rather than reporting no baseline, and a leg/config with no
+  record anywhere warns instead of returning quietly. The series this file
+  keeps is per-branch, so every branch rename, release branch and
+  gitflow-to-trunk switch (acc4f6e0) starts one from empty - and a
+  trend-relative gate that resets to "no opinion" exactly there is blind on
+  the commit range where the switch happened. That range is not a safe one
+  to be blind on: it is where the merge that squares two branches lands.
 
 stdlib-only, commit/commit-date taken as arguments - same reasoning as
 every other append script here (see append_performance_history.py).
@@ -49,6 +60,11 @@ BYTES_ABSOLUTE_FLOOR = 4096.0
 # a mebibyte is a leak worth failing over.
 LIVE_GROWTH_WARN_BYTES = 4096
 LIVE_GROWTH_HARD_BYTES = 1024 * 1024
+# Below this many prior records, THIS branch's file is too thin to be a
+# trailing window on its own and the baseline widens to sibling branch
+# files - see baseline_for(). Three is the smallest count where a mean is
+# describing a series rather than a point.
+MIN_TRAILING_RECORDS = 3
 
 CHURN_METRICS = (
     ("allocs_per_frame", "allocs/frame", ALLOCS_ABSOLUTE_FLOOR),
@@ -83,20 +99,62 @@ def load_leg_results(results_dir: Path):
                 }
 
 
-def trailing_mean(history_path: Path, leg: str, config: str, metric: str, window: int):
+def series_samples(history_path: Path, leg: str, config: str, metric: str):
+    """One history file's values for a single leg/config/metric, in file
+    order (which is append order, so oldest first). Each sample carries its
+    commit date so samples from different files can be merged in time
+    order."""
     if not history_path.exists():
-        return None
-    matches = []
+        return []
+    samples = []
     for line in history_path.read_text().splitlines():
         if not line.strip():
             continue
         rec = json.loads(line)
         if rec.get("leg") == leg and rec.get("config") == config and metric in rec:
-            matches.append(rec[metric])
-    if not matches:
-        return None
-    tail = matches[-window:]
-    return sum(tail) / len(tail)
+            samples.append((rec.get("commit_date", ""), rec[metric]))
+    return samples
+
+
+def baseline_for(history_dir: Path, branch: str, leg: str, config: str,
+                 metric: str, window: int):
+    """Trailing mean for one series, as (mean, sample_count, widened) - or
+    (None, 0, False) when no history for it exists anywhere.
+
+    This branch's own file is preferred. When that file holds fewer than
+    MIN_TRAILING_RECORDS samples, the baseline WIDENS to the newest samples
+    for the same leg/config in sibling memory-*.jsonl files instead of
+    reporting no baseline.
+
+    That widening is the point of this function. A series restarts from
+    empty whenever branch topology changes - a rename, a release branch, or
+    a gitflow-to-trunk switch like acc4f6e0 - and a trend-relative gate
+    whose baseline resets with it has no opinion on precisely the commit
+    range where the switch happened. The allocation counts being compared
+    are near-deterministic for a fixed workload (that is why this series
+    gates at all), so the last value from the branch that was being merged
+    FROM is a sound baseline for the branch being merged INTO; the two are
+    measuring the same code on the same leg.
+    """
+    own = series_samples(history_dir / f"memory-{branch}.jsonl", leg, config, metric)
+    if len(own) >= MIN_TRAILING_RECORDS:
+        tail = [value for _, value in own[-window:]]
+        return sum(tail) / len(tail), len(tail), False
+
+    merged = list(own)
+    for sibling in sorted(history_dir.glob("memory-*.jsonl")):
+        if sibling.name == f"memory-{branch}.jsonl":
+            continue
+        merged.extend(series_samples(sibling, leg, config, metric))
+    if not merged:
+        return None, 0, False
+
+    # Across files, append order says nothing about time - sort by the
+    # commit date each record carries. Ties keep their relative order,
+    # which for same-second records is the order they were appended.
+    merged.sort(key=lambda sample: sample[0])
+    tail = [value for _, value in merged[-window:]]
+    return sum(tail) / len(tail), len(tail), len(own) < MIN_TRAILING_RECORDS
 
 
 def emit_github_output(name: str, value: str) -> None:
@@ -108,16 +166,33 @@ def emit_github_output(name: str, value: str) -> None:
         f.write(f"{name}={value}\n")
 
 
-def check_churn(rec, history_path: Path):
+def check_churn(rec, history_dir: Path, branch: str):
     """Yield (hard, message) for each churn metric that regressed against
     its own trailing mean - or, for a near-zero baseline, its absolute
-    floor."""
+    floor.
+
+    A metric with no baseline anywhere yields a warning rather than
+    nothing. "This workload is not being gated" and "this workload passed"
+    are different outcomes, and only one of them used to be visible."""
     for metric, label, floor in CHURN_METRICS:
         value = rec[metric]
-        baseline = trailing_mean(history_path, rec["leg"], rec["config"], metric,
-                                 REGRESSION_TRAILING_WINDOW)
+        baseline, samples, widened = baseline_for(
+            history_dir, branch, rec["leg"], rec["config"], metric,
+            REGRESSION_TRAILING_WINDOW)
         if baseline is None:
+            yield (False,
+                   f"{rec['leg']}/{rec['config']}: {label} recorded at {value:.1f} with "
+                   "no prior record for this leg/config on any branch - the series "
+                   "starts here and NOTHING gated this value. Expected for a workload "
+                   "being added; a surprise anywhere else.")
             continue
+        if widened:
+            yield (False,
+                   f"{rec['leg']}/{rec['config']}: memory-{branch}.jsonl holds fewer "
+                   f"than {MIN_TRAILING_RECORDS} records for {label}, so the baseline "
+                   f"below is drawn from sibling branch files ({samples} sample(s)). "
+                   "A series restarting from empty is what a branch-topology change "
+                   "looks like.")
         if baseline <= floor:
             if value > floor and value > baseline:
                 yield (False,
@@ -177,7 +252,7 @@ def main() -> int:
     lines = []
     hard_regression = False
     for rec in records:
-        findings = list(check_churn(rec, history_path))
+        findings = list(check_churn(rec, args.history_dir, args.branch))
         leak = check_leak(rec)
         if leak is not None:
             findings.append(leak)
