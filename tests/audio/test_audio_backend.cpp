@@ -191,10 +191,12 @@ TEST_CASE("process loopback refusals agree with the reported capability",
         CHECK(result.error() == CaptureError::kProcessNotFound);
     } else {
         // posix/android have no capture backend at all; alsa and pipewire
-        // have one without a per-process tap. macOS is in neither group any
-        // more - Core Audio's process tap arrived in 14.2, so a runner newer
-        // than that takes the branch above and only a Mac older than it lands
-        // here. Either error says which of the two is missing.
+        // have one without a per-process tap. macOS lands here too, and for a
+        // third reason: Core Audio's process tap exists on every CI runner's
+        // OS, but the path is not entered by default since the first machine
+        // to run it hung inside AudioDeviceCreateIOProcID
+        // (src/audio/src/backend/macos/coreaudio_names.hpp). Any of the three
+        // errors says which of them is missing.
         CHECK((result.error() == CaptureError::kNoBackend ||
                result.error() == CaptureError::kProcessLoopbackUnavailable));
     }

@@ -304,7 +304,58 @@ ac4::RawFrame parse_wrapped_object_coded_group(
     return std::move(*result);
 }
 
+// substream_index_table() for one substream whose size is NOT transmitted:
+// n_substreams=1, b_size_present=0, and no substream_size entry at all. 3
+// bits. Table 14 reads b_size_present only when n_substreams == 1, so this
+// is the one shape that leaves Toc::substream_sizes empty while
+// Toc::n_substreams is 1 - which parse_raw_frame() used to index straight
+// into, dereferencing element 0 of an empty vector.
+void write_ac4_single_sizeless_substream_index_table(BitWriter& w) {
+    w.put(1, 2);  // n_substreams = 1
+    w.put(0, 1);  // b_size_present = 0
+}
+
 }  // namespace
+
+// Regression: found by fuzz/fuzz_ac4_parse.cpp on its first run over the
+// seed corpus, as a SEGV on address 0 inside parse_raw_frame(). Every
+// substream_index_table() this suite built before it set b_size_present = 1,
+// so the branch that omits the size table had never been parsed.
+TEST_CASE("parse_raw_frame: a substream whose size is not transmitted runs to the end of the frame",
+          "[ac4]") {
+    BitWriter w;
+    write_ac4_object_coded_preamble(w);
+    write_ac4_object_coded_group_preamble(w);
+    w.put(0, 1);  // b_oamd_substream = 0
+    w.put(1, 1);  // b_ajoc = 1
+    w.put(1, 1);  // b_lfe
+    w.put(1, 1);  // b_static_dmx
+    w.put(0, 1);  // b_oamd_common_data_present
+    w.put(0, 4);  // n_fullband_upmix_signals_minus1 = 0 -> 1 signal
+    w.put(1, 1);  // bed_dyn_obj_assignment(1): b_dyn_objects_only = 1
+    w.put(0, 1);  // b_bitrate_info
+    w.put(0, 1);  // b_audio_ndot
+    w.put(1, 2);  // substream_index = 1
+    w.put(0, 1);  // b_content_type = 0
+    write_ac4_single_sizeless_substream_index_table(w);
+    // Real payload after the TOC, which is the whole point: with no
+    // transmitted size, what the substream covers is decided by where the
+    // frame ends, so a frame that ends at the TOC would not test anything.
+    auto data = w.bytes();
+    const std::size_t toc_bytes = data.size();
+    data.insert(data.end(), 8, std::byte{0});
+
+    const auto result = ac4::parse_raw_frame(data);
+    REQUIRE(result.has_value());
+    REQUIRE(result->toc.n_substreams == 1);
+    CHECK(result->toc.substream_sizes.empty());
+    REQUIRE(result->substreams.size() == 1);
+    // The one substream covers everything from payload_base to the end of
+    // the frame, and never past it.
+    CHECK(result->substreams[0].offset == toc_bytes);
+    CHECK(result->substreams[0].size == data.size() - toc_bytes);
+    CHECK(result->substreams[0].offset + result->substreams[0].size == data.size());
+}
 
 TEST_CASE("parse_substream_info_ajoc: static_dmx, minimal upmix", "[ac4]") {
     // b_lfe=1, b_static_dmx=1 (skips the dmx bed_dyn_obj_assignment() call

@@ -343,7 +343,7 @@ Three of PF7's requirements are not met, and are recorded here rather than half-
 
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
 (`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
-the probe uses) and it leaks nothing, but the steady state is **45 allocations per frame for
+the probe uses) and it leaks nothing, but the steady state is **46 allocations per frame for
 AC-3 and 87 for E-AC-3**, from the per-block geometry vectors inside the decoders and the
 `std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`. Reaching zero means
 those becoming fixed-capacity storage, which changes the public types — a design change, not a

@@ -103,7 +103,24 @@ def read_map(path: pathlib.Path) -> dict[str, dict[str, int]]:
         per_object.setdefault(name, {"text": 0, "bss": 0})[kind] += size
 
     pending: str | None = None
+    discarded = False
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        # GNU ld lists every --gc-sections casualty under this heading, ahead of
+        # the map proper. Those sections are not in the linked image, and
+        # counting them credits an object with code it did not contribute -
+        # here that inflated the .text column by ~36% (63 KiB), enough that it
+        # no longer reconciled with arm-none-eabi-size's own total. The block
+        # runs to the next column-0 heading ("Memory Configuration"); every
+        # entry inside it is indented, so an unindented line ends it.
+        if line.startswith("Discarded input sections"):
+            discarded = True
+            pending = None
+            continue
+        if discarded:
+            if line[:1].strip():
+                discarded = False
+            else:
+                continue
         full = _SECTION_FULL.match(line)
         if full:
             pending = None

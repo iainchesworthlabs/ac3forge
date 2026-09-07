@@ -21,9 +21,9 @@
 
     **One section of this page rests on less than that.**
     [Per-application capture](#per-application-capture-the-core-audio-process-tap) describes code
-    added on this branch. Both legs compile it and one test exercises its version gate; the tap
-    itself has never been created, on a runner or anywhere else. That section says what each part
-    rests on.
+    added on this branch. Both legs compile it; a tap has been created exactly once, on a runner,
+    where the call after it never returned. That section says what each part rests on and what
+    that one run settled.
 
 ## Toolchain
 
@@ -171,10 +171,12 @@ has not been checked against a running one. If it turns out to be wrong — if a
 nothing at all while its process is quiet — this backend needs the wall-clock fill the other two
 have, and has not written it.
 
-`process_loopback_available()` is the OS version gate, and `audio_backend().process_loopback`
-reports the same answer — as an empty reason where it is yes, and where it is no as a sentence
-naming the version a person needs. The floor is pinned in
-one place — `ac3::coreaudio::kSystemAudioTapMinimumOs` in
+`process_loopback_available()` is **two** gates, and `audio_backend().process_loopback` reports
+the same answer with the matching reason — both go through
+`ac3::coreaudio::system_audio_tap_refusal()`, so the two reports of one fact cannot drift apart.
+
+The first is the OS version. The floor is pinned in one place —
+`ac3::coreaudio::kSystemAudioTapMinimumOs` in
 `src/audio/src/backend/macos/coreaudio_names.hpp` — and it is **14.2** rather than the 14.4 some
 third-party write-ups require. Apple's SDK annotates the API `API_AVAILABLE(macos(14.2))`, which
 is what `@available` and the weak-linked symbols are keyed to, and taking 14.4 would mean
@@ -182,39 +184,51 @@ refusing a machine whose own operating system declares the API present, on the s
 report nobody on this project can check. That constant's comment records the other figure and why
 it was not taken.
 
-**Two things this cannot settle, and neither is a code question.** Creating a tap raises a TCC
-consent prompt under its own permission category (`SystemAudioCaptureRequests`, driven by an
-`NSAudioCaptureUsageDescription` Info.plist key, separate from microphone access). That prompt is
-keyed to the requesting binary's code-signing identity and, per every report surveyed, never
-fires at all for an unsigned binary — and `ac3cli`, `ac3gui` and Crucible ship unsigned today
-(ROADMAP.md's DR6, blocked on certificates). A denial and a prompt that never appeared arrive
-identically, as one refusal from `AudioHardwareCreateProcessTap`, reported as `kComFailure`. And
-DR9 still records what CI cannot stand in for: no Mac has opened a device, a stream or a tap
-through this backend. What the runners do execute of it is named at the end of this section and
-under [Device notifications](#device-notifications).
+The second is not a version test, and it is off by default. **On 2026-09-06 the tap path ran for
+the first time anywhere and did not return.** On the Apple Silicon CI leg (macOS 26.6.2)
+`AudioDeviceCreateIOProcID` on the tap's private aggregate device parked in `mach_msg2_trap`
+inside `HALC_ProxyIOContext::_TellServerAboutStreamUsage`, waiting on a reply from `coreaudiod`
+that had not come 300 seconds later. `sample` caught it in three separate processes. While that
+request was outstanding the whole process's HAL client was unusable, so an ordinary
+`AudioObjectGetPropertyData` on another thread blocked behind it and the application froze rather
+than reporting a failed tap. So `Capture::start_process_loopback()` now refuses before it reaches
+that call, and the capability says so.
+`AC3FORGE_MACOS_PROCESS_TAP` in the environment turns the path back on for whoever has a Mac to
+settle it on; it is read once, at first use.
 
-A third thing here *is* a code question, and it is not written: **no bundle in this tree declares
-`NSAudioCaptureUsageDescription`**. `apps/gui/Info.plist.in` is the only custom template and
-carries the `.ac3`/`.ec3` document types alone; `apps/crucible/CMakeLists.txt`'s `APPLE` arm sets
-`MACOSX_BUNDLE` and the `.icns` and takes CMake's default template, which has no such key. Adding
-it needs no Mac. Checking that it does anything does, since the prompt it drives is behind the
-signing identity nobody here has either.
+The macOS 15.7.9 Intel leg ran the same code without hanging on the same day, which is why this
+is not written as "macOS cannot do this". Two variables separate those legs — the OS version and
+the architecture — and nothing here can say which one matters.
 
-**So the most that is claimed is that it compiles, and that its version gate answers.** The tap,
-the gate and the aggregate device are new on this branch. The first macOS CI attempt at them
-never reached a compiler: it stopped during configure, at an `install(TARGETS ac3crucible)` rule
-that named no `BUNDLE DESTINATION` for a target with `MACOSX_BUNDLE` on. With that fixed, both
-legs compiled `process_tap.mm` and linked it into `ac3audio`, and their `ctest` runs covered
-exactly two things here — `tests/backend/macos/test_macos_support.cpp` checks that the runner's
-own OS build is above the 14.2 floor, which is the one place the `__builtin_available` lowering
-is actually executed rather than merely compiled; and the backend contract case in
-`tests/audio/test_audio_backend.cpp` checks that the capability report and
-`process_loopback_available()` agree and that process id 0 is refused as `kProcessNotFound`.
-Neither touches a tap, a consent prompt or a device.
+**What that run settled, and it is not what this page expected.** Two of the walls named here
+turned out not to be walls:
 
-Nothing past that has been observed. `AudioHardwareCreateProcessTap` has never been called: not
-on a runner, which has no audio device and no way to grant the consent prompt, and not on anyone's
-desk, because nobody here has a Mac.
+- **The consent prompt was not it.** Crucible is unsigned and no bundle in this tree declares
+  `NSAudioCaptureUsageDescription`, and `AudioHardwareCreateProcessTap` returned a tap anyway.
+  `AudioHardwareCreateAggregateDevice` returned the private aggregate, and
+  `kAudioTapPropertyFormat` read back. Everything up to the IOProc registration worked.
+- **The runner does have a default output device**, and a window session. `system_profiler`
+  names it `Apple Virtual Sound Device`, two channels at 48 kHz, default output and default
+  system output; `launchctl managername` answers `Aqua`. That virtual device is what the tap's
+  aggregate names as its main sub-device and is clocked by, which makes it the first thing to
+  suspect and the first thing to retry on real hardware - though nothing here establishes it as
+  the cause.
+
+The missing `NSAudioCaptureUsageDescription` is still a real gap and still needs no Mac to add;
+what has changed is that it is no longer the first thing in the way. DR9 still records what CI
+cannot stand in for: no Mac has taken a single sample through this backend, and nobody here has
+one.
+
+**So what is claimed is that it compiles, that its version gate answers, and that everything up
+to `AudioDeviceCreateIOProcID` succeeds on one hosted runner while that call does not return.**
+The first macOS CI attempt at any of it never reached a compiler: it stopped during configure, at
+an `install(TARGETS ac3crucible)` rule that named no `BUNDLE DESTINATION` for a target with
+`MACOSX_BUNDLE` on. With that fixed, both legs compiled `process_tap.mm` and linked it into
+`ac3audio`. Their `ctest` runs cover the version gate
+(`tests/backend/macos/test_macos_support.cpp`, the one place the `__builtin_available` lowering
+is executed rather than merely compiled), the agreement between the capability report and
+`process_loopback_available()` and their shared refusal sentence, and — since the eleven Crucible
+Qt Quick suites run there — the engine driving the real seams and being told no by the tap.
 
 ## Device notifications
 
@@ -348,17 +362,28 @@ comment and [ROADMAP.md](../roadmap.md)'s VX11 entry for the fuller record.
 
 **Crucible on macOS, as of 2026-09-06.** Both legs build it — every `.mm`, every file under
 `apps/crucible/engine/platform/macos/`, and `bin/ac3crucible.app/Contents/MacOS/ac3crucible` —
-and both run its Qt Quick tests, which drive fakes rather than any macOS platform code. The Intel
-leg passed all of them. The Apple Silicon leg timed out at 300 s on three —
-`ac3crucible_qml_tests_firstrun`, `_room` and `_shell`, which the Intel leg passed in 8.3 s,
-12.8 s and 6.2 s — the same three suites, the same binary, one architecture apart. There is
-precedent for that shape on this runner: `macos-llvm`'s first-ever GUI run deadlocked in the
-threaded Qt Quick render loop, which is why `apps/gui/tests/CMakeLists.txt` sets
-`QSG_RENDER_LOOP=basic` on `APPLE` (see [GUI on macOS](#gui-on-macos)). What is being tried for
-Crucible's suites is in `apps/crucible/ui/tests/CMakeLists.txt`'s own comment; until an arm64 leg
-runs green, this is an open failure and a red leg says nothing about the platform half beneath
-it. The application itself has never been launched on either leg.
+and both run all eleven of its Qt Quick suites. Eight of those drive the **real** macOS platform
+seams rather than fakes: `Main.qml` starts the engine whenever the window is built, so the
+session monitor, the foreground, the default device, the virtual device and the output stage
+all execute on the runner.
 
+That is how the one hang this platform half has produced was found. The Apple Silicon leg
+(`macos-latest`, macOS 26.6.2) timed out at 300 s on `ac3crucible_qml_tests_firstrun`, `_room`
+and `_shell`, which the Intel leg (`macos-15-intel`, macOS 15.7.9) passed. A temporary CI step
+ran each of the three alone and took a `sample` of the stuck process: the engine's frame thread
+was inside `AudioDeviceCreateIOProcID` on a process tap's aggregate device, and the window's own
+thread was blocked behind it in an ordinary device enumeration. See
+[Per-application capture](#per-application-capture-the-core-audio-process-tap) for the whole of
+it and for the gate that now refuses that path. The three suites run green on both legs since.
+
+Worth separating from that, because the two hangs on this runner have different causes and the
+same symptom. `macos-llvm`'s first-ever GUI run deadlocked in the threaded Qt Quick render loop,
+which is why `apps/gui/tests/CMakeLists.txt` sets `QSG_RENDER_LOOP=basic` on `APPLE` (see
+[GUI on macOS](#gui-on-macos)), and Crucible's suites set `QT_QUICK_BACKEND=software` beside
+`offscreen` for the same family of reason. Those are rendering. This one was Core Audio, and no
+amount of render-loop configuration would have moved it.
+
+The application itself has never been launched on either leg.
 ---
 
 If you get a Mac, that's still useful information for this project — running these instructions

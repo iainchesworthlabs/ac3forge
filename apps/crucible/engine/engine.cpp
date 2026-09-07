@@ -90,12 +90,12 @@ struct Engine::Impl {
     // every platform.
     std::optional<std::uint32_t> latest_fullscreen_pid;
     bool sessions_fresh = false;
-    // The probe's thread, the same shape as the monitor's: it runs the slow
-    // enumeration and leaves the facts here; the frame loop applies them at
-    // its next boundary and never waits. `probing` keeps one enumeration in
-    // flight at a time, since a second request while one runs would only
-    // repeat it.
-    std::jthread probe_thread;
+    // The probe's state, the same shape as the monitor's: a slow enumeration
+    // runs off the frame thread and leaves the facts here; the frame loop
+    // applies them at its next boundary and never waits. `probing` keeps one
+    // enumeration in flight at a time, since a second request while one runs
+    // would only repeat it. The thread itself is declared below `watcher`,
+    // for the reason given there.
     std::mutex probe_mutex;
     std::optional<std::vector<EndpointFacts>> probe_result;
     std::atomic_bool probing{false};
@@ -110,6 +110,15 @@ struct Engine::Impl {
     std::unique_ptr<OutputStage> output;
     std::unique_ptr<ac3::oba::AtmosEncoder> encoder;
     ac3::audio::DeviceWatcher watcher;
+    // The probe's thread, declared after everything its body touches:
+    // `output`, whose `enumerate()` it calls, and the probe state above,
+    // which it writes the facts into. Members are destroyed in reverse
+    // declaration order, so `~jthread` joins here before any of them is
+    // destroyed. The guarantee is the join at the end of `loop()`, which
+    // finishes the probe on the frame thread while the engine is still
+    // whole; this ordering is the backstop, and decides only what happens
+    // if that join is ever lost.
+    std::jthread probe_thread;
     std::unordered_map<AppId, ac3::oba::Position> wanted_positions;
     std::unordered_map<AppId, bool> split_choice;  // per-app override of split_by_default
     std::unordered_map<AppId, double> sizes;       // per-app object extent, default a point
@@ -740,6 +749,22 @@ struct Engine::Impl {
             }
         }
 
+        // The probe, before anything it reaches into is torn down. This is
+        // the guarantee that `output` outlives the enumeration running
+        // against it: `Engine::stop()` joins the frame thread and nothing
+        // else, and `CrucibleController::stop()` destroys the engine as soon
+        // as that returns, so a probe still in flight at this point would
+        // have `output` pulled out from under it.
+        //
+        // A plain join, because the probe's body never reads its stop token
+        // and `request_stop()` would not shorten it. So quitting takes as
+        // long as one `enumerate()` does, which is the second reason that
+        // call should not be unbounded: on macOS it is a round trip to
+        // coreaudiod, and Phase 5 has already met one Core Audio call on an
+        // engine thread that did not come back (docs/crucible/promotion.md).
+        if (probe_thread.joinable()) {
+            probe_thread.join();
+        }
         watcher.stop();
         output->stop();
         taps.sync({});

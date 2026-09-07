@@ -15,6 +15,13 @@ CMakeUserPresets.json
 .cache/
 *.user
 
+# Cygwin/MSYS2 crash dumps. A crashed msys binary - git-bash's own grep, sed
+# or find - writes <name>.exe.stackdump into whatever directory it was run
+# from, so one appears wherever that tool was working at the time:
+# apps/gui/translations/grep.exe.stackdump reached main that way in cfcffcb8.
+# The dump records one local crash and holds nothing this repository needs.
+*.stackdump
+
 # apps/wasm/tests' Playwright harness (roadmap VX18a). package-lock.json IS
 # committed (npm ci's own integrity-hash pinning, this project's equivalent
 # of requirements/*.txt's --require-hashes); only the installed tree and

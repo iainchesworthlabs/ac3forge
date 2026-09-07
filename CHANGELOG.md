@@ -14,6 +14,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- Four places now use the idiom SonarCloud's first scan asked for, because it is better code
+  and not only a quieter report. `*opt = v` is defined only while an optional is engaged, so
+  it depends silently on a guard staying put: `BitReservoir::commit`'s clamp and
+  `Eac3Decoder`'s pending-slot handover assign the optional instead (`cpp:S6427`). And
+  `WavStreamWriter::close()`, `WavPcm16StreamWriter::close()` and `WavStreamReader::close()`
+  are `noexcept`, which is what their destructors have always required of them (`cpp:S1048`);
+  `noexcept` is not mangled under either the Itanium or the MSVC ABI, so nothing about the
+  exported interface changes.
 - **The Desktop Atmos Demo is now AC3Forge Crucible** (roadmap UX12; `apps/crucible/`, the
   [Crucible guide](docs/crucible/index.md)): a desktop application rather than a Windows
   demo, with the same idea - every application that is playing sound becomes an Atmos
@@ -58,6 +66,25 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   which of the two pids that is), refusing the exclude-process-tree mode ALSA and PipeWire
   cannot express, and `DeviceWatcher` reports default-sink changes from the `default`
   metadata object.
+
+- The nightly SonarCloud scan now builds the examples, so they are analysed. The CFamily
+  analyser only sees a file the compile database names, and `config-linux-gcc-coverage` turns
+  examples off - for a coverage reason, not an analysis one - so the ~15 translation units
+  under `examples/` were listed in `sonar.sources` and then silently skipped. They are
+  documentation people copy from, which is an argument for analysing them. The coverage figure
+  is unaffected: `sonar.coverage.exclusions` already lists `examples/**`, so they stay
+  unmeasured rather than reading as 0%.
+- **`process_loopback` is reported unavailable on macOS**, where the version gate alone used to
+  report it available on macOS 14.2 and up. The Core Audio process tap is written and stays in
+  the tree; what changed is the claim made for it. The first machine ever to run the path - the
+  Apple Silicon CI leg, macOS 26.6.2 - never returned from `AudioDeviceCreateIOProcID` on the
+  tap's aggregate device, and while that request was outstanding the whole process's Core Audio
+  client was unusable, so an unrelated device enumeration on another thread blocked behind it
+  and the application froze rather than reporting a failed tap. `Capture::start_process_loopback()`
+  now refuses before that call, `audio_backend().process_loopback` carries the reason, and
+  `AC3FORGE_MACOS_PROCESS_TAP` in the environment turns the path back on for anyone with a Mac
+  to settle it on. Crucible on macOS therefore lists the applications using sound and taps none
+  of them, and says so. No other platform changes.
 - Code analysis runs nightly against `main` instead of on every pull request, push and
   merge-queue entry: CodeQL (`codeql.yml`, 02:17 UTC), MSVC Code Analysis
   (`msvc-analysis.yml`, 02:23 UTC) and clang-tidy, which moved out of `ci.yml`'s
@@ -129,6 +156,26 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   how sharply these gates can see.
 
 ### Added
+
+- **CI now asserts that Linux and macOS packages carry the `ac3cli` man page and the four
+  shell completions** (`tools/ci/check_cli_docs_package.py`, run from `_build.yml`), so the
+  packaging bug in Fixed below cannot come back unseen. Nothing checked these five files
+  before: the only test asserting they exist is the Homebrew formula's `test do` block, and
+  a Homebrew build passes no toolchain file, so it kept passing throughout. The gate reads
+  the runtime archive after `cpack` - on the macOS legs on every push, on the Linux legs on
+  a release run - and also the lipo-merged tree the universal `.dmg` is built from, which
+  `cpack` never packages and which can drop the files at its own two steps. It reads the
+  archive rather than the `.deb`/`.rpm`, which come from the same install tree in the same
+  `cpack` run; the RPM generator gzips the man page to `ac3cli.1.gz`, so checking those too
+  would make the expected names generator-specific for no further failure mode caught.
+
+- Fuzz harnesses for the two parsers of third-party files that had none: `fuzz_iab_parse`
+  (`ac3iab::parse_iabitstream`, `parse_mxf_iab` and `parse_iaframe` - §7's Preamble+IAFrame
+  run, the SMPTE ST 2067-201 KLV wrapper around it, and §9.1's single extracted frame) and
+  `fuzz_ac4_parse` (`ac4::scan` and `ac4::parse_raw_frame`). Both exist only to read files
+  this project did not write, and both size their loops from numbers the file chose. IAB is
+  clean over 1.5 million executions, `fuzz_ac4_parse` over six million once the findings below
+  were fixed, and both are in `run.sh`'s default target list.
 
 - **Crucible can be operated without a mouse, and says what it is doing to a screen reader**
   ([Keyboard and screen readers](docs/crucible/accessibility.md)). Every button, checkbox, bed
@@ -390,6 +437,26 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   could not happen. It now names every package the documentation promises and fails on whatever
   is absent, listing what did arrive.
 
+- **The AC-4 parser dereferenced a null pointer on a legal bitstream, and could be made to ask
+  for gigabytes.** §4.2.3.11 transmits `substream_size[]` only when `b_size_present`, a flag
+  Table 14 reads only when `n_substreams == 1` - so a stream that clears it left
+  `Toc::substream_sizes` empty while `Toc::n_substreams` was 1, and `parse_raw_frame()` indexed
+  element 0 of an empty vector. `tests/ac4` had only ever built the `b_size_present = 1` shape,
+  so the whole branch was untested. A substream whose size is not transmitted now runs from
+  `payload_base` to the end of the frame, which is unambiguous because `scan()` hands
+  `parse_raw_frame()` exactly one `frame_size`-bounded frame. Separately, `parse_toc()` no
+  longer calls `reserve()` on counts that arrive through `variable_bits()` (one fuzzed frame
+  asked for a 137 GB `vector<SubstreamGroupInfo>`), and the three count-driven loops that grew
+  a vector without checking whether the reader had run out - `substream_sizes`, a
+  presentation's `group_refs`, and the channel-coded `n_lf_substreams` loop - now stop the way
+  the substream-group loop beside them always did. Two more loops joined them: the
+  `b_add_emdf_substreams` runs in both presentation parsers, and the `n_bed_signals` loop in
+  `parse_bed_dyn_obj_assignment()`. That last one was the expensive one - `n_signals` reaches
+  2^32 through `variable_bits()` when `n_fullband_upmix_signals` is 16, and once the data was
+  gone its `r.bits(4)` returned a phantom 0 rather than the 3 that skips the append, so it kept
+  growing the object list: **1.8 GB and 6.7 seconds on a 200-byte frame**, now 33 MB and 0.03
+  seconds. All found by the new `fuzz/fuzz_ac4_parse.cpp`, the first two within seconds of its
+  first run; six million executions since are clean.
 - **Crucible listed every PulseAudio application on Linux as one entry, and could tap none of
   them** (`src/audio/src/backend/pipewire/pipewire_support.hpp`). PipeWire records the process
   behind a client from the socket credentials, and the session list and the per-process tap both
@@ -431,6 +498,15 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   (`Web:InputWithoutLabelCheck`). `docs/assets/wasm-decode-demo/` and
   `docs/assets/wasm-encode-demo/` are re-copied to match, which `docs.yml` compares byte for
   byte.
+
+- The four copies of the IAB `BitWriter::push_plex` test helper could shift by 64. `width`
+  doubles on every escape - 4, 8, 16, 32, **64** - and `std::uint64_t{1} << 64` is undefined,
+  so a value at or above `0xFFFFFFFE` walked straight into it. The reader these helpers exist
+  to feed has always had the bound: `BitReader::read_plex` (`src/ac3iab/src/bitreader.cpp`)
+  stops at `width >= 32` and returns `kBadEscape`, on §5.2's guarantee that a Plex symbol
+  never exceeds `0xFFFFFFFE`. The writers now stop at the same place, so they cannot invoke
+  undefined behaviour and cannot emit an escape chain this project's own reader would reject.
+  Unreachable for the values these fixtures encode, so no test expectation changes.
 - **The README's decode-accuracy badge disagreed with the page it links to.** Per-channel SNR
   floors taught `docs/performance-quality.md`'s Decode accuracy card to pick a check by its
   tightest per-channel *margin* and report the channel that owns it, but

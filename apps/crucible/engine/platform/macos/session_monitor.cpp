@@ -19,16 +19,21 @@
 // The macOS SessionMonitor: who is playing sound, from Core Audio's own list
 // of the processes using the HAL (docs/crucible/promotion.md, Phase 5).
 //
-// **THIS HAS COMPILED. IT HAS NEVER RUN.** Written 2026-09-06 against
-// Apple's documentation for the AudioProcess object class. Both macOS CI
-// legs have since compiled and linked it, which is the whole of what has
-// happened to it: the seam tests link the stub
-// (tests/crucible/platform_services_stub.cpp) and the Crucible QML tests
-// drive FakeSessionMonitor, so no test instantiates the class below and not
-// one line of it has executed anywhere. Nothing here is a report of observed
-// behaviour, and the sentences a person sees are written to be true of the
-// API rather than convenient (docs/crucible/promotion.md, "What cannot be
-// verified, and why").
+// **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 against
+// Apple's documentation for the AudioProcess object class, with no Mac to
+// try it on. It stopped being unexecuted the same day: the Crucible Qt Quick
+// suites that do NOT install the scripted machine start the engine on both
+// macOS legs, so refresh() below is called every 500 ms there and the HAL
+// really does hand back a process list - it listed at least one process on a
+// hosted runner, which is how the engine got as far as asking for a tap and
+// finding the hang recorded in docs/crucible/promotion.md's Phase 5.
+//
+// What that does NOT establish is anything about the LIST. Nobody has looked
+// at what it contained, whether the names are right, whether a paused player
+// lingers, or whether the bundle grouping below puts a browser helper where
+// this file says it will. The seam tests still link the stub
+// (tests/crucible/platform_services_stub.cpp). So the sentences a person sees
+// are still written to be true of the API rather than of anything observed.
 //
 // The mechanism. macOS 14.0 added an object class to the HAL for a process:
 // kAudioHardwarePropertyProcessObjectList on the system object hands back an
@@ -97,12 +102,24 @@
 //
 // What the taps do, which is what a reader of this file asks next. The tap is
 // written. src/audio/src/backend/macos/process_tap.mm builds the
-// CATapDescription and the aggregate device behind it, and
-// audio_backend.cpp reports process_loopback AVAILABLE unless the machine's
-// OS is older than the floor pinned in coreaudio_names.hpp - macOS 14.2,
-// where AudioHardwareCreateProcessTap arrived. So the gap is no longer a
-// missing translation unit. Four things stand between this list and a
-// capture, none of them in this file:
+// CATapDescription and the aggregate device behind it, and it works as far as
+// reading the tap's format. audio_backend.cpp nonetheless reports
+// process_loopback NOT available, for the reason in the first bullet below.
+// So the gap is no longer a
+// missing translation unit. Five things stand between this list and a
+// capture, none of them in this file, and the FIRST of them is the only one
+// anybody has actually met:
+//
+//   - The tap is refused before it is created. On 2026-09-06 this path ran
+//     for the first time anywhere, on the Apple Silicon CI leg, and
+//     AudioDeviceCreateIOProcID on the tap's aggregate device never
+//     returned - taking the rest of the process's Core Audio with it, so the
+//     window froze rather than reporting a failed tap. The backend now says
+//     process_loopback is unavailable and refuses before that call
+//     (src/audio/src/backend/macos/coreaudio_names.hpp). So the room lists
+//     applications here and taps none of them. The four below are what was
+//     EXPECTED to be in the way and have not been reached; each is still
+//     real, and each is still unchecked.
 //
 //   - The code-signing identity. Creating a tap raises a TCC consent prompt
 //     of its own (SystemAudioCaptureRequests), keyed to the requesting
@@ -110,7 +127,10 @@
 //     for an unsigned binary - which is what Crucible ships as today
 //     (ROADMAP.md DR6, blocked on certificates). A denial and a prompt that
 //     never appeared arrive identically, as one refusal from
-//     AudioHardwareCreateProcessTap.
+//     AudioHardwareCreateProcessTap. Worth flagging that the one run there has
+//     been did NOT hit this: an unsigned binary with no usage-description key
+//     got a tap back. Whether that generalises past a hosted runner is
+//     unknown, so the paragraph stays.
 //   - The Info.plist key. That prompt is driven by
 //     NSAudioCaptureUsageDescription, and this application's bundle declares
 //     none: apps/crucible/CMakeLists.txt's APPLE arm sets MACOSX_BUNDLE and
