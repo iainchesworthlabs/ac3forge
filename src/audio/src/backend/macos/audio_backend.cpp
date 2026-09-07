@@ -21,12 +21,16 @@
 // anything.
 //
 // process_loopback is the one answer that belongs to the MACHINE rather than
-// to the build, exactly as it is on Windows - there, a build number; here, an
-// OS version, because Core Audio's process tap arrived in macOS 14.2. So this
-// table is computed once at first use rather than being a constexpr the way
-// it used to be, and the refusal it carries is the same sentence
-// capture.cpp's describe() prints, read from the one place the floor is
-// written down (coreaudio_names.hpp).
+// to the build, exactly as it is on Windows - there, a build number; here two
+// things, an OS version (Core Audio's process tap arrived in macOS 14.2) and
+// whether the path is entered at all. Since 2026-09-06 it is not, by default:
+// the first machine ever to run it hung inside AudioDeviceCreateIOProcID and
+// took the rest of the process's HAL with it, so "available" is no longer
+// claimed on a version test alone. coreaudio_names.hpp carries the
+// observation, the opt-in that reverses it, and both refusal sentences. So
+// this table is computed once at first use rather than being a constexpr the
+// way it used to be, and the refusal it carries is the same sentence
+// capture.cpp's describe() prints, chosen by the same function.
 //
 // spatial is the only flat no. ISpatialAudioObjectRenderStream is a Windows
 // API and neither CoreAudio nor anything else on this platform offers a
@@ -65,7 +69,7 @@ const AudioBackend& audio_backend() {
         // of every platform.
         if (!process_loopback_available()) {
             backend.process_loopback = {.available = false,
-                                        .reason = coreaudio::kSystemAudioTapVersionRefusal};
+                                        .reason = coreaudio::system_audio_tap_refusal()};
         }
         return backend;
     }();
