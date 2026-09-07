@@ -20,7 +20,7 @@ and the repository now has four wrappers planned at once, written independently:
 | [Host plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) | the encoder, in a DAW | Study done. No open plugin format carries object metadata; beds only. The VST 3 SDK is MIT, per Steinberg's licensing FAQ. |
 | [Delivery-QC report](https://github.com/iainchesworthlabs/ac3forge/blob/feature/qc-report-plan/docs/forge/qc-report.md) | the analysis code | Plan. |
 | [The playback appliance](player-appliance.md) | the decoder, in a room | Plan, parked on the question this page answers. |
-| The ESP32-S3 port | the decoder, on a microcontroller | **AC-3 5.1 decodes bit-correctly on real silicon.** Work is local and unpushed. |
+| The ESP32-S3 port | the decoder, on a microcontroller | **AC-3 and E-AC-3 both decode on an ESP32-S3**, inside internal SRAM. [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). |
 
 Each was scoped as "what application is this". None of them asks what they have in common, and
 the player plan stalled precisely because it had no answer: it reached the whole-house question
@@ -184,21 +184,41 @@ protocol work changes it.
 
 ## What the ESP32-S3 result establishes
 
-Measured on 2026-09-07 in the bare-metal session, under `idf.py qemu`, work currently local:
+Measured in the bare-metal session under `idf.py qemu`, now open as
+[PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). **Updated 2026-09-07: both codecs now decode, and the figures below
+supersede the ones this section carried when it was written.**
 
-- **AC-3 5.1 decodes bit-correctly on an ESP32-S3.** Six frames, every channel's RMS exactly its
-  expected value, 46 steady allocations per frame — identical to the ARM `mps2-an385` leg.
-- **E-AC-3 does not fit yet.** It fails with `out_of_memory` on one 86 KB allocation
-  (`aht_coeffs_`) against 160,764 bytes of free internal DIRAM. The working set peaks at 270,886
-  bytes and is **83% arrays of `double`**; float32 halves the dominant items to roughly 165,000.
-  The memory fix and the speed fix are the same fix, because the S3's FPU is single-precision
-  only.
-- **Real-time throughput is unknown and cannot be answered here.** QEMU-Xtensa reports
-  `cpu_mhz=40` where its own boot log says 160. It needs a board.
-- **The port already paid for itself.** A 32 KB `thread_local` in `eac3_tools.cpp` made
-  `ac3::forge_minimal` unlinkable into *any* FreeRTOS application, because FreeRTOS carves the
-  thread-local area out of every task's stack and IDF's IPC task has 1 KB. Fixing it also shrank
-  the ARM image by 7.7%.
+- **AC-3 *and* E-AC-3 5.1 both decode correctly on an ESP32-S3.** Six frames each, all twelve
+  channel levels exact against `apps/baremetal/fixture.hpp`. It **fits internal SRAM with no
+  PSRAM**: 134,676 bytes used, 207,084 free, against a 171,558-byte peak heap.
+- **float32 closed it, and closed PF7's float32 gap with it.** A profile-selected
+  `decode_scalar_t`, validated at roughly 139 dB against the double decode on four real streams
+  and 2.7e-7 at the transform. The memory fix and the speed fix were the same fix, because the
+  S3's FPU is single-precision only. The full build is untouched.
+- **Real-time throughput is still unknown and cannot be answered there.** QEMU-Xtensa is not
+  cycle-accurate and reports a clock disagreeing with its own boot log. It needs an
+  `ESP32-S3-DevKitC-1-N16R8`, and everything for it is wired.
+- **The port paid for itself beyond this target.** A 32 KB `thread_local` in `eac3_tools.cpp`
+  made `ac3::forge_minimal` unlinkable into *any* FreeRTOS application — FreeRTOS carves each
+  task's thread-local area out of that task's own stack, and IDF's IPC task has 1 KB, so the app
+  died inside `esp_ipc_init()` before `app_main`, having never decoded a frame.
+
+| | `main` | PR #546 |
+|---|---|---|
+| `arm-none-eabi` image | 418,244 | **283,484** (−32%) |
+| `.bss` | 237,592 | **97,152** |
+| Peak heap | 270,886 | **171,558** (−37%) |
+
+There is now a `build-esp32s3` CI leg (in `espressif/idf:v6.1`, leg 6 of the Linux fan-out) and a
+`docs/platforms/esp32.md`.
+
+!!! warning "This section had a wrong number, from the class this session kept finding"
+    It previously said the `thread_local` fix "shrank the ARM image by 7.7%". That came from an
+    early figure the ESP32 session has since retracted as a **mixed-baseline** measurement — its
+    working tree carried extra `.text` and `.bss` that `main` does not, so the baseline it was
+    compared against was never `main`'s. The real reduction is −32%, and the rule that session
+    drew from it is worth repeating here: run `arm-none-eabi-size -A` on a clean tree before
+    publishing any per-section number.
 
 What that means for this page: **the sink role reaches a microcontroller.** Not as a projection
 — as a decode that ran and matched. That is what makes the network transport worth building,
@@ -220,7 +240,7 @@ were stale after AP3's pimpl sweep.
 | An out-of-tree GStreamer element or FFmpeg wrapper (**AP10**) | source | whatever the pipeline is muxing into | on the roadmap (`ROADMAP.md:2163`), unstarted, and its dependency AP5 is done |
 | A third-party AV receiver | sink | IEC 61937 | not ours; **cannot be synchronised** |
 | The playback appliance | sink | local files today; HTTP client is the new work | [plan](player-appliance.md), to be rewritten against this page |
-| An ESP32-S3 node | sink | HTTP client, then Sendspin | AC-3 proven; E-AC-3 needs float32 |
+| An ESP32-S3 node | sink | HTTP client, then Sendspin | **both codecs decode, fits internal SRAM** ([#546](https://github.com/iainchesworthlabs/ac3forge/pull/546)); real time unmeasured |
 | The WASM decode page | sink | a file today; could be an HLS client for free | shipped |
 | A DAW **metering** plugin | **neither** — an instrument, not a node | n/a | what [the study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md)'s Part 2 actually plans; no capability blocker |
 | The delivery-QC report | **neither** — an instrument, not a node | n/a | [plan](https://github.com/iainchesworthlabs/ac3forge/blob/feature/qc-report-plan/docs/forge/qc-report.md); belongs under Forge, and this page is why |
@@ -375,13 +395,15 @@ one of them to a relative path in the same change — there are two here, one in
 and one in the QC plan. `tools/checks/check_doc_paths.py` will not catch it: an absolute URL is
 not a path literal.
 
-**The ESP32-S3 work is local and unpushed** on its own worktree. The measurements this page
-cites come from that session; until it pushes, they cannot be checked from the repository.
+**The ESP32-S3 work is [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546)**, opened after this page was first written. Its
+`docs/platforms/esp32.md` is a fifth cross-branch link if this page ever cites it directly — it
+does not today, and should not until one of the two lands.
 
 **PF7's footprint table is being re-measured** in
-[#540](https://github.com/iainchesworthlabs/ac3forge/pull/540), and the ESP32 session's
-`thread_local` fix moves the numbers again (the ARM image by 7.7%, `.bss` by 32 KB). The
-sequencing between those two is open.
+[#540](https://github.com/iainchesworthlabs/ac3forge/pull/540), and [#546](https://github.com/iainchesworthlabs/ac3forge/pull/546) moves the same
+numbers much further (the ARM image by 32%, `.bss` from 237,592 to 97,152). Those two PRs are
+measuring the same table against different trees, and the sequencing between them is open — it
+is the one coordination item on this page with a real chance of landing a wrong number on `main`.
 
 ## Deliberately not in scope
 
