@@ -32,13 +32,20 @@ using namespace ac3::crucible::testing;
 
 namespace {
 
+// Field by field rather than a designated initializer: AppSession's strings
+// carry no default member initialiser, so naming only the fields a case cares
+// about is a missing-field-initializer error under the -Werror GCC and clang
+// legs both use (MSVC does not warn, which is how this got through). Assigning
+// also leaves the helper correct when AppSession gains a field.
 AppSession playing(AppId app, std::string name) {
-    return AppSession{.app = app,
-                      .name = std::move(name),
-                      .active = true,
-                      .has_window = true,
-                      .has_session = true,
-                      .session_pids = {app}};
+    AppSession session;
+    session.app = app;
+    session.name = std::move(name);
+    session.active = true;
+    session.has_window = true;
+    session.has_session = true;
+    session.session_pids = {app};
+    return session;
 }
 
 // The engine runs on its own thread at its own pace, so every assertion
