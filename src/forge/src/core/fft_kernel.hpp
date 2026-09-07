@@ -58,7 +58,17 @@ namespace ac3::internal {
 // std::sin of its exact angle rather than generating twiddles by iterated
 // complex multiply (which carries j-1 accumulated rounding steps by its j-th
 // butterfly).
-template <std::size_t P>
+//
+// Scalar (roadmap PF7's float32 gap): the type the twiddles are STORED in.
+// They are still COMPUTED in double - see the angle comment in the constructor
+// below, which is an argument about std::cos of a reduced angle and does not
+// survive being restated in float - and narrowed once on the way into the
+// table. A float32 build therefore gets twiddles that are the correctly-rounded
+// float of the correct double, which is the best a float table can be, rather
+// than the result of doing the trigonometry in float.
+//
+// Default double, so every existing instantiation is the one it always was.
+template <std::size_t P, typename Scalar = double>
 struct FftTables {
     static_assert((P & (P - 1)) == 0 && P >= 4, "these kernels need a power of two >= 4");
 
@@ -92,8 +102,8 @@ struct FftTables {
     // The q = 1, 4, 16, ... progression makes those runs tile exactly: a
     // stage occupying [q-1, 4q-1) is followed by one starting at 4q-1, and
     // the last run ends at P-1 either way.
-    std::array<double, P - 1> stage_re{};
-    std::array<double, P - 1> stage_im{};
+    std::array<Scalar, P - 1> stage_re{};
+    std::array<Scalar, P - 1> stage_im{};
 
     FftTables() {
         for (std::size_t i = 1; i < P; ++i) {
@@ -115,8 +125,8 @@ struct FftTables {
                     // was reduced before the library call.
                     const double angle = -2.0 * std::numbers::pi *
                                          static_cast<double>(r * j) / static_cast<double>(len);
-                    stage_re[base + ((r - 1) * q) + j] = std::cos(angle);
-                    stage_im[base + ((r - 1) * q) + j] = std::sin(angle);
+                    stage_re[base + ((r - 1) * q) + j] = static_cast<Scalar>(std::cos(angle));
+                    stage_im[base + ((r - 1) * q) + j] = static_cast<Scalar>(std::sin(angle));
                 }
             }
         }
@@ -126,8 +136,8 @@ struct FftTables {
             for (std::size_t j = 0; j < half; ++j) {
                 const double angle =
                     -2.0 * std::numbers::pi * static_cast<double>(j) / static_cast<double>(P);
-                stage_re[base + j] = std::cos(angle);
-                stage_im[base + j] = std::sin(angle);
+                stage_re[base + j] = static_cast<Scalar>(std::cos(angle));
+                stage_im[base + j] = static_cast<Scalar>(std::sin(angle));
             }
         }
     }
@@ -163,8 +173,9 @@ struct FftTables {
 // existing caller passes a `std::span<double, P>` and deduces
 // `VecType = double`, the identical instantiation this function had before
 // the parameter existed.
-template <std::size_t P, std::size_t Len, typename VecType = double>
-void fft_radix4_stage(const FftTables<P>& t, std::span<VecType, P> re, std::span<VecType, P> im) {
+template <std::size_t P, std::size_t Len, typename VecType = double, typename Scalar = double>
+void fft_radix4_stage(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
+                      std::span<VecType, P> im) {
     constexpr std::size_t kQ = Len / 4;
     constexpr std::size_t kBase = kQ - 1;
     for (std::size_t i = 0; i < P; i += Len) {
@@ -198,12 +209,12 @@ void fft_radix4_stage(const FftTables<P>& t, std::span<VecType, P> re, std::span
             im[i + (3 * kQ)] = t1i + t3r;
         }
         for (std::size_t j = 1; j < kQ; ++j) {
-            const double w1r = t.stage_re[kBase + j];
-            const double w1i = t.stage_im[kBase + j];
-            const double w2r = t.stage_re[kBase + kQ + j];
-            const double w2i = t.stage_im[kBase + kQ + j];
-            const double w3r = t.stage_re[kBase + (2 * kQ) + j];
-            const double w3i = t.stage_im[kBase + (2 * kQ) + j];
+            const Scalar w1r = t.stage_re[kBase + j];
+            const Scalar w1i = t.stage_im[kBase + j];
+            const Scalar w2r = t.stage_re[kBase + kQ + j];
+            const Scalar w2i = t.stage_im[kBase + kQ + j];
+            const Scalar w3r = t.stage_re[kBase + (2 * kQ) + j];
+            const Scalar w3i = t.stage_im[kBase + (2 * kQ) + j];
             const std::size_t i0 = i + j;
             const std::size_t i1 = i0 + kQ;
             const std::size_t i2 = i0 + (2 * kQ);
@@ -238,8 +249,8 @@ void fft_radix4_stage(const FftTables<P>& t, std::span<VecType, P> re, std::span
 
 // The single length-P radix-2 stage an odd log2(P) leaves over, run last.
 // VecType: see fft_radix4_stage's own comment above - the same shape.
-template <std::size_t P, typename VecType = double>
-void fft_radix2_final_stage(const FftTables<P>& t, std::span<VecType, P> re,
+template <std::size_t P, typename VecType = double, typename Scalar = double>
+void fft_radix2_final_stage(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
                             std::span<VecType, P> im) {
     constexpr std::size_t kHalf = P / 2;
     constexpr std::size_t kBase = kHalf - 1;
@@ -255,8 +266,8 @@ void fft_radix2_final_stage(const FftTables<P>& t, std::span<VecType, P> re,
         im[kHalf] = ui - vi;
     }
     for (std::size_t j = 1; j < kHalf; ++j) {
-        const double wr = t.stage_re[kBase + j];
-        const double wi = t.stage_im[kBase + j];
+        const Scalar wr = t.stage_re[kBase + j];
+        const Scalar wi = t.stage_im[kBase + j];
         const auto xr = re[j + kHalf];
         const auto xi = im[j + kHalf];
         const auto vr = (xr * wr) - (xi * wi);
@@ -276,8 +287,9 @@ void fft_radix2_final_stage(const FftTables<P>& t, std::span<VecType, P> re,
 // from `re`/`im` at every recursive call below - a trailing template
 // parameter deduced from a function argument stays deducible even when the
 // parameters before it (P, Len) are given explicitly.
-template <std::size_t P, std::size_t Len, typename VecType = double>
-void fft_radix4_chain(const FftTables<P>& t, std::span<VecType, P> re, std::span<VecType, P> im) {
+template <std::size_t P, std::size_t Len, typename VecType = double, typename Scalar = double>
+void fft_radix4_chain(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
+                      std::span<VecType, P> im) {
     fft_radix4_stage<P, Len>(t, re, im);
     if constexpr (Len * 4 <= FftTables<P>::kLastRadix4Len) {
         fft_radix4_chain<P, Len * 4>(t, re, im);
@@ -297,8 +309,9 @@ void fft_radix4_chain(const FftTables<P>& t, std::span<VecType, P> re, std::span
 // this function always had; a batched caller instantiates this explicitly
 // at `VecType = f64x4` (or similar) to run 4 independent P-point transforms
 // at once instead of calling this 4 separate times.
-template <std::size_t P, typename VecType = double>
-void fft_forward_bitrev(const FftTables<P>& t, std::span<VecType, P> re, std::span<VecType, P> im) {
+template <std::size_t P, typename VecType = double, typename Scalar = double>
+void fft_forward_bitrev(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
+                        std::span<VecType, P> im) {
     fft_radix4_chain<P, 4>(t, re, im);
     if constexpr (FftTables<P>::kHasTrailingRadix2) {
         fft_radix2_final_stage<P>(t, re, im);
