@@ -5,8 +5,8 @@ it and which page to read next. That is what this page is for. It routes; the pa
 to is the one that holds the detail, and where the two ever disagree, the platform page is right.
 
 Two tables, deliberately coarse. The first is by **what you have**, the second by **how you want
-to call it**. Neither uses ticks: what each target has actually been shown to do differs enough
-that a tick would flatten the part worth knowing.
+to call it**. Neither uses ticks: what each target has been shown to do differs enough that a
+tick would flatten the part worth knowing.
 
 ## Which page
 
@@ -41,7 +41,7 @@ on running without it.
 | **Python** | `pip install ac3forge` — wheels for Windows x64, macOS arm64 and x86_64, Linux x86_64 and aarch64 | [Python bindings](../library/python-api.md) |
 | **Rust** | In-tree at `rust/`, over the C API; not published to crates.io | [Rust bindings](../library/rust-api.md) |
 | **JavaScript** | A browser, through WebAssembly; the npm package is unpublished | [WebAssembly](wasm.md) |
-| **Nothing — it is the product** | The Shield app on Android TV | [Android](android.md) |
+| **You do not** — Shield Atmos Demo is the whole surface | An NVIDIA Shield, sideloaded | [Android](android.md) |
 
 ## Reading the last column
 
