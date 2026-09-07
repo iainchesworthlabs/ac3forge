@@ -1845,7 +1845,7 @@ syncframes (the low-latency mode this was meant to document) have not landed - t
 latency section names the 512-1024-sample figures they would enable and says so.
 </details>
 
-**PF7 (L)** — A minimum-footprint decoder profile — 403 KB image, 238 KB peak heap, proven on
+**PF7 (L)** — A minimum-footprint decoder profile — 408 KB image, 265 KB peak heap, proven on
 a real cross-compiled bare-metal CI leg.
 <details markdown="1">
 <summary>Full record</summary>
@@ -1853,9 +1853,9 @@ a real cross-compiled bare-metal CI leg.
 `AC3FORGE_MINIMAL_DECODER` builds a decode-only `ac3::forge_minimal` with no exceptions, no
 RTTI and no direct-form transform tables (an explicit 1.81 MiB ROM budget, measured on the
 object file), proven on a cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/baremetal`,
-`build-footprint`) that decodes real AC-3/E-AC-3 to the host build's own levels in 403 KB of
-image and 238 KB of peak heap. Two requirements are recorded as open gaps rather than
-half-enforced: zero heap traffic in the decode loop (today: 45-87 allocations/frame) and a
+`build-footprint`) that decodes real AC-3/E-AC-3 to the host build's own levels in 408 KB of
+image and 265 KB of peak heap. Two requirements are recorded as open gaps rather than
+half-enforced: zero heap traffic in the decode loop (today: 46-87 allocations/frame) and a
 float32-only internal path - see `docs/building.md`'s Gaps section.
 </details>
 

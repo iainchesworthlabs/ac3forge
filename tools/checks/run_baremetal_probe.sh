@@ -45,11 +45,19 @@ fi
 # reached 412,516 bytes at that point; nobody re-measured before merging.
 # See docs/performance-trend.md's footprint table for the current breakdown.
 : "${AC3FORGE_MAX_IMAGE_BYTES:=465000}"
+# Measured against main at e982712b: image 418,244 of 465,000 (11% headroom)
+# and peak heap 270,886 of 300,000 (11%). The heap figure moved up from 243,470
+# - and its headroom from 23% to 11% - when AP3's pimpl sweep put both decoders'
+# state on the heap instead of in the caller's frame: a relocation out of
+# automatic storage rather than new consumption. The ceiling is deliberately
+# left where it is. This peak is deterministic for these fixed fixtures, so the
+# margin only ever has to absorb a deliberate change, never run-to-run noise.
+# See docs/performance-trend.md's footprint table.
 : "${AC3FORGE_MAX_HEAP_BYTES:=300000}"
 # Allocations per frame in the steady state, whichever codec is worse. The
 # requirement PF7 states is ZERO and this is not it - see docs/building.md's
 # gap note. The ceiling exists so the distance from zero cannot quietly grow
-# while that gap is open: today's numbers are 45 (AC-3) and 87 (E-AC-3).
+# while that gap is open: today's numbers are 46 (AC-3) and 87 (E-AC-3).
 : "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 
 if [[ "$HOST" == "1" ]]; then
