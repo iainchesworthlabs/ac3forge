@@ -875,6 +875,33 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     Reproduced on Qt 6.8.2 on two architectures; `apps/linux/tray-vm/` builds the machine that
     shows it.
 
+!!! success "Done 2026-09-07: the probe thread outlived what it was enumerating"
+
+    The probe thread that the Pi run's fourth fix introduced — the one that took the enumeration
+    off the frame thread after a seven-second first frame — was never joined. `loop()` ended with
+    `watcher.stop(); output->stop(); taps.sync({})` and returned; `Engine::stop()` joined the
+    frame thread and nothing else; `CrucibleController::stop()` reset the engine the moment that
+    returned. `~Impl` destroys members in reverse declaration order, and `probe_thread` was
+    declared *above* `output` and above the mutex and optional its body writes the facts into —
+    so all three were destroyed before `~jthread` got as far as joining it. A quit that landed
+    while an enumeration was in flight pulled the `OutputStage` out from under the thread
+    running `output->enumerate()` on it.
+
+    Found by reading the shutdown path, not by a crash: nothing here has observed it, and the
+    window it needs is however long one enumeration takes. That window is widest exactly where
+    Phase 5 says to be careful — `enumerate()` on macOS is a round trip to coreaudiod, and this
+    plan has already met one Core Audio call on an engine thread that did not come back.
+
+    `loop()` now joins the probe before it stops the watcher or the output, so the enumeration
+    finishes while the engine is still whole, and that join is the guarantee. `probe_thread` also
+    moves below `output` in the struct so `~jthread` would run before any of them if the join
+    were ever lost; the comment there says which of the two is the guarantee and which is the
+    backstop. The join is a plain one, because the probe's body never reads its stop token and
+    `request_stop()` would shorten nothing — so quitting now waits out a whole `enumerate()`.
+    That is a second reason for that call to be bounded, and it has no overall bound today: the
+    PipeWire path answers in seconds per device, and what the macOS path does when Core Audio
+    does not answer is one of the things no Mac here has run.
+
 ### Phase 5: macOS
 
 Both halves of this phase are on the branch. The library half is an Objective-C++ translation
