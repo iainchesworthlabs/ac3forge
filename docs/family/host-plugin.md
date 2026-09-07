@@ -22,13 +22,22 @@
     callback, so the constraint that makes an encode plugin "not yet" for a DAW does not apply,
     and the encoder becomes the cheap case rather than the hard one.
 
-**The plugin's role in the family's topology is a *source*** — something that produces an encoded
-elementary stream, alongside Crucible, `ac3cli` and the Shield demo. [Source, transport,
+**The two plugins on this page occupy different roles in the family's topology, and the
+distinction matters more than it first looks.** [Source, transport,
 sink](https://github.com/iainchesworthlabs/ac3forge/blob/feature/player-appliance-plan/docs/family/topology.md)
-is the frame that says what carries that stream to something that renders it, and it is worth
-reading first: it makes the object-metadata wall below matter less than it looks, because a
-source that emits a bed still reaches every sink on the same transport. (That link points at the
-branch of the pull request adding the page; it becomes `topology.md` once both land.)
+is the frame that says how an encoded stream reaches something that renders it.
+
+- An **encode** plugin ([candidate 2](#what-the-library-could-put-in-a-host)) would be a
+  **source**, beside Crucible, `ac3cli` and the Shield demo — and a bed-only one,
+  unconditionally, for the reason in [Object audio](#object-audio-is-where-it-stops). That
+  matters less than it looks: objects still cross the transport, because they travel inside the
+  E-AC-3 bitstream; a plugin is simply not a place they can enter.
+- A **metering** plugin — what [Part 2](#part-2-the-plan) actually plans — is **not a node at
+  all**. It measures a stream rather than producing, carrying or rendering one, which makes it an
+  instrument, beside the delivery-QC report rather than beside Crucible.
+
+(The link points at the branch of the pull request adding that page; it becomes `topology.md`
+once both land.)
 
 The project is unaffiliated with Dolby Laboratories, Steinberg, Avid and Apple. "Dolby",
 "Dolby Digital" and "Dolby Atmos" appear below only as format names, and the marks of the
