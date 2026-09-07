@@ -11,9 +11,16 @@
     [What cannot be verified](#what-cannot-be-verified-and-why) table written before the work
     rather than after it.
 
-    Part 1's answer is **a metering and QC plugin, as CLAP and VST3, and not yet an encoder**.
-    The reasons are the object-metadata wall ([here](#object-audio-is-where-it-stops)) and one
-    unmeasured number ([here](#real-time-safety)).
+    Part 1's answer, **for a DAW**, is a metering and QC plugin, as CLAP and VST3, and not yet an
+    encoder. The reasons are the object-metadata wall ([here](#object-audio-is-where-it-stops))
+    and one unmeasured number ([here](#real-time-safety)).
+
+    **For a media pipeline the answer is different**, and Part 2 does not plan it because the
+    roadmap already does: `ROADMAP.md`'s AP10 names an out-of-tree GStreamer element or FFmpeg
+    wrapper, and [that section](#the-other-kind-of-host-media-pipelines) is the study it has not
+    had. The short version: a pipeline element runs on a streaming thread rather than an audio
+    callback, so the constraint that makes an encode plugin "not yet" for a DAW does not apply,
+    and the encoder becomes the cheap case rather than the hard one.
 
 The project is unaffiliated with Dolby Laboratories, Steinberg, Avid and Apple. "Dolby",
 "Dolby Digital" and "Dolby Atmos" appear below only as format names, and the marks of the
@@ -215,11 +222,83 @@ mattered was the SDK licence, and for VST3, CLAP and LV2 that is now permissive.
 is a reading of the licences and not legal advice; the AAX row is the one where the reading is
 contested enough to warrant more than a reading.
 
+### The other kind of host: media pipelines
+
+Everything above is about a **DAW** plugin — a loadable object on an audio thread with a UI. A
+media pipeline is a different host with different constraints, and the answers invert almost
+line for line.
+
+**The roadmap already names this.** `ROADMAP.md:2163` carries **AP10**: "An out-of-tree
+GStreamer element or FFmpeg external-encoder wrapper, the way >5.1 and JOC encode would reach the
+transcode ecosystem", over the C API, "GPL-3 framed (`--enable-gpl --enable-version3`)", with
+FFmpeg staying an oracle for the codec itself. It is unstarted, and its stated dependency —
+AP5, the C API — is done. This section is the study AP10 has not had, not a new proposal.
+
+**AP10's premise still holds in 2026, and it was worth re-checking.** Its supporting claim dates
+from a 2014 FFmpeg ticket. Read against FFmpeg's current master on 2026-09-07,
+`ff_ac3_ch_layouts` in `libavcodec/ac3enc.c` still tops out at **5.1** — sixteen layouts, mono
+through 5.1, no 7.1, no height, no object support. FFmpeg's E-AC-3 encoder cannot express what
+this library's already can. And GStreamer inherits the same ceiling: its only E-AC-3 encoder is
+`avenc_eac3`, which wraps FFmpeg's, so the gap propagates rather than being covered elsewhere.
+
+**The real-time blocker disappears.** This is the finding that matters most, and it follows
+directly from [Real-time safety](#real-time-safety). A pipeline element does not run on an audio
+callback. It runs on a streaming thread, behind queues, and it is throughput-bound rather than
+deadline-bound. So:
+
+| Constraint on a DAW plugin | On a pipeline element |
+|---|---|
+| `encode_frame` returns a fresh `std::vector` every frame | fine — no deadline to miss |
+| Worst-case block time is unmeasured and decides feasibility | does not apply; **throughput** is the measure, and the WASM figures (385× / 120× / 82×) are the right measurement for this use case |
+| `encode_frame_into()` missing | a performance improvement, not a prerequisite |
+| Frame quantum 1536 vs host block size | the element buffers; this is what pipeline elements do |
+| UI, localisation, accessibility, host window | none — no UI at all |
+| Signing (DR6) gates macOS distribution | not a load-time gate on Linux, where this mostly runs |
+
+**The two frameworks are not comparable in cost**, and the difference is architectural rather
+than a matter of preference.
+
+| | GStreamer | FFmpeg |
+|---|---|---|
+| Out-of-tree plugin ABI | **yes** — elements are shared objects loaded at runtime from `GST_PLUGIN_PATH` | **no.** FFmpeg does not load plugins; its own FAQ says it "does not use DLL loaders" |
+| Route | ship an element; nothing upstream needs to agree | merge an external-library wrapper upstream, then users build with `--enable-libac3forge --enable-gpl --enable-version3` |
+| Licence fit | core is LGPL-2.1+; the `GST_PLUGIN_DEFINE` licence field is **informational only**, and GStreamer's LGPL requirement binds *its own* plugin modules, not out-of-tree ones — a GPL-3.0 element is fine | LGPL-2.1+ core; a GPL-3.0 external library needs `--enable-gpl --enable-version3`, matching AP10 |
+| Channel expression | up to **64** positions, SMPTE 2036-2 based, including top/height — 7.1.4 and beyond | full layout support, but the AC-3 encoder is capped at 5.1 regardless |
+| Object metadata | `GstMeta` is extensible, so objects are *representable* — but nothing downstream would read a custom meta | no mechanism |
+| Distribution reality | a user drops in an element | a distro must choose to build FFmpeg with the flag, which most will not |
+
+**GStreamer is the cheaper and more likely route by a wide margin.** The project already proves
+out-of-tree GStreamer elements work in its own tooling: `tools/ci/quality_race.py:2058` sets
+`GST_PLUGIN_PATH` to load the Dolby Reference Player's `dlbac3dec` element as a decode oracle
+(`docs/verification.md:747`). Loading a third-party element is a thing this repository already
+does routinely.
+
+**Object audio is a different question here, and a better one.** A pipeline element does not need
+object metadata to *flow through* the pipeline the way a DAW plugin would — it needs it at the
+element's own boundary. An element that takes a bed plus object metadata and emits E-AC-3 with
+JOC is a self-contained transform, and the library already has both halves. That is not possible
+in any DAW format, and it is possible here.
+
+**What is weaker.** A pipeline element reaches transcode operators rather than mixing engineers,
+which is a smaller and more technical audience; it has no UI, so none of the QC presentation
+value of a metering plugin applies; and the FFmpeg half in particular is a multi-year upstream
+proposition with a licence flag most distributions do not set.
+
+**This changes the ordering, and the page says so rather than burying it.** For a DAW, the
+encoder was the hard case and metering the easy one. For a media pipeline, **the encoder is the
+whole point** — it is the only one of the four candidates that addresses a gap nothing else
+fills — and the constraint that made it "not yet" for a DAW does not exist. If the aim is to
+put >5.1 and JOC encode somewhere it cannot go today, an out-of-tree GStreamer element is a
+cheaper piece of work than either DAW plugin, and it is already on the roadmap.
+See [decision 7](#decisions).
+
 ### What the study concludes
 
 **A metering and QC plugin is possible now. An encoder plugin is possible after one API addition
 and one measurement. An object panner is not possible in any open format, and no amount of work
-in this repository changes that.**
+in this repository changes that.** For a **media pipeline** rather than a DAW, the encoder is
+both the point and the cheap case ([above](#the-other-kind-of-host-media-pipelines)), and AP10
+already names it.
 
 The recommendation is therefore:
 
@@ -758,6 +837,17 @@ and the phase does not close on a green build.
 Roadmap ID allocation is Iain's, so this is text to place rather than an edit to make. `ROADMAP.md`
 is deliberately untouched by this plan.
 
+**The media-pipeline half needs no new entry.** AP10 already covers it, and this page's
+[media-pipeline section](#the-other-kind-of-host-media-pipelines) is the study behind it rather
+than a competing proposal. Two amendments to AP10's record would be worth making when someone
+next edits it, and both are verifications rather than changes of direction: that its 5.1-ceiling
+premise was re-checked against FFmpeg master on 2026-09-07 and still holds, and that GStreamer
+and FFmpeg are not equal-cost options — GStreamer has an out-of-tree plugin ABI and FFmpeg has
+none, so "GStreamer element **or** FFmpeg wrapper" is really "GStreamer element, and separately
+a much larger upstream proposition".
+
+The entry below is for the DAW plugin only.
+
 > **UX13 (L, needs decisions, blocked on DR6 for macOS)** — AC3Forge Assay, a metering and QC
 > host plugin — CLAP and VST3, an analyser over the library's BS.1770 loudness, true-peak, LRA
 > and broadcast-preset instruments, for mono through 7.1.4. Study and design record in
@@ -785,6 +875,11 @@ code is finished.
 | macOS behaviour of any kind | **no** | DR6 for signing, and a Mac to run it — the same row the [Crucible plan](../crucible/promotion.md#what-cannot-be-verified-and-why) carries |
 | "Assay" is free as a trademark | **no** | product listings were searched on 2026-09-07; trademark registers were not, and that is a search for a professional |
 | CI cost of the four extra legs | not yet | estimated as single-digit minutes; to be measured on the first run and written here |
+| FFmpeg's AC-3/E-AC-3 encoder is still 5.1-max | **verified 2026-09-07** from `ff_ac3_ch_layouts` in FFmpeg master's `libavcodec/ac3enc.c` | none |
+| FFmpeg loads no plugins at runtime | **verified 2026-09-07** from FFmpeg's own FAQ and external-library-wrapper docs | none |
+| A GPL-3.0 out-of-tree GStreamer element is acceptable | **verified 2026-09-07** — the `GST_PLUGIN_DEFINE` licence field is informational, and GStreamer's LGPL rule binds its own plugin modules | none |
+| An out-of-tree GStreamer element would be adopted by anyone | **no** | no user research; the audience is transcode operators, and nobody has been asked |
+| An FFmpeg wrapper would be accepted upstream | **no** | an upstream review this project has not opened, on a codec FFmpeg already implements natively at 5.1 |
 
 ## Deliberately not in scope
 
@@ -848,7 +943,23 @@ it. **None of these is taken as this page is written.**
    Cost: (a) ships a fourth product wearing Forge's icon, which is a known-wrong asset and gets
    more visible with each member added. (c) is worse — it fragments the family further.
 
-7. **Whether to build any of it.** "Not yet" is an acceptable answer to the whole plan. The
+7. **DAW plugin or media pipeline first** — the decision this page did not expect to be making.
+   (a) AP10's GStreamer element first, the DAW plugin after; (b) the DAW plugin first, as
+   Part 2 plans; (c) both, in parallel; (d) neither yet.
+   **Recommend (a)** if the aim is to put >5.1 and JOC encode where it cannot go today, because
+   the pipeline route is cheaper on every axis this page measured — no audio-thread deadline, no
+   UI, no localisation or accessibility surface, no signing gate on Linux, no frozen format
+   identifiers, and it is already on the roadmap with its dependency met.
+   **Recommend (b)** if the aim is to put the project's loudness and QC instruments in front of
+   people, which is a different goal and a larger audience.
+   Cost of (a): it reaches transcode operators rather than mixing engineers, and none of Part 2's
+   fifteen sections apply to it, so this page's plan would sit unused until (b) is taken. Cost of
+   (c): two unrelated pieces of work at once, and the recasting's own experience is that
+   tree-wide efforts want the queue drained. These are different products for different people,
+   and the question is which audience matters more — which is why it is a decision rather than a
+   recommendation.
+
+8. **Whether to build any of it.** "Not yet" is an acceptable answer to the whole plan. The
    study stands on its own: the object-metadata wall and the licence table are worth having
    written down whether or not a line of plugin code is ever compiled, and
    [Phase 1](#phase-1-the-library-gap) and
