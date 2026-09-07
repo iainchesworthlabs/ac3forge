@@ -17,8 +17,8 @@ and the repository now has four wrappers planned at once, written independently:
 
 | In flight | Wraps | State |
 |---|---|---|
-| [Host plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) | the encoder, in a DAW | Study done. No open plugin format carries object metadata; beds only. The VST 3 SDK is MIT, per Steinberg's licensing FAQ. |
-| [Delivery-QC report](https://github.com/iainchesworthlabs/ac3forge/blob/feature/qc-report-plan/docs/forge/qc-report.md) | the analysis code | Plan. |
+| [Host plugin study](host-plugin.md) | the encoder, in a DAW | Study done. No open plugin format carries object metadata; beds only. The VST 3 SDK is MIT, per Steinberg's licensing FAQ. |
+| [Delivery-QC report](../forge/qc-report.md) | the analysis code | Plan. |
 | [The playback appliance](player-appliance.md) | the decoder, in a room | Plan, parked on the question this page answers. |
 | The ESP32-S3 port | the decoder, on a microcontroller | **AC-3 and E-AC-3 both decode on an ESP32-S3**, inside internal SRAM. [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). |
 
@@ -234,7 +234,7 @@ were stale after AP3's pimpl sweep.
 |---|---|---|---|
 | Crucible | source | IEC 61937 today; HTTP origin would be new | shipped; the network output is a scope question, [decision 3](#decisions) |
 | `ac3cli record` / `live`, `ac3gui` live session | source | **already writes a servable HTTP origin** through `Fmp4FolderWriter` | shipped, unconnected to any sink |
-| A DAW **encode** plugin | source | whatever the host renders to; **bed-only, unconditionally** | [study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) done; the constrained one |
+| A DAW **encode** plugin | source | whatever the host renders to; **bed-only, unconditionally** | [study](host-plugin.md) done; the constrained one |
 | The Shield demo | source | IEC 61937 over the Shield's HDMI | shipped |
 | The WASM encode page | source | none — it produces a file | shipped |
 | An out-of-tree GStreamer element or FFmpeg wrapper (**AP10**) | source | whatever the pipeline is muxing into | on the roadmap (`ROADMAP.md:2163`), unstarted, and its dependency AP5 is done |
@@ -242,10 +242,10 @@ were stale after AP3's pimpl sweep.
 | The playback appliance | sink | local files today; HTTP client is the new work | [plan](player-appliance.md), to be rewritten against this page |
 | An ESP32-S3 node | sink | HTTP client, then Sendspin | **both codecs decode, fits internal SRAM** ([#546](https://github.com/iainchesworthlabs/ac3forge/pull/546)); real time unmeasured |
 | The WASM decode page | sink | a file today; could be an HLS client for free | shipped |
-| A DAW **metering** plugin | **neither** — an instrument, not a node | n/a | what [the study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md)'s Part 2 actually plans; no capability blocker |
-| The delivery-QC report | **neither** — an instrument, not a node | n/a | [plan](https://github.com/iainchesworthlabs/ac3forge/blob/feature/qc-report-plan/docs/forge/qc-report.md); belongs under Forge, and this page is why |
+| A DAW **metering** plugin | **neither** — an instrument, not a node | n/a | what [the study](host-plugin.md)'s Part 2 actually plans; no capability blocker |
+| The delivery-QC report | **neither** — an instrument, not a node | n/a | [plan](../forge/qc-report.md); belongs under Forge, and this page is why |
 
-Three notes on those rows, all from [the plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md).
+Three notes on those rows, all from [the plugin study](host-plugin.md).
 
 **"Plugin" is two things, and only one of them is a source.** An *encode* plugin would produce a
 stream; a *metering* plugin measures one, which puts it beside the delivery-QC report as an
@@ -305,8 +305,8 @@ is a design constraint on work already planned, not new work.
 
 Land the frame; rewrite [the appliance plan](player-appliance.md) against it (it currently
 answers a whole-house question this page makes obsolete, and predates the ESP32 result and the
-transport decision); add a pointer from [the plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) and
-[the QC plan](https://github.com/iainchesworthlabs/ac3forge/blob/feature/qc-report-plan/docs/forge/qc-report.md) naming their role.
+transport decision); add a pointer from [the plugin study](host-plugin.md) and
+[the QC plan](../forge/qc-report.md) naming their role.
 
 **Exit:** each of the four plans states its role in the first screen and links here; no plan
 proposes joining a third-party protocol as a client.
@@ -384,16 +384,21 @@ goes.
 
 ## Coordination
 
-**Two cross-branch links that must become relative.** This page links
-[the plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) and the QC plan by absolute branch URL, and the plugin study links this
-page the same way, because neither file is on `main` and `mkdocs build --strict` validates only
-what is inside `docs/`. **Branch blob URLs 404 once the branch is deleted.** Whichever of
+**The cross-branch links are converted.** *Closed 2026-09-07.* While
 [#537](https://github.com/iainchesworthlabs/ac3forge/pull/537),
-[#538](https://github.com/iainchesworthlabs/ac3forge/pull/538) and
-[#539](https://github.com/iainchesworthlabs/ac3forge/pull/539) merges last should convert every
-one of them to a relative path in the same change — there are two here, one in the plugin study,
-and one in the QC plan. `tools/checks/check_doc_paths.py` will not catch it: an absolute URL is
-not a path literal.
+[#538](https://github.com/iainchesworthlabs/ac3forge/pull/538) and this page's own PR were all
+unmerged, each named the others by absolute branch URL, because `mkdocs build --strict` rejects a
+relative link to a file not yet under `docs/`. Branch blob URLs 404 once the branch is deleted.
+#537, #538 and #540 merged first, so this PR — the last of them — converted all of them to
+relative paths in one change, here and in the two sibling pages.
+
+Two things worth keeping from it, because the situation recurs whenever two documentation PRs
+cross. **Whichever merges last owns the conversion**, and it has to be done deliberately:
+`tools/checks/check_doc_paths.py` skips http(s) targets by design (its own docstring, line 13),
+so nothing in CI catches a rotting branch URL. A narrow rule flagging
+`blob/<ref>/` URLs where `<ref>` is not `main` would be syntactic and reliable, and is proposed
+separately — it touches `tools/`, so it costs one matrix run for the PR that adds it and nothing
+afterwards, since Script Lint (`ci.yml:434`) has no docs-only gate and already runs on every PR.
 
 **The ESP32-S3 work is [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546)**, opened after this page was first written. Its
 `docs/platforms/esp32.md` is a fifth cross-branch link if this page ever cites it directly — it

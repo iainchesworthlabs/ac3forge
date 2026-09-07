@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <span>
@@ -168,16 +169,29 @@ namespace ac3::coreaudio {
 // listed above move with it. Chosen 2026-09-06.
 inline constexpr std::string_view kSystemAudioTapMinimumOs = "macOS 14.2";
 
-// Printed verbatim by whoever turns a caller away: capture.cpp's
+// One of the two sentences a refused caller is shown - this one where the
+// machine is older than the floor. Both reports of a refusal go through
+// system_audio_tap_refusal() below (capture.cpp's
 // describe(kProcessLoopbackUnavailable) and audio_backend.cpp's
-// process_loopback reason are the same sentence from here, so the two reports
-// of one fact cannot drift apart. It names the version a person needs, which
-// is the only part of a refusal they can act on - and it names it in the same
-// words kSystemAudioTapMinimumOs uses, which is what lets a test hold the two
+// process_loopback reason), so the two reports of one fact cannot drift
+// apart. It names the version a person needs, which is the only part of THIS
+// refusal they can act on - and it names it in the same words
+// kSystemAudioTapMinimumOs uses, which is what lets a test hold the two
 // against each other.
 inline constexpr std::string_view kSystemAudioTapVersionRefusal =
     "per-process loopback capture needs Core Audio's process-tap API "
     "(AudioHardwareCreateProcessTap), which arrived in macOS 14.2; this machine is older";
+
+// The sentence for the second gate below. It says what was seen rather than
+// what is forbidden, because that is all anyone here knows: the call that
+// hung is the one that registers an IOProc on the tap's aggregate device, and
+// it hung on a machine that satisfied every documented precondition for it.
+inline constexpr std::string_view kSystemAudioTapUnverifiedRefusal =
+    "per-process loopback capture is off on macOS: the one machine that has run it "
+    "(macOS 26.6.2) never returned from AudioDeviceCreateIOProcID on the tap's aggregate "
+    "device and took the rest of this process's Core Audio with it, so the path is not "
+    "entered until a Mac has been seen to complete it; set AC3FORGE_MACOS_PROCESS_TAP to "
+    "try it";
 
 // Whether this OS build is new enough to expose that API. A version gate
 // only: it requests no permission, creates no tap and touches no device, so
@@ -194,6 +208,56 @@ inline constexpr std::string_view kSystemAudioTapVersionRefusal =
         return true;
     }
     return false;
+}
+
+// The SECOND gate, and the reason it exists is an observation rather than a
+// version number.
+//
+// On 2026-09-06 the tap path ran for the first time anywhere, on the Apple
+// Silicon macOS CI leg (macOS 26.6.2). Creating the tap succeeded, creating
+// the private aggregate device succeeded, reading the tap's format succeeded
+// - and then AudioDeviceCreateIOProcID on that aggregate never returned.
+// `sample` caught it three times in three separate processes, in every case
+// parked in mach_msg2_trap inside
+// HALC_ProxyIOContext::_TellServerAboutStreamUsage, waiting on a reply from
+// coreaudiod that did not come within ctest's 300-second limit. Worse than
+// the tap simply not working: while that request was outstanding the whole
+// process's HAL client was unusable, so an ordinary
+// AudioObjectGetPropertyData on ANOTHER thread - Crucible's window, asking
+// for the device list - blocked behind it, and the application froze rather
+// than reporting that a tap had failed.
+//
+// So this backend does not make that call by default. Nothing above it can
+// bound a synchronous HAL round trip, and there is no property to ask first:
+// every precondition the API documents was satisfied on the machine where it
+// hung. What CAN be said honestly is that no machine has been seen to
+// complete it, and a capability report that says "available" on the strength
+// of a version test alone was the thing that turned out to be wrong.
+//
+// The macOS 15.7.9 Intel leg ran the same code without hanging on the same
+// day, which is why this is not written as "macOS cannot do this": what is
+// known is that one host wedged and no host has ever produced a sample
+// through a tap. Two variables separate those legs, the OS version and the
+// architecture, and nothing here can say which matters.
+//
+// AC3FORGE_MACOS_PROCESS_TAP in the environment turns the path back on for
+// whoever has a Mac to settle it on. Read once, at first use, because
+// audio_backend()'s table is built once per process; it is a decision about
+// the run, not a setting to toggle inside one. Whoever gets a tap to deliver
+// samples on real hardware should delete this gate and the paragraph above
+// rather than leave the opt-in in place.
+[[nodiscard]] inline bool system_audio_tap_enabled() {
+    return std::getenv("AC3FORGE_MACOS_PROCESS_TAP") != nullptr;
+}
+
+// Which of the two gates is turning a caller away, as the sentence to print.
+// Both reports of the refusal go through here - capture.cpp's
+// describe(kProcessLoopbackUnavailable) and audio_backend.cpp's
+// process_loopback reason - so they cannot say different things, which is the
+// property tests/backend/macos/test_macos_support.cpp holds.
+[[nodiscard]] inline std::string_view system_audio_tap_refusal() {
+    return system_audio_tap_api_available() ? kSystemAudioTapUnverifiedRefusal
+                                            : kSystemAudioTapVersionRefusal;
 }
 
 // ---------------------------------------------------------------------------

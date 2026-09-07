@@ -457,6 +457,16 @@ target_include_directories(ac3tests PRIVATE
 # (a null `devices` in its config) is a path the tests do not take, so the
 # reference resolves to the stub below on every platform and to the real
 # thing in the app.
+#
+# engine.cpp itself joined them last, with signing_hook.cpp beside it because
+# the frame loop owns a SigningHook. It is the same argument one step up: the
+# loop is written over the three seams EngineConfig injects (devices,
+# sessions, foreground), so with fakes in all three it runs here as plain C++
+# on any platform - and until crucible/test_engine.cpp nothing in the suite
+# constructed an Engine at all, which is how a probe thread that was never
+# joined reached a released branch. The one platform piece it does touch is
+# ac3::audio's DeviceWatcher, which is linked below and answers with
+# kNoBackend where there is none; the engine notes that and carries on.
 target_sources(ac3tests PRIVATE
     crucible/test_slots.cpp
     crucible/test_bed_mixer.cpp
@@ -469,6 +479,7 @@ target_sources(ac3tests PRIVATE
     crucible/test_diagnostics.cpp
     crucible/test_desktop_entries.cpp
     crucible/test_translations.cpp
+    crucible/test_engine.cpp
     crucible/platform_services_stub.cpp
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"
@@ -477,6 +488,8 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/tap_pool.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/diagnostics.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/signing_hook.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/engine.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/ui/desktop_entries.cpp")
 # The null-sink driver's position clock (apps/windows/driver/Source/Main/
 # position.h) is a header with no kernel dependencies, kept that way so the
@@ -489,6 +502,15 @@ target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine"
     "${CMAKE_SOURCE_DIR}/apps/crucible/ui"
     "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main")
+# The profiling header pair, for engine.cpp's Tracy zones: the same
+# generator expression apps/crucible/CMakeLists.txt uses for
+# ac3crucible_engine, and for the same reason - the header is PRIVATE to
+# forge_objects, so a target that includes it says so itself rather than
+# picking it up from ac3::forge. Which of the two identically-pathed
+# variants is chosen is CMake's decision, never an #ifdef.
+target_include_directories(ac3tests PRIVATE
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
+target_link_libraries(ac3tests PRIVATE ac3::tracy)
 
 # The Linux Foreground's X11 half has a pure policy (x11_foreground.cpp: when
 # a read yields a pid, when a lost display becomes a reason) over an injected

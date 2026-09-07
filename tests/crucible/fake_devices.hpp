@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -244,6 +245,14 @@ public:
     int refuse_next_submits = 0;
 
     std::vector<DeviceFacts> render_devices(std::uint32_t) override {
+        {
+            std::unique_lock<std::mutex> gate(gate_mutex_);
+            if (!gate_open_) {
+                ++parked_;
+                gate_cv_.notify_all();
+                gate_cv_.wait(gate, [this] { return gate_open_; });
+            }
+        }
         const std::lock_guard lock(mutex);
         ++enumerations;
         return devices;
@@ -275,6 +284,43 @@ public:
         return std::make_unique<FakeTap>(record);
     }
 
+    // A gate across the enumeration. While it is closed, render_devices()
+    // parks instead of answering and the test decides when to let it
+    // through; open by default, so a case that never asks gets the plain
+    // in-memory answer it always did. The real enumeration is slow on every
+    // platform - on macOS a round trip to coreaudiod - and this is how a
+    // case reproduces that without waiting for it: hold the gate, and the
+    // caller is inside enumerate() for exactly as long as the case wants.
+    // tests/crucible/test_engine.cpp uses it to catch the engine's probe in
+    // flight and pin what stop() does about it.
+    void hold_enumerations() {
+        const std::lock_guard<std::mutex> gate(gate_mutex_);
+        gate_open_ = false;
+    }
+
+    void release_enumerations() {
+        {
+            const std::lock_guard<std::mutex> gate(gate_mutex_);
+            gate_open_ = true;
+        }
+        gate_cv_.notify_all();
+    }
+
+    // Enumerations that have ever parked at a closed gate. A count rather
+    // than a flag: a case waits for one more than it saw before, which is
+    // the only safe question where an enumeration it did not ask for can
+    // arrive at any time.
+    [[nodiscard]] std::size_t enumerations_parked() const {
+        const std::lock_guard<std::mutex> gate(gate_mutex_);
+        return parked_;
+    }
+
+    // Enumerations that have answered, read the way a test thread must.
+    [[nodiscard]] std::size_t enumerations_finished() {
+        const std::lock_guard lock(mutex);
+        return enumerations;
+    }
+
 private:
     std::shared_ptr<SinkRecord> fresh_sink() {
         auto record = std::make_shared<SinkRecord>();
@@ -284,6 +330,14 @@ private:
         refuse_next_submits = 0;
         return record;
     }
+
+    // The enumeration gate, on its own mutex: a parked caller holds this one
+    // and not `mutex`, so the test thread can still read what the fake
+    // recorded while an enumeration is stopped inside it.
+    mutable std::mutex gate_mutex_;
+    std::condition_variable gate_cv_;
+    bool gate_open_ = true;
+    std::size_t parked_ = 0;
 };
 
 // Handy endpoint facts.
