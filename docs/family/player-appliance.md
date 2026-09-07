@@ -146,7 +146,7 @@ because of what it *is*, not because a plan says so:
 The cost of a fourth member is precise, and it is a documentation cost rather than a code one:
 `docs/index.md:39` "The three members" becomes four, the README's three-row table gains a row,
 [recasting](recasting.md)'s own model section gains a member and its "Deliberately not in scope"
-bullet on a fourth member is superseded by name, `CONTRIBUTING.md:50-51`'s consumer list gains
+bullet on a fourth member is superseded by name, `CONTRIBUTING.md:54`'s consumer list gains
 `hearth`, and the seven-tab nav becomes eight. That is about six files and no identifier anyone
 has installed. [Decision 2](#decisions) is where it is taken.
 
@@ -647,7 +647,8 @@ records it as a deferred yes rather than a no.
 
 ## The docs
 
-The nav is seven tabs (`mkdocs.yml:65-160`). A fourth member makes it eight, matching how
+The nav is seven tabs (`mkdocs.yml:65`, and a range is not cited because every nav edit moves
+its end). A fourth member makes it eight, matching how
 Crucible got its own — and until [decision 2](#decisions) is taken, **this page sits under
 Project beside [the family recasting](recasting.md)**, which is where it is added now and is
 inside the docs-only fast path.
@@ -697,7 +698,9 @@ documentation. It must answer, in this order, the questions someone actually has
   in the same shape as `### Crucible` (:64-74) — what it does, which platforms, what is
   confirmed on hardware and what is not, and a link to install-and-first-run as the fastest way
   in. The "Where to go next" list (:83) gains a row.
-- `CONTRIBUTING.md:50-51`: the consumer list gains `hearth`.
+- `CONTRIBUTING.md:54`: the consumer list, which already reads
+  `apps/{cli,gui,crucible,android,wasm,baremetal}` since the recasting plan's Phase 1, gains
+  `hearth`.
 - [recasting](recasting.md): the model section gains the member, the "What each member owns"
   table gains a column, and its "Deliberately not in scope" bullet on a fourth member is
   superseded by name and date rather than deleted.
