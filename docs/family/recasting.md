@@ -575,7 +575,7 @@ in one short-lived PR with the queue drained, the way UX12's Phase 1 did; check 
 first. Phases 2, 3 and 5 are docs-heavy and can ride beside code PRs.
 
 **The docs-only fast path.** A PR that touches only `docs/`, `*.md` and `mkdocs.yml` runs the docs
-strict build and skips the matrix (`ci.yml:311`). Phase 3 should stay inside that set; the moment
+strict build and skips the matrix (`ci.yml:314`). Phase 3 should stay inside that set; the moment
 it touches a `.cmake` or a `.qml` it pays for eleven legs.
 
 ## Deliberately not in scope

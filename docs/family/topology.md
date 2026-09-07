@@ -292,7 +292,7 @@ transport decision); add a pointer from [the plugin study](https://github.com/ia
 proposes joining a third-party protocol as a client.
 
 **Verified by:** `mkdocs build --strict`; `tools/checks/check_doc_paths.py`; the docs-only fast
-path (`ci.yml:311`) classifies each PR as docs-only.
+path (`ci.yml:314`) classifies each PR as docs-only.
 
 ### Phase 2: one source, one sink, over HTTP
 

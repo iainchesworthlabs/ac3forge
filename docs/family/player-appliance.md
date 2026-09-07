@@ -573,8 +573,8 @@ architecture the product ships on. The Crucible plan learned this the expensive 
 x86_64-only until 2026-09-06, so "an aarch64-only compilation fault would have reached a user"
 (`_build.yml:465-473`). An appliance whose only real hardware is a Pi cannot repeat that.
 
-**The docs-only fast path.** `ci.yml:311` classifies a PR touching only `docs/`, `*.md` and
-`mkdocs.yml` as docs-only: it runs the strict docs build and skips the matrix. This page is
+**The docs-only fast path.** `ci.yml:314` classifies a PR touching only `docs/`, `*.md`,
+`mkdocs.yml`, `LICENSE`, the docs requirements files or `docs.yml` as docs-only: it runs the strict docs build and skips the matrix. This page is
 inside that set. Every later phase is not.
 
 ## Packaging and release identity
@@ -941,7 +941,7 @@ Land the plan, in the nav under Project beside [the family recasting](recasting.
 **Exit:** the page is on the site and reachable from the Project tab; nothing else in the tree
 changed.
 
-**Verified by:** `mkdocs build --strict`; the docs-only fast path (`ci.yml:311`) classifies the
+**Verified by:** `mkdocs build --strict`; the docs-only fast path (`ci.yml:314`) classifies the
 PR as docs-only and skips the matrix; `tools/checks/check_doc_paths.py` green.
 
 ### Phase 1: close UX9's gaps in `ac3cli play`
