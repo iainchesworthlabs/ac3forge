@@ -17,7 +17,7 @@ and the repository now has four wrappers planned at once, written independently:
 
 | In flight | Wraps | State |
 |---|---|---|
-| [Host plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) | the encoder, in a DAW | Study done. No open plugin format carries object metadata; beds only. The VST3 SDK went MIT in late 2025. |
+| [Host plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) | the encoder, in a DAW | Study done. No open plugin format carries object metadata; beds only. The VST 3 SDK is MIT, per Steinberg's licensing FAQ. |
 | [Delivery-QC report](https://github.com/iainchesworthlabs/ac3forge/blob/feature/qc-report-plan/docs/forge/qc-report.md) | the analysis code | Plan. |
 | [The playback appliance](player-appliance.md) | the decoder, in a room | Plan, parked on the question this page answers. |
 | The ESP32-S3 port | the decoder, on a microcontroller | **AC-3 5.1 decodes bit-correctly on real silicon.** Work is local and unpushed. |
@@ -158,7 +158,7 @@ for a home cinema bed.
 - It is **a proposal to another project**, not a task that can be scheduled. It needs a working
   implementation to argue from, which is what the HLS phase produces.
 
-**The honest risk.** Sendspin may decline a compressed-bitstream extension, on the reasonable
+**The risk worth stating.** Sendspin may decline a compressed-bitstream extension, on the reasonable
 grounds that unknown-latency endpoints break the guarantee the protocol exists to make. That
 outcome is survivable — the HLS transport is not contingent on it — and it should be assumed
 rather than hoped against.
@@ -214,14 +214,35 @@ were stale after AP3's pimpl sweep.
 |---|---|---|---|
 | Crucible | source | IEC 61937 today; HTTP origin would be new | shipped; the network output is a scope question, [decision 3](#decisions) |
 | `ac3cli record` / `live`, `ac3gui` live session | source | **already writes a servable HTTP origin** through `Fmp4FolderWriter` | shipped, unconnected to any sink |
-| The DAW plugin | source | whatever the host renders to; a bed, not objects | [study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) done |
+| The DAW plugin | source | whatever the host renders to; **bed-only, unconditionally** | [study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) done |
 | The Shield demo | source | IEC 61937 over the Shield's HDMI | shipped |
 | The WASM encode page | source | none — it produces a file | shipped |
+| An out-of-tree GStreamer element or FFmpeg wrapper (**AP10**) | source | whatever the pipeline is muxing into | on the roadmap (`ROADMAP.md:2163`), unstarted, and its dependency AP5 is done |
 | A third-party AV receiver | sink | IEC 61937 | not ours; **cannot be synchronised** |
 | The playback appliance | sink | local files today; HTTP client is the new work | [plan](player-appliance.md), to be rewritten against this page |
 | An ESP32-S3 node | sink | HTTP client, then Sendspin | AC-3 proven; E-AC-3 needs float32 |
 | The WASM decode page | sink | a file today; could be an HLS client for free | shipped |
 | The delivery-QC report | **neither** — an instrument, not a node | n/a | [plan](https://github.com/iainchesworthlabs/ac3forge/blob/feature/qc-report-plan/docs/forge/qc-report.md); belongs under Forge, and this page is why |
+
+Two notes on the source column, both from [the plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md).
+
+**A plugin-sourced stream is bed-only and always will be.** Not a limit of any one format: a
+plugin on an object track sees that track's audio as a plain channel arrangement, and the host
+and its renderer own the object metadata and never hand it over. There is no authoring path
+elsewhere in a session that reaches a plugin, so "objects arrive from upstream" is not a case
+that exists. The transport carries objects fine — they are inside the E-AC-3 JOC bitstream — but
+a plugin is not where they can enter.
+
+**AP10 may be the cheaper source.** FFmpeg's `ff_ac3_ch_layouts` still caps its E-AC-3 encoder at
+5.1 on current master (verified 2026-09-07), and GStreamer inherits that because `avenc_eac3`
+wraps FFmpeg's encoder. So an out-of-tree element or external-encoder wrapper over the C API is
+how anything above 5.1, and JOC at all, reaches the whole transcode ecosystem. It is already on
+the roadmap, its dependency is done, and unlike the plugin it has no format-expressiveness
+blocker to work around — GStreamer's `GstMeta` is extensible, so object metadata is at least
+*representable* across a pipeline, which is the one place in that study where the door is not
+closed. Whether it comes before or after the plugin is a scheduling question this page does not
+answer, but it should be asked, because the study's own conclusion makes the plugin the more
+constrained of the two.
 
 ## Format negotiation is one problem, not several
 
@@ -327,6 +348,27 @@ goes.
 | A third-party AVR can be synchronised with our sinks | **no**, and it never will be | the receiver does not report its decode latency; this is a property of the device class |
 | Multi-room drift is inaudible | **no** as stated | "inaudible" is not measurable; Phase 4 states a number instead |
 | Any of this is what a user wants | **no** | four plans, no users yet. The appliance plan's own note applies: the install page has not survived an outside reader. |
+
+## Coordination
+
+**Two cross-branch links that must become relative.** This page links
+[the plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) and the QC plan by absolute branch URL, and the plugin study links this
+page the same way, because neither file is on `main` and `mkdocs build --strict` validates only
+what is inside `docs/`. **Branch blob URLs 404 once the branch is deleted.** Whichever of
+[#537](https://github.com/iainchesworthlabs/ac3forge/pull/537),
+[#538](https://github.com/iainchesworthlabs/ac3forge/pull/538) and
+[#539](https://github.com/iainchesworthlabs/ac3forge/pull/539) merges last should convert every
+one of them to a relative path in the same change — there are two here, one in the plugin study,
+and one in the QC plan. `tools/checks/check_doc_paths.py` will not catch it: an absolute URL is
+not a path literal.
+
+**The ESP32-S3 work is local and unpushed** on its own worktree. The measurements this page
+cites come from that session; until it pushes, they cannot be checked from the repository.
+
+**PF7's footprint table is being re-measured** in
+[#540](https://github.com/iainchesworthlabs/ac3forge/pull/540), and the ESP32 session's
+`thread_local` fix moves the numbers again (the ARM image by 7.7%, `.bss` by 32 KB). The
+sequencing between those two is open.
 
 ## Deliberately not in scope
 
