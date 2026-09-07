@@ -640,8 +640,9 @@ both decoders a `struct Impl; std::unique_ptr<Impl> impl_;`
 (`src/forge/include/ac3/decoder/decoder.hpp:435` and `:758`), so `sizeof(ac3::FrameDecoder)` and
 `sizeof(ac3::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
 the state they used to hold in place now lives on the heap. That state came out of automatic
-storage: both decoders are locals in `decode_ac3()` and `decode_eac3()`, and `.bss` is unchanged
-at 237,592 bytes across the two measurements. Peak heap rose by 27,416 bytes, which is the E-AC-3
+storage: both decoders are locals in `decode_ac3()` and `decode_eac3()`, and `.bss` was unchanged
+at 237,592 bytes across those two measurements — it has moved a great deal since, for unrelated
+reasons the Static footprint section below sets out. Peak heap rose by 27,416 bytes, which is the E-AC-3
 decoder's former in-place size rather than the two summed — `decode_ac3()` returns before
 `decode_eac3()` runs, so only the larger of the two is ever live at the peak. The rest of the
 delta is `.text`, up 5,728 bytes and the whole of the image change, from the ordinary work of the
@@ -651,25 +652,34 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 180,252 |
+| `.text` (code + read-only data) | 185,932 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 237,592 |
-| **Image total** | **418,244** (408.4 KiB) |
+| `.bss` (zero-initialised) | 97,152 |
+| **Image total** | **283,484** (276.8 KiB) |
+
+`.bss` fell 140,440 bytes from the 237,592 this table carried before, in two steps and for one
+reason each. Moving `ecpl_channel_spectrum`'s 32 KB scratch off thread-local storage — it made
+the library unlinkable into any FreeRTOS application, see
+[the ESP32-S3 page](platforms/esp32.md) — took `.tbss` from 32,784 bytes to 24, and let
+`tls.cpp`'s block follow it from 64 KiB to 4 KiB. Then the decode path moved to float32 under
+this profile, halving every coefficient buffer. `.text` rose 5,680 bytes over the same span,
+which is the float32 transform instantiation.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
 
 | Object | `.text` | `.bss` |
 |---|---|---|
-| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 22.4 KiB | 96.1 KiB |
-| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 64.0 KiB |
-| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 8.4 KiB | 42.3 KiB |
-| `eac3_decoder.cpp.obj` (all of Annex E) | 48.2 KiB | 0 |
-| `mdct.cpp.obj` (inverse transform, fast path only) | 11.6 KiB | 12.4 KiB |
-| `decoder.cpp.obj` (AC-3) | 17.1 KiB | 0 |
+| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 23.2 KiB | 48.7 KiB |
+| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 4.0 KiB |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 8.6 KiB | 10.3 KiB |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 48.5 KiB | 0 |
+| `mdct.cpp.obj` (inverse transform, fast path only) | 14.9 KiB | 14.6 KiB |
+| `decoder.cpp.obj` (AC-3) | 17.2 KiB | 0 |
 | `joc.cpp.obj` (§6 object reconstruction from the bed) | 13.0 KiB | 0 |
 | `oamd.cpp.obj` (§H.1 object metadata) | 6.8 KiB | 0 |
 | `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction) | 6.0 KiB | 4.2 KiB |
+| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
 | `output.cpp.obj` (`OutputStage::apply`/`mix_levels`, both decoders') | 5.0 KiB | 16 B |
 | `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
 | `bitalloc.cpp.obj` (§7.2 bit allocation, both generations) | 3.9 KiB | 0 |
@@ -686,10 +696,17 @@ inflated the `.text` column by 63 KiB, `eac3_tools.cpp.obj` most of all (21.3 Ki
 against 8.4 KiB actually linked). `footprint_report.py` skips that block as of this
 re-measurement, and both columns now reconcile with `arm-none-eabi-size`'s own totals.
 
-`tls.cpp.obj`'s 64 KiB is the single-thread `__aeabi_read_tp` stub's static block
-(`apps/baremetal/platform/baremetal/tls.cpp`) — oversized on purpose so ordinary growth in
-`ecpl_channel_spectrum`'s `thread_local` scratch does not need it revisited, and checked by two
-`ASSERT()`s in the linker script rather than trusted.
+`tls.cpp.obj`'s 4 KiB is the single-thread `__aeabi_read_tp` stub's static block
+(`apps/baremetal/platform/baremetal/tls.cpp`), checked by two `ASSERT()`s in the linker script
+rather than trusted.
+
+It was 64 KiB, and this paragraph used to defend that as "oversized on purpose so ordinary growth
+in `ecpl_channel_spectrum`'s `thread_local` scratch does not need it revisited". That scratch is
+no longer thread-local — a 32 KB one made the library unlinkable into any FreeRTOS application,
+because FreeRTOS carves each task's thread-local area out of that task's own stack and ESP-IDF's
+1 KB IPC task could not be created. With the storage moved to the heap behind a `unique_ptr`, the
+measured `.tbss` is **24 bytes**, so 4 KiB is still more than seven times what is there, on the
+same reasoning that chose the old number.
 
 ### Table ROM budget
 
@@ -713,11 +730,11 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 270,886 bytes (264.5 KiB) |
+| Peak heap | 171,558 bytes (167.5 KiB) |
 | Leaked at exit | 0 |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
-| Caller-owned PCM buffer (16 × 1536 `float`, via `decode_*_into`) | 98,304 bytes |
+| Caller-owned PCM buffer (8 × 1536 `float`, via `decode_*_into`) | 49,152 bytes |
 | AC-3 allocations per frame, steady state | 46 |
 | E-AC-3 allocations per frame, steady state | 87 |
 
