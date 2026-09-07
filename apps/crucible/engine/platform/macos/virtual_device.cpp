@@ -9,11 +9,11 @@
 // so rather than being absent (docs/crucible/promotion.md, "The silent device,
 // per platform").
 //
-// **THIS HAS NEVER BEEN RUN.** Written 2026-09-06; the only thing that will
-// read it before somebody has a Mac is the macOS CI compiler
-// (docs/crucible/promotion.md, "What cannot be verified, and why"). It is also
-// the file here with least to be wrong about: it calls nothing, so what it
-// says is what it does.
+// **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 without a
+// Mac; since the same day the Crucible Qt Quick suites reach it for real on
+// both macOS legs, through the controller's refreshDriver()
+// (docs/crucible/promotion.md, Phase 5). It is also the file here with least
+// to be wrong about: it calls nothing, so what it says is what it does.
 //
 // The three platforms answer the same question three ways, and only this one
 // answers it by not needing the thing.

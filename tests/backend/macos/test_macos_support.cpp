@@ -29,8 +29,11 @@ using ac3::coreaudio::physical_format_id;
 using ac3::coreaudio::samples_to_float;
 using ac3::coreaudio::SampleFormat;
 using ac3::coreaudio::kSystemAudioTapMinimumOs;
+using ac3::coreaudio::kSystemAudioTapUnverifiedRefusal;
 using ac3::coreaudio::kSystemAudioTapVersionRefusal;
 using ac3::coreaudio::system_audio_tap_api_available;
+using ac3::coreaudio::system_audio_tap_enabled;
+using ac3::coreaudio::system_audio_tap_refusal;
 using ac3::audio::BitstreamFormat;
 
 TEST_CASE("E-AC-3 runs the carrier four times as fast as its content") {
@@ -174,19 +177,27 @@ TEST_CASE("the process-tap refusal names the floor it is gating on") {
     CHECK(kSystemAudioTapVersionRefusal.find(kSystemAudioTapMinimumOs) !=
           std::string_view::npos);
 
-    // And the two reports of that refusal have to be one sentence, not two
-    // that drifted: Capture's own describe() and audio_backend()'s
-    // process_loopback reason.
+    // And the two reports of a refusal have to be one sentence, not two that
+    // drifted: Capture's own describe() and audio_backend()'s
+    // process_loopback reason, both taken from system_audio_tap_refusal().
     CHECK(ac3::audio::describe(ac3::audio::CaptureError::kProcessLoopbackUnavailable) ==
-          kSystemAudioTapVersionRefusal);
+          system_audio_tap_refusal());
     const auto& capability = ac3::audio::audio_backend().process_loopback;
     if (!capability.available) {
-        CHECK(capability.reason == kSystemAudioTapVersionRefusal);
+        CHECK(capability.reason == system_audio_tap_refusal());
     }
-    // Note which side of that `if` the CI runners take: both macOS legs run
-    // an OS well past the floor, so the branch above is the one they do NOT
-    // execute. The case immediately before this one is what pins that down.
-    // Device-free either way - no tap is created and no consent is asked for.
+
+    // Which of the two sentences that is, on this machine. The version gate
+    // is the one the CI legs pass - both run an OS well past the floor - so
+    // what turns them away is the second gate, and the refusal they see names
+    // the hang rather than the version. A machine with the opt-in set takes
+    // neither branch and reports available.
+    if (system_audio_tap_api_available() && !system_audio_tap_enabled()) {
+        CHECK_FALSE(capability.available);
+        CHECK(capability.reason == kSystemAudioTapUnverifiedRefusal);
+    }
+    // Device-free on every branch - no tap is created and no consent is asked
+    // for.
 }
 
 TEST_CASE("a device with no CFStringRef UID names nothing openable") {

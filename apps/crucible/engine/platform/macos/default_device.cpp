@@ -11,9 +11,13 @@
 // The macOS DefaultDevice: the system output, read and never moved
 // (docs/crucible/promotion.md, Phase 5).
 //
-// **THIS HAS NEVER BEEN RUN.** Written 2026-09-06; the only thing that will
-// read it before somebody has a Mac is the macOS CI compiler
-// (docs/crucible/promotion.md, "What cannot be verified, and why").
+// **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 without a
+// Mac; since the same day the Crucible Qt Quick suites drive it for real on
+// both macOS legs, and it is the file whose endpoints() showed up in the
+// stack of the first hang this platform half produced
+// (docs/crucible/promotion.md, Phase 5). What has still never happened is a
+// launch on a desktop Mac, so nothing here is a report of how it behaves
+// beside real hardware.
 //
 // Two of the five answers come free, the same two Linux gets free: the
 // endpoint list is the library's own enumerate_render_devices(), which is what

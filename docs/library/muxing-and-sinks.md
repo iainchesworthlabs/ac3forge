@@ -708,9 +708,12 @@ its own rate (see [macOS](../platforms/macos.md)). On Windows a muted audio sess
 silence, because the tap sits after session volume, and a tap outlives its process delivering
 zeros, so "the process stopped playing" has to come from the audio session list rather than from
 the capture. Refusals are `kProcessLoopbackUnavailable` (no such tap on this platform, this
-Windows build or this macOS version — `process_loopback_available()` and
-`audio_backend().process_loopback` say so up front) and `kProcessNotFound`, which the library
-checks itself because the OS does not.
+Windows build or this macOS version — and, on **every** macOS since 2026-09-06, because the path
+is not entered by default: the one machine to run it never returned from
+`AudioDeviceCreateIOProcID` on the tap's aggregate device, so `AC3FORGE_MACOS_PROCESS_TAP` is
+what turns it back on. `process_loopback_available()` and `audio_backend().process_loopback` say
+which of those it is, up front) and `kProcessNotFound`, which the library checks itself because
+the OS does not.
 
 `ac3/audio/device_watcher.hpp`. `DeviceWatcher` (roadmap UX11) delivers endpoint
 added/removed/state-changed and default-changed events on a callback, so an application that

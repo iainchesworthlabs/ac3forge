@@ -116,6 +116,7 @@ nav:
           - Encode in the browser: wasm-encode-demo.md
   - Forge:
       - What it is: forge/index.md
+      - Delivery QC reports: forge/qc-report.md
       - CLI reference:
           - Overview: cli/index.md
           - Commands: cli/commands.md
@@ -158,4 +159,5 @@ nav:
       - History: history.md
       - Roadmap: roadmap.md
       - The family recasting: family/recasting.md
+      - A host plugin, studied: family/host-plugin.md
       - Self-hosted CI runners: ci-self-hosted-runners.md

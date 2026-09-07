@@ -149,17 +149,21 @@ elseif(APPLE)
     # and the tap - so a macos/audio_devices.cpp would be a second definition
     # of platform_audio_devices() and a duplicate symbol at link, not a gap.
     # That backend now carries the Core Audio process tap itself
-    # (src/audio/src/backend/macos/process_tap.mm) and reports
-    # process_loopback available unless the machine is older than macOS 14.2.
-    # What stands between this application and a capture here is elsewhere:
-    # the code-signing identity the TCC consent prompt is keyed to; the
-    # NSAudioCaptureUsageDescription Info.plist key that drives that prompt,
-    # which this target declares nowhere, since it takes CMake's default
-    # template below (apps/gui/Info.plist.in is the precedent for supplying
-    # one); and the tap's own mono/stereo and sample-rate refusals.
-    # engine/platform/macos/session_monitor.cpp's header lists all four;
+    # (src/audio/src/backend/macos/process_tap.mm) and reports process_loopback
+    # NOT available since 2026-09-06: the first machine ever to run the path
+    # never returned from AudioDeviceCreateIOProcID on the tap's aggregate
+    # device and wedged the rest of the process's HAL with it, so the path is
+    # refused before that call (src/audio/src/backend/macos/coreaudio_names.hpp
+    # carries the observation and the AC3FORGE_MACOS_PROCESS_TAP opt-in). So
+    # Crucible lists applications here and taps none of them, and says so.
+    # Behind that sit the things that were expected to be in the way and have
+    # not been reached: the code-signing identity, the
+    # NSAudioCaptureUsageDescription Info.plist key this target declares
+    # nowhere (apps/gui/Info.plist.in is the precedent for supplying one), and
+    # the tap's own mono/stereo and sample-rate refusals.
+    # engine/platform/macos/session_monitor.cpp's header lists them;
     # docs/platforms/macos.md, "Per-application capture: the Core Audio
-    # process tap", carries the mechanism.
+    # process tap", carries the mechanism and the stack.
     #
     # OBJCXX, and why this directory turns it on. NSWorkspace and NSImage have
     # no C entry point, so the Foreground and the icon provider are .mm
