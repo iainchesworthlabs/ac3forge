@@ -77,8 +77,17 @@ struct Rig {
     }
 };
 
+// Field by field rather than a designated initialiser: AppSession has
+// eleven members and clang's -Wmissing-designated-field-initializers is an
+// error here, which is the same shape tests/crucible/test_platform_seams.cpp
+// already uses.
 AppSession playing(AppId app, std::string name) {
-    return {.app = app, .name = std::move(name), .active = true, .has_window = true};
+    AppSession session;
+    session.app = app;
+    session.name = std::move(name);
+    session.active = true;
+    session.has_window = true;
+    return session;
 }
 
 // The applications a status names, in a fixed order: the engine's own list
@@ -146,7 +155,7 @@ TEST_CASE("crucible engine: a second start is refused and stop is idempotent", "
 
 TEST_CASE("crucible engine: every listed application with a session gets a tap", "[crucible][engine]") {
     Rig rig;
-    rig.sessions->set_apps({playing(1234, "chrome"), playing(5678, "vlc")});
+    rig.sessions->set_apps({playing(1234U, "chrome"), playing(5678U, "vlc")});
     Engine engine(rig.config());
 
     REQUIRE(engine.start().has_value());
@@ -173,7 +182,7 @@ TEST_CASE("crucible engine: every listed application with a session gets a tap",
         tapped.push_back(tap->process_id);
     }
     std::ranges::sort(tapped);
-    CHECK(tapped == std::vector<std::uint32_t>{1234, 5678});
+    CHECK(tapped == std::vector<std::uint32_t>{1234U, 5678U});
 }
 
 TEST_CASE("crucible engine: stop waits for an enumeration still in flight", "[crucible][engine]") {
@@ -211,7 +220,7 @@ TEST_CASE("crucible engine: stop waits for an enumeration still in flight", "[cr
     constexpr auto kHold = std::chrono::milliseconds(300);
     const auto asked = Clock::now();
     Clock::time_point released{};
-    std::thread releaser([&devices, &released, asked] {
+    std::thread releaser([&devices, &released, asked, kHold] {
         std::this_thread::sleep_until(asked + kHold);
         released = Clock::now();
         devices.release_enumerations();
