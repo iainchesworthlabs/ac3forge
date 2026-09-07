@@ -3522,11 +3522,10 @@ jobs:
     # to "does this build have hardware floating point", which is the axis
     # decode_scalar_t turns on.
     #
-    # espressif/idf is Espressif's own image and carries ESP-IDF plus its
-    # toolchain, so this needs no composite action and no multi-gigabyte
+    # espressif/idf is Espressif's own image and carries ESP-IDF, its toolchain
+    # AND qemu-xtensa, so this needs no composite action and no multi-gigabyte
     # download step - the same reason build-footprint uses a container rather
-    # than apt-ing a cross toolchain onto a bare runner. QEMU is the one thing
-    # the image does not ship, and idf_tools.py installs it.
+    # than apt-ing a cross toolchain onto a bare runner.
     #
     # WHAT THIS LEG DOES AND DOES NOT PROVE. It proves the profile builds for
     # Xtensa, links, and decodes both fixtures to the right levels inside the
@@ -3545,8 +3544,12 @@ jobs:
           persist-credentials: false
           fetch-depth: ${{ inputs.fetch_depth }}
 
-      # Not shipped in the image, and only this leg wants it.
-      - name: Install QEMU for Xtensa
+      # Normally a no-op: v6.1's image already carries qemu-xtensa, and this
+      # reports "already installed". Kept anyway, because the alternative is
+      # depending on an image's contents silently - if a future tag drops it,
+      # this installs it rather than failing several steps later with a
+      # confusing "qemu-system-xtensa: not found".
+      - name: Ensure QEMU for Xtensa is present
         shell: bash
         run: |
           set -eu
