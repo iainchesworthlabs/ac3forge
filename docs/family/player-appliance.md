@@ -1,18 +1,34 @@
 # A playback appliance: the player as a product
 
-!!! note "Status: plan, written 2026-09-07. Nothing decided."
-    This page plans a standalone player — the project's decode and passthrough path running on a
-    small always-on machine with no keyboard, feeding an AV receiver over HDMI or S/PDIF. It
-    keeps the shape of [the recasting plan](recasting.md) and
+!!! note "Status: plan, written and decided 2026-09-07. Reframed the same day."
+    This page plans **Hearth**, the sink member: the project's decode and passthrough path as a
+    product, on a machine that plays what it is given and turns it into sound in a room. It keeps
+    the shape of [the recasting plan](recasting.md) and
     [the promotion plan](../crucible/promotion.md): design sections say what changes and why,
     each phase carries an exit criterion and says how it is verified,
-    [Decisions](#decisions) lists what only the owner can decide with an option taken for each,
-    and [What cannot be verified, and why](#what-cannot-be-verified-and-why) says where the
-    evidence runs out. **The name in particular is not chosen here** — [The name](#the-name)
-    recommends one and prices the alternatives, the way Crucible's name was chosen from four.
+    [Decisions](#decisions) lists what only the owner could decide, and
+    [What cannot be verified, and why](#what-cannot-be-verified-and-why) says where the evidence
+    runs out.
 
-    Every identifier below is written as `ac3hearth` / `ac3::hearth` because a plan needs
-    something to write. Substitute whatever [decision 1](#decisions) settles.
+    **All ten decisions were taken on 2026-09-07**, four of them against the recommendation.
+    Then [the topology](topology.md) landed and changed the frame the page was written in, so
+    the design sections below are the reframed version and [Decisions](#decisions) records what
+    was asked and what was answered.
+
+## What Hearth is, in one paragraph
+
+[The topology](topology.md) names three roles: a **source** that produces an encoded stream, a
+**transport** that carries it, and a **sink** that turns it into sound in a room. **Hearth is
+the sink**, and the reference implementation of that role on a machine with an operating system.
+An ESP32-S3 node is the same role on a microcontroller — same decoder, same client, same
+protocol, different size — and whether it is the same *member* is
+[topology decision 2](topology.md#decisions), still open.
+
+That framing settles a question this page could not answer when it was first written. A sink
+does not have to choose between joining somebody else's whole-house protocol and being an
+island: it takes an encoded stream over the transport, and it also has its own source path for
+when nothing is feeding it. The [whole-house section](#whole-house-audio-and-why-hearth-is-its-own-zone)
+says why the first half is not available from any existing ecosystem.
 
 The pieces of a player already exist and none of them is a product.
 
@@ -153,6 +169,10 @@ CI and the version line — exactly as Crucible does.
   nothing.
 - Holds a queue: a list of files or directories, played in order, with transport (play, pause,
   next, previous, seek) and gapless-where-possible behaviour across items of the same format.
+- **Plays an HLS/CMAF origin over the network**, which is the sink half of
+  [the topology](topology.md): follow a media playlist, pull segments, extract access units
+  through `mp4::reader`, decode or pass through. This is what makes Hearth a sink rather than
+  only a local player, and it is the one wholly new subsystem on this page.
 - Serves a control page on the local network, reachable from a phone, that says what is playing,
   what format was negotiated, and why — and lets someone change any of it.
 - Starts at boot, survives a receiver that is off, and logs enough that a failure at 11pm is
@@ -176,9 +196,13 @@ this list is revised.
 - **No mixing.** One stream at a time to one sink.
 - **No cloud, no account, no telemetry.** It has no outbound network need at all, and
   [Phase 4](#phase-4-the-appliance-shape) makes that an assertion rather than a claim.
-- **No authentication in v1**, and therefore no exposure beyond a local interface — see
-  [The control surface](#the-control-surface).
-- **Not a Windows or macOS product in v1** — see [Platforms](#platforms).
+- **No authentication until tokens land** ([decision 6](#decisions)), and therefore no exposure
+  beyond a local interface until then — see [The control surface](#the-control-surface).
+- **Not a client of Snapcast, Sendspin or Music Assistant.** Each would mean receiving PCM,
+  which puts the codec out of the loop; [the topology](topology.md#why-no-existing-ecosystem-closes-the-gap)
+  records why none of them can carry a bitstream.
+- **Not a synchronised group member with a third-party AVR in the room.** Physics, not scope —
+  see [below](#whole-house-audio-and-why-hearth-is-its-own-zone).
 
 ## What it builds on, by path
 
@@ -195,7 +219,7 @@ this list is revised.
 | `apps/crucible/engine/output_stage.{cpp,hpp}` | Owning whichever sink the mode means, routing units to it, switching without disturbing upstream, counting underruns | Built around `RawFrame` (objects + placements + bed) from a live encoder. An appliance's unit is an already-encoded access unit off disk. |
 | `apps/crucible/runner/main.cpp` (`ac3crucible-run`) | The precedent for a headless binary over the same engine, driven by a line protocol, with a `status` verb | It reads stdin. An appliance has no stdin after boot. |
 | `apps/common/container_input.{cpp,hpp}` | `sniff_container` / `elementary_stream_from_bytes` — what `decode`, `qc`, `levels`, `play`, `monitor` and both GUI pickers all call | Whole-buffer. An appliance wants an incremental reader for large files, though whole-buffer is acceptable for v1 on a 2 GB Pi given typical elementary-stream sizes. |
-| `src/audio/src/net/udp_socket.hpp` + `net/{posix,windows}/` | **An in-tree socket layer on its own OS axis**, already justified in that header's own comment (sockets are the operating system, not the audio subsystem) | UDP only, receive-oriented. A TCP listener belongs beside it on the same axis — this is why the control surface needs no new dependency. |
+| `src/audio/src/net/udp_socket.hpp` + `net/{posix,windows}/` | **An in-tree socket layer on its own OS axis**, already justified in that header's own comment (sockets are the operating system, not the audio subsystem) | UDP only, receive-oriented. A TCP listener would have belonged beside it on the same axis; [decision 8](#decisions) took `cpp-httplib` instead, once the API became a third-party surface and an HLS client was needed too. |
 | `src/audio/include/ac3/audio/live_positions.hpp` (UX4) | A working control-surface precedent: a socket and thread owning an OS resource, feeding a lock-free-ish snapshot, with counters for a status line, and an OSC 1.0 parser that is pure and lives in the library | It drives object positions in an encoder, not transport in a player. The *architecture* is directly reusable and the plan reuses it. |
 | `apps/crucible/notices/`, `apps/notices/` | Per-platform composed notices, one small file per OS | A new component needs its own `notices.cmake` and platform directory. |
 | `cmake/Packaging.cmake:300-317,399-401,463-464,534-537` | The exact recipe for a second application component with its own DEB/RPM names, its own `Depends`, and an archive name that is not CPack's default suffix | A third component follows it line for line. |
@@ -214,7 +238,19 @@ this list is revised.
 
 ## The form
 
-Four forms were considered. The recommendation splits them: one now, one later, two never.
+Four forms were considered, and [decision 4](#decisions) took **both** of the first two: a
+headless service **and** a kiosk window. The reasoning that made the kiosk look expensive still
+holds for a 2 GB Pi, and it is answered by structure rather than by refusing the form:
+
+> **The kiosk is a client of the API, not a second application.** `ac3hearth` is the daemon and
+> links no Qt; `ac3hearth-kiosk` is a Qt Quick window that drives the same daemon over the same
+> HTTP API the web page uses. They ship as two CPack components, so a headless Pi installs
+> `ac3forge-hearth` and never sees Qt, and a machine with a screen adds
+> `ac3forge-hearth-kiosk` on top ([Build identity](#build-identity)).
+
+That is the same split `apps/crucible` already draws between `ac3crucible` and
+`ac3crucible-run`, moved out one level so it reaches the package boundary too. The table below
+is the original assessment, kept because the costs it names are what the split is answering.
 
 | Form | What it is | Verdict |
 |---|---|---|
@@ -225,8 +261,9 @@ Four forms were considered. The recommendation splits them: one now, one later, 
 
 ## The control surface
 
-Four candidates. The recommendation is a **local web control page over an in-tree HTTP/1.1
-subset**, with OSC retained as a second, already-precedented surface.
+Four candidates. The recommendation was a **local web control page**, and it stands; what
+changed is what serves it ([decision 8](#decisions)). OSC is kept as a second, already-precedented
+surface.
 
 | Surface | For | Against |
 |---|---|---|
@@ -235,38 +272,58 @@ subset**, with OSC retained as a second, already-precedented surface.
 | A physical remote over HDMI-CEC | No second device. The remote is already in the room and pointed at the television. | CEC is the least reliable part of consumer HDMI; `libcec` is LGPL-2.1-or-later (compatible, but a new dependency); the Pi's CEC support depends on the vc4 driver and the receiver's willingness to forward keys; and the appliance is not the active source, so it may never receive them. Worth adding **later**, as a convenience over the same command layer, never as the only surface. |
 | An OSC/HTTP API with no page | The project already has OSC: `ac3::audio::LivePositionSource` over `src/audio/src/net/udp_socket.hpp`, with a pure OSC 1.0 parser in the library (UX4). Cheapest possible surface. | An API is not a first-run story. Somebody with a new box and no keyboard cannot send an OSC packet. It is a good *second* surface for automation, and the plan keeps it as one. |
 
-**Why the web page needs no new dependency.** The project's entire vcpkg dependency list is
-`catch2` and `fmt`. That budget is a deliberate property of the codebase and this plan does not
-spend it. `src/audio/src/net/` already establishes exactly the right precedent: a socket
-abstraction on its own **operating-system** axis (`posix/`, `windows/`) rather than on the audio
-backend axis, with its own written reasoning for why the split falls there. A `TcpListener`
-belongs beside `UdpSocket` on that same axis. Over it, the appliance needs: request-line and
-header parsing, `GET` and `POST`, `Content-Length` bodies, static responses from a compiled-in
-asset table, and JSON — for which the responses are generated (so `fmt` is enough) and the
-requests are a handful of scalar fields (so a fifty-line reader is enough, and is testable
-without a socket).
+**The HTTP layer is `cpp-httplib`** ([decision 8](#decisions)), not the in-tree subset this page
+originally recommended. Three things changed between the recommendation and the decision, and
+all three point the same way:
 
-That is a meaningful amount of code, and its scope has to be stated: an HTTP **subset for a
-LAN control page**, not a web server. It never serves user-supplied paths, never proxies, and
-never accepts a request body larger than a fixed cap. [Threat model](../threat-model.md) gains a
-section, and [Phase 3](#phase-3-the-control-surface) makes the parser a fuzz target — `fuzz.yml`
-already exists and the appliance's request parser is exactly the shape it is good at.
+1. **The API stopped being our page's backend and became a product surface.** Third parties
+   consume it — a Home Assistant integration, an automation, another Hearth node.
+2. **The transport arrived.** [The topology](topology.md) makes Hearth an HLS/CMAF client and
+   optionally an origin server, so the daemon needs an HTTP **client** as well as a server.
+3. **cpp-httplib does WebSocket** — server and client, `ws://` and `wss://`, plus SSE and
+   chunked content providers. So one dependency covers the REST API, the push channel, the HLS
+   client, and a future Sendspin client, whose transport is WebSocket
+   ([topology](topology.md#the-transport-later-a-sendspin-extension)).
+
+It is MIT, header-only, an existing vcpkg port (0.54.1), GPL-3.0-compatible, and thread-per-
+connection, which is right for a handful of clients. It takes the project's vcpkg dependency
+list from two to three, and that is a real change to a deliberate property of the codebase:
+`catch2` and `fmt` were the whole list. TLS is explicitly **not** taken — cpp-httplib needs
+OpenSSL, mbedTLS or wolfSSL for it, and a reverse proxy is what a home deployment uses anyway.
 
 **The API.** `GET /api/status` (what is playing, the negotiated format, the endpoint, the
 reason, underruns), `GET /api/queue`, `POST /api/transport`, `POST /api/queue`,
-`POST /api/settings`, `GET /api/outputs`. The page is these calls and nothing else, so the OSC
-and any future CEC surface drive the same command layer rather than a parallel one.
+`POST /api/settings`, `GET /api/outputs`, and an SSE stream for state push. The web page, the
+kiosk window, Home Assistant and OSC all drive the same command layer rather than a parallel
+one — which is the whole reason the kiosk is a client rather than a second application.
 
-**Binding and exposure.** Default bind is the local network interface, port configurable,
-**no authentication in v1** — and therefore the default configuration and the documentation both
-state plainly that this control page must not be exposed to the internet. That is the same
-posture every consumer media appliance takes on a home LAN, it is stated rather than assumed,
-and [decision 6](#decisions) is where a different posture would be taken.
+**Binding, exposure and auth.** Default bind is the local network interface, port configurable.
+[Decision 6](#decisions) staged the auth: **no authentication first, then long-lived bearer
+tokens**, and human accounts only if a case for them appears. The token is the machine-to-machine
+primitive an HA integration uses, it needs no keyboard (generate it, show it on the page and in
+the journal), and the web page holds one too. Until tokens land, the default configuration and
+the documentation both state plainly that the control page must not be exposed to the internet.
 
 ## Platforms
 
-**Linux, x86_64 and arm64, ALSA and PipeWire. Recommended for v1.** The argument is DR9's own
-evidence and nothing else:
+**All three: Windows, macOS and Linux** ([decision 3](#decisions)), against a recommendation of
+Linux-only. The evidence below is unchanged and is what made Linux-only the recommendation; what
+changed is that it now describes **where the product is verified**, not where it ships. Three
+consequences follow and the plan carries them rather than arguing:
+
+- **Three service integrations**, not one: systemd on Linux, a Windows service, and a launchd
+  agent on macOS. `apps/hearth/platform/{linux,windows,macos}` under the no-`#ifdef` platform-tree
+  convention `tools/checks/check_platform_macros.ps1` enforces.
+- **DR6 now gates two of the three.** Authenticode for Windows and Developer ID plus
+  notarisation for macOS, exactly as they gate Crucible — see
+  [Signing and install](#signing-and-install), where the "ships without DR6" claim is now true of
+  the Linux package alone.
+- **DR9's two open rows become shipping caveats.** Windows/WASAPI exclusive passthrough and
+  CoreAudio are unverified against a receiver, so they are rows in
+  [What cannot be verified](#what-cannot-be-verified-and-why) and a Known-gap sentence in the
+  release notes, rather than reasons to withhold the platform.
+
+The evidence, unchanged:
 
 - **ALSA on real HDMI hardware: confirmed.** A Pi 4B drove an Atmos-capable AVR through
   `ac3cli play`, every stream shape locking, zero underruns
@@ -279,15 +336,16 @@ evidence and nothing else:
   whole product.
 - **CoreAudio: blocked.** No Mac has run any of it.
 
-There is a second reason, independent of evidence: an always-on headless appliance running
-Windows or macOS is not a thing people build. The hardware is Linux hardware.
+The original argument for Linux-only had a second half worth keeping visible, because taking all
+three does not make it false: an always-on **headless** appliance running Windows or macOS is an
+unusual thing to build, and the hardware people put next to a receiver is Linux hardware. What
+the kiosk half of [decision 4](#decisions) adds is the case that argument missed — a Windows or
+macOS machine already sitting in the room with a screen attached, which is a media-PC shape
+rather than an appliance shape, and is a real use even where the headless one is not.
 
-**Windows and macOS come later rather than never.** The daemon core is written platform-free
-from the start, exactly as `apps/crucible/engine/`'s pure half is, so it compiles into
-`ac3tests` on all eleven legs from Phase 1. What is Linux-only is the service integration
-(systemd), the packaging and the product claim. If DR9's Windows row ever closes, a Windows
-service is a platform directory and a packaging component, not a rewrite. That is
-[decision 3](#decisions).
+The daemon core stays platform-free regardless, exactly as `apps/crucible/engine/`'s pure half
+is, so it compiles into `ac3tests` on all eleven legs from Phase 2 whatever the platform matrix
+does.
 
 **Does it share the Crucible engine?** No, and the reason is above under
 [Which member](#which-member-it-belongs-to). What it shares is one thing, and the plan makes
@@ -302,6 +360,34 @@ that sharing explicit rather than duplicating it:
 > three call. It sits in `src/audio`, which is already named as the family's shared floor
 > ([recasting](recasting.md#the-model)), it is pure above the backend seam, and it is where the
 > fallback rule is currently written as a comment in a CLI command.
+
+And [the topology](topology.md#format-negotiation-is-one-problem-not-several) generalises that
+helper: the question is the same whether the far end is a receiver over EDID, a browser, or
+another Hearth node over the network. The helper returns a capability set; the transports are
+additional providers of it.
+
+## Whole-house audio, and why Hearth is its own zone
+
+This page originally had no answer here, and asked instead whether Hearth should join Snapcast
+or Sendspin as a client. [The topology](topology.md) answers it, and the answer has two halves.
+
+**Hearth cannot be fed by any existing whole-house ecosystem.** Snapcast's time sync works by
+removing and duplicating single samples, Sendspin carries Opus, and Music Assistant decodes
+everything to 32-bit float PCM and re-encodes before it reaches any player. A Hearth fed by any
+of them is a PCM speaker with the codec out of the loop, which is the one thing that would make
+the member pointless.
+
+**So Hearth owns its source and its queue, and a controller sends it commands rather than
+audio.** Home Assistant drives it as a `media_player` entity the same way it drives a Kodi box
+or an AVR — commands out, no audio. Music Assistant stays the library and the controller, which
+is what it is good at, and is not the transport.
+
+**And Hearth is its own zone, not a group member.** An AV receiver does not report its decode
+latency, so a room with an AVR in it cannot be sample-synchronised with a room of PCM speakers.
+That is a property of the device class. What *can* synchronise is a group of our own sinks,
+because they decode and can align in the PCM domain — [topology
+Phase 4](topology.md#phase-4-discovery-and-more-than-one-sink) is where that is measured rather
+than asserted.
 
 ## What UX9 needs before it can carry this
 
@@ -361,22 +447,26 @@ Following `CMakeLists.txt:136-138,457` and `cmake/Packaging.cmake` exactly as Cr
 
 | Thing | Value | Precedent |
 |---|---|---|
-| Directory | `apps/hearth/` with `core/`, `net/`, `platform/`, `web/` | `apps/crucible/{engine,ui,runner,platform}` |
+| Directory | `apps/hearth/` with `core/`, `net/`, `platform/{linux,windows,macos}/`, `kiosk/`, `web/` | `apps/crucible/{engine,ui,runner,platform}`; the platform tree is the convention `tools/checks/check_platform_macros.ps1` enforces |
 | Library target | `ac3hearth_core` (STATIC), alias `ac3::hearth_core` | `ac3crucible_engine` / `ac3::crucible_engine` (`apps/crucible/CMakeLists.txt:21,32`) |
-| Executable | `ac3hearth` (the daemon) | `ac3crucible`, `ac3crucible-run` (:252,380) |
+| Executables | `ac3hearth` (the daemon, **no Qt**) and `ac3hearth-kiosk` (a Qt Quick client of the daemon's API) | `ac3crucible` and `ac3crucible-run` (:252,380) — the same split, moved out to the package boundary |
 | Namespace | `ac3::hearth` | `ac3::crucible` |
-| Option | `option(AC3FORGE_BUILD_HEARTH "Build AC3Forge Hearth (the playback appliance; Linux)" OFF)` | `AC3FORGE_BUILD_CRUCIBLE` (`CMakeLists.txt:138`), default OFF for the same reason |
-| Root guard | `if(AC3FORGE_BUILD_HEARTH AND LINUX)` | `if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR APPLE OR LINUX))` (:457) — the guard names platforms rather than being dropped, so a platform with no arm fails at configure rather than at link |
-| QML URI | none in v1 | it has no window; reserve `Ac3ForgeHearth` if [decision 4](#decisions) ever adds a local screen |
-| CPack component | `hearth` | `crucible` (`cmake/Packaging.cmake:463-464`) |
-| Configure summary | one line, `Build Hearth   : ${AC3FORGE_BUILD_HEARTH}` | `CMakeLists.txt:523-524`, which the recasting plan already notes omits Crucible |
-| Config file | `/etc/ac3forge/hearth.toml` (or `.conf`) | new; `QSettings` is not available to a Qt-free daemon |
-| systemd unit | `ac3hearth.service`, installed to `${CMAKE_INSTALL_PREFIX}/lib/systemd/system` | new |
-| Service user | `ac3hearth`, in `audio`, created by the DEB/RPM post-install | new |
+| Options | `AC3FORGE_BUILD_HEARTH` (the daemon) and `AC3FORGE_BUILD_HEARTH_KIOSK` (the window, implies the first), both default OFF | `AC3FORGE_BUILD_CRUCIBLE` (`CMakeLists.txt:138`), default OFF for the same reason |
+| Root guard | `if(AC3FORGE_BUILD_HEARTH AND (WIN32 OR APPLE OR LINUX))` | `if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR APPLE OR LINUX))` (:457) — the guard names platforms rather than being dropped, so a platform with no arm fails at configure rather than at link |
+| QML URI | `Ac3ForgeHearth`, the kiosk only | `Ac3ForgeCrucible` (`apps/crucible/CMakeLists.txt:430`) |
+| CPack components | `hearth` (daemon) and `hearth-kiosk` (window), so a headless Pi never installs Qt | `crucible` (`cmake/Packaging.cmake:463-464`); the two-component split is new |
+| Configure summary | `Build Hearth   : ${AC3FORGE_BUILD_HEARTH}` and a kiosk line beside it | `CMakeLists.txt:523-524`, which the recasting plan already notes omits Crucible |
+| Config file | `/etc/ac3forge/hearth.toml` on Linux, `%ProgramData%\ac3forge\hearth.toml`, `/Library/Application Support/ac3forge/hearth.toml` | new; `QSettings` is not available to a Qt-free daemon, and the kiosk reads the daemon's config over the API rather than the file |
+| Service unit | `ac3hearth.service` (systemd), a Windows service, a launchd agent — one per platform directory | new |
+| Service user | `ac3hearth`, in `audio`, created by the DEB/RPM post-install; the platform equivalent elsewhere | new |
+| Bundle id | `com.iainchesworthlabs.ac3hearth` (kiosk, macOS) | [recasting decision 12](recasting.md#decisions) |
 
-`ac3hearth_core` links `ac3::forge`, `ac3::audio` and `ac3::fmt` and **nothing else** — no Qt,
-no PipeWire headers, no socket. The daemon links the core plus the platform half. That split is
-what makes the next section possible.
+`ac3hearth_core` links `ac3::forge`, `ac3::audio`, `ac3::fmt` and `mp4::mp4` (for the reader and
+the fragmenter) and **nothing else** — no Qt, no PipeWire headers, no socket. The daemon adds
+`cpp-httplib` and the platform half; the kiosk adds Qt and links neither the platform half nor a
+sink of its own, because it drives the daemon rather than the hardware. That layering is what
+makes the next two sections possible: the core compiles into `ac3tests` on every leg, and a
+headless package carries no Qt.
 
 ## Tests
 
@@ -447,11 +537,21 @@ and `CI Status` exists precisely so that never has to happen.
 What it adds is a flag on legs that already run, matching how `crucible: true` was added
 (`_build.yml:329,342,430,487,590,617`).
 
+[Decision 3](#decisions) took all three platforms, so the flag lands on the same six legs
+`crucible: true` does, plus the arm64 GCC leg that is the appliance's own product architecture.
+
 | Leg | `hearth: true`? | Why |
 |---|---|---|
-| linux-gcc-arm64 (`_build.yml:440-447`) | **yes** | The product architecture. Already `gui`, `packageable` **and** `release_package: true`, so its packages already ride the release route. |
-| linux-llvm (`:416-430`) | **yes** | x86_64, the other compiler, and already the leg with the PipeWire pass and `crucible: true`. |
-| linux-gcc, linux-llvm-arm64, the two sanitiser legs, the two Windows legs, windows-msvc-arm64, the two macOS legs | no | `apps/hearth/core/` compiles into `ac3tests` on **all eleven** regardless, ungated, so every leg — including the ASan/UBSan and TSan legs — already exercises the pure half. TSan matters here: the appliance is a daemon with a listener thread, a playback thread and a watcher thread, and that leg is where a data race in the transport state machine is caught. |
+| linux-gcc-arm64 (`_build.yml:440-447`) | **yes** | The product architecture. Already `gui`, `packageable` **and** `release_package: true`, so its packages already ride the release route. The one leg Crucible does *not* flag, and the one this member most needs. |
+| linux-llvm (`:416-430`), linux-llvm-arm64 (`:451-487`) | **yes** | x86_64 and aarch64, the PipeWire pass, already `crucible: true`. |
+| windows-msvc (`:302-329`), windows-llvm (`:331-342`) | **yes** | Decision 3. WASAPI plus the Windows service half. |
+| macos-llvm (`:585-594`), macos-llvm-x64 (`:614-621`) | **yes** | Decision 3. CoreAudio plus the launchd half — compiled and suite-run, not hardware-verified, exactly the posture `apps/crucible` holds on macOS today. |
+| linux-gcc, the two sanitiser legs, windows-msvc-arm64 | no | `apps/hearth/core/` compiles into `ac3tests` on **all eleven** regardless, ungated, so every leg — including ASan/UBSan and TSan — already exercises the pure half. TSan matters here: the daemon has a listener thread, a playback thread and a watcher thread, and that leg is where a data race in the transport state machine is caught. |
+
+**The kiosk rides `gui: true`**, not a flag of its own: every leg that already installs Qt6 for
+`ac3gui` can build `ac3hearth-kiosk` and run its Qt Quick suite, which is the same arrangement
+`ac3crucible_qmltests` uses. That is what keeps decision 4's second form from costing a Qt
+install anywhere it is not already paid for.
 
 **Flags.** Both new-flagged legs configure a second build tree the way the Crucible pass does
 (`_build.yml:1659-1663`): `-DAC3FORGE_BUILD_HEARTH=ON -DAC3FORGE_BUILD_TESTS=ON`, with the
@@ -461,10 +561,12 @@ the runner happened to have headers for. The Crucible pass then greps its own co
 assert the backend it meant to get (`:1664-1670`); the appliance does the same, which is what
 `hearth_platform_probe.cpp` above is for.
 
-**Cost in matrix time.** A second configure, a build of one static library and one small binary,
-`ctest -L hearth -L hearth-net`, and `cpack` for one component — on two legs. Measured against
-the Crucible pass, which does all of that *plus* Qt, five Qt Quick suites and a window: this is
-the cheaper half of it. Neither leg gains a runner, and the eleven-leg matrix stays eleven.
+**Cost in matrix time.** A second configure, one static library and one small binary,
+`ctest -L hearth -L hearth-net`, and `cpack` for one or two components — on seven legs rather
+than the two the Linux-only recommendation would have needed. That is the price of decision 3
+and it should be stated as such: roughly the Crucible pass's cost again, on the same legs that
+already pay it, plus the arm64 GCC leg. **No leg gains a runner and the eleven-leg matrix stays
+eleven**, which is what keeps `CI Status`'s branch-protection contract untouched.
 
 **Does an arm64 leg carry it?** Yes, and that is not optional. `linux-gcc-arm64` is the leg whose
 architecture the product ships on. The Crucible plan learned this the expensive way: it ran
@@ -481,14 +583,15 @@ Following `cmake/Packaging.cmake` line for line where Crucible established the r
 
 | Identity | Value | Line it follows |
 |---|---|---|
-| Component | `hearth` | `:463-464` (`list(APPEND CPACK_COMPONENTS_ALL crucible)`) |
-| Archive | `ac3forge-hearth-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}.tar.gz` | `:534-537` — named for what it is rather than taking CPack's `-hearth` suffix on the base name |
-| DEB | `ac3forge-hearth`, section `sound`, `DEB-DEFAULT` file name | `:300-307` |
+| Components | **two**: `hearth` (daemon) and `hearth-kiosk` (window), so a headless install carries no Qt | `:463-464` (`list(APPEND CPACK_COMPONENTS_ALL crucible)`); the split is new and is what [decision 4](#decisions) costs |
+| Archives | `ac3forge-hearth-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}.tar.gz` and `ac3forge-hearth-kiosk-…` | `:534-537` — named for what they are rather than taking CPack's `-hearth` suffix on the base name |
+| DEB | `ac3forge-hearth` and `ac3forge-hearth-kiosk` (`Depends: ac3forge-hearth (= version)`), section `sound`, `DEB-DEFAULT` file names | `:300-307`; the versioned inter-component dependency follows `libac3forge-dev`'s own (`:212`) |
+| Windows, macOS | the NSIS installer gains an optional Hearth feature; the `.dmg` gains the kiosk `.app` and a launchd agent — both gated on DR6 | `:81-94`, `:357-360`; new for a service |
 | DEB `Depends` | `libasound2` **or** `pipewire, wireplumber \| pipewire-media-session`, per the backend the leg built; plus `adduser` for the service user | `:308` (Crucible's PipeWire-only set) |
 | RPM | `ac3forge-hearth`, `RPM-DEFAULT` | `:399-401` |
 | Component description | names the member, per [recasting](recasting.md) Phase 6 | `:183-191` — and inherits the known cosmetic gap that every DEB component's one-line synopsis is the library's `PROJECT_DESCRIPTION`, so `apt show ac3forge-hearth` will open with "Clean-room AC-3 encoder" until CPack offers a per-component override that takes effect |
 | Version style | `PROJECT_VERSION_FULL` with the prerelease suffix | `:363-365` — the `crucible` and `dev` style, not the runtime's `M.m.p`; [recasting decision 13](recasting.md#decisions) settled that the two styles are deliberate |
-| Release artifact | uploaded as `packages-hearth-<preset>` | `_build.yml:1768` (`packages-crucible-${{ matrix.preset }}`). `release.yml:275-279` downloads by the `packages-*` pattern and `:617-628` uploads whatever `find` turns up; the `.deb`, `.rpm` and `.tar.gz` globs in the checksum, signing, provenance and SBOM steps (`:484-491`, `:534-545`) cover it with no edit |
+| Release artifact | both components uploaded as `packages-hearth-<preset>` | `_build.yml:1768` (`packages-crucible-${{ matrix.preset }}`). `release.yml:275-279` downloads by the `packages-*` pattern and `:617-628` uploads whatever `find` turns up; the `.deb`, `.rpm` and `.tar.gz` globs in the checksum, signing, provenance and SBOM steps (`:484-491`, `:534-545`) cover it with no edit |
 
 Two things follow from that last row and both are worth stating rather than discovering. Any
 step uploading a `packages-*` artifact needs `DERIVED_VERSION_OVERRIDE` threaded through
@@ -701,6 +804,8 @@ look for and CPack's DEB generator never writes (`apps/crucible/CMakeLists.txt:6
 | The library and `src/audio` | GPL-3.0, this project | The project's own licence text |
 | ALSA (`libasound2`) | LGPL-2.1-or-later | New fragment. Dynamically linked, so the LGPL's relinking condition is met by the shared library |
 | PipeWire (`libpipewire-0.3`) | MIT | New fragment; Crucible's notices already carry one — reuse |
+| **cpp-httplib** | MIT | **New fragment required** ([decision 8](#decisions)). Header-only, so it is compiled in rather than linked — the notice travels with the binary either way |
+| Qt (the kiosk only) | LGPL-3.0 | Reuse Forge's existing `qt-linux`/`qt-windows`/`qt-macos` fragments; the `hearth-kiosk` component carries them and the `hearth` component does not |
 | Any web font or CSS in the control page | — | **Recommended: none.** System font stack, no webfont, no framework. A control page with eight controls needs no dependency, and every one added is a fragment, a licence review and a byte on an SD card |
 
 **If [decision 8](#decisions) adds an HTTP library instead of the in-tree listener**, that is one
@@ -749,21 +854,26 @@ so:
 Windows, blocked on certificates rather than code, and a Known gap in every release since
 0.8.0-beta.2. It gates every application member that ships to a consumer OS.
 
-**What this member needs from it: nothing, in v1.** Linux has no Gatekeeper and no SmartScreen.
+**What this member needs from it: nothing on Linux, and both signatures elsewhere.**
+[Decision 3](#decisions) took all three platforms, so DR6 gates the Windows and macOS packages
+exactly as it gates Crucible's — and the paragraph below is now true of the Linux package alone.
+Linux has no Gatekeeper and no SmartScreen.
 A `.deb` or `.rpm` installs without a code-signing certificate, and what the project already does
 for integrity is the right thing and already automated: `SHA512SUMS`, the GPG release key
 (`ac3forge-signing-key.asc`), and `gh attestation verify --repo iainchesworthlabs/ac3forge`
 build provenance over `*.deb`, `*.rpm` and `*.tar.gz` (`release.yml:484-491,534-545`). The
 appliance's packages ride all three by the existing globs.
 
-This is worth stating positively rather than as an absence: **the appliance is the one
-application member that can ship to users today without DR6 being resolved.** That is an
-argument for Linux-first independent of DR9's evidence.
+This is worth stating positively rather than as an absence: **the appliance's Linux package is
+the one application artefact in the family that can ship to users today without DR6 being
+resolved.** That was the argument for Linux-first, and it survives decision 3 in a narrower
+form: Linux ships first because it can, not because the others are excluded.
 
-**What changes if the member ever reaches Windows or macOS.** It is gated by DR6 exactly as
-Crucible is, with one addition: a Windows *service* that binds a listening socket will prompt
-Windows Firewall on first run, and an unsigned binary doing that is a worse experience than an
-unsigned desktop application doing nothing of the kind.
+**The Windows-specific addition**, beyond what DR6 already covers for Crucible: a Windows
+*service* that binds a listening socket prompts Windows Firewall on first run, and an unsigned
+binary doing that is a worse first run than an unsigned desktop application doing nothing of the
+kind. That makes Authenticode more load-bearing for this member than for Crucible, and it is
+worth saying so in the DR6 record rather than discovering it at install time.
 
 **Does an image need signing of its own?** Not code signing — there is nothing to sign for.
 It needs:
@@ -806,8 +916,23 @@ depends on, and **DR9**, whose Linux rows are the evidence the platform choice r
 
 ## Phases
 
-Each ends with something that can be checked and says how. Phases 1 and 2 are the same under
-every decision and can start before any of them is taken; Phase 0 is this page.
+Each ends with something that can be checked and says how. Phases 0 to 2 are the same under
+every decision. Phases 3 onward now interleave with
+[the topology's own phases](topology.md#phases), and the pairing is stated so neither plan
+schedules the same work twice:
+
+| This page | The topology | Who owns it |
+|---|---|---|
+| Phase 1, UX9's gaps | — | here |
+| Phase 2, the pure core | — | here |
+| Phase 3, the control surface | — | here |
+| **Phase 3b, the HLS client** | **Phase 2, one source one sink** | **the topology** — Hearth is the sink it proves |
+| Phase 4, the appliance shape | Phase 3, latency numbers | here, using the topology's measured defaults |
+| Phase 5, packaging | — | here |
+| Phase 6, docs | — | here |
+| — | Phase 4, discovery and >1 sink | the topology |
+| — | Phase 5, the ESP32-S3 sink | the ESP32 session |
+| Phase 7, the image (conditional) | — | here |
 
 ### Phase 0: this page
 
@@ -859,8 +984,8 @@ recorded.
 
 ### Phase 3: the control surface
 
-`TcpListener` beside `UdpSocket` on `src/audio/src/net/`'s existing OS axis; the HTTP/1.1
-subset; the JSON API; the page assets compiled in; the `.ts` catalogues and the script that
+`cpp-httplib` wired in ([decision 8](#decisions)); the REST API and its SSE push channel; the
+page assets compiled in; the `.ts` catalogues and the script that
 turns them into JSON; a fuzz target over the request parser in `fuzz/`; the threat-model
 section.
 
@@ -872,12 +997,25 @@ pseudo-locale renders and nothing is hardcoded; the RTL cases pass.
 page's own suite at 200% zoom, keyboard-only, and under `dir="rtl"`; a manual screen-reader pass
 recorded on `hearth/accessibility.md` with its own "what has not been checked" section.
 
+### Phase 3b: the HLS client
+
+Owned by [topology Phase 2](topology.md#phase-2-one-source-one-sink-over-http) and listed here
+because it is Hearth that gains the code: follow a media playlist, pull segments, extract access
+units through `mp4::reader`, feed the decoder, and rebuffer without dying. Pure enough to be
+faked — the playlist parser and the segment-follow state machine take no socket.
+
+**Exit:** `ac3cli live` on one machine, playing through Hearth on another, the sink's decode
+matching a local decode of the same take byte for byte at the PCM level.
+
+**Verified by:** the topology's own exit criteria; **on the Pi**, a real two-machine run.
+
 ### Phase 4: the appliance shape
 
-The daemon: `apps/hearth/platform/linux/`, the systemd unit, the service user, the config file at
-`/etc/ac3forge/hearth.toml`, mDNS advertisement, journal logging, readiness notification, and
-the re-follow path behind both the PipeWire watcher and the ALSA timer. The build identity and
-the `hearth: true` flag on the two CI legs.
+The daemon on all three platforms: `apps/hearth/platform/{linux,windows,macos}/`, the systemd
+unit, the Windows service, the launchd agent, the service user, the config file, mDNS
+advertisement, platform logging, readiness notification, and the re-follow path behind both the
+PipeWire watcher and the ALSA timer. The kiosk (`ac3hearth-kiosk`) over the same API, with its
+Qt Quick suite. The build identity, and the `hearth: true` flag on the seven CI legs.
 
 **Exit:** `systemctl start ac3hearth` on a fresh Pi brings up a control page reachable at
 `http://ac3hearth.local`; a queue plays end to end; unplugging the receiver mid-stream is
@@ -991,8 +1129,45 @@ needs none, which is the point.
 
 ## Decisions
 
-Only what the owner has to decide. Each carries options, a recommendation and the cost of taking
-it. **None is taken here.**
+Only what the owner had to decide. Each carries the options it was put with, the recommendation,
+and the cost. **All ten were taken on 2026-09-07.** Six went as recommended; **four did not**,
+and those four are marked, because a plan that quietly rewrites its recommendation to match the
+answer is worth less than one that records the disagreement.
+
+| # | Question | Recommended | **Taken** |
+|---|---|---|---|
+| 1 | The name | Hearth | **Hearth** |
+| 2 | Which member | a fourth member | **a fourth member** |
+| 3 | Platforms | Linux only | **all three** ← against |
+| 4 | Form | headless service | **both**, service and kiosk ← against |
+| 5 | SD-card image | not in v1 | **not in v1** |
+| 6 | Auth | tokens first, accounts if needed | **tokens first** |
+| 7 | Status signal | journal and console | **journal and console** |
+| 8 | HTTP layer | in-tree subset | **cpp-httplib** ← against |
+| 9 | Coverage floor | measured, design toward 55/45 | **measured** |
+| 10 | Sink-capability helper | in `ac3::audio` | **in `ac3::audio`** |
+
+Two of the four reversals turned out to be well-founded on evidence found afterwards, and the
+page says so rather than claiming the recommendation had been right:
+
+- **Decision 8.** The recommendation rested on cpp-httplib being HTTP-only, which is false —
+  it does WebSocket, server and client, plus SSE. Once [the topology](topology.md) made Hearth
+  an HLS client and a possible Sendspin client, one dependency covered four needs that the
+  in-tree subset covered one of.
+- **Decision 4.** The kiosk looked expensive because it was assumed to be a second application.
+  Making it a client of the daemon's API costs a component, not an architecture — and the API
+  had to exist anyway.
+
+A third, **decision 3**, stands as a straightforward disagreement about risk: the evidence for
+Linux-only is unchanged and is now recorded as where the product is *verified* rather than where
+it *ships*, with DR9's two open rows carried as shipping caveats and DR6 gating two of the three
+platforms. The fourth, **decision 6**, was refined rather than reversed — staged, with
+machine-to-machine tokens named as the requirement rather than human accounts.
+
+One decision was created by the answers rather than asked: **the daemon/kiosk split**, resolved
+by [the reframe](#the-form) — two binaries over one core, two components, the daemon Qt-free.
+
+The original ten, as put:
 
 1. **The name.** (a) **Hearth**; (b) Anvil; (c) Ember; (d) AC3Forge Player. **Recommend (a)** —
    the forge's fire and the room's, one word, the register Forge and Crucible set. Cost: an
