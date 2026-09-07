@@ -149,13 +149,22 @@ foreach(test_file IN LISTS AC3DESK_QML_TEST_FILES)
     # QT_QUICK_BACKEND=software beside the offscreen platform. Offscreen
     # stops Qt asking for a window; it does not stop the scene graph asking
     # for a GPU context, and on a runner with no display server that request
-    # can hang rather than fail. Read off CI on 2026-09-06: three suites -
-    # firstrun, room and shell, the three that build the most - timed out at
-    # 300 seconds each on both macOS legs while the other eight passed, on a
-    # build whose configure and compile had both succeeded. The Linux
-    # Crucible pass already sets this pair together for the same reason
-    # (.github/workflows/_build.yml). Software rendering is slower and the
-    # room's 3D view still runs under it, which the Linux runs show.
+    # can hang rather than fail. Read off CI on 2026-09-06: firstrun, room
+    # and shell - the three that build the most - timed out at 300 seconds
+    # each on both macOS legs while the other eight passed, and setting this
+    # cleared the Intel leg. The Linux Crucible pass already sets this pair
+    # together for the same reason (.github/workflows/_build.yml). Software
+    # rendering is slower and the room's 3D view still runs under it, which
+    # the Linux runs show.
+    #
+    # It did NOT clear the Apple Silicon leg, and that is worth keeping here
+    # so nobody reaches for a render-loop setting next time. The same three
+    # suites kept timing out with the software backend in place, for an
+    # unrelated reason found by sampling the stuck process: the engine's
+    # frame thread was inside AudioDeviceCreateIOProcID on a Core Audio
+    # process tap that never returned, and the window's own thread was
+    # blocked behind it. Two hangs, one symptom. See
+    # docs/crucible/promotion.md's Phase 5 record.
     set_tests_properties(ac3crucible_qml_tests_${suite} PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
         TIMEOUT 300

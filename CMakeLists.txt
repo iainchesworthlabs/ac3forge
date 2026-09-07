@@ -51,10 +51,9 @@ include(Coverage)
 # manifest feature resolved - see vcpkg.json); a plain configure is unaffected.
 include(Tracy)
 
-# ac3::fmt - {fmt}, used everywhere instead of std::format/std::print (see
-# cmake/Fmt.cmake). Unlike Tracy above, this is a base dependency: always
-# resolved, never opt-in.
-include(Fmt)
+# ac3::fmt used to be resolved here, beside Tracy. It is now further down,
+# after AC3FORGE_MINIMAL_DECODER is declared, because the minimum-footprint
+# profile must not resolve it at all - see the include(Fmt) below.
 
 # Sources carry spec citations with non-ASCII glyphs (section marks, degrees,
 # arrows). Tell MSVC both the source and execution charsets are UTF-8 so it
@@ -253,6 +252,34 @@ endif()
 # section rather than by a bare cache variable, and a module cannot read an
 # option that has not been declared yet. No-op when the profile is off.
 include(MinimalDecoder)
+
+# ac3::fmt - {fmt}, used everywhere instead of std::format/std::print (see
+# cmake/Fmt.cmake). A base dependency for the ordinary build: always resolved,
+# never opt-in, unlike Tracy above.
+#
+# NOT for the minimum-footprint profile, which links it nowhere: no source in
+# src/forge/minimal.cmake's list mentions fmt, and neither forge_minimal nor
+# apps/baremetal's probe lists ac3::fmt among its libraries. The profile is in
+# fact built to avoid it - src/internal/cpu/minimal/cpu_features.cpp exists as
+# a whole separate translation unit rather than a branch precisely because the
+# shared one reports through fmt, "which this profile does not carry and whose
+# formatted-output machinery it cannot afford" (that file's own header).
+#
+# Resolving it anyway was not free. Neither config-arm-none-eabi-minimal nor
+# the ESP-IDF build wires vcpkg in, so find_package(fmt CONFIG QUIET) missed
+# and cmake/Fmt.cmake's FetchContent fallback cloned fmt from GitHub at
+# CONFIGURE time - a network dependency, on every fresh configure, for a
+# library neither build links. Confirmed on the first ESP32-S3 configure,
+# which produced a build/_deps/fmt-build for nothing.
+#
+# This sits here rather than beside Tracy for the same reason
+# include(MinimalDecoder) does, stated directly above: the option it reads is
+# declared in this section, and a module cannot read an option that does not
+# exist yet. Everything that consumes ac3::fmt is added by add_subdirectory()
+# further down, so resolving it here is still early enough.
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    include(Fmt)
+endif()
 
 # ac3adm::ac3adm (src/ac3adm) is a READER, not a writer like the three container modules above -
 # roadmap item B1 phase 1 ("ADM BWF reader feeding the JOC encoder", see ROADMAP.md), parsing

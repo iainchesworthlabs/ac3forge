@@ -74,6 +74,17 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   documentation people copy from, which is an argument for analysing them. The coverage figure
   is unaffected: `sonar.coverage.exclusions` already lists `examples/**`, so they stay
   unmeasured rather than reading as 0%.
+- **`process_loopback` is reported unavailable on macOS**, where the version gate alone used to
+  report it available on macOS 14.2 and up. The Core Audio process tap is written and stays in
+  the tree; what changed is the claim made for it. The first machine ever to run the path - the
+  Apple Silicon CI leg, macOS 26.6.2 - never returned from `AudioDeviceCreateIOProcID` on the
+  tap's aggregate device, and while that request was outstanding the whole process's Core Audio
+  client was unusable, so an unrelated device enumeration on another thread blocked behind it
+  and the application froze rather than reporting a failed tap. `Capture::start_process_loopback()`
+  now refuses before that call, `audio_backend().process_loopback` carries the reason, and
+  `AC3FORGE_MACOS_PROCESS_TAP` in the environment turns the path back on for anyone with a Mac
+  to settle it on. Crucible on macOS therefore lists the applications using sound and taps none
+  of them, and says so. No other platform changes.
 - Code analysis runs nightly against `main` instead of on every pull request, push and
   merge-queue entry: CodeQL (`codeql.yml`, 02:17 UTC), MSVC Code Analysis
   (`msvc-analysis.yml`, 02:23 UTC) and clang-tidy, which moved out of `ci.yml`'s
@@ -377,6 +388,20 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   an entry that returns nothing.
 
 ### Fixed
+
+- **Crucible tapped applications before it had anywhere to play them**
+  (`apps/crucible/engine/engine.cpp`). The frame loop refreshed the session list and opened a tap
+  per application earlier in the frame than the block that applies an endpoint probe, and a probe
+  is requested rather than applied at construction - so the first frame tapped whatever was
+  playing and only then went looking for an output. On macOS that is audible: the Core Audio
+  process tap is created with `CATapMutedWhenTapped`, which is what lets that platform do
+  without a silent device, so on a Mac whose output policy finds nothing usable Crucible would
+  have muted the user's applications and delivered their audio nowhere. Taps are now opened only
+  while the output stage has an endpoint and released as soon as it has none, checked on every
+  frame so an endpoint that appears or vanishes between session refreshes is followed at once.
+  Windows and Linux hear no difference - a WASAPI process-loopback activation and a PipeWire link
+  to a sink monitor both capture without muting - and the rule only stops a tap being opened to
+  be thrown away.
 
 - **AC3Forge Crucible reported a running engine on a machine with nothing to play into**
   (`apps/crucible/engine/engine.cpp`). `Engine::start()` spawned its worker thread and reported

@@ -1,0 +1,66 @@
+# ESP-IDF configuration for the minimum-footprint decoder probe.
+#
+# Only settings that differ from IDF's own defaults, or that the footprint
+# comparison depends on, are here. In particular CONFIG_COMPILER_CXX_EXCEPTIONS
+# and CONFIG_COMPILER_CXX_RTTI are both already `n` by default in IDF (see
+# esp-idf/Kconfig), which is the same shape cmake/MinimalDecoder.cmake asks for
+# with -fno-exceptions -fno-rtti - so they are not repeated here. Setting them
+# would only create a second place for the answer to live.
+
+CONFIG_IDF_TARGET="esp32s3"
+
+# -Os, matching the arm-none-eabi leg's CMAKE_BUILD_TYPE=MinSizeRel. The two
+# footprint numbers are only comparable if both were optimised for the same
+# thing, and the profile's whole subject is size.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# PSRAM stays OFF, deliberately, even though the board this is developed
+# against (ESP32-S3-DevKitC-1-N16R8) has 8 MB of it.
+#
+# Two reasons, and the second is the load-bearing one:
+#
+#   1. QEMU cannot emulate S3 PSRAM (espressif/qemu#129 - every size fails to
+#      be recognised at runtime), so a build that needs PSRAM cannot be run
+#      without hardware, and a leg that only runs on hardware is a leg CI
+#      cannot have.
+#   2. The profile's peak heap is 243,470 bytes and its .bss around 77 KB
+#      against roughly 400 KB of usable internal SRAM. That is tight, and PF7
+#      records "no heap traffic in the decode loop" as an OPEN gap (45
+#      allocations per frame for AC-3, 87 for E-AC-3 - see docs/building.md).
+#      Turning PSRAM on would make the tightness invisible rather than fixed.
+#      Leaving it off means the SRAM budget is a number this build has to
+#      meet, which is the honest way round.
+#
+# Turn it on for a board build that needs the headroom; do not turn it on to
+# make a footprint number go away.
+
+# 16 MB, matching the -N16R8 module. The image is nowhere near this - the ARM
+# leg's whole image is 387,692 bytes - so this only affects the partition
+# table, never the measurement.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# The task that calls app_main(), and therefore the task the whole decode runs
+# on. IDF's default is 3,584 bytes, which is a sensible size for an application
+# that wires up peripherals and then waits on queues, and far too small for a
+# codec: the first run overflowed it, and the symptom was not a clean stack
+# overflow report but a LoadProhibited panic on the OTHER core's idle task,
+# inside the task watchdog's own bookkeeping - i.e. the overflow corrupted a
+# neighbouring structure and the crash surfaced somewhere unrelated.
+#
+# 32 KB with no attempt to trim it: this is a measurement harness, the memory
+# it saves would not be spent on anything, and a stack that is merely big
+# enough is one silent frame away from the same three-hour diagnosis. An
+# integrator sizing a real decoding task should measure with
+# uxTaskGetStackHighWaterMark() rather than copy this number.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+# No task watchdog. The probe is a batch computation that deliberately runs the
+# CPU flat out for as long as the decode takes and never yields - which is
+# exactly what the watchdog exists to catch in an application that should be
+# yielding. Under QEMU the decode is slow enough to trip the default 5-second
+# timeout on its own.
+#
+# This is a property of the PROBE, not advice for a decoder in a real product:
+# there the decode belongs on its own task with a bounded per-frame budget, and
+# the watchdog is what tells you when that budget is missed.
+CONFIG_ESP_TASK_WDT_INIT=n

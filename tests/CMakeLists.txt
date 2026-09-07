@@ -458,13 +458,23 @@ target_include_directories(ac3tests PRIVATE
 # reference resolves to the stub below on every platform and to the real
 # thing in the app.
 #
-# engine.cpp itself joined them for the same reason, once start() had an
-# answer worth asserting: with all three seams injected it runs its worker,
-# its session monitor and its probe over the fakes on any machine, and
-# crucible/test_engine_start.cpp is what holds the refusal reachable - the
-# case the window's status strip and the QML suites' skip branches depend
-# on. signing_hook.cpp comes with it because the engine's loop loads a key
-# (finding none, here) before it builds the encoder.
+# engine.cpp itself joined them last, with signing_hook.cpp beside it because
+# the frame loop owns a SigningHook. It is the same argument one step up: the
+# loop is written over the three seams EngineConfig injects (devices,
+# sessions, foreground), so with fakes in all three it runs here as plain C++
+# on any platform - and until crucible/test_engine.cpp nothing in the suite
+# constructed an Engine at all, which is how a probe thread that was never
+# joined reached a released branch. That file also asserts what the loop does
+# about opening taps: the platform seams it would otherwise reach for are the
+# ones platform_services_stub.cpp answers, and every case passes fakes
+# instead. The one platform piece it does touch is ac3::audio's DeviceWatcher,
+# which is linked below and answers with kNoBackend where there is none; the
+# engine notes that and carries on.
+#
+# crucible/test_engine_start.cpp rides the same block for what start()
+# answers: that a machine with nothing to play into is refused rather than
+# reported as running, which is what the window's status strip prints and
+# what the QML suites' "the engine did not start here" skips test for.
 target_sources(ac3tests PRIVATE
     crucible/test_slots.cpp
     crucible/test_bed_mixer.cpp
@@ -478,6 +488,7 @@ target_sources(ac3tests PRIVATE
     crucible/test_diagnostics.cpp
     crucible/test_desktop_entries.cpp
     crucible/test_translations.cpp
+    crucible/test_engine.cpp
     crucible/platform_services_stub.cpp
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"
@@ -499,11 +510,16 @@ target_sources(ac3tests PRIVATE
 target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine"
     "${CMAKE_SOURCE_DIR}/apps/crucible/ui"
-    "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main"
-    # engine.cpp's Tracy zones, the same pair apps/crucible/CMakeLists.txt
-    # puts on ac3crucible_engine and for the same reason: the header exists
-    # in two directories and one of them is always on the path.
+    "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main")
+# The profiling header pair, for engine.cpp's Tracy zones: the same
+# generator expression apps/crucible/CMakeLists.txt uses for
+# ac3crucible_engine, and for the same reason - the header is PRIVATE to
+# forge_objects, so a target that includes it says so itself rather than
+# picking it up from ac3::forge. Which of the two identically-pathed
+# variants is chosen is CMake's decision, never an #ifdef.
+target_include_directories(ac3tests PRIVATE
     "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
+target_link_libraries(ac3tests PRIVATE ac3::tracy)
 
 # The Linux Foreground's X11 half has a pure policy (x11_foreground.cpp: when
 # a read yields a pid, when a lost display becomes a reason) over an injected

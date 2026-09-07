@@ -58,6 +58,18 @@ AC3FORGE_EXPORT void mdct512_forward(std::span<const double, 512> windowed,
 AC3FORGE_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
                                        std::span<double, 512> x, bool fast = false);
 
+// The float32 form of the inverse above (roadmap PF7's float32 gap), for the
+// minimum-footprint profile on a target whose FPU is single-precision - where
+// carrying the decoder's coefficient buffers in double costs both the memory
+// they occupy and a software-emulated multiply for every one of them.
+//
+// No `fast` parameter, unlike the double form. The direct-form evaluation is
+// the spec's own and is the oracle the fast path is validated against, so it
+// stays double; offering a `false` a float32 caller could pass and then
+// ignoring it would be worse than not offering it.
+AC3FORGE_EXPORT void imdct512_windowed(std::span<const float, 256> coeffs,
+                                       std::span<float, 512> x);
+
 // ROADMAP PF5's batch-axis follow-on: four INDEPENDENT calls to
 // imdct512_windowed(..., /*fast=*/true) run in lockstep, one object per
 // SIMD lane, instead of four separate scalar/SSE2 calls - the axis PF5's
@@ -128,5 +140,10 @@ AC3FORGE_EXPORT void mdct256_forward_second(std::span<const double, 256> windowe
 // imdct512_windowed — callers do not need to know which transform path ran.
 AC3FORGE_EXPORT void imdct256_pair_windowed(std::span<const double, 256> coeffs,
                                             std::span<double, 512> x, bool fast = false);
+
+// The float32 form of the short-block inverse (roadmap PF7). Same contract as
+// the float32 imdct512_windowed above, including the absent `fast` parameter.
+AC3FORGE_EXPORT void imdct256_pair_windowed(std::span<const float, 256> coeffs,
+                                            std::span<float, 512> x);
 
 }  // namespace ac3

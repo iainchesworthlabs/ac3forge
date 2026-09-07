@@ -586,15 +586,59 @@ flagged row is a real change in allocation behaviour, not runner noise. The
 memory-usage optimization programme's phases land as visible downward steps in
 these series - that is what this table exists to show.
 
+Two limits on that gate are worth knowing when reading these series. It runs
+in `persist-performance-trend`, which is `push` to `main` only, so it reports
+a step on the trunk after the merge rather than on the pull request that
+caused it; `ac3membench` has no pre-merge counterpart to the
+`Performance vs merge base` job that covers `ac3bench` and `ac3kernelbench`.
+And the series it compares against is per branch, so a branch rename or a
+gitflow-to-trunk switch starts one from empty - the trailing window now widens
+to the sibling branch series when a branch's own file holds fewer than three
+records, and a workload with no history anywhere is annotated as ungated
+rather than passing quietly.
+
 Two landed programmes are the biggest steps in these series. The 2026-08
 memory-usage programme cut steady-state allocator traffic per frame by 85-88%
-on the encode series (on the measured `linux-gcc` runner: AC-3 encode
-225,028 → 26,778 bytes/frame and 286 → 86 allocations; E-AC-3
-214,808 → 28,792 and 157 → 67; Atmos 218,960 → 32,656 and 196 → 106) and
-54-61% on the decode series - and, outside these tables, took every
-output-producing CLI command memory-flat at any programme length (a 3-minute
-5.1 encode peaked at 437.8 MiB before the programme and 9.3 MiB after;
-decode 217 → 28.5 MiB, `spdif` 225.7 → 18.0 MiB).
+on the encode series (**as measured when it landed**, on the `linux-gcc`
+runner: AC-3 encode 225,028 → 26,778 bytes/frame and 286 → 86 allocations;
+E-AC-3 214,808 → 28,792 and 157 → 67; Atmos 218,960 → 32,656 and
+196 → 106) and 54-61% on the decode series - and, outside these tables, took
+every output-producing CLI command memory-flat at any programme length (a
+3-minute 5.1 encode peaked at 437.8 MiB before the programme and 9.3 MiB
+after; decode 217 → 28.5 MiB, `spdif` 225.7 → 18.0 MiB).
+
+Two of those three encode figures no longer describe the code. At `main` =
+`e982712b` the same leg records E-AC-3 encode at 53,845.7 bytes/frame and
+199.11 allocations, and Atmos at 53,606.4 and 219.10 - both of them above the
+*pre*-programme baselines quoted above, 157 and 196 allocations. The decode
+series is unaffected, and so is AC-3 encode, which still reads 26,778.5 and
+86.04. That last row is why the other two can be read at all: a workload that
+still matches its landed figure to the decimal, on the same leg, rules out
+platform, stdlib and measurement-context drift. Without that control the two
+divergences would be arguable; with it, what moved is the code the other two
+share.
+
+It is one step rather than a drift. Both E-AC-3-family workloads sit flat at
+the old values through every record up to `3aedec41` and flat at the new ones
+from `83546721` (2026-08-25) onward. Bisecting `ac3membench` brackets the
+step to PR #352's per-channel exponent-run planner: the commit before it
+(`f54ea929`) measures 95.0 allocations/frame for `eac3_51_encode`, and
+`fb58aa62` measures 248.2 (a windows-msvc build - the leg differs from this
+table's, the step does not). AC-3 encode is untouched because it plans its
+exponent runs through its own encoder.
+
+The extra churn is a defect rather than the planner's intended cost, and is
+tracked as [#544](https://github.com/iainchesworthlabs/ac3forge/issues/544).
+`encode_run` in `src/forge/src/encoder/eac3_frame.cpp` assigns the by-value
+return of `ac3::encode_exponents`, which owns a `std::vector`, so each run
+reallocates that buffer on every frame; the planner multiplied the number of
+runs from one per channel to one per run per channel. The bench's own columns
+carry the signature. Before the step each encode workload's steady-state
+count sat below its first frame's (E-AC-3 134 first, 67.00 steady), which is
+warm-up followed by reuse. After it the steady-state count exceeds the first
+frame's (159 first, 199.11 steady), which is a path allocating fresh storage
+every frame. `run.decoded` and `run.bap` in the same function reuse their
+capacity correctly, as does `ChannelPlan::runs`.
 
 The fast-IMDCT rollout that followed
 ([Validation → Performance and reference modes](verification.md#performance-and-reference-modes))
@@ -621,8 +665,8 @@ soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`
 for what the profile changes and why.
 
 `apps/baremetal/probe.cpp` decodes six frames each of real 5.1 AC-3 (448 kbit/s, coupling) and
-E-AC-3 (384 kbit/s, AHT + spx + coupling) and reports what it cost. Numbers below are from the
-run in [this PR](https://github.com/iainchesworthlabs/ac3forge); `build-footprint` in
+E-AC-3 (384 kbit/s, AHT + spx + coupling) and reports what it cost. Numbers below are from a run
+against `main` at `e982712b`; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
@@ -632,37 +676,81 @@ significantly DC10's QMF-domain JOC reconstruction, which the decode path needs
 (`src/forge/src/dsp/qmf.cpp` and `src/forge/src/verify/eac3_mirror.cpp`, both correctly added to
 `src/forge/minimal.cmake`'s source list at the time, per that merge's own commit message), plus
 the PF3/PF4 FFT/IMDCT rewrite and DC1's decoder output stage — and nobody re-measured the table
-or the ceiling before merging. The image had already reached 412,516 bytes by then; the numbers
-below are that re-measurement, re-based against the current `main`.
+or the ceiling before merging. The image had already reached 412,516 bytes by then.
+
+The same thing happened a second time, and the numbers below are that second re-measurement. The
+largest movement in them is a relocation rather than growth. AP3's Pimpl sweep (`ee5ff91e`) gave
+both decoders a `struct Impl; std::unique_ptr<Impl> impl_;`
+(`src/forge/include/ac3/decoder/decoder.hpp:435` and `:758`), so `sizeof(ac3::FrameDecoder)` and
+`sizeof(ac3::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
+the state they used to hold in place now lives on the heap. That state came out of automatic
+storage: both decoders are locals in `decode_ac3()` and `decode_eac3()`, and `.bss` was unchanged
+at 237,592 bytes across those two measurements — it has moved a great deal since, for unrelated
+reasons the Static footprint section below sets out. Peak heap rose by 27,416 bytes, which is the E-AC-3
+decoder's former in-place size rather than the two summed — `decode_ac3()` returns before
+`decode_eac3()` runs, so only the larger of the two is ever live at the peak. The rest of the
+delta is `.text`, up 5,728 bytes and the whole of the image change, from the ordinary work of the
+intervening commits.
 
 ### Static footprint
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 174,524 |
+| `.text` (code + read-only data) | 185,932 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 237,592 |
-| **Image total** | **412,516** (402.8 KiB) |
+| `.bss` (zero-initialised) | 97,152 |
+| **Image total** | **283,484** (276.8 KiB) |
+
+`.bss` fell 140,440 bytes from the 237,592 this table carried before, in two steps and for one
+reason each. Moving `ecpl_channel_spectrum`'s 32 KB scratch off thread-local storage — it made
+the library unlinkable into any FreeRTOS application, see
+[the ESP32-S3 page](platforms/esp32.md) — took `.tbss` from 32,784 bytes to 24, and let
+`tls.cpp`'s block follow it from 64 KiB to 4 KiB. Then the decode path moved to float32 under
+this profile, halving every coefficient buffer. `.text` rose 5,680 bytes over the same span,
+which is the float32 transform instantiation.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
 
 | Object | `.text` | `.bss` |
 |---|---|---|
-| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 23.4 KiB | 96.1 KiB |
-| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 64.0 KiB |
-| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 21.3 KiB | 42.3 KiB |
-| `eac3_decoder.cpp.obj` (all of Annex E) | 50.5 KiB | 0 |
-| `decoder.cpp.obj` (AC-3) | 17.3 KiB | 0 |
-| `mdct.cpp.obj` (inverse transform, fast path only) | 15.2 KiB | 12.4 KiB |
-| `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction — new since 354,060) | 8.9 KiB | 4.2 KiB |
-| `eac3_mirror.cpp.obj` (E-AC-3 decode-side trace, DecoderConfig::syntax — new since 354,060) | 8.5 KiB | 0 |
-| everything else, summed | 87.7 KiB | 12.9 KiB |
+| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 23.2 KiB | 48.7 KiB |
+| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 4.0 KiB |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 8.6 KiB | 10.3 KiB |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 48.5 KiB | 0 |
+| `mdct.cpp.obj` (inverse transform, fast path only) | 14.9 KiB | 14.6 KiB |
+| `decoder.cpp.obj` (AC-3) | 17.2 KiB | 0 |
+| `joc.cpp.obj` (§6 object reconstruction from the bed) | 13.0 KiB | 0 |
+| `oamd.cpp.obj` (§H.1 object metadata) | 6.8 KiB | 0 |
+| `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction) | 6.0 KiB | 4.2 KiB |
+| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
+| `output.cpp.obj` (`OutputStage::apply`/`mix_levels`, both decoders') | 5.0 KiB | 16 B |
+| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
+| `bitalloc.cpp.obj` (§7.2 bit allocation, both generations) | 3.9 KiB | 0 |
+| `transient_prenoise.cpp.obj` (§3.7 post-IMDCT correction) | 744 B | 3.0 KiB |
+| `libm_a-e_pow.o` (newlib's `pow`) | 2.9 KiB | 0 |
+| `arm_librdimon_a-syscalls.o` (newlib's semihosting syscalls) | 2.5 KiB | 176 B |
+| `libm_a-k_rem_pio2.o` (newlib's trig argument reduction) | 2.2 KiB | 0 |
+| everything else, summed | 20.7 KiB | 769 B |
 
-`tls.cpp.obj`'s 64 KiB is the single-thread `__aeabi_read_tp` stub's static block
-(`apps/baremetal/platform/baremetal/tls.cpp`) — oversized on purpose so ordinary growth in
-`ecpl_channel_spectrum`'s `thread_local` scratch does not need it revisited, and checked by two
-`ASSERT()`s in the linker script rather than trusted.
+Several rows are *smaller* than in the previous table without any code having been removed. That
+attribution was reading GNU ld's "Discarded input sections" block as though it were part of the
+map proper, so every `--gc-sections` casualty was credited to the object it came from; it
+inflated the `.text` column by 63 KiB, `eac3_tools.cpp.obj` most of all (21.3 KiB reported
+against 8.4 KiB actually linked). `footprint_report.py` skips that block as of this
+re-measurement, and both columns now reconcile with `arm-none-eabi-size`'s own totals.
+
+`tls.cpp.obj`'s 4 KiB is the single-thread `__aeabi_read_tp` stub's static block
+(`apps/baremetal/platform/baremetal/tls.cpp`), checked by two `ASSERT()`s in the linker script
+rather than trusted.
+
+It was 64 KiB, and this paragraph used to defend that as "oversized on purpose so ordinary growth
+in `ecpl_channel_spectrum`'s `thread_local` scratch does not need it revisited". That scratch is
+no longer thread-local — a 32 KB one made the library unlinkable into any FreeRTOS application,
+because FreeRTOS carves each task's thread-local area out of that task's own stack and ESP-IDF's
+1 KB IPC task could not be created. With the storage moved to the heap behind a `unique_ptr`, the
+measured `.tbss` is **24 bytes**, so 4 KiB is still more than seven times what is there, on the
+same reasoning that chose the old number.
 
 ### Table ROM budget
 
@@ -686,16 +774,16 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 243,470 bytes (237.8 KiB) |
+| Peak heap | 171,558 bytes (167.5 KiB) |
 | Leaked at exit | 0 |
-| `sizeof(ac3::FrameDecoder)` | 12,952 bytes |
-| `sizeof(ac3::Eac3Decoder)` | 27,408 bytes |
-| Caller-owned PCM buffer (16 × 1536 `float`, via `decode_*_into`) | 98,304 bytes |
-| AC-3 allocations per frame, steady state | 45 |
+| `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
+| `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
+| Caller-owned PCM buffer (8 × 1536 `float`, via `decode_*_into`) | 49,152 bytes |
+| AC-3 allocations per frame, steady state | 46 |
 | E-AC-3 allocations per frame, steady state | 87 |
 
 The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
-for zero, and this is 45/87 — from the per-block geometry vectors inside the decoders and the
+for zero, and this is 46/87 — from the per-block geometry vectors inside the decoders and the
 `std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`, none of which the
 memory programme's [`_into` forms](#whole-frame-trend) removed because they are inherent to
 those two return types, not to allocation *reuse*. Reaching zero means those becoming
