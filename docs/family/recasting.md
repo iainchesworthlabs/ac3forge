@@ -195,7 +195,15 @@ family docs say so and this plan does not fight it.
 
 ## The docs
 
-The site has 73 pages under 12 tabs (`mkdocs.yml:65-147`). Crucible is absent from the home page,
+!!! note "The counts in this section are as of 2026-09-05, when the page was written"
+    The regroup below has since landed: `main` carries **seven** tabs and 81 pages, and the nav
+    begins at `mkdocs.yml:65`. No end line is cited, here or anywhere else in this section — the
+    nav is append-only, so every addition moves it, and the original `65-147` had already gone
+    stale by two whole tabs (it stopped at the end of Crucible and omitted Platforms and
+    Project). The "Today" columns and the "Before" list below are kept as written, because they
+    are what the plan reasoned from.
+
+The site had 73 pages under 12 tabs when this was written. Crucible is absent from the home page,
 the quick start and the concepts overview; `README.md:64-68` still places it in `apps/windows/`
 and links the historical record instead of the guide. The library owns most of the tree; the
 tools own two tabs; Crucible owns the one it gained on 2026-09-05.
@@ -575,7 +583,7 @@ in one short-lived PR with the queue drained, the way UX12's Phase 1 did; check 
 first. Phases 2, 3 and 5 are docs-heavy and can ride beside code PRs.
 
 **The docs-only fast path.** A PR that touches only `docs/`, `*.md` and `mkdocs.yml` runs the docs
-strict build and skips the matrix (`ci.yml:311`). Phase 3 should stay inside that set; the moment
+strict build and skips the matrix (`ci.yml:314`). Phase 3 should stay inside that set; the moment
 it touches a `.cmake` or a `.qml` it pays for eleven legs.
 
 ## Deliberately not in scope
