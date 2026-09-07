@@ -144,6 +144,7 @@ jobs:
       linux_runner_3: ${{ steps.decide.outputs.linux_runner_3 }}
       linux_runner_4: ${{ steps.decide.outputs.linux_runner_4 }}
       linux_runner_5: ${{ steps.decide.outputs.linux_runner_5 }}
+      linux_runner_6: ${{ steps.decide.outputs.linux_runner_6 }}
       windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
       windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
@@ -171,7 +172,7 @@ jobs:
           # matrix. Bump these, and add a matching numbered output above and
           # matrix.runner (or job runs-on) reference below, if a leg is
           # added or removed.
-          LINUX_LEGS=5
+          LINUX_LEGS=6
           WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
@@ -3491,6 +3492,87 @@ jobs:
   # codec for a 32-bit target at all, and the first one to do so found three
   # real portability faults that no LP64 leg could have (see the profile's own
   # commit). A leg that only ran before releases would have found them then.
+  build-esp32s3:
+    name: Minimum-footprint decoder (ESP32-S3, QEMU)
+    # Leg 6 of check-runners' Linux fan-out. The sibling of build-footprint
+    # below: same profile, same probe, same fixtures, a different bare-metal
+    # target - an Xtensa LX7 with a single-precision FPU, where the arm-none-eabi
+    # leg is a Cortex-M3 with none at all. Between them they cover both answers
+    # to "does this build have hardware floating point", which is the axis
+    # decode_scalar_t turns on.
+    #
+    # espressif/idf is Espressif's own image and carries ESP-IDF, its toolchain
+    # AND qemu-xtensa, so this needs no composite action and no multi-gigabyte
+    # download step - the same reason build-footprint uses a container rather
+    # than apt-ing a cross toolchain onto a bare runner.
+    #
+    # WHAT THIS LEG DOES AND DOES NOT PROVE. It proves the profile builds for
+    # Xtensa, links, and decodes both fixtures to the right levels inside the
+    # ESP32-S3's internal SRAM. It proves NOTHING about speed: QEMU is not
+    # cycle-accurate and reports a CPU clock that disagrees with its own boot
+    # log. The probe's us_per_frame lines are printed here for shape, and the
+    # real-time number has to come from hardware - see docs/platforms/esp32.md.
+    needs: check-runners
+    runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}
+    container: espressif/idf:v6.1
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      # Normally a no-op: v6.1's image already carries qemu-xtensa, and this
+      # reports "already installed". Kept anyway, because the alternative is
+      # depending on an image's contents silently - if a future tag drops it,
+      # this installs it rather than failing several steps later with a
+      # confusing "qemu-system-xtensa: not found".
+      - name: Ensure QEMU for Xtensa is present
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python "$IDF_PATH/tools/idf_tools.py" install qemu-xtensa
+
+      - name: Report toolchain versions
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          idf.py --version
+          xtensa-esp32s3-elf-g++ --version | head -1
+
+      - name: Build and run the probe under QEMU
+        shell: bash
+        env:
+          # Inside the build directory rather than ${{ runner.temp }}, which is
+          # what build-footprint uses and what this job used first. That failed
+          # to upload: on this container the workspace is /__w/ac3forge/ac3forge
+          # while runner.temp expanded to /data/work/_temp - a container path and
+          # a host path in the same job - so the script wrote the file somewhere
+          # the upload step could not then find. The build directory is the one
+          # place both agree on, it is gitignored already, and it puts the
+          # summary beside the map it belongs with.
+          AC3FORGE_ESP32S3_SUMMARY: apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          ./tools/checks/run_esp32s3_probe.sh
+
+      - name: Upload the ESP32-S3 map and console output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: footprint-esp32s3
+          path: |
+            apps/baremetal/platform/esp32s3/build/ac3probe_esp32s3.map
+            apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
+          # error, not warn: this artifact is the only way to read what the
+          # probe measured without re-running the leg, and it silently uploaded
+          # just the map the first time. A missing file here should say so.
+          if-no-files-found: error
+
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)
     # Leg 5 of check-runners' Linux fan-out: everything here runs inside the

@@ -140,6 +140,15 @@ AC3FORGE_EXPORT void spx_apply_notch(std::span<double> synth, int startmant,
                                      const BandLayout& bands, std::span<const bool> wrapflag,
                                      int spxattencod);
 
+// The same notch over a float32 spectrum, for the minimum-footprint decoder
+// (roadmap PF7), whose coefficient store is float. The attenuation itself is
+// still computed in double - spx_attenuation is one std::exp2 per tap, and
+// there is nothing to gain from rounding it early - so the only difference is
+// the type of the thing it multiplies.
+AC3FORGE_EXPORT void spx_apply_notch(std::span<float> synth, int startmant,
+                                     const BandLayout& bands, std::span<const bool> wrapflag,
+                                     int spxattencod);
+
 // §E3.6.4.2.1: how much of a band's synthesized content is pseudo-random
 // noise versus the translated low-band copy, encode and decode alike -
 // `nratio` in the standard's pseudocode. `band_start`/`band_size` locate the
