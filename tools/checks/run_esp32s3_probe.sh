@@ -38,7 +38,7 @@ fi
 # past one should stop here and be explained rather than land silently.
 #
 # DIRAM is the interesting one. The ESP32-S3's internal SRAM is 341,760 bytes
-# and the linked app currently uses 138,900 of it, leaving 202,860 against a
+# and the linked app currently uses 134,676 of it, leaving 207,084 against a
 # 171,558-byte peak heap. The ceiling is on what the IMAGE uses, because that
 # is what squeezes the heap: every byte of static data here is a byte the
 # decode cannot allocate.
@@ -66,7 +66,7 @@ idf.py size
 DIRAM=$(idf.py size 2>/dev/null | grep -m1 'DIRAM' | tr -cd '0-9 \n' | awk '{print $1}' || true)
 DIRAM="${DIRAM:-0}"
 if [[ "$DIRAM" == "0" ]]; then
-    echo "note: could not parse DIRAM usage from idf.py size --format json;" \
+    echo "note: could not find a DIRAM row in idf.py size's output;" \
          "the SRAM ceiling is not being enforced on this run" >&2
 else
     echo "esp32s3.diram_bytes=$DIRAM" | tee -a "$OUTPUT"
@@ -86,8 +86,20 @@ echo "== running ac3probe on qemu-system-xtensa (esp32s3) =="
 # rather than on an exit code.
 timeout 300 idf.py qemu 2>&1 | tee -a "$OUTPUT" || true
 
+# A relative path is taken against the REPO ROOT rather than the project
+# directory this script cd'd into, because that is what a caller writing one in
+# a workflow file will mean. Absolute paths are used as given.
+#
+# The copy is not allowed to fail quietly. Getting this wrong once already cost
+# an artifact that uploaded the linker map and silently dropped the summary -
+# the one file that says what the probe measured - because the path the script
+# wrote to and the path the upload step searched were not the same one.
 if [[ -n "${AC3FORGE_ESP32S3_SUMMARY:-}" ]]; then
-    cp "$OUTPUT" "$AC3FORGE_ESP32S3_SUMMARY"
+    case "$AC3FORGE_ESP32S3_SUMMARY" in
+        /*) summary_dest="$AC3FORGE_ESP32S3_SUMMARY" ;;
+        *) summary_dest="$REPO/$AC3FORGE_ESP32S3_SUMMARY" ;;
+    esac
+    cp "$OUTPUT" "$summary_dest"
 fi
 
 if ! grep -q '^result=pass' "$OUTPUT"; then

@@ -3546,7 +3546,15 @@ jobs:
       - name: Build and run the probe under QEMU
         shell: bash
         env:
-          AC3FORGE_ESP32S3_SUMMARY: ${{ runner.temp }}/esp32s3-probe.txt
+          # Inside the build directory rather than ${{ runner.temp }}, which is
+          # what build-footprint uses and what this job used first. That failed
+          # to upload: on this container the workspace is /__w/ac3forge/ac3forge
+          # while runner.temp expanded to /data/work/_temp - a container path and
+          # a host path in the same job - so the script wrote the file somewhere
+          # the upload step could not then find. The build directory is the one
+          # place both agree on, it is gitignored already, and it puts the
+          # summary beside the map it belongs with.
+          AC3FORGE_ESP32S3_SUMMARY: apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
@@ -3559,8 +3567,11 @@ jobs:
           name: footprint-esp32s3
           path: |
             apps/baremetal/platform/esp32s3/build/ac3probe_esp32s3.map
-            ${{ runner.temp }}/esp32s3-probe.txt
-          if-no-files-found: warn
+            apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
+          # error, not warn: this artifact is the only way to read what the
+          # probe measured without re-running the leg, and it silently uploaded
+          # just the map the first time. A missing file here should say so.
+          if-no-files-found: error
 
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)
