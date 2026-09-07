@@ -26,6 +26,7 @@
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/internal/profile.hpp"
+#include "scalar_inverse.hpp"
 #include "ac3/internal/profiling.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
@@ -227,7 +228,7 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
 // ac3::io::WavStreamReader/Writer and ac3::FrameEncoder.
 struct FrameDecoder::Impl {
     DecoderConfig config_{};
-    std::array<std::array<double, 256>, 6> delay_{};  // overlap-add state
+    std::array<std::array<internal::decode_scalar_t, 256>, 6> delay_{};  // overlap-add state
     // §7.3.4 dither, persisting across frames like delay_ above so a long
     // stream's substituted noise does not repeat every syncframe.
     DitherGenerator dither_{};
@@ -387,8 +388,8 @@ std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
                 const auto un = static_cast<std::size_t>(n);
                 const double head = repeat ? last[un] * gain : 0.0;
                 pcm[static_cast<std::size_t>(block * 256 + n)] =
-                    static_cast<float>(2.0 * (head + delay[un]));
-                delay[un] = repeat ? last[un + 256] * gain : 0.0;
+                    static_cast<float>(2.0 * (head + static_cast<double>(delay[un])));
+                delay[un] = repeat ? static_cast<internal::decode_scalar_t>(last[un + 256] * gain) : internal::decode_scalar_t{0};
             }
         }
         gain *= kDecayPerBlock;
@@ -766,8 +767,8 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // below) - reused across blocks the same way `bap` above is, so tracing
     // a whole file costs one allocation rather than one per block.
     std::vector<std::array<int, 50>> mask(max_streams);
-    std::vector<std::array<double, 256>> coeffs(max_streams);
-    std::array<double, 512> x;
+    std::vector<std::array<internal::decode_scalar_t, 256>> coeffs(max_streams);
+    std::array<internal::decode_scalar_t, 512> x;
 
     for (int block = 0; block < kBlocksPerFrame; ++block) {
         AC3_ZONE_SCOPED_N("ac3_decode_block");
@@ -1262,12 +1263,16 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                     exps[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)];
                 if (bap_value == 0) {
                     coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
-                        dither_eligible ? impl_->dither_.next() / static_cast<double>(1u << exp) : 0.0;
+                        static_cast<internal::decode_scalar_t>(dither_eligible
+                                             ? impl_->dither_.next() /
+                                                   static_cast<double>(1u << exp)
+                                             : 0.0);
                     continue;
                 }
                 const auto code = mantissa_reader.read(r, bap_value);
                 coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
-                    dequantize_mantissa(code, bap_value) / static_cast<double>(1u << exp);
+                    static_cast<internal::decode_scalar_t>(dequantize_mantissa(code, bap_value) /
+                                     static_cast<double>(1u << exp));
             }
         };
         // Every stream's quantized mantissas off the wire, in the order
@@ -1330,9 +1335,11 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                             // formula a real coupling coefficient would use.
                             const double coeff =
                                 (cpl_bap[ubin] == 0 && ch_dither)
-                                    ? impl_->dither_.next() / static_cast<double>(1u << cpl_exps[ubin])
-                                    : shared[ubin];
-                            target[ubin] = coeff * coordinate * 8.0 * sign;
+                                    ? impl_->dither_.next() /
+                                          static_cast<double>(1u << cpl_exps[ubin])
+                                    : static_cast<double>(shared[ubin]);
+                            target[ubin] =
+                                static_cast<internal::decode_scalar_t>(coeff * coordinate * 8.0 * sign);
                         }
                     }
                 }
@@ -1348,8 +1355,11 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 }
                 const int high = std::min(kRematrixBands[band][1], cap);
                 for (int bin = kRematrixBands[band][0]; bin <= high; ++bin) {
-                    const double l = coeffs[0][static_cast<std::size_t>(bin)];
-                    const double rr = coeffs[1][static_cast<std::size_t>(bin)];
+                    // Sum and difference of two stored coefficients - exact in
+                    // whatever type stores them, so this follows them rather
+                    // than detouring through double.
+                    const auto l = coeffs[0][static_cast<std::size_t>(bin)];
+                    const auto rr = coeffs[1][static_cast<std::size_t>(bin)];
                     coeffs[0][static_cast<std::size_t>(bin)] = l + rr;
                     coeffs[1][static_cast<std::size_t>(bin)] = l - rr;
                 }
@@ -1372,8 +1382,12 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                                     ? internal::block_gain(impl_->config_, dynrng2_word, compr2)
                                     : internal::block_gain(impl_->config_, dynrng_word, compr);
             if (drc != 1.0) {
+                // Narrowed once, not per coefficient: one number for the whole
+                // block, so this is a single rounding step rather than 256
+                // round trips through double.
+                const auto block_scale = static_cast<internal::decode_scalar_t>(drc);
                 for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
-                    value *= drc;
+                    value *= block_scale;
                 }
             }
         }
@@ -1391,18 +1405,15 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         if (!impl_->config_.skip_reconstruction) {
             AC3_ZONE_SCOPED_N("ac3_imdct_overlap");
             for (int ch = 0; ch < nchans; ++ch) {
-                if (ch < nfchans && blksw[static_cast<std::size_t>(ch)]) {
-                    imdct256_pair_windowed(coeffs[static_cast<std::size_t>(ch)], x,
-                                           impl_->config_.fast_imdct);
-                } else {
-                    imdct512_windowed(coeffs[static_cast<std::size_t>(ch)], x, impl_->config_.fast_imdct);
-                }
+                const bool short_block = ch < nfchans && blksw[static_cast<std::size_t>(ch)];
+                internal::inverse_transform_into(coeffs[static_cast<std::size_t>(ch)], x,
+                                                 short_block, impl_->config_.fast_imdct);
                 auto& delay = impl_->delay_[static_cast<std::size_t>(ch)];
                 const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
                 for (int n = 0; n < 256; ++n) {
                     const auto sample = static_cast<std::size_t>(n);
                     pcm[static_cast<std::size_t>(block * 256 + n)] =
-                        static_cast<float>(2.0 * (x[sample] + delay[sample]));
+                        static_cast<float>(internal::decode_scalar_t{2} * (x[sample] + delay[sample]));
                     delay[sample] = x[static_cast<std::size_t>(256 + n)];
                 }
                 // §7.10's raw material, captured into scratch rather than

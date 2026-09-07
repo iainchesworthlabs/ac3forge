@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <span>
 #include <utility>
@@ -121,8 +122,11 @@ double spx_attenuation(int spxattencod, int index) {
                      static_cast<double>(tap + 1) / 15.0);
 }
 
-void spx_apply_notch(std::span<double> synth, int startmant, const BandLayout& bands,
-                     std::span<const bool> wrapflag, int spxattencod) {
+namespace {
+
+template <typename Scalar>
+void spx_apply_notch_impl(std::span<Scalar> synth, int startmant, const BandLayout& bands,
+                          std::span<const bool> wrapflag, int spxattencod) {
     if (spxattencod < 0) {
         return;
     }
@@ -132,7 +136,9 @@ void spx_apply_notch(std::span<double> synth, int startmant, const BandLayout& b
             if (at < 0 || at >= static_cast<int>(synth.size())) {
                 continue;
             }
-            synth[static_cast<std::size_t>(at)] *= spx_attenuation(spxattencod, tap);
+            synth[static_cast<std::size_t>(at)] = static_cast<Scalar>(
+                static_cast<double>(synth[static_cast<std::size_t>(at)]) *
+                spx_attenuation(spxattencod, tap));
         }
     };
     notch(startmant);
@@ -141,6 +147,18 @@ void spx_apply_notch(std::span<double> synth, int startmant, const BandLayout& b
             notch(bands.start[static_cast<std::size_t>(bnd)]);
         }
     }
+}
+
+}  // namespace
+
+void spx_apply_notch(std::span<double> synth, int startmant, const BandLayout& bands,
+                     std::span<const bool> wrapflag, int spxattencod) {
+    spx_apply_notch_impl<double>(synth, startmant, bands, wrapflag, spxattencod);
+}
+
+void spx_apply_notch(std::span<float> synth, int startmant, const BandLayout& bands,
+                     std::span<const bool> wrapflag, int spxattencod) {
+    spx_apply_notch_impl<float>(synth, startmant, bands, wrapflag, spxattencod);
 }
 
 double spx_noise_ratio(int band_start, int band_size, int endmant, int blend) {
@@ -518,9 +536,33 @@ struct EcplSpectrumScratch {
     std::array<double, 512> zi{};
 };
 
+// The storage is on the heap and only the POINTER is thread_local, which looks
+// like an indirection for nothing until you try to link this library into an
+// RTOS.
+//
+// FreeRTOS carves each task's thread-local area out of that task's own stack
+// (components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c: `tls_area_size`
+// is subtracted from uxStackPointer at task creation). The area is sized from
+// the LINKED IMAGE's .tdata + .tbss, so it is the same size for every task in
+// the system whether or not that task has ever heard of this decoder. With the
+// scratch itself thread_local that area is 32 KB, and ESP-IDF's own IPC task -
+// stack size 1024 bytes, created during startup before app_main runs - cannot
+// be created at all. The failure is an assert in esp_ipc_init(), a long way
+// from anything to do with audio, in an application that has not yet decoded a
+// single frame.
+//
+// A pointer costs every task four bytes instead, and the 32 KB is paid once per
+// thread that actually decodes enhanced coupling. std::unique_ptr rather than a
+// raw pointer so it is still released at thread exit and the probe's
+// heap.leaked_bytes stays at zero.
+//
+// The three properties the previous comment was protecting are all kept: no
+// 32 KB stack frame (PREfast C6262, alert #64), no allocation per call, and no
+// sharing between threads.
 EcplSpectrumScratch& ecpl_spectrum_scratch() {
-    static thread_local EcplSpectrumScratch scratch;
-    return scratch;
+    static thread_local std::unique_ptr<EcplSpectrumScratch> scratch =
+        std::make_unique<EcplSpectrumScratch>();
+    return *scratch;
 }
 
 }  // namespace

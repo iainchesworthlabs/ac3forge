@@ -117,5 +117,5 @@ SECTIONS
  * with a sentence rather than at run time with a corrupted spectrum. */
 ASSERT(SIZEOF(.tdata) == 0,
     "the bare-metal TLS stub only supports zero-initialised thread_local storage; something in this build has a non-zero initialiser whose image nothing copies in")
-ASSERT(SIZEOF(.tdata) + SIZEOF(.tbss) + 8 <= 64 * 1024,
-    "the thread_local image no longer fits apps/baremetal/platform/baremetal/tls.cpp's 64 KiB block - grow kTlsBlockBytes and this assert together")
+ASSERT(SIZEOF(.tdata) + SIZEOF(.tbss) + 8 <= 4 * 1024,
+    "the thread_local image no longer fits apps/baremetal/platform/baremetal/tls.cpp's 4 KiB block - grow kTlsBlockBytes and this assert together")

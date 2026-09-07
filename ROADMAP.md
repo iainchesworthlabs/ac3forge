@@ -1845,7 +1845,7 @@ syncframes (the low-latency mode this was meant to document) have not landed - t
 latency section names the 512-1024-sample figures they would enable and says so.
 </details>
 
-**PF7 (L)** — A minimum-footprint decoder profile — 403 KB image, 238 KB peak heap, proven on
+**PF7 (L)** — A minimum-footprint decoder profile — 408 KB image, 265 KB peak heap, proven on
 a real cross-compiled bare-metal CI leg.
 <details markdown="1">
 <summary>Full record</summary>
@@ -1853,10 +1853,18 @@ a real cross-compiled bare-metal CI leg.
 `AC3FORGE_MINIMAL_DECODER` builds a decode-only `ac3::forge_minimal` with no exceptions, no
 RTTI and no direct-form transform tables (an explicit 1.81 MiB ROM budget, measured on the
 object file), proven on a cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/baremetal`,
-`build-footprint`) that decodes real AC-3/E-AC-3 to the host build's own levels in 403 KB of
-image and 238 KB of peak heap. Two requirements are recorded as open gaps rather than
-half-enforced: zero heap traffic in the decode loop (today: 45-87 allocations/frame) and a
-float32-only internal path - see `docs/building.md`'s Gaps section.
+`build-footprint`) that decodes real AC-3/E-AC-3 to the host build's own levels in 408 KB of
+image and 265 KB of peak heap. Two requirements are recorded as open gaps rather than
+half-enforced: zero heap traffic in the decode loop (today: 46-87 allocations/frame) and a
+float32-only internal path. That second one is now MET for the decode path: both decoders carry
+their coefficients, transform scratch and overlap-add history in a profile-selected
+`decode_scalar_t`, measured at ~139 dB against the double decode across four real streams
+including Dolby- and FFmpeg-encoded ones, and at 2.7e-7 peak-normalised at the transform itself.
+It changed no gold reference, because the ordinary build's `decode_scalar_t` is still `double`.
+That, plus moving a 32 KB `thread_local` off the stack of every FreeRTOS task, took the figures
+above to 277 KB of image and 168 KB of peak heap - see `docs/building.md`'s Gaps section,
+`docs/performance-trend.md` for the current table, and `docs/platforms/esp32.md` for the
+ESP32-S3 target that motivated it.
 </details>
 
 **PF8 (S)** — The decoder's JOC bed analysis was still running direct forward transforms — now
@@ -2600,38 +2608,46 @@ needed.
 `CATapDescription` has no C entry point, and it is the library's only `.mm` — `apps/crucible`
 has two more of its own for AppKit — while every other file in that directory stays plain C++
 and includes `process_tap.hpp`.
-`capture.cpp`'s `Capture::start_process_loopback()` is the caller, and `audio_backend.cpp` now
-reports `process_loopback` available on a machine at 14.2 or above instead of refusing
-outright. The contract is deliberately narrower than the Windows one it copies: one process
+`capture.cpp`'s `Capture::start_process_loopback()` is the caller. `audio_backend.cpp` reported
+`process_loopback` available on a machine at 14.2 or above; since 2026-09-06 it reports it
+unavailable on every macOS, for the reason below. The contract is deliberately narrower than the Windows one it copies: one process
 rather than a process tree, mono or stereo only (a `CATapDescription`'s mixdown descriptions
 offer nothing else), and the tap's own sample rate checked and refused rather than resampled,
 which is what keeps `capture.hpp`'s promise that capture arrives at exactly the format asked
 for.
 
-**What that is worth, exactly.** Nothing here has run. There is no Mac on this machine, and a
-hosted runner has no audio device, no desktop session and no way to grant the tap's consent
-prompt. Nor has any of it compiled: one CI configure has seen it, and that configure detected
-the Objective-C++ toolchain, generated the notices and reached the install rules, where it
-failed on a `MACOSX_BUNDLE` target given no `BUNDLE DESTINATION` — Crucible's target, not this
-code's. That fix is in and CI has not reported back since, so whether this compiles past
-configure is unknown as this is written. Three things only a Mac can settle: the
-Objective-C surface, where a wrong selector or header name is a hard error; whether
-`enable_language(OBJCXX)` in `src/audio` satisfies CMake's rule about the highest common
-directory; and whether `OBJCXX_STANDARD 23` is expressible on the CMake each leg runs. Running
-it needs a Mac (DR9), and even a Mac is not enough on its own: the TCC consent prompt sits
-under its own permission category (`SystemAudioCaptureRequests`), is driven by an
-`NSAudioCaptureUsageDescription` Info.plist key that no bundle in this tree declares, and is
-keyed to a code-signing identity these binaries do not have (DR6). A denied prompt and a
-prompt that never appeared arrive identically, as one refusal reported as `kComFailure`.
+**What that is worth, exactly, as of 2026-09-06.** It compiles, it runs, and the first thing to
+run it hung. Both macOS legs build the Objective-C++ half and link it, which settled the three
+things only a Mac was thought able to settle: the Objective-C surface, `enable_language(OBJCXX)`
+in `src/audio` against CMake's highest-common-directory rule, and `OBJCXX_STANDARD 23` on the
+CMake each leg runs. The configure failure that used to sit here — a `MACOSX_BUNDLE` target
+given no `BUNDLE DESTINATION`, Crucible's target rather than this code's — is fixed and past.
+
+Then Crucible's Qt Quick suites drove the tap for real on the Apple Silicon leg, and
+`AudioDeviceCreateIOProcID` on the tap's aggregate device did not return. `sample` caught it in
+three separate processes, parked in `mach_msg2_trap` inside
+`HALC_ProxyIOContext::_TellServerAboutStreamUsage`; while that request was outstanding the whole
+process's HAL client was unusable, so an unrelated property read on another thread blocked
+behind it. So `audio_backend.cpp` now reports `process_loopback` **not** available on macOS and
+`start_process_loopback()` refuses before that call, with `AC3FORGE_MACOS_PROCESS_TAP` as the
+opt-in for whoever has a Mac. `docs/crucible/promotion.md`'s Phase 5 record carries the stack.
+
+Two assumptions in this entry turned out to be wrong and are worth keeping visible. The TCC
+consent prompt was **not** what stopped it: an unsigned binary declaring no
+`NSAudioCaptureUsageDescription` got a tap back, an aggregate device and a readable tap format.
+And the runner does have a default output device — `create_process_tap()` refuses with
+`kNoDefaultOutputDevice` first, and did not. Both of those are still real gaps for a desktop
+Mac; neither is the first thing in the way. Running this properly still needs a Mac (DR9).
 
 **What landed before any of that**: the loopback gap's documentation corrected (it had cited
 macOS 14.4 rather than the API's annotated 14.2) and expanded (`docs/platforms/macos.md`), and
-the OS-version gate `ac3::coreaudio::system_audio_tap_api_available()`, which is what both the
-capability table and `start_process_loopback()` refuse on. That gate is pure, and its cases in
-`tests/backend/macos/test_macos_support.cpp` have run on the macOS legs since they landed; the
-cases this branch added beside them for the tap have not, for the reason above. The
-device watcher over HAL property listeners came in the same commit as the tap and stands in the
-same place: written, never compiled, never run.
+the OS-version gate `ac3::coreaudio::system_audio_tap_api_available()`, which is one of the two
+things the capability table and `start_process_loopback()` now refuse on. That gate is pure, and
+its cases in `tests/backend/macos/test_macos_support.cpp` have run on the macOS legs since they
+landed. The device watcher over HAL property listeners came in the same commit as the tap and
+now stands one step further on: its registration and teardown execute on both legs, through the
+library's own contract case and through Crucible's engine, but no notification has ever been
+delivered to it, because a hosted runner's device list does not change while a test runs.
 </details>
 
 ### Considering
@@ -2873,11 +2889,13 @@ hardware.
   PipeWire CI pass now exists on the two Linux LLVM legs, x86_64 and arm64 (roadmap UX12): it
   builds Crucible's engine, runner and window, runs the PipeWire contract tests and the
   window's Qt Quick suite headless, and packages the Linux tarball and `.deb`.
-- **CoreAudio: blocked** — no Mac has ever run it, and as this is written nothing has
-  compiled it either. The process tap, the device watcher and Crucible's macOS half are all in
-  the tree (UX7, UX12); the one CI configure that reached them failed at an install rule, which
-  is fixed, and CI has not reported back since. Also outstanding: a Pi 5 and a second Android
-  TV device.
+- **CoreAudio: blocked, and now blocked for a known reason** — CI has reported back. Both
+  macOS legs compile and link the process tap, the device watcher and Crucible's macOS half
+  (UX7, UX12), and Crucible's Qt Quick suites drive the platform seams there for real. The tap
+  itself got as far as `AudioDeviceCreateIOProcID`, which never returned and wedged the
+  process's whole HAL client, so the path is refused by default now
+  (`docs/crucible/promotion.md`, Phase 5). No Mac has taken a sample through a tap, and no Mac
+  has launched the application. Also outstanding: a Pi 5 and a second Android TV device.
 </details>
 
 ### Considering

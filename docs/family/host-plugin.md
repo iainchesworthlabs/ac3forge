@@ -24,7 +24,7 @@
 
 **The two plugins on this page occupy different roles in the family's topology, and the
 distinction matters more than it first looks.** [Source, transport,
-sink](https://github.com/iainchesworthlabs/ac3forge/blob/feature/player-appliance-plan/docs/family/topology.md)
+sink](topology.md)
 is the frame that says how an encoded stream reaches something that renders it.
 
 - An **encode** plugin ([candidate 2](#what-the-library-could-put-in-a-host)) would be a
@@ -35,9 +35,6 @@ is the frame that says how an encoded stream reaches something that renders it.
 - A **metering** plugin — what [Part 2](#part-2-the-plan) actually plans — is **not a node at
   all**. It measures a stream rather than producing, carrying or rendering one, which makes it an
   instrument, beside the delivery-QC report rather than beside Crucible.
-
-(The link points at the branch of the pull request adding that page; it becomes `topology.md`
-once both land.)
 
 The project is unaffiliated with Dolby Laboratories, Steinberg, Avid and Apple. "Dolby",
 "Dolby Digital" and "Dolby Atmos" appear below only as format names, and the marks of the
