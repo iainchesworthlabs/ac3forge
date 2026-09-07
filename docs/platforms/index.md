@@ -18,7 +18,8 @@ tick would flatten the part worth knowing.
 | **A Raspberry Pi 4B** | [Raspberry Pi](raspberry-pi.md) | Everything Linux arm64 runs — there is no Pi-specific code | Run for real on a Pi 4B: 440/440 tests on both compilers, including the hard real-time encode gate, and Atmos out over HDMI to a powered AVR. The Pi 5 is expected to behave the same and is **not** validated; the Pi 3 is not a supported target. |
 | **An NVIDIA Shield** (Android TV) | [Android](android.md) | Shield Atmos Demo, a demo app — not `ac3cli`/`ac3gui` ported | Encodes Atmos/JOC live and plays it out the Shield's HDMI passthrough to a receiver, with a controller moving objects; confirmed on real 2017 Shield hardware. Sideload only, never the Play Store. It captures nothing. |
 | **A browser** | [WebAssembly](wasm.md) | Decode and encode modules over the same library, and an Atmos object-authoring page | The demo pages are built and [published live](../wasm-demo.md). The `ac3forge-wasm-decoder` npm package is decode-only and **has never been released to npm** — building it from `js/` is the only way to get it. |
-| **A board with no operating system** | [Minimum-footprint decoder profile](../building.md#minimum-footprint-decoder-profile) | `ac3::forge_minimal`: one decode-only static library, no exceptions, no RTTI | Cross-compiled `arm-none-eabi` and run on QEMU's `mps2-an385` (Cortex-M3, no FPU). A probe decodes six frames each of AC-3 and E-AC-3 and gates on exact per-channel levels, image size, heap peak and allocation counts. Correctness under emulation; no real silicon. |
+| **An ESP32-S3** (ESP-IDF, FreeRTOS) | [ESP32-S3](esp32.md) | `ac3::forge_minimal` as an ESP-IDF component — decode only | AC-3 and E-AC-3 5.1 both decode **correctly**, every channel level exact against a baked-in fixture, inside internal SRAM with no PSRAM. **Real time is not measured.** CI runs it under QEMU, whose timings the page itself calls worthless; no board has been timed. Nothing reaches I2S — there is no audio output yet. |
+| **A board with no operating system at all** | [Minimum-footprint decoder profile](../building.md#minimum-footprint-decoder-profile) | `ac3::forge_minimal`: one decode-only static library, no exceptions, no RTTI | Cross-compiled `arm-none-eabi` and run on QEMU's `mps2-an385` (Cortex-M3, no FPU). A probe decodes six frames each of AC-3 and E-AC-3 and gates on exact per-channel levels, image size, heap peak and allocation counts. Correctness under emulation; no real silicon. |
 
 **The Windows kernel driver is not in that table**, because it is a component rather than
 somewhere you run anything. Crucible's silent output device on Windows is a kernel driver — the
@@ -40,6 +41,7 @@ on running without it.
 | **C** | Wherever the C++ library builds | [C API](../library/c-api.md) |
 | **Python** | `pip install ac3forge` — wheels for Windows x64, macOS arm64 and x86_64, Linux x86_64 and aarch64 | [Python bindings](../library/python-api.md) |
 | **Rust** | In-tree at `rust/`, over the C API; not published to crates.io | [Rust bindings](../library/rust-api.md) |
+| **An ESP-IDF component** | An ESP32-S3, decode only; ESP-IDF owns the build, so there is no ac3forge preset | [ESP32-S3](esp32.md) |
 | **JavaScript** | A browser, through WebAssembly; the npm package is unpublished | [WebAssembly](wasm.md) |
 | **You do not** — Shield Atmos Demo is the whole surface | An NVIDIA Shield, sideloaded | [Android](android.md) |
 
@@ -54,8 +56,9 @@ more than the platform list does:
 - **Required and green in CI.** The code builds and its tests pass on every push, on real
   runners. This is where macOS sits in full and where every desktop platform sits for anything
   that does not touch sound hardware.
-- **Built, run under emulation.** The bare-metal profile decodes correctly on QEMU. Correct
-  output; nothing about timing on real silicon.
+- **Built, run under emulation.** The bare-metal profile decodes correctly on QEMU, and so does
+  the ESP32-S3 build. Correct output; nothing about timing on real silicon, which for the
+  ESP32-S3 is the open question.
 - **Written, never exercised.** The macOS process tap, and the macOS half of Crucible. The code
   compiles and one test checks a version gate. Nothing more than that.
 
