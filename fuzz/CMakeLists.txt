@@ -149,6 +149,35 @@ ac3forge_add_container_fuzzer(fuzz_mp4_demux mp4::mp4)
 # than a crash (src/mpegts/src/reader.cpp).
 ac3forge_add_container_fuzzer(fuzz_mpegts_demux mpegts::mpegts)
 
+# --- The other two Dolby bitstreams this repo reads --------------------------
+#
+# ac3iab and ac4 are here for the same reason every harness above is: both
+# exist only to read files this project did not write, and both size their
+# loops from numbers the file chose. They are the two such parsers that had no
+# harness at all until now.
+#
+# ac3iab::parse_iabitstream + parse_mxf_iab + parse_iaframe: §7's
+# Preamble+IAFrame run, the SMPTE ST 2067-201 KLV wrapper an IAB track file
+# clip-wraps it in, and §9.1's single extracted frame (src/ac3iab/). One
+# harness over all three because they are three framings of the same bytes and
+# a shared corpus serves them better than three split ones. Includes
+# BitReader::read_plex, whose §5.2 escape bound is exactly the sort of clause
+# worth pressing on.
+ac3forge_add_fuzzer(fuzz_iab_parse ac3iab::ac3iab)
+
+# ac4::scan + ac4::parse_raw_frame: sync search, then the TOC - a presentation
+# list whose count, per-presentation substream group counts and
+# substream_index_table sizes are all read from the bitstream, after which
+# parse_raw_frame locates payloads by those declared sizes rather than by
+# parsing through audio_data (src/ac4/src/ac4.cpp). parse_raw_frame is called
+# on the raw input as well as reached through scan(), so the TOC parser is
+# pressed without a valid 0xAC40/0xAC41 syncframe having to be guessed first.
+#
+# Its first runs found a null dereference and five loops that ran on an
+# attacker's count after the data behind it was gone; all are fixed, and six
+# million executions since are clean.
+ac3forge_add_fuzzer(fuzz_ac4_parse ac4::ac4)
+
 # split_frames + FrameDecoder::decode_frame, driven the way ac3cli's 'decode'
 # drives them (src/forge/src/decoder/decoder.cpp).
 ac3forge_add_fuzzer(fuzz_ac3_decode)

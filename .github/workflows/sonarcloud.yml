@@ -154,9 +154,21 @@ jobs:
       # compile database, the test binaries and the coverage instrumentation.
       # Debug also keeps asserts in front of the analyser, the same reasoning
       # static-analysis.yml gives for clang-tidy.
+      #
+      # AC3FORGE_BUILD_EXAMPLES=ON overrides the preset, which turns examples
+      # off because ctest would then run each one as a process of its own for
+      # coverage the test suite already provides. That reasoning is about
+      # coverage, and this job wants the compile database: the CFamily
+      # analyser only sees a file the database names, so with examples off the
+      # ~15 translation units under examples/ were listed in
+      # sonar-project.properties' sonar.sources and then silently skipped.
+      # They are documentation people copy from, which is a good reason to
+      # analyse them rather than a reason not to. sonar.coverage.exclusions
+      # already lists examples/**, so they stay unmeasured rather than
+      # reading as 0% and moving the coverage figure.
       - name: Configure
         shell: bash
-        run: cmake --preset config-linux-gcc-coverage
+        run: cmake --preset config-linux-gcc-coverage -DAC3FORGE_BUILD_EXAMPLES=ON
 
       # A full build, not just a configure: the compile database's command
       # lines reference per-TU .modmap files that only exist once ninja has

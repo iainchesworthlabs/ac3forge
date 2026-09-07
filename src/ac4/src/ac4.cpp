@@ -584,6 +584,15 @@ PresentationInfoV0 parse_presentation_info_v0(Reader& r, int fs_index, int frame
         }
         for (std::uint32_t i = 0; i < n; ++i) {
             parse_emdf_info(r);
+            // n reaches here through variable_bits() and so runs to 2^32.
+            // parse_emdf_info() does real work per iteration, so without
+            // this a 200-byte frame spends six seconds walking a count no
+            // data backs - the reader is the only thing that ends it.
+            // break, not return: parse_toc() checks r.error() after every
+            // presentation it parses.
+            if (r.error()) {
+                break;
+            }
         }
     }
     return pres;
@@ -660,6 +669,16 @@ std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) 
         for (int b = 0; b < n_bed_signals; ++b) {
             if (r.bits(4) != 3) {  // nonstd_bed_channel_assignment
                 add(ObjectKind::kBed, false);
+            }
+            // n_bed_signals is sized from n_signals, which the caller lets
+            // reach 2^32 through variable_bits() (n_fullband_upmix_signals
+            // == 16 opens that escape). Once the data is gone r.bits(4)
+            // returns a phantom 0 - never the 3 that would skip the append -
+            // so without this the loop keeps growing `objects` for as long
+            // as the count says: 1.8 GB and six seconds, on a 200-byte
+            // frame, before this check existed.
+            if (r.error()) {
+                break;
             }
         }
         return objects;
@@ -841,6 +860,9 @@ SubstreamGroupInfo parse_substream_group_info(Reader& r, int fs_index, int frame
             sub.kind = GroupSubstream::Kind::kChan;
             sub.chan = std::move(chan);
             group.substreams.push_back(std::move(sub));
+            if (r.error()) {
+                return group;  // the object-coded loop below already did this
+            }
         }
     } else {
         if (r.bits(1)) {  // b_oamd_substream
@@ -942,6 +964,12 @@ PresentationInfoV1 parse_presentation_v1_info(Reader& r, int bitstream_version,
             }
             for (std::uint32_t i = 0; i < n; ++i) {
                 pres.group_refs.push_back(parse_sgi_specifier(r));
+                // Same unbounded-count shape as substream_index_table(): n
+                // passes through variable_bits(), so the reader running out
+                // is the only thing that ends this loop.
+                if (r.error()) {
+                    return pres;
+                }
             }
         } else {
             parse_presentation_config_ext_info(r);
@@ -960,6 +988,15 @@ PresentationInfoV1 parse_presentation_v1_info(Reader& r, int bitstream_version,
         }
         for (std::uint32_t i = 0; i < n; ++i) {
             parse_emdf_info(r);
+            // n reaches here through variable_bits() and so runs to 2^32.
+            // parse_emdf_info() does real work per iteration, so without
+            // this a 200-byte frame spends six seconds walking a count no
+            // data backs - the reader is the only thing that ends it.
+            // break, not return: parse_toc() checks r.error() after every
+            // presentation it parses.
+            if (r.error()) {
+                break;
+            }
         }
     }
     return pres;
@@ -987,6 +1024,13 @@ void parse_substream_index_table(Reader& r, Toc& toc) {
                 size += variable_bits(r, 2) << 10;
             }
             toc.substream_sizes.push_back(static_cast<int>(size));
+            // n_substreams comes through variable_bits() and so has no
+            // useful upper bound; without this the loop grows
+            // substream_sizes off the end of the data, which a fuzzed frame
+            // rode to a 2 GB allocation.
+            if (r.error()) {
+                return;
+            }
         }
     }
 }
@@ -1046,10 +1090,18 @@ std::expected<Toc, Error> parse_toc(Reader& r) {
         }
     }
     if (toc.bitstream_version <= 1) {
-        toc.presentations_v0.reserve(static_cast<std::size_t>(toc.n_presentations));
+        // No reserve() on n_presentations, and the same r.error() check the
+        // substream-group loop below already had: both counts come from the
+        // bitstream, so reserving on one is an attacker-chosen allocation
+        // (a fuzzed frame asked for 0x2000000100 bytes of
+        // SubstreamGroupInfo), and a loop that does not stop when the reader
+        // is exhausted keeps building elements out of nothing.
         for (int i = 0; i < toc.n_presentations; ++i) {
             toc.presentations_v0.push_back(
                 parse_presentation_info_v0(r, fs_index, toc.frame_rate_index));
+            if (const auto err = r.error()) {
+                return std::unexpected(*err);
+            }
         }
     } else {
         if (r.bits(1)) {      // b_program_id
@@ -1064,10 +1116,12 @@ std::expected<Toc, Error> parse_toc(Reader& r) {
                 r.skip(32);  // program_uuid, 16 bytes - split to stay within bits()'s 32-bit width
             }
         }
-        toc.presentations_v1.reserve(static_cast<std::size_t>(toc.n_presentations));
         for (int i = 0; i < toc.n_presentations; ++i) {
             toc.presentations_v1.push_back(
                 parse_presentation_v1_info(r, toc.bitstream_version, toc.frame_rate_index));
+            if (const auto err = r.error()) {
+                return std::unexpected(*err);
+            }
         }
         const int total_groups = total_substream_groups(toc.presentations_v1);
         // frame_rate_factor is frame-global in practice - see
@@ -1075,7 +1129,6 @@ std::expected<Toc, Error> parse_toc(Reader& r) {
         // presentation's resolved value is what every group uses.
         const int group_frame_rate_factor =
             toc.presentations_v1.empty() ? 1 : toc.presentations_v1.front().frame_rate_factor;
-        toc.substream_groups.reserve(static_cast<std::size_t>(total_groups));
         for (int i = 0; i < total_groups; ++i) {
             toc.substream_groups.push_back(
                 parse_substream_group_info(r, fs_index, group_frame_rate_factor));
@@ -1157,8 +1210,25 @@ std::expected<RawFrame, Error> parse_raw_frame(std::span<const std::byte> raw_ac
     const auto audio_indices = audio_substream_indices(result.toc);
     std::size_t offset = toc_bytes + static_cast<std::size_t>(result.toc.payload_base);
     for (int index = 0; index < result.toc.n_substreams; ++index) {
+        // §4.2.3.11 transmits substream_size[] only when b_size_present, and
+        // that flag is read at all only when n_substreams == 1 (Table 14) -
+        // so substream_sizes is either exactly n_substreams long or empty,
+        // and empty means "one substream, size not transmitted". Its extent
+        // is still unambiguous: raw_ac4_frame is one frame_size-bounded
+        // frame, the shape scan() hands over, so the only substream runs
+        // from payload_base to the end of it.
+        //
+        // n_substreams was indexed straight into substream_sizes before
+        // this, which read element 0 of an empty vector - a null dereference
+        // on any stream that set b_size_present to 0. Found by
+        // fuzz/fuzz_ac4_parse.cpp on its first run; tests/ac4 had only ever
+        // built the b_size_present = 1 shape.
+        const bool size_transmitted = !result.toc.substream_sizes.empty();
         const auto size =
-            static_cast<std::size_t>(result.toc.substream_sizes[static_cast<std::size_t>(index)]);
+            size_transmitted
+                ? static_cast<std::size_t>(
+                      result.toc.substream_sizes[static_cast<std::size_t>(index)])
+                : (offset <= raw_ac4_frame.size() ? raw_ac4_frame.size() - offset : 0);
         // substream_index_table()'s own sizes are trusted, self-declared
         // lengths (§4.3.3.12.4) - nothing earlier in parse_toc() cross-checks
         // them against how much data `raw_ac4_frame` actually holds, since
