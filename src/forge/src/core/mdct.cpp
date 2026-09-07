@@ -598,15 +598,21 @@ void mdct512_forward_batch4(std::span<const double, 512> w0, std::span<const dou
     mdct512_forward(w3, c3, /*fast=*/true);
 }
 
-void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<double, 512> x,
-                            bool fast) {
-    const auto& tw = twiddles2();
+// Scalar: see imdct512_windowed_impl above for why the wide sections are
+// double-only and what a float instantiation gets instead. This transform has
+// only one of them - its pre-twiddle was already a scalar loop.
+template <typename Scalar>
+void imdct256_pair_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scalar, 512> x,
+                                 bool fast) {
+    constexpr bool kWide = std::is_same_v<Scalar, double>;
+    assert(kWide || fast);
+    const auto& tw = twiddles2<Scalar>();
     constexpr int kQuarter = kN / 4;  // 128
     constexpr int kEighth = kN / 8;   // 64
 
     // Step 1: de-interleave the 256 coefficients into the two half-block sets.
-    std::array<double, kQuarter> x1{};
-    std::array<double, kQuarter> x2{};
+    std::array<Scalar, kQuarter> x1{};
+    std::array<Scalar, kQuarter> x2{};
     for (int k = 0; k < kQuarter; ++k) {
         x1[static_cast<std::size_t>(k)] = coeffs[static_cast<std::size_t>(2 * k)];
         x2[static_cast<std::size_t>(k)] = coeffs[static_cast<std::size_t>(2 * k + 1)];
@@ -623,38 +629,39 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
     // so neither costs a pass of its own. The direct branch keeps the
     // spec's own sum, behind the same src/core/reference_transform.hpp seam
     // as the long form's.
-    std::array<double, kEighth> z1_re{};
-    std::array<double, kEighth> z1_im{};
-    std::array<double, kEighth> z2_re{};
-    std::array<double, kEighth> z2_im{};
-    std::array<double, kEighth> t1_re{};
-    std::array<double, kEighth> t1_im{};
-    std::array<double, kEighth> t2_re{};
-    std::array<double, kEighth> t2_im{};
+    std::array<Scalar, kEighth> z1_re{};
+    std::array<Scalar, kEighth> z1_im{};
+    std::array<Scalar, kEighth> z2_re{};
+    std::array<Scalar, kEighth> z2_im{};
+    std::array<Scalar, kEighth> t1_re{};
+    std::array<Scalar, kEighth> t1_im{};
+    std::array<Scalar, kEighth> t2_re{};
+    std::array<Scalar, kEighth> t2_im{};
     if (fast) {
-        const auto& fft = fast_mdct_tables<256>().fft;
+        const auto& fft = fast_mdct_tables<256, Scalar>().fft;
         for (int k = 0; k < kEighth; ++k) {
-            const double c = tw.cos2[static_cast<std::size_t>(k)];
-            const double s = tw.sin2[static_cast<std::size_t>(k)];
-            const double a1 = x1[static_cast<std::size_t>(kQuarter - 2 * k - 1)];
-            const double b1 = x1[static_cast<std::size_t>(2 * k)];
-            const double a2 = x2[static_cast<std::size_t>(kQuarter - 2 * k - 1)];
-            const double b2 = x2[static_cast<std::size_t>(2 * k)];
+            const Scalar c = tw.cos2[static_cast<std::size_t>(k)];
+            const Scalar s = tw.sin2[static_cast<std::size_t>(k)];
+            const Scalar a1 = x1[static_cast<std::size_t>(kQuarter - 2 * k - 1)];
+            const Scalar b1 = x1[static_cast<std::size_t>(2 * k)];
+            const Scalar a2 = x2[static_cast<std::size_t>(kQuarter - 2 * k - 1)];
+            const Scalar b2 = x2[static_cast<std::size_t>(2 * k)];
             const std::size_t d = fft.bitrev[static_cast<std::size_t>(k)];
             z1_re[d] = a1 * c - b1 * s;
             z1_im[d] = -(b1 * c + a1 * s);
             z2_re[d] = a2 * c - b2 * s;
             z2_im[d] = -(b2 * c + a2 * s);
         }
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), double>(fft, z1_re, z1_im);
-        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), double>(fft, z2_re, z2_im);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z1_re, z1_im);
+        internal::fft_forward_bitrev<static_cast<std::size_t>(kEighth), Scalar>(fft, z2_re, z2_im);
         for (int n = 0; n < kEighth; ++n) {
             t1_re[static_cast<std::size_t>(n)] = z1_re[static_cast<std::size_t>(n)];
             t1_im[static_cast<std::size_t>(n)] = -z1_im[static_cast<std::size_t>(n)];
             t2_re[static_cast<std::size_t>(n)] = z2_re[static_cast<std::size_t>(n)];
             t2_im[static_cast<std::size_t>(n)] = -z2_im[static_cast<std::size_t>(n)];
         }
-    } else {
+    } else if constexpr (kWide) {
+        // Direct form: double-only, as in the long transform. See there.
         for (int k = 0; k < kEighth; ++k) {
             const double c = tw.cos2[static_cast<std::size_t>(k)];
             const double s = tw.sin2[static_cast<std::size_t>(k)];
@@ -677,11 +684,18 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
     // Step 4: post-IFFT complex multiply. y1[n] = z1[n] * (xcos2[n] + j*xsin2[n]).
     // Both half-block sets, two (four under AVX2) n at a time, all unit
     // stride (ROADMAP PF5, ac3::internal::cpu::has_avx2()).
-    std::array<double, kEighth> y1_re{};
-    std::array<double, kEighth> y1_im{};
-    std::array<double, kEighth> y2_re{};
-    std::array<double, kEighth> y2_im{};
-    if (internal::cpu::has_avx2()) {
+    std::array<Scalar, kEighth> y1_re{};
+    std::array<Scalar, kEighth> y1_im{};
+    std::array<Scalar, kEighth> y2_re{};
+    std::array<Scalar, kEighth> y2_im{};
+    if constexpr (!kWide) {
+        for (std::size_t n = 0; n < static_cast<std::size_t>(kEighth); ++n) {
+            y1_re[n] = t1_re[n] * tw.cos2[n] - t1_im[n] * tw.sin2[n];
+            y1_im[n] = t1_im[n] * tw.cos2[n] + t1_re[n] * tw.sin2[n];
+            y2_re[n] = t2_re[n] * tw.cos2[n] - t2_im[n] * tw.sin2[n];
+            y2_im[n] = t2_im[n] * tw.cos2[n] + t2_re[n] * tw.sin2[n];
+        }
+    } else if (internal::cpu::has_avx2()) {
         internal::avx2::imdct256_post_twiddle(tw.cos2, tw.sin2, t1_re, t1_im, t2_re, t2_im, y1_re,
                                               y1_im, y2_re, y2_im);
     } else {
@@ -702,7 +716,7 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
     // Step 5: windowing and de-interleaving, transcribed field-for-field.
     // N is 512 throughout (the spec's own note), so this reaches the same
     // full x[0..511] the long path's step 5 does.
-    const auto& w = kAnalysisWindow;
+    const auto& w = analysis_window<Scalar>();
     const auto y1r = [&](int i) { return y1_re[static_cast<std::size_t>(i)]; };
     const auto y1i = [&](int i) { return y1_im[static_cast<std::size_t>(i)]; };
     const auto y2r = [&](int i) { return y2_re[static_cast<std::size_t>(i)]; };
@@ -724,6 +738,17 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
         x[static_cast<std::size_t>(3 * kN / 4 + 2 * n + 1)] =
             -y2r(kEighth - n - 1) * w[static_cast<std::size_t>(kQuarter - 2 * n - 2)];
     }
+}
+
+void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<double, 512> x,
+                            bool fast) {
+    imdct256_pair_windowed_impl<double>(coeffs, x, fast);
+}
+
+// The float32 form. No `fast` parameter, for the reason imdct512_windowed's
+// float overload gives.
+void imdct256_pair_windowed(std::span<const float, 256> coeffs, std::span<float, 512> x) {
+    imdct256_pair_windowed_impl<float>(coeffs, x, true);
 }
 
 }  // namespace ac3

@@ -141,4 +141,9 @@ AC3FORGE_EXPORT void mdct256_forward_second(std::span<const double, 256> windowe
 AC3FORGE_EXPORT void imdct256_pair_windowed(std::span<const double, 256> coeffs,
                                             std::span<double, 512> x, bool fast = false);
 
+// The float32 form of the short-block inverse (roadmap PF7). Same contract as
+// the float32 imdct512_windowed above, including the absent `fast` parameter.
+AC3FORGE_EXPORT void imdct256_pair_windowed(std::span<const float, 256> coeffs,
+                                            std::span<float, 512> x);
+
 }  // namespace ac3

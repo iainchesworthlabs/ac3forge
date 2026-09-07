@@ -305,3 +305,36 @@ TEST_CASE("float32 inverse transform agrees with the double one", "[mdct][float3
     // mystery on the target.
     CHECK(worst > 1e-9);
 }
+
+TEST_CASE("float32 short-block inverse agrees with the double one", "[mdct][float32]") {
+    std::mt19937 rng(20260908);
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+
+    double worst = 0.0;
+    for (int trial = 0; trial < 32; ++trial) {
+        std::array<double, 256> coeffs_d{};
+        std::array<float, 256> coeffs_f{};
+        for (std::size_t i = 0; i < coeffs_d.size(); ++i) {
+            coeffs_d[i] = dist(rng);
+            coeffs_f[i] = static_cast<float>(coeffs_d[i]);
+        }
+
+        std::array<double, 512> x_d{};
+        std::array<float, 512> x_f{};
+        ac3::imdct256_pair_windowed(coeffs_d, x_d, /*fast=*/true);
+        ac3::imdct256_pair_windowed(coeffs_f, x_f);
+
+        std::array<double, 512> widened{};
+        for (std::size_t i = 0; i < widened.size(); ++i) {
+            widened[i] = static_cast<double>(x_f[i]);
+        }
+        worst = std::max(worst, max_rel_error(widened, x_d));
+    }
+
+    // Expected a shade better than the long transform's 2.75e-7: this runs two
+    // 64-point FFTs rather than one 128-point, so there is one fewer radix
+    // stage for rounding to accumulate through.
+    INFO("worst peak-normalised float32-vs-double error: " << worst);
+    CHECK(worst < 1e-5);
+    CHECK(worst > 1e-9);
+}
