@@ -22,40 +22,50 @@ constexpr int kN = kTransformLength;  // 512
 constexpr double kPi = std::numbers::pi;
 
 // §7.9.4.1 step 2: xcos1[k] = -cos(2pi(8k+1)/8N), xsin1[k] = -sin(2pi(8k+1)/8N).
+//
+// Scalar (roadmap PF7's float32 gap): the type the twiddles are STORED in.
+// Computed in double and narrowed once on the way in, for the same reason
+// fft_kernel.hpp's FftTables does it - the angle here is small and exact and
+// deserves the library call at full precision whatever the table holds.
+// Default double, so every existing use is the one it always was.
+template <typename Scalar = double>
 struct Twiddles {
-    std::array<double, kN / 4> cos1;
-    std::array<double, kN / 4> sin1;
+    std::array<Scalar, kN / 4> cos1;
+    std::array<Scalar, kN / 4> sin1;
     Twiddles() {
         for (int k = 0; k < kN / 4; ++k) {
             const double angle = 2.0 * kPi * (8.0 * k + 1.0) / (8.0 * kN);
-            cos1[static_cast<std::size_t>(k)] = -std::cos(angle);
-            sin1[static_cast<std::size_t>(k)] = -std::sin(angle);
+            cos1[static_cast<std::size_t>(k)] = static_cast<Scalar>(-std::cos(angle));
+            sin1[static_cast<std::size_t>(k)] = static_cast<Scalar>(-std::sin(angle));
         }
     }
 };
 
-const Twiddles& twiddles() {
-    static const Twiddles t;
+template <typename Scalar = double>
+const Twiddles<Scalar>& twiddles() {
+    static const Twiddles<Scalar> t;
     return t;
 }
 
 // §7.9.4.2 step 2: xcos2[k] = -cos(2pi(8k+1)/4N), xsin2[k] = -sin(2pi(8k+1)/4N)
 // (N = 512 throughout this section, per the spec's own note — these are NOT
 // the 256-sample transform's own N).
+template <typename Scalar = double>
 struct Twiddles2 {
-    std::array<double, kN / 8> cos2;
-    std::array<double, kN / 8> sin2;
+    std::array<Scalar, kN / 8> cos2;
+    std::array<Scalar, kN / 8> sin2;
     Twiddles2() {
         for (int k = 0; k < kN / 8; ++k) {
             const double angle = 2.0 * kPi * (8.0 * k + 1.0) / (4.0 * kN);
-            cos2[static_cast<std::size_t>(k)] = -std::cos(angle);
-            sin2[static_cast<std::size_t>(k)] = -std::sin(angle);
+            cos2[static_cast<std::size_t>(k)] = static_cast<Scalar>(-std::cos(angle));
+            sin2[static_cast<std::size_t>(k)] = static_cast<Scalar>(-std::sin(angle));
         }
     }
 };
 
-const Twiddles2& twiddles2() {
-    static const Twiddles2 t;
+template <typename Scalar = double>
+const Twiddles2<Scalar>& twiddles2() {
+    static const Twiddles2<Scalar> t;
     return t;
 }
 
@@ -112,36 +122,36 @@ const Twiddles2& twiddles2() {
 //   instead - a (tiny) numerical change in the direction of MORE precision,
 //   re-verified against the direct form's ground truth by
 //   tests/core/test_mdct_fast.cpp's unchanged 1e-10 bound.
-template <int NLen>
+template <int NLen, typename Scalar = double>
 struct FastMdctTables {
     static constexpr std::size_t kM = static_cast<std::size_t>(NLen) / 2;
     static constexpr std::size_t kP = kM / 2;
     // z[m] pre-twiddle exp(-i*pi*m/M), split re/im.
-    std::array<double, kP> pre_re{};
-    std::array<double, kP> pre_im{};
+    std::array<Scalar, kP> pre_re{};
+    std::array<Scalar, kP> pre_im{};
     // w[k] post-twiddle exp(-i*pi*(4k+1)/(4M)), split re/im.
-    std::array<double, kP> post_re{};
-    std::array<double, kP> post_im{};
+    std::array<Scalar, kP> post_re{};
+    std::array<Scalar, kP> post_im{};
     // The P-point FFT's own tables (digit-reversal permutation + stage
     // twiddles) - the shared kernel's, so dft512 runs the identical
     // machinery at P = 512; see fft_kernel.hpp.
-    internal::FftTables<kP> fft{};
+    internal::FftTables<kP, Scalar> fft{};
     FastMdctTables() {
         for (std::size_t m = 0; m < kP; ++m) {
             const double ang = -kPi * static_cast<double>(m) / static_cast<double>(kM);
-            pre_re[m] = std::cos(ang);
-            pre_im[m] = std::sin(ang);
+            pre_re[m] = static_cast<Scalar>(std::cos(ang));
+            pre_im[m] = static_cast<Scalar>(std::sin(ang));
             const double ang2 =
                 -kPi * (4.0 * static_cast<double>(m) + 1.0) / (4.0 * static_cast<double>(kM));
-            post_re[m] = std::cos(ang2);
-            post_im[m] = std::sin(ang2);
+            post_re[m] = static_cast<Scalar>(std::cos(ang2));
+            post_im[m] = static_cast<Scalar>(std::sin(ang2));
         }
     }
 };
 
-template <int NLen>
-const FastMdctTables<NLen>& fast_mdct_tables() {
-    static const FastMdctTables<NLen> t;
+template <int NLen, typename Scalar = double>
+const FastMdctTables<NLen, Scalar>& fast_mdct_tables() {
+    static const FastMdctTables<NLen, Scalar> t;
     return t;
 }
 
