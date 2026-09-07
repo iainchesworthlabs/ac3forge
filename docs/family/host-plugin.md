@@ -22,6 +22,14 @@
     callback, so the constraint that makes an encode plugin "not yet" for a DAW does not apply,
     and the encoder becomes the cheap case rather than the hard one.
 
+**The plugin's role in the family's topology is a *source*** — something that produces an encoded
+elementary stream, alongside Crucible, `ac3cli` and the Shield demo. [Source, transport,
+sink](https://github.com/iainchesworthlabs/ac3forge/blob/feature/player-appliance-plan/docs/family/topology.md)
+is the frame that says what carries that stream to something that renders it, and it is worth
+reading first: it makes the object-metadata wall below matter less than it looks, because a
+source that emits a bed still reaches every sink on the same transport. (That link points at the
+branch of the pull request adding the page; it becomes `topology.md` once both land.)
+
 The project is unaffiliated with Dolby Laboratories, Steinberg, Avid and Apple. "Dolby",
 "Dolby Digital" and "Dolby Atmos" appear below only as format names, and the marks of the
 plugin-format owners only to name their formats and tools.
@@ -194,14 +202,20 @@ rather than taken from prior knowledge. One of them had changed.
 | **AU** | part of the macOS SDK; no separate plugin-SDK licence | yes, but see signing | [Apple Developer](https://developer.apple.com/) |
 | **AAX** | click-through agreement; Avid account; iLok account and USB key for the signing process; commercial tooling by arrangement with Avid | **no**, without a dual-licence decision | [developer.avid.com/aax](https://developer.avid.com/aax/) |
 
-**VST3 is no longer dual-licensed, and the GPLv3 arm is no longer the relevant one.** Steinberg
-moved the VST 3 SDK to the MIT licence with VST 3.8 in late 2025; its own licensing FAQ now
-states MIT, notes that MIT "does not require you to disclose your source code", and describes
-following the VST usage guidelines as "best practice, but it is optional". The previous
-proprietary-or-GPLv3 dual model is gone. For this project the practical effect is that VST3 has
-become as licence-cheap as CLAP, and the calculation that would have made CLAP the obvious sole
-entry no longer holds. (Separately, Steinberg moved the ASIO SDK to GPLv3 in the same change;
-nothing here uses ASIO.)
+**VST3 is no longer dual-licensed, and the GPLv3 arm is no longer the relevant one.** Steinberg's
+own licensing FAQ states MIT, notes that MIT "does not require you to disclose your source code",
+and describes following the VST usage guidelines as "best practice, but it is optional", with no
+dual-licensing or separate proprietary agreement mentioned. The previous proprietary-or-GPLv3
+dual model is gone. For this project the practical effect is that VST3 has become as
+licence-cheap as CLAP, and the calculation that would have made CLAP the obvious sole entry no
+longer holds.
+
+Two notes on how solid that is, since a licence claim is worth separating from its provenance.
+**The licence itself is primary-sourced** — Steinberg's FAQ, read 2026-09-07. **The version and
+date are not**: that page carries neither, and "VST 3.8, late 2025" comes from contemporaneous
+trade coverage rather than from Steinberg. Anyone citing this should say "the VST 3 SDK is MIT,
+per Steinberg's licensing FAQ" and treat the version and date as secondary. (The same coverage
+reports the ASIO SDK moving to GPLv3 alongside it; nothing here uses ASIO.)
 
 **AAX is the one format GPL-3.0 closes.** Avid's own page requires a click-through licence
 agreement, an Avid account, and an iLok account, and states that commercial AAX development
