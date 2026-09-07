@@ -214,7 +214,7 @@ were stale after AP3's pimpl sweep.
 |---|---|---|---|
 | Crucible | source | IEC 61937 today; HTTP origin would be new | shipped; the network output is a scope question, [decision 3](#decisions) |
 | `ac3cli record` / `live`, `ac3gui` live session | source | **already writes a servable HTTP origin** through `Fmp4FolderWriter` | shipped, unconnected to any sink |
-| The DAW plugin | source | whatever the host renders to; **bed-only, unconditionally** | [study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) done |
+| A DAW **encode** plugin | source | whatever the host renders to; **bed-only, unconditionally** | [study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md) done; the constrained one |
 | The Shield demo | source | IEC 61937 over the Shield's HDMI | shipped |
 | The WASM encode page | source | none — it produces a file | shipped |
 | An out-of-tree GStreamer element or FFmpeg wrapper (**AP10**) | source | whatever the pipeline is muxing into | on the roadmap (`ROADMAP.md:2163`), unstarted, and its dependency AP5 is done |
@@ -222,11 +222,17 @@ were stale after AP3's pimpl sweep.
 | The playback appliance | sink | local files today; HTTP client is the new work | [plan](player-appliance.md), to be rewritten against this page |
 | An ESP32-S3 node | sink | HTTP client, then Sendspin | AC-3 proven; E-AC-3 needs float32 |
 | The WASM decode page | sink | a file today; could be an HLS client for free | shipped |
+| A DAW **metering** plugin | **neither** — an instrument, not a node | n/a | what [the study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md)'s Part 2 actually plans; no capability blocker |
 | The delivery-QC report | **neither** — an instrument, not a node | n/a | [plan](https://github.com/iainchesworthlabs/ac3forge/blob/feature/qc-report-plan/docs/forge/qc-report.md); belongs under Forge, and this page is why |
 
-Two notes on the source column, both from [the plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md).
+Three notes on those rows, all from [the plugin study](https://github.com/iainchesworthlabs/ac3forge/blob/feature/plugin-study/docs/family/host-plugin.md).
 
-**A plugin-sourced stream is bed-only and always will be.** Not a limit of any one format: a
+**"Plugin" is two things, and only one of them is a source.** An *encode* plugin would produce a
+stream; a *metering* plugin measures one, which puts it beside the delivery-QC report as an
+instrument rather than a node. Part 2 of that study plans the metering one. The two have
+different blockers and the paragraphs below keep them apart.
+
+**An encode plugin's stream is bed-only and always will be.** Not a limit of any one format: a
 plugin on an object track sees that track's audio as a plain channel arrangement, and the host
 and its renderer own the object metadata and never hand it over. There is no authoring path
 elsewhere in a session that reaches a plugin, so "objects arrive from upstream" is not a case
@@ -240,9 +246,16 @@ how anything above 5.1, and JOC at all, reaches the whole transcode ecosystem. I
 the roadmap, its dependency is done, and unlike the plugin it has no format-expressiveness
 blocker to work around — GStreamer's `GstMeta` is extensible, so object metadata is at least
 *representable* across a pipeline, which is the one place in that study where the door is not
-closed. Whether it comes before or after the plugin is a scheduling question this page does not
-answer, but it should be asked, because the study's own conclusion makes the plugin the more
-constrained of the two.
+closed.
+
+**But it is not a difficulty ranking, and this page should not imply one.** AP10 is the cheaper
+piece of work, and **neither it nor the metering plugin has a capability blocker** — the plugin
+carries a UI, seven locales, accessibility, signing and two format identities that freeze on
+first release, none of which AP10 does. The *encode* plugin is the one with real blockers (a
+worst-case block-time measurement that does not exist, a missing `encode_frame_into()`, and no
+objects), and AP10 clears all of them. Which comes first is an **audience** question — transcode
+operators or mixing engineers — and the plugin study declines to answer it for that reason. It
+is on this page so it is asked rather than buried, not so it is settled here.
 
 ## Format negotiation is one problem, not several
 
