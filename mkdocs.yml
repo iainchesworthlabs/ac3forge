@@ -147,6 +147,7 @@ nav:
       - The Windows demo, the record: platforms/windows-demo.md
       - The null-sink driver on ACX: platforms/windows-driver-acx.md
   - Platforms:
+      - platforms/index.md
       - Windows: platforms/windows.md
       - Linux: platforms/linux.md
       - Raspberry Pi: platforms/raspberry-pi.md

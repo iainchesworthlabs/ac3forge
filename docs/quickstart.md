@@ -4,6 +4,12 @@ Clone to first encode in under ten minutes. This page shows the shortest path; s
 [building.md](building.md) for the full preset list, building without Qt, the Linux GUI opt-in,
 and machine-local preset overrides.
 
+The build below is for a Windows or Linux desktop. If you are on something else — a Mac, a
+Raspberry Pi, an Android TV box, a browser, or a board with no operating system —
+[Platforms](platforms/index.md) says which page covers it and what has been shown to work there.
+If you would rather install `ac3cli` and `ac3gui` than build them, [Forge](forge/index.md) has
+the three ways to do that.
+
 ## Prerequisites
 
 | | Version | Notes |
