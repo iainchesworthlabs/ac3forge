@@ -157,4 +157,5 @@ nav:
       - History: history.md
       - Roadmap: roadmap.md
       - The family recasting: family/recasting.md
+      - A host plugin, studied: family/host-plugin.md
       - Self-hosted CI runners: ci-self-hosted-runners.md
