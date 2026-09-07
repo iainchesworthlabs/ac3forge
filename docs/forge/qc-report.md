@@ -24,6 +24,13 @@ diff, and neither emits anything a delivery system could parse.
 So this plan is mostly about a document format and a renderer, plus the four conformance checks
 the measurement side is missing. It is not a plan to build a meter.
 
+**It is an instrument rather than a node.** A parallel plan — `docs/family/topology.md`, on PR
+#539 — frames the family's other wrappers as **sources** that produce an encoded stream and
+**sinks** that turn one back into sound in a room, joined by a transport. A QC report is neither:
+it measures a stream without producing or rendering one. That page reaches the same placement
+this one recommends, by a different route, and its own table records the reporter as "an
+instrument, not a node".
+
 ## What already measures this
 
 Enough that the gap is narrower than this page's brief assumed. Every row below is shipped and
@@ -160,6 +167,11 @@ presets are gated against a decoded elementary stream, the layout vocabulary is
 `ac3::plan::LayoutId`, the object path is OAMD. Cost of taking C now: every identity above frozen
 around a scope that is still one codec family's, plus [DR6](#signing-and-install) signing for a
 third application before the two that exist are signed.
+
+**External support, arrived at independently.** `docs/family/topology.md` classifies every other
+wrapper in the family as a source or a sink and the QC reporter as neither, and concludes it
+belongs under Forge for that reason. It was written from the family's transport gap rather than
+from this page's build-boundary argument, so the two are independent readings that agree.
 
 **When C becomes right:** when the report is asked to cover a format the library does not encode.
 That is the trigger to re-open this, and it is worth writing down rather than rediscovering.
@@ -312,7 +324,10 @@ Six additions, all in `ac3::meta`, all needed by any of the four placement optio
 
 1. **`QcReport`** — the measurement result as a library type: codec, layout label, sample rate,
    unit count, duration, which BS.1770 algorithm ran, whether dependents were excluded, and a
-   vector of per-programme results. Replaces the two duplicate structs.
+   vector of per-programme results. Replaces the two duplicate structs. The topology plan
+   sharpens the case: the sinks it describes — a playback appliance, an ESP32-S3 node, the WASM
+   decode page — would each want to report what they received, so a library-level type gains a
+   third and fourth *caller* where the present shape would grow a third and fourth *copy*.
 2. **`QcExpectations`** — the ordered facts the conformance checks compare against, and
    `evaluate_qc_conformance()` beside `evaluate_qc_gate()`, in the same shape: a small struct in,
    a verdict out, no I/O.
@@ -772,6 +787,14 @@ nothing. Phase 2 edits `apps/gui`, so it should re-check the queue first.
 two: leaving either surface on its own copy for a release would make the duplication permanent in
 exactly the way it became permanent the first time.
 
+**`docs/family/topology.md` (PR #539).** That page is not on `main`, and a relative link to it
+from here aborts `mkdocs build --strict` with "the target 'family/topology.md' is not found among
+documentation files" — measured on this branch, not assumed. Both pages therefore name each other
+by path or by branch URL until one of them merges, and **whichever merges second converts its own
+reference to a relative link**. One thing for #539 to fix on its own side: its "Where everything
+sits" table links this page at `blob/feature/qc-report-plan/...`, which 404s once this branch is
+deleted after merge.
+
 **The docs-only fast path.** This page touches only `docs/` and `mkdocs.yml`, so `ci.yml:311`
 classifies it as docs-only, it runs the strict docs build and skips the matrix. Phases 2–5 do not,
 and should not be batched with unrelated prose.
@@ -808,7 +831,9 @@ Only what the owner has to decide. Each carries a recommendation and the cost of
    install rules, packaging and docs already draw, and it needs no decision from any registry.
    Cost: the report renderers live in `apps/cli` and are reachable from other languages only
    through the C API added in Phase 5. Taking (c) later costs nothing already spent — Phase 2's
-   promotion is the first step under all four.
+   promotion is the first step under all four. `docs/family/topology.md` reaches the same
+   conclusion from the family's source/sink/transport frame, which is independent evidence rather
+   than a second statement of this page's argument.
 
 2. **The name, if (c) or (d).** (a) **Assay** — `ac3assay`, `ac3::assay`; (b) **Hallmark** —
    `ac3hallmark`; (c) **Proof**; (d) no name, under (a)/(b) of decision 1. **Recommend (d) now, and
