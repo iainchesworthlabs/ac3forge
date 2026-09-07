@@ -1856,7 +1856,13 @@ object file), proven on a cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/bare
 `build-footprint`) that decodes real AC-3/E-AC-3 to the host build's own levels in 403 KB of
 image and 238 KB of peak heap. Two requirements are recorded as open gaps rather than
 half-enforced: zero heap traffic in the decode loop (today: 45-87 allocations/frame) and a
-float32-only internal path - see `docs/building.md`'s Gaps section.
+float32-only internal path. That second one is now MET for the decode path: both decoders carry
+their coefficients, transform scratch and overlap-add history in a profile-selected
+`decode_scalar_t`, measured at ~139 dB against the double decode across four real streams
+including Dolby- and FFmpeg-encoded ones, and at 2.7e-7 peak-normalised at the transform itself.
+It changed no gold reference, because the ordinary build's `decode_scalar_t` is still `double`.
+See `docs/building.md`'s Gaps section, and `docs/platforms/esp32.md` for the ESP32-S3 target that
+motivated it.
 </details>
 
 **PF8 (S)** — The decoder's JOC bed analysis was still running direct forward transforms — now

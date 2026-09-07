@@ -339,7 +339,9 @@ CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`)
 
 ### Gaps
 
-Three of PF7's requirements are not met, and are recorded here rather than half-enforced.
+Two of PF7's requirements are not met, and are recorded here rather than half-enforced.
+The third — a float32-only path — is now met for the decode path; what that did and
+did not cover is below.
 
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
 (`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
@@ -350,14 +352,35 @@ those becoming fixed-capacity storage, which changes the public types — a desi
 build option. The runner gates the number at 100 so the distance from zero cannot grow while the
 gap is open.
 
-**A float32-only path — not met.** The decoder's *output* is already `float`, but every
-intermediate — the transform, the coefficients, the coupling coordinates — is `double`. A
-float32 internal path would change every gold-reference number in
-[the quality trend](quality-trend.md) and needs its own oracle run to establish that the change
-is acceptable, so it is a project of its own rather than a flag. What the profile does instead is
-prove the `double` path works without hardware floating point: the Cortex-M3 target has no FPU,
-so every one of those operations is software-emulated, and the decoded levels still match the
-host build.
+**A float32-only path — met for the decode path.** `src/internal/profile/{minimal,full}/`'s
+seam carries `decode_scalar_t`: `float` under this profile, `double` in every other build. Both
+decoders' coefficient stores, transform scratch and overlap-add history follow it, and
+`imdct512_windowed`/`imdct256_pair_windowed` have float32 overloads built from the same templated
+body as the double ones — one statement of §7.9.4.1, not two that have to be kept agreeing.
+
+This was expected to "change every gold-reference number in [the quality trend](quality-trend.md)".
+It changed none, because the choice is per-profile rather than global: the ordinary build's
+`decode_scalar_t` is `double`, so its arithmetic is untouched and the whole suite passes
+identically (4,032,916 assertions). The oracle run the paragraph asked for was still done, by
+building a float32 `ac3cli` and decoding real fixtures with both: **~139 dB** worst-channel SNR
+against the double decode across four streams including Dolby- and FFmpeg-encoded ones, measured
+with `tools/checks/compare_wav.py`. For scale, the gold-reference gate's tightest per-channel
+floor is 60 dB, so float32 contributes essentially nothing to the error budget that gate measures.
+At the transform alone the disagreement is 2.7e-7 peak-normalised
+(`tests/core/test_mdct_fast.cpp`), roughly one LSB at 24 bits.
+
+Two things it does **not** cover, and neither is a decode-path gap:
+
+- The **encoder** is still `double` everywhere, and stays so: it is not built in this profile at
+  all, and the fifteen cross-platform bitstream hashes in `tests/golden/bitstream-hashes.json`
+  pin its output.
+- The **transforms' direct form**, the QMF bank and JOC's object reconstruction are still
+  `double`. The float32 inverses deliberately take no `fast` parameter, because the direct form
+  is the spec's own evaluation and the oracle the fast path is validated against.
+
+What the profile also still proves is that the `double` path works without hardware floating
+point: `decode_scalar_t` is a profile choice, and an `arm-none-eabi` build of the ordinary
+profile would software-emulate every operation exactly as before.
 
 **`-fno-exceptions` removes the tables, not the throw sites.** The codec has no `throw`, `try` or
 `catch` of its own. What remains is the standard library's: `std::vector`'s `length_error` and

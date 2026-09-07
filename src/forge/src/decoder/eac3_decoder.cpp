@@ -31,6 +31,7 @@
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/internal/profile.hpp"
+#include "scalar_inverse.hpp"
 #include "ac3/internal/profiling.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
@@ -53,41 +54,6 @@
 
 namespace ac3 {
 
-namespace {
-
-// The transform pair, chosen by scalar type.
-//
-// This is a template for one specific reason: `if constexpr` only discards the
-// untaken branch inside a TEMPLATE. In an ordinary function both arms are still
-// fully type-checked, so a double-only call would fail to compile in a float32
-// build even though it could never run - the same trap
-// src/internal/cpu/minimal/cpu_features.cpp's header records ("the discarded
-// branch of a non-template is still semantically checked and its callees still
-// ODR-used").
-//
-// The two arms differ only in the `fast` argument, which the float32 inverse
-// does not take: the direct form is double-only, and this profile refuses
-// fast_imdct=false with kUnsupported long before reaching here.
-template <typename Scalar>
-void inverse_transform_into(const std::array<Scalar, 256>& coeffs, std::array<Scalar, 512>& x,
-                            bool short_block, bool fast) {
-    if constexpr (std::is_same_v<Scalar, float>) {
-        (void)fast;
-        if (short_block) {
-            imdct256_pair_windowed(coeffs, x);
-        } else {
-            imdct512_windowed(coeffs, x);
-        }
-    } else {
-        if (short_block) {
-            imdct256_pair_windowed(coeffs, x, fast);
-        } else {
-            imdct512_windowed(coeffs, x, fast);
-        }
-    }
-}
-
-}  // namespace
 
 namespace {
 
@@ -2944,7 +2910,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // kUnsupported long before reaching here, so there is no
                 // choice being silently dropped.
                 const bool short_block = ch < nfchans && tail.blksw[static_cast<std::size_t>(ch)];
-                inverse_transform_into(coeffs[index], x, short_block,
+                internal::inverse_transform_into(coeffs[index], x, short_block,
                                        impl_->config_.fast_imdct);
                 auto& history = delay[index];
                 auto& pcm = out.channels[index];

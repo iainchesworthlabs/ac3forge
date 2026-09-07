@@ -99,6 +99,7 @@ nav:
           - Python: library/python-api.md
           - Rust: library/rust-api.md
           - WebAssembly (npm): platforms/wasm.md
+          - ESP32-S3 (ESP-IDF): platforms/esp32.md
       - Validation:
           - How output is checked: verification.md
           - Threat model: threat-model.md
