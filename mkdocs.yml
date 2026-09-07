@@ -115,6 +115,7 @@ nav:
           - Encode in the browser: wasm-encode-demo.md
   - Forge:
       - What it is: forge/index.md
+      - Delivery QC reports: forge/qc-report.md
       - CLI reference:
           - Overview: cli/index.md
           - Commands: cli/commands.md
