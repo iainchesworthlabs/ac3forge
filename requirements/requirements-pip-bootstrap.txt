@@ -1,0 +1,20 @@
+# Hand-maintained, not a pip-compile output: pip-compile treats pip itself as
+# one of the "unsafe" packages (alongside setuptools and wheel) and drops it
+# from --generate-hashes locks unless --allow-unsafe is passed, so it cannot
+# live in requirements-lint.txt/-pytest.txt/etc. alongside the packages those
+# actually pin.
+#
+# ci.yml's script-lint job and wheels.yml's test-the-wheel job each upgrade
+# the venv's bootstrap pip to a known version before running their real
+# --require-hashes install, and that upgrade step was itself unpinned by hash
+# - version-pinned only, via `pip install "pip==X.Y.Z"`. That is exactly what
+# OSSF Scorecard's Pinned-Dependencies check flags (surfaced here as GitHub
+# code scanning alerts #112 and #113). This file closes the gap: both jobs
+# install pip via `--require-hashes -r requirements/requirements-pip-bootstrap.txt`
+# instead. Bump the version and hashes here, in one place, when it needs to move.
+#
+# Hashes are pip 24.3.1's published sdist and wheel digests from
+# https://pypi.org/pypi/pip/24.3.1/json.
+pip==24.3.1 \
+    --hash=sha256:3790624780082365f47549d032f3770eeb2b1e8bd1f7b2e02dace1afa361b4ed \
+    --hash=sha256:ebcb60557f2aefabc2e0f918751cd24ea0d56d8ec5445fe1807f1d2109660b99
