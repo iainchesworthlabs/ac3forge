@@ -173,6 +173,9 @@ cross-correlation, and reports SNR against the original:
 | 448 kbps | 51.05 dB | 47.60 dB | +3.46 |
 
 Measured with FFmpeg 8.0.1 on 2026-08-09; reproduce with `python tools/ci/quality_race.py ac3`.
+Unlike the trend pages beside it, this table is a point measurement rather than a gated series:
+nothing on the `quality-history` branch carries an ac3forge-against-FFmpeg comparison, so no CI
+run reproduces these four numbers or would notice them drifting.
 SNR on synthetic material is a narrow metric — it says the waveform is closer, not that it
 sounds better, and no listening test has been run. Alongside it, every published comparison
 also carries a ViSQOL MOS-LQO prediction, and the fixture corpus includes 30 s CC0 recordings
