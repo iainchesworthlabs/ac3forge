@@ -253,7 +253,61 @@ struct FrameDecoder::Impl {
     // the material the NEXT loss is concealed from. Sized lazily at first
     // use, so a decoder with concealment off never allocates it.
     std::vector<std::array<double, 512>> conceal_scratch_;
+
+    // --- per-frame scratch --------------------------------------------------
+    // Everything decode_frame_core used to declare as a local before its block
+    // loop. Those were already hoisted once - out of the block loop, up to
+    // frame scope, which stopped twenty-odd allocations per BLOCK - and this is
+    // the same move again, from frame scope onto the decoder, which stops
+    // roughly forty per FRAME. Measured on the bare-metal probe
+    // (apps/baremetal/probe.cpp), where AC-3 5.1 was 47 allocations a frame and
+    // this cluster was most of it.
+    //
+    // WHAT MAKES IT SAFE. A local is fresh every call; a member carries the
+    // previous frame's contents, and stale state leaking from one frame into
+    // the next is a fault that fixtures do not catch. So decode_frame_core
+    // re-establishes every one of these at the top of the frame with exactly
+    // the arguments its constructor used - `assign(n, v)` where the
+    // declaration read `(n, v)`, `clear()` where it was default-constructed.
+    // The contents a frame starts with are therefore identical to what they
+    // were before, element for element; the only thing that survives is
+    // capacity, which is the point.
+    //
+    // The vector-of-vector members get resize() plus a clear() of each inner
+    // buffer rather than assign(n, {}), because assign would destroy the inner
+    // allocations this exists to keep.
+    std::vector<int> endmant_;
+    std::vector<std::vector<std::uint8_t>> exps_;
+    std::vector<int> fgaincod_;
+    std::vector<int> fsnroffst_;
+    std::vector<DeltaSegments> delta_;
+    std::vector<bool> chincpl_;
+    std::vector<int> subband_band_;
+    std::vector<std::vector<double>> cplco_;
+    std::vector<bool> phsflg_;
+    std::vector<double> band_values_;
+    std::vector<ExpStrategy> strategy_;
+    std::vector<std::uint8_t> groups_;
+    std::vector<std::vector<std::uint8_t>> bap_;
+    std::vector<std::array<int, 50>> mask_;
+    std::vector<std::array<internal::decode_scalar_t, 256>> coeffs_;
 };
+
+namespace {
+
+// resize() then clear() each element: the outer vector grows to `n` and keeps
+// whatever inner buffers it already had, and each inner buffer keeps its
+// capacity while reporting empty. assign(n, {}) would give the same contents
+// and throw the inner allocations away, which is the opposite of the point.
+template <typename T>
+void reset_nested(std::vector<std::vector<T>>& v, std::size_t n) {
+    v.resize(n);
+    for (auto& inner : v) {
+        inner.clear();
+    }
+}
+
+}  // namespace
 
 FrameDecoder::FrameDecoder() : impl_(std::make_unique<Impl>()) {}
 
@@ -698,17 +752,24 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // then the LFE, then - when coupling is in use - the coupling channel as
     // one more stream, exactly as the encoder lays them out.
     const std::size_t max_streams = static_cast<std::size_t>(nchans) + 1;
-    std::vector<int> endmant(max_streams, kLfeEndmant);
-    std::vector<std::vector<std::uint8_t>> exps(max_streams);
+    // Per-frame scratch, owned by Impl and re-established here with exactly the
+    // arguments these declarations used to carry - see Impl's own note.
+    auto& endmant = impl_->endmant_;
+    endmant.assign(max_streams, kLfeEndmant);
+    auto& exps = impl_->exps_;
+    reset_nested(exps, max_streams);
     BitAllocCodes base_codes{};
-    std::vector<int> fgaincod(max_streams, base_codes.fgaincod);
+    auto& fgaincod = impl_->fgaincod_;
+    fgaincod.assign(max_streams, base_codes.fgaincod);
     int csnroffst = 0;
-    std::vector<int> fsnroffst(max_streams, 0);
+    auto& fsnroffst = impl_->fsnroffst_;
+    fsnroffst.assign(max_streams, 0);
     // §7.2.2.6: per-stream delta bit allocation, reset to "no segments" at the
     // start of every syncframe (the spec's own recommended initialization),
     // then persisting block to block exactly like base_codes/fsnroffst above
     // until re-transmitted or explicitly cleared.
-    std::vector<DeltaSegments> delta(max_streams);
+    auto& delta = impl_->delta_;
+    delta.assign(max_streams, DeltaSegments{});
     std::array<bool, 4> rematflg{};
 
     // Coupling state (§7.4). All of it persists until re-transmitted.
@@ -720,13 +781,17 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     int ncplsubnd = 0;
     int cplfleak = 0;
     int cplsleak = 0;
-    std::vector<bool> chincpl(static_cast<std::size_t>(nfchans), false);
+    auto& chincpl = impl_->chincpl_;
+    chincpl.assign(static_cast<std::size_t>(nfchans), false);
     // Which coupling band each sub-band belongs to (cplbndstrc expansion).
-    std::vector<int> subband_band;
+    auto& subband_band = impl_->subband_band_;
+    subband_band.clear();
     int ncplbnd = 0;
     // [channel][sub-band] - already expanded from bands to sub-bands.
-    std::vector<std::vector<double>> cplco(static_cast<std::size_t>(nfchans));
-    std::vector<bool> phsflg;
+    auto& cplco = impl_->cplco_;
+    reset_nested(cplco, static_cast<std::size_t>(nfchans));
+    auto& phsflg = impl_->phsflg_;
+    phsflg.clear();
 
     // The self-check's decoder-side view (ac3/verify/mirror.hpp). nfchans and
     // nchans are frame-wide, so the shape is settled here; the per-block half
@@ -760,15 +825,26 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // all: both imdct512_windowed and imdct256_pair_windowed write every
     // element of the 512-wide output (mdct.cpp's step 5 covers x[0..511] in
     // eight strided sequences), so a cleared buffer was never load-bearing.
-    std::vector<double> band_values;
-    std::vector<ExpStrategy> strategy;
-    std::vector<std::uint8_t> groups;
-    std::vector<std::vector<std::uint8_t>> bap(max_streams);
+    auto& band_values = impl_->band_values_;
+    band_values.clear();
+    auto& strategy = impl_->strategy_;
+    strategy.clear();
+    auto& groups = impl_->groups_;
+    groups.clear();
+    auto& bap = impl_->bap_;
+    reset_nested(bap, max_streams);
     // Only meaningful when trace != nullptr (see the bit-allocation loop
     // below) - reused across blocks the same way `bap` above is, so tracing
     // a whole file costs one allocation rather than one per block.
-    std::vector<std::array<int, 50>> mask(max_streams);
-    std::vector<std::array<internal::decode_scalar_t, 256>> coeffs(max_streams);
+    auto& mask = impl_->mask_;
+    mask.assign(max_streams, {});
+    // coeffs is assign()ed again at the top of every block below, so this one
+    // is only sizing the buffer - but it is left spelled out rather than
+    // shortened to resize(), so that every member in this cluster is
+    // re-established the same way and none of them depends on a reader
+    // noticing which are and are not refreshed later.
+    auto& coeffs = impl_->coeffs_;
+    coeffs.assign(max_streams, {});
     std::array<internal::decode_scalar_t, 512> x;
 
     for (int block = 0; block < kBlocksPerFrame; ++block) {
