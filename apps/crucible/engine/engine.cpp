@@ -386,7 +386,7 @@ struct Engine::Impl {
             // placed, so a silent spell does not empty the room.
             std::vector<AppId> placed;
             for (const auto& slot : slots.apps()) {
-                if (slot.positioned) {
+                if (slot.positioned.has_value()) {
                     placed.push_back(slot.app);
                 }
             }
@@ -452,7 +452,7 @@ struct Engine::Impl {
         std::unordered_map<int, AppId> now;
         std::unordered_map<int, double> side;  // -1 left, +1 right, 0 mono
         for (const auto& app : slots.apps()) {
-            if (app.positioned) {
+            if (app.positioned.has_value()) {
                 for (int i = 0; i < app.width; ++i) {
                     now[*app.positioned + i] = app.app;
                     side[*app.positioned + i] = app.width == 2 ? (i == 0 ? -1.0 : 1.0) : 0.0;
@@ -518,7 +518,7 @@ struct Engine::Impl {
             if (const auto sized = sizes.find(slot.app); sized != sizes.end()) {
                 a.size = sized->second;
             }
-            if (slot.positioned) {
+            if (slot.positioned.has_value()) {
                 a.position = placement.current(*slot.positioned).position;
                 if (slot.width == 2) {
                     // Report the pair's centre, which is what the user placed.
@@ -690,7 +690,7 @@ struct Engine::Impl {
                     const std::lock_guard<std::mutex> lock(probe_mutex);
                     facts.swap(probe_result);
                 }
-                if (facts) {
+                if (facts.has_value()) {
                     AC3_ZONE_SCOPED_N("apply probe");
                     const auto before = output->status().mode;
                     const auto before_endpoint = output->status().endpoint_id;
@@ -802,7 +802,7 @@ struct Engine::Impl {
             const double encode_ms = std::chrono::duration<double, std::milli>(
                                          std::chrono::steady_clock::now() - encode_start)
                                          .count();
-            if (!unit) {
+            if (!unit.has_value()) {
                 if (!encode_refusing) {
                     encode_refusing = true;
                     note("encoder refused a frame");
