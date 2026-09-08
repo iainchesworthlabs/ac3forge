@@ -110,9 +110,10 @@ configured, is in [Why ALSA still comes first](../building.md#why-alsa-still-com
     every AC-3/E-AC-3/Atmos shape tried to a real Atmos-capable AVR over HDMI, correctly
     identified every time. PipeWire has now met real hardware once, on the same Pi, on 2026-09-05: the backend
     enumerated the receiver's HDMI sink with its compressed codecs set by WirePlumber from the
-    EDID, and streamed E-AC-3 bursts to it. The receiver's own lock is still to be read off its
-    display, so this is "delivered" rather than "confirmed"; the rest of this note is what that
-    run found and fixed. Whether a given output accepts a bitstream is per-device anyway; `ac3cli
+    EDID, and streamed E-AC-3 bursts to it. The receiver's own front panel was read the same
+    evening: "5.1 DD+" from a pre-encoded fixture, and "Atmos/DD+" at 7.1 from Crucible's live
+    engine with a placed object, so this is confirmed rather than merely delivered. The rest of
+    this note is what that run found and fixed. Whether a given output accepts a bitstream is per-device anyway; `ac3cli
     outputs` probes each one and reports what it finds, and since that run it reports a bitstream
     format only on a sink whose `iec958.codecs` lists it, because the connect alone said yes on a
     headphone jack.

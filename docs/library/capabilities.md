@@ -214,11 +214,14 @@ load-bearing enough to flag up front:
     machine: a Raspberry Pi 4B driving an Atmos-capable AVR over HDMI, everything from plain AC-3
     through signed Atmos/JOC locking correctly (see
     [Raspberry Pi](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver), which is
-    also where the vc4-hdmi device-classifier bug that run found is written up). No other Linux
-    machine, sound card or receiver has been tried, and the **PipeWire** backend has not reached a
-    receiver at all — its passthrough negotiation is real but needs a compressed codec enabled on
-    the target node by the session manager first. Treat the Pi result as one confirmed
-    configuration, not as ALSA-on-Linux generally.
+    also where the vc4-hdmi device-classifier bug that run found is written up). The **PipeWire**
+    backend reached the same receiver on 2026-09-05, on the same Pi: a pre-encoded 5.1 fixture
+    that the receiver's front panel read as "5.1 DD+", and Crucible's own live engine with a
+    placed object, read as "Atmos/DD+" at 7.1 — see
+    [the promotion record](../crucible/promotion.md). PipeWire needs a compressed codec enabled
+    on the target node by the session manager first, which WirePlumber filled there from the
+    receiver's EDID. No other Linux machine, sound card or receiver has been tried: treat this as
+    two confirmed configurations on one box, not as Linux generally.
 
 Enhanced coupling and transient pre-noise processing have no external decode oracle at all —
 not even the FFmpeg-can't-but-the-in-repo-decoder-can situation 7.1.4 is in, since FFmpeg's own
