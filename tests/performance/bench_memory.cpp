@@ -281,6 +281,49 @@ Result bench_eac3_51_encode(std::vector<std::byte>& stream_out) {
     return r;
 }
 
+// The same 5.1 at the same rate as bench_eac3_51_encode, differing only by
+// the coupling tool - so a churn difference between the two series is
+// attributable to enhanced coupling and nothing else.
+//
+// It exists because §E3.5 is otherwise unreachable from this binary.
+// bench_eac3_51_encode leaves FrameConfig::enhanced at its default false,
+// eac3_frame.cpp gates the whole reconstruction on `cpl.in_use &&
+// cpl.enhanced`, and no other workload here sets either flag - so the
+// per-frame ecplamp/ecplangle/ecplchaos vectors, and the three IMDCTs plus
+// full DFT that ecpl_channel_spectrum runs over the coupling channel every
+// block, have never appeared in a memory-trend series. `coupling` is set
+// alongside `enhanced` because §E3.5 is a different reconstruction of the
+// coupling region rather than a tool of its own, and the encoder reads it
+// that way (`cpl.enhanced = cpl.in_use && config_.enhanced`).
+//
+// Explicit flags rather than auto_tools: `auto` never selects enhanced
+// coupling at any rate, because FFmpeg's Annex E parser misreads §E3.5
+// rather than declining it, so a workload that asked for tools
+// automatically would land back on the standard coupling path.
+//
+// No stream is kept. Pairing this with a decode leg the way
+// eac3_51_encode pairs with eac3_51_decode would cover the decoder's own
+// call into ecpl_channel_spectrum, unmeasured here for the same reason;
+// that is a second series and a separate change.
+Result bench_ecpl_51_encode() {
+    const Channels channels = make_channels(6);
+    const auto views = make_views(channels);
+
+    const Snap before = snap();
+    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 448,
+                                     .acmod = ac3::Acmod::k3_2,
+                                     .lfe = true,
+                                     .coupling = true,
+                                     .enhanced = true}};
+    const Snap after = snap();
+
+    Result r = run_encode(
+        "ecpl_51_encode", encoder, [&] { return encoder.encode_frame(views); }, nullptr);
+    r.setup_allocs = after.allocs - before.allocs;
+    r.setup_bytes = after.bytes - before.bytes;
+    return r;
+}
+
 Result bench_atmos_4obj_encode(std::vector<std::byte>& stream_out) {
     constexpr int kObjects = 4;
     const Channels channels = make_channels(kObjects);
@@ -466,6 +509,7 @@ int main(int argc, char** argv) {
     results.push_back(bench_ac3_51_decode(ac3_stream));
     results.push_back(bench_eac3_51_encode(eac3_stream));
     results.push_back(bench_eac3_decode("eac3_51_decode", eac3_stream));
+    results.push_back(bench_ecpl_51_encode());
     results.push_back(bench_atmos_4obj_encode(atmos_stream));
     results.push_back(bench_eac3_decode("atmos_4obj_decode", atmos_stream));
 
