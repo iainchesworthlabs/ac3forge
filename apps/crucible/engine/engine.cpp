@@ -623,12 +623,15 @@ struct Engine::Impl {
         });
         struct StopMonitor {
             std::jthread& thread;
+            explicit StopMonitor(std::jthread& t) : thread(t) {}
             ~StopMonitor() {
                 thread.request_stop();
                 if (thread.joinable()) {
                     thread.join();
                 }
             }
+            StopMonitor(const StopMonitor&) = delete;
+            StopMonitor& operator=(const StopMonitor&) = delete;
         } stop_monitor{session_thread};
         const auto frame_duration =
             std::chrono::microseconds(static_cast<long long>(1e6 * static_cast<double>(frames_per) / 48000.0));
