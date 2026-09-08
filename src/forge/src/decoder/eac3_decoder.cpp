@@ -12,7 +12,6 @@
 #include <memory>
 #include <optional>
 #include <span>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -25,7 +24,6 @@
 #include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/mantissas.hpp"
-#include "ac3/core/mdct.hpp"
 #include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/transient_prenoise.hpp"
