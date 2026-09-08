@@ -143,9 +143,11 @@ struct Engine::Impl {
     // The probe's state, the same shape as the monitor's: a slow enumeration
     // runs off the frame thread and leaves the facts here; the frame loop
     // applies them at its next boundary and never waits. `probing` keeps one
-    // enumeration in flight at a time, since a second request while one runs
-    // would only repeat it. The thread itself is declared below `watcher`,
-    // for the reason given there.
+    // enumeration in flight at a time; a request that arrives while one is
+    // running is left armed for the next frame rather than taken by it, since
+    // the running enumeration read the device list before the change that
+    // prompted it. The thread itself is declared below `watcher`, for the
+    // reason given there.
     std::mutex probe_mutex;
     std::optional<std::vector<EndpointFacts>> probe_result;
     std::atomic_bool probing{false};
@@ -652,10 +654,21 @@ struct Engine::Impl {
             }
             refresh_sessions();
             // The probe: asked for on the frame thread, run off it. A request
-            // while one is already in flight is simply absorbed - the running
-            // enumeration will be as fresh as any it could start.
-            if (want_reprobe.exchange(false, std::memory_order_acq_rel) &&
-                !probing.exchange(true, std::memory_order_acq_rel)) {
+            // that arrives while one is in flight stays armed instead of being
+            // consumed by it. The running enumeration read the device list
+            // before whatever prompted the request - the default output moved
+            // to the silent device, a receiver was switched on - so its facts
+            // can already be stale, and taking the request for it would drop
+            // the one probe that would have seen the change. Leaving it set
+            // costs one further enumeration and makes reprobe() mean what its
+            // callers assume: the next probe sees the world as it is now.
+            //
+            // This loop is the only reader of `want_reprobe` and the only
+            // writer that sets `probing` true, so testing the one and then the
+            // other needs no lock between them.
+            if (!probing.load(std::memory_order_acquire) &&
+                want_reprobe.exchange(false, std::memory_order_acq_rel)) {
+                probing.store(true, std::memory_order_release);
                 if (probe_thread.joinable()) {
                     probe_thread.join();
                 }

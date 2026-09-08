@@ -42,6 +42,10 @@
 // on macOS, where the Core Audio process tap mutes the application it taps,
 // and why it changes nothing audible on Windows or Linux, where a tap is a
 // pure capture.
+//
+// The last holds a third rule of the same loop, and the reason the stop case
+// above can now ask once: a re-probe that arrives while an enumeration is
+// running is kept for the next frame, not spent on the one in flight.
 
 using namespace ac3::crucible;
 using namespace ac3::crucible::testing;
@@ -112,21 +116,14 @@ std::vector<std::string> names_of(const std::vector<AppStatus>& apps) {
 
 
 // wait_for, for a change to the fake device list: it reaches the engine only
-// through a probe. The request is repeated rather than made once because
-// reprobe() is absorbed when an enumeration is already in flight, and the
-// device watcher on a real CI machine can start one at any moment.
+// through a probe. One request is enough however busy the machine is - a
+// re-probe asked for while an enumeration is in flight stays armed until the
+// frame loop can start a fresh one - so nothing here has to repeat it.
 template <typename Predicate>
 bool eventually_after_reprobe(Engine& engine, Predicate predicate,
                               std::chrono::milliseconds limit = std::chrono::milliseconds(5000)) {
-    const auto deadline = Clock::now() + limit;
-    while (!predicate()) {
-        if (Clock::now() >= deadline) {
-            return false;
-        }
-        engine.reprobe();
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    return true;
+    engine.reprobe();
+    return wait_for(std::move(predicate), limit);
 }
 
 struct TapCensus {
@@ -171,6 +168,7 @@ void run_on(const Engine& engine, std::uint64_t frames) {
 void two_playing(Rig& rig) {
     rig.sessions->set_apps({playing(1001U, "player"), playing(1002U, "browser")});
 }
+
 }  // namespace
 
 TEST_CASE("crucible engine: start brings the output up on the endpoint the policy chose", "[crucible][engine]") {
@@ -265,15 +263,15 @@ TEST_CASE("crucible engine: stop waits for an enumeration still in flight", "[cr
     REQUIRE(wait_for([&devices] { return devices.enumerations_finished() >= 1; }));
 
     devices.hold_enumerations();
-    // Asked for on every pass rather than once: the engine absorbs a request
-    // that arrives while a probe is still in flight (one enumeration is as
-    // fresh as any that could follow it), and the first probe's thread is
-    // still winding up for a moment after its enumeration answered. Asking
-    // until one parks is what makes this a fact rather than a race.
-    const bool parked = wait_for([&engine, &devices] {
-        engine.reprobe();
-        return devices.enumerations_parked() >= 1;
-    });
+    // One request is enough, however busy the loop is. It used to take one
+    // per pass, because a request that arrived while a probe was still in
+    // flight was consumed and dropped - and the first probe's thread is still
+    // winding up for a moment after its enumeration has answered, so landing
+    // in that window was likely. A request now stays armed until the frame
+    // loop can act on it, so this asks once and waits for the probe it asked
+    // for to park (see the case below, which is about that rule alone).
+    engine.reprobe();
+    const bool parked = wait_for([&devices] { return devices.enumerations_parked() >= 1; });
     if (!parked) {
         // Nothing is holding the gate, but leaving it shut would hang the
         // engine's destructor on the join this case exists to check.
@@ -404,5 +402,60 @@ TEST_CASE("crucible engine: a sink that refuses to start releases the taps too",
     REQUIRE(wait_for([&rig] { return census(*rig.devices).live == 0; }));
     run_on(engine, 8);
     CHECK(census(*rig.devices).created == 2);
+    engine.stop();
+}
+
+TEST_CASE("crucible engine: a re-probe asked for during an enumeration is not lost",
+          "[crucible][engine]") {
+    // The case reprobe() exists for. An enumeration is slow, so the world can
+    // change after the running one has read it: the user moves the default
+    // output to the silent device, or switches a receiver on, and only then
+    // asks. The engine has to follow that from one request - the enumeration
+    // in flight cannot answer it, because it looked before the change.
+    Rig rig;
+    rig.devices->devices = {realtek_default()};  // set before start(): nothing else is running
+    Engine engine(rig.config());
+    REQUIRE(engine.start().has_value());
+    REQUIRE(wait_for([&engine] { return engine.status().mode == OutputMode::kStereo; }));
+    REQUIRE(engine.status().endpoint_name == "Speakers (Realtek)");
+
+    // Park the next enumeration. It reads the list before it parks, so what it
+    // is holding - one stereo endpoint - is what it reports when it is let go,
+    // whatever happens to the machine meanwhile.
+    const auto parked_before = rig.devices->enumerations_parked();
+    rig.devices->hold_enumerations();
+    engine.reprobe();
+    const bool parked = wait_for(
+        [&rig, parked_before] { return rig.devices->enumerations_parked() > parked_before; });
+    if (!parked) {
+        // Leaving the gate shut would hang the engine's destructor on the join.
+        rig.devices->release_enumerations();
+    }
+    REQUIRE(parked);
+
+    // The receiver goes on. The parked enumeration cannot see it.
+    set_endpoints(*rig.devices, {realtek_default(), hdmi_avr()});
+
+    // Exactly one request, made while that enumeration is still in flight.
+    // This is the one that used to be dropped - neither served nor kept.
+    engine.reprobe();
+
+    // Frames have to go by with the request standing and the enumeration still
+    // parked, because losing it was the frame loop's doing: it cleared
+    // want_reprobe to test it, found `probing` already true, and started
+    // nothing. Releasing the gate first would let the probe finish and the
+    // request be served by the frame after it - which the old code did too, so
+    // the case would pass against the bug it exists for.
+    run_on(engine, 3);
+
+    // Let the stale enumeration finish. It reports the world as it was, so on
+    // its own it leaves the stage on the Realtek endpoint.
+    rig.devices->release_enumerations();
+
+    // The request outlived it: a fresh enumeration follows and finds the
+    // receiver, which takes the output exclusively for DD+ 5.1 - no signing
+    // key here, so not Atmos.
+    REQUIRE(wait_for([&engine] { return engine.status().endpoint_name == "AVR (HDMI)"; }));
+    CHECK(engine.status().mode == OutputMode::kDdPlus51);
     engine.stop();
 }
