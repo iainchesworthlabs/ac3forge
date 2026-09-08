@@ -56,7 +56,7 @@ std::optional<int> apply_object_signing(std::vector<std::vector<std::byte>>& uni
         return 0;
     }
     const auto key = ac3::signing::load_signing_key(meta.signing_key.value_or(""));
-    if (!key) {
+    if (!key.has_value()) {
         if (key.error().kind == ac3::signing::KeyErrorKind::kAbsent) {
             fmt::println(stderr,
                          "error: sign-objects needs a key — pass signing-key=<path>, or set "
@@ -90,7 +90,7 @@ std::optional<ac3::oba::SceneContents> read_scene_file(std::string_view path) {
     }
     const std::string text{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
     auto contents = ac3::oba::read_scene(text);
-    if (!contents) {
+    if (!contents.has_value()) {
         // Line 0 means the format had no line to point at (a JSON-level
         // complaint about the scene as a whole); everything else keeps the
         // path:line: prefix this command has always printed.
@@ -123,7 +123,7 @@ std::optional<ac3::oba::ObjectScene> scene_of(std::string_view path,
         }
     }
     auto scene = ac3::oba::ObjectScene::create(std::move(contents.objects), contents.orientation);
-    if (!scene) {
+    if (!scene.has_value()) {
         fmt::println(stderr, "error: {}: {}", path, scene.error().message);
         return std::nullopt;
     }
@@ -223,7 +223,7 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
         n0 += frame_samples;
 
         auto unit = encoder.encode_frame(views, placement);
-        if (!unit) {
+        if (!unit.has_value()) {
             fmt::println(stderr,
                          "error: cannot encode {} objects at {} kbps — the metadata and "
                          "the mantissas share one frame, so try a higher bit rate",
@@ -243,7 +243,7 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
     // A key failure discards everything, as it always has - nothing is on
     // disk in defer mode, so a plain return leaves exactly no file.
     const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
-    if (!signed_count) {
+    if (!signed_count.has_value()) {
         return kExitRuntime;
     }
     if (*signed_count > 0) {
@@ -271,7 +271,7 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
 int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::uint32_t seconds,
                    std::uint32_t bitrate, std::uint32_t objects_arg, const Options& meta) {
     auto contents = read_scene_file(paths_path);
-    if (!contents) {
+    if (!contents.has_value()) {
         return kExitInput;
     }
     const auto described = contents->objects.size();
@@ -296,7 +296,7 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
                                          .gain = 0.7 / std::sqrt(static_cast<double>(objects)),
                                          .lfe_send = 0.0};
     });
-    if (!scene) {
+    if (!scene.has_value()) {
         return kExitInput;
     }
 
@@ -349,7 +349,7 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
         n0 += frame_samples;
 
         auto unit = encoder.encode_frame(views, placement);
-        if (!unit) {
+        if (!unit.has_value()) {
             fmt::println(stderr,
                          "error: cannot encode {} objects at {} kbps — the metadata and "
                          "the mantissas share one frame, so try a higher bit rate",
@@ -365,7 +365,7 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
     // Optional object signing, same as 'atmos' - see the comments at its
     // call site there, the key-failure plain return included.
     const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
-    if (!signed_count) {
+    if (!signed_count.has_value()) {
         return kExitRuntime;
     }
     if (*signed_count > 0) {
@@ -396,11 +396,11 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
                            std::uint32_t bitrate, const Options& meta,
                            std::string_view paths_path) {
     auto sources = load_sources(in_path, meta.sources, meta.offsets);
-    if (!sources) {
+    if (!sources.has_value()) {
         return kExitInput;
     }
     const auto sr = wav_sample_rate(sources->sample_rate, "E-AC-3", true);
-    if (!sr) {
+    if (!sr.has_value()) {
         return kExitInput;
     }
     std::size_t total_channels = 0;
@@ -413,7 +413,7 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
     // in. One source without map= keeps the classic behaviour (below), so
     // this is only reachable with src= present or map= given explicitly.
     plan::Assignment assignment;
-    if (meta.map_spec) {
+    if (meta.map_spec.has_value()) {
         if (!plan::parse_assignment(*meta.map_spec, sources->shapes, assignment)) {
             fmt::println(stderr, "error: bad map= spec ({})", plan::kAssignmentSyntax);
             return kExitUsage;
@@ -489,12 +489,12 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
     std::optional<ac3::oba::ObjectScene> scene;
     if (!paths_path.empty()) {
         auto contents = read_scene_file(paths_path);
-        if (!contents) {
+        if (!contents.has_value()) {
             return kExitInput;
         }
         scene = scene_of(paths_path, std::move(*contents), count,
                          [&placement](std::size_t i) { return placement[i]; });
-        if (!scene) {
+        if (!scene.has_value()) {
             return kExitInput;
         }
     }
@@ -550,7 +550,7 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
                                            static_cast<double>(start + frame_samples) /
                                            static_cast<double>(sources->sample_rate)))
                           : encoder.encode_frame(views, placement);
-        if (!unit) {
+        if (!unit.has_value()) {
             fmt::println(stderr,
                          "error: cannot encode {} objects at {} kbps - the metadata and the "
                          "mantissas share one frame, so try a higher bit rate",
@@ -570,7 +570,7 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
     }
     progress.finish();
     const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
-    if (!signed_count) {
+    if (!signed_count.has_value()) {
         return kExitRuntime;
     }
     if (*signed_count > 0) {
@@ -596,7 +596,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     // obj/objm real destinations on this command (roadmap IO9 - they parsed
     // and did nothing here before). Without either, everything below is
     // byte-identical to what this command always did.
-    if (!meta.sources.empty() || meta.map_spec) {
+    if (!meta.sources.empty() || meta.map_spec.has_value()) {
         if (objects != 0) {
             fmt::println(stderr,
                          "error: [objects] counts the source channels to turn into objects, "
@@ -615,7 +615,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
         std::unexpected(ac3::io::WavError::kCannotOpen);
     if (!streaming) {
         wav = read_wav_arg(in_path);
-        if (!wav) {
+        if (!wav.has_value()) {
             fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
             return kExitInput;        }
     }
@@ -623,7 +623,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     const std::size_t src_channels =
         streaming ? stream_in.channels() : wav->channels.size();
     const auto sr = wav_sample_rate(src_rate, "E-AC-3", true);
-    if (!sr) {
+    if (!sr.has_value()) {
         return kExitInput;
     }
     // One object per source channel unless told otherwise; more objects than
@@ -649,7 +649,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
         const auto measured = layout
                                   ? measured_dialnorm(*wav, *sr, layout->acmod, layout->lfe, status)
                                   : std::nullopt;
-        if (!measured) {
+        if (!measured.has_value()) {
             fmt::println(stderr, "error: cannot measure loudness for this file; "
                                  "pass dialnorm=<1..31> explicitly");
             return kExitRuntime;
@@ -678,7 +678,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     const auto layout = ac3::io::ac3_layout_for(src_channels);
     for (std::size_t i = 0; i < count; ++i) {
         double azimuth = 0.0;
-        if (layout) {
+        if (layout.has_value()) {
             // wav_index maps a coded channel to a WAV one; this needs the
             // inverse, so the channel is found rather than indexed.
             for (std::size_t k = 0; k < layout->wav_index.size(); ++k) {
@@ -712,14 +712,14 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     std::optional<ac3::oba::ObjectScene> scene;
     if (!paths_path.empty()) {
         auto contents = read_scene_file(paths_path);
-        if (!contents) {
+        if (!contents.has_value()) {
             return kExitInput;
         }
         // Not mentioned in the file: keep exactly the placement this object
         // has today, just re-expressed as a (never-moving) automation point.
         scene = scene_of(paths_path, std::move(*contents), count,
                          [&placement](std::size_t i) { return placement[i]; });
-        if (!scene) {
+        if (!scene.has_value()) {
             return kExitInput;
         }
     }
@@ -787,7 +787,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                                            static_cast<double>(start + frame_samples) /
                                            static_cast<double>(src_rate)))
                           : encoder.encode_frame(views, placement);
-        if (!unit) {
+        if (!unit.has_value()) {
             fmt::println(stderr,
                          "error: cannot encode {} objects at {} kbps — the metadata and the "
                          "mantissas share one frame, so try a higher bit rate",
@@ -814,7 +814,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     // status_stream() like the report below: with out_path == "-" the
     // E-AC-3 bytes about to be written own stdout.
     const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
-    if (!signed_count) {
+    if (!signed_count.has_value()) {
         return kExitRuntime;
     }
     if (*signed_count > 0) {
@@ -852,13 +852,13 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
     }
 
     auto source = ac3cli::load_adm_atmos_source(in_path, programme_id);
-    if (!source) {
+    if (!source.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, source.error());
         return kExitInput;
     }
 
     const auto sr = wav_sample_rate(source->sample_rate, "E-AC-3", true);
-    if (!sr) {
+    if (!sr.has_value()) {
         return kExitInput;
     }
 
@@ -916,7 +916,7 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
             source->paths, static_cast<double>(start + frame_samples) /
                                 static_cast<double>(source->sample_rate));
         auto unit = encoder.encode_frame(views, placement);
-        if (!unit) {
+        if (!unit.has_value()) {
             fmt::println(stderr,
                          "error: cannot encode {} channels at {} kbps — the metadata and the "
                          "mantissas share one frame, so try a higher bit rate",
@@ -972,13 +972,13 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
     }
 
     auto source = ac3cli::load_iab_atmos_source(in_path);
-    if (!source) {
+    if (!source.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, source.error());
         return kExitInput;
     }
 
     const auto sr = wav_sample_rate(source->sample_rate, "E-AC-3", true);
-    if (!sr) {
+    if (!sr.has_value()) {
         return kExitInput;
     }
 
@@ -1033,7 +1033,7 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
             source->paths, static_cast<double>(start + frame_samples) /
                                 static_cast<double>(source->sample_rate));
         auto unit = encoder.encode_frame(views, placement);
-        if (!unit) {
+        if (!unit.has_value()) {
             fmt::println(stderr,
                          "error: cannot encode {} channels at {} kbps — the metadata and the "
                          "mantissas share one frame, so try a higher bit rate",
@@ -1079,7 +1079,7 @@ int run_strip_objects(std::string_view in_path, std::string_view out_path,
         return kExitInput;
     }
     const auto stripped = ac3::io::strip_objects(raw);
-    if (!stripped) {
+    if (!stripped.has_value()) {
         fmt::println(stderr, "error: {}", ac3::io::describe(stripped.error()));
         return kExitInput;
     }
@@ -1088,12 +1088,12 @@ int run_strip_objects(std::string_view in_path, std::string_view out_path,
     // either still frames as an elementary stream or the whole exercise
     // failed, and finding that out from the file afterwards is worse.
     const auto rescanned = ac3::io::scan(stripped->bytes);
-    if (!rescanned) {
+    if (!rescanned.has_value()) {
         fmt::println(stderr, "error: the stripped stream no longer scans: {}",
                      ac3::io::describe(rescanned.error()));
         return kExitInternal;
     }
-    if (rescanned->oba_complexity_index) {
+    if (rescanned->oba_complexity_index.has_value()) {
         fmt::println(stderr,
                      "error: the stripped stream still declares an object layer (complexity {})",
                      *rescanned->oba_complexity_index);
