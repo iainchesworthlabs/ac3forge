@@ -308,6 +308,13 @@ struct Options {
     // either - the default is already §6.6.6's own domain - so mode= stays
     // exactly the two transform switches it has always been.
     ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
+    // 'bed-only' on decode: DecoderConfig::skip_object_reconstruction. Render
+    // the 5.1 bed an Atmos stream carries and do not reconstruct its objects.
+    // Not a quality option - the bed is bit-identical either way - but a memory
+    // one, and it matters where the object state does not fit at all (see
+    // docs/platforms/esp32.md). Harmless on a stream with no object layer,
+    // which is why it needs no interaction with 'objects='.
+    bool bed_only = false;
     // §E2.3.1.4 short syncframes for the atmos* encode commands
     // (AtmosConfig::numblkscod): 3 (the default six-block frame) or 0/1/2
     // for 1/2/3 blocks. A key=value here rather than eac3-encode's tools

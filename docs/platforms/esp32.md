@@ -17,7 +17,8 @@ it is the first target where real-time decode is worth measuring.
 | E-AC-3 5.1 decode | Correct. Same, including AHT and spectral extension |
 | E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture, since `tools=all` does not select it; costs 126 allocations/frame against 86 |
 | E-AC-3 2/0, §7.5.4 rematrixing | Correct. A layout no 5.1 stream reaches whatever its tools are |
-| JOC / Atmos objects | Does not fit. Decodes correctly; see [Objects](#objects-do-not-fit-in-internal-sram) |
+| Atmos, bed | Correct. Its own fixture, decoded bed-only; costs 61 allocations/frame and nothing extra in peak heap |
+| Atmos, objects | Does not fit. Decodes correctly on a host; see [Objects](#objects-do-not-fit-in-internal-sram) |
 | Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 179,064-byte peak — see [Memory](#how-much-memory-there-actually-is) |
 | Retained after teardown | 34,232 bytes of `thread_local` enhanced-coupling scratch, held for the life of the decoding task — see [Building](../building.md#gaps) |
 | Real time | Not measured. See [Timing](#timing) |
@@ -332,8 +333,31 @@ That last row fits, with about 21,000 bytes spare. So object decode here is reac
 all three — the float32 conversion is load-bearing twice over, once for the total and once for the
 contiguity.
 
-Adding more fixtures would not have found any of this, which is why the fixture was measured and
-removed rather than committed.
+Adding more fixtures would not have found any of this, which is why the full-object fixture was
+measured and removed rather than committed.
+
+### The bed plays, though
+
+None of the above stops an Atmos stream being played on this part. Its bed is ordinary E-AC-3 5.1
+and the objects are side data; only reconstructing them is expensive.
+`DecoderConfig::skip_object_reconstruction` decodes the bed and never allocates
+`ReconstructionState` at all, and `apps/baremetal/fixture.hpp` carries an Atmos fixture decoded
+that way:
+
+| | Full decode | Bed only |
+|---|---|---|
+| Peak heap | 449,826 | **179,064 — unchanged from a plain decode** |
+| Allocations/frame | 80 | 61 |
+| Bed channels correct | yes | yes, identically |
+
+The flag costs the bed nothing: `tests/oba/test_atmos.cpp` asserts the rendered channels are
+bit-for-bit what a full decode produces, since skipping reconstruction touches no coefficient the
+bed is built from. `object_metadata` still arrives — it is parsed out of a block's skip field and
+costs nothing to keep, and a renderer picking a speaker layout still wants what the stream
+declared.
+
+Without the flag an Atmos stream does not degrade on this part, it fails: the allocation is
+attempted, and the decode stops partway through in `operator new`.
 
 ## ESPHome
 

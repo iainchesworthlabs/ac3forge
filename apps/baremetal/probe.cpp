@@ -376,7 +376,7 @@ int decode_ac3() {
 // `codec` prefixes every line this emits, so each fixture's levels, churn and
 // timing stay separable in the output the runner scripts gate on.
 int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
-                std::span<const std::int32_t> expected) {
+                std::span<const std::int32_t> expected, bool bed_only) {
     const std::span<const std::byte> stream{
         reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
     const auto units = ac3::split_access_units(stream);
@@ -386,7 +386,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         return 1;
     }
 
-    ac3::Eac3Decoder decoder;
+    ac3::Eac3Decoder decoder{{.skip_object_reconstruction = bed_only}};
     LevelAccumulator levels;
     Churn churn;
     churn.frames = static_cast<int>(units->size());
@@ -443,9 +443,12 @@ struct Eac3Fixture {
     const char* codec;
     std::span<const std::uint8_t> stream;
     std::span<const std::int32_t> rms;
+    // DecoderConfig::skip_object_reconstruction. Only the Atmos fixture sets
+    // it, and it is the whole reason that fixture can be here: see its row.
+    bool bed_only = false;
 };
 
-constexpr std::array<Eac3Fixture, 3> kEac3Fixtures{{
+constexpr std::array<Eac3Fixture, 4> kEac3Fixtures{{
     {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
@@ -457,6 +460,15 @@ constexpr std::array<Eac3Fixture, 3> kEac3Fixtures{{
     // reaches it whatever its tools are. Also the first fixture whose channel
     // count is not six, so the layout-driven half of the level check is
     // exercised rather than merely written.
+    // An Atmos stream decoded for its BED. §6 object reconstruction allocates
+    // an oba::joc::ReconstructionState - 147,504 bytes in one block, plus a
+    // QmfState and its filterbanks - which is more than the largest free run
+    // this decode leaves on an ESP32-S3, so a full decode of this stream dies
+    // in operator new partway through. The bed does not: it is ordinary
+    // E-AC-3, and this row is what proves that on the target rather than in a
+    // paragraph. Levels are the bed's, which is what ac3cli decode writes for
+    // an Atmos stream too, so the host reference needed no special case.
+    {"eac3_atmos_bed", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms, true},
     {"eac3_stereo", ac3probe::kEac3StereoStream, ac3probe::kEac3StereoRms},
 }};
 
@@ -521,7 +533,8 @@ int ac3probe::run() {
         return 1;
     }
     for (const auto& fixture : kEac3Fixtures) {
-        if (decode_eac3(fixture.codec, fixture.stream, fixture.rms) != 0) {
+        if (decode_eac3(fixture.codec, fixture.stream, fixture.rms,
+                        fixture.bed_only) != 0) {
             std::printf("result=fail\n");
             return 1;
         }

@@ -26,6 +26,12 @@ channel layout is a row in the second. What each row is for:
     and behind the 512-point DFT that src/forge/src/core/fft.cpp is in the minimal
     source list for - both linked by every build of this profile and, until this
     stream existed, executed by none of them.
+  - E-AC-3 Atmos at 448 kbit/s, six objects over a 5.1 bed, decoded BED ONLY
+    (DecoderConfig::skip_object_reconstruction). The bed is ordinary E-AC-3 and
+    fits; JOC's own reconstruction state does not, on any target this profile
+    builds for - see docs/platforms/esp32.md. The fixture is here to hold that
+    distinction: an Atmos stream PLAYS on a part that cannot render its objects,
+    and this is what says so on the target rather than on a host.
   - E-AC-3 2/0 at 192 kbit/s with tools=all: a non-5.1 layout, and with it
     §7.5.4 rematrixing, which is 2/0-only and so unreachable from any of the
     above however their tools are set.
@@ -86,6 +92,15 @@ LAYOUTS = {
         wav_position=(0, 2, 1, 4, 5, 3),
         coded_order="Table 5.8: L, C, R, Ls, Rs, LFE",
     ),
+    # The object-scene source. atmos-encode makes each of its channels an object
+    # and codes them over a 5.1 bed, so the STREAM is 5.1 even though the source
+    # is five channels - which is why this row's permutation is 5.1's.
+    "objects": Layout(
+        cli_name="51",
+        source="reference_objects.wav",
+        wav_position=(0, 2, 1, 4, 5, 3),
+        coded_order="Table 5.8: L, C, R, Ls, Rs, LFE",
+    ),
     # Two channels, and both orders agree: WAV's FL FR and coded L R are the
     # same sequence, so this row is an identity permutation rather than a
     # simplification of one.
@@ -127,6 +142,13 @@ STREAMS = (
         label="E-AC-3 5.1 384 kbit/s, tools=cpl+ecpl (§E3.5 enhanced coupling)",
         layout="51",
         encode=("eac3-encode", "384", "cpl+ecpl", "51"),
+    ),
+    Stream(
+        cxx="Eac3AtmosBed",
+        key="eac3_atmos_bed",
+        label="E-AC-3 Atmos 448 kbit/s, 6 objects over a 5.1 bed - decoded BED ONLY",
+        layout="objects",
+        encode=("atmos-encode", "448"),
     ),
     Stream(
         cxx="Eac3Stereo",
