@@ -350,20 +350,20 @@ int FrameEncoder::channel_count() const {
 
 FrameEncoder::FrameEncoder(const EncoderConfig& config) : impl_(std::make_unique<Impl>()) {
     impl_->config_ = config;
-    if (impl_->config_.drc) {
+    if (impl_->config_.drc.has_value()) {
         impl_->range_.emplace(*impl_->config_.drc, impl_->config_.sample_rate);
     }
     // Ch2's controller is built from drc2/heavy2, never drc/heavy - the two
     // programmes are unrelated, and dialnorm2's existing all-or-nothing rule
     // (§5.4.2.16, checked below in encode_frame) is the precedent for not
     // inheriting one programme's setting into the other's.
-    if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.drc2) {
+    if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.drc2.has_value()) {
         impl_->range2_.emplace(*impl_->config_.drc2, impl_->config_.sample_rate);
     }
-    if (impl_->config_.heavy) {
+    if (impl_->config_.heavy.has_value()) {
         impl_->heavy_.emplace(*impl_->config_.heavy, impl_->config_.sample_rate);
     }
-    if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.heavy2) {
+    if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.heavy2.has_value()) {
         impl_->heavy2_.emplace(*impl_->config_.heavy2, impl_->config_.sample_rate);
     }
     const int nfchans = fullbw_channel_count(impl_->config_.acmod);
@@ -383,7 +383,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         impl_->config_.trace->reset();
     }
     const auto index = bitrate_index(impl_->config_.bitrate_kbps);
-    if (!index) {
+    if (!index.has_value()) {
         return std::unexpected(FrameError::kInvalidBitrate);
     }
     // fscod2 is an Annex E (E-AC-3) concept; classic AC-3 has no frmsizecod
@@ -402,7 +402,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     if (!meta::valid_bsi_info(impl_->config_.info)) {
         return std::unexpected(FrameError::kInvalidBsi);
     }
-    if (impl_->config_.alternate_bsi) {
+    if (impl_->config_.alternate_bsi.has_value()) {
         if (!meta::valid_alternate_bsi(*impl_->config_.alternate_bsi)) {
             return std::unexpected(FrameError::kInvalidBsi);
         }
@@ -410,7 +410,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // for both is asking for 56 bits where the frame has 28, and quietly
         // dropping one of them would leave the caller believing a time code
         // went out that never did.
-        if (impl_->config_.info.timecod1 || impl_->config_.info.timecod2) {
+        if (impl_->config_.info.timecod1.has_value() || impl_->config_.info.timecod2.has_value()) {
             return std::unexpected(FrameError::kInvalidBsi);
         }
     }
@@ -437,7 +437,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     dynrng.fill(meta::kDynrngUnity);
     std::array<std::uint8_t, kBlocksPerFrame> dynrng2{};
     dynrng2.fill(meta::kDynrngUnity);
-    if (impl_->range_) {
+    if (impl_->range_.has_value()) {
         std::array<std::span<const float>, 5> block_view{};
         const int level_chans = dual_mono ? 1 : nfchans;
         for (int block = 0; block < kBlocksPerFrame; ++block) {
@@ -453,7 +453,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 impl_->range_->next(level, impl_->config_.dialnorm);
         }
     }
-    if (dual_mono && impl_->range2_) {
+    if (dual_mono && impl_->range2_.has_value()) {
         std::array<std::span<const float>, 1> block_view{};
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             block_view[0] = channels[1].subspan(
@@ -465,7 +465,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     std::uint8_t compr = meta::kComprUnity;
     std::uint8_t compr2 = meta::kComprUnity;
-    if (impl_->heavy_) {
+    if (impl_->heavy_.has_value()) {
         // §7.7.2 bounds the MONO DOWNMIX, so that is what gets measured - the
         // loudest single channel is not the constraint, the sum is. impl_->history_
         // still holds the previous frame's tail at this point, which is exactly
@@ -482,7 +482,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                       meta::coefficient(impl_->config_.surmixlev));
         compr = impl_->heavy_->next(peak, impl_->config_.dialnorm);
     }
-    if (dual_mono && impl_->heavy2_) {
+    if (dual_mono && impl_->heavy2_.has_value()) {
         const double peak2 = meta::channel_peak_dbfs(std::span{impl_->history_[1]}, channels[1]);
         compr2 = impl_->heavy2_->next(peak2, *impl_->config_.dialnorm2);
     }
@@ -1763,22 +1763,22 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (has_three_front(impl_->config_.acmod)) bsi += 2;  // cmixlev
         if (has_surround(impl_->config_.acmod)) bsi += 2;     // surmixlev
         if (impl_->config_.acmod == Acmod::k2_0) bsi += 2;    // dsurmod
-        if (impl_->config_.heavy) bsi += 8;                   // compr (§5.4.2.10)
+        if (impl_->config_.heavy.has_value()) bsi += 8;                   // compr (§5.4.2.10)
         if (impl_->config_.info.langcod) bsi += 8;            // langcod (§5.4.2.12)
-        if (impl_->config_.info.audprod) bsi += 5 + 2;        // mixlevel, roomtyp
+        if (impl_->config_.info.audprod.has_value()) bsi += 5 + 2;        // mixlevel, roomtyp
         if (dual_mono) {
             bsi += 5 + 1 + 1 + 1;  // dialnorm2, compr2e, langcod2e, audprodi2e
-            if (impl_->config_.heavy2) bsi += 8;  // compr2 - Ch2's OWN heavy flag, not Ch1's
+            if (impl_->config_.heavy2.has_value()) bsi += 8;  // compr2 - Ch2's OWN heavy flag, not Ch1's
             if (impl_->config_.info.langcod2) bsi += 8;
-            if (impl_->config_.info.audprod2) bsi += 5 + 2;
+            if (impl_->config_.info.audprod2.has_value()) bsi += 5 + 2;
         }
-        if (impl_->config_.alternate_bsi) {
-            if (impl_->config_.alternate_bsi->mix) bsi += 2 + 3 + 3 + 3 + 3;  // xbsi1
+        if (impl_->config_.alternate_bsi.has_value()) {
+            if (impl_->config_.alternate_bsi->mix.has_value()) bsi += 2 + 3 + 3 + 3 + 3;  // xbsi1
             // dsurexmod, dheadphonmod, adconvtyp, xbsi2, encinfo.
-            if (impl_->config_.alternate_bsi->extended) bsi += 2 + 2 + 1 + 8 + 1;
+            if (impl_->config_.alternate_bsi->extended.has_value()) bsi += 2 + 2 + 1 + 8 + 1;
         } else {
-            if (impl_->config_.info.timecod1) bsi += 14;
-            if (impl_->config_.info.timecod2) bsi += 14;
+            if (impl_->config_.info.timecod1.has_value()) bsi += 14;
+            if (impl_->config_.info.timecod2.has_value()) bsi += 14;
         }
         bits += bsi;
         BitWriter counter;
@@ -2356,7 +2356,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     w.put(impl_->config_.lfe ? 1 : 0, 1);
     w.put(static_cast<std::uint32_t>(impl_->config_.dialnorm), 5);
     w.put(impl_->config_.heavy ? 1 : 0, 1);  // compre
-    if (impl_->config_.heavy) {
+    if (impl_->config_.heavy.has_value()) {
         w.put(compr, 8);
     }
     // §5.4.2.12: langcod carries no information any more - the language table
@@ -2370,7 +2370,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     };
     const auto emit_audprod = [&w](const std::optional<meta::AudioProduction>& production) {
         w.put(production ? 1 : 0, 1);  // audprodie
-        if (production) {
+        if (production.has_value()) {
             w.put(static_cast<std::uint32_t>(production->mixlevel), 5);
             w.put(static_cast<std::uint32_t>(production->roomtyp), 2);
             // No adconvtyp here: §5.4.2's audprodie stops at roomtyp. Only
@@ -2386,7 +2386,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // 1+1 stream with only Ch1 heavy-compressed would wrongly claim a
         // compr2 word it never computed.
         w.put(impl_->config_.heavy2 ? 1 : 0, 1);  // compr2e
-        if (impl_->config_.heavy2) {
+        if (impl_->config_.heavy2.has_value()) {
             w.put(compr2, 8);
         }
         emit_langcod(impl_->config_.info.langcod2);
@@ -2394,10 +2394,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     w.put(impl_->config_.info.copyrightb ? 1 : 0, 1);  // copyrightb
     w.put(impl_->config_.info.origbs ? 1 : 0, 1);      // origbs
-    if (impl_->config_.alternate_bsi) {
+    if (impl_->config_.alternate_bsi.has_value()) {
         const auto& alternate = *impl_->config_.alternate_bsi;
         w.put(alternate.mix ? 1 : 0, 1);  // xbsi1e
-        if (alternate.mix) {
+        if (alternate.mix.has_value()) {
             // Table D2.1's field order, which is NOT Table E1.2's: Annex D
             // pairs the two Lt/Rt levels and then the two Lo/Ro ones, where
             // mixmdate pairs centre with centre and surround with surround.
@@ -2409,7 +2409,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             w.put(static_cast<std::uint32_t>(alternate.mix->lorosurmixlev), 3);
         }
         w.put(alternate.extended ? 1 : 0, 1);  // xbsi2e
-        if (alternate.extended) {
+        if (alternate.extended.has_value()) {
             w.put(static_cast<std::uint32_t>(alternate.extended->dsurexmod), 2);
             w.put(static_cast<std::uint32_t>(alternate.extended->dheadphonmod), 2);
             w.put(static_cast<std::uint32_t>(alternate.extended->adconvtyp), 1);
@@ -2418,14 +2418,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
     } else {
         w.put(impl_->config_.info.timecod1 ? 1 : 0, 1);  // timecod1e
-        if (impl_->config_.info.timecod1) {
+        if (impl_->config_.info.timecod1.has_value()) {
             const auto& t = *impl_->config_.info.timecod1;
             w.put(static_cast<std::uint32_t>(t.hours), 5);
             w.put(static_cast<std::uint32_t>(t.minutes), 6);
             w.put(static_cast<std::uint32_t>(t.eight_seconds), 3);
         }
         w.put(impl_->config_.info.timecod2 ? 1 : 0, 1);  // timecod2e
-        if (impl_->config_.info.timecod2) {
+        if (impl_->config_.info.timecod2.has_value()) {
             const auto& t = *impl_->config_.info.timecod2;
             w.put(static_cast<std::uint32_t>(t.seconds), 3);
             w.put(static_cast<std::uint32_t>(t.frames), 5);

@@ -43,7 +43,7 @@ std::expected<void, std::string> write_adm_atmos_master(std::string_view path, c
     }
 
     auto written = ac3adm::write_bw64(std::string{path}, *document);
-    if (!written) {
+    if (!written.has_value()) {
         return std::unexpected(std::string(ac3adm::describe(written.error())));
     }
     return {};

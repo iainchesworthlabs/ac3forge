@@ -146,7 +146,7 @@ ctest --preset test-linux-llvm-tsan
 
 There is also a `minimal-decoder` fragment and the three configure/build presets that inherit
 it — `config-arm-none-eabi-minimal`, `config-linux-gcc-minimal`, `config-linux-llvm-minimal`.
-They are not part of the table above because they do not build the project: they build roadmap
+They are not part of the table above because they do not build the project: they build
 PF7's decode-only library and its probe, and nothing else. The arm one does not inherit `core`
 either — there is no vcpkg triplet for bare-metal arm and nothing that profile builds has a
 third-party dependency, the same reasoning the Emscripten preset follows. See
@@ -279,7 +279,7 @@ without the preset and pass the generator and build type by hand.
 
 ## Minimum-footprint decoder profile
 
-Roadmap PF7. The next users of the decoder are set-top boxes, receivers and DSP ports, and what
+The next users of the decoder are set-top boxes, receivers and DSP ports, and what
 they need is not a claim about being small but a build that is small, a target it demonstrably
 runs on, and a number that stops moving quietly.
 
@@ -430,13 +430,11 @@ decoders' coefficient stores, transform scratch and overlap-add history follow i
 `imdct512_windowed`/`imdct256_pair_windowed` have float32 overloads built from the same templated
 body as the double ones, so §7.9.4.1 is implemented once.
 
-No gold-reference number moved. This paragraph previously predicted that one would; the
-prediction assumed a global change, and the choice is per-profile. The ordinary build's
-`decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite passes identically
-(4,032,916 assertions).
+No gold-reference number moved, because the choice is per-profile rather than global. The
+ordinary build's `decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite
+passes identically (4,032,916 assertions).
 
-The oracle run this paragraph asked for was done separately, and for a long time it could not be
-done again. `decode_scalar_t` used to live in `ac3/internal/profile.hpp` alongside the profile's
+The oracle run was done separately, and for a long time it could not be done again. `decode_scalar_t` used to live in `ac3/internal/profile.hpp` alongside the profile's
 other facts, so `float` was reachable only in a build that was also decode-only, exception-free
 and without a CLI — there was no float32 `ac3cli` any preset could produce, and the ~139 dB
 figure came from one made by hand. Which profile a build is and which scalar its decoder carries
@@ -629,7 +627,7 @@ That is why ALSA keeps first precedence in `src/audio/CMakeLists.txt` whenever b
 rather than PipeWire winning by default for being the modern norm on most current desktops:
 preferring it unconditionally would silently regress `ac3cli outputs`/`play` on exactly the
 common case where nobody has configured `iec958Codecs`. The explicit escape hatch for a machine
-where PipeWire's compressed codecs genuinely are configured is
+where PipeWire's compressed codecs are configured is
 `-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON`, the same shape `-DAC3FORGE_WITH_ALSA=OFF`
 alone already has today.
 
@@ -824,7 +822,7 @@ linux-llvm-tsan (ThreadSanitizer over the `concurrency` ctest label — `tests/a
 headless CLI device paths — via `config-linux-llvm-tsan`), macos-llvm,
 linux-appimage (builds `ac3gui`'s self-contained AppImage in an older `ubuntu:22.04` container and
 smoke-tests it in a second container that never had Qt installed at all — see
-[Linux](platforms/linux.md#appimage), roadmap DR8),
+[Linux](platforms/linux.md#appimage)),
 script-lint (ruff over every `.py`, shellcheck over every `.sh`, actionlint over the workflows,
 all three pinned in `requirements/requirements-lint.txt`),
 coverage (`tools/checks/coverage_report.sh` over every `src/` library
@@ -847,7 +845,7 @@ One leg, `windows-msvc-arm64`, is still marked experimental, and still packages 
 The coverage job gates line and branch coverage per component, not as one blended
 number, using the same GCC 16 pin as the other Linux legs; the floor table, the measurement each
 floor was calibrated against, and why three components (`src/audio`'s device paths, `src/capi`'s
-E-AC-3 surface, `apps/cli`'s device-dependent command modules) are honestly floored low all live
+E-AC-3 surface, `apps/cli`'s device-dependent command modules) are floored low all live
 in `tools/checks/coverage_report.sh`, with the calibration history in the coverage job's own
 comment in `ci.yml`.
 
@@ -868,7 +866,7 @@ ABI"; on a push or a tag it is the last release tag instead, which is the releas
 instantiations that are not part of any ABI this project controls.
 
 Both checks report into the job summary and leave the job green, gated on a single
-`ABI_ENFORCE: 'false'` job-level variable; roadmap AP1's interface freeze is what would make
+`ABI_ENFORCE: 'false'` job-level variable; [the interface freeze](library/api-stability.md) is what would make
 the gate required, by flipping that one value. When enforcing, `abidiff` fails only on an
 *incompatible* change — a pure addition passes. The job is deliberately absent from
 `CI Status`'s `needs` list either way.
@@ -876,7 +874,7 @@ the gate required, by flipping that one value. When enforcing, `abidiff` fails o
 `ABI_ENFORCE` deliberately replaces the `continue-on-error: true` this job used to carry.
 That setting stops a failing job from failing the *workflow run*, but GitHub still reports the
 job's own check run as `failure` — so the gate showed a red X on every pull request while
-blocking nothing, and it hid genuine build failures behind the same state as an expected
+blocking nothing, and it hid build failures behind the same state as an expected
 pre-1.0 ABI change. With it gone, anything unexpected in this job is red and a policy finding
 is not.
 
@@ -987,7 +985,7 @@ carry the types, not a copy of each kernel:
 | `to_fixed25_block` | `src/forge/src/core/exponents.cpp` | Batched form of `to_fixed25`, about 9,100 calls a frame. SSE2/NEON only, same reason as `dft512` above. |
 
 **The FFT/DCT-IV core itself is not part of this seam.** `src/forge/src/core/fft_kernel.hpp`
-(ROADMAP PF4) is a radix-4 decimation-in-time kernel with a trailing radix-2 stage where
+ is a radix-4 decimation-in-time kernel with a trailing radix-2 stage where
 `log2(P)` is odd, trivial-twiddle elimination on its first stage, and the digit-reversal
 permutation folded into each caller's own input-producing loop rather than run as a pass of its
 own. That is an *algorithmic* speedup — fewer operations, not wider lanes — and it carries its
@@ -1004,7 +1002,7 @@ for the same reason (its cost is the MDCT inside it, which does get faster). Ste
 inverses are permutation-dominated. This seam itself stays SSE2-width on x86-64: AVX and FMA3 are
 CPU features rather than architecture, so a compile-time `-march=` for them would produce a binary
 that faults on older hardware. [Runtime AVX2 dispatch](#runtime-avx2-dispatch) below covers the
-`cpuid`-gated mechanism that makes a *wider* tier safe to ship without that risk — ROADMAP PF5's
+`cpuid`-gated mechanism that makes a *wider* tier safe to ship without that risk — the
 dynamic-dispatch follow-on wired it to the analysis windowing and DCT-IV/IMDCT twiddle kernels in
 the table above (the two Phase 1's own measurement found a real win for); `dft512`'s normalisation,
 exponent-to-PSD and `to_fixed25_block` stay SSE2/NEON-only for the same reason. 128 bits is the native width of
@@ -1062,7 +1060,7 @@ process regardless of how many call sites ask.
 
 **`AC3FORGE_SIMD_TIER`** (environment variable, read once inside that same cached initialisation)
 overrides the answer: `sse2` always forces `has_avx2()` false, `avx2` forces it true — except when
-the hardware genuinely cannot run AVX2, where forcing up `std::abort()`s with a clear message
+the hardware cannot run AVX2, where forcing up `std::abort()`s with a clear message
 rather than risk an illegal-instruction fault. `auto` (the default, same as unset) is the real
 detected answer. This is what makes cross-tier correctness checking possible without needing AVX2
 hardware physically present for the "does this at least build and dispatch correctly" half of the
@@ -1085,7 +1083,7 @@ flag.
 linkable C++ on MSVC, clang-cl, GCC, Clang and AppleClang alike, with zero hardware dependency.
 `tests/core/test_simd_kernels.cpp`'s `[avx2]`-tagged cases go further and actually execute it —
 guarded by `has_avx2()`, with a loud, explicit `SKIP()` (never a silent pass) on hardware that
-genuinely lacks it. The four x86_64 CI legs resolve to self-hosted-or-GitHub-hosted dynamically per
+lacks it. The four x86_64 CI legs resolve to self-hosted-or-GitHub-hosted dynamically per
 run and self-hosted CPU features are not documented anywhere in this repo, so no leg may assume the
 host it landed on qualifies. `AC3FORGE_REQUIRE_AVX2=1` turns that skip into a hard failure instead —
 set on the `linux-llvm-asan-ubsan` leg (`.github/workflows/_build.yml`), the one leg pinned to a
@@ -1105,7 +1103,7 @@ guarantee, never silently claiming a check that did not run:
 AC3FORGE_CROSS_TIER_CHECK=1 ./tools/ci/run_codec_matrix.sh build/config-linux-llvm/bin/ac3cli
 ```
 
-ROADMAP PF5's dynamic-dispatch follow-on proved this whole mechanism end to end against one trivial
+The dynamic-dispatch follow-on proved this whole mechanism end to end against one trivial
 function first (`ac3::internal::avx2::avx2_probe_matches_expected()`, no codec bit-exactness stakes
 of its own) — deliberately, so the build/link/dispatch/test pipeline was proven before any kernel's
 correctness depended on it — then wired two real kernels behind it: `apply_analysis_window` and the
@@ -1203,7 +1201,7 @@ as the explanation for this gap; the correlation that matters is architecture (a
 three cases — `macos-llvm`'s GitHub-hosted runner is Apple Silicon), not compiler family or libm
 package.
 
-**Architecture-specific libm `sin`/`cos` — tested directly (roadmap VX11), also ruled out.** The
+**Architecture-specific libm `sin`/`cos` — tested directly, also ruled out.** The
 standing hypothesis was aarch64's own compiled `libm` (glibc ships an architecture-specific
 `sincos`/`cos`/`sin`, so "the same libm" as a source package does not mean bit-identical machine
 code) producing different last-bit results in the transform twiddle tables. Two things needed
@@ -1237,7 +1235,7 @@ instruction set" as an explanation in the abstract, and narrows what is left to 
 neither locally reproducible: the specific *natively*-packaged aarch64 compiler GitHub's hosted
 arm64/macOS runners use (as opposed to a Debian **cross**-compiler package, the only kind available
 without that hardware — a native package can carry different default codegen/tuning even with
-identical flags and the identical GCC version), or a genuine real-silicon floating-point behaviour
+identical flags and the identical GCC version), or a real-silicon floating-point behaviour
 `qemu-user`'s software emulation does not reproduce. Both need the real runners to test further.
 
 **FFmpeg's own architecture-specific kernels — tested directly, ruled out.** Every hypothesis
@@ -1280,7 +1278,7 @@ instruction to emit — proven, not assumed, by the corpus comparison above comi
 byte-identical against a build without the flag. On aarch64 it gives up FMLA in the transform
 inner loops for a bit-exactness guarantee, not for a change in the gold-gate numbers.
 
-ROADMAP VX11's mystery therefore stays open — both hypotheses proposed for it are now closed out
+That mystery therefore stays open — both hypotheses proposed for it are now closed out
 by direct measurement rather than by argument — but it is no longer *unwatched*: a cross-platform
 bitstream-hash gate (`tools/checks/check_cross_platform_hash.py`, wired into
 [the gold-reference gate](#gold-reference-correctness-gate)) pins a SHA-256 of the actual encoded
@@ -1324,8 +1322,7 @@ CI-hosted runner already ships Python 3, so this needs no new provisioning). The
 checks are perceptual/SNR-based rather than a bit-exact bitstream comparison deliberately: nothing
 in this project verifies that Homebrew LLVM, GCC and MSVC round the codec's floating-point
 pipeline identically, and the real numbers above show they in fact do not, by a small but
-measurable margin. `tools/checks/check_cross_platform_hash.py` runs immediately after (roadmap
-VX11) and does add a bit-exact comparison, but as a pinned-regression gate over each leg's own
+measurable margin. `tools/checks/check_cross_platform_hash.py` runs immediately after and does add a bit-exact comparison, but as a pinned-regression gate over each leg's own
 encoded bytes rather than a cross-leg equality assertion — see
 [Floating-point contraction](#floating-point-contraction) above for why the latter cannot pass
 today.

@@ -12,7 +12,7 @@ page in this project, and the reason is specific rather than incidental.
 FFmpeg implements no JOC reconstruction — it decodes these streams as their
 5.1 bed and never produces objects to compare against. Dolby's own decoder
 does implement it, but [gates object decoding on a keyed authenticity
-tag](concepts/atmos-joc.md#two-honest-limitations) this project ships no key
+tag](concepts/atmos-joc.md#two-limitations) this project ships no key
 for, so it plays them as the bed too. Nothing outside this repository can
 currently produce an independent object decode of an ac3forge stream. What
 these numbers say is that this project's encoder and decoder still agree

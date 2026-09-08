@@ -143,7 +143,7 @@ void print_concealment_summary(FILE* status, std::size_t concealed, std::size_t 
 int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
                            bool have_object_audio, std::size_t objects_written,
                            std::string_view objects_dir) {
-    if (metadata) {
+    if (metadata.has_value()) {
         const auto& program = metadata->program;
         const char* joc = have_object_audio ? ", JOC audio reconstructed"
                                             : " (JOC audio not reconstructed)";
@@ -169,7 +169,7 @@ int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedPr
             status_println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
                            labels, program.dynamic_objects, ac3::oba::object_count(program), joc);
         }
-        if (metadata->trim) {
+        if (metadata->trim.has_value()) {
             status_println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
                            metadata->trim->warp_mode, metadata->trim->global_trim_mode);
         }
@@ -253,10 +253,10 @@ void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod 
                      ac3::meta::describe(value.roomtyp),
                      value.adconvtyp == ac3::meta::AdConverterType::kHdcd ? ", A/D HDCD" : "");
     };
-    if (info.audprod) {
+    if (info.audprod.has_value()) {
         production("", *info.audprod);
     }
-    if (info.audprod2) {
+    if (info.audprod2.has_value()) {
         production("Ch2 ", *info.audprod2);
     }
     // origbs defaults set, so only a stream declaring itself a COPY is news.
@@ -268,7 +268,7 @@ void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod 
     if (info.sourcefscod) {
         fmt::println(status, "  source sampled at twice the coded rate (§E2.3.1.63)");
     }
-    if (info.timecod1 || info.timecod2) {
+    if (info.timecod1.has_value() || info.timecod2.has_value()) {
         fmt::println(status, "  timecode: {}",
                      ac3::meta::format_timecode(info.timecod1.value_or(ac3::meta::TimeCodeCoarse{}),
                                                 info.timecod2.value_or(ac3::meta::TimeCodeFine{})));
@@ -280,13 +280,13 @@ void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod 
 // out - they are present on every mixmdate group and say nothing about
 // whether this stream is an associated service.
 void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
-    if (mix.pgmscl) {
+    if (mix.pgmscl.has_value()) {
         fmt::println(status, "  programme scale: {}",
                      *mix.pgmscl == ac3::meta::kPgmScaleMute
                          ? std::string{"mute"}
                          : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.pgmscl)));
     }
-    if (mix.extpgmscl) {
+    if (mix.extpgmscl.has_value()) {
         fmt::println(status, "  external programme scale: {}",
                      *mix.extpgmscl == ac3::meta::kPgmScaleMute
                          ? std::string{"mute"}
@@ -300,11 +300,11 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
                      mix.mixing.speech ? "speech enhancement data"
                                        : (mix.mixing.external ? "" : "no sub-fields"));
     }
-    if (mix.pan) {
+    if (mix.pan.has_value()) {
         fmt::println(status, "  pan: {:.1f} degrees clockwise from centre",
                      static_cast<double>(mix.pan->panmean) * ac3::meta::kPanMeanDegreesPerStep);
     }
-    if (mix.blkmixcfginfo) {
+    if (mix.blkmixcfginfo.has_value()) {
         fmt::println(status, "  per-block mixing configuration present");
     }
 }
@@ -320,7 +320,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // second language, an audio description - so writing both into one WAV
     // would splice two unrelated pieces of audio together.
     const auto ids = ac3::programme_ids(stream);
-    if (!ids) {
+    if (!ids.has_value()) {
         fmt::println(stderr, "error: stream framing failed: {}",
                      ac3::describe(ids.error()));
         return 1;
@@ -330,14 +330,14 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         return 1;
     }
     const auto programme = choose_programme(*ids, meta.programme);
-    if (!programme) {
+    if (!programme.has_value()) {
         return 1;
     }
     // Access units, not syncframes: a dependent substream is only meaningful
     // alongside the independent one it extends, and the two are rendered
     // together into one set of speaker feeds.
     const auto units = ac3::split_access_units(stream, *programme);
-    if (!units) {
+    if (!units.has_value()) {
         fmt::println(stderr, "error: stream framing failed: {}",
                      ac3::describe(units.error()));
         return kExitInput;
@@ -551,7 +551,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             dynrng_max_db = dynrng_words == 0 ? db : std::max(dynrng_max_db, db);
             ++dynrng_words;
         }
-        if (compr) {
+        if (compr.has_value()) {
             const double db = ac3::meta::to_db(ac3::meta::compr_gain(*compr));
             compr_min_db = compr_frames == 0 ? db : std::min(compr_min_db, db);
             compr_max_db = compr_frames == 0 ? db : std::max(compr_max_db, db);
@@ -564,7 +564,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     for (const auto& unit : *units) {
         progress.tick(++units_done);
         const auto decoded = decoder.decode_access_unit(unit);
-        if (!decoded) {
+        if (!decoded.has_value()) {
             // describe(), not the raw enumerator: this is the line a CI
             // log shows when a third-party stream will not decode, and
             // "decode failed (code 3)" sent the reader to the enum
@@ -590,7 +590,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                 return kExitOutput;
             }
         }
-        if (out.concealed) {
+        if (out.concealed.has_value()) {
             ++concealed_units;
         }
         track_metadata(out.dynrng, out.numblkscod, out.compr);
@@ -676,7 +676,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                 // substream) - see DecodedAccessUnit::object_metadata's own
                 // comment - so at most one flushed substream carries it.
                 for (const auto& substream : flushed) {
-                    if (substream.object_metadata) {
+                    if (substream.object_metadata.has_value()) {
                         synthesized.object_metadata = substream.object_metadata;
                         break;
                     }
@@ -757,7 +757,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // case, and this report must not land in the middle of them.
     const auto status = status_stream(out_path);
     const auto written = sink.close();
-    if (!written) {
+    if (!written.has_value()) {
         fmt::println(stderr, "error: {}", ac3::io::describe(written.error()));
         return kExitOutput;
     }
@@ -774,7 +774,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                          adm_out);
         } else {
             const auto written_adm = ac3cli::write_adm_atmos_master(adm_out, adm_input);
-            if (!written_adm) {
+            if (!written_adm.has_value()) {
                 fmt::println(stderr, "error: {}", written_adm.error());
                 return kExitOutput;
             }
@@ -790,10 +790,10 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                        sink_slots, sample_rate_hz(first.sample_rate));
         print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                           compr_frames, meta);
-        if (first.info) {
+        if (first.info.has_value()) {
             print_bsi_summary(status, *first.info, first.acmod);
         }
-        if (first.mixing) {
+        if (first.mixing.has_value()) {
             print_mix_summary(status, *first.mixing);
         }
         print_concealment_summary(status, concealed_units, units->size(), "access units");
@@ -825,10 +825,10 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     }
     print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                       compr_frames, meta);
-    if (first.info) {
+    if (first.info.has_value()) {
         print_bsi_summary(status, *first.info, first.acmod);
     }
-    if (first.mixing) {
+    if (first.mixing.has_value()) {
         print_mix_summary(status, *first.mixing);
     }
     print_concealment_summary(status, concealed_units, units->size(), "access units");
@@ -851,7 +851,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     // spdif and play branch on it the same way now that both packers handle
     // E-AC-3 (Eac3BurstPacker alongside AC-3's wrap_frame).
     const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid) {
+    if (!bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
@@ -870,7 +870,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         fmt::println(stderr, "warning: {} given but {} is plain AC-3 - it has no object layer", adm_out, in_path);
     }
     const auto frames = ac3::split_frames(stream);
-    if (!frames) {
+    if (!frames.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(frames.error()));
         return kExitInput;
     }
@@ -907,7 +907,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     for (const auto& frame : *frames) {
         progress.tick(++frames_done);
         const auto decoded = decoder.decode_frame(frame);
-        if (!decoded) {
+        if (!decoded.has_value()) {
             fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
             sink.abort();
             return kExitInput;
@@ -919,7 +919,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
             // evidence is exactly the misreading a census must not make.
             census.observe(census_trace);
         }
-        if (decoded->concealed) {
+        if (decoded->concealed.has_value()) {
             ++concealed_frames;
         }
         for (const auto word : decoded->dynrng) {
@@ -928,7 +928,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
             dynrng_max_db = dynrng_words == 0 ? db : std::max(dynrng_max_db, db);
             ++dynrng_words;
         }
-        if (decoded->compr) {
+        if (decoded->compr.has_value()) {
             const double db = ac3::meta::to_db(ac3::meta::compr_gain(*decoded->compr));
             compr_min_db = compr_frames == 0 ? db : std::min(compr_min_db, db);
             compr_max_db = compr_frames == 0 ? db : std::max(compr_max_db, db);
@@ -985,7 +985,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         return kExitOutput;
     }
     const auto written = sink.close();
-    if (!written) {
+    if (!written.has_value()) {
         fmt::println(stderr, "error: {}", ac3::io::describe(written.error()));
         return kExitOutput;
     }
@@ -1002,7 +1002,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
                    sample_rate_hz(first.sample_rate));
     status_println(status, "metadata: dialnorm {} (dialogue at -{} dBFS){}", first.dialnorm,
                    first.dialnorm, dialnorm_note(meta, first.dialnorm));
-    if (first.dialnorm2) {
+    if (first.dialnorm2.has_value()) {
         status_println(status, "          dialnorm2 {} (Ch2, dialogue at -{} dBFS){}",
                        *first.dialnorm2, *first.dialnorm2, first.compr2 ? ", compr2 present" : "");
     }
@@ -1023,7 +1023,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     // xbsi2's three flags are AC-3's only home for what E-AC-3 puts in
     // infomdat, so they are reported here rather than folded into `info` -
     // which bits a field came off is part of what a decode report is for.
-    if (first.alternate_bsi && first.alternate_bsi->extended) {
+    if (first.alternate_bsi.has_value() && first.alternate_bsi->extended.has_value()) {
         const auto& extended = *first.alternate_bsi->extended;
         if (extended.dsurexmod != ac3::meta::SurroundExMode::kNotIndicated) {
             fmt::println(status, "  dsurexmod: {}", ac3::meta::describe(extended.dsurexmod));
@@ -1036,7 +1036,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
             fmt::println(status, "  A/D converter: {}", ac3::meta::describe(extended.adconvtyp));
         }
     }
-    if (first.alternate_bsi && first.alternate_bsi->mix) {
+    if (first.alternate_bsi.has_value() && first.alternate_bsi->mix.has_value()) {
         const auto& mix = *first.alternate_bsi->mix;
         fmt::println(status, "  xbsi1: preferred downmix {}, Lt/Rt {:+.1f}/{:+.1f} dB, "
                              "Lo/Ro {:+.1f}/{:+.1f} dB (centre/surround)",

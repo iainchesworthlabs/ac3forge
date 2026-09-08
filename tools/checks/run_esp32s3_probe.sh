@@ -55,10 +55,15 @@ fi
 # past one should stop here and be explained rather than land silently.
 #
 # DIRAM is the interesting one. The ESP32-S3's internal SRAM is 341,760 bytes
-# and the linked app currently uses 134,676 of it, leaving 207,084 against a
-# 171,558-byte peak heap. The ceiling is on what the IMAGE uses, because that
-# is what squeezes the heap: every byte of static data here is a byte the
-# decode cannot allocate.
+# and the linked app currently uses 134,804 of it. That leaves 206,956 by the
+# linker's estimate, though the allocator reports 280,792 free at runtime,
+# against a 236,391-byte peak heap. The ceiling is on what the IMAGE uses,
+# because that is what squeezes the heap: every byte of static data here is a
+# byte the decode cannot allocate.
+#
+# Not 179,064: that is what the peak was BEFORE the probe reconstructed Atmos
+# objects, and docs/performance-trend.md quotes it as the start of the sequence
+# that ends at today's number rather than as today's number.
 : "${AC3FORGE_ESP32S3_MAX_DIRAM_BYTES:=170000}"
 # 245,000, raised from 200,000 when the probe started reconstructing Atmos
 # objects rather than only decoding their bed. oba::joc::reconstruct now runs on

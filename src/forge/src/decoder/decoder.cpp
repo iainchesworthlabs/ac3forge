@@ -20,7 +20,6 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/mantissas.hpp"
-#include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
@@ -116,7 +115,7 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_frames
     std::size_t offset = 0;
     while (offset < stream.size()) {
         const auto bytes = syncframe_bytes(stream, offset);
-        if (!bytes) {
+        if (!bytes.has_value()) {
             return std::unexpected(bytes.error());
         }
         if (offset + *bytes > stream.size()) {
@@ -197,7 +196,7 @@ bool has_eac3_extension_substreams(std::span<const std::byte> stream) {
 std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access_units(
     std::span<const std::byte> stream) {
     const auto frames = split_frames(stream);
-    if (!frames) {
+    if (!frames.has_value()) {
         return std::unexpected(frames.error());
     }
     // An access unit is its substreams concatenated, so it is delimited rather
@@ -325,7 +324,7 @@ FrameDecoder::FrameDecoder(const DecoderConfig& config) : impl_(std::make_unique
 std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access_units(
     std::span<const std::byte> stream, int programme) {
     auto units = split_access_units(stream);
-    if (!units) {
+    if (!units.has_value()) {
         return std::unexpected(units.error());
     }
     // Each unit begins with its programme's own independent substream, so the
@@ -340,7 +339,7 @@ std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access
 
 std::expected<std::vector<int>, DecodeError> programme_ids(std::span<const std::byte> stream) {
     const auto units = split_access_units(stream);
-    if (!units) {
+    if (!units.has_value()) {
         return std::unexpected(units.error());
     }
     std::vector<int> ids;
@@ -364,7 +363,7 @@ std::expected<std::vector<int>, DecodeError> programme_ids(std::span<const std::
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame(
     std::span<const std::byte> frame) {
     auto decoded = decode_frame_core(frame, {});
-    if (decoded) {
+    if (decoded.has_value()) {
         return decoded;
     }
     if (auto concealed = conceal(decoded.error(), {})) {
@@ -376,7 +375,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame(
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_into(
     std::span<const std::byte> frame, std::span<const std::span<float>> channels) {
     auto decoded = decode_frame_core(frame, channels);
-    if (decoded) {
+    if (decoded.has_value()) {
         return decoded;
     }
     if (auto concealed = conceal(decoded.error(), channels)) {
@@ -390,7 +389,7 @@ std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
     // Nothing retained means this is the head of the stream: there is no
     // previous block to reconstruct from, and inventing one would be
     // substituting audio rather than concealing a gap in it.
-    if (impl_->config_.concealment == ConcealmentPolicy::kNone || !impl_->retained_) {
+    if (impl_->config_.concealment == ConcealmentPolicy::kNone || !impl_->retained_.has_value()) {
         return std::nullopt;
     }
     const bool repeat = impl_->config_.concealment == ConcealmentPolicy::kRepeatFade;
@@ -1201,7 +1200,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
             }
             if (cplinu && cplcode == 1) {
                 auto segs = parse_segments(bin_to_band(cplstrtmant));
-                if (!segs) {
+                if (!segs.has_value()) {
                     return std::unexpected(segs.error());
                 }
                 delta[static_cast<std::size_t>(cpl_stream)] = *segs;
@@ -1212,7 +1211,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 const int chcode = chcodes[static_cast<std::size_t>(ch)];
                 if (chcode == 1) {
                     auto segs = parse_segments(0);
-                    if (!segs) {
+                    if (!segs.has_value()) {
                         return std::unexpected(segs.error());
                     }
                     delta[static_cast<std::size_t>(ch)] = *segs;
@@ -1508,7 +1507,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         }
     }
     if (retain_last_block) {
-        if (!impl_->retained_) {
+        if (!impl_->retained_.has_value()) {
             // Aggregate-initialised rather than emplace()d: Retained is an
             // aggregate, and libstdc++'s optional::emplace() goes through
             // is_constructible_v, which clang does not satisfy for an

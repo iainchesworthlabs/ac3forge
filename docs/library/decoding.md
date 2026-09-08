@@ -120,7 +120,7 @@ E-AC-3 — `independent_substreams` plus a `SubstreamService` for substreams 1�
 `ac3::io::build_codec_config_box`'s `dac3`/`dec3` payload and the MPEG-TS PMT descriptors of
 both broadcast profiles (see [Muxing & sinks](muxing-and-sinks.md#muxing-mpegtsmux)).
 `independent_substreams` is an *observation* of which substream ids appear; it deliberately does
-not change how `scan` groups access units, which stays one-programme (ROADMAP.md's DC5).
+not change how `scan` groups access units, which stays one-programme.
 
 ## Object-layer strip
 
@@ -268,7 +268,7 @@ That follows from what §7.8.2 asks for rather than from anything decided here �
 `ltrt_phase_shift = false` and `kRf` are the two ways to get a bounded output, and the second is
 the one that guarantees it.
 
-Lt/Rt's surround sum is genuinely phase shifted, through a 127-tap Hilbert transformer, with the
+Lt/Rt's surround sum is phase shifted, through a 127-tap Hilbert transformer, with the
 direct path delayed to match; `OutputStage::latency_samples()` reports the resulting 63 samples of
 output delay, and is zero for every other configuration. `ltrt_phase_shift = false` selects the
 sign-only matrix a lot of hardware implements instead — no latency, at the cost of the surround
@@ -653,5 +653,5 @@ manifest of what each exercises, for checking an independent implementation.
 See also: [Encoding AC-3](encoding-ac3.md) and [Encoding E-AC-3](encoding-eac3.md) — what
 `decode_frame`/`decode_access_unit` are undoing, and the full latency budget;
 [Muxing & sinks](muxing-and-sinks.md) — pairing `ac3::io::scan` with `matroska::mux` is what
-keeps a container's track header honest; [Building](../building.md) — the minimum-footprint
+keeps a container's track header accurate; [Building](../building.md) — the minimum-footprint
 decoder profile for set-top and DSP targets.

@@ -12,7 +12,6 @@
 #include <memory>
 #include <optional>
 #include <span>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -25,7 +24,6 @@
 #include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/mantissas.hpp"
-#include "ac3/core/mdct.hpp"
 #include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/transient_prenoise.hpp"
@@ -346,7 +344,7 @@ std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes)
         // the always-six-blocks case?" - keeps working unmodified.
         const auto fscod2 = r.read(2);
         const auto rate = sample_rate_from_fscod2(fscod2);
-        if (!rate) {
+        if (!rate.has_value()) {
             return std::unexpected(DecodeError::kReservedValue);
         }
         bsi.sample_rate = *rate;
@@ -1171,7 +1169,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // checkpoint, which FrameDecoder does itself.
     if (const auto bsid = stream_bsid(frame); bsid && *bsid <= 8) {
         auto core = decode_ac3_core(frame);
-        if (!core) {
+        if (!core.has_value()) {
             return std::unexpected(core.error());
         }
         return std::optional<DecodedSubstream>(std::move(*core));
@@ -1191,7 +1189,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
 
     BitReader r{frame};
     const auto bsi = parse_bsi(r, frame.size());
-    if (!bsi) {
+    if (!bsi.has_value()) {
         return std::unexpected(bsi.error());
     }
     const int nblks = eac3::blocks_per_syncframe(bsi->numblkscod);
@@ -1242,7 +1240,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // §E2.3.1.8: a chanmap that does not account for exactly the channels
     // acmod and lfeon code would put audio in the wrong speakers rather than
     // fail to parse, so it has to be caught explicitly.
-    if (bsi->chanmap && eac3::chanmap::channel_count(*bsi->chanmap) != nchans) {
+    if (bsi->chanmap.has_value() && eac3::chanmap::channel_count(*bsi->chanmap) != nchans) {
         return std::unexpected(DecodeError::kInvalidStream);
     }
 
@@ -2258,7 +2256,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
             if (cplinu_blk && cplcode == 1) {  // new info follows
                 auto segs = parse_segments(bin_to_band(cplstrtmant));
-                if (!segs) {
+                if (!segs.has_value()) {
                     return std::unexpected(segs.error());
                 }
                 delta[static_cast<std::size_t>(kCplStream)] = *segs;
@@ -2269,7 +2267,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 const int chcode = chcodes[static_cast<std::size_t>(ch)];
                 if (chcode == 1) {  // new info follows
                     auto segs = parse_segments(0);
-                    if (!segs) {
+                    if (!segs.has_value()) {
                         return std::unexpected(segs.error());
                     }
                     delta[static_cast<std::size_t>(ch)] = *segs;
@@ -2323,7 +2321,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             // fails the surrounding frame decode, matching EMDF's whole
             // reason for existing: a decoder that does not understand this
             // data reads the rest of the frame exactly as it would without it.
-            if (!out.object_metadata) {
+            if (!out.object_metadata.has_value()) {
                 const auto container = emdf::parse_container(skip_bytes);
                 if (container.has_value() && container->has_value()) {
                     for (const auto& payload : **container) {
@@ -2697,7 +2695,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 if (frm->cplinu[static_cast<std::size_t>(blk)] &&
                     chincpl[static_cast<std::size_t>(ch)] && !read_coupling) {
                     const auto shared = read_stream_dispatch(kCplStream, cplstrtmant);
-                    if (!shared) {
+                    if (!shared.has_value()) {
                         return std::unexpected(shared.error());
                     }
                     read_coupling = true;
@@ -3371,7 +3369,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     std::span<const std::byte> unit, std::span<const std::span<float>> external) {
     AC3_ZONE_SCOPED_N("eac3_decode_access_unit");
     const auto frames = split_frames(unit);
-    if (!frames) {
+    if (!frames.has_value()) {
         return std::unexpected(frames.error());
     }
     if (frames->empty()) {
@@ -3393,9 +3391,9 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // parsed as a plausible id and silently selected the wrong programme. The
     // identity is asserted rather than parsed, exactly as the key loop below
     // and decode_substream both already do.
-    if (impl_->config_.programme) {
+    if (impl_->config_.programme.has_value()) {
         const auto lead_bsid = stream_bsid(frames->front());
-        if (!lead_bsid) {
+        if (!lead_bsid.has_value()) {
             return std::unexpected(lead_bsid.error());
         }
         if (*lead_bsid <= 8) {
@@ -3407,7 +3405,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         } else {
             BitReader peek{frames->front()};
             const auto lead_bsi = parse_bsi(peek, frames->front().size());
-            if (!lead_bsi) {
+            if (!lead_bsi.has_value()) {
                 return std::unexpected(lead_bsi.error());
             }
             if (lead_bsi->substreamid != *impl_->config_.programme ||
@@ -3435,7 +3433,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         // parse_bsi would read strmtyp out of crc1 and substreamid out of the
         // rest of it, so the key is asserted here rather than parsed.
         const auto frame_bsid = stream_bsid(frame);
-        if (!frame_bsid) {
+        if (!frame_bsid.has_value()) {
             return std::unexpected(frame_bsid.error());
         }
         // §E2.3.1.2's AC-3 core is always the independent substream, never a
@@ -3448,7 +3446,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         } else {
             BitReader peek{frame};
             const auto bsi = parse_bsi(peek, frame.size());
-            if (!bsi) {
+            if (!bsi.has_value()) {
                 return std::unexpected(bsi.error());
             }
             keys.push_back(static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid);
@@ -3537,7 +3535,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // own the winner wherever there is one, which is every stream this
     // project produces, so nothing about those changes.
     for (const auto& sub : substreams) {
-        if (sub.object_metadata) {
+        if (sub.object_metadata.has_value()) {
             out.object_metadata = sub.object_metadata;
             out.object_audio = sub.object_audio;
             out.object_indices = sub.object_indices;
@@ -3555,11 +3553,11 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // program as a whole was concealed by, and it outranks a narrowed layout
     // because it says the audio itself was substituted rather than merely
     // that some of it is missing.
-    if (bed_only) {
+    if (bed_only.has_value()) {
         out.concealed = Concealment{.error = *bed_only, .action = ConcealmentAction::kBedOnly};
     }
     for (const auto& sub : substreams) {
-        if (sub.concealed) {
+        if (sub.concealed.has_value()) {
             out.concealed = sub.concealed;
             break;
         }

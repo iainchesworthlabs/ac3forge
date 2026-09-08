@@ -74,7 +74,7 @@ while getopts "b:g:" opt; do
     esac
 done
 
-if [ ! -f CMakePresets.json ]; then
+if [[ ! -f CMakePresets.json ]]; then
     echo "::error::coverage: run this from the repository root (CMakePresets.json not found)" >&2
     exit 2
 fi
@@ -159,7 +159,7 @@ gcovr --root . \
 
 fail=0
 while read -r comp line_min branch_min; do
-    [ -n "$comp" ] || continue
+    [[ -n "$comp" ]] || continue
 
     # A component with zero files in the trace is a broken measurement (built
     # without instrumentation, or not built at all - e.g. a coverage preset
@@ -197,7 +197,7 @@ echo
 echo "== apps/cli per command (reported, not gated) =="
 printf '%-26s %8s %8s\n' "module" "line" "branch"
 for src in apps/cli/*.cpp apps/cli/commands/*.cpp; do
-    [ -e "$src" ] || continue
+    [[ -e "$src" ]] || continue
     # --print-summary writes its two lines after the per-file table, so the
     # whole report is captured and those two picked out of it. Redirecting the
     # table away with --txt /dev/null takes the summary with it.

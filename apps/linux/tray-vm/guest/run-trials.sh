@@ -19,7 +19,7 @@ set -uo pipefail
 # drops the session's own environment here - so an ssh from the host can
 # reach the same display and the same bus.
 env_file=$HOME/.crucible-session-env
-if [ -f "$env_file" ]; then
+if [[ -f "$env_file" ]]; then
     set -a
     # shellcheck source=/dev/null  # written by the session at login, not in this tree
     . "$env_file"
@@ -39,7 +39,7 @@ export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}
 export QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-wayland}
 
 builddir=; runs=10; mode=plain; secs=15; label=
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
     case "$1" in
         --build) builddir=$2; shift 2 ;;
         -n) runs=$2; shift 2 ;;
@@ -50,13 +50,13 @@ while [ $# -gt 0 ]; do
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
-[ -n "$builddir" ] || { echo "--build <dir> is required" >&2; exit 2; }
+[[ -n "$builddir" ]] || { echo "--build <dir> is required" >&2; exit 2; }
 binary=$(cat "$builddir/.binary" 2>/dev/null || find "$builddir" -name ac3crucible -type f -perm -u+x | head -1)
-[ -x "$binary" ] || { echo "no ac3crucible under $builddir" >&2; exit 1; }
+[[ -x "$binary" ]] || { echo "no ac3crucible under $builddir" >&2; exit 1; }
 
 # --- the precondition -------------------------------------------------------
 host=$(busctl --user list --no-pager --no-legend 2>/dev/null | grep -i statusnotifier || true)
-if [ -z "$host" ]; then
+if [[ -z "$host" ]]; then
     echo "no StatusNotifier host on this session bus." >&2
     echo "busctl --user list shows no org.kde.StatusNotifierWatcher owner, so an item" >&2
     echo "would never be asked for its menu and a clean run would prove nothing." >&2
@@ -104,11 +104,11 @@ for i in $(seq 1 "$runs"); do
     esac
     # 137 is the KILL the timeout sends: the window was still up, which is a
     # survival. Anything else this early is a death.
-    if [ "$rc" = 137 ] || [ "$rc" = 124 ]; then
+    if [[ "$rc" = 137 ]] || [[ "$rc" = 124 ]]; then
         survived=$((survived + 1)); verdict="survived $secs s"
     else
         died=$((died + 1)); verdict="died rc=$rc"
-        if [ "$rc" -gt 128 ] 2>/dev/null; then verdict="$verdict (SIG$(kill -l $((rc - 128)) 2>/dev/null))"; fi
+        if [[ "$rc" -gt 128 ]] 2>/dev/null; then verdict="$verdict (SIG$(kill -l $((rc - 128)) 2>/dev/null))"; fi
     fi
     echo "run $i: $verdict  ($log)"
     pkill -x ac3crucible 2>/dev/null
@@ -117,7 +117,7 @@ done
 
 echo
 echo "=== $survived of $runs survived, $died died ==="
-if [ "$died" -gt 0 ]; then
+if [[ "$died" -gt 0 ]]; then
     echo "cores:"
     coredumpctl list --no-pager ac3crucible 2>/dev/null | tail -5 || echo "  (systemd-coredump has none)"
 fi

@@ -66,7 +66,7 @@ above would, so either is a starting point, not a locked-in mode.
 - **Objects** (right): one row per object — number, **Sound** (which loaded channel it is: `Ch
   <n>` with one source, `<file> ch <n>` with several), X/Y/Z, path (`static`, the preset's own
   name like `orbit`, or `<n> keys` for a hand-authored one), LFE send, and keyframe count. The
-  count line keeps the budget honest — the denominator is what is genuinely left once bed-pinned
+  count line keeps the budget accurate — the denominator is what is left once bed-pinned
   channels have spent their slots (`4 of 13 objects · 2 pinned to the bed`), since the bed's LFE
   is the sixteenth. The selected object gets an **LFE send** slider (0.00–1.00) — the only route
   to that channel, since panning never reaches it.

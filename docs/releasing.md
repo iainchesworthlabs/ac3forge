@@ -267,7 +267,7 @@ vcpkg install ac3forge[matroska,mp4,mpegts,capi] --classic --overlay-ports=packa
 `--classic` is required from inside this repo - the root `vcpkg.json` (manifest mode, for this
 project's *own* build-time dependencies) would otherwise shadow the package-name argument.
 Check for a clean post-build lint (no "not used"/"missing usage" warnings) and that the bare
-`ac3forge` install genuinely excludes `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts`/
+`ac3forge` install excludes `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts`/
 `ac3::forge_c` - not just unlinked, no matching files anywhere in the install tree - while
 `ac3forge[matroska,mp4,mpegts,capi]` installs all four.
 

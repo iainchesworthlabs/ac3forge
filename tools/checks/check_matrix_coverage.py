@@ -143,7 +143,12 @@ def layout_names(cli: str, tmp: Path, command: str) -> set[str]:
     probe = tmp / "layout_probe.out"
     _, _, err = run(cli, command, str(probe), "1", "192", "1000", "50",
                      "__coverage_probe__")
-    m = re.search(r"unknown layout '.*?' \((.*)\)\s*$", err.strip())
+    # '[^']*' rather than '.*?' for the name: a layout name can never itself
+    # contain a quote, so this closes the ambiguity between the name and the
+    # trailing "(...)" that made the lazy/greedy pair super-linear on
+    # adversarial input, without touching the deliberately-greedy-to-the-
+    # last-paren group below.
+    m = re.search(r"unknown layout '[^']*' \((.*)\)\s*$", err.strip())
     if not m:
         raise SystemExit(f"could not parse a layout list from `{command}`'s error output:\n{err}")
     return {token.strip() for token in m.group(1).split("|")}
@@ -165,7 +170,10 @@ def tool_names(cli: str, tmp: Path) -> set[str]:
     # greedy-matching to the LAST ')' on the line grabs the whole thing,
     # nested parenthetical included; stripping each split token at its own
     # first '(' then discards that explanatory tail per-token.
-    m = re.search(r"unknown tool set '.*?' \((.*)\)\s*$", err.strip())
+    # See layout_names()'s identical note: '[^']*' instead of '.*?' for the
+    # name removes the super-linear ambiguity without touching the
+    # greedy-to-the-last-paren capture the comment above documents.
+    m = re.search(r"unknown tool set '[^']*' \((.*)\)\s*$", err.strip())
     if not m:
         raise SystemExit(f"could not parse a tool list from eac3-encode's error output:\n{err}")
     tokens = set()
@@ -231,7 +239,11 @@ def matrix_tool_tokens(matrix_text: str) -> set[str]:
     # set that has no FFmpeg oracle) - 'tpn' is canonical and reachable only
     # from the third, so this deliberately finds them all rather than a fixed
     # pair.
-    for body in re.findall(r"^\s*for\s+tools\s+in\s+(.*?)\s*;\s*do\b", text, re.M):
+    # No '\s*' between the capture and ';': matrix_tool_tokens' own re-tokenize
+    # step below (\S+) already discards any whitespace this group picks up,
+    # so the two adjacent whitespace-matching quantifiers the original had
+    # here bought nothing but the super-linear backtracking Sonar flagged.
+    for body in re.findall(r"^\s*for\s+tools\s+in\s+(.*?);\s*do\b", text, re.M):
         fields.extend(re.findall(r'"[^"]*"|\'[^\']*\'|\S+', body))
     # The tools argument of a literal `run eac3-encode <wav> <out> <rate>
     # <tools> <layout>` call.

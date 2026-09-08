@@ -681,7 +681,7 @@ runs the old numbers on purpose.
 
 ## Minimum-footprint decoder
 
-Roadmap PF7. Not a trend series — one measured configuration, on the concrete target the
+Not a trend series — one measured configuration, on the concrete target the
 roadmap names: `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine (Cortex-M3,
 soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`. See
 [Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
