@@ -178,7 +178,7 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
     }
 
     auto created = ac3::oba::KeyframePath::create(std::move(keyframes));
-    if (!created) {
+    if (!created.has_value()) {
         // Unreachable in practice - push_keyframe's own monotonic nudge guarantees a strictly
         // increasing sequence, and it is never called with an empty channel.block_formats (the
         // kEmptyBlockSequence check above already rejected that) - kept as a real, checked error
@@ -283,7 +283,7 @@ std::expected<std::vector<const ac3adm::AudioObject*>, BridgeError> collect_leaf
         }
         visiting.push_back(object_id);
         for (const auto& child_id : object->object_refs) {
-            if (const auto child_result = visit(child_id); !child_result) {
+            if (const auto child_result = visit(child_id); !child_result.has_value()) {
                 return child_result;
             }
         }
@@ -297,7 +297,7 @@ std::expected<std::vector<const ac3adm::AudioObject*>, BridgeError> collect_leaf
             return std::unexpected(BridgeError::kUnresolvedReference);
         }
         for (const auto& object_ref : content->object_refs) {
-            if (const auto result = visit(object_ref); !result) {
+            if (const auto result = visit(object_ref); !result.has_value()) {
                 return std::unexpected(result.error());
             }
         }
@@ -336,7 +336,7 @@ std::expected<BridgeResult, BridgeError> build(const ac3adm::AdmDocument& docume
     }
 
     const auto leaf_objects = collect_leaf_objects(model, *programme);
-    if (!leaf_objects) {
+    if (!leaf_objects.has_value()) {
         return std::unexpected(leaf_objects.error());
     }
 
@@ -345,7 +345,7 @@ std::expected<BridgeResult, BridgeError> build(const ac3adm::AdmDocument& docume
 
     for (const auto* object : *leaf_objects) {
         const auto classified = classify_object(model, *object);
-        if (!classified) {
+        if (!classified.has_value()) {
             return std::unexpected(classified.error());
         }
         if (classified->channels.size() != object->track_uid_refs.size()) {
@@ -368,7 +368,7 @@ std::expected<BridgeResult, BridgeError> build(const ac3adm::AdmDocument& docume
 
             const bool is_lfe = classified->is_bed && channel_is_lfe(*channel);
             auto path = build_channel_path(*channel, object->start_s, is_lfe);
-            if (!path) {
+            if (!path.has_value()) {
                 return std::unexpected(path.error());
             }
 
@@ -498,7 +498,7 @@ std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
         pack_format.name = channel.name;
         pack_format.channel_format_refs = {channel_format.id};
 
-        if (channel.bed_label) {
+        if (channel.bed_label.has_value()) {
             channel_format.type = ac3adm::TypeDefinition::kDirectSpeakers;
             pack_format.type = ac3adm::TypeDefinition::kDirectSpeakers;
 

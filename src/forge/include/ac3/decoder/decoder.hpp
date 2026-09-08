@@ -549,7 +549,7 @@ struct DecodedSubstream {
 
     // The Table E2.5 map this substream's channels occupy.
     [[nodiscard]] std::uint16_t location_map() const {
-        return chanmap ? *chanmap : eac3::chanmap::acmod_map(acmod, lfe);
+        return chanmap.has_value() ? *chanmap : eac3::chanmap::acmod_map(acmod, lfe);
     }
 };
 

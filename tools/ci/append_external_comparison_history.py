@@ -73,6 +73,16 @@ REGRESSION_TRAILING_WINDOW = 10
 REGRESSION_DROP_DB = 0.5
 HARD_REGRESSION_DROP_DB = 10.0
 
+
+def branch_slug(branch: str) -> str:
+    """A single flat filename component for `branch` - see
+    append_memory_history.py's identical branch_slug for why: every branch
+    here is feature/* or bugfix/*, and an un-sanitised '/' interpolated into
+    a Path joins as an extra path component rather than a literal
+    character."""
+    return branch.replace("/", "_").replace("\\", "_")
+
+
 # The MOS tier is soft only - a ::warning::, never a job failure, and no hard
 # counterpart. Three reasons it is not symmetric with the SNR tiers above.
 #
@@ -183,7 +193,7 @@ def main() -> int:
                          help="Committer date, ISO 8601 (from `git show -s --format=%%cI`).")
     args = parser.parse_args()
 
-    history_path = args.history_dir / f"external-comparison-{args.branch}.jsonl"
+    history_path = args.history_dir / f"external-comparison-{branch_slug(args.branch)}.jsonl"
     rows = load_trend_rows(args.trend_json)
     if not rows:
         print(f"::warning::no rows found in {args.trend_json}; nothing to append")

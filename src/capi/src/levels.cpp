@@ -37,7 +37,7 @@ ac3forge_status_t ac3forge_level_meter_create(ac3forge_acmod_t acmod, int lfe,
     if (out_meter == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&] {
+    return guard([&acmod, &lfe, &sample_rate, &channels, &ballistics, &out_meter] {
         const auto cpp_ballistics = ballistics_to_cpp(ballistics);
         auto owned = std::make_unique<ac3forge_level_meter>();
         if (channels > 0) {
@@ -76,7 +76,7 @@ ac3forge_status_t ac3forge_level_meter_process(ac3forge_level_meter_t* meter,
     if (meter == nullptr || channels == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&meter, &channels, &channel_count, &samples_per_channel]() -> ac3forge_status_t {
         std::vector<std::span<const float>> spans;
         spans.reserve(channel_count);
         for (size_t i = 0; i < channel_count; ++i) {
