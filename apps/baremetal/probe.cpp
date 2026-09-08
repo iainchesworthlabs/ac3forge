@@ -196,12 +196,11 @@ constexpr std::size_t kMaxChannels = 8;
 std::array<std::array<float, ac3::kSamplesPerFrame>, kMaxChannels> g_pcm{};
 std::array<std::span<float>, kMaxChannels> g_pcm_spans{};
 
-static_assert(ac3probe::kAc3Rms.size() <= kMaxChannels,
-              "the AC-3 fixture has more channels than the probe's PCM block holds - raise "
-              "kMaxChannels");
-// The E-AC-3 fixtures are checked the same way below, once, over their table -
-// see kEac3Fixtures. One assertion per fixture would be a second place to
-// remember when adding one, which is the seam this file is trying not to have.
+// Every fixture of both generations is checked against kMaxChannels below,
+// once, over the two tables - see every_fixture_fits(). One assertion per
+// fixture would be a second place to remember when adding one, which is the
+// seam those tables exist to remove; there used to be one here for the single
+// AC-3 stream, and it is gone because AC-3 has a table now too.
 
 void bind_pcm_spans() {
     for (std::size_t ch = 0; ch < kMaxChannels; ++ch) {
@@ -317,13 +316,20 @@ void report_timing(const char* codec, const Churn& churn) {
                 static_cast<unsigned long>(permille));
 }
 
-int decode_ac3() {
+// Every AC-3 fixture goes through this one function, exactly as every E-AC-3
+// fixture goes through decode_eac3 below. What differs between them is the
+// layout and the tools the ENCODER chose, which is a property of the bitstream
+// rather than of the call: decode_frame_into's contract is the same for all of
+// them, and a per-fixture copy of this loop would only give three places for a
+// check to be dropped from.
+int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
+               std::span<const std::int32_t> expected) {
     const std::span<const std::byte> stream{
-        reinterpret_cast<const std::byte*>(ac3probe::kAc3Stream.data()),
-        ac3probe::kAc3Stream.size()};
+        reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
     const auto frames = ac3::split_frames(stream);
     if (!frames) {
-        std::printf("check=ac3.split status=fail error=%d\n", static_cast<int>(frames.error()));
+        std::printf("check=%s.split status=fail error=%d\n", codec,
+                    static_cast<int>(frames.error()));
         return 1;
     }
 
@@ -339,7 +345,7 @@ int decode_ac3() {
         const auto decoded = decoder.decode_frame_into(frame, g_pcm_spans);
         churn.decode_us += ac3probe::now_us() - started_us;
         if (!decoded) {
-            std::printf("check=ac3.decode status=fail frame=%d error=%d\n", index,
+            std::printf("check=%s.decode status=fail frame=%d error=%d\n", codec, index,
                         static_cast<int>(decoded.error()));
             return 1;
         }
@@ -357,14 +363,14 @@ int decode_ac3() {
     }
 
     if (churn.frames != ac3probe::kFrames) {
-        fail("ac3.frames", churn.frames, ac3probe::kFrames);
+        fail(codec, "frames", churn.frames, ac3probe::kFrames);
     }
-    if (channels != static_cast<int>(ac3probe::kAc3Rms.size())) {
-        fail("ac3.channels", channels, static_cast<long>(ac3probe::kAc3Rms.size()));
+    if (channels != static_cast<int>(expected.size())) {
+        fail(codec, "channels", channels, static_cast<long>(expected.size()));
     }
-    report_levels("ac3", levels, ac3probe::kAc3Rms);
-    report_churn("ac3", churn);
-    report_timing("ac3", churn);
+    report_levels(codec, levels, expected);
+    report_churn(codec, churn);
+    report_timing(codec, churn);
     return 0;
 }
 
@@ -437,6 +443,39 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     return 0;
 }
 
+// The AC-3 fixtures, in the order the probe decodes them. A table for the same
+// reason the E-AC-3 one below is: adding a configuration should be a row here
+// and a stream in tools/generators/gen_baremetal_fixture.py, not a fourth copy
+// of a decode loop.
+//
+// It was a single hardcoded decode of the 5.1 stream until these rows arrived,
+// which left two AC-3 paths linked into every build of this profile and
+// executed by none of them - §7.5.4 rematrixing, which exists in 2/0 and no
+// other layout, and the UNCOUPLED path, because the one fixture there was
+// passed `couple`. That is the same shape of gap enhanced coupling had on the
+// E-AC-3 side, found the same way: by asking what the fixtures do not reach
+// rather than by anything failing.
+struct Ac3Fixture {
+    const char* codec;
+    std::span<const std::uint8_t> stream;
+    std::span<const std::int32_t> rms;
+};
+
+constexpr std::array<Ac3Fixture, 3> kAc3Fixtures{{
+    {"ac3", ac3probe::kAc3Stream, ac3probe::kAc3Rms},
+    // 2/0. §7.5.4 rematrixing lives in this layout alone, and it is a different
+    // code path from the eac3_stereo row's - Annex E carries its own
+    // rematrixing syntax - so that fixture does not stand in for this one.
+    // Also the first AC-3 fixture whose channel count is not six.
+    {"ac3_stereo", ac3probe::kAc3StereoStream, ac3probe::kAc3StereoRms},
+    // 1/0. The narrowest programme the syntax has: one full-bandwidth channel,
+    // no LFE, no coupling possible (§7.4 needs two channels to share a band
+    // between) and no downmix to apply. Every per-channel loop in the decoder
+    // runs exactly once here, which is the value 6 cannot catch an off-by-one
+    // in.
+    {"ac3_mono", ac3probe::kAc3MonoStream, ac3probe::kAc3MonoRms},
+}};
+
 // The E-AC-3 fixtures, in the order the probe decodes them. Adding one is a
 // row here and a stream in tools/generators/gen_baremetal_fixture.py's own
 // table; nothing else in this file changes, and neither runner script names a
@@ -461,10 +500,6 @@ constexpr std::array<Eac3Fixture, 5> kEac3Fixtures{{
     // src/forge/src/core/fft.cpp is in the minimal source list for - are
     // linked into every build of this profile and executed by none of them.
     {"eac3_ecpl", ac3probe::kEac3EcplStream, ac3probe::kEac3EcplRms},
-    // 2/0, the only layout §7.5.4 rematrixing exists in: no 5.1 fixture
-    // reaches it whatever its tools are. Also the first fixture whose channel
-    // count is not six, so the layout-driven half of the level check is
-    // exercised rather than merely written.
     // An Atmos stream decoded for its BED. §6 object reconstruction allocates
     // an oba::joc::ReconstructionState - 147,504 bytes in one block, plus a
     // QmfState and its filterbanks - which is more than the largest free run
@@ -491,13 +526,26 @@ constexpr std::array<Eac3Fixture, 5> kEac3Fixtures{{
     // than where it happens to pass.
     {"eac3_atmos_objects", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms,
      false, ac3::oba::joc::Domain::kMdctBand},
+    // 2/0, and Annex E's own rematrixing syntax - the E-AC-3 half of what the
+    // ac3_stereo row covers for AC-3. Also the first E-AC-3 fixture whose
+    // channel count is not six, so the layout-driven half of the level check is
+    // exercised rather than merely written.
     {"eac3_stereo", ac3probe::kEac3StereoStream, ac3probe::kEac3StereoRms},
 }};
 
 // What the per-fixture static_asserts above used to say, said once. Regenerate
 // fixture.hpp with a layout wider than the PCM block and the build stops here,
-// instead of decode_access_unit_into writing past the end of a span.
+// instead of decode_frame_into or decode_access_unit_into writing past the end
+// of a span.
+//
+// Both tables, in one function. Two of these - one per generation - would be a
+// second place to remember, which is the seam these tables exist to remove.
 consteval bool every_fixture_fits() {
+    for (const auto& fixture : kAc3Fixtures) {
+        if (fixture.rms.size() > kMaxChannels) {
+            return false;
+        }
+    }
     for (const auto& fixture : kEac3Fixtures) {
         if (fixture.rms.size() > kMaxChannels) {
             return false;
@@ -507,7 +555,7 @@ consteval bool every_fixture_fits() {
 }
 
 static_assert(every_fixture_fits(),
-              "an E-AC-3 fixture has more channels than the probe's PCM block holds - raise "
+              "a fixture has more channels than the probe's PCM block holds - raise "
               "kMaxChannels");
 
 // The profile's one behavioural difference, checked rather than asserted in a
@@ -550,9 +598,11 @@ int ac3probe::run() {
 
     bind_pcm_spans();
 
-    if (decode_ac3() != 0) {
-        std::printf("result=fail\n");
-        return 1;
+    for (const auto& fixture : kAc3Fixtures) {
+        if (decode_ac3(fixture.codec, fixture.stream, fixture.rms) != 0) {
+            std::printf("result=fail\n");
+            return 1;
+        }
     }
     for (const auto& fixture : kEac3Fixtures) {
         if (decode_eac3(fixture.codec, fixture.stream, fixture.rms,
