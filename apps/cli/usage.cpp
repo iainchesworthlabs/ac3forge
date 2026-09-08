@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 59> kOptionTokens{{
+constexpr std::array<OptionToken, 60> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -86,6 +86,8 @@ constexpr std::array<OptionToken, 59> kOptionTokens{{
     {"layout=", "record/live: the encoded layout (default stereo)"},
     {"codec=", "record/live: ac3 or eac3, instead of deriving it from layout="},
     {"watchdog=", "record/live: capture-silence timeout in seconds (0 disables)"},
+    {"bed-only", "decode: render an Atmos stream's 5.1 bed and skip its objects (§6 JOC "
+                 "reconstruction needs ~233 KB of state; the bed does not)"},
     {"objects=", "live mode=atmos: the object-slot budget, 1..15"},
     {"positions=", "live mode=atmos: osc:[<bind>:]<port> - a real live object-position source"},
     {"downmix=", "live: off refuses an AC-3-only receiver instead of capping to 5.1 - "
@@ -525,6 +527,13 @@ void print_option_blocks(std::uint32_t mask) {
                      "part of mode= either way: unlike the two transform switches, these are "
                      "different answers rather than the same one at different speed, and the "
                      "default is already the domain the clause states");
+        fmt::println("  bed-only          decode: render an Atmos stream's 5.1 bed and skip §6 "
+                     "JOC object reconstruction. The bed is bit-identical either way - this "
+                     "is a MEMORY option, not a quality one: reconstruction needs an "
+                     "oba::joc::ReconstructionState (147,504 bytes in one block) plus a QMF "
+                     "pair, ~233 KB together, which does not fit on every target the library "
+                     "builds for (see docs/platforms/esp32.md). Harmless on a stream with no "
+                     "object layer");
         fmt::println("  numblkscod=<N>    atmos* encode: 0-3 (default 3), section E2.3.1.4's short "
                      "syncframes of 1/2/3/6 blocks (5.3/10.7/16/32 ms). The object layer scales "
                      "with the frame: the OAMD update's ramp covers exactly one shortened frame "

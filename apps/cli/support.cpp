@@ -463,6 +463,10 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.sign_objects = true;
             continue;
         }
+        if (token == "bed-only") {
+            out.bed_only = true;
+            continue;
+        }
         if (token == "verify-objects") {
             out.verify_objects = true;
             continue;

@@ -359,7 +359,8 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                              .fast_mdct = meta.fast_mdct,
                              .joc_domain = meta.joc_domain,
                              .eac3_trace = census_wanted ? &census_trace : nullptr,
-                             .programme = programme}};
+                             .programme = programme,
+                             .skip_object_reconstruction = meta.bed_only}};
     // The decoded programme goes out through the sink as units decode - the
     // sink's per-slot carry absorbs the one place slots advance unevenly
     // (the transient-pre-noise flush below).
