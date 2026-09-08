@@ -116,7 +116,7 @@ class AbrController {
     // caller runs the same budget-fitting search CBR does and reports what it
     // found through seed() below.
     [[nodiscard]] std::optional<int> offset() const {
-        if (!operating_) {
+        if (!operating_.has_value()) {
             return std::nullopt;
         }
         return std::clamp(static_cast<int>(std::lround(*operating_)), 0, kMaxComposite);
@@ -130,7 +130,7 @@ class AbrController {
     // the offset the search lands on is the largest that FITS and its cost
     // can sit well under the budget it fitted into.
     void seed(int composite) {
-        if (!operating_) {
+        if (!operating_.has_value()) {
             operating_ = static_cast<double>(composite);
         }
     }
@@ -164,7 +164,7 @@ class AbrController {
     // clipped frame that overspent still pulls the offset down.
     void commit(std::uint32_t written, bool clipped) {
         reservoir_.commit(written);
-        if (!operating_) {
+        if (!operating_.has_value()) {
             return;
         }
         const auto target = static_cast<double>(reservoir_.target_words());
@@ -174,7 +174,7 @@ class AbrController {
         }
         // Assign the optional rather than through it: `*opt = v` is only
         // defined while the optional is engaged, so it silently depends on
-        // the `if (!operating_)` guard above staying where it is.
+        // the `if (!operating_.has_value())` guard above staying where it is.
         *operating_ += kGain * error;
         operating_ = std::clamp(*operating_, 0.0, static_cast<double>(kMaxComposite));
     }
