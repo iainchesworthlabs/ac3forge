@@ -12,11 +12,14 @@ runnable the same way locally:
     CONTRIBUTING.md, SECURITY.md and CHANGELOG.md resolves to a file or a
     directory. Anchors are stripped, http(s)/mailto targets are skipped, and
     links inside fenced code blocks and inline code spans are ignored (they
-    are examples of the syntax, not links). ROADMAP.md is held to the opposite
-    rule: it is read both on GitHub and as a snippet included into
-    docs/roadmap.md, so a relative link there can only resolve from one of the
-    two places. Every link in it must be an absolute http(s) URL or a bare
-    #anchor (docs/roadmap.md states that rule), and anything else fails.
+    are examples of the syntax, not links). A link whose text wraps across a
+    line break is still one link, so links are matched over a whole paragraph
+    rather than a line at a time, and reported against the line each one opens
+    on. ROADMAP.md is held to the opposite rule: it is read both on GitHub and
+    as a snippet included into docs/roadmap.md, so a relative link there can
+    only resolve from one of the two places. Every link in it must be an
+    absolute http(s) URL or a bare #anchor (docs/roadmap.md states that rule),
+    and anything else fails.
 
 (b) Every path literal starting docs/, apps/, src/ or tools/ inside
     .github/workflows/*.yml, cmake/**/*.cmake, CMakePresets.json and
@@ -84,7 +87,12 @@ FOREIGN_PATHS = {
     "src/main/assets/signing.key": "relative to the Android app module, not the repo root",
 }
 
-INLINE_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+# Link text runs to the next ']' but may not contain a '[', which is CommonMark's
+# rule that a ']' closes the most recent unclosed '[' and not some earlier one.
+# It matters because the text may now span lines: without it the '[' of a prose
+# interval like [0, 32) would pair with the ']' of a real link further down the
+# paragraph, and the link would be reported against the interval's line.
+INLINE_LINK = re.compile(r"\[[^\[\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 REFERENCE_LINK = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)")
 CODE_SPAN = re.compile(r"`[^`\n]*`")
 FENCE = re.compile(r"^ {0,3}(```|~~~)")
@@ -159,23 +167,69 @@ def literal_files(root: Path) -> list[Path]:
     return sorted(p for p in set(files) if not p.name.startswith("test_"))
 
 
-def link_targets(lines: list[str]) -> list[tuple[int, str]]:
-    """The (line, target) pairs of every link outside fenced code and code spans."""
-    targets: list[tuple[int, str]] = []
+def scrubbed_lines(lines: list[str]) -> list[str]:
+    """Those lines with fenced code blocks and inline code spans blanked out.
+
+    Blanked rather than dropped: every line keeps its position, and a code span
+    is replaced by as many spaces as it occupied, so an offset into the joined
+    text still names the line and column it came from.
+    """
+    scrubbed: list[str] = []
     in_fence = False
-    for number, line in enumerate(lines, start=1):
+    for line in lines:
         if FENCE.match(line):
             in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
+            scrubbed.append("")
+        elif in_fence:
+            scrubbed.append("")
+        else:
+            scrubbed.append(CODE_SPAN.sub(lambda span: " " * len(span.group()), line))
+    return scrubbed
+
+
+def paragraphs(lines: list[str]) -> list[tuple[int, str]]:
+    """The blank-line-separated blocks of those lines, each with the line it starts on."""
+    blocks: list[tuple[int, str]] = []
+    start = 0
+    block: list[str] = []
+    for number, line in enumerate(lines, start=1):
+        if line.strip():
+            if not block:
+                start = number
+            block.append(line)
+        elif block:
+            blocks.append((start, "\n".join(block)))
+            block = []
+    if block:
+        blocks.append((start, "\n".join(block)))
+    return blocks
+
+
+def link_targets(lines: list[str]) -> list[tuple[int, str]]:
+    """The (line, target) pairs of every link outside fenced code and code spans.
+
+    Inline links are matched over a whole paragraph, not a line at a time,
+    because Markdown lets the text of one wrap across a line break and the
+    result is still a single link. A blank line ends a paragraph and so cannot
+    occur inside a link, which is what bounds the span any one match may cover.
+    Pairs come back in source order, each numbered by the line its link opens
+    on rather than the line its target sits on.
+    """
+    scrubbed = scrubbed_lines(lines)
+    found: list[tuple[int, int, str]] = []
+    for number, line in enumerate(scrubbed, start=1):
         reference = REFERENCE_LINK.match(line)
         if reference:
-            targets.append((number, reference.group(1)))
-            continue
-        for match in INLINE_LINK.finditer(CODE_SPAN.sub("", line)):
-            targets.append((number, match.group(1)))
-    return targets
+            found.append((number, reference.start(1), reference.group(1)))
+            scrubbed[number - 1] = ""  # a definition, now taken, and not paragraph text
+    for start, block in paragraphs(scrubbed):
+        for match in INLINE_LINK.finditer(block):
+            opens = match.start()
+            line_break = block.rfind("\n", 0, opens)
+            found.append(
+                (start + block.count("\n", 0, opens), opens - line_break - 1, match.group(1))
+            )
+    return [(number, target) for number, _, target in sorted(found)]
 
 
 def check_absolute_links(path: Path, root: Path, reason: str, report: Report) -> None:
