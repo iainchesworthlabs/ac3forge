@@ -150,6 +150,13 @@ void fill_signal(std::array<std::array<float, ac3::kSamplesPerFrame>, kChannels>
 // the host, where the question is "did anything change at all", not "can an
 // adversary find a collision". 64-bit, so an accidental collision across a
 // change to the bitstream is not a thing that happens.
+// Printed as two 32-bit halves, never with %llu. newlib-nano's printf has no
+// long long conversion unless -u _printf_ll is linked in - the same limitation
+// fixture.hpp records for _printf_float, and with the same answer: a probe
+// whose subject is footprint should not drag in a wider printf to report a
+// number. A %llu here does not fail gracefully either; it double-faults the
+// mps2-an385 after the encode has already succeeded, which is a confusing place
+// to look for an encoder bug.
 constexpr std::uint64_t kFnvOffset = 1469598103934665603ULL;
 constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 
@@ -160,8 +167,11 @@ void hash_bytes(std::uint64_t& h, std::span<const std::byte> data) {
     }
 }
 
-void fail(const char* what, unsigned long long got, unsigned long long expected) {
-    std::printf("check=%s status=fail got=%llu expected=%llu\n", what, got, expected);
+void fail(const char* what, std::uint64_t got, std::uint64_t expected) {
+    std::printf("check=%s status=fail got=%08lx%08lx expected=%08lx%08lx\n", what,
+                static_cast<unsigned long>(got >> 32), static_cast<unsigned long>(got & 0xffffffffU),
+                static_cast<unsigned long>(expected >> 32),
+                static_cast<unsigned long>(expected & 0xffffffffU));
     g_failed = true;
 }
 
@@ -175,10 +185,11 @@ struct EncodeResult {
 void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes,
             std::uint64_t expected_hash) {
     const std::size_t steady_frames = ac3probe::kEncodeFrames - 1;
-    std::printf("%s.bytes=%lu %s.hash=%llu %s.first_frame_allocs=%lu "
+    std::printf("%s.bytes=%lu %s.hash=%08lx%08lx %s.first_frame_allocs=%lu "
                 "%s.steady_allocs_per_frame=%lu\n",
                 codec, static_cast<unsigned long>(r.bytes), codec,
-                static_cast<unsigned long long>(r.hash), codec,
+                static_cast<unsigned long>(r.hash >> 32),
+                static_cast<unsigned long>(r.hash & 0xffffffffU), codec,
                 static_cast<unsigned long>(r.first_frame_allocs), codec,
                 static_cast<unsigned long>(steady_frames > 0 ? r.steady_allocs / steady_frames
                                                              : 0));
