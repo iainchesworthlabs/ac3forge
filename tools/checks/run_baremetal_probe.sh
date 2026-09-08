@@ -119,7 +119,15 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     # of its own yet - it has no linked-in fixture, so its image is a different
     # kind of number. What it does report, and what is gated below, is the peak
     # and the retained bytes.
-    : "${AC3FORGE_MAX_HEAP_BYTES:=250000}"
+    #
+    # PLAIN ASSIGNMENT, not `: "${VAR:=250000}"`. This read as the latter until
+    # tools/checks/run_esp32s3_probe.sh grew the same block and the pattern was
+    # looked at twice: the ceilings section above has ALREADY set this variable
+    # to 300,000, so a := here did nothing at all and every encode run has been
+    # gating against the decode ceiling. Nothing failed as a result - the
+    # measured peak is 218,560 - but the number in this file was not the number
+    # being enforced, which is the part worth not repeating.
+    AC3FORGE_MAX_HEAP_BYTES=${AC3FORGE_MAX_HEAP_BYTES_ENCODE:-250000}
 fi
 
 cmake --preset "$PRESET"

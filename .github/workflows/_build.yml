@@ -3545,7 +3545,7 @@ jobs:
   # real portability faults that no LP64 leg could have (see the profile's own
   # commit). A leg that only ran before releases would have found them then.
   build-esp32s3:
-    name: Minimum-footprint decoder (ESP32-S3, QEMU)
+    name: Minimum-footprint codec (ESP32-S3, QEMU)
     # Leg 6 of check-runners' Linux fan-out. The sibling of build-footprint
     # below: same profile, same probe, same fixtures, a different bare-metal
     # target - an Xtensa LX7 with a single-precision FPU, where the arm-none-eabi
@@ -3559,11 +3559,12 @@ jobs:
     # than apt-ing a cross toolchain onto a bare runner.
     #
     # WHAT THIS LEG DOES AND DOES NOT PROVE. It proves the profile builds for
-    # Xtensa, links, and decodes both fixtures to the right levels inside the
-    # ESP32-S3's internal SRAM. It proves NOTHING about speed: QEMU is not
-    # cycle-accurate and reports a CPU clock that disagrees with its own boot
-    # log. The probe's us_per_frame lines are printed here for shape, and the
-    # real-time number has to come from hardware - see docs/platforms/esp32.md.
+    # Xtensa, links, decodes every fixture to the right levels and encodes to
+    # the right bytes, all inside the ESP32-S3's internal SRAM. It proves
+    # NOTHING about speed: QEMU is not cycle-accurate and reports a CPU clock
+    # that disagrees with its own boot log. The probe's us_per_frame lines are
+    # printed here for shape, and the real-time number has to come from
+    # hardware - see docs/platforms/esp32.md.
     needs: check-runners
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}
     container: espressif/idf:v6.1
@@ -3612,6 +3613,30 @@ jobs:
           . "$IDF_PATH/export.sh"
           ./tools/checks/run_esp32s3_probe.sh
 
+      # The other direction of the same profile, on the same target - the
+      # sibling of build-footprint's ENCODE step, and here for the same reason.
+      #
+      # It is a second full build, not a second fixture: the two profiles are
+      # mutually exclusive because no two of decode / AC-3 encode / E-AC-3
+      # encode fit in this part's internal SRAM at once. The runner notices the
+      # direction changed and runs `idf.py fullclean` first, so this step costs
+      # a cold build - which is the price of the profiles being exclusive, and
+      # cheaper than finding out on hardware that they are.
+      #
+      # This is also the leg that exercises the RELOCATED component the way an
+      # integrator reaches it: the project points EXTRA_COMPONENT_DIRS at
+      # esp-idf/ and selects a profile through AC3FORGE_ESP_PROFILE, which is
+      # exactly the two lines a consuming project writes. If the published shape
+      # breaks, this goes red rather than the break waiting for someone to try
+      # it.
+      - name: Build and run the ENCODE probe under QEMU
+        env:
+          AC3FORGE_ESP32S3_SUMMARY: apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          ./tools/checks/run_esp32s3_probe.sh --encoder
+
       - name: Upload the ESP32-S3 map and console output
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -3620,6 +3645,7 @@ jobs:
           path: |
             apps/baremetal/platform/esp32s3/build/ac3probe_esp32s3.map
             apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
+            apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.

@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# Build and run the minimum-footprint decoder probe (roadmap PF7) for ESP32-S3,
-# under QEMU, then gate on what it reports. The sibling of
-# run_baremetal_probe.sh, which does the same for arm-none-eabi.
+# Build and run a minimum-footprint probe (roadmap PF7) for ESP32-S3, under
+# QEMU, then gate on what it reports. The sibling of run_baremetal_probe.sh,
+# which does the same for arm-none-eabi, and it takes the same --decoder /
+# --encoder switch for the same reason.
 #
 #   . $IDF_PATH/export.sh
-#   tools/checks/run_esp32s3_probe.sh
+#   tools/checks/run_esp32s3_probe.sh              # decode (the default)
+#   tools/checks/run_esp32s3_probe.sh --encoder    # encode
 #
 # WHAT THIS GATES, and what it deliberately does not:
 #
-#   - The probe's own verdict. Every fixture in apps/baremetal/fixture.hpp
-#     decoded, every channel's level checked, result=pass. A failure here
-#     means the decode is wrong on Xtensa.
+#   - The probe's own verdict. Decoding: every fixture in
+#     apps/baremetal/fixture.hpp decoded, every channel's level checked.
+#     Encoding: six frames of synthesised 5.1 through each of the two encoders,
+#     byte count and FNV-1a hash checked against apps/baremetal/encode_fixture.hpp.
+#     Either way, result=pass - a failure means the codec is wrong on Xtensa.
 #   - Internal SRAM. The ESP32-S3 has 341,760 bytes of DIRAM and this profile
 #     has to fit its static data AND its peak heap inside it. That is the
 #     constraint the port actually ran into - it failed with
@@ -26,6 +30,19 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROJECT="$REPO/apps/baremetal/platform/esp32s3"
+
+# Which direction. The two profiles are mutually exclusive - measured on this
+# part, no two of decode / AC-3 encode / E-AC-3 encode fit in internal SRAM at
+# once - so this selects a build rather than adding a fixture to one.
+DIRECTION=decoder
+for arg in "$@"; do
+    case "$arg" in
+        --encoder) DIRECTION=encoder ;;
+        --decoder) DIRECTION=decoder ;;
+        *) echo "usage: run_esp32s3_probe.sh [--encoder|--decoder]" >&2; exit 2 ;;
+    esac
+done
+
 cd "$PROJECT"
 
 if [[ -z "${IDF_PATH:-}" ]]; then
@@ -86,16 +103,84 @@ fi
 # The decode runs on the main task, whose stack sdkconfig.defaults sets to
 # 32,768 bytes after an overflow that surfaced as a LoadProhibited panic on the
 # OTHER core - i.e. the failure mode here is not a clean error, it is corruption
-# somewhere unrelated. Measured high-water leaves 14,000 free, so the decode uses
-# about 18,800. This floor is what turns "we picked 32 KB and hoped" into a
-# number that has to keep holding.
+# somewhere unrelated. Measured high-water leaves 11,280 free in the decode
+# direction and 23,040 in the encode one, so the decode uses about 21,500 of the
+# 32,768. This floor is what turns "we picked 32 KB and hoped" into a number
+# that has to keep holding - and the decode margin is the one to watch: it was
+# 14,000 before object reconstruction ran on this target.
 : "${AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES:=8192}"
+
+# --- and the encode direction's own, where they differ ---------------------
+# Only the ones that move. Retained bytes and the stack floor mean the same
+# thing in both directions and are left alone.
+#
+# PLAIN ASSIGNMENT, not `: "${VAR:=default}"`. The block above has already set
+# every one of these, so a := here would be a no-op and the encode direction
+# would silently run under the decode ceilings - which are the wrong ones in
+# both directions, being lower on heap and higher on churn. Each still takes an
+# override, through its own _ENCODE variable: one knob per direction, rather
+# than one knob whose meaning depends on an argument.
+#
+# run_baremetal_probe.sh had exactly this bug and it is fixed in the same
+# commit as this file: its encode heap ceiling of 250,000 never applied,
+# because line 65 had already set the variable to 300,000.
+if [[ "$DIRECTION" == "encoder" ]]; then
+    # 110,900 measured, against the decode image's 134,676 - the encode half is
+    # SMALLER in internal SRAM despite eac3_frame.cpp being the single biggest
+    # source in the profile at 5,715 lines. Most of that file is flash-resident
+    # code; what sits in DIRAM is the decode side's tables and its per-channel
+    # state. 125,000 leaves the same ~11% the other ceilings here leave.
+    AC3FORGE_ESP32S3_MAX_DIRAM_BYTES=${AC3FORGE_ESP32S3_MAX_DIRAM_BYTES_ENCODE:-125000}
+    # 218,560 measured on this target - AC-3 alone reaches 162,602 and E-AC-3
+    # takes it the rest of the way. Identical to the arm-none-eabi leg's figure
+    # to the byte, which is what a deterministic input through the same
+    # arithmetic should give.
+    #
+    # The same regioning caveat applies as above: this part's heap is not one
+    # pool. Here it happens to be comfortable - 241,664 bytes in the largest
+    # block against a 218,560 peak - but that is a fact about this profile, not
+    # a property of the part, and the decode direction had to be reshaped
+    # precisely because it was not true there.
+    AC3FORGE_ESP32S3_MAX_HEAP_BYTES=${AC3FORGE_ESP32S3_MAX_HEAP_BYTES_ENCODE:-240000}
+    # 260 rather than 100, for a reason that is in the API rather than in a
+    # regression: both encoders return std::vector<std::byte> from
+    # encode_frame, with no encode_frame_into to match the decoder's
+    # decode_frame_into, so an allocation per frame is unavoidable from
+    # outside. E-AC-3 measures 249 per frame and AC-3 78. Holding this to the
+    # decoder's number would gate a difference nothing in this profile can
+    # currently close. run_baremetal_probe.sh carries the same ceiling.
+    #
+    # The ecpl ceiling collapses onto it because there is no enhanced-coupling
+    # FIXTURE in this direction - the encode probe runs one AC-3 and one E-AC-3
+    # encode, neither named *ecpl*, so the branch that selects it below is dead
+    # here. Kept equal rather than left at 140, so that if an ecpl encode
+    # fixture is ever added it starts under a ceiling that means something.
+    AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME=${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ENCODE:-260}
+    AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ECPL=$AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME
+fi
 
 OUTPUT="$(mktemp)"
 trap 'rm -f "$OUTPUT"' EXIT
 
+# fullclean between directions, not for tidiness: AC3FORGE_ESP_PROFILE reaches
+# the library as CMake cache variables (AC3FORGE_MINIMAL_DECODER /
+# AC3FORGE_MINIMAL_ENCODER, FORCEd by esp-idf/ac3forge/CMakeLists.txt), and a
+# warm build directory has already resolved them. Reconfiguring over the top
+# silently keeps the previous direction's archive - which links, runs, and
+# reports the wrong profile's numbers under this one's ceilings.
+#
+# Only when the direction has actually changed: a rebuild of the same direction
+# is the common case in CI and on a laptop, and a fullclean every time would
+# cost several minutes to prove nothing.
+STAMP="build/.ac3forge-direction"
+if [[ -d build && "$(cat "$STAMP" 2>/dev/null || echo)" != "$DIRECTION" ]]; then
+    echo "note: build directory holds a different profile - cleaning" >&2
+    idf.py fullclean
+fi
+
 idf.py set-target esp32s3
-idf.py build
+idf.py -DAC3FORGE_ESP_PROFILE="$DIRECTION" build
+mkdir -p build && printf '%s' "$DIRECTION" > "$STAMP"
 
 echo
 echo "== internal SRAM =="
@@ -116,7 +201,7 @@ if [[ "$DIRAM" == "0" ]]; then
 else
     echo "esp32s3.diram_bytes=$DIRAM" | tee -a "$OUTPUT"
     if (( DIRAM > AC3FORGE_ESP32S3_MAX_DIRAM_BYTES )); then
-        echo "::error title=ESP32-S3 footprint regression::the image uses $DIRAM bytes of internal SRAM, ceiling is $AC3FORGE_ESP32S3_MAX_DIRAM_BYTES - every byte here is one the decode cannot allocate (see docs/platforms/esp32.md)" >&2
+        echo "::error title=ESP32-S3 footprint regression::the image uses $DIRAM bytes of internal SRAM, ceiling is $AC3FORGE_ESP32S3_MAX_DIRAM_BYTES - every byte here is one the ${DIRECTION} cannot allocate (see docs/platforms/esp32.md)" >&2
         exit 1
     fi
 fi
@@ -148,7 +233,7 @@ if [[ -n "${AC3FORGE_ESP32S3_SUMMARY:-}" ]]; then
 fi
 
 if ! grep -q '^result=pass' "$OUTPUT"; then
-    echo "::error title=ESP32-S3 decoder probe failed::the probe did not report result=pass" >&2
+    echo "::error title=ESP32-S3 ${DIRECTION} probe failed::the probe did not report result=pass" >&2
     grep -E 'result=|reason=|Guru Meditation|assert failed' "$OUTPUT" >&2 || true
     exit 1
 fi
@@ -225,8 +310,8 @@ if [[ -z "$stack_free" ]]; then
 fi
 echo "main task stack free at high-water: $stack_free bytes (floor $AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES)"
 if (( stack_free < AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES )); then
-    echo "::error title=ESP32-S3 stack headroom::the decode left only $stack_free bytes of main-task stack, floor is $AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES - raise CONFIG_ESP_MAIN_TASK_STACK_SIZE rather than lowering this" >&2
+    echo "::error title=ESP32-S3 stack headroom::the ${DIRECTION} left only $stack_free bytes of main-task stack, floor is $AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES - raise CONFIG_ESP_MAIN_TASK_STACK_SIZE rather than lowering this" >&2
     exit 1
 fi
 
-echo "ESP32-S3 decoder probe: pass"
+echo "ESP32-S3 ${DIRECTION} probe: pass"
