@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fmt/base.h>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <random>
@@ -670,6 +671,16 @@ int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
     return std::filesystem::temp_directory_path() / ("ac3play_" + std::to_string(unique) + ".ac3");
 }
 
+// Exclusively creates an empty file at a make_temp_ac3_path() result before run_transcode below
+// ever opens it. run_transcode writes through the same output-sink code ac3cli's own
+// caller-chosen 'transcode' output path uses, so that path can't itself refuse to replace an
+// existing file; this closes the shared-temp-dir symlink/TOCTOU race up front instead, the same
+// pattern examples/encode_iab.cpp's claim_temp_path uses for the same reason.
+[[nodiscard]] bool claim_temp_path(const std::filesystem::path& path) {
+    std::ofstream claim(path, std::ios::binary | std::ios::noreplace);
+    return static_cast<bool>(claim);
+}
+
 // Roadmap UX9's transcode-to-passthrough leg: DC9's transcode produces an
 // AC-3 file the sink already confirmed it accepts, then that file plays
 // exactly the way a plain AC-3 source file already does - the two commands
@@ -682,6 +693,10 @@ int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
 int play_via_ac3_transcode(std::string_view in_path, const std::string& device_id,
                            std::string_view device_name, const Options& meta) {
     const auto temp_path = make_temp_ac3_path();
+    if (!claim_temp_path(temp_path)) {
+        fmt::println(stderr, "error: could not claim temp path {}", temp_path.string());
+        return kExitRuntime;
+    }
     const auto temp_path_str = temp_path.string();
     const auto transcoded = run_transcode(in_path, temp_path_str, 448, "", meta);
     if (transcoded != 0) {
