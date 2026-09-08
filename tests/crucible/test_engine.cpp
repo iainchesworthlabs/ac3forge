@@ -42,6 +42,24 @@
 // on macOS, where the Core Audio process tap mutes the application it taps,
 // and why it changes nothing audible on Windows or Linux, where a tap is a
 // pure capture.
+//
+// Every case here carries [concurrency], so the ThreadSanitizer leg reaches
+// them through `ctest -L concurrency` (tests/CMakeLists.txt's note on the
+// label). The engine is the shape that label is for: three threads - the
+// frame loop, the session monitor and the probe - sharing two mutexes, two
+// atomics and an OutputStage, none of which any other gate can see into. All
+// three are this project's own code. The one platform thread the engine
+// would start is the device watcher's, and on the Linux legs that is the
+// ALSA backend, which refuses start() with kNoBackend and starts nothing -
+// so no uninstrumented library runs here and tsan.supp stays as empty as its
+// own header asks it to be.
+//
+// test_engine_start.cpp is deliberately NOT on that leg, though it drives
+// the same engine: its cases assert that frames flow within two seconds,
+// which is an upper bound on how long the engine may take. TSan would break
+// that, and widening it to survive would delete the thing it checks. The
+// deadlines here are the other kind - a lower bound on stop(), and polls
+// that a slow run only reaches sooner than their limit.
 
 using namespace ac3::crucible;
 using namespace ac3::crucible::testing;
@@ -54,8 +72,14 @@ using Clock = std::chrono::steady_clock;
 // loop on another thread, so a case waits for what it asked for rather than
 // sleeping a guessed interval; the deadline only exists so a regression
 // fails the case instead of hanging the suite.
+//
+// Thirty seconds, not the five a passing run needs. The poll returns the
+// moment the predicate holds, so a long deadline costs a passing case
+// nothing and only lengthens the wait before a genuine failure is reported.
+// What it buys is the ThreadSanitizer leg below, where shadow memory makes
+// every frame several times slower on a runner shared with other jobs.
 template <typename Predicate>
-bool wait_for(Predicate predicate, std::chrono::milliseconds limit = std::chrono::milliseconds(5000)) {
+bool wait_for(Predicate predicate, std::chrono::milliseconds limit = std::chrono::milliseconds(30000)) {
     const auto deadline = Clock::now() + limit;
     while (Clock::now() < deadline) {
         if (predicate()) {
@@ -173,7 +197,7 @@ void two_playing(Rig& rig) {
 }
 }  // namespace
 
-TEST_CASE("crucible engine: start brings the output up on the endpoint the policy chose", "[crucible][engine]") {
+TEST_CASE("crucible engine: start brings the output up on the endpoint the policy chose", "[crucible][engine][concurrency]") {
     Rig rig;
     Engine engine(rig.config());
 
@@ -208,7 +232,7 @@ TEST_CASE("crucible engine: start brings the output up on the endpoint the polic
     CHECK(sink->stopped);
 }
 
-TEST_CASE("crucible engine: a second start is refused and stop is idempotent", "[crucible][engine]") {
+TEST_CASE("crucible engine: a second start is refused and stop is idempotent", "[crucible][engine][concurrency]") {
     Rig rig;
     Engine engine(rig.config());
 
@@ -222,7 +246,7 @@ TEST_CASE("crucible engine: a second start is refused and stop is idempotent", "
     CHECK_FALSE(engine.status().running);
 }
 
-TEST_CASE("crucible engine: every listed application with a session gets a tap", "[crucible][engine]") {
+TEST_CASE("crucible engine: every listed application with a session gets a tap", "[crucible][engine][concurrency]") {
     Rig rig;
     rig.sessions->set_apps({playing(1234U, "chrome"), playing(5678U, "vlc")});
     Engine engine(rig.config());
@@ -254,7 +278,7 @@ TEST_CASE("crucible engine: every listed application with a session gets a tap",
     CHECK(tapped == std::vector<std::uint32_t>{1234U, 5678U});
 }
 
-TEST_CASE("crucible engine: stop waits for an enumeration still in flight", "[crucible][engine]") {
+TEST_CASE("crucible engine: stop waits for an enumeration still in flight", "[crucible][engine][concurrency]") {
     Rig rig;
     auto& devices = *rig.devices;
     Engine engine(rig.config());
@@ -309,7 +333,7 @@ TEST_CASE("crucible engine: stop waits for an enumeration still in flight", "[cr
 
 
 TEST_CASE("crucible engine: no application is tapped while the output stage has no endpoint",
-          "[crucible][engine]") {
+          "[crucible][engine][concurrency]") {
     // A machine with no render endpoint at all: the policy answers kNone, so
     // there is nowhere for tapped audio to go.
     Rig rig;
@@ -341,7 +365,7 @@ TEST_CASE("crucible engine: no application is tapped while the output stage has 
 }
 
 TEST_CASE("crucible engine: taps open with an endpoint and are released when it goes",
-          "[crucible][engine]") {
+          "[crucible][engine][concurrency]") {
     // One plain stereo endpoint, which is also the default: the policy decodes
     // to Lo/Ro on it.
     Rig rig;
@@ -378,7 +402,7 @@ TEST_CASE("crucible engine: taps open with an endpoint and are released when it 
 }
 
 TEST_CASE("crucible engine: a sink that refuses to start releases the taps too",
-          "[crucible][engine]") {
+          "[crucible][engine][concurrency]") {
     // The other way the output stage ends up with no endpoint: the policy chose
     // one and the sink would not open on it. The stage reports kNone for that as
     // well, and the rule is the same - a tap held open then would mute the
