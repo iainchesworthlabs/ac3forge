@@ -680,6 +680,28 @@ that call is rate-limited or offline). Release tagging happens after the
 fact, on an existing `main` commit, so the badge is a join against the
 commit SHA already in quality-history, not a separate data source.
 
+## The float32 decode has its own series
+
+`_float32`-suffixed checks are the same gate run against a decoder built with
+`-DAC3FORGE_DECODE_SCALAR=float` — the arithmetic the minimum-footprint profile
+uses, and the arithmetic every fixture on both bare-metal legs is decoded
+through. Until that option existed the float32 path could not be built into
+anything with a CLI, so nothing here had ever measured it: `docs/building.md`
+carried a single hand-taken SNR figure and nothing re-derived it.
+
+Measured against the double build, channel for channel, it comes out **the
+same to the resolution this gate reports** — 18.47, 45.63, 51.47, 54.67, 88.21,
+35.89, 36.45 dB and so on, identically. That is not the two decodes being
+bit-identical; they differ at about 139 dB
+(`tools/checks/check_decode_scalar_snr.py`). It is that this gate's SNR is
+dominated by *coding* noise 80 dB above that difference, so float32 contributes
+nothing measurable to the error budget the quality gate actually measures.
+
+The chart shows one line per codec (`check === codec`), so these sit in the
+history data rather than on it — the point of trending them is that a future
+change to the float32 path shows up as a divergence from the double series,
+which is a comparison no single figure in a document can make.
+
 ## Where the data lives
 
 Results are appended to a dedicated `quality-history` branch (`develop.jsonl`

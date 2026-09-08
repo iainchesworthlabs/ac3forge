@@ -30,6 +30,7 @@
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/transient_prenoise.hpp"
 #include "ac3/emdf/emdf.hpp"
+#include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profile.hpp"
 #include "scalar_inverse.hpp"
 #include "ac3/internal/profiling.hpp"

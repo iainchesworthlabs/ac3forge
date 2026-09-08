@@ -149,6 +149,24 @@ if [ -n "$TRANSFORM_MODE" ]; then
     LABEL_SUFFIX="_$TRANSFORM_MODE"
 fi
 
+# The same idea for a difference the CLI cannot be asked for at RUN time.
+# AC3FORGE_DECODE_SCALAR=float is a build option - it decides whether the
+# decoder carries its coefficients as float or double
+# (src/forge/src/internal/scalar/) - so a float32 run means a second BINARY
+# rather than a second token, and the caller passes that binary as $1 and
+# names it here.
+#
+# Worth having as its own run rather than folded into the one above: this gate
+# is what says a decode is RIGHT, against FFmpeg and against the source, and
+# until now it had only ever been pointed at a double build. Every bare-metal
+# fixture is decoded float32, and tools/checks/check_decode_scalar_snr.py only
+# says the two builds AGREE - agreement is not correctness, and this is the
+# half that checks the other thing.
+EXTRA_LABEL_SUFFIX="${EXTRA_LABEL_SUFFIX:-}"
+if [ -n "$EXTRA_LABEL_SUFFIX" ]; then
+    LABEL_SUFFIX="${LABEL_SUFFIX}${EXTRA_LABEL_SUFFIX}"
+fi
+
 # Every ac3cli invocation goes through here so the mode token is applied in
 # exactly one place. The length test rather than a bare "${CLI_MODE_ARGS[@]}"
 # guards the macOS bash 3.2 `set -u` behaviour where expanding a zero-element

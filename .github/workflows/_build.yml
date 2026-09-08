@@ -1355,6 +1355,58 @@ jobs:
           RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
         run: bash tools/checks/verify_gold_reference.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
 
+      # A third run of the same gate, against a decoder built float32 rather
+      # than double (roadmap PF7). Unlike mode=reference above this cannot be a
+      # token: AC3FORGE_DECODE_SCALAR is a BUILD option
+      # (src/forge/src/internal/scalar/), so it needs its own binary.
+      #
+      # Why it is worth a second build. Every fixture both bare-metal legs
+      # decode goes through the float32 path, and until this existed nothing
+      # measured whether that path is CORRECT - only
+      # tools/checks/check_decode_scalar_snr.py, which says the two builds agree
+      # with each other. Agreement is not correctness. This is the gate that
+      # compares a decode against FFmpeg's and against the source, and it had
+      # only ever been pointed at a double build.
+      #
+      # One leg, same as mode=reference and for the same reason: the scalar
+      # changes arithmetic inside the decoder, not anything platform-specific.
+      # ac3cli only - the rest of the tree is untouched by the option and
+      # building it again would buy nothing.
+      - name: Build a float32 decoder
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-${{ matrix.preset }} -B build/decode-scalar-float                 -DAC3FORGE_DECODE_SCALAR=float
+          cmake --build build/decode-scalar-float --target ac3cli
+
+      - name: Gold reference gate (float32 decode)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          # Suffixed so this run's per-check JSON lands beside the other two in
+          # the same artifact rather than overwriting them, and so the quality
+          # trend keys it as its own series - append_quality_history.py matches
+          # on (leg, codec, check), and the suffix is part of the check name.
+          EXTRA_LABEL_SUFFIX: _float32
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh build/decode-scalar-float/bin/ac3cli
+
+      # The float32 decode against the double one, which is the other question:
+      # the gate above says each is right, this says they are the same. Both
+      # binaries already exist at this point, and the streams the comparison
+      # needs are the ones the gate just encoded.
+      - name: Float32 vs double decode
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          build/config-${{ matrix.preset }}/bin/ac3cli encode               tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py               --double-cli build/config-${{ matrix.preset }}/bin/ac3cli               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
+
       # Handed off to the quality-trend job below, which runs once (not once
       # per leg) after every gold_reference leg has passed - see that job's
       # own header comment for why it is a separate job rather than each leg

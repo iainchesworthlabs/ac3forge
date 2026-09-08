@@ -22,26 +22,11 @@ inline constexpr bool kMinimalDecoderProfile = false;
 // backed by their tables. See that header for what they cost.
 inline constexpr bool kReferenceTransformAvailable = true;
 
-// The type the DECODER carries its coefficients, transform scratch and
-// overlap-add history in (roadmap PF7's float32 gap).
-//
-// double here, which is what every build outside the minimum-footprint
-// profile has always used and will keep using. Nothing about this build is
-// memory- or FPU-constrained, and the gold references, the quality trend and
-// the cross-platform bitstream hashes are all stated in terms of this path's
-// arithmetic
-//
-// This is a decode-side choice only. The encoder is not built in the
-// minimum-footprint profile at all - src/forge/minimal.cmake carries
-// encoder/coupling.cpp and encoder/eac3_tools.cpp solely for the dequantiser
-// and the spx/ecpl geometry the DECODER calls into - so the forward transforms
-// and everything that pins their output (tests/golden/bitstream-hashes.json's
-// fifteen SHA-256s) stay double on every build that has them.
-//
-// It is also not part of the API. DecodedFrame::channels and the decode_*_into
-// spans were already float, so the boundary the caller sees does not move; only
-// what happens behind it does.
-using decode_scalar_t = double;
+// decode_scalar_t used to live here. It is ac3/internal/decode_scalar.hpp
+// now, on its own CMake-selected seam: which profile this is and which
+// scalar the decoder carries are independent questions, and welding them
+// together meant the float32 path could only exist in a build with no CLI
+// to measure it against. See that header.
 
 
 }  // namespace ac3::internal

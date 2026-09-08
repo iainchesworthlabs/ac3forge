@@ -328,6 +328,36 @@ endif()
 target_include_directories(forge_objects PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profile/full")
 
+# The scalar the DECODER carries its coefficients in - the same
+# CMake-picks-a-directory mechanism again, on its own axis.
+#
+# Separate from the profile above on purpose. The two used to be one header, so
+# float32 decoding could only exist in a build that was also decode-only and had
+# no CLI - which is why docs/building.md's "~139 dB worst-channel SNR against
+# the double decode" is prose rather than a gate: it came from a hand-made build
+# no preset could reproduce. With the axes split, an ordinary build can be
+# configured float32 and diffed against the double one by
+# tools/checks/compare_wav.py, which is what turns that number into something CI
+# can hold.
+#
+# double is the default and stays it for every ordinary build: the gold
+# references, the quality trend and the cross-platform bitstream hashes are all
+# stated in terms of that arithmetic. forge_minimal below picks float32
+# unconditionally - see src/forge/minimal.cmake.
+set(AC3FORGE_DECODE_SCALAR "double" CACHE STRING
+    "Scalar the decoder carries coefficients in: double (default) or float")
+set_property(CACHE AC3FORGE_DECODE_SCALAR PROPERTY STRINGS double float)
+if(AC3FORGE_DECODE_SCALAR STREQUAL "float")
+    set(_ac3_scalar_dir "float32")
+elseif(AC3FORGE_DECODE_SCALAR STREQUAL "double")
+    set(_ac3_scalar_dir "float64")
+else()
+    message(FATAL_ERROR
+        "AC3FORGE_DECODE_SCALAR is 'double' or 'float' (got '${AC3FORGE_DECODE_SCALAR}')")
+endif()
+target_include_directories(forge_objects PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac3_scalar_dir}")
+
 # src/core/ on the include path so the CMake-selected
 # src/core/transform/<variant>/reference_transform.cpp can include the
 # declaration it implements the same way mdct.cpp includes it - quote-relative

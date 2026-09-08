@@ -90,6 +90,12 @@ target_include_directories(forge_minimal
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profile/minimal"
+        # float32 unconditionally, whatever AC3FORGE_DECODE_SCALAR says: this
+        # profile exists for targets whose FPU is single-precision at best, and
+        # the ESP32-S3 port did not fit in internal SRAM until the decode path
+        # moved. Not an option here, so a caller cannot configure the profile
+        # into a shape it was measured never to fit in.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/float32"
         # Tracy is never part of this profile - the disabled variant's macros
         # expand to nothing, which is what a footprint build wants.
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled"

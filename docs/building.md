@@ -379,8 +379,9 @@ of internal SRAM held for the life of the decoding task. The probe reports it as
 `heap.retained_bytes` and both runners gate it. It could not be measured until a fixture reached
 §E3.5, which none did before the enhanced-coupling stream was added.
 
-**A float32-only path — met for the decode path.** `src/internal/profile/{minimal,full}/`'s
-seam carries `decode_scalar_t`: `float` under this profile, `double` in every other build. Both
+**A float32-only path — met for the decode path.** `src/forge/src/internal/scalar/`'s
+seam carries `decode_scalar_t`: `float` under this profile, `double` by default in every other
+build, and selectable there with `-DAC3FORGE_DECODE_SCALAR=float`. Both
 decoders' coefficient stores, transform scratch and overlap-add history follow it, and
 `imdct512_windowed`/`imdct256_pair_windowed` have float32 overloads built from the same templated
 body as the double ones, so §7.9.4.1 is implemented once.
@@ -390,11 +391,32 @@ prediction assumed a global change, and the choice is per-profile. The ordinary 
 `decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite passes identically
 (4,032,916 assertions).
 
-The oracle run this paragraph asked for was done separately: a float32 `ac3cli` decoding four
-real streams, including Dolby- and FFmpeg-encoded ones, agrees with the double build to ~139 dB
-worst-channel SNR, measured with `tools/checks/compare_wav.py`. The gold-reference gate's
-tightest per-channel floor is 60 dB. At the transform alone the disagreement is 2.7e-7
-peak-normalised (`tests/core/test_mdct_fast.cpp`), about one LSB at 24 bits.
+The oracle run this paragraph asked for was done separately, and for a long time it could not be
+done again. `decode_scalar_t` used to live in `ac3/internal/profile.hpp` alongside the profile's
+other facts, so `float` was reachable only in a build that was also decode-only, exception-free
+and without a CLI — there was no float32 `ac3cli` any preset could produce, and the ~139 dB
+figure came from one made by hand. Which profile a build is and which scalar its decoder carries
+are independent questions, and they are two CMake axes now.
+
+So the number is a gate rather than a recollection. `tools/checks/check_decode_scalar_snr.py`
+decodes the three streams `verify_gold_reference.sh` encodes with both builds and holds the worst
+channel to 120 dB:
+
+| Stream | Worst channel |
+|---|---|
+| `gold.ac3` | Ls, 138.85 dB |
+| `gold.ec3` | Rs, 139.05 dB |
+| `gold_cpl.ec3` | Rs, 138.98 dB |
+
+The floor sits well below those on purpose: it is there to catch a float32 path that has broken,
+not to police the last decibel of a figure already under the double decode's own quantisation
+noise. For scale the gold-reference gate's tightest per-channel floor is 60 dB, and at the
+transform alone the disagreement is 2.7e-7 peak-normalised (`tests/core/test_mdct_fast.cpp`),
+about one LSB at 24 bits.
+
+What that gate does **not** say is whether either decode is right — two builds agreeing says only
+that they agree. Running `verify_gold_reference.sh` itself against a float32 CLI is the other
+half, and is not wired yet.
 
 Two things it does not cover:
 
