@@ -591,7 +591,9 @@ The same question is now asked before the merge as well. These series are
 written by `persist-performance-trend`, which is `push` to `main` only, so for
 a while a step was reported on the trunk *after* it landed - a red check on an
 already-merged commit, blocking nothing and belonging to whoever pushed next.
-The 67 → 199 allocs/frame step below is exactly how it was found. The
+The E-AC-3 encode step from 67 to 199 allocs/frame in 2026-08 (issue #544) is
+exactly how it was found: the gate fired on the merge, and by then the merge
+was the thing it was reporting on. The
 `Memory vs merge base` job (`tools/ci/compare_memory.py`) closes that: it
 builds `ac3membench` at the pull request's head and at its merge base and runs
 each once, comparing the same two churn metrics against the same thresholds,
@@ -603,13 +605,13 @@ noise. Its hard tier fails the `Memory gate` check;
 `memory-regression-approved` on the pull request turns that back into an
 annotation, the way `perf-regression-approved` does for speed.
 
-The leak check keeps its absolute thresholds there but applies them to what
-the branch changed - crossing a threshold the merge base was under, or growing
-by more than one. Three of the six workloads already retain bytes across their
-steady state and two of them sit past the 4 KiB warn line, so a per-PR check
-copied over unchanged would annotate every pull request for the merge base's
-own findings. `persist-performance-trend` keeps the unconditional absolute
-view on the trunk, where it belongs.
+In that pre-merge job the leak check keeps its absolute thresholds but applies
+them to what the branch changed - crossing a threshold the merge base was
+under, or growing by more than one. Three of the six workloads already retain
+bytes across their steady state and two of them sit past the 4 KiB warn line,
+so a per-PR check copied over unchanged would annotate every pull request for
+the merge base's own findings. `persist-performance-trend` keeps the
+unconditional absolute view on the trunk.
 
 One limit still worth knowing when reading these series: the history a trunk
 run compares against is per branch, so a branch rename or a gitflow-to-trunk
