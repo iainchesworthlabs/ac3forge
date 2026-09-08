@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fmt/printf.h>
+#include <fstream>
 #include <memory>
 #include <numbers>
 #include <random>
@@ -56,11 +57,25 @@ std::string scratch_path(std::string_view name) {
     return (std::filesystem::temp_directory_path() / leaf).string();
 }
 
+// Exclusively creates an empty file at a scratch_path() result before ac3::io::write_wav_f32
+// (below) ever opens it. That's a general library function callers also point at a
+// caller-chosen path (e.g. ac3cli's own output paths), so it can't itself refuse to replace an
+// existing file; this closes the shared-temp-dir symlink/TOCTOU race up front instead, the same
+// pattern examples/encode_iab.cpp's claim_temp_path uses for the same reason.
+bool claim_temp_path(const std::string& path) {
+    std::ofstream claim(path, std::ios::binary | std::ios::noreplace);
+    return static_cast<bool>(claim);
+}
+
 }  // namespace
 
 int main() {
     const auto source_path = scratch_path("source.wav");
     const auto result_path = scratch_path("result.wav");
+    if (!claim_temp_path(source_path) || !claim_temp_path(result_path)) {
+        fmt::printf("could not claim scratch path\n");
+        return 1;
+    }
 
     // Synthesize 5.1 in AC-3 order (L, C, R, SL, SR, LFE) and write it out in
     // WAV order - wav_channel_order says where each AC-3 channel belongs in

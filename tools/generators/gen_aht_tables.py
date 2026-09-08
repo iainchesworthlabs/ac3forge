@@ -27,7 +27,11 @@ OUT = REPO / "src" / "lib" / "include" / "ac3" / "core" / "aht_tables.hpp"
 VQ_INDEX_BITS = {1: 2, 2: 3, 3: 4, 4: 5, 5: 7, 6: 8, 7: 9}
 
 ROW = re.compile(r"^\s*(\d+)\s+((?:0x[0-9a-fA-F]{4}\s+){5}0x[0-9a-fA-F]{4})\s*$")
-PAIR = re.compile(r"(\d+)\s+(\d+)")
+# {1,6} rather than unbounded '+': every value this parses is a small table
+# index or pointer (well under 6 digits), and bounding the repetition caps
+# the backtracking an all-digit run with no trailing whitespace can force
+# per start position, which is what made the unbounded form super-linear.
+PAIR = re.compile(r"(\d{1,6})\s+(\d{1,6})")
 REMAP = re.compile(
     r"^\s*(\d+)?\s*x\s*[><≥]=?\s*0\s+"
     r"((?:0x[0-9a-fA-F]{4}|N/A)(?:\s+(?:0x[0-9a-fA-F]{4}|N/A)){5})")

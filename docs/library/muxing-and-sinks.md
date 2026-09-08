@@ -4,7 +4,7 @@
 
 `matroska/matroska.hpp`, library `matroska::matroska`. It links nothing from `ac3::forge` and
 takes frames as opaque bytes. Pairing it with `ac3::io::scan` is what keeps the track header
-honest.
+accurate.
 
 ```cpp
 // One Matroska frame per access unit. For E-AC-3 an access unit is the
@@ -111,7 +111,7 @@ whatever `ac3::io::scan` read out of the bitstream, fscod/bsid/bsmod/acmod/lfeon
 stream carries Dolby Atmos objects, the `flag_ec3_extension_type_a`/`complexity_index_type_a`
 extension (TS 103 420 §8.3.1/§8.3.2.2) alike.
 
-The same codec-blind contract carries **AC-4** (roadmap IM4): `codec_id = mp4::kCodecAc4`
+The same codec-blind contract carries **AC-4**: `codec_id = mp4::kCodecAc4`
 selects TS 103 190-2 Annex E.4's `ac-4` sample entry with a `dac4` configuration box, whose
 payload comes from `ac4::build_dac4()` off the stream's own parsed TOC — the AC-4 twin of
 `build_codec_config_box`, in `ac4::` where the codec knowledge lives. An ISOBMFF `ac-4`
@@ -348,7 +348,7 @@ if (!reader.finish(on_payload)) { /* ... */ }
 ```
 
 `Reader::finish` takes the callback — unlike the Matroska and MP4 readers' — because it can
-genuinely still emit: the unbounded PES form ends only at the next
+still emit: the unbounded PES form ends only at the next
 `payload_unit_start_indicator` or at end of input, so the last payload of a capture is only
 complete here.
 
@@ -360,12 +360,12 @@ believed — a bit-damaged PMT is thrown away rather than locking onto a wrong P
 the file. `ReadOptions` bounds the PES and PSI section sizes the reader will assemble (the
 unbounded PES form has no ceiling of its own otherwise) and how far it will search for the packet
 grid. `fuzz/fuzz_mpegts_demux.cpp` drives both entry points with arbitrary bytes — this is also
-the container reader most likely to find a genuine hang rather than a crash, since the sync
+the container reader most likely to find a hang rather than a crash, since the sync
 search, section reassembly and PES reassembly are all loops a hostile stream can try to stall.
 
 ## Fragmented MP4/CMAF + HLS/DASH: `mp4::fragment`, `mp4/hls.hpp`, `mp4/dash.hpp`
 
-ROADMAP.md's A2, the streaming-delivery follow-up `mp4::mux`'s own header deliberately left for
+The streaming-delivery follow-up `mp4::mux`'s own header deliberately left for
 later: `mp4::fragment` lays out the same track and frames as `mux`, but as a fragmented movie
 (ISO/IEC 14496-12 §8.8's `moof`/`mfhd`/`traf`/`tfhd`/`tfdt`/`trun`) split into CMAF-shaped pieces
 (ISO/IEC 23000-19) — an initialization segment (`ftyp`+`moov`, whose one `trak` carries
@@ -610,7 +610,7 @@ is the batch form, mirroring `wrap_stream`.
 The input is by definition untrusted — a burst carrier comes off a wire or out of a capture
 device — so nothing taken from `Pd` is believed past its data type's repetition period, and a
 preamble not backed by a `0x0B77` syncframe is treated as a false match to resync past rather
-than a fatal error. `fuzz/fuzz_iec61937_unwrap.cpp` keeps that honest.
+than a fatal error. `fuzz/fuzz_iec61937_unwrap.cpp` keeps that accurate.
 
 This is also what closes the loop on the wrap side: bursts written by this project *and* by
 FFmpeg's `spdif` muxer read back byte-exactly to the streams that went in, AC-3 and E-AC-3,
@@ -646,7 +646,7 @@ itself, and that check has only been tried for AC-3, not E-AC-3.
 
 ### `ac3::audio::sink_capabilities` — reading what a sink says it accepts
 
-`ac3/audio/sink_capabilities.hpp` (roadmap UX9). `read_sink_capabilities(device_id)` reads a
+`ac3/audio/sink_capabilities.hpp`. `read_sink_capabilities(device_id)` reads a
 render endpoint's own advertised capabilities — CEA-861 Short Audio Descriptors, the part of
 EDID (over HDMI) or ELD (ALSA's own EDID-Like Data, which carries the same SADs) that says which
 codecs, how many channels and which sample rates a sink accepts — rather than
@@ -660,7 +660,7 @@ Real on exactly one backend today: ALSA, reading the HD-audio kernel driver's ow
 bytes, so there is no byte layout for this project to get wrong — only the driver's own field
 names to read). **Not verified against real HDMI/ELD hardware** — the development environment
 this shipped from has no Linux box with a bitstream-capable receiver attached; see
-[Linux](../platforms/linux.md) for the honest status. Every other backend (Windows, macOS,
+[Linux](../platforms/linux.md) for the current status. Every other backend (Windows, macOS,
 Android, PipeWire, and Linux without ALSA) reports `kNoBackend` rather than guessing: none has a
 documented user-mode API for reading a sink's raw SADs (Windows' WASAPI and macOS' CoreAudio
 both expose negotiated-format questions, the same kind `enumerate_render_devices()` already
@@ -678,7 +678,7 @@ bitstream-capable receiver. Backs `ac3cli monitor` and `live`'s monitor leg.
 Unlike passthrough, **this one is confirmed against real hardware.** It has actually played
 decoded AC-3 and E-AC-3 (including an Atmos stream's 5.1 bed) through real Windows (Realtek)
 hardware in real time, and a live microphone capture → encode → monitor session has run
-end-to-end. Building this path against real hardware surfaced two genuine bugs that neither
+end-to-end. Building this path against real hardware surfaced two bugs that neither
 unit tests nor silent/synthetic input would have caught — see
 [Windows](../platforms/windows.md#audio-backend-wasapi) for the details, and
 `src/audio/src/backend/windows/monitor.cpp` for the fixes.
@@ -692,7 +692,7 @@ or both). On macOS capture is input-only: no loopback endpoint is ever enumerate
 `start()` refuses `DeviceKind::kLoopback` outright rather than silently opening a microphone.
 This is what backs `ac3cli record`/`live` and the GUI's live-session tab.
 
-A third way in, `Capture::start_process_loopback(pid, mode, format)` (roadmap UX11), taps what
+A third way in, `Capture::start_process_loopback(pid, mode, format)`, taps what
 one process renders and nothing else, whichever endpoint it renders to — and it is the piece the
 [AC3Forge Crucible](../crucible/index.md) is built on. Three backends have one, over three
 different mechanisms: Windows 10 build 20348+'s process-loopback activation, a PipeWire capture
@@ -715,7 +715,7 @@ what turns it back on. `process_loopback_available()` and `audio_backend().proce
 which of those it is, up front) and `kProcessNotFound`, which the library checks itself because
 the OS does not.
 
-`ac3/audio/device_watcher.hpp`. `DeviceWatcher` (roadmap UX11) delivers endpoint
+`ac3/audio/device_watcher.hpp`. `DeviceWatcher` delivers endpoint
 added/removed/state-changed and default-changed events on a callback, so an application that
 follows the sink can re-probe when something is plugged or unplugged instead of polling
 `enumerate_render_devices()`. Three backends have one, each over its own mechanism: Windows'

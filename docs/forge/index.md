@@ -49,7 +49,7 @@ covers every platform today. Three shorter ones exist, at different stages of re
   [Homebrew formula and cask](../releasing.md#homebrew-formula-and-cask).
 - **winget** (Windows) — the manifest is staged in-tree at
   [`packaging/winget/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/winget)
-  and its submission to `microsoft/winget-pkgs` is blocked on roadmap DR4 — the CLA, and the
+  and its submission to `microsoft/winget-pkgs` is blocked on the CLA, and the
   unsigned-binary Defender hit DR6 covers — so `winget install iainchesworthlabs.ac3forge`
   does not resolve. From a clone,
   `winget install --manifest packaging/winget/manifests/i/iainchesworthlabs/ac3forge/<version>`

@@ -27,7 +27,7 @@ std::expected<std::uint64_t, IabError> BitReader::read_plex(unsigned initial_wid
     unsigned width = initial_width;
     while (true) {
         auto value = read_bits(width);
-        if (!value) {
+        if (!value.has_value()) {
             return value;
         }
         const std::uint64_t escape = (std::uint64_t{1} << width) - 1;

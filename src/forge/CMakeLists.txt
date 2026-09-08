@@ -153,7 +153,7 @@ set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
 # tables - that it gets its own file rather than a dozen conditionals through
 # this one. Off by default; the root CMakeLists.txt refuses the combination of
 # this option with anything that would need the full library.
-if(AC3FORGE_MINIMAL_DECODER)
+if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
     include("${CMAKE_CURRENT_SOURCE_DIR}/minimal.cmake")
     return()
 endif()
@@ -268,6 +268,7 @@ target_sources(forge_objects
         src/io/wav_stream_reader.cpp
         src/io/wav_stream_writer.cpp
         src/meta/bsi.cpp
+        src/meta/bsi_format.cpp
         src/meta/drc.cpp
         src/meta/loudness.cpp
         src/meta/mixing.cpp

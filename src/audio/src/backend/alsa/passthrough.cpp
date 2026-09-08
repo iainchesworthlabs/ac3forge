@@ -321,9 +321,9 @@ bool PassthroughSink::running() const {
 }
 
 PassthroughStats PassthroughSink::stats() const {
-    return {.bursts_submitted = impl_->submitted.load(std::memory_order_relaxed),
-            .bursts_rendered = impl_->rendered.load(std::memory_order_relaxed),
-            .underruns = impl_->underruns.load(std::memory_order_relaxed)};
+    return {.bursts_submitted = impl_->submitted.load(),
+            .bursts_rendered = impl_->rendered.load(),
+            .underruns = impl_->underruns.load()};
 }
 
 bool PassthroughSink::can_submit() const {
@@ -344,7 +344,7 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
     if (wrote != burst.size()) {
         return false;
     }
-    impl_->submitted.fetch_add(1, std::memory_order_relaxed);
+    impl_->submitted.fetch_add(1);
     return true;
 }
 
@@ -423,9 +423,9 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     // bytes so an E-AC-3 session gets the same second, not a quarter of one.
     impl_->queue = std::make_unique<ByteRingBuffer>(burst_bytes * 40);
     impl_->burst_bytes = burst_bytes;
-    impl_->submitted.store(0, std::memory_order_relaxed);
-    impl_->rendered.store(0, std::memory_order_relaxed);
-    impl_->underruns.store(0, std::memory_order_relaxed);
+    impl_->submitted.store(0);
+    impl_->rendered.store(0);
+    impl_->underruns.store(0);
     impl_->running.store(true, std::memory_order_release);
     impl_->pcm = opened.release();
 
@@ -455,7 +455,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
                 // charged here - that is a real gap on the wire.
                 std::fill(chunk.begin() + static_cast<std::ptrdiff_t>(got), chunk.end(),
                           std::byte{0});
-                impl_->underruns.fetch_add(1, std::memory_order_relaxed);
+                impl_->underruns.fetch_add(1);
             }
 
             const snd_pcm_sframes_t written =
@@ -466,7 +466,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
                 }
                 continue;
             }
-            impl_->rendered.fetch_add(got / burst_bytes, std::memory_order_relaxed);
+            impl_->rendered.fetch_add(got / burst_bytes);
         }
 
         // drop, not drain: a stop request means stop, and draining would play

@@ -65,7 +65,7 @@ section further down) the AudioWorklet playback pipeline all come from that pack
 `.github/workflows/npm.yml` is restricted to a manual `workflow_dispatch`, so pushing a release
 tag packs the tarball as a CI artefact and stops there; there is no release of it to install. No
 date is set for that changing, and [WebAssembly →
-Publishing](platforms/wasm.md#publishing-roadmap-ux5) has the two things that must be cleared
+Publishing](platforms/wasm.md#publishing) has the two things that must be cleared
 first.
 
 So what a reader can do today is one of two things. Use the demo above, which runs the decoder in

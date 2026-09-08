@@ -178,7 +178,7 @@ constexpr std::array<Location, 17> kWavSpeakerOrder = {
         return false;
     }
     const auto source_layout = io::ac3_layout_for(source.size());
-    if (!source_layout) {
+    if (!source_layout.has_value()) {
         return false;  // §7.8 is defined per acmod; a wider source has no entry
     }
     const int fbw = fullbw_channel_count(source_layout->acmod);
@@ -301,7 +301,7 @@ std::optional<std::uint16_t> parse_channels(std::string_view text) {
             return std::nullopt;
         }
         const auto location = eac3::chanmap::parse_location(token);
-        if (!location) {
+        if (!location.has_value()) {
             return std::nullopt;
         }
         wanted.push_back(*location);
@@ -700,7 +700,7 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
             // otherwise reach here and quietly discard a quality the caller
             // did type, and a second "avg:" would leave which of the two
             // rates was meant unanswerable.
-            if (!abr || vbr.abr) {
+            if (!abr || vbr.abr.has_value()) {
                 return false;
             }
             if (!parse_kbps(token.substr(4), kbps)) {
@@ -713,7 +713,7 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
             // Meaningless without an average to size. Since "avg:" can only
             // lead, a "win:" reaching here with no AbrConfig built is a
             // window around nothing rather than a reordering.
-            if (!vbr.abr) {
+            if (!vbr.abr.has_value()) {
                 return false;
             }
             // Same rule parse_kbps enforces for a rate: a zero-frame window
@@ -727,7 +727,7 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
         }
         text = split == std::string_view::npos ? std::string_view{} : text.substr(split + 1);
     }
-    if (vbr.min_kbps && vbr.max_kbps && *vbr.min_kbps > *vbr.max_kbps) {
+    if (vbr.min_kbps.has_value() && vbr.max_kbps.has_value() && *vbr.min_kbps > *vbr.max_kbps) {
         return false;
     }
     // Bounds that exclude the average make it unreachable by construction;
@@ -743,13 +743,13 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
 }
 
 std::string format_vbr(const std::optional<eac3::VbrConfig>& vbr) {
-    if (!vbr) {
+    if (!vbr.has_value()) {
         return "off";
     }
     // ABR leads with avg: and never prints a quality - the encoder does not
     // read one, so showing it would describe a knob that does nothing.
     std::string out;
-    if (vbr->abr) {
+    if (vbr->abr.has_value()) {
         out = "avg:" + std::to_string(vbr->abr->target_kbps);
         // The window is written only when it is not the default, so a plain
         // avg: round-trips as the plain avg: the caller typed - the same rule
@@ -760,10 +760,10 @@ std::string format_vbr(const std::optional<eac3::VbrConfig>& vbr) {
     } else {
         out = "q:" + std::to_string(vbr->quality);
     }
-    if (vbr->min_kbps) {
+    if (vbr->min_kbps.has_value()) {
         out += ",min:" + std::to_string(*vbr->min_kbps);
     }
-    if (vbr->max_kbps) {
+    if (vbr->max_kbps.has_value()) {
         out += ",max:" + std::to_string(*vbr->max_kbps);
     }
     return out;
@@ -859,9 +859,9 @@ std::string_view describe(PlanError error) {
 }
 
 std::optional<PlanError> validate(const Plan& plan) {
-    if (plan.custom_locations) {
+    if (plan.custom_locations.has_value()) {
         const auto allocated = eac3::chanmap::allocate(*plan.custom_locations);
-        if (!allocated) {
+        if (!allocated.has_value()) {
             return PlanError::kInvalidChannels;
         }
         if (plan.codec == Codec::kAc3 && !allocated->dependents.empty()) {
@@ -880,7 +880,7 @@ std::optional<PlanError> validate(const Plan& plan) {
     if (plan.codec == Codec::kAc3 && is_reduced_rate(plan.sample_rate)) {
         return PlanError::kSampleRateNeedsEac3;
     }
-    if (plan.vbr && plan.codec == Codec::kAc3) {
+    if (plan.vbr.has_value() && plan.codec == Codec::kAc3) {
         return PlanError::kVbrNeedsEac3;
     }
     // Only AC-3 has an alternate syntax to choose, and only AC-3 has a time
@@ -913,7 +913,7 @@ std::optional<PlanError> validate(const Plan& plan) {
         // exemption eac3_frame.cpp's own validate() makes, per substream
         // because halve_vbr_bounds() gives dependents their own VBR config.
         const auto framable = [](const eac3::FrameConfig& sub) {
-            if (sub.vbr) {
+            if (sub.vbr.has_value()) {
                 return true;
             }
             const auto words = eac3::frame_words(sub.sample_rate, sub.bitrate_kbps,
@@ -930,7 +930,7 @@ std::optional<PlanError> validate(const Plan& plan) {
 }
 
 ChannelPlan resolve(const Plan& plan) {
-    if (plan.custom_locations) {
+    if (plan.custom_locations.has_value()) {
         return eac3::chanmap::allocate(*plan.custom_locations).value_or(ChannelPlan{});
     }
     return channel_plan_for(plan.layout);
@@ -1009,13 +1009,13 @@ void apply_tools(const Tools& tools, eac3::FrameConfig& config) {
 // one frame, so each gets its own slice of whatever rate range the plan
 // asked for. quality is not a rate quantity, so it carries over unchanged.
 eac3::VbrConfig halve_vbr_bounds(eac3::VbrConfig vbr) {
-    if (vbr.min_kbps) {
+    if (vbr.min_kbps.has_value()) {
         *vbr.min_kbps /= 2;
     }
-    if (vbr.max_kbps) {
+    if (vbr.max_kbps.has_value()) {
         *vbr.max_kbps /= 2;
     }
-    if (vbr.nominal_kbps) {
+    if (vbr.nominal_kbps.has_value()) {
         *vbr.nominal_kbps /= 2;
     }
     // The ABR target is a rate too, and the plan's target is what the WHOLE
@@ -1024,7 +1024,7 @@ eac3::VbrConfig halve_vbr_bounds(eac3::VbrConfig vbr) {
     // is a count of frames, not a rate, so it carries over unchanged: both
     // substreams cover the same 1536 samples and therefore the same span of
     // time.
-    if (vbr.abr) {
+    if (vbr.abr.has_value()) {
         vbr.abr->target_kbps /= 2;
     }
     return vbr;
@@ -1067,7 +1067,7 @@ eac3::ProgrammeConfig eac3_programme(const Plan& plan) {
         // Annex E's audprodie carries adconvtyp as a third field where AC-3's
         // stops at roomtyp; Metadata states it once, outside audprod, so this
         // is where it reaches the wire on this side.
-        if (independent.info->audprod) {
+        if (independent.info->audprod.has_value()) {
             independent.info->audprod->adconvtyp = plan.meta.adconvtyp;
         }
     }
@@ -1090,7 +1090,7 @@ eac3::ProgrammeConfig eac3_programme(const Plan& plan) {
         dependent.acmod = fit.first;
         dependent.lfe = fit.second;
         apply_tools(plan.tools, dependent);
-        if (plan.vbr) {
+        if (plan.vbr.has_value()) {
             dependent.vbr = halve_vbr_bounds(*plan.vbr);
         }
         out.dependents.push_back(dependent);
@@ -1154,7 +1154,7 @@ std::optional<Routing> route(const ChannelPlan& target, std::size_t wav_channels
         source = in_wav_order(rendered_locations(target));
     } else {
         const auto generic = generic_wav_layout(wav_channels);
-        if (!generic) {
+        if (!generic.has_value()) {
             return std::nullopt;
         }
         source = *generic;

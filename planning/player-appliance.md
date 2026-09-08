@@ -1,12 +1,15 @@
 # A playback appliance: the player as a product
 
-!!! note "Status: plan, written and decided 2026-09-07. Reframed the same day."
+!!! note "Status as of 2026-09-08: not started"
+    Written and decided 2026-09-07, and reframed the same day. Nothing here is built: there is
+    no `apps/hearth` in the tree, and no phase has an exit met.
+
     This page plans **Hearth**, the sink member: the project's decode and passthrough path as a
     product, on a machine that plays what it is given and turns it into sound in a room. It keeps
     the shape of [the recasting plan](recasting.md) and
-    [the promotion plan](../crucible/promotion.md): design sections say what changes and why,
+    [the promotion plan](../docs/crucible/promotion.md): design sections say what changes and why,
     each phase carries an exit criterion and says how it is verified,
-    [Decisions](#decisions) lists what only the owner could decide, and
+    [Decisions](#decisions) lists the open questions and the option taken on each, and
     [What cannot be verified, and why](#what-cannot-be-verified-and-why) says where the evidence
     runs out.
 
@@ -37,7 +40,7 @@ or `.ts`, works out whether the chosen endpoint takes the bitstream, and streams
 bursts to it — and, when the sink refuses, transcodes E-AC-3 to AC-3 or falls back to decoded
 PCM. That path has been run against a real Atmos-capable receiver: a Raspberry Pi 4B over HDMI,
 every stream shape locking correctly at zero underruns, including signed Atmos with four height
-channels ([Raspberry Pi](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver),
+channels ([Raspberry Pi](../docs/platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver),
 2026-08-20). The GUI has a player too — `StreamPlayerController`
 (`apps/gui/stream_player_controller.hpp`) — with transport, seeking, metering and export, but
 it decodes to PCM and plays through a shared-mode `MonitorSink`, and it lives inside a window on
@@ -144,7 +147,7 @@ because of what it *is*, not because a plan says so:
   window.
 
 The cost of a fourth member is precise, and it is a documentation cost rather than a code one:
-`docs/index.md:39` "The three members" becomes four, the README's three-row table gains a row,
+`docs/index.md`'s "What is here" gains a fourth product, the README's three-row table gains a row,
 [recasting](recasting.md)'s own model section gains a member and its "Deliberately not in scope"
 bullet on a fourth member is superseded by name, `CONTRIBUTING.md:54`'s consumer list gains
 `hearth`, and the seven-tab nav becomes eight. That is about six files and no identifier anyone
@@ -192,7 +195,7 @@ this list is revised.
   accept.
 - **No encoding of live inputs.** That is Crucible.
 - **No room correction, no renderer, no binaural fold.** Already
-  [deliberately not on the roadmap](../roadmap.md); the receiver renders.
+  [deliberately not on the roadmap](../docs/roadmap.md); the receiver renders.
 - **No mixing.** One stream at a time to one sink.
 - **No cloud, no account, no telemetry.** It has no outbound network need at all, and
   [Phase 4](#phase-4-the-appliance-shape) makes that an assertion rather than a claim.
@@ -254,7 +257,7 @@ is the original assessment, kept because the costs it names are what the split i
 
 | Form | What it is | Verdict |
 |---|---|---|
-| **A package that turns an existing Linux install into an appliance** | `ac3forge-hearth` DEB/RPM: one binary, a systemd unit, a service user, a default config, a control page. `apt install`, `systemctl enable`, done. | **Recommended for v1.** It rides packaging and CI the project already has — `linux-gcc-arm64` is already `packageable` and `release_package`, and the arm64 `.deb` has already been inspected on a Pi ([Raspberry Pi](../platforms/raspberry-pi.md#packaging)). It adds no distribution form, no hosting, no OS to maintain, and it says what it is: the appliance is software, and the user brought the hardware. |
+| **A package that turns an existing Linux install into an appliance** | `ac3forge-hearth` DEB/RPM: one binary, a systemd unit, a service user, a default config, a control page. `apt install`, `systemctl enable`, done. | **Recommended for v1.** It rides packaging and CI the project already has — `linux-gcc-arm64` is already `packageable` and `release_package`, and the arm64 `.deb` has already been inspected on a Pi ([Raspberry Pi](../docs/platforms/raspberry-pi.md#packaging)). It adds no distribution form, no hosting, no OS to maintain, and it says what it is: the appliance is software, and the user brought the hardware. |
 | **A headless service with a control surface** | The runtime shape, orthogonal to how it is delivered | **Recommended**, and it is what the package installs. See [The control surface](#the-control-surface). |
 | **A kiosk QML application** | `ac3crucible`'s window, full-screen, no chrome, driven by a remote | **Not recommended for v1.** It requires a display attached to the appliance, which the product premise says there is not; it drags in Qt Quick, Quick Controls, a compositor and a GPU stack onto a 2 GB Pi that must also stream bursts without underrunning; and it puts the interface on the *television*, which is the one screen that is showing something else. A ten-foot interface is a later, separate product decision — [decision 4](#decisions) records it as such. |
 | **An SD-card image** | A bootable Raspberry Pi OS image with the appliance pre-installed | **Not recommended for v1; a candidate for a later phase.** Fully costed in [Packaging](#the-sd-card-image-costed-not-recommended-for-v1), because it is a distribution form this project has never had and the costs are not obvious. |
@@ -327,9 +330,9 @@ The evidence, unchanged:
 
 - **ALSA on real HDMI hardware: confirmed.** A Pi 4B drove an Atmos-capable AVR through
   `ac3cli play`, every stream shape locking, zero underruns
-  ([Raspberry Pi](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)).
+  ([Raspberry Pi](../docs/platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)).
 - **PipeWire on real HDMI hardware: confirmed 2026-09-05.** The receiver's own front panel read
-  "5.1 DD+" and "Atmos/DD+" at 7.1 ([DR9](../roadmap.md)).
+  "5.1 DD+" and "Atmos/DD+" at 7.1 ([DR9](../docs/roadmap.md)).
 - **Windows/WASAPI exclusive passthrough: unconfirmed.** DR9 says only a Realtek analogue
   endpoint has ever been tried. An appliance is a passthrough product; shipping one on a backend
   whose passthrough has never locked a receiver would be shipping the unverified part as the
@@ -686,7 +689,7 @@ documentation. It must answer, in this order, the questions someone actually has
 4. How do I point it at my music? (A directory, an NFS or SMB mount, a USB stick.)
 5. How do I know it worked? (What the control page says, and what the receiver's front panel
    should read for each stream shape — the table
-   [Raspberry Pi](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) already
+   [Raspberry Pi](../docs/platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) already
    has.)
 6. What if there is no sound? (Which of the six UX9 states applies, in the page's own words.)
 
@@ -694,7 +697,7 @@ documentation. It must answer, in this order, the questions someone actually has
 
 - `README.md`: the three-row member table gains a fourth row (what it is, how to get it, where
   its docs are); the layout block gains `apps/hearth`; the Documentation table gains its guide.
-- `docs/index.md:39` "The three members" becomes "The four members", with a `### Hearth` section
+- `docs/index.md`'s "What is here" gains a fourth product, with a `### Hearth` section
   in the same shape as `### Crucible` (:64-74) — what it does, which platforms, what is
   confirmed on hardware and what is not, and a link to install-and-first-run as the fastest way
   in. The "Where to go next" list (:83) gains a row.
@@ -893,7 +896,7 @@ write to the SD card owns the appliance. That belongs on the install page in tho
 
 ## The roadmap entry
 
-`ROADMAP.md` is not edited by this plan — ID allocation is the owner's. The entry below is
+`ROADMAP.md` is not edited by this plan, and no roadmap ID is allocated here. The entry below is
 proposed text, in the file's own form, with a `CR`-style code for a new member (the recasting
 plan's Phase 5 established `CR` for Crucible; a fourth member takes the next such code).
 
@@ -1048,11 +1051,11 @@ which is the only way to catch a missing runtime dependency.
 
 ### Phase 6: the docs and the member
 
-The eight-page guide, the eighth nav tab, the README row, `docs/index.md`'s four members, the
+The eight-page guide, the eighth nav tab, the README row, `docs/index.md`'s fourth product, the
 CONTRIBUTING list, the recasting supersession note, and this page relabelled and moved in the
 nav. Depends on [decisions 1 and 2](#decisions).
 
-**Exit:** a reader arriving at the home page sees four members and can reach each one's guide and
+**Exit:** a reader arriving at the home page sees four products and can reach each one's guide and
 its download in one link; someone with a Pi, a receiver and no prior knowledge can get from the
 install page to sound.
 
@@ -1132,7 +1135,7 @@ needs none, which is the point.
 
 ## Decisions
 
-Only what the owner had to decide. Each carries the options it was put with, the recommendation,
+The open questions. Each carries the options it was put with, the recommendation,
 and the cost. **All ten were taken on 2026-09-07.** Six went as recommended; **four did not**,
 and those four are marked, because a plan that quietly rewrites its recommendation to match the
 answer is worth less than one that records the disagreement.
@@ -1182,7 +1185,7 @@ The original ten, as put:
 2. **Which member.** (a) **a fourth member**; (b) part of Crucible; (c) part of Forge.
    **Recommend (a)**, on the six-way test in
    [Which member it belongs to](#which-member-it-belongs-to). Cost: about six documentation files
-   — `docs/index.md`'s "The three members" becomes four, the README table gains a row,
+   — `docs/index.md`'s "What is here" gains a fourth product, the README table gains a row,
    `CONTRIBUTING.md`'s consumer list gains one, the nav becomes eight tabs, and
    [recasting](recasting.md)'s "a fourth member" exclusion is superseded by name. No identifier
    anyone has installed changes.

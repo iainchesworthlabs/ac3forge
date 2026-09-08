@@ -785,11 +785,23 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
         }
         const double snr_db = 10.0 * std::log10(signal / std::max(error, 1e-30));
         CAPTURE(snr_db);
-        // The fast forward fold's own tolerance (mdct512_forward's fast-path
-        // tests hold ~1e-13 relative error), carried through six blocks of
-        // bed analysis feeding three objects' worth of matrixing and
-        // synthesis - loose next to that, tight next to anything audible.
-        CHECK(snr_db > 200.0);
+        // What bounds this is float32, not the fold.
+        //
+        // It used to be the fast forward fold's own tolerance - mdct512_forward's
+        // fast-path tests hold ~1e-13 relative error - carried through six blocks
+        // of bed analysis, and 200 dB was loose next to that. Since
+        // ReconstructionState went float32 (joc.hpp's recon_scalar_t) both legs
+        // round-trip their spectra through 24-bit mantissas, so the agreement is
+        // capped by float32's own epsilon of 1.19e-7 - about 138 dB for a single
+        // rounding - whatever the transforms do. Measured 134-136 dB across the
+        // three objects, which is that floor, not a defect in either path.
+        //
+        // 120 dB keeps ~14 dB of margin, the same margin
+        // tools/checks/check_decode_scalar_snr.py leaves over its own measured
+        // float32-vs-double figure, and is still far above anything audible. A
+        // drop below it would mean something other than storage precision had
+        // changed.
+        CHECK(snr_db > 120.0);
     }
     REQUIRE(any_difference);
 }

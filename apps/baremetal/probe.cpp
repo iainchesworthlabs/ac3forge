@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <span>
 
+#include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 
@@ -108,6 +109,20 @@ void note_large_alloc(std::size_t size, bool freeing) {
     }
 }
 
+// Every allocation ever made, by size bucket - a COUNT, not a live total, and
+// never decremented. The other two bucket arrays answer "how much is resident"
+// (at the peak, and at the end); this one answers "how much traffic", which is
+// the question PF7's open gap is actually about. A buffer allocated and freed
+// every frame never appears in a live figure at all and is exactly the thing
+// worth finding.
+//
+// Size is what identifies the buffer. There is no call site here - a probe
+// built -fno-exceptions -Os on a target with no unwind tables cannot walk a
+// stack - so the bucket is the handle: match a per-frame count against the
+// dimensions in the source and the candidate is usually unique. See
+// docs/building.md's gap note for the ones already attributed this way.
+std::array<std::size_t, kBuckets> g_churn_count_by_bucket{};
+
 std::size_t size_bucket(std::size_t size) {
     std::size_t bucket = 0;
     while (bucket + 1 < kBuckets && (std::size_t{1} << (bucket + 1)) <= size) {
@@ -142,6 +157,7 @@ void* operator new(std::size_t size) {
     const std::size_t bucket = size_bucket(size);
     g_live_by_bucket[bucket] += size;
     ++g_live_count_by_bucket[bucket];
+    ++g_churn_count_by_bucket[bucket];
     if (size > g_largest_alloc) {
         g_largest_alloc = size;
     }
@@ -195,12 +211,11 @@ constexpr std::size_t kMaxChannels = 8;
 std::array<std::array<float, ac3::kSamplesPerFrame>, kMaxChannels> g_pcm{};
 std::array<std::span<float>, kMaxChannels> g_pcm_spans{};
 
-static_assert(ac3probe::kAc3Rms.size() <= kMaxChannels,
-              "the AC-3 fixture has more channels than the probe's PCM block holds - raise "
-              "kMaxChannels");
-// The E-AC-3 fixtures are checked the same way below, once, over their table -
-// see kEac3Fixtures. One assertion per fixture would be a second place to
-// remember when adding one, which is the seam this file is trying not to have.
+// Every fixture of both generations is checked against kMaxChannels below,
+// once, over the two tables - see every_fixture_fits(). One assertion per
+// fixture would be a second place to remember when adding one, which is the
+// seam those tables exist to remove; there used to be one here for the single
+// AC-3 stream, and it is gone because AC-3 has a table now too.
 
 void bind_pcm_spans() {
     for (std::size_t ch = 0; ch < kMaxChannels; ++ch) {
@@ -272,6 +287,14 @@ void report_levels(const char* codec, const LevelAccumulator& levels,
 }
 
 struct Churn {
+    // Snapshot of g_churn_count_by_bucket at the end of the FIRST frame, and
+    // the running total after the last. The difference over the frames between
+    // them is the steady state - first-frame allocations are one-off setup
+    // (a decoder sizing its state to the stream it just saw) and averaging
+    // them in would make every fixture look worse than it steadily is, which
+    // is the number that has to reach zero.
+    std::array<std::size_t, kBuckets> bucket_at_first{};
+    std::array<std::size_t, kBuckets> bucket_at_last{};
     std::size_t first_frame_allocs = 0;
     std::size_t steady_allocs = 0;
     int frames = 0;
@@ -281,6 +304,34 @@ struct Churn {
     // decoder depending on how expensive they happen to be on a given target.
     std::uint64_t decode_us = 0;
 };
+
+// One line per size bucket that saw any steady-state traffic, as a rate per
+// frame. Printed after the summary line rather than on it: the summary is what
+// the runner scripts gate on and it should stay one line per fixture, while
+// this is for a reader working out which buffer to move off the heap.
+void report_churn_buckets(const char* codec, const Churn& churn) {
+    const int steady_frames = churn.frames - 1;
+    if (steady_frames <= 0) {
+        return;
+    }
+    for (std::size_t bucket = 0; bucket < kBuckets; ++bucket) {
+        const std::size_t traffic =
+            churn.bucket_at_last[bucket] - churn.bucket_at_first[bucket];
+        if (traffic == 0) {
+            continue;
+        }
+        // Tenths, because several of these are below one per frame - a buffer
+        // allocated once per BLOCK of six is 0.17 - and an integer rate would
+        // round every one of them to zero and hide it.
+        const std::size_t per_frame_tenths =
+            (traffic * 10) / static_cast<std::size_t>(steady_frames);
+        std::printf("%s.churn_bucket[%lu]=%lu.%lu count=%lu\n", codec,
+                    static_cast<unsigned long>(std::size_t{1} << bucket),
+                    static_cast<unsigned long>(per_frame_tenths / 10),
+                    static_cast<unsigned long>(per_frame_tenths % 10),
+                    static_cast<unsigned long>(traffic));
+    }
+}
 
 void report_churn(const char* codec, const Churn& churn) {
     const int steady_frames = churn.frames - 1;
@@ -316,13 +367,20 @@ void report_timing(const char* codec, const Churn& churn) {
                 static_cast<unsigned long>(permille));
 }
 
-int decode_ac3() {
+// Every AC-3 fixture goes through this one function, exactly as every E-AC-3
+// fixture goes through decode_eac3 below. What differs between them is the
+// layout and the tools the ENCODER chose, which is a property of the bitstream
+// rather than of the call: decode_frame_into's contract is the same for all of
+// them, and a per-fixture copy of this loop would only give three places for a
+// check to be dropped from.
+int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
+               std::span<const std::int32_t> expected) {
     const std::span<const std::byte> stream{
-        reinterpret_cast<const std::byte*>(ac3probe::kAc3Stream.data()),
-        ac3probe::kAc3Stream.size()};
+        reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
     const auto frames = ac3::split_frames(stream);
     if (!frames) {
-        std::printf("check=ac3.split status=fail error=%d\n", static_cast<int>(frames.error()));
+        std::printf("check=%s.split status=fail error=%d\n", codec,
+                    static_cast<int>(frames.error()));
         return 1;
     }
 
@@ -338,7 +396,7 @@ int decode_ac3() {
         const auto decoded = decoder.decode_frame_into(frame, g_pcm_spans);
         churn.decode_us += ac3probe::now_us() - started_us;
         if (!decoded) {
-            std::printf("check=ac3.decode status=fail frame=%d error=%d\n", index,
+            std::printf("check=%s.decode status=fail frame=%d error=%d\n", codec, index,
                         static_cast<int>(decoded.error()));
             return 1;
         }
@@ -348,22 +406,25 @@ int decode_ac3() {
         }
         if (index == 0) {
             churn.first_frame_allocs = g_alloc_calls - before;
+            churn.bucket_at_first = g_churn_count_by_bucket;
         } else {
             churn.steady_allocs += g_alloc_calls - before;
         }
+        churn.bucket_at_last = g_churn_count_by_bucket;
         before = g_alloc_calls;
         ++index;
     }
 
     if (churn.frames != ac3probe::kFrames) {
-        fail("ac3.frames", churn.frames, ac3probe::kFrames);
+        fail(codec, "frames", churn.frames, ac3probe::kFrames);
     }
-    if (channels != static_cast<int>(ac3probe::kAc3Rms.size())) {
-        fail("ac3.channels", channels, static_cast<long>(ac3probe::kAc3Rms.size()));
+    if (channels != static_cast<int>(expected.size())) {
+        fail(codec, "channels", channels, static_cast<long>(expected.size()));
     }
-    report_levels("ac3", levels, ac3probe::kAc3Rms);
-    report_churn("ac3", churn);
-    report_timing("ac3", churn);
+    report_levels(codec, levels, expected);
+    report_churn(codec, churn);
+    report_churn_buckets(codec, churn);
+    report_timing(codec, churn);
     return 0;
 }
 
@@ -376,7 +437,8 @@ int decode_ac3() {
 // `codec` prefixes every line this emits, so each fixture's levels, churn and
 // timing stay separable in the output the runner scripts gate on.
 int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
-                std::span<const std::int32_t> expected, bool bed_only) {
+                std::span<const std::int32_t> expected, bool bed_only,
+                ac3::oba::joc::Domain domain) {
     const std::span<const std::byte> stream{
         reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
     const auto units = ac3::split_access_units(stream);
@@ -386,7 +448,8 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         return 1;
     }
 
-    ac3::Eac3Decoder decoder{{.skip_object_reconstruction = bed_only}};
+    ac3::Eac3Decoder decoder{{.joc_domain = domain,
+                             .skip_object_reconstruction = bed_only}};
     LevelAccumulator levels;
     Churn churn;
     churn.frames = static_cast<int>(units->size());
@@ -415,9 +478,11 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         }
         if (index == 0) {
             churn.first_frame_allocs = g_alloc_calls - before;
+            churn.bucket_at_first = g_churn_count_by_bucket;
         } else {
             churn.steady_allocs += g_alloc_calls - before;
         }
+        churn.bucket_at_last = g_churn_count_by_bucket;
         before = g_alloc_calls;
         ++index;
     }
@@ -430,9 +495,43 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     }
     report_levels(codec, levels, expected);
     report_churn(codec, churn);
+    report_churn_buckets(codec, churn);
     report_timing(codec, churn);
     return 0;
 }
+
+// The AC-3 fixtures, in the order the probe decodes them. A table for the same
+// reason the E-AC-3 one below is: adding a configuration should be a row here
+// and a stream in tools/generators/gen_baremetal_fixture.py, not a fourth copy
+// of a decode loop.
+//
+// It was a single hardcoded decode of the 5.1 stream until these rows arrived,
+// which left two AC-3 paths linked into every build of this profile and
+// executed by none of them - §7.5.4 rematrixing, which exists in 2/0 and no
+// other layout, and the UNCOUPLED path, because the one fixture there was
+// passed `couple`. That is the same shape of gap enhanced coupling had on the
+// E-AC-3 side, found the same way: by asking what the fixtures do not reach
+// rather than by anything failing.
+struct Ac3Fixture {
+    const char* codec;
+    std::span<const std::uint8_t> stream;
+    std::span<const std::int32_t> rms;
+};
+
+constexpr std::array<Ac3Fixture, 3> kAc3Fixtures{{
+    {"ac3", ac3probe::kAc3Stream, ac3probe::kAc3Rms},
+    // 2/0. §7.5.4 rematrixing lives in this layout alone, and it is a different
+    // code path from the eac3_stereo row's - Annex E carries its own
+    // rematrixing syntax - so that fixture does not stand in for this one.
+    // Also the first AC-3 fixture whose channel count is not six.
+    {"ac3_stereo", ac3probe::kAc3StereoStream, ac3probe::kAc3StereoRms},
+    // 1/0. The narrowest programme the syntax has: one full-bandwidth channel,
+    // no LFE, no coupling possible (§7.4 needs two channels to share a band
+    // between) and no downmix to apply. Every per-channel loop in the decoder
+    // runs exactly once here, which is the value 6 cannot catch an off-by-one
+    // in.
+    {"ac3_mono", ac3probe::kAc3MonoStream, ac3probe::kAc3MonoRms},
+}};
 
 // The E-AC-3 fixtures, in the order the probe decodes them. Adding one is a
 // row here and a stream in tools/generators/gen_baremetal_fixture.py's own
@@ -446,9 +545,11 @@ struct Eac3Fixture {
     // DecoderConfig::skip_object_reconstruction. Only the Atmos fixture sets
     // it, and it is the whole reason that fixture can be here: see its row.
     bool bed_only = false;
+    // DecoderConfig::joc_domain. Only the object row sets it; see there.
+    ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
 };
 
-constexpr std::array<Eac3Fixture, 4> kEac3Fixtures{{
+constexpr std::array<Eac3Fixture, 5> kEac3Fixtures{{
     {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
@@ -456,10 +557,6 @@ constexpr std::array<Eac3Fixture, 4> kEac3Fixtures{{
     // src/forge/src/core/fft.cpp is in the minimal source list for - are
     // linked into every build of this profile and executed by none of them.
     {"eac3_ecpl", ac3probe::kEac3EcplStream, ac3probe::kEac3EcplRms},
-    // 2/0, the only layout §7.5.4 rematrixing exists in: no 5.1 fixture
-    // reaches it whatever its tools are. Also the first fixture whose channel
-    // count is not six, so the layout-driven half of the level check is
-    // exercised rather than merely written.
     // An Atmos stream decoded for its BED. §6 object reconstruction allocates
     // an oba::joc::ReconstructionState - 147,504 bytes in one block, plus a
     // QmfState and its filterbanks - which is more than the largest free run
@@ -469,13 +566,43 @@ constexpr std::array<Eac3Fixture, 4> kEac3Fixtures{{
     // paragraph. Levels are the bed's, which is what ac3cli decode writes for
     // an Atmos stream too, so the host reference needed no special case.
     {"eac3_atmos_bed", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms, true},
+    // The Atmos bitstream again, this time reconstructing its objects. Two
+    // rows off one stream: it is already linked in, so the second path costs
+    // nothing in image size, and what differs is a decoder setting.
+    //
+    // kMdctBand rather than the kQmf default, which is what makes it fit -
+    // kQmf allocates a QmfState and two filterbanks on top and peaks at
+    // 449,826 bytes. This is the configuration an embedded integrator would
+    // use, not the reference one.
+    //
+    // It runs AFTER the enhanced-coupling row on purpose. That ordering used
+    // to fail outright - ecpl leaves 34,232 bytes of thread_local scratch
+    // behind on a target whose thread never exits, and object reconstruction
+    // then had nowhere to go. release_ecpl_scratch() below is what makes the
+    // order stop mattering, so this row sits where it would naturally rather
+    // than where it happens to pass.
+    {"eac3_atmos_objects", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms,
+     false, ac3::oba::joc::Domain::kMdctBand},
+    // 2/0, and Annex E's own rematrixing syntax - the E-AC-3 half of what the
+    // ac3_stereo row covers for AC-3. Also the first E-AC-3 fixture whose
+    // channel count is not six, so the layout-driven half of the level check is
+    // exercised rather than merely written.
     {"eac3_stereo", ac3probe::kEac3StereoStream, ac3probe::kEac3StereoRms},
 }};
 
 // What the per-fixture static_asserts above used to say, said once. Regenerate
 // fixture.hpp with a layout wider than the PCM block and the build stops here,
-// instead of decode_access_unit_into writing past the end of a span.
+// instead of decode_frame_into or decode_access_unit_into writing past the end
+// of a span.
+//
+// Both tables, in one function. Two of these - one per generation - would be a
+// second place to remember, which is the seam these tables exist to remove.
 consteval bool every_fixture_fits() {
+    for (const auto& fixture : kAc3Fixtures) {
+        if (fixture.rms.size() > kMaxChannels) {
+            return false;
+        }
+    }
     for (const auto& fixture : kEac3Fixtures) {
         if (fixture.rms.size() > kMaxChannels) {
             return false;
@@ -485,7 +612,7 @@ consteval bool every_fixture_fits() {
 }
 
 static_assert(every_fixture_fits(),
-              "an E-AC-3 fixture has more channels than the probe's PCM block holds - raise "
+              "a fixture has more channels than the probe's PCM block holds - raise "
               "kMaxChannels");
 
 // The profile's one behavioural difference, checked rather than asserted in a
@@ -528,16 +655,30 @@ int ac3probe::run() {
 
     bind_pcm_spans();
 
-    if (decode_ac3() != 0) {
-        std::printf("result=fail\n");
-        return 1;
-    }
-    for (const auto& fixture : kEac3Fixtures) {
-        if (decode_eac3(fixture.codec, fixture.stream, fixture.rms,
-                        fixture.bed_only) != 0) {
+    for (const auto& fixture : kAc3Fixtures) {
+        if (decode_ac3(fixture.codec, fixture.stream, fixture.rms) != 0) {
             std::printf("result=fail\n");
             return 1;
         }
+    }
+    for (const auto& fixture : kEac3Fixtures) {
+        if (decode_eac3(fixture.codec, fixture.stream, fixture.rms,
+                        fixture.bed_only, fixture.joc_domain) != 0) {
+            std::printf("result=fail\n");
+            return 1;
+        }
+        // Hand back what enhanced coupling cached, if this fixture used it.
+        // Its scratch is thread_local and this thread never exits, so without
+        // this it stays resident for the rest of the run - not a leak, but
+        // 34,232 bytes the next fixture cannot have. It is what stopped
+        // object reconstruction fitting on an ESP32-S3 whenever it ran after
+        // the ecpl row, and calling it here is what lets these rows sit in
+        // any order.
+        //
+        // Every fixture, not just the coupled one: nothing outside the
+        // decoder can tell which streams used which tools, and this costs a
+        // null check where the scratch was never built.
+        ac3::eac3::release_ecpl_scratch();
     }
     check_reference_transform_refused();
 

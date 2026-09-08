@@ -47,7 +47,7 @@ caller, not an attack:
   through — see [Raw-pointer boundaries](#raw-pointer-boundaries).
 
 **No remaining undefended container.** Matroska/WebM, MP4/ISOBMFF and MPEG-TS all had a reader
-land (roadmap `IO2`) and are in the untrusted table above; each container this project also
+land and are in the untrusted table above; each container this project also
 writes now has a matching demuxer this project defends. An embedder demuxing a container format
 this project does not read — or write, such as a bare Ogg or ADTS wrapper — is still trusting
 *its own* demuxer, not this one.
@@ -97,7 +97,7 @@ What runs against it, continuously:
 - **An ASan + UBSan CI leg** that runs the full test suite and `tools/ci/run_codec_matrix.sh` —
   every layout, every Annex E tool token, both Atmos container modes, the metadata options —
   so the sanitizers see the real command paths rather than only unit tests.
-- **A ThreadSanitizer leg** (roadmap VX16). The codec core is single-threaded and holds no shared
+- **A ThreadSanitizer leg**. The codec core is single-threaded and holds no shared
   state, but the audio layer's lock-free SPSC ring, silence watchdog and drift servo are shared
   between a real-time callback thread and an encoder thread, and neither ASan nor UBSan can see a
   race there — the two runtimes are also mutually exclusive, so it is a separate required leg
