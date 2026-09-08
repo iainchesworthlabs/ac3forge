@@ -43,4 +43,31 @@ inline constexpr std::uint64_t kAc3Hash = 5257466536860864961ULL;
 inline constexpr std::size_t kEac3Bytes = 9216;
 inline constexpr std::uint64_t kEac3Hash = 1012121234525177924ULL;
 
+// §E3.5 enhanced coupling. 2/0 at 192 kbit/s, and the layout is the finding.
+//
+// A third row for one reason: without it the ENCODER's enhanced-coupling path
+// is linked into this profile and executed by none of it. The row above uses
+// the default tools, which is no coupling at all, so fit_ecpl_band - the
+// single largest allocator in the encoder - never ran under any probe. Exactly
+// the gap the DECODE side had before fixture.hpp grew its own eac3_ecpl
+// stream, and found the same way: by asking what the fixtures do not reach.
+//
+// WHY 2/0 AND NOT 5.1. Because 5.1 does not fit, and that is worth stating
+// rather than working around quietly. Enhanced-coupling encode at 3/2+LFE
+// peaks at 343,483 bytes on the host profile and dies on an ESP32-S3 with
+// `out_of_memory bytes=147456` - one allocation of 6 channels x 6 blocks x 256
+// doubles x 2, against a largest free run smaller than that by the time the
+// other two fixtures have run. It is not a ceiling to raise: the part has
+// 277,400 bytes free in total and this asks for 343,483.
+//
+// 2/0 reaches the same code - the same fit_ecpl_band, the same per-band
+// amplitude/angle/chaos search, the same §E3.5 syntax - at a third of the
+// channel count, so the path is covered and the profile still fits. What is
+// NOT covered is 5.1 enhanced-coupling ENCODE on this part, because it cannot
+// be; see docs/platforms/esp32.md.
+//
+// 192 kbit/s 2/0 is 768 bytes an access unit, 4,608 for six.
+inline constexpr std::size_t kEac3EcplBytes = 4608;
+inline constexpr std::uint64_t kEac3EcplHash = 4460190987537266377ULL;
+
 }  // namespace ac3probe

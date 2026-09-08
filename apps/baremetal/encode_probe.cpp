@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <span>
 
+#include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
@@ -205,10 +206,12 @@ void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes
     }
 }
 
+// `views` is however many channels the encoder's own layout asks for, which is
+// not always the six the PCM block holds - see the 2/0 fixture below.
 template <typename Encoder>
 EncodeResult encode_all(Encoder& encoder,
                         std::array<std::array<float, ac3::kSamplesPerFrame>, kChannels>& pcm,
-                        std::array<std::span<const float>, kChannels>& views) {
+                        std::span<const std::span<const float>> views) {
     EncodeResult result;
     std::size_t before = g_alloc_calls;
     for (int frame = 0; frame < ac3probe::kEncodeFrames; ++frame) {
@@ -265,6 +268,35 @@ int ac3probe::run() {
         const auto r = encode_all(encoder, g_pcm, g_views);
         report("eac3", r, ac3probe::kEac3Bytes, ac3probe::kEac3Hash);
     }
+
+    // §E3.5 enhanced coupling, which nothing else here reaches. `coupling` and
+    // `enhanced` are set explicitly rather than through auto_tools: that flag
+    // overrides the individual ones and picks per rate, so asking it for
+    // enhanced coupling is asking it for whatever it happens to choose - which
+    // is not a fixture, it is a moving target.
+    //
+    // Both flags, because `enhanced` is only meaningful together with
+    // `coupling` - §E3.5 is an alternate coupling mode, not an independent
+    // tool.
+    {
+        ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192,
+                                         .acmod = ac3::Acmod::k2_0,
+                                         .coupling = true,
+                                         .enhanced = true}};
+        const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
+        report("eac3_ecpl", r, ac3probe::kEac3EcplBytes, ac3probe::kEac3EcplHash);
+    }
+    // Hand back what enhanced coupling cached, exactly as probe.cpp does after
+    // each decode fixture and for the same reason: the scratch is thread_local
+    // and this thread never exits, so without this its 34,208 bytes stay
+    // resident for the rest of the run. Not a leak - bounded, paid once, and
+    // the point of caching it - but the probe reports retained bytes and a
+    // runner gates them at 1,024, so a fixture that leaves five figures behind
+    // has to say whether that is a cache or a bug. It is a cache.
+    //
+    // The ENCODER shares eac3_tools with the decoder, which is why this call
+    // means anything in an encode-only profile at all.
+    ac3::eac3::release_ecpl_scratch();
 
     std::printf("heap.peak_bytes=%lu heap.peak_after_ac3_bytes=%lu heap.allocs=%lu "
                 "heap.frees=%lu heap.retained_bytes=%lu\n",

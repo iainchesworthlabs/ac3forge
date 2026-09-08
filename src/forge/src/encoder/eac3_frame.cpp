@@ -3611,7 +3611,24 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                         blk + 1 < kBlocksPerFrame ? coeffs_at(cpl_stream, blk + 1) : kZero;
                     auto& zr = impl_->ecpl_zr_scratch_;
                     auto& zi = impl_->ecpl_zi_scratch_;
-                    ecpl_channel_spectrum(prev, curr, next, zr, zi);
+                    // config_.fast_mdct, like the other two ecpl_channel_spectrum
+                    // call sites in this file. This one omitted it and took the
+                    // parameter's own default, which is false - the DIRECT form.
+                    //
+                    // Two things were wrong with that. In the full library it
+                    // analysed the same spectrum through a different transform
+                    // than the sites that then encode it, so the ecplangleintrp
+                    // decision was made against arithmetic the rest of the frame
+                    // did not use. In the minimum-footprint profile it is worse
+                    // than wrong: that build deliberately carries no direct form
+                    // at all (src/core/transform/stub/), so this reached a stub
+                    // that asserts - and on an ESP32-S3 the encode aborted here.
+                    //
+                    // It survived because nothing executed it. The encode probe
+                    // had no enhanced-coupling fixture until the one this commit
+                    // adds, and on a hosted NDEBUG build the stub's assert
+                    // compiles out and it silently zero-fills instead.
+                    ecpl_channel_spectrum(prev, curr, next, zr, zi, impl_->config_.fast_mdct);
                     for (int ch = 1; ch < nfchans; ++ch) {
                         for (std::size_t bnd = 0; bnd < nbnd_e; ++bnd) {
                             const auto slot = ecpl_slot(blk, ch) + bnd;
