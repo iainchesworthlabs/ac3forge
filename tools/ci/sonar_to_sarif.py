@@ -87,7 +87,7 @@ def sonar_get(sonar_url, token, path, params):
         detail = error.read().decode("utf-8", "replace")
         raise SystemExit(
             f"Sonar API request to {path} failed: HTTP {error.code}\n{detail}"
-        )
+        ) from error
 
 
 def fetch_issues(sonar_url, token, organization, project_key, branch, types):
