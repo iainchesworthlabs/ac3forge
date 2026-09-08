@@ -84,7 +84,60 @@ $files = Get-ChildItem -Path $scanRoots -Recurse -File -Include '*.h', '*.hpp', 
 # include guards and all, and the rule this check holds is about ac3forge's
 # own code selecting platforms in CMake - so the sample is left out.
 $driverRoot = Join-Path $appsRoot 'windows\driver'
-$files = $files | Where-Object { -not $_.FullName.StartsWith($driverRoot, [System.StringComparison]::OrdinalIgnoreCase) }
+$files = @($files | Where-Object { -not $_.FullName.StartsWith($driverRoot, [System.StringComparison]::OrdinalIgnoreCase) })
+
+# Build output is not source, and a build configured INSIDE the tree puts some
+# of it under apps/: apps/baremetal/platform/esp32s3 is built in place by
+# idf.py (docs/platforms/esp32.md), and CMake's generated ac3/export.hpp is a
+# conditional-compilation header by its very nature. One such build produced
+# 658 "violations", every one of them generated and none of them anybody's
+# code. src/quarantine/ was the same story waiting to happen on the src/ side.
+#
+# Ask git which files are source rather than pattern-matching directory names
+# here: .gitignore already carries that answer and stays the single place it is
+# written down, so a new ignored directory costs no second edit in this file.
+#
+#   --cached           files git tracks
+#   --others           plus files it does not yet track
+#   --exclude-standard minus everything .gitignore excludes
+#
+# which is exactly "in the repository, or on its way in". `--others` is the
+# half that matters for a local pre-commit run: a source file that is new and
+# not yet committed is precisely the case worth catching before it lands, and
+# a tracked-only listing would not see it.
+#
+# -z makes the output NUL-separated and UNQUOTED. Without it git C-quotes any
+# path holding a space or a non-ASCII byte, quotation marks and all, and the
+# comparison below would then miss that path and scan the file anyway.
+$sourcePaths = $null
+# PowerShell 7.3+ turns a non-zero native exit code into a terminating error
+# while $ErrorActionPreference is 'Stop', so that translation is switched off
+# around the call and restored afterwards.
+$previousNativePreference = $PSNativeCommandUseErrorActionPreference
+try {
+    $PSNativeCommandUseErrorActionPreference = $false
+    $listed = git -C $Root ls-files -z --cached --others --exclude-standard -- $scanRoots 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $sourcePaths = [System.Collections.Generic.HashSet[string]]::new(
+            [string[]]@((@($listed) -join '') -split "`0" | Where-Object { $_ }),
+            [System.StringComparer]::OrdinalIgnoreCase)
+    }
+} catch {
+    # No git on PATH, or not a work tree (an exported tarball, a vendored
+    # copy). Scanning everything is the safe direction to fail in: noisier,
+    # never quieter.
+    $sourcePaths = $null
+} finally {
+    $PSNativeCommandUseErrorActionPreference = $previousNativePreference
+}
+
+$scannedBeforeFilter = $files.Count
+if ($null -ne $sourcePaths -and $sourcePaths.Count -gt 0) {
+    $files = @($files | Where-Object {
+        $sourcePaths.Contains([System.IO.Path]::GetRelativePath($Root, $_.FullName).Replace('\', '/'))
+    })
+}
+$excludedCount = $scannedBeforeFilter - $files.Count
 
 $violations = @()
 foreach ($file in $files) {
@@ -134,5 +187,13 @@ if ($violations.Count -gt 0) {
     exit 1
 }
 
-Write-Host "OK: no preprocessor conditionals in src/ or apps/ ($($files.Count) files scanned)." -ForegroundColor Green
+$summary = "OK: no preprocessor conditionals in src/ or apps/ ($($files.Count) files scanned"
+if ($excludedCount -gt 0) {
+    # Printed rather than left implicit: this filter turning the check
+    # green for the wrong reason - by excluding real source - is the one
+    # failure mode that would not announce itself, so what it removed is
+    # always on the record.
+    $summary += ", $excludedCount skipped as build output or git-ignored"
+}
+Write-Host "$summary)." -ForegroundColor Green
 exit 0
