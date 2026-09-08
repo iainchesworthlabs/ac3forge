@@ -6,6 +6,17 @@ general Linux picture (toolchains, the ALSA backend, the GUI, packaging), see
 [Linux](linux.md) and [Building from source](../building.md) - everything there applies here
 unchanged, just with `-arm64` presets.
 
+## Status
+
+| | |
+|---|---|
+| What runs here | Everything Linux arm64 runs. There is no Pi-specific code |
+| Pi 4 Model B | Validated on the board: 440/440 tests on both compilers, including the hard real-time encode gate |
+| Bitstream to a real receiver | Confirmed over HDMI to a powered Atmos-capable AVR, over ALSA and over PipeWire |
+| Pi 5 | Expected to behave identically; **not validated** on real hardware |
+| Pi 3 | Not a supported target — the weaker CPU puts the real-time encode gate at risk |
+| OS | 64-bit required (`aarch64`); there is no 32-bit ARM triplet |
+
 ## Why there's no Raspberry Pi-specific code
 
 The project's backend tree (`src/audio/src/backend/{windows,alsa,pipewire,posix,macos,android}/`,

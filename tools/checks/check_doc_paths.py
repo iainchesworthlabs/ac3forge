@@ -3,7 +3,7 @@
 
 A file that moves takes its README row, its workflow step and the comments
 that cite it along only when someone remembers. This makes forgetting a red
-job. Two checks, both stdlib-only, run from ci.yml's script-lint job and
+job. Three checks, all stdlib-only, run from ci.yml's script-lint job and
 runnable the same way locally:
 
     python3 tools/checks/check_doc_paths.py [--root <repo>]
@@ -21,7 +21,16 @@ runnable the same way locally:
     absolute http(s) URL or a bare #anchor (docs/roadmap.md states that rule),
     and anything else fails.
 
-(b) Every path literal starting docs/, apps/, src/ or tools/ inside
+(b) Every path a documentation page names in its own prose or a code span,
+    as opposed to in a link, resolves. A page can go on citing a directory for
+    years after the tree moved it, because nothing was reading those. Fenced
+    blocks are exempt (shell transcripts and source listings, not claims about
+    the tree), and so are the pages in PROSE_PATHS_UNCHECKED below: a plan
+    proposing a layout, a phase record describing the tree before a rename,
+    and CHANGELOG.md, whose released entries are immutable. Their links are
+    still checked; only their prose is exempt.
+
+(c) Every path literal starting docs/, apps/, src/ or tools/ inside
     .github/workflows/*.yml, cmake/**/*.cmake, CMakePresets.json and
     tools/**/*.{py,sh,ps1} names something that exists. Conservative on
     purpose. A token has to start at a word boundary, contain a slash and end
@@ -31,7 +40,10 @@ runnable the same way locally:
     what the check declines to answer stays visible:
 
       - globs (* ?), placeholders (${...}, $var, %var%) and identifiers a
-        comment wrapped mid-token, which name no single path;
+        comment wrapped mid-token, which name no single path. A brace group is
+        no longer one of these: `a/{b,c}/d` expands to one path per alternative
+        and each is checked, since skipping the token meant none of the
+        siblings ever was;
       - anything .gitignore covers, which is generated rather than stale:
         docs/spec/'s standards documents, build/ outputs, the Android
         signing-key asset a runner materialises, src/quarantine;
@@ -54,7 +66,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from urllib.parse import unquote
 
-MARKDOWN_GLOBS = ("docs/**/*.md",)
+MARKDOWN_GLOBS = ("docs/**/*.md", "planning/*.md")
 MARKDOWN_FILES = ("README.md", "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md", "ROADMAP.md")
 # Files whose links must be absolute rather than resolvable from this tree,
 # with the reason the inverted rule applies to them.
@@ -87,6 +99,42 @@ FOREIGN_PATHS = {
     "src/main/assets/signing.key": "relative to the Android app module, not the repo root",
 }
 
+# Paths a plan proposes but the tree does not have yet. A brace token expands to
+# one path per alternative (see expand_braces), so these are listed individually
+# and, like FOREIGN_PATHS, printed on every run. A path that lands should be
+# deleted from here, which is what makes the plan's own prose fall due.
+PLANNED_PATHS = {
+    "apps/forge/cli": "proposed by the recasting plan, not created yet",
+    "apps/forge/gui": "proposed by the recasting plan, not created yet",
+    "apps/forge/common": "proposed by the recasting plan, not created yet",
+    "apps/hearth/platform/linux": "proposed by the playback-appliance plan, not created yet",
+    "apps/hearth/platform/windows": "proposed by the playback-appliance plan, not created yet",
+    "apps/hearth/platform/macos": "proposed by the playback-appliance plan, not created yet",
+    "apps/crucible/platform": "proposed by the playback-appliance plan, not created yet",
+    "apps/windows/engine": "the pre-promotion layout the promotion record names",
+    "apps/windows/runner": "the pre-promotion layout the promotion record names",
+    "apps/windows/ui": "the pre-promotion layout the promotion record names",
+    "apps/windows/translations": "the pre-promotion layout the promotion record names",
+    "apps/windows/spikes": "the pre-promotion layout the promotion record names",
+}
+
+# Markdown pages whose prose deliberately names paths that do not exist: a plan
+# proposing a layout, or a phase record describing the tree as it was before a
+# rename. Their *links* are still checked - only the paths written in prose and
+# code spans are exempt, because those pages are not claiming the tree looks
+# like that today.
+PROSE_PATHS_UNCHECKED = {
+    "planning/README.md": "index of plans; names the directories they propose",
+    "planning/recasting.md": "plan; proposes a layout that does not exist yet",
+    "planning/topology.md": "plan; proposes applications that do not exist yet",
+    "planning/player-appliance.md": "plan; proposes an apps tree that does not exist",
+    "planning/host-plugin.md": "study; proposes an Assay component and its own docs tree",
+    "planning/qc-report.md": "plan; proposes source files it would add",
+    "docs/crucible/promotion.md": "phase record; names the pre-promotion apps/windows layout",
+    "docs/platforms/windows-demo.md": "phase record; names the pre-promotion apps/windows layout",
+    "CHANGELOG.md": "released entries are an immutable record of the tree as it was",
+}
+
 # Link text runs to the next ']' but may not contain a '[', which is CommonMark's
 # rule that a ']' closes the most recent unclosed '[' and not some earlier one.
 # It matters because the text may now span lines: without it the '[' of a prose
@@ -103,12 +151,37 @@ HTTP_URL = re.compile(r"^https?://", re.IGNORECASE)
 # is not one), and ends at whitespace, a quote, a bracket or a punctuation mark
 # that never appears inside a path here. PowerShell writes its paths with
 # backslashes, so the .ps1 variant accepts either separator and normalises.
-TOKEN_TAIL = r"[^\s\"'`\[\]()<>,;:|]+"
+#
+# A brace group is the one place a comma belongs to the path rather than ending
+# it: a token of the form <prefix>/x/{a,b}/y names two paths, not one path and
+# some prose. Without the first branch below the token stopped at the comma,
+# leaving a dangling open brace that was then declined as a placeholder, so
+# expand_braces never saw a group at all and the expansion was dead code.
+TOKEN_CHAR = r"[^\s\"'`\[\]()<>,;:|{}]"
+TOKEN_TAIL = r"(?:\{" + TOKEN_CHAR + r"*(?:," + TOKEN_CHAR + r"*)*\}|" + TOKEN_CHAR + r")+"
 PREFIX_ALTERNATION = "|".join(LITERAL_PREFIXES)
 PATH_TOKEN = re.compile(r"(?<![\w./\\-])((?:" + PREFIX_ALTERNATION + r")/" + TOKEN_TAIL + ")")
 PS1_TOKEN = re.compile(r"(?<![\w./\\-])((?:" + PREFIX_ALTERNATION + r")[/\\]" + TOKEN_TAIL + ")")
 GLOB_CHARS = ("*", "?")
-PLACEHOLDER_MARKS = ("${", "{", "}", "$", "%")
+PLACEHOLDER_MARKS = ("${", "$", "%")
+BRACE_GROUP = re.compile(r"\{([^{}]+)\}")
+
+
+def expand_braces(token: str) -> list[str]:
+    """`a/{b,c}/d` -> [`a/b/d`, `a/c/d`]. Docs use the shell's own shorthand for
+    a set of sibling paths, and skipping the whole token as a placeholder meant
+    none of the siblings was ever checked - which is how a scalar-type seam that
+    had moved directories survived on the ESP32-S3 page."""
+    match = BRACE_GROUP.search(token)
+    if not match:
+        return [token]
+    out: list[str] = []
+    for raw_alternative in match.group(1).split(","):
+        alternative = raw_alternative.strip()
+        if not alternative:
+            return [token]  # `{}` is not a set of alternatives; leave it alone
+        out.extend(expand_braces(token[: match.start()] + alternative + token[match.end() :]))
+    return out
 
 
 @dataclass
@@ -244,6 +317,43 @@ def check_absolute_links(path: Path, root: Path, reason: str, report: Report) ->
         report.problems.append(f"{where}:{number}: link must be an absolute URL ({reason}): {raw}")
 
 
+def check_markdown_prose(path: Path, root: Path, patterns: list[str], report: Report) -> None:
+    """Paths written in a page's prose and code spans, not just in its links.
+
+    Markdown links were always checked; a path in a code span was not, which is
+    how the ESP32-S3 page went on naming an internal directory one level up from
+    where the tree actually has it. Fenced blocks are skipped -
+    they hold shell transcripts and source listings, not claims about the tree.
+    """
+    where = _display(path, root)
+    if where in PROSE_PATHS_UNCHECKED:
+        report.skipped.append(f"{where}: prose paths ({PROSE_PATHS_UNCHECKED[where]})")
+        return
+    fenced = False
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if FENCE.match(line):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        for span in CODE_SPAN.finditer(line):
+            for match in PATH_TOKEN.finditer(span.group(0)):
+                token = match.group(1).rstrip(".").split("#", 1)[0]
+                if not token or classify_token(token, patterns):
+                    continue
+                for expansion in expand_braces(token):
+                    candidate = expansion.rstrip("/")
+                    if not candidate or candidate in FOREIGN_PATHS or candidate in PLANNED_PATHS:
+                        continue
+                    if is_ignored(candidate, patterns):
+                        continue
+                    report.checked += 1
+                    if not (root / candidate).exists():
+                        shown = token if candidate == token else f"{candidate} (from {token})"
+                        report.problems.append(
+                            f"{where}:{number}: path does not exist: {shown}")
+
+
 def check_markdown(path: Path, root: Path, report: Report) -> None:
     lines = path.read_text(encoding="utf-8").splitlines()
     where = _display(path, root)
@@ -288,9 +398,27 @@ def check_literals(path: Path, root: Path, patterns: list[str], report: Report) 
             if reason:
                 report.skipped.append(f"{where}:{number}: {token} ({reason})")
                 continue
-            report.checked += 1
-            if not (root / token).exists():
-                report.problems.append(f"{where}:{number}: path does not exist: {token}")
+            for expansion in expand_braces(token):
+                candidate = expansion.rstrip("/")
+                if not candidate:
+                    continue
+                if candidate in FOREIGN_PATHS:
+                    report.skipped.append(
+                        f"{where}:{number}: {candidate} ({FOREIGN_PATHS[candidate]})")
+                    continue
+                if candidate in PLANNED_PATHS:
+                    report.skipped.append(
+                        f"{where}:{number}: {candidate} ({PLANNED_PATHS[candidate]})")
+                    continue
+                if is_ignored(candidate, patterns):
+                    report.skipped.append(
+                        f"{where}:{number}: {candidate} "
+                        "(gitignored, so generated rather than stale)")
+                    continue
+                report.checked += 1
+                if not (root / candidate).exists():
+                    shown = token if candidate == token else f"{candidate} (from {token})"
+                    report.problems.append(f"{where}:{number}: path does not exist: {shown}")
 
 
 def check_tree(root: Path) -> Report:
@@ -302,6 +430,7 @@ def check_tree(root: Path) -> Report:
             check_absolute_links(path, root, reason, report)
             continue
         check_markdown(path, root, report)
+        check_markdown_prose(path, root, patterns, report)
     for path in literal_files(root):
         check_literals(path, root, patterns, report)
     return report

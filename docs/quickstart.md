@@ -1,6 +1,6 @@
 # Quick start
 
-Clone to first encode in under ten minutes. This page shows the shortest path; see
+Clone to first encode. This page shows the shortest path; see
 [building.md](building.md) for the full preset list, building without Qt, the Linux GUI opt-in,
 and machine-local preset overrides.
 

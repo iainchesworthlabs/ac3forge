@@ -658,11 +658,29 @@ struct EcplBandFit {
     int chaos_code = 0;
 };
 
+// `amp_scratch` and `angle_scratch` are caller-owned, at least `channel.size()`
+// wide, and their contents on entry mean nothing.
+//
+// Parameters rather than locals, which is where they were: a std::vector each,
+// constructed and destroyed once per BAND per CHANNEL per send-block. Three
+// send-blocks by five channels by ten-odd merged bands by two is 240
+// allocations a frame at 5.1 - the single largest churn site in the encoder,
+// and roughly the same defect as the decoder's own reconstruction loop had.
+// The array beside them (recon_scratch) was always a stack array; these two
+// were not, because their width is only known at run time.
+//
+// They come from the encoder's Impl rather than becoming stack arrays here for
+// the arm-none-eabi leg's sake: this function already puts 2 KB of
+// recon_scratch on the stack, and a Cortex-M3 running out of a hand-written
+// linker script is not the place to add 4 KB more to a frame nested three loops
+// deep.
 [[nodiscard]] EcplBandFit fit_ecpl_band(std::span<const double> channel,
                                         std::span<const double> baseline_a,
                                         std::span<const double> baseline_b,
                                         std::span<const double, 256> zr,
-                                        std::span<const double, 256> zi, int ch, int low) {
+                                        std::span<const double, 256> zi, int ch, int low,
+                                        std::span<double> amp_scratch,
+                                        std::span<double> angle_scratch) {
     AC3_ZONE_SCOPED_N("fit_ecpl_band");
     const std::size_t n = channel.size();
     double saa = 0.0;
@@ -696,8 +714,14 @@ struct EcplBandFit {
     const double amp0 = std::hypot(g_re, g_im);
     const double angle0 = std::atan2(g_im, g_re) / std::numbers::pi;
 
-    const std::vector<double> amp_scratch(n, amp0);
-    std::vector<double> angle_scratch(n);
+    // The vectors these replaced were (n, amp0) and (n) - filled and
+    // zero-filled respectively. Reused storage carries the previous band's
+    // values, so both are re-established here rather than being implied by
+    // construction. angle_scratch is written in full by the loop below before
+    // it is read, so only the amplitude actually needs the fill.
+    const std::span<double> amp_band = amp_scratch.first(n);
+    const std::span<double> angle_band = angle_scratch.first(n);
+    std::fill(amp_band.begin(), amp_band.end(), amp0);
     std::array<double, 256> recon_scratch{};
     int best_code = 0;
     double best_err = 0.0;
@@ -712,9 +736,9 @@ struct EcplBandFit {
             } else if (angle >= 1.0) {
                 angle -= 2.0;
             }
-            angle_scratch[i] = angle;
+            angle_band[i] = angle;
         }
-        ecpl_channel_coefficients(zr, zi, amp_scratch, angle_scratch, low,
+        ecpl_channel_coefficients(zr, zi, amp_band, angle_band, low,
                                   low + static_cast<int>(n), recon_scratch);
         double err = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
@@ -1242,7 +1266,7 @@ void emit_mixing_parameters(BitWriter& w, const meta::MixingParameters& mixing) 
     // writer does that, the same shape measure_side_bits uses for the frame.
     const auto emit_contents = [&](BitWriter& out) {
         out.put(mixing.external ? 1 : 0, 1);  // mixdata2e
-        if (mixing.external) {
+        if (mixing.external.has_value()) {
             const auto& external = *mixing.external;
             emit_premix(out, external.premix);
             // §E2.3.1.25 onwards: one flag-plus-4-bit-code pair per channel,
@@ -1257,7 +1281,7 @@ void emit_mixing_parameters(BitWriter& w, const meta::MixingParameters& mixing) 
                 }
             }
             out.put(external.auxiliary ? 1 : 0, 1);  // addche
-            if (external.auxiliary) {
+            if (external.auxiliary.has_value()) {
                 for (const auto& scale : *external.auxiliary) {
                     out.put(scale ? 1 : 0, 1);
                     if (scale) {
@@ -1267,15 +1291,15 @@ void emit_mixing_parameters(BitWriter& w, const meta::MixingParameters& mixing) 
             }
         }
         out.put(mixing.speech ? 1 : 0, 1);  // mixdata3e
-        if (mixing.speech) {
+        if (mixing.speech.has_value()) {
             const auto& speech = *mixing.speech;
             out.put(static_cast<std::uint32_t>(speech.spchdat), 5);
             out.put(speech.additional ? 1 : 0, 1);  // addspchdate
-            if (speech.additional) {
+            if (speech.additional.has_value()) {
                 out.put(static_cast<std::uint32_t>(speech.additional->spchdat1), 5);
                 out.put(static_cast<std::uint32_t>(speech.additional->spchan1att), 2);
                 out.put(speech.additional->more ? 1 : 0, 1);  // addspchdat1e
-                if (speech.additional->more) {
+                if (speech.additional->more.has_value()) {
                     out.put(static_cast<std::uint32_t>(speech.additional->more->spchdat2), 5);
                     out.put(static_cast<std::uint32_t>(speech.additional->more->spchan2att), 3);
                 }
@@ -1458,7 +1482,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     }
     if (dependent) {
         w.put(config.chanmap ? 1 : 0, 1);  // chanmape
-        if (config.chanmap) {
+        if (config.chanmap.has_value()) {
             w.put(*config.chanmap, 16);
         }
     }
@@ -1468,7 +1492,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     // writes no centre mix level even though the programme has one.
     const auto acmod_value = static_cast<std::uint8_t>(config.acmod);
     w.put(config.mixing ? 1 : 0, 1);  // mixmdate
-    if (config.mixing) {
+    if (config.mixing.has_value()) {
         const auto& mix = *config.mixing;
         if (acmod_value > 0x2) {
             w.put(static_cast<std::uint32_t>(mix.dmixmod), 2);
@@ -1483,7 +1507,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         }
         if (config.lfe) {
             w.put(mix.lfemixlevcod ? 1 : 0, 1);  // lfemixlevcode
-            if (mix.lfemixlevcod) {
+            if (mix.lfemixlevcod.has_value()) {
                 w.put(static_cast<std::uint32_t>(*mix.lfemixlevcod), 5);
             }
         }
@@ -1511,7 +1535,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
             if (acmod_value < 0x2) {
                 const auto emit_pan = [&w](const std::optional<meta::PanInfo>& pan) {
                     w.put(pan ? 1 : 0, 1);  // paninfoe
-                    if (pan) {
+                    if (pan.has_value()) {
                         w.put(static_cast<std::uint32_t>(pan->panmean), 8);
                         w.put(static_cast<std::uint32_t>(pan->paninfo), 6);
                     }
@@ -1522,7 +1546,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
                 }
             }
             w.put(mix.blkmixcfginfo ? 1 : 0, 1);  // frmmixcfginfoe
-            if (mix.blkmixcfginfo) {
+            if (mix.blkmixcfginfo.has_value()) {
                 // Six blocks per syncframe, always - either numblkscod 0x3
                 // written above or the implicit six of a reduced-rate fscod2
                 // frame. §E2.3.1.60's one-block form (where the per-block flag
@@ -1531,7 +1555,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
                 // it, because a third-party stream may well use it.
                 for (const auto& word : *mix.blkmixcfginfo) {
                     w.put(word ? 1 : 0, 1);  // blkmixcfginfoe
-                    if (word) {
+                    if (word.has_value()) {
                         w.put(static_cast<std::uint32_t>(*word), 5);
                     }
                 }
@@ -1539,7 +1563,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         }
     }
     w.put(config.info ? 1 : 0, 1);  // infomdate
-    if (config.info) {
+    if (config.info.has_value()) {
         const auto& info = *config.info;
         w.put(static_cast<std::uint32_t>(info.bsmod), 3);
         w.put(info.copyrightb ? 1 : 0, 1);
@@ -1555,7 +1579,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         // field - AC-3 puts that one in Annex D's xbsi2 instead.
         const auto emit_audprod = [&w](const std::optional<meta::AudioProduction>& production) {
             w.put(production ? 1 : 0, 1);  // audprodie
-            if (production) {
+            if (production.has_value()) {
                 w.put(static_cast<std::uint32_t>(production->mixlevel), 5);
                 w.put(static_cast<std::uint32_t>(production->roomtyp), 2);
                 w.put(static_cast<std::uint32_t>(production->adconvtyp), 1);
@@ -1577,7 +1601,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     if (config.strmtyp == StreamType::kIndependent && nblks != kBlocksPerFrame) {
         w.put(payload.convsync ? 1 : 0, 1);  // convsync
     }
-    if (config.oba_complexity_index) {
+    if (config.oba_complexity_index.has_value()) {
         // TS 103 420 §8.3.1 fixes the addbsi contents for an object-audio
         // stream: seven reserved bits, the extension flag, then the complexity
         // index. addbsil counts BYTES MINUS ONE, so the two bytes below are 1.
@@ -2308,7 +2332,15 @@ std::expected<std::vector<std::byte>, FrameError> finish_frame(
         return std::unexpected(FrameError::kInvalidObjectAudio);
     }
 
+    // reserve(), which this did not do until the bare-metal probe counted what
+    // it cost. BitWriter::put grows bytes_ one byte at a time - its own header
+    // puts the bill at "~11 geometric reallocations for a full syncframe" - and
+    // both writers here start from capacity 0, so a frame paid that twice for
+    // nothing. src/forge/src/encoder/encoder.cpp does reserve on the AC-3 side;
+    // this is the same line, and total_bytes was already sitting two statements
+    // above it.
     BitWriter probe;
+    probe.reserve(total_bytes);
     emit_frame(probe, config, words, payload, aux);
     const auto content_bits = static_cast<std::uint32_t>(probe.bit_count());
     if (content_bits + kTailBits > total_bits) {
@@ -2317,6 +2349,7 @@ std::expected<std::vector<std::byte>, FrameError> finish_frame(
     const std::uint32_t spare = total_bits - content_bits - kTailBits;
 
     BitWriter w;
+    w.reserve(total_bytes);
     emit_frame(w, config, words, payload, aux, config.trace);
     for (std::uint32_t i = 0; i < spare; ++i) {
         w.put(0, 1);  // auxbits: padding, and nothing else
@@ -2378,16 +2411,16 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
     // that its own bounds, if both given, are not inverted; anything an
     // individual bound can't express (0 kbps, an unreachable ceiling) is
     // caught where it actually bites, in FrameEncoder::encode_frame.
-    if (config.vbr) {
+    if (config.vbr.has_value()) {
         const auto& vbr = *config.vbr;
-        if (vbr.min_kbps && vbr.max_kbps && *vbr.min_kbps > *vbr.max_kbps) {
+        if (vbr.min_kbps.has_value() && vbr.max_kbps.has_value() && *vbr.min_kbps > *vbr.max_kbps) {
             return std::unexpected(FrameError::kInvalidBitrate);
         }
         // ABR's target IS a rate the stream promises to deliver, so unlike
         // quality it has to be expressible: a target that gives no words at
         // all, or more than frmsiz's 11 bits can signal, is not an average
         // any frame sequence could hold. A zero-frame window is not a window.
-        if (vbr.abr) {
+        if (vbr.abr.has_value()) {
             const auto target_words = frame_words(config.sample_rate, vbr.abr->target_kbps);
             if (target_words < 1 || target_words > kMaxFrameWords ||
                 vbr.abr->window_frames < 1) {
@@ -2431,7 +2464,7 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
     // the locations it names to add up to exactly the channels acmod and lfeon
     // code. Disagreement is not a parse failure - the decoder simply puts
     // audio in the wrong speakers - so it has to be caught here.
-    if (config.chanmap) {
+    if (config.chanmap.has_value()) {
         if (config.strmtyp != StreamType::kDependent) {
             return std::unexpected(FrameError::kInvalidSubstream);
         }
@@ -2442,10 +2475,10 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
     }
     // §E3.8.5 owns a dependent substream's compre, so heavy compression there
     // would either be ignored or break the end-of-programme marker.
-    if (config.heavy && config.strmtyp != StreamType::kIndependent) {
+    if (config.heavy.has_value() && config.strmtyp != StreamType::kIndependent) {
         return std::unexpected(FrameError::kInvalidSubstream);
     }
-    if (config.mixing) {
+    if (config.mixing.has_value()) {
         const auto& mix = *config.mixing;
         // Tables D2.4 / D2.6 reserve the three loudest surround codes, and a
         // decoder that receives one substitutes 0.841 - so writing one means
@@ -2456,14 +2489,14 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
             !meta::valid_surround_mix_level(mix.lorosurmixlev)) {
             return std::unexpected(FrameError::kInvalidMixLevel);
         }
-        if (mix.lfemixlevcod && (*mix.lfemixlevcod < 0 || *mix.lfemixlevcod > 31)) {
+        if (mix.lfemixlevcod.has_value() && (*mix.lfemixlevcod < 0 || *mix.lfemixlevcod > 31)) {
             return std::unexpected(FrameError::kInvalidMixLevel);
         }
         if (!meta::valid_mix_metadata(mix)) {
             return std::unexpected(FrameError::kInvalidBsi);
         }
     }
-    if (config.info && !meta::valid_bsi_info(*config.info)) {
+    if (config.info.has_value() && !meta::valid_bsi_info(*config.info)) {
         return std::unexpected(FrameError::kInvalidBsi);
     }
     return {};
@@ -2514,6 +2547,11 @@ struct FrameEncoder::Impl {
     std::array<double, 256> ecpl_curr_scratch_{};
     std::array<double, 256> ecpl_next_scratch_{};
     std::array<double, 256> ecpl_recon_scratch_{};
+    // fit_ecpl_band's per-band amplitude and angle - see that function for what
+    // they cost as locals. 256 for the same reason as every array above: the
+    // spectrum is 256 bins and a band is a subset of it.
+    std::array<double, 256> ecpl_fit_amp_scratch_{};
+    std::array<double, 256> ecpl_fit_angle_scratch_{};
     // encode_frame's per-(stream, block) fixed-point spectra (~43 KB at
     // 5.1+coupling), a frame-lifetime work buffer under the same reasoning
     // and single-instance contract as the scratch above: re-assign()ed
@@ -2606,7 +2644,7 @@ std::expected<std::vector<std::byte>, FrameError> build_silent_frame(
     // Silence has no content to size a VBR frame against - every composite
     // costs the same near-zero mantissa bits, so "quality" has nothing to
     // measure. Silent frames stay CBR, sized from bitrate_kbps as always.
-    if (config.vbr) {
+    if (config.vbr.has_value()) {
         return std::unexpected(FrameError::kInvalidBitrate);
     }
 
@@ -2671,7 +2709,7 @@ LatencyBudget FrameEncoder::latency() const { return eac3_latency(impl_->config_
 
 FrameEncoder::FrameEncoder(const FrameConfig& config) : impl_(std::make_unique<Impl>()) {
     impl_->config_ = config;
-    if (impl_->config_.vbr && impl_->config_.vbr->abr) {
+    if (impl_->config_.vbr.has_value() && impl_->config_.vbr->abr.has_value()) {
         // Clamped the same way every other word count here is: validate()
         // rejects a target outside [1, kMaxFrameWords] before any frame is
         // encoded, but a FrameEncoder can be constructed without that call
@@ -2682,19 +2720,19 @@ FrameEncoder::FrameEncoder(const FrameConfig& config) : impl_(std::make_unique<I
                        std::uint32_t{1}, kMaxFrameWords),
             std::max(impl_->config_.vbr->abr->window_frames, std::uint32_t{1}));
     }
-    if (impl_->config_.drc) {
+    if (impl_->config_.drc.has_value()) {
         impl_->range_.emplace(*impl_->config_.drc, impl_->config_.sample_rate);
     }
     // Ch2's controller is built from drc2/heavy2, never drc/heavy - see
     // ac3::FrameEncoder::FrameEncoder (the AC-3 sibling of this constructor)
     // for why.
-    if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.drc2) {
+    if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.drc2.has_value()) {
         impl_->range2_.emplace(*impl_->config_.drc2, impl_->config_.sample_rate);
     }
-    if (impl_->config_.heavy) {
+    if (impl_->config_.heavy.has_value()) {
         impl_->heavy_.emplace(*impl_->config_.heavy, impl_->config_.sample_rate);
     }
-    if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.heavy2) {
+    if (impl_->config_.acmod == Acmod::kDualMono && impl_->config_.heavy2.has_value()) {
         impl_->heavy2_.emplace(*impl_->config_.heavy2, impl_->config_.sample_rate);
     }
     const int nfchans = fullbw_channel_count(impl_->config_.acmod);
@@ -2726,7 +2764,7 @@ FrameMetadata derive_metadata(const FrameConfig& config,
     FrameMetadata out;
     out.dynrng.fill(meta::kDynrngUnity);
     out.dynrng2.fill(meta::kDynrngUnity);
-    if (range) {
+    if (range.has_value()) {
         std::array<std::span<const float>, 5> block_view{};
         const int level_chans = dual_mono ? 1 : nfchans;
         for (int blk = 0; blk < nblks; ++blk) {
@@ -2753,7 +2791,7 @@ FrameMetadata derive_metadata(const FrameConfig& config,
                 (*range2)->next(level, *config.dialnorm2);
         }
     }
-    if (heavy) {
+    if (heavy.has_value()) {
         // With no mixmdate the §7.8 fallbacks stand in - the same intermediate
         // levels §5.4.2.4 and §5.4.2.5 tell a decoder to substitute. Dual mono
         // has no downmix to fall back on in the first place - §7.7.2.2 bounds
@@ -3513,8 +3551,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                     &baseline_a[ulow], uwidth};
                                 const std::span<const double> baseline_b_band{
                                     &baseline_b[ulow], uwidth};
-                                const auto fit = fit_ecpl_band(channel_band, baseline_a_band,
-                                                               baseline_b_band, zr, zi, ch, low);
+                                const auto fit = fit_ecpl_band(
+                                    channel_band, baseline_a_band, baseline_b_band, zr, zi, ch,
+                                    low, impl_->ecpl_fit_amp_scratch_,
+                                    impl_->ecpl_fit_angle_scratch_);
                                 cpl.ecplamp[slot] = quantize_ecplamp(fit.amp);
                                 cpl.ecplangle[slot] = quantize_ecplangle(fit.angle);
                                 cpl.ecplchaos[slot] = fit.chaos_code;
@@ -3571,7 +3611,24 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                         blk + 1 < kBlocksPerFrame ? coeffs_at(cpl_stream, blk + 1) : kZero;
                     auto& zr = impl_->ecpl_zr_scratch_;
                     auto& zi = impl_->ecpl_zi_scratch_;
-                    ecpl_channel_spectrum(prev, curr, next, zr, zi);
+                    // config_.fast_mdct, like the other two ecpl_channel_spectrum
+                    // call sites in this file. This one omitted it and took the
+                    // parameter's own default, which is false - the DIRECT form.
+                    //
+                    // Two things were wrong with that. In the full library it
+                    // analysed the same spectrum through a different transform
+                    // than the sites that then encode it, so the ecplangleintrp
+                    // decision was made against arithmetic the rest of the frame
+                    // did not use. In the minimum-footprint profile it is worse
+                    // than wrong: that build deliberately carries no direct form
+                    // at all (src/core/transform/stub/), so this reached a stub
+                    // that asserts - and on an ESP32-S3 the encode aborted here.
+                    //
+                    // It survived because nothing executed it. The encode probe
+                    // had no enhanced-coupling fixture until the one this commit
+                    // adds, and on a hosted NDEBUG build the stub's assert
+                    // compiles out and it silently zero-fills instead.
+                    ecpl_channel_spectrum(prev, curr, next, zr, zi, impl_->config_.fast_mdct);
                     for (int ch = 1; ch < nfchans; ++ch) {
                         for (std::size_t bnd = 0; bnd < nbnd_e; ++bnd) {
                             const auto slot = ecpl_slot(blk, ch) + bnd;
@@ -4251,6 +4308,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // size there, rather than the size deciding how much content fits.
     const auto measure_side_bits = [&] {
         BitWriter probe;
+        // kMaxFrameWords rather than this frame's own size, because this probe
+        // is deliberately given words=1: it is measuring the side info alone,
+        // so there is no frame size in scope to reserve from. 4,096 bytes is
+        // §E2.3.1's own ceiling on a syncframe, allocated once and freed at the
+        // end of this lambda, against the nine or so geometric growths put()
+        // would otherwise do on every call - and this runs up to four times per
+        // frame during the delta-allocation decision.
+        probe.reserve(kMaxFrameWords * 2);
         emit_frame(probe, impl_->config_, 1, payload, aux);
         return static_cast<std::uint32_t>(probe.bit_count());
     };
@@ -4385,7 +4450,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         AC3_ZONE_SCOPED_N("search");
         const int found = internal::search_max_fitting(
             1023, impl_->snr_search_hint_,
-            [&](int composite) { return bits_at(composite) <= budget; });
+            [&bits_at, &budget](int composite) { return bits_at(composite) <= budget; });
         impl_->snr_search_hint_ = found;
         return found;
     };
@@ -4412,7 +4477,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         -> std::optional<VbrSize> {
         const std::uint32_t content_bits = side_bits + mantissa_bits + kTailBits;
         const std::uint32_t wanted = (content_bits + 15) / 16;
-        if (cap_words) {
+        if (cap_words.has_value()) {
             const std::uint32_t max_words =
                 std::clamp(*cap_words, std::uint32_t{1}, kMaxFrameWords);
             if (content_bits > max_words * 16) {
@@ -4430,7 +4495,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         return VbrSize{.words = wanted, .fallback_budget = std::nullopt};
     };
     const auto vbr_max_words = [&](const VbrConfig& vbr) -> std::optional<std::uint32_t> {
-        if (!vbr.max_kbps) {
+        if (!vbr.max_kbps.has_value()) {
             return std::nullopt;
         }
         return std::clamp(frame_words(impl_->config_.sample_rate, *vbr.max_kbps), std::uint32_t{1},
@@ -4453,7 +4518,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         return std::clamp(std::max(cap, syntax_words), std::uint32_t{1}, kMaxFrameWords);
     };
     const auto vbr_min_words = [&](const VbrConfig& vbr) -> std::optional<std::uint32_t> {
-        if (!vbr.min_kbps) {
+        if (!vbr.min_kbps.has_value()) {
             return std::nullopt;
         }
         return std::clamp(frame_words(impl_->config_.sample_rate, *vbr.min_kbps), std::uint32_t{1},
@@ -4491,7 +4556,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // have - so this sidesteps the false positive instead of fighting it.
     bool fixed_budget_engaged = false;
     std::uint32_t fixed_budget = 0;
-    if (!impl_->config_.vbr) {
+    if (!impl_->config_.vbr.has_value()) {
         // With the blocks argument, not the six-block default: a short
         // syncframe carries proportionally fewer words at the same bit rate
         // (frame_words' own contract, and what validate() already checks).
@@ -4533,7 +4598,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // bit_reservoir.hpp), which is what lets a quiet frame stay cheap
         // while the long-run rate still lands where it was asked to.
         int composite = 0;
-        if (!impl_->abr) {
+        if (!impl_->abr.has_value()) {
             composite = std::clamp(
                 static_cast<int>(std::lround(std::clamp(vbr.quality, 0.0, 1.0) * 1023.0)), 0,
                 1023);
@@ -4553,14 +4618,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             impl_->abr->seed(composite);
         }
         auto sized = vbr_size_for(bits_at(composite), size_cap(vbr));
-        if (!sized && drop_delta_and_remeasure()) {
+        if (!sized.has_value() && drop_delta_and_remeasure()) {
             sized = vbr_size_for(bits_at(composite), size_cap(vbr));
         }
-        if (!sized) {
+        if (!sized.has_value()) {
             return std::unexpected(FrameError::kInvalidBitrate);
         }
         clipped = sized->fallback_budget.has_value();
-        if (sized->fallback_budget) {
+        if (sized->fallback_budget.has_value()) {
             // The quality target overshoots the frame's ceiling - vbr.max_kbps
             // under plain VBR, or under ABR whatever the reservoir has left,
             // which is exactly how a long-run average gets held without
@@ -4582,7 +4647,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             fixed_budget = *sized->fallback_budget;                   // NOLINT(bugprone-unchecked-optional-access)
             fixed_budget_engaged = true;
             lo = search(fixed_budget);
-            if (impl_->abr) {
+            if (impl_->abr.has_value()) {
                 // Under ABR the operating point is deliberately NOT pulled
                 // onto `lo` by a delta re-optimization here: the ceiling that
                 // forced this is one frame's allowance, not a verdict on
@@ -4623,7 +4688,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 snapshot_delta();
                 drop_delta_and_remeasure();
                 const auto bare = vbr_size_for(bits_at(composite), size_cap(vbr));
-                if (bare && !bare->fallback_budget) {
+                if (bare.has_value() && !bare->fallback_budget.has_value()) {
                     sized = bare;
                     lo = composite;
                     fixed_budget_engaged = false;
@@ -4634,7 +4699,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     if (lo_without_delta > lo_with_delta) {
                         fixed_budget = bare_budget;
                         lo = lo_without_delta;
-                        if (bare) {
+                        if (bare.has_value()) {
                             sized = bare;
                         }
                     } else {
@@ -4658,12 +4723,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 snapshot_delta();
                 drop_delta_and_remeasure();
                 const auto bare = vbr_size_for(bits_at(composite), size_cap(vbr));
-                if (bare && bare->words <= sized->words) {
+                if (bare.has_value() && bare->words <= sized->words) {
                     sized = bare;
                 } else {
                     restore_delta();
                     sized = vbr_size_for(bits_at(composite), size_cap(vbr));
-                    if (!sized) {
+                    if (!sized.has_value()) {
                         return std::unexpected(FrameError::kInvalidBitrate);
                     }
                 }
@@ -4685,7 +4750,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // one rate-control mode FrameConfig::search actually covers here - see
     // its own comment for why. `lo`/`fixed_budget` are already CBR's,
     // settled above against payload.codes' default (kAllocCodes).
-    if (!impl_->config_.vbr && impl_->config_.search == quality::Criterion::kDistortion) {
+    if (!impl_->config_.vbr.has_value() && impl_->config_.search == quality::Criterion::kDistortion) {
         AC3_ZONE_SCOPED_N("eac3_step7a_codes_search");
         const auto slot_count = static_cast<std::size_t>(streams) * kBlocksPerFrame;
         auto& measured = impl_->measured;
@@ -4895,15 +4960,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // reservoir allowance) in case a forced mode pushed the cost back
             // over a bound the quality target alone had stayed under.
             auto sized = vbr_size_for(bits_at(lo), size_cap(*impl_->config_.vbr));
-            if (!sized && drop_delta_and_remeasure()) {
+            if (!sized.has_value() && drop_delta_and_remeasure()) {
                 sized = vbr_size_for(bits_at(lo), size_cap(*impl_->config_.vbr));
             }
-            if (!sized) {
+            if (!sized.has_value()) {
                 return std::unexpected(FrameError::kInvalidBitrate);
             }
             words = sized->words;
             clipped = sized->fallback_budget.has_value();
-            if (sized->fallback_budget) {
+            if (sized->fallback_budget.has_value()) {
                 // Nothing downstream reads fixed_budget_engaged after this
                 // point, so it is not set true here - see the dead-store
                 // finding this mirrors for `lo`/`words` a bit further up in
@@ -5353,7 +5418,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // the frame really exists, so a finish_frame failure cannot leave the
     // controller believing bits were spent that never were. This is also
     // where the offset for the NEXT frame is steered; see AbrController.
-    if (frame && impl_->abr) {
+    if (frame.has_value() && impl_->abr.has_value()) {
         impl_->abr->commit(words, clipped);
     }
     return frame;
@@ -5518,7 +5583,7 @@ std::uint32_t access_unit_words(const AccessUnitConfig& config) {
 std::expected<AccessUnit, FrameError> build_silent_access_unit(
     const AccessUnitConfig& config, AuxPayload aux) {
     const auto programmes = access_unit_configs(config);
-    if (!programmes) {
+    if (!programmes.has_value()) {
         return std::unexpected(programmes.error());
     }
     const std::size_t aux_at = aux_substream_index(*programmes);
@@ -5527,7 +5592,7 @@ std::expected<AccessUnit, FrameError> build_silent_access_unit(
     for (const auto& programme : *programmes) {
         for (const auto& sub : programme) {
             const auto frame = build_silent_frame(sub, index == aux_at ? aux : AuxPayload{});
-            if (!frame) {
+            if (!frame.has_value()) {
                 return std::unexpected(frame.error());
             }
             ++index;
@@ -5582,7 +5647,7 @@ struct AccessUnitEncoder::Impl {
         // Identity is settled once here so encode_access_unit stays a hot
         // path and so a caller cannot renumber substreams between frames.
         const auto built = access_unit_configs(config);
-        if (!built) {
+        if (!built.has_value()) {
             return;  // programmes_ stays empty; encode_access_unit reports why
         }
         std::size_t offset = 0;
@@ -5602,18 +5667,18 @@ struct AccessUnitEncoder::Impl {
             const FrameConfig& lead =
                 i == 0 ? config.independent : config.additional[i - 1].independent;
             const bool dual_mono = lead.acmod == Acmod::kDualMono;
-            if (lead.drc) {
+            if (lead.drc.has_value()) {
                 state.range.emplace(*lead.drc, lead.sample_rate);
             }
             // Ch2's controller is built from drc2/heavy2, never drc/heavy -
             // see ac3::FrameEncoder::FrameEncoder for why.
-            if (dual_mono && lead.drc2) {
+            if (dual_mono && lead.drc2.has_value()) {
                 state.range2.emplace(*lead.drc2, lead.sample_rate);
             }
-            if (lead.heavy) {
+            if (lead.heavy.has_value()) {
                 state.heavy.emplace(*lead.heavy, lead.sample_rate);
             }
-            if (dual_mono && lead.heavy2) {
+            if (dual_mono && lead.heavy2.has_value()) {
                 state.heavy2.emplace(*lead.heavy2, lead.sample_rate);
             }
             programmes_.push_back(std::move(state));
@@ -5700,7 +5765,7 @@ std::expected<AccessUnit, FrameError> AccessUnitEncoder::encode_access_unit(
             const auto count = static_cast<std::size_t>(sub.channel_count());
             const auto frame = sub.encode_frame(own.subspan(taken, count), metadata,
                                                 index == aux_at ? aux : AuxPayload{});
-            if (!frame) {
+            if (!frame.has_value()) {
                 return std::unexpected(frame.error());
             }
             taken += count;

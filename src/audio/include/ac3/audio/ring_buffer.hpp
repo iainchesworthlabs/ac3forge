@@ -32,34 +32,34 @@ public:
     // Producer side. Returns the number of items actually written; a short
     // return means the consumer is behind and the remainder was refused.
     std::size_t write(std::span<const T> items) {
-        const auto write_at = write_.load(std::memory_order_relaxed);
-        const auto read_at = read_.load(std::memory_order_acquire);
+        const auto write_at = write_.load();
+        const auto read_at = read_.load();
         const std::size_t free_space = buffer_.size() - (write_at - read_at) - 1;
         const std::size_t count = std::min(items.size(), free_space);
         for (std::size_t i = 0; i < count; ++i) {
             buffer_[(write_at + i) & mask_] = items[i];
         }
-        write_.store(write_at + count, std::memory_order_release);
+        write_.store(write_at + count);
         if (count < items.size()) {
-            dropped_.fetch_add(items.size() - count, std::memory_order_relaxed);
+            dropped_.fetch_add(items.size() - count);
         }
         return count;
     }
 
     // Consumer side. Returns the number of items actually read.
     std::size_t read(std::span<T> out) {
-        const auto read_at = read_.load(std::memory_order_relaxed);
-        const auto write_at = write_.load(std::memory_order_acquire);
+        const auto read_at = read_.load();
+        const auto write_at = write_.load();
         const std::size_t count = std::min(out.size(), write_at - read_at);
         for (std::size_t i = 0; i < count; ++i) {
             out[i] = buffer_[(read_at + i) & mask_];
         }
-        read_.store(read_at + count, std::memory_order_release);
+        read_.store(read_at + count);
         return count;
     }
 
     [[nodiscard]] std::size_t available() const {
-        return write_.load(std::memory_order_acquire) - read_.load(std::memory_order_acquire);
+        return write_.load() - read_.load();
     }
 
     // Items refused because the buffer was full when write() was called.
@@ -68,13 +68,13 @@ public:
     // makes this a useful overrun signal. A producer that DOES retry (tests,
     // offline feeds) will see this climb without losing anything.
     [[nodiscard]] std::size_t dropped() const {
-        return dropped_.load(std::memory_order_relaxed);
+        return dropped_.load();
     }
 
     void reset() {
-        read_.store(0, std::memory_order_relaxed);
-        write_.store(0, std::memory_order_relaxed);
-        dropped_.store(0, std::memory_order_relaxed);
+        read_.store(0);
+        write_.store(0);
+        dropped_.store(0);
     }
 
 private:

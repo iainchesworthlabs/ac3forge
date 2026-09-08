@@ -9,8 +9,8 @@ A crucible is where separate materials are combined under heat into one melt, wh
 does to the sounds on a desk.
 
 !!! note "Status: Windows works; Linux is new; macOS builds and has never made a sound"
-    The application began as a Windows demo (roadmap UX11) and was promoted to a product on
-    2026-09-04 (roadmap UX12). Windows is the mature platform. The Linux half is new: its
+    The application began as a Windows demo and was promoted to a product on
+    2026-09-04. Windows is the mature platform. The Linux half is new: its
     per-application capture, silent device and window are confirmed on real hardware, and on
     2026-09-05 a receiver's own front panel was read during a Linux stream. The macOS half
     arrived on 2026-09-06: it compiles on both macOS CI legs and the window's Qt Quick suites

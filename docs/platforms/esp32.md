@@ -1,6 +1,6 @@
 # ESP32-S3
 
-The minimum-footprint decoder profile (roadmap PF7) on an Espressif ESP32-S3: a
+The minimum-footprint decoder profile on an Espressif ESP32-S3: a
 240 MHz dual-core Xtensa LX7 with a single-precision FPU, 128-bit PIE SIMD
 extensions, 512 KB of internal SRAM and hardware I2S.
 
@@ -28,10 +28,9 @@ it is the first target where real-time decode is worth measuring.
 
 ESP-IDF owns the top-level build, as Gradle does for [Android](android.md), so
 there is no ac3forge preset for this target and no entry in `cmake/toolchains/`.
-The project reaches into this repo from the other direction:
-`apps/baremetal/platform/esp32s3/components/ac3forge/` pre-seeds the root's
-`option()`s and `add_subdirectory()`s the repo root, the same shape
-`apps/android/app/src/main/cpp/CMakeLists.txt` uses.
+The project reaches into this repo from the other direction: `esp-idf/ac3forge/`
+pre-seeds the root's `option()`s and `add_subdirectory()`s the repo root, the
+same shape `apps/android/app/src/main/cpp/CMakeLists.txt` uses.
 
 The alternative was re-listing `src/forge/minimal.cmake`'s source list in an
 `idf_component_register(SRCS ...)`. That was rejected because two copies of a
@@ -85,11 +84,13 @@ anything downstream can use. Memory was the binding constraint: the per-block
 `coeffs` store is 100,352 bytes and `aht_coeffs_` 86,016, against 160,764 bytes
 of free internal SRAM at the time.
 
-`src/internal/profile/{minimal,full}/`'s seam carries `decode_scalar_t` — `float`
-in the minimum-footprint profile, `double` in every other build — and four
-decoder buffers follow it. See
-[Building](../building.md#minimum-footprint-decoder-profile) for what the profile
-changes, and its Gaps section for the measured accuracy cost.
+`src/forge/src/internal/scalar/{float32,float64}/`'s seam carries
+`decode_scalar_t` — `float` under the minimum-footprint profile, `double` by
+default elsewhere, and selectable in any build with
+`-DAC3FORGE_DECODE_SCALAR=float`. Four decoder buffers follow it. Which profile
+a build is and which scalar its decoder carries are two independent CMake axes.
+See [Building](../building.md#minimum-footprint-decoder-profile) for what the
+profile changes, and its Gaps section for the measured accuracy cost.
 
 ## Configuration
 
@@ -193,8 +194,8 @@ all of them rather than only here.
 ### The ESP32-P4, and why it is not a target
 
 Assessed 2026-09-08 and declined. The P4 is dual-core RISC-V at 400 MHz with
-768 KB of SRAM, and it holds the 171,558-byte peak heap without the float32
-work this port needed — so it reads as the answer if the S3 turns out not to
+768 KB of SRAM, and it holds the 179,064-byte peak heap without the float32
+work this port needed, so it reads as the answer if the S3 turns out not to
 be real time. Three things were checked before writing any of it, and two of
 them settle it.
 
@@ -239,20 +240,21 @@ worth, the P4 does not inherit it.
 What the P4 does buy over the S3 is clock and memory. A frame is 1536 samples,
 32 ms at 48 kHz, which is 7.68 M cycles of budget at 240 MHz against 12.8 M at
 400 MHz: **1.67×**, and it is per-core in both cases. The memory advantage is
-already spent — this port fits internal SRAM on the S3 with 202,860 bytes free
-against a 171,558-byte peak.
+already spent: this port fits internal SRAM on the S3 with 280,792 bytes free
+against a 179,064-byte peak.
 
 **It has no radio, and the plan it would serve is a Wi-Fi plan.** The P4 has
 neither Wi-Fi nor Bluetooth and needs a companion ESP32-C6 or -H2 for either,
 making any networked build a two-chip design.
-[`docs/family/topology.md`](../family/topology.md) puts a network transport in
+The [source/transport/sink plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md), which is
+kept in the repository rather than published here, puts a network transport in
 front of the decoder, and its Phase 5 exit is *"an ESP32-S3 decoding E-AC-3
 from a network origin in real time"*; the bandwidth argument for carrying a
 compressed stream at all is stated there as the difference between an ESP32-S3
 receiving Atmos over Wi-Fi and one receiving no surround. ESPHome nodes are
 Wi-Fi devices. A part that has to be paired with a second chip to reach the
 network works against all of that. This was a product-shape question rather
-than a technical one, and it was put to the project owner and decided on
+than a technical one, and it was decided on
 2026-09-08: the radio is disqualifying on its own, whatever the S3 measures.
 
 **Whether the S3 needs rescuing was the third thing checked, and it turns out
@@ -261,18 +263,18 @@ has what that costs, which is one board. The decision does not wait on it. The
 radio disqualifies the P4 on its own, so a decode that misses real time on the
 S3 gets fixed in the decoder rather than by changing part: 46–87 heap
 allocations per frame remain PF7's other open gap, and the float path has a
-hand-written-kernel option this page now sizes. `src/internal/arch/` does
+hand-written-kernel option this page now sizes. `src/forge/src/internal/arch/` does
 carry an `f32x4` since PF7's SIMD step, but it resolves to `generic/` here and
 buys this part nothing. Those are the levers, and they apply to every target
 at once instead of to one that cannot reach the network.
 
 The measurement is still worth taking, for the S3's own sake and for
-[topology](../family/topology.md)'s Phase 5. It is no longer a question about
+[the topology plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md)'s Phase 5. It is no longer a question about
 the P4.
 
 ## Not done
 
-- **A vectorised float32 path on this part.** `src/internal/arch/` carries an
+- **A vectorised float32 path on this part.** `src/forge/src/internal/arch/` carries an
   `f32x4` since PF7's SIMD step, so the float32 IMDCT's twiddle stages go four
   lanes at a time on SSE2 and NEON. On an S3 that type resolves to `generic/`
   and compiles to four scalar operations, because PIE's vector ALU is
@@ -302,7 +304,7 @@ the P4.
   allocate their own registers.
 
   So the shape that could capture it is a hand-written Xtensa kernel tier,
-  like `src/internal/avx2/` rather than like `src/internal/arch/`: whole
+  like `src/forge/src/internal/avx2/` rather than like `src/forge/src/internal/arch/`: whole
   twiddle stages in assembly, selected at build time. Reaching `esp-dsp`'s
   figures also means `madd.s`, a deliberate fused multiply-add of exactly the
   kind `-ffp-contract=off` forbids project-wide, so that tier would have to
@@ -318,52 +320,62 @@ part it lands in **Flash Data** (112,524 bytes) rather than DIRAM. The `arm-none
 ceiling is the one fixture size spends against; here it costs flash, of which the app partition
 has 66% free.
 
-## Objects do not fit in internal SRAM
+## Objects, and what it took to fit them
 
-`src/forge/src/oba/joc.cpp` and `oamd.cpp` are both in `src/forge/minimal.cmake`'s source list
-and link into every build of this profile, so the question was never whether object decode
-compiles here. It was measured rather than argued: an `atmos-encode` fixture (six objects, JOC
-over a 5.1 downmix, 448 kbit/s) was added to the probe, run on the `arm-none-eabi` leg, and
-then removed.
+`src/forge/src/oba/joc.cpp` and `oamd.cpp` are both in `src/forge/minimal.cmake`'s source list and
+link into every build of this profile, so object decode always compiled here. It did not fit. An
+`atmos-encode` fixture (six objects, JOC over a 5.1 downmix, 448 kbit/s) decoded correctly on the
+`arm-none-eabi` leg and peaked at **449,826 bytes of heap** against 280,792 free — and worse,
+`oba::joc::ReconstructionState` was a single 147,504-byte allocation, larger than the 116,736-byte
+contiguous block a decode leaves free, so it failed on contiguity before any budget was consulted.
 
-It decodes correctly — all six bed channels exact — and its allocation churn is 80 per frame,
-lower than the plain E-AC-3 fixture's 86. What it costs is memory:
+Three changes, each measured on its own rather than stacked in arithmetic:
 
-| | Bytes |
-|---|---|
-| `oba::joc::ReconstructionState` | 147,504 |
-| `ReconstructionState::QmfState` (`Domain::kQmf` is the default) | 34,360 |
-| QMF analysis bank (5 × 5,120) | 25,600 |
-| QMF synthesis banks (2 live × 12,800) | 25,600 |
-| **JOC state** | 233,064 |
-| **Probe peak heap, whole run** | 449,826 (against 179,064 without it) |
-
-The allocator has 280,792 bytes free, so the peak overshoots by 169,034. Not a ceiling to
-raise: the probe would die in `operator new` the way the port originally did at `bytes=86016`.
-
-**Contiguity rules it out a second time, independently.** `ReconstructionState` is one 147,504-byte
-allocation, and the largest free block after any other decode is 116,736 (see
-[Memory](#how-much-memory-there-actually-is)). It would fail on the single allocation even if the
-budget allowed it.
-
-All 233,064 bytes are `double`. `decode_scalar_t`'s float32 seam reaches both decoders' coefficient
-stores but not JOC's reconstruction or the QMF bank — [Building](../building.md#gaps) records that
-as a known non-gap. Three changes stack, and the arithmetic below is calculation from measured
-sizes rather than a second measurement:
-
-| | Peak | |
+| | Peak heap | Largest single allocation |
 |---|---|---|
-| As measured | 449,826 | |
-| `Domain::kMdctBand` instead of `kQmf` | 364,266 | a config flag; `QmfState` and both banks stop existing |
-| + float32 the JOC path | 290,514 | also brings the biggest allocation to ~73,752, under the 116,736 block |
-| + size the object arrays to the stream | 259,794 | `kMaxObjects` is 16; the fixture carried 6 |
+| As found (`Domain::kQmf`, `double`, arrays at `kMaxObjects`) | 449,826 | 147,504 |
+| `Domain::kMdctBand` | 386,770 | 147,504 |
+| + `ReconstructionState` in float32 | 301,522 | 73,776 |
+| + per-object scratches sized to the stream | **267,754** | 43,008 |
 
-That last row fits, with about 21,000 bytes spare. So object decode here is reachable, and it needs
-all three — the float32 conversion is load-bearing twice over, once for the total and once for the
-contiguity.
+The largest allocation is now the E-AC-3 decoder's own AHT buffer rather than anything JOC owns,
+which removes the contiguity blocker: 43,008 fits the 116,736-byte free run easily, where 147,504
+never could.
 
-Adding more fixtures would not have found any of this, which is why the full-object fixture was
-measured and removed rather than committed.
+### It fits, and what it took to stop the order mattering
+
+267,754 against 280,792 bytes of free internal SRAM looks like 13,038 spare. On this part it was
+not, and the reason is worth keeping because a total-free figure is not an allocation budget here.
+
+Measured on the ESP32-S3 itself, same build, same fixture, only the order changed:
+
+| | Peak heap | Result |
+|---|---|---|
+| Objects after the enhanced-coupling fixture | 267,754 | **failed** — `out_of_memory bytes=6144` |
+| Objects first, on a clean heap | 233,522 | passed |
+
+The 34,232 bytes between them are `eac3_tools.cpp`'s enhanced-coupling scratch — a 32,768-byte
+spectrum buffer and a 1,440-byte bin-angle vector, both `thread_local` so that §E3.5 neither
+allocates per call nor puts 32 KB on the stack. On a hosted platform they go at thread exit. Here
+the only thread never exits, so they stayed resident and object reconstruction had nowhere to go.
+
+`ac3::eac3::release_ecpl_scratch()` hands them back, and the next call rebuilds what it needs. The
+probe calls it between fixtures, so the rows sit in the order they belong rather than the order
+that happens to pass:
+
+| | Peak heap | Retained at exit |
+|---|---|---|
+| Before | 267,754 | 34,232 |
+| After | **233,546** | **24** |
+
+24 bytes is two `__cxa_thread_atexit` registration records. Both legs report the same figures.
+
+That leaves **47,246 bytes spare** against free SRAM rather than 13,038, and it is why object
+decode is gated in CI on both bare-metal legs instead of documented as almost fitting.
+
+The `arm-none-eabi` leg could not have found this. Its newlib heap is flat, so 267,754 of 280,792
+packs there and the same build passed. This part's heap is regioned — 280,792 free against a
+largest block of 217,088 — and that is the number that decides.
 
 ### The bed plays, though
 
@@ -392,9 +404,9 @@ attempted, and the decode stops partway through in `operator new`.
 
 Not built. The pathway is three steps, each of which exists:
 
-1. **ac3forge as an ESP-IDF component.**
-   `apps/baremetal/platform/esp32s3/components/ac3forge/` is one, though it sits
-   inside the probe app and would need relocating somewhere reusable.
+1. **ac3forge as an ESP-IDF component.** `esp-idf/ac3forge/` is one, at the repo
+   root with a registry manifest — though nothing uploads it yet, so a consumer
+   would reach it by git rather than from the registry.
 2. **An ESPHome external component**, `components/ac3_decoder/{__init__.py,
    *.cpp}` in a git repo, referenced from YAML via `external_components:`.
 3. **Pulling the library in**, with `add_idf_component(name=..., repo=..., ref=...)`

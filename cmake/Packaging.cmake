@@ -82,7 +82,7 @@ if(WIN32)
         # the Linux launcher's Name= already says: the two menus name the same
         # application and should not disagree, and choosing a new published
         # name for it is not this file's decision to take
-        # (docs/family/recasting.md).
+        # (planning/recasting.md).
         #
         # ac3gui alone in that list, because it is the only windowed
         # application the installer carries (the Crucible is kept out of this

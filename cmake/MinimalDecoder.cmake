@@ -38,14 +38,14 @@
 # extern "C" can throw, and no MSVC target this profile is aimed at exists.
 # ---------------------------------------------------------------------------
 
-if(NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT AC3FORGE_MINIMAL_DECODER AND NOT AC3FORGE_MINIMAL_ENCODER)
     return()
 endif()
 
 if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
         CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang"))
     message(FATAL_ERROR
-        "AC3FORGE_MINIMAL_DECODER needs GCC or Clang; the active compiler is "
+        "The minimum-footprint profile needs GCC or Clang; the active compiler is "
         "${CMAKE_CXX_COMPILER_ID}. See cmake/MinimalDecoder.cmake for why MSVC is not "
         "approximated here.")
 endif()

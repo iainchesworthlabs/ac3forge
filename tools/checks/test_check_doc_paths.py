@@ -10,7 +10,10 @@ missing target fails and names file:line, an anchor-only link passes,
 ROADMAP.md's inverted rule fails a relative link even when its target exists, a
 glob literal is skipped and reported as such rather than failing, and each of
 the four shapes the literal check declines to judge is declined for its own
-stated reason.
+stated reason. Two later additions have their own classes: brace groups expand
+to one path per alternative, and a path named in a page's prose is checked the
+way one in a link is - except on the pages exempted by name, whose links are
+still checked.
 
 WrappedLinks covers the one rule that cannot be stated a line at a time: a link
 whose text wraps across a line break is one link, is checked, and is reported
@@ -219,6 +222,84 @@ class PathLiterals(unittest.TestCase):
         _write(self.root, "tools/checks/test_fixture.py", 'X = "docs/not-here.md"\n')
         report = check_doc_paths.check_tree(self.root)
         self.assertEqual(report.problems, [])
+
+
+class BraceExpansion(unittest.TestCase):
+    """`a/{b,c}` is a set of sibling paths, not a placeholder: each side is checked."""
+
+    def test_every_alternative_is_expanded(self) -> None:
+        self.assertEqual(
+            check_doc_paths.expand_braces("src/x/{a,b}/y"),
+            ["src/x/a/y", "src/x/b/y"],
+        )
+
+    def test_nested_groups_expand_to_the_cross_product(self) -> None:
+        self.assertEqual(
+            check_doc_paths.expand_braces("{a,b}/{c,d}"),
+            ["a/c", "a/d", "b/c", "b/d"],
+        )
+
+    def test_token_without_a_group_is_returned_unchanged(self) -> None:
+        self.assertEqual(check_doc_paths.expand_braces("src/plain"), ["src/plain"])
+
+    def test_empty_group_is_left_alone_rather_than_expanded(self) -> None:
+        self.assertEqual(check_doc_paths.expand_braces("src/{}"), ["src/{}"])
+
+    def test_a_missing_alternative_fails_and_names_the_whole_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root, "src/here/f.txt", "")
+            _write(root, "tools/t.py", 'P = "src/{here,gone}/f.txt"\n')
+            report = check_doc_paths.check_tree(root)
+            self.assertEqual(len(report.problems), 1)
+            self.assertIn("src/gone/f.txt", report.problems[0])
+            self.assertIn("src/{here,gone}/f.txt", report.problems[0])
+
+    def test_an_unbalanced_brace_never_becomes_a_failure(self) -> None:
+        """A brace survives the token regex only inside a balanced group, so a
+        dangling one yields no token rather than a spurious missing path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root, "tools/t.py", 'P = "src/{unclosed"\n')
+            report = check_doc_paths.check_tree(root)
+            self.assertEqual(report.problems, [])
+
+
+class ProsePaths(unittest.TestCase):
+    """Paths a page names in its own prose, as opposed to in a link."""
+
+    def test_a_path_in_a_code_span_is_checked(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root, "docs/page.md", "The seam lives in `src/gone/`.\n")
+            report = check_doc_paths.check_tree(root)
+            self.assertEqual(len(report.problems), 1)
+            self.assertIn("docs/page.md:1:", report.problems[0])
+            self.assertIn("src/gone", report.problems[0])
+
+    def test_a_path_that_exists_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root, "src/real/f.hpp", "")
+            _write(root, "docs/page.md", "The seam lives in `src/real/`.\n")
+            self.assertEqual(check_doc_paths.check_tree(root).problems, [])
+
+    def test_fenced_blocks_are_exempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root, "docs/page.md", "```\ncd src/gone && make\n```\n")
+            self.assertEqual(check_doc_paths.check_tree(root).problems, [])
+
+    def test_an_exempt_page_keeps_its_links_checked(self) -> None:
+        """A plan may name a directory it proposes; a broken *link* still fails."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write(root, "docs/plan.md", "proposes `src/gone/` and links [x](nowhere.md)\n")
+            check_doc_paths.PROSE_PATHS_UNCHECKED["docs/plan.md"] = "test fixture"
+            self.addCleanup(check_doc_paths.PROSE_PATHS_UNCHECKED.pop, "docs/plan.md", None)
+            report = check_doc_paths.check_tree(root)
+            self.assertEqual(len(report.problems), 1)
+            self.assertIn("nowhere.md", report.problems[0])
 
 
 class IgnorePatterns(unittest.TestCase):

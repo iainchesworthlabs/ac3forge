@@ -11,10 +11,6 @@
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/eac3_tools.hpp"  // no longer needed here: the BlockTail that used
-                                    // eac3::BandLayout moved into eac3_decoder.cpp with
-                                    // AP3's pimpl sweep. Kept because dropping it from a
-                                    // public header is its own source break.
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/diagnostics.hpp"
@@ -553,7 +549,7 @@ struct DecodedSubstream {
 
     // The Table E2.5 map this substream's channels occupy.
     [[nodiscard]] std::uint16_t location_map() const {
-        return chanmap ? *chanmap : eac3::chanmap::acmod_map(acmod, lfe);
+        return chanmap.has_value() ? *chanmap : eac3::chanmap::acmod_map(acmod, lfe);
     }
 };
 

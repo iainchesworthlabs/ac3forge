@@ -51,7 +51,7 @@ void SlotAllocator::remove(AppId app) {
 }
 
 void SlotAllocator::release(AppSlot& slot) {
-    if (slot.positioned) {
+    if (slot.positioned.has_value()) {
         for (int i = 0; i < slot.width; ++i) {
             taken_[static_cast<std::size_t>(*slot.positioned + i)] = false;
         }
@@ -128,13 +128,13 @@ void SlotAllocator::set_fullscreen(std::optional<AppId> app) {
 void SlotAllocator::reconcile() {
     for (auto& slot : apps_) {
         const bool qualifies = slot.wants_position && !slot.fullscreen;
-        if (slot.positioned && !qualifies) {
+        if (slot.positioned.has_value() && !qualifies) {
             release(slot);
         }
     }
     for (auto& slot : apps_) {
         const bool qualifies = slot.wants_position && !slot.fullscreen;
-        if (qualifies && !slot.positioned) {
+        if (qualifies && !slot.positioned.has_value()) {
             slot.positioned = take_free_slots(slot.width);
         }
     }

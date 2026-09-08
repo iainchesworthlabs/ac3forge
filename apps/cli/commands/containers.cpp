@@ -73,7 +73,7 @@ void warn_if_programmes_dropped(const ac3::io::ScannedStream& scanned) {
 // reason rather than muxed to a silently wrong timeline.
 std::optional<std::uint32_t> track_samples_per_frame(const ac3::io::ScannedStream& scanned) {
     const auto uniform = ac3::io::uniform_access_unit_samples(scanned);
-    if (!uniform) {
+    if (!uniform.has_value()) {
         fmt::println(stderr,
                      "error: this stream's access units are not all the same length, which no "
                      "fixed-duration container track can express");
@@ -142,18 +142,18 @@ std::optional<Ac4Input> try_ac4_input(std::span<const std::byte> raw) {
     if (scanned.frames.empty()) {
         return std::nullopt;
     }
-    if (scanned.stopped_at) {
+    if (scanned.stopped_at.has_value()) {
         fmt::println(stderr, "error: AC-4 stream stops parsing at byte {}: {}",
                      scanned.stopped_at_offset, ac4::describe(*scanned.stopped_at));
         return std::nullopt;
     }
     auto first = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
-    if (!first) {
+    if (!first.has_value()) {
         fmt::println(stderr, "error: AC-4 TOC: {}", ac4::describe(first.error()));
         return std::nullopt;
     }
     const auto samples = ac4::samples_per_frame(first->toc);
-    if (!samples) {
+    if (!samples.has_value()) {
         fmt::println(stderr,
                      "error: AC-4 frame_rate_index {} has no whole-sample frame length "
                      "(the 1000/1001-family rates alternate frame sizes) - this muxer "
@@ -195,7 +195,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     // which meant a wrong one silently produced a file that misdescribed
     // itself - and nothing could catch it.
     const auto scanned = ac3::io::scan(raw);
-    if (!scanned) {
+    if (!scanned.has_value()) {
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
     }
@@ -210,7 +210,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     const auto& units = scanned->access_units;
 
     const auto samples_per_frame = track_samples_per_frame(*scanned);
-    if (!samples_per_frame) {
+    if (!samples_per_frame.has_value()) {
         return 1;
     }
 
@@ -220,7 +220,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
         .channels = scanned->channels,
         .samples_per_frame = *samples_per_frame};
     const auto file = matroska::mux(track, units);
-    if (!file) {
+    if (!file.has_value()) {
         fmt::println(stderr, "error: {}", matroska::describe(file.error()));
         return kExitInput;
     }
@@ -262,7 +262,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
         return kExitInput;
     }
     const auto scanned = ac3::io::scan(raw);
-    if (!scanned) {
+    if (!scanned.has_value()) {
         // Not A/52? It may be AC-4, which this command can also carry
         // (roadmap IM4): TS 103 190-2 Annex E's 'ac-4' sample entry and
         // 'dac4' box, timing from Table 84, RFC 6381 string for a
@@ -279,7 +279,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
                 .codec_config = ac4::build_dac4(ac4_in->toc),
                 .rfc6381 = ac4::rfc6381_codec_string(ac4_in->toc)};
             const auto ac4_file = mp4::mux(track, ac4_in->mp4_samples);
-            if (!ac4_file) {
+            if (!ac4_file.has_value()) {
                 fmt::println(stderr, "error: {}", mp4::describe(ac4_file.error()));
                 return kExitInput;
             }
@@ -310,7 +310,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
     const auto& units = scanned->access_units;
 
     const auto samples_per_frame = track_samples_per_frame(*scanned);
-    if (!samples_per_frame) {
+    if (!samples_per_frame.has_value()) {
         return 1;
     }
 
@@ -321,7 +321,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
         .samples_per_frame = *samples_per_frame,
         .codec_config = ac3::io::build_codec_config_box(*scanned)};
     const auto file = mp4::mux(track, units);
-    if (!file) {
+    if (!file.has_value()) {
         fmt::println(stderr, "error: {}", mp4::describe(file.error()));
         return kExitInput;
     }
@@ -392,7 +392,7 @@ std::optional<RenditionFiles> build_rendition(const ac3::io::ScannedStream& scan
                                               std::uint32_t frames_per_fragment) {
     const bool eac3 = scanned.kind == ac3::io::StreamKind::kEac3;
     const auto samples_per_frame = track_samples_per_frame(scanned);
-    if (!samples_per_frame) {
+    if (!samples_per_frame.has_value()) {
         return std::nullopt;
     }
     mp4::AudioTrack track{.codec_id = std::string{eac3 ? mp4::kCodecEac3 : mp4::kCodecAc3},
@@ -411,7 +411,7 @@ std::optional<RenditionFiles> build_rendition(const ac3::io::ScannedStream& scan
         track, scanned.access_units,
         mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment,
                              .object_audio_brand = scanned.oba_complexity_index.has_value()});
-    if (!fragmented) {
+    if (!fragmented.has_value()) {
         fmt::println(stderr, "error: {}", mp4::describe(fragmented.error()));
         return std::nullopt;
     }
@@ -456,7 +456,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         return kExitInput;
     }
     const auto scanned = ac3::io::scan(raw);
-    if (!scanned) {
+    if (!scanned.has_value()) {
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
     }
@@ -465,7 +465,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
         return kExitInput;
     }
     const auto primary = build_rendition(*scanned, frames_per_fragment);
-    if (!primary) {
+    if (!primary.has_value()) {
         return kExitInput;
     }
 
@@ -492,22 +492,22 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     ac3::io::ScannedStream stripped_scan;
     std::optional<RenditionFiles> companion;
     std::vector<mp4::SegmentInfo> companion_segments;
-    if (meta.hls_fallback_51 && scanned->oba_complexity_index) {
+    if (meta.hls_fallback_51 && scanned->oba_complexity_index.has_value()) {
         auto stripped = ac3::io::strip_objects(raw);
-        if (!stripped) {
+        if (!stripped.has_value()) {
             fmt::println(stderr, "error: {}", ac3::io::describe(stripped.error()));
             return kExitInput;
         }
         stripped_bytes = std::move(stripped->bytes);
         const auto rescanned = ac3::io::scan(stripped_bytes);
-        if (!rescanned) {
+        if (!rescanned.has_value()) {
             fmt::println(stderr, "error: stripped stream did not scan: {}",
                          ac3::io::describe(rescanned.error()));
             return kExitInternal;
         }
         stripped_scan = *rescanned;
         companion = build_rendition(stripped_scan, frames_per_fragment);
-        if (!companion) {
+        if (!companion.has_value()) {
             return kExitInternal;
         }
         if (!write_rendition(dir / "bed51", *companion)) {
@@ -608,12 +608,12 @@ mpegts::ServiceInfo service_info_from(const ac3::io::ScannedStream& scanned,
                                      .mix_metadata = from.mix_metadata};
     }
     service.mainid = meta.mainid;
-    if (meta.mainid) {
+    if (meta.mainid.has_value()) {
         // A/52 Table A4.6: with a main-service number given and nothing said
         // about ranking, "primary audio" is what a lone main service is.
         service.priority = 1;
     }
-    if (meta.asvc) {
+    if (meta.asvc.has_value()) {
         service.asvc = static_cast<std::uint8_t>(*meta.asvc);
     }
     return service;
@@ -638,7 +638,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
         return kExitInput;
     }
     const auto scanned = ac3::io::scan(raw);
-    if (!scanned) {
+    if (!scanned.has_value()) {
         if (const auto ac4_in = try_ac4_input(raw)) {
             // EN 300 468 Annex D.7 is DVB signalling; ATSC never registered
             // AC-4 for MPEG-2 TS (see mpegts::AudioCodec::kAc4). Said here,
@@ -657,7 +657,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
                 .samples_per_frame = ac4_in->samples_per_frame};
             const auto ac4_file = mpegts::mux(ac4_track, ac4_in->ts_units,
                                               mpegts::MuxOptions{.profile = profile});
-            if (!ac4_file) {
+            if (!ac4_file.has_value()) {
                 fmt::println(stderr, "error: {}", mpegts::describe(ac4_file.error()));
                 return kExitInput;
             }
@@ -693,7 +693,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
     const auto& units = scanned->access_units;
 
     const auto samples_per_frame = track_samples_per_frame(*scanned);
-    if (!samples_per_frame) {
+    if (!samples_per_frame.has_value()) {
         return 1;
     }
 
@@ -704,7 +704,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
         .samples_per_frame = *samples_per_frame,
         .service = service_info_from(*scanned, meta)};
     const auto file = mpegts::mux(track, units, mpegts::MuxOptions{.profile = profile});
-    if (!file) {
+    if (!file.has_value()) {
         fmt::println(stderr, "error: {}", mpegts::describe(file.error()));
         return kExitInput;
     }
@@ -813,7 +813,7 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
                            Reader& reader, Describe describe, const Callback& deliver) {
         for (auto bytes = first; !bytes.empty(); bytes = read_chunk()) {
             const auto pushed = reader.push(bytes, deliver);
-            if (!pushed) {
+            if (!pushed.has_value()) {
                 status = fail(describe(pushed.error()), kExitInput);
                 return;
             }
@@ -833,7 +833,7 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
                 return reader.finish();
             }
         }();
-        if (!finished) {
+        if (!finished.has_value()) {
             status = fail(describe(finished.error()), kExitInput);
             return;
         }
@@ -858,7 +858,7 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
         // apps/common/container_input.cpp applies for the decode/qc path,
         // and byte-for-byte what 'ac3cli ts' produces for the same input.
         // A/52 tracks pass through untouched, exactly as before.
-        const auto on_mp4_sample = [&](std::span<const std::byte> sample) {
+        const auto on_mp4_sample = [&reader, &on_frame](std::span<const std::byte> sample) {
             if (reader.track().codec_id != mp4::kCodecAc4) {
                 on_frame(sample);
                 return;

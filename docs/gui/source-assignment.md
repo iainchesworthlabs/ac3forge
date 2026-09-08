@@ -13,14 +13,14 @@ source whose rate doesn't match the primary's is resampled to it at load (see [L
 source](loading-a-source.md#01-input)) rather than refused, so every source `plan::render`
 actually sees always shares one rate regardless of what each file was authored at.
 
-![Two sources loaded, nothing assigned yet: every channel named in the warning, the meters honestly silent](screenshots/source-assignment.png)
+![Two sources loaded, nothing assigned yet: every channel named in the warning, the meters silent](screenshots/source-assignment.png)
 
 ## The source list
 
 One row per loaded file on the rail — label, channel count, duration, a per-source **start
 offset** (see [Objects & motion](objects-and-motion.md#motion)), and a **Remove** button.
 Removing the primary (the first row) drops every other source and the assignment table with it:
-there's no honest way to guess which remaining source should be promoted to primary in its place.
+there is no way to guess which remaining source should be promoted to primary in its place.
 Removing any other source clears the assignment table instead of trying to shift its rows down —
 a row addressed a *position* (source index, channel index), every later source's index just
 changed, and guessing which old row survives at its new position is exactly the kind of
