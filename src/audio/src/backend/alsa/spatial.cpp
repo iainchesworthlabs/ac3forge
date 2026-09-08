@@ -42,7 +42,9 @@ bool SpatialObjectSink::submit(std::span<const DynamicObjectUpdate>,
     return false;
 }
 bool SpatialObjectSink::can_submit() const { return false; }
-void SpatialObjectSink::stop() {}
+void SpatialObjectSink::stop() {
+    // No-op: there is no backend, so nothing is ever running to stop.
+}
 bool SpatialObjectSink::running() const { return false; }
 SpatialObjectStats SpatialObjectSink::stats() const { return {}; }
 

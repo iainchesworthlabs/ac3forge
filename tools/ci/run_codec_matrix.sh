@@ -665,7 +665,14 @@ run_atmos_profile_check() {
                     echo "$1: advertises an object layer it does not carry ('$profile')" >&2
                     exit 1
                     ;;
+                *)
+                    # No object layer advertised, as expected - nothing to do.
+                    ;;
             esac
+            ;;
+        *)
+            echo "run_atmos_profile_check: unknown expectation '$2' (want atmos or none)" >&2
+            exit 1
             ;;
     esac
 }

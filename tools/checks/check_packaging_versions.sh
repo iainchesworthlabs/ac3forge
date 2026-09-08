@@ -100,6 +100,9 @@ if [ -d "$winget_root" ]; then
                 fi
                 grep -q 'RelativeFilePath:' "$installer" || note "winget $version: InstallerType is zip but no NestedInstallerFiles entries were found"
                 ;;
+            *)
+                # Deliberately unchecked - see the comment above this case.
+                ;;
         esac
     done
 else
@@ -129,6 +132,10 @@ if [ -f "$conandata" ]; then
                 if ! echo "$sha" | grep -qE '^[0-9A-Fa-f]{64}$'; then
                     note "conan $version: sha256 is not 64 hex characters ($sha)"
                 fi
+                ;;
+            *)
+                # Every other line (blank, comments, anything not a version/
+                # url/sha256 marker) is irrelevant to this check.
                 ;;
         esac
     done < "$conandata"
