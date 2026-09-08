@@ -2,7 +2,7 @@
 
 [Concepts](index.md) introduced Dolby Atmos as E-AC-3 (see [AC-3 & E-AC-3](ac3-eac3.md)) plus
 an extra object layer. This page explains what an "object" is, how that layer actually rides
-inside an ordinary E-AC-3 stream, and two honest limitations of the technique.
+inside an ordinary E-AC-3 stream, and two limitations of the technique.
 
 ## Channels vs. objects
 
@@ -176,19 +176,18 @@ So the marker follows the container: emit both, or neither. The same rule is why
 has to remove both, not just the payload, and why a 5.1 fallback from an Atmos encode omits the
 container entirely instead of writing a hollow one.
 
-## Two honest limitations
+## Two limitations
 
-Object coding, and this project's implementation of it, have real limits worth stating
-plainly rather than glossing over:
+Object coding, and this project's implementation of it, have limits worth stating plainly:
 
-**Objects sharing a direction can't be perfectly separated.** JOC reconstructs each object as
+**Objects sharing a direction cannot be perfectly separated.** JOC reconstructs each object as
 a combination of the five bed channels. Two objects at the same direction from the listener
 but different heights end up with identical bed gains, so no amount of unmixing can tell them
 apart — there is no matrix that pulls them back into two separate signals. Instead, the
-reconstruction splits their combined energy between them by power. This isn't a bug in this
-encoder; it's an inherent property of parametric object coding — the side information
-describes *how much* energy came from where, not a perfect per-object recording, so directly
-overlapping objects are approximated rather than perfectly isolated.
+reconstruction splits their combined energy between them by power. That is an inherent property
+of parametric object coding rather than a defect in this encoder: the side information describes
+*how much* energy came from where, not a per-object recording, so directly overlapping objects
+are approximated.
 
 **Dolby's own decoder additionally requires an authenticity tag, and that tag needs a key you
 provide.** Beyond the spec, a Dolby-licensed decoder gates object decoding on a keyed HMAC carried

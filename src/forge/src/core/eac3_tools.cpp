@@ -567,13 +567,33 @@ struct EcplSpectrumScratch {
 // The three properties the previous comment was protecting are all kept: no
 // 32 KB stack frame (PREfast C6262, alert #64), no allocation per call, and no
 // sharing between threads.
+std::unique_ptr<EcplSpectrumScratch>& ecpl_spectrum_scratch_slot() {
+    static thread_local std::unique_ptr<EcplSpectrumScratch> scratch;
+    return scratch;
+}
+
 EcplSpectrumScratch& ecpl_spectrum_scratch() {
-    static thread_local std::unique_ptr<EcplSpectrumScratch> scratch =
-        std::make_unique<EcplSpectrumScratch>();
+    auto& scratch = ecpl_spectrum_scratch_slot();
+    // Built on first use rather than on first entry, so release_ecpl_scratch()
+    // below can put it back and the next call rebuilds it. A null check per
+    // call against 32 KB that would otherwise be resident for the life of the
+    // task.
+    if (!scratch) {
+        scratch = std::make_unique<EcplSpectrumScratch>();
+    }
     return *scratch;
 }
 
 }  // namespace
+
+void release_ecpl_scratch() {
+    ecpl_spectrum_scratch_slot().reset();
+    // The bin-angle vector is the other half of the 34,232 bytes the probe
+    // reports retained. Clearing it is not enough - a vector that has been
+    // resized keeps its buffer - so this swaps against an empty one, which is
+    // the idiom that actually returns the storage.
+    std::vector<double>().swap(ecpl_bin_angle_scratch());
+}
 
 void ecpl_channel_spectrum(std::span<const double, 256> prev_mant,
                            std::span<const double, 256> curr_mant,

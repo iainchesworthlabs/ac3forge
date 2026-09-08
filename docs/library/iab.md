@@ -6,10 +6,10 @@ carry, and that Netflix's IMF pipeline (SMPTE ST 2067-201) delivers inside MXF t
 `ac3adm::ac3adm`, `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts`, it links nothing from
 `ac3::forge` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
 
-Roadmap item IM1: phase 1 is the bitstream reader (`ac3iab.hpp`); phase 2 is MXF Track File
+Phase 1 is the bitstream reader (`ac3iab.hpp`); phase 2 is MXF Track File
 extraction (`mxf.hpp`), both covered here. Mapping the parsed bed/object graph onto
 `ac3::oba::AtmosEncoder` (phase 3) is a separate module, `ac3::admbridge`'s `build_iab()` — see
-[ADM → Atmos bridging](adm-bridge.md#bridging-iab-roadmap-im1-phase-3) — driven end to end by
+[ADM → Atmos bridging](adm-bridge.md#bridging-iab) — driven end to end by
 `ac3cli atmos-iab` (see [Commands](../cli/commands.md)).
 
 ```cpp
@@ -40,7 +40,7 @@ way the three container writers do:
 cmake --preset config-windows-msvc-debug   # AC3FORGE_BUILD_IAB=ON by default
 ```
 
-`ac3cli atmos-iab` (roadmap IM1 phase 3, needs `-DAC3FORGE_BUILD_ADM=ON` — the same flag
+`ac3cli atmos-iab` (phase 3, needs `-DAC3FORGE_BUILD_ADM=ON` — the same flag
 `ac3::admbridge` itself rides, since that is the module with a consumer for this graph) is this
 module's own real-world driver; nothing else in this build (`ac3gui`, the other examples) consumes
 it yet.
@@ -120,7 +120,7 @@ once they have stripped their own respective framing away.
 `ac3::admbridge`'s `build_iab()` maps this module's parsed graph onto `ac3::oba::AtmosEncoder`'s
 input shape — one `ac3::oba::ObjectPath` plus one mono PCM buffer per Bed channel or Object, ready
 to drive `encode_frame()` in a loop, the same destination shape `ac3::admbridge::build()` produces
-for ADM. See [ADM → Atmos bridging](adm-bridge.md#bridging-iab-roadmap-im1-phase-3) for what gets
+for ADM. See [ADM → Atmos bridging](adm-bridge.md#bridging-iab) for what gets
 mapped (Table 19 → `ac3::oba::BedLabel`, position conversion, MetaID-based cross-frame identity)
 and what does not (spread, the 9-zone `ObjectZoneControl`).
 [`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp)

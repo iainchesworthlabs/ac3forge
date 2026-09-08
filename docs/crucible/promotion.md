@@ -1,19 +1,22 @@
 # Promoting the demo to AC3Forge Crucible
 
-!!! note "Status: plan, written 2026-09-04"
-    This page plans the promotion of the Windows Desktop Atmos Demo
-    ([`docs/platforms/windows-demo.md`](../platforms/windows-demo.md), roadmap UX11) from a
-    Windows-only demo into **AC3Forge Crucible**, a desktop product on Windows, Linux and
-    macOS. It keeps the shape the demo page kept from
-    [the Android page](../platforms/android.md): the design sections say what changes and why,
-    each phase carries an exit criterion and will carry its progress record, and
-    [What cannot be verified](#what-cannot-be-verified-and-why) says plainly which claims this
-    work will not be able to make. Roadmap item **UX12**.
+!!! success "Status as of 2026-09-08: largely a record of work done"
+    Written 2026-09-04 as a plan; twenty-one of its phases now carry a completion record and
+    five remain open. Crucible exists, runs on Windows and Linux, and reached a real receiver
+    over PipeWire on 2026-09-05. What is still open is on macOS, where the platform half
+    compiles and has never been launched, and at the driver, which is test-signed only.
+
+    The page plans the promotion of the Windows Desktop Atmos Demo
+    ([`docs/platforms/windows-demo.md`](../platforms/windows-demo.md)) into **AC3Forge
+    Crucible**, a desktop application on Windows, Linux and macOS. Design sections say what
+    changes and why, each phase carries an exit criterion and its progress record, and
+    [What cannot be verified](#what-cannot-be-verified-and-why) says which claims this work
+    cannot make.
 
 The demo works. It taps every application playing on a Windows PC, lets each be dragged to a
-position in a room, and streams the result as live E-AC-3 JOC to a receiver. What it is not
-yet is a product: it is named after a trademark it does not own, it exists only on Windows, it
-is documented as a footnote under Platform notes, and half its engine is welded to
+position in a room, and streams the result as live E-AC-3 JOC to a receiver. Four things keep it
+short of being a product: it is named after a trademark it does not own, it exists only on
+Windows, it is documented as a footnote under Platform notes, and half its engine is welded to
 `platform/windows/` headers. This page is the work that closes each of those.
 
 ## The name
@@ -53,7 +56,7 @@ The gap between what exists and a product, in the order the phases take them.
 | Product qualities | a demo's first-run, no diagnostics, mechanical translations | first run, log export, settings migration, accessibility, licence notices |
 | Docs | one 89 KB design record under Platform notes | its own docs section with a user guide, per-platform install and troubleshooting |
 | CI and packaging | built, tested and packaged on Windows | the same on three platforms |
-| Verification | Windows workstation and a throwaway guest | a hardware matrix, and honesty where there is none |
+| Verification | Windows workstation and a throwaway guest | a hardware matrix, and a clear statement where there is none |
 
 ## Platform feasibility
 
@@ -205,8 +208,8 @@ error naming the two flags that fix it.
 against a real Atmos receiver — every stream shape locked and identified, zero underruns — was
 ALSA. Forcing PipeWire trades that for a path this project has never once seen work against
 hardware, and which additionally needs a WirePlumber codec rule the user has to supply. So
-DR9's PipeWire row is not a gap adjacent to this work; it is **on Crucible's critical path on
-Linux**, and the first hardware run has to answer it. Until it does, the honest position is that
+DR9's PipeWire row sits **on Crucible's critical path on
+Linux**, and the first hardware run has to answer it. Until it does, the position is that
 Crucible can tap applications on Linux and may have nowhere to send the result.
 
 `spatial` is the one capability with no cross-platform answer. `SpatialObjectSink` wraps
@@ -404,7 +407,7 @@ places one, and encodes; the signal path renders with the null sink as the defau
       registry walk.
     - **`Foreground`** — X11 can answer through `_NET_WM_STATE_FULLSCREEN`, at the cost of a
       libX11 dependency; Wayland cannot answer at all. The `ForegroundSupport` reason field
-      exists for exactly this, so the honest first cut refuses on both and X11 is a follow-up.
+      exists for exactly this, so the first cut refuses on both and X11 is a follow-up.
     - **`VirtualDevice`** — loading and unloading a `support.null-audio-sink` module.
       No driver, no signing, no elevation, but it is a module load from inside the application
       rather than anything the library already does.
@@ -795,7 +798,7 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     because a 2 GB Pi could not run the one thing that would: an address sanitiser, or Qt's own
     debug symbols. So the next step was a machine that could.
 
-    **The VM.** [`apps/linux/tray-vm/`](../../apps/linux/tray-vm/) is a scripted VMware guest,
+    **The VM.** [`apps/linux/tray-vm/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/apps/linux/tray-vm) is a scripted VMware guest,
     the same shape as the Windows driver guest in `apps/windows/driver-vm/`: Debian 13, which
     carries the Pi's exact Qt (6.8.2) and publishes matching `-dbgsym` packages, on labwc with
     waybar as the panel — the Pi's own stack a step out, since `wf-panel-pi` has no amd64 build
@@ -1126,7 +1129,7 @@ run by anyone here**; see below.
     - which is what the tap's aggregate names as its main sub-device and is clocked by. It has a
     window session: `launchctl managername` answers `Aqua`. And it granted the tap without a
     prompt. Whether a virtualised sound device is *why* the IOProc registration never completes
-    is not established here; it is the most obvious candidate and the first thing to try on real
+    is not established here, though it is the most obvious candidate and the first thing to try on real
     hardware.
 
     **The window froze because that request wedged the whole HAL client.** `CrucibleController::poll()`
@@ -1375,7 +1378,7 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
 
     Those three enumerate endpoints, walk audio sessions and ask the shell about windows. A
     runner with no sound device and no desktop takes the early return in each, so the code below
-    it never runs. Both readings are honest; the runner's is the one a gate has to hold on, so
+    it never runs. Both readings are defensible; the runner's is the one a gate has to hold on, so
     the floor is calibrated from it and the workstation figure is kept here as the ceiling the
     same suite reaches when the machine can answer.
 

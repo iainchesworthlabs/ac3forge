@@ -41,7 +41,7 @@ Two different kinds of answer, because neither alone is enough.
 
 **SNR** (signal-to-noise ratio, in dB) compares the decoded waveform against the
 original sample by sample. Higher is better. It is objective and unforgiving,
-and it is the right tool for catching a decoder that has genuinely broken —
+and it is the right tool for catching a decoder that has broken —
 but it punishes techniques that are *designed* to discard inaudible detail, so a
 low SNR is not automatically a quality problem.
 

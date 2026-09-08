@@ -294,8 +294,8 @@ std::uint16_t Capture::channels() const {
 }
 
 CaptureStats Capture::stats() const {
-    return {.frames_captured = impl_->frames_captured.load(std::memory_order_relaxed),
-            .frames_silence_filled = impl_->frames_silence.load(std::memory_order_relaxed),
+    return {.frames_captured = impl_->frames_captured.load(),
+            .frames_silence_filled = impl_->frames_silence.load(),
             .frames_dropped = impl_->ring ? impl_->ring->dropped() /
                                                 std::max<std::size_t>(impl_->channels, 1)
                                           : 0};
@@ -364,8 +364,8 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
     impl_->ring = std::make_unique<RingBuffer>(ring_capacity_samples);
     impl_->sample_rate = negotiated->rate;
     impl_->channels = static_cast<std::uint16_t>(negotiated->channels);
-    impl_->frames_captured.store(0, std::memory_order_relaxed);
-    impl_->frames_silence.store(0, std::memory_order_relaxed);
+    impl_->frames_captured.store(0);
+    impl_->frames_silence.store(0);
     impl_->running.store(true, std::memory_order_release);
     impl_->pcm = opened.release();
 
@@ -413,7 +413,7 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
                     const auto count = static_cast<std::size_t>(frames);
                     convert(raw.data(), count * settings.channels, settings.format, scratch);
                     impl_->ring->write(scratch);
-                    impl_->frames_captured.fetch_add(count, std::memory_order_relaxed);
+                    impl_->frames_captured.fetch_add(count);
                     timeline_frames += count;
                 }
             }
@@ -436,7 +436,7 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
                 missing = std::min<std::uint64_t>(missing, settings.rate);  // cap a long stall
                 silence.assign(static_cast<std::size_t>(missing) * settings.channels, 0.0f);
                 impl_->ring->write(silence);
-                impl_->frames_silence.fetch_add(missing, std::memory_order_relaxed);
+                impl_->frames_silence.fetch_add(missing);
                 timeline_frames += missing;
             }
         }

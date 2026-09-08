@@ -6,7 +6,7 @@ Linux LLVM TSan) can each run on a
 self-hosted runner instead of a GitHub-hosted one - whenever the fleet is *online* at all,
 and up to however many runners are online: with the fleet at its normal size (13 Linux, 7
 Windows) that means every leg, and the per-leg fan-out only reappears as graceful
-degradation when most of the fleet is genuinely gone (one surviving runner takes one leg,
+degradation when most of the fleet is gone (one surviving runner takes one leg,
 the rest overflow to GitHub-hosted). macOS and the arm64 legs always stay on GitHub-hosted
 runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
 (Detect changes, FFmpeg Validate, ADM Module, ABI diff, Performance vs
@@ -96,7 +96,7 @@ An earlier, simpler design (a single repository variable holding the literal run
 array, the pattern `aqualink-automate` currently uses) only answers "has someone configured
 self-hosted for this leg", not "is a self-hosted runner actually able to pick this job up
 right now". With `ci-runners`' runners shared across every repo in the org, "configured" and
-"available" can genuinely differ moment to moment, so the live check is what keeps a leg from
+"available" can differ moment to moment, so the live check is what keeps a leg from
 silently queuing behind another repo's job instead of falling back.
 
 ## Why online, not idle
@@ -117,7 +117,7 @@ jobs, the worse the undercount - the opposite of intuition.
 Counting *online* runners - busy included - fixes this: a busy runner proves the fleet is
 alive and frees up in minutes, and queueing a leg behind it (or behind a 10-second recycle)
 is far cheaper than hosted starvation. The count is still capped per leg, so the fan-out
-survives as graceful degradation when most of the fleet is genuinely dead: one surviving
+survives as graceful degradation when most of the fleet is dead: one surviving
 runner takes one leg and the rest overflow to GitHub-hosted rather than queueing behind a
 single machine. A fleet that is entirely absent (zero online, busy or not) still sends
 everything to GitHub-hosted, and the `RUNNER_*_MODE` variables remain the manual override

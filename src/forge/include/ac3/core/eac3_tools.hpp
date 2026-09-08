@@ -276,6 +276,28 @@ inline constexpr std::array<bool, kEcplSubBands> kDefaultEcplBandStructure = {
 // encoder's fast-transform switch in both directions - encoding is the
 // only reason the encoder runs an inverse at all, and mode=reference
 // clears it, which is what keeps reference-mode encodes fully direct).
+// Release the per-thread scratch ecpl_channel_spectrum caches, and let the
+// next call rebuild it.
+//
+// That scratch is 32,768 bytes plus a 1,440-byte bin-angle vector, kept
+// thread_local so enhanced coupling neither allocates per call nor puts 32 KB
+// on the stack. On a hosted platform it is released at thread exit and nobody
+// need think about it. On a bare-metal one the only thread never exits, so it
+// stays resident for the life of the task - and 34,232 bytes is enough to
+// decide whether something else fits.
+//
+// Measured on an ESP32-S3: an Atmos stream's object reconstruction peaks at
+// 233,522 bytes on a clean heap and fits, and at 267,754 after an
+// enhanced-coupling decode has left this behind, where it fails outright on a
+// 6,144-byte request. The two differ by this scratch. See
+// docs/platforms/esp32.md.
+//
+// Safe at any time: the next ecpl_channel_spectrum call rebuilds what it
+// needs, at the cost of one allocation. Affects only the calling thread. A
+// hosted caller has no reason to call it at all; one that decodes several
+// kinds of content in a single process on a small part does.
+AC3FORGE_EXPORT void release_ecpl_scratch();
+
 AC3FORGE_EXPORT void ecpl_channel_spectrum(std::span<const double, 256> prev_mant,
                                            std::span<const double, 256> curr_mant,
                                            std::span<const double, 256> next_mant,

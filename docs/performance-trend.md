@@ -681,7 +681,7 @@ runs the old numbers on purpose.
 
 ## Minimum-footprint decoder
 
-Roadmap PF7. Not a trend series — one measured configuration, on the concrete target the
+Not a trend series — one measured configuration, on the concrete target the
 roadmap names: `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine (Cortex-M3,
 soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`. See
 [Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
@@ -721,10 +721,10 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 200,060 |
+| `.text` (code + read-only data) | 213,196 |
 | `.data` (initialised) | 400 |
 | `.bss` (zero-initialised) | 97,152 |
-| **Image total** | **297,612** (290.6 KiB) |
+| **Image total** | **310,748** (303.5 KiB) |
 
 `.bss` fell 140,440 bytes from the 237,592 this table carried before, in two steps. Moving
 `ecpl_channel_spectrum`'s 32 KB scratch off thread-local storage — it made the library
@@ -805,8 +805,8 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 179,064 bytes (174.9 KiB) |
-| Retained after teardown | 34,232 bytes |
+| Peak heap | 233,546 bytes (228.1 KiB) |
+| Retained after teardown | 24 bytes |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
 | Caller-owned PCM buffer (8 × 1536 `float`, via `decode_*_into`) | 49,152 bytes |
@@ -814,6 +814,8 @@ a silent fast-path substitution — see the building doc for why.
 | E-AC-3 allocations per frame, steady state | 86 |
 | E-AC-3 enhanced coupling allocations per frame, steady state | 126 |
 | E-AC-3 2/0 allocations per frame, steady state | 43 |
+| Atmos bed allocations per frame, steady state | 61 |
+| Atmos with objects allocations per frame, steady state | 79 |
 
 The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
 for zero, and this is 43–126 — from the per-block geometry vectors inside the decoders and the
@@ -826,8 +828,8 @@ Enhanced coupling's 126 is the outlier and has its own ceiling. §E3.5 reconstru
 channel through three 512-point inverse transforms and a DFT per block and carries a 22-sub-band
 geometry against standard coupling's 18, so it allocates more per block for a reason that is in
 the tool. Holding it to the general ceiling would have meant either not covering §E3.5 or
-raising the bound on three fixtures that sit at 43–86. Its own ceiling is 140, the same ~11%
-margin the general 100 leaves over its worst fixture.
+raising the bound on three fixtures that sit at 43–86. Its own ceiling is 140, about 11% over
+its own worst case, where the general 100 leaves about 16% over the 86 that is theirs.
 
 Both bare-metal legs report all four of these counts identically, on different libstdc++ versions
 (GCC 14.2 for `arm-none-eabi`, 15.2 for Xtensa under ESP-IDF 6.1), as they do the peak and the
@@ -835,15 +837,24 @@ retained bytes. The counts come from the decoders' own per-block geometry rather
 anything the standard library is free to vary, so a divergence between the legs would itself be
 news.
 
+The peak is what an Atmos fixture decoded **with its objects** costs — it was 179,064 before that
+fixture existed, and 449,826 when the object path was first measured. `Domain::kMdctBand`, a
+float32 `ReconstructionState`, per-object scratches sized to the stream and handing back the
+enhanced-coupling scratch between decodes took it to 233,546, which fits the 280,792 bytes an
+ESP32-S3 has free with 47,246 to spare. [The ESP32-S3
+page](platforms/esp32.md#objects-and-what-it-took-to-fit-them) has what each step was worth.
+
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
-made has been destroyed — so not per-frame growth and not a leak. All 34,232 of it is
-`eac3_tools.cpp`'s enhanced-coupling scratch: the 32,768-byte `EcplSpectrumScratch`, the
-1,440-byte bin-angle vector, and 24 bytes of `__cxa_thread_atexit` registration for the two.
-Both are `thread_local`, and on a target whose only thread never exits the destructor that would
-release them never runs. It is bounded and paid once, which is what caching it is for; it is
-also 32 KB of an ESP32-S3's 341,760 bytes of internal SRAM held for the life of the task, which
-is why it is reported and gated rather than folded into the peak. Nothing could measure it until
-a fixture reached §E3.5.
+made has been destroyed — so not per-frame growth and not a leak. It is 24 bytes now: two
+`__cxa_thread_atexit` registration records, one per `thread_local` the library declares.
+
+It was 34,232 until the probe began calling `ac3::eac3::release_ecpl_scratch()` between fixtures.
+That difference is enhanced coupling's 32,768-byte spectrum scratch and its 1,440-byte bin-angle
+vector, `thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack, and
+therefore resident for the life of a task that never exits. Bounded and paid once — but enough to
+decide whether something else fits, and it decided: object reconstruction failed on an ESP32-S3
+whenever it ran after an enhanced-coupling decode, on a 6,144-byte request, and succeeds now that
+the scratch goes back. Nothing could measure any of it until a fixture reached §E3.5.
 
 `tools/checks/run_baremetal_probe.sh` gates the image, the heap peak, the retained bytes and
 every fixture's allocation count at ceilings above these measured values, so a regression stops

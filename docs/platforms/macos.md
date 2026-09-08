@@ -25,6 +25,17 @@
     where the call after it never returned. That section says what each part rests on and what
     that one run settled.
 
+## Status
+
+| | |
+|---|---|
+| What runs here | The library, `ac3cli` and `ac3gui`. Crucible's macOS half compiles and its suites run |
+| Build | Two required CI legs, Apple Silicon and native Intel; neither is experimental |
+| Sound | **Nothing on macOS has captured or played anything.** No Mac host is available to this project, and no hosted runner has an audio device, a desktop session, or a way to grant a consent prompt |
+| Core Audio process tap | Written, compiled, **never created at runtime** |
+| Crucible | Compiles and is exercised by the CI suites; the application has never been launched on a Mac |
+| Packaging | A `.dmg` for the CLI and a cask for the GUI; the cask has not been installed end to end on a Mac |
+
 ## Toolchain
 
 Homebrew-installed LLVM (`cmake/toolchains/macos.llvm.toolchain.cmake` prefers it over Apple's
@@ -48,7 +59,7 @@ the merged tree with `hdiutil` directly, the same call CPack's own DragNDrop gen
 the hood. Proven for real in CI: `lipo -info` on the merged `ac3cli`/`ac3gui` binaries and at
 least one bundled Qt framework binary reports both `x86_64` and `arm64` present in the same file —
 see that job's own log, not just its exit code. This was a deliberate reversal of the original
-roadmap text, which called a macOS universal binary "a separate decision, not a given" on the
+earlier plan, which called a macOS universal binary "a separate decision, not a given" on the
 assumption that Intel demand was doubtful and no Intel hosted runner existed; `macos-15-intel`
 turned out to already exist, be free for public repos, and be real native hardware rather than
 Rosetta, which removed the actual blocker (needing to cross-compile x86_64 from Apple Silicon, or
@@ -93,15 +104,15 @@ with none, format matching, sample conversion — run under `ac3tests` on the ho
 as everywhere else without real hardware, but no real Mac has ever run this code against an
 actual digital output, and no receiver has been asked to lock onto its output.
 
-**No EDID/ELD backend here either (roadmap UX9).** `ac3cli play` asks a chosen sink what it
+**No EDID/ELD backend here either.** `ac3cli play` asks a chosen sink what it
 actually accepts before committing to a format (see
 [CLI → Following the sink](../cli/commands.md#following-the-sink)), and that read
 (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
-[Linux](linux.md#reading-a-sinks-own-edideld-roadmap-ux9)). CoreAudio's device properties and
+[Linux](linux.md#reading-a-sinks-own-edideld)). CoreAudio's device properties and
 IOKit's `IODisplayEDID` are both real APIs, but neither is documented to expose the CEA-861
 Short Audio Descriptor block for an HDMI *audio* endpoint specifically, and a pure optical
 output has no display EDID to read in the first place. `play` falls back to the live
-`enumerate_render_devices()` probe here, the same as before this roadmap item existed.
+`enumerate_render_devices()` probe here, the same as before.
 
 ## Per-application capture: the Core Audio process tap
 
@@ -347,7 +358,7 @@ above and `apps/gui/tests/CMakeLists.txt`/`qml_test_main.cpp` for the full detai
 numbers from the CI run that first proved the gate on macOS: 61.81/61.82 dB, against 67.84/67.82
 dB on Linux and Windows for the same material, comfortably clear of the gate's 30 dB floor. That
 gap is **not** a Homebrew-LLVM-libm-vs-glibc/MSVC difference, despite what this page and
-`ci.yml` used to say — roadmap VX11 (see `docs/building.md`'s "Floating-point contraction"
+`ci.yml` used to say (see `docs/building.md`'s "Floating-point contraction"
 section) traced it to every real arm64/aarch64 CI leg, `macos-llvm` included, landing on the
 same ~6.0 dB offset from every x86 leg regardless of OS or C library, which rules out a
 macOS-specific explanation; the gap tracks CPU architecture, and the actual mechanism is still
@@ -358,7 +369,7 @@ numbers land with the other x86 legs — 67.80/67.82/67.76 dB across three separ
 with the ~61.8 dB every arm64/aarch64 leg (`macos-llvm` included) reports. That is further
 evidence the offset is architecture-bound rather than OS-bound: two macOS legs on the same
 toolchain now sit on opposite sides of the split, purely by CPU architecture. See `ci.yml`'s VX11
-comment and [ROADMAP.md](../roadmap.md)'s VX11 entry for the fuller record.
+comment for the fuller record.
 
 **Crucible on macOS, as of 2026-09-06.** Both legs build it — every `.mm`, every file under
 `apps/crucible/engine/platform/macos/`, and `bin/ac3crucible.app/Contents/MacOS/ac3crucible` —

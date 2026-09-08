@@ -65,7 +65,7 @@ inline constexpr std::uint32_t kAudioDataPcm = 0x400;
 // bitstream; resolved the same way here rather than left as an undefined bit-position bug.
 [[nodiscard]] std::expected<double, IabError> read_unity_gain(BitReader& br) {
     auto prefix = br.read_bits(2);
-    if (!prefix) {
+    if (!prefix.has_value()) {
         return std::unexpected(prefix.error());
     }
     if (*prefix == 0) {
@@ -75,7 +75,7 @@ inline constexpr std::uint32_t kAudioDataPcm = 0x400;
         return 0.0;
     }
     auto code = br.read_bits(10);
-    if (!code) {
+    if (!code.has_value()) {
         return std::unexpected(code.error());
     }
     return resolve_gain_code(static_cast<std::uint32_t>(*code));
@@ -88,7 +88,7 @@ inline constexpr std::uint32_t kAudioDataPcm = 0x400;
 // each give their own, different, linear formula: "gain = ZoneGain/(2^10-1)".
 [[nodiscard]] std::expected<double, IabError> read_zone_gain(BitReader& br) {
     auto prefix = br.read_bits(2);
-    if (!prefix) {
+    if (!prefix.has_value()) {
         return std::unexpected(prefix.error());
     }
     if (*prefix == 0) {
@@ -98,7 +98,7 @@ inline constexpr std::uint32_t kAudioDataPcm = 0x400;
         return 1.0;
     }
     auto code = br.read_bits(10);
-    if (!code) {
+    if (!code.has_value()) {
         return std::unexpected(code.error());
     }
     return static_cast<double>(*code) / 1023.0;  // §10.5.14/§10.6.3: ZoneGain/(2^10 - 1)
@@ -109,7 +109,7 @@ inline constexpr std::uint32_t kAudioDataPcm = 0x400;
 // resolve identically: 0x0 -> 0.0 none, 0x1 -> 1.0 maximum, else code/255.
 [[nodiscard]] std::expected<double, IabError> read_decor(BitReader& br) {
     auto prefix = br.read_bits(2);
-    if (!prefix) {
+    if (!prefix.has_value()) {
         return std::unexpected(prefix.error());
     }
     if (*prefix == 0) {
@@ -119,7 +119,7 @@ inline constexpr std::uint32_t kAudioDataPcm = 0x400;
         return 1.0;
     }
     auto code = br.read_bits(8);
-    if (!code) {
+    if (!code.has_value()) {
         return std::unexpected(code.error());
     }
     return static_cast<double>(*code) / 255.0;
@@ -144,7 +144,7 @@ inline constexpr std::uint32_t kAudioDataPcm = 0x400;
     std::string result;
     while (true) {
         auto byte = br.read_bits(8);
-        if (!byte) {
+        if (!byte.has_value()) {
             return std::unexpected(byte.error());
         }
         if (*byte == 0) {
@@ -161,7 +161,7 @@ inline constexpr std::uint32_t kAudioDataPcm = 0x400;
 // the caller.
 [[nodiscard]] std::expected<AudioDescription, IabError> parse_audio_description(BitReader& br) {
     auto raw = br.read_bits(8);
-    if (!raw) {
+    if (!raw.has_value()) {
         return std::unexpected(raw.error());
     }
     const auto byte = static_cast<unsigned>(*raw);
@@ -176,7 +176,7 @@ inline constexpr std::uint32_t kAudioDataPcm = 0x400;
 
     if (byte & 0x80) {
         auto text = read_cstring(br);
-        if (!text) {
+        if (!text.has_value()) {
             return std::unexpected(text.error());
         }
         desc.text = std::move(*text);
@@ -196,15 +196,15 @@ struct ElementHeader {
 
 [[nodiscard]] std::expected<ElementHeader, IabError> read_element_header(BitReader& br) {
     auto id = br.read_plex(8);
-    if (!id) {
+    if (!id.has_value()) {
         return std::unexpected(id.error());
     }
     auto size = br.read_plex(8);
-    if (!size) {
+    if (!size.has_value()) {
         return std::unexpected(size.error());
     }
     auto payload = br.read_bytes(static_cast<std::size_t>(*size));
-    if (!payload) {
+    if (!payload.has_value()) {
         return std::unexpected(payload.error());
     }
     return ElementHeader{.id = static_cast<std::uint32_t>(*id), .payload = *payload};
@@ -216,14 +216,14 @@ struct ElementHeader {
         BitReader& br, IaFrame& frame, unsigned count) {
     for (unsigned i = 0; i < count; ++i) {
         auto header = read_element_header(br);
-        if (!header) {
+        if (!header.has_value()) {
             return std::unexpected(header.error());
         }
 
         switch (header->id) {
             case element_id::kBedDefinition: {
                 auto bed = parse_bed_definition(header->payload, frame.frame_rate_code);
-                if (!bed) {
+                if (!bed.has_value()) {
                     return std::unexpected(bed.error());
                 }
                 frame.beds.push_back(std::move(*bed));
@@ -231,7 +231,7 @@ struct ElementHeader {
             }
             case element_id::kObjectDefinition: {
                 auto object = parse_object_definition(header->payload, frame.frame_rate_code);
-                if (!object) {
+                if (!object.has_value()) {
                     return std::unexpected(object.error());
                 }
                 frame.objects.push_back(std::move(*object));
@@ -240,15 +240,15 @@ struct ElementHeader {
             case element_id::kAudioDataDlc: {
                 BitReader dlc_br(header->payload);
                 auto audio_data_id = dlc_br.read_plex(8);
-                if (!audio_data_id) {
+                if (!audio_data_id.has_value()) {
                     return std::unexpected(audio_data_id.error());
                 }
                 auto dlc_size = dlc_br.read_bits(16);  // §10.7.2
-                if (!dlc_size) {
+                if (!dlc_size.has_value()) {
                     return std::unexpected(dlc_size.error());
                 }
                 auto coded = dlc_br.read_bytes(static_cast<std::size_t>(*dlc_size));
-                if (!coded) {
+                if (!coded.has_value()) {
                     return std::unexpected(coded.error());
                 }
                 AudioDataDlc dlc;
@@ -259,13 +259,13 @@ struct ElementHeader {
             }
             case element_id::kAudioDataPcm: {
                 auto count_per_frame = sample_count(frame.frame_rate_code, frame.sample_rate == 96000);
-                if (!count_per_frame) {
+                if (!count_per_frame.has_value()) {
                     return std::unexpected(IabError::kReservedFrameRate);
                 }
 
                 BitReader pcm_br(header->payload);
                 auto audio_data_id = pcm_br.read_plex(8);
-                if (!audio_data_id) {
+                if (!audio_data_id.has_value()) {
                     return std::unexpected(audio_data_id.error());
                 }
 
@@ -275,7 +275,7 @@ struct ElementHeader {
                 pcm.samples.reserve(*count_per_frame);
                 for (std::uint32_t n = 0; n < *count_per_frame; ++n) {
                     auto sample_bytes = pcm_br.read_bytes(bytes_per_sample);
-                    if (!sample_bytes) {
+                    if (!sample_bytes.has_value()) {
                         return std::unexpected(sample_bytes.error());
                     }
 
@@ -300,7 +300,7 @@ struct ElementHeader {
             case element_id::kAuthoringToolInfo: {
                 BitReader info_br(header->payload);
                 auto uri = read_cstring(info_br);
-                if (!uri) {
+                if (!uri.has_value()) {
                     return std::unexpected(uri.error());
                 }
                 frame.authoring_tool = AuthoringToolInfo{.uri = std::move(*uri)};
@@ -309,14 +309,14 @@ struct ElementHeader {
             case element_id::kUserData: {
                 BitReader user_br(header->payload);
                 auto id_bytes = user_br.read_bytes(16);
-                if (!id_bytes) {
+                if (!id_bytes.has_value()) {
                     return std::unexpected(id_bytes.error());
                 }
                 UserData user;
                 std::copy(id_bytes->begin(), id_bytes->end(), user.user_id.begin());
                 const std::size_t remaining_bytes = user_br.bits_remaining() / 8;
                 auto data_bytes = user_br.read_bytes(remaining_bytes);
-                if (!data_bytes) {
+                if (!data_bytes.has_value()) {
                     return std::unexpected(data_bytes.error());
                 }
                 user.data.assign(data_bytes->begin(), data_bytes->end());
@@ -335,14 +335,14 @@ struct ElementHeader {
         BitReader& br, BedDefinition& bed, unsigned count, std::uint8_t frame_rate_code) {
     for (unsigned i = 0; i < count; ++i) {
         auto header = read_element_header(br);
-        if (!header) {
+        if (!header.has_value()) {
             return std::unexpected(header.error());
         }
 
         switch (header->id) {
             case element_id::kBedDefinition: {
                 auto child = parse_bed_definition(header->payload, frame_rate_code);
-                if (!child) {
+                if (!child.has_value()) {
                     return std::unexpected(child.error());
                 }
                 bed.beds.push_back(std::move(*child));
@@ -350,7 +350,7 @@ struct ElementHeader {
             }
             case element_id::kBedRemap: {
                 auto remap = parse_bed_remap(header->payload, frame_rate_code);
-                if (!remap) {
+                if (!remap.has_value()) {
                     return std::unexpected(remap.error());
                 }
                 bed.remaps.push_back(std::move(*remap));
@@ -369,14 +369,14 @@ struct ElementHeader {
         BitReader& br, ObjectDefinition& object, unsigned count, std::uint8_t frame_rate_code) {
     for (unsigned i = 0; i < count; ++i) {
         auto header = read_element_header(br);
-        if (!header) {
+        if (!header.has_value()) {
             return std::unexpected(header.error());
         }
 
         switch (header->id) {
             case element_id::kObjectDefinition: {
                 auto child = parse_object_definition(header->payload, frame_rate_code);
-                if (!child) {
+                if (!child.has_value()) {
                     return std::unexpected(child.error());
                 }
                 object.objects.push_back(std::move(*child));
@@ -384,7 +384,7 @@ struct ElementHeader {
             }
             case element_id::kObjectZoneDefinition19: {
                 auto zone19 = parse_object_zone19(header->payload, frame_rate_code);
-                if (!zone19) {
+                if (!zone19.has_value()) {
                     return std::unexpected(zone19.error());
                 }
                 object.zone19 = std::move(*zone19);
@@ -404,26 +404,26 @@ std::expected<BedDefinition, IabError> parse_bed_definition(
     BedDefinition bed;
 
     auto meta_id = br.read_plex(8);
-    if (!meta_id) {
+    if (!meta_id.has_value()) {
         return std::unexpected(meta_id.error());
     }
     bed.meta_id = static_cast<std::uint32_t>(*meta_id);
 
     auto conditional = br.read_bits(1);
-    if (!conditional) {
+    if (!conditional.has_value()) {
         return std::unexpected(conditional.error());
     }
     bed.activation.conditional = (*conditional != 0);
     if (bed.activation.conditional) {
         auto use_case = br.read_bits(8);
-        if (!use_case) {
+        if (!use_case.has_value()) {
             return std::unexpected(use_case.error());
         }
         bed.activation.use_case = static_cast<UseCaseCode>(*use_case);
     }
 
     auto channel_count = br.read_plex(4);
-    if (!channel_count) {
+    if (!channel_count.has_value()) {
         return std::unexpected(channel_count.error());
     }
     // No reserve(): ChannelCount is attacker-controlled and Plex(4) can escalate arbitrarily
@@ -434,34 +434,34 @@ std::expected<BedDefinition, IabError> parse_bed_definition(
         BedChannel channel;
 
         auto channel_id = br.read_plex(4);
-        if (!channel_id) {
+        if (!channel_id.has_value()) {
             return std::unexpected(channel_id.error());
         }
         channel.channel_id = static_cast<std::uint32_t>(*channel_id);
 
         auto audio_data_id = br.read_plex(8);
-        if (!audio_data_id) {
+        if (!audio_data_id.has_value()) {
             return std::unexpected(audio_data_id.error());
         }
         channel.audio_data_id = static_cast<std::uint32_t>(*audio_data_id);
 
         auto gain = read_unity_gain(br);
-        if (!gain) {
+        if (!gain.has_value()) {
             return std::unexpected(gain.error());
         }
         channel.gain = *gain;
 
         auto decor_exists = br.read_bits(1);
-        if (!decor_exists) {
+        if (!decor_exists.has_value()) {
             return std::unexpected(decor_exists.error());
         }
         if (*decor_exists != 0) {
             auto reserved = br.read_bits(4);  // Reserved, set to 0
-            if (!reserved) {
+            if (!reserved.has_value()) {
                 return std::unexpected(reserved.error());
             }
             auto decor = read_decor(br);
-            if (!decor) {
+            if (!decor.has_value()) {
                 return std::unexpected(decor.error());
             }
             channel.decorrelation = *decor;
@@ -471,25 +471,25 @@ std::expected<BedDefinition, IabError> parse_bed_definition(
     }
 
     auto reserved10 = br.read_bits(10);  // Reserved, set to 0x180
-    if (!reserved10) {
+    if (!reserved10.has_value()) {
         return std::unexpected(reserved10.error());
     }
 
     br.align_to_byte();
 
     auto description = parse_audio_description(br);
-    if (!description) {
+    if (!description.has_value()) {
         return std::unexpected(description.error());
     }
     bed.description = std::move(*description);
 
     auto sub_element_count = br.read_plex(8);
-    if (!sub_element_count) {
+    if (!sub_element_count.has_value()) {
         return std::unexpected(sub_element_count.error());
     }
 
     auto children = parse_bed_children(br, bed, static_cast<unsigned>(*sub_element_count), frame_rate_code);
-    if (!children) {
+    if (!children.has_value()) {
         return std::unexpected(children.error());
     }
 
@@ -500,7 +500,7 @@ std::expected<BedDefinition, IabError> parse_bed_definition(
 std::expected<BedRemap, IabError> parse_bed_remap(
         std::span<const std::byte> payload, std::uint8_t frame_rate_code) {
     auto sub_block_count = num_pan_sub_blocks(frame_rate_code);
-    if (!sub_block_count) {
+    if (!sub_block_count.has_value()) {
         return std::unexpected(IabError::kReservedFrameRate);
     }
 
@@ -508,25 +508,25 @@ std::expected<BedRemap, IabError> parse_bed_remap(
     BedRemap remap;
 
     auto meta_id = br.read_plex(8);
-    if (!meta_id) {
+    if (!meta_id.has_value()) {
         return std::unexpected(meta_id.error());
     }
     remap.meta_id = static_cast<std::uint32_t>(*meta_id);
 
     auto use_case = br.read_bits(8);
-    if (!use_case) {
+    if (!use_case.has_value()) {
         return std::unexpected(use_case.error());
     }
     remap.use_case = static_cast<UseCaseCode>(*use_case);
 
     auto source_channels = br.read_plex(4);
-    if (!source_channels) {
+    if (!source_channels.has_value()) {
         return std::unexpected(source_channels.error());
     }
     remap.source_channels = static_cast<std::uint32_t>(*source_channels);
 
     auto destination_channels = br.read_plex(4);
-    if (!destination_channels) {
+    if (!destination_channels.has_value()) {
         return std::unexpected(destination_channels.error());
     }
     remap.destination_channels = static_cast<std::uint32_t>(*destination_channels);
@@ -538,7 +538,7 @@ std::expected<BedRemap, IabError> parse_bed_remap(
             block.has_remap_info = true;
         } else {
             auto exists = br.read_bits(1);
-            if (!exists) {
+            if (!exists.has_value()) {
                 return std::unexpected(exists.error());
             }
             block.has_remap_info = (*exists != 0);
@@ -549,7 +549,7 @@ std::expected<BedRemap, IabError> parse_bed_remap(
             // controlled Plex(4) shape as BedDefinition's ChannelCount above.
             for (std::uint32_t o_chan = 0; o_chan < remap.destination_channels; ++o_chan) {
                 auto dest_id = br.read_plex(4);
-                if (!dest_id) {
+                if (!dest_id.has_value()) {
                     return std::unexpected(dest_id.error());
                 }
                 block.destination_channel_ids.push_back(static_cast<std::uint32_t>(*dest_id));
@@ -557,7 +557,7 @@ std::expected<BedRemap, IabError> parse_bed_remap(
                 std::vector<double> row;
                 for (std::uint32_t i_chan = 0; i_chan < remap.source_channels; ++i_chan) {
                     auto gain = read_unity_gain(br);
-                    if (!gain) {
+                    if (!gain.has_value()) {
                         return std::unexpected(gain.error());
                     }
                     row.push_back(*gain);
@@ -572,7 +572,7 @@ std::expected<BedRemap, IabError> parse_bed_remap(
     br.align_to_byte();
 
     auto reserved = br.read_plex(8);  // Reserved, set to 0
-    if (!reserved) {
+    if (!reserved.has_value()) {
         return std::unexpected(reserved.error());
     }
 
@@ -583,7 +583,7 @@ std::expected<BedRemap, IabError> parse_bed_remap(
 std::expected<ObjectDefinition, IabError> parse_object_definition(
         std::span<const std::byte> payload, std::uint8_t frame_rate_code) {
     auto sub_block_count = num_pan_sub_blocks(frame_rate_code);
-    if (!sub_block_count) {
+    if (!sub_block_count.has_value()) {
         return std::unexpected(IabError::kReservedFrameRate);
     }
 
@@ -591,36 +591,36 @@ std::expected<ObjectDefinition, IabError> parse_object_definition(
     ObjectDefinition object;
 
     auto meta_id = br.read_plex(8);
-    if (!meta_id) {
+    if (!meta_id.has_value()) {
         return std::unexpected(meta_id.error());
     }
     object.meta_id = static_cast<std::uint32_t>(*meta_id);
 
     auto audio_data_id = br.read_plex(8);
-    if (!audio_data_id) {
+    if (!audio_data_id.has_value()) {
         return std::unexpected(audio_data_id.error());
     }
     object.audio_data_id = static_cast<std::uint32_t>(*audio_data_id);
 
     auto conditional = br.read_bits(1);
-    if (!conditional) {
+    if (!conditional.has_value()) {
         return std::unexpected(conditional.error());
     }
     object.activation.conditional = (*conditional != 0);
     if (object.activation.conditional) {
         auto reserved1 = br.read_bits(1);  // Reserved, set to 1
-        if (!reserved1) {
+        if (!reserved1.has_value()) {
             return std::unexpected(reserved1.error());
         }
         auto use_case = br.read_bits(8);
-        if (!use_case) {
+        if (!use_case.has_value()) {
             return std::unexpected(use_case.error());
         }
         object.activation.use_case = static_cast<UseCaseCode>(*use_case);
     }
 
     auto reserved0 = br.read_bits(1);  // Reserved, set to 0
-    if (!reserved0) {
+    if (!reserved0.has_value()) {
         return std::unexpected(reserved0.error());
     }
 
@@ -631,7 +631,7 @@ std::expected<ObjectDefinition, IabError> parse_object_definition(
             block.has_pan_info = true;
         } else {
             auto exists = br.read_bits(1);
-            if (!exists) {
+            if (!exists.has_value()) {
                 return std::unexpected(exists.error());
             }
             block.has_pan_info = (*exists != 0);
@@ -639,26 +639,26 @@ std::expected<ObjectDefinition, IabError> parse_object_definition(
 
         if (block.has_pan_info) {
             auto gain = read_unity_gain(br);
-            if (!gain) {
+            if (!gain.has_value()) {
                 return std::unexpected(gain.error());
             }
             block.gain = *gain;
 
             auto reserved3 = br.read_bits(3);  // Reserved, set to 0b001
-            if (!reserved3) {
+            if (!reserved3.has_value()) {
                 return std::unexpected(reserved3.error());
             }
 
             auto pos_x = br.read_bits(16);
-            if (!pos_x) {
+            if (!pos_x.has_value()) {
                 return std::unexpected(pos_x.error());
             }
             auto pos_y = br.read_bits(16);
-            if (!pos_y) {
+            if (!pos_y.has_value()) {
                 return std::unexpected(pos_y.error());
             }
             auto pos_z = br.read_bits(16);
-            if (!pos_z) {
+            if (!pos_z.has_value()) {
                 return std::unexpected(pos_z.error());
             }
             block.position.x = distance_xy(*pos_x, 16);
@@ -666,37 +666,37 @@ std::expected<ObjectDefinition, IabError> parse_object_definition(
             block.position.z = distance_z(*pos_z, 16);
 
             auto snap = br.read_bits(1);
-            if (!snap) {
+            if (!snap.has_value()) {
                 return std::unexpected(snap.error());
             }
             block.snap = (*snap != 0);
             if (block.snap) {
                 auto tol_exists = br.read_bits(1);
-                if (!tol_exists) {
+                if (!tol_exists.has_value()) {
                     return std::unexpected(tol_exists.error());
                 }
                 if (*tol_exists != 0) {
                     auto tol = br.read_bits(12);
-                    if (!tol) {
+                    if (!tol.has_value()) {
                         return std::unexpected(tol.error());
                     }
                     block.snap_tolerance = distance_z(*tol, 12);
                 }
                 auto res2 = br.read_bits(1);  // Res2, set to 0
-                if (!res2) {
+                if (!res2.has_value()) {
                     return std::unexpected(res2.error());
                 }
             }
 
             auto zone_control = br.read_bits(1);
-            if (!zone_control) {
+            if (!zone_control.has_value()) {
                 return std::unexpected(zone_control.error());
             }
             if (*zone_control != 0) {
                 std::array<double, kZoneCount> gains{};
                 for (auto& gain_value : gains) {
                     auto zg = read_zone_gain(br);
-                    if (!zg) {
+                    if (!zg.has_value()) {
                         return std::unexpected(zg.error());
                     }
                     gain_value = *zg;
@@ -705,14 +705,14 @@ std::expected<ObjectDefinition, IabError> parse_object_definition(
             }
 
             auto spread_mode = br.read_bits(2);
-            if (!spread_mode) {
+            if (!spread_mode.has_value()) {
                 return std::unexpected(spread_mode.error());
             }
             block.spread.mode = static_cast<ObjectSpreadMode>(*spread_mode);
             switch (block.spread.mode) {
                 case ObjectSpreadMode::kLowRez: {
                     auto spread = br.read_bits(8);
-                    if (!spread) {
+                    if (!spread.has_value()) {
                         return std::unexpected(spread.error());
                     }
                     block.spread.x = block.spread.y = block.spread.z = distance_z(*spread, 8);
@@ -722,7 +722,7 @@ std::expected<ObjectDefinition, IabError> parse_object_definition(
                     break;
                 case ObjectSpreadMode::kOneD: {
                     auto spread = br.read_bits(12);
-                    if (!spread) {
+                    if (!spread.has_value()) {
                         return std::unexpected(spread.error());
                     }
                     block.spread.x = block.spread.y = block.spread.z = distance_z(*spread, 12);
@@ -730,15 +730,15 @@ std::expected<ObjectDefinition, IabError> parse_object_definition(
                 }
                 case ObjectSpreadMode::kThreeD: {
                     auto sx = br.read_bits(12);
-                    if (!sx) {
+                    if (!sx.has_value()) {
                         return std::unexpected(sx.error());
                     }
                     auto sy = br.read_bits(12);
-                    if (!sy) {
+                    if (!sy.has_value()) {
                         return std::unexpected(sy.error());
                     }
                     auto sz = br.read_bits(12);
-                    if (!sz) {
+                    if (!sz.has_value()) {
                         return std::unexpected(sz.error());
                     }
                     block.spread.x = distance_z(*sx, 12);
@@ -749,12 +749,12 @@ std::expected<ObjectDefinition, IabError> parse_object_definition(
             }
 
             auto reserved4 = br.read_bits(4);  // Reserved, set to 0
-            if (!reserved4) {
+            if (!reserved4.has_value()) {
                 return std::unexpected(reserved4.error());
             }
 
             auto decor = read_decor(br);
-            if (!decor) {
+            if (!decor.has_value()) {
                 return std::unexpected(decor.error());
             }
             block.decorrelation = *decor;
@@ -766,19 +766,19 @@ std::expected<ObjectDefinition, IabError> parse_object_definition(
     br.align_to_byte();
 
     auto description = parse_audio_description(br);
-    if (!description) {
+    if (!description.has_value()) {
         return std::unexpected(description.error());
     }
     object.description = std::move(*description);
 
     auto sub_element_count = br.read_plex(8);
-    if (!sub_element_count) {
+    if (!sub_element_count.has_value()) {
         return std::unexpected(sub_element_count.error());
     }
 
     auto children =
         parse_object_children(br, object, static_cast<unsigned>(*sub_element_count), frame_rate_code);
-    if (!children) {
+    if (!children.has_value()) {
         return std::unexpected(children.error());
     }
 
@@ -789,7 +789,7 @@ std::expected<ObjectDefinition, IabError> parse_object_definition(
 std::expected<ObjectZoneDefinition19, IabError> parse_object_zone19(
         std::span<const std::byte> payload, std::uint8_t frame_rate_code) {
     auto sub_block_count = num_pan_sub_blocks(frame_rate_code);
-    if (!sub_block_count) {
+    if (!sub_block_count.has_value()) {
         return std::unexpected(IabError::kReservedFrameRate);
     }
 
@@ -803,7 +803,7 @@ std::expected<ObjectZoneDefinition19, IabError> parse_object_zone19(
             block.has_zone_info = true;
         } else {
             auto exists = br.read_bits(1);
-            if (!exists) {
+            if (!exists.has_value()) {
                 return std::unexpected(exists.error());
             }
             block.has_zone_info = (*exists != 0);
@@ -812,7 +812,7 @@ std::expected<ObjectZoneDefinition19, IabError> parse_object_zone19(
         if (block.has_zone_info) {
             for (auto& gain : block.zone_gains) {
                 auto zg = read_zone_gain(br);
-                if (!zg) {
+                if (!zg.has_value()) {
                     return std::unexpected(zg.error());
                 }
                 gain = *zg;
@@ -836,7 +836,7 @@ std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payloa
     IaFrame frame;
 
     auto version = br.read_bits(8);
-    if (!version) {
+    if (!version.has_value()) {
         return std::unexpected(version.error());
     }
     if (*version != 1) {
@@ -845,7 +845,7 @@ std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payloa
     frame.version = static_cast<std::uint8_t>(*version);
 
     auto sample_rate_code = br.read_bits(2);
-    if (!sample_rate_code) {
+    if (!sample_rate_code.has_value()) {
         return std::unexpected(sample_rate_code.error());
     }
     switch (*sample_rate_code) {
@@ -860,7 +860,7 @@ std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payloa
     }
 
     auto bit_depth_code = br.read_bits(2);
-    if (!bit_depth_code) {
+    if (!bit_depth_code.has_value()) {
         return std::unexpected(bit_depth_code.error());
     }
     switch (*bit_depth_code) {
@@ -875,7 +875,7 @@ std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payloa
     }
 
     auto frame_rate_code = br.read_bits(4);
-    if (!frame_rate_code) {
+    if (!frame_rate_code.has_value()) {
         return std::unexpected(frame_rate_code.error());
     }
     if (!num_pan_sub_blocks(static_cast<std::uint8_t>(*frame_rate_code))) {
@@ -884,7 +884,7 @@ std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payloa
     frame.frame_rate_code = static_cast<std::uint8_t>(*frame_rate_code);
 
     auto max_rendered = br.read_plex(8);
-    if (!max_rendered) {
+    if (!max_rendered.has_value()) {
         return std::unexpected(max_rendered.error());
     }
     frame.max_rendered = static_cast<std::uint32_t>(*max_rendered);
@@ -892,12 +892,12 @@ std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payloa
     br.align_to_byte();
 
     auto sub_element_count = br.read_plex(8);
-    if (!sub_element_count) {
+    if (!sub_element_count.has_value()) {
         return std::unexpected(sub_element_count.error());
     }
 
     auto children = parse_iaframe_children(br, frame, static_cast<unsigned>(*sub_element_count));
-    if (!children) {
+    if (!children.has_value()) {
         return std::unexpected(children.error());
     }
 
