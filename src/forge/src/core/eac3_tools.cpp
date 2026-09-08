@@ -1,4 +1,4 @@
-#include "ac3/encoder/eac3_tools.hpp"
+#include "ac3/core/eac3_tools.hpp"
 
 #include <algorithm>
 #include <array>

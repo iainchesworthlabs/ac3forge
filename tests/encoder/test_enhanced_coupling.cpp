@@ -7,7 +7,7 @@
 #include <numeric>
 #include <vector>
 
-#include "ac3/encoder/eac3_tools.hpp"
+#include "ac3/core/eac3_tools.hpp"
 
 using namespace ac3::eac3;
 

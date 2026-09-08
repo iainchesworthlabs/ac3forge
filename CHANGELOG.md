@@ -14,6 +14,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **Two coding-tool headers moved out of `ac3/encoder/` into `ac3/core/`**, where the code
+  shared by both generations already lives: `ac3/encoder/coupling.hpp` is now
+  `ac3/core/coupling.hpp` and `ac3/encoder/eac3_tools.hpp` is now `ac3/core/eac3_tools.hpp`.
+  Neither namespace changes — they were already `ac3::coupling` and `ac3::eac3` — and neither
+  file's contents change. The paths said "encoder" while both decoders call into them on every
+  frame: `coupling.cpp` carries §7.4.3's coordinate dequantizer, used on every coupled block,
+  and `eac3_tools.cpp` the spx/ecpl band geometry and the §3.5.5 enhanced-coupling
+  reconstruction, which meant the public `ac3/decoder/decoder.hpp` included a header out of
+  `ac3/encoder/` and every decode-only consumer pulled it in. Update the two `#include` paths;
+  nothing else is affected. This is source-breaking and deliberately lands before the v1.0 API
+  freeze, with no compatibility shim — mangled names carry the namespace rather than the
+  directory, so the ABI is unchanged, the same terms `ac3/sinks/` → `ac3/iec61937/` moved on.
+
 - Four places now use the idiom SonarCloud's first scan asked for, because it is better code
   and not only a quieter report. `*opt = v` is defined only while an optional is engaged, so
   it depends silently on a guard staying put: `BitReservoir::commit`'s clamp and

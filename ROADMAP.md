@@ -1916,6 +1916,19 @@ alone — it is the same base-case-in-the-bare-namespace, extension-in-a-nested-
 Python bindings already mirror with a real `ac3.eac3` submodule, not an inconsistency — and is
 now written down as a convention in `docs/library/index.md` alongside the codec-vs-codec-blind
 namespace split.
+
+The one piece AP2 named itself the owner of and then did not do has since been done on the same
+terms: `ac3/encoder/coupling.hpp` and `ac3/encoder/eac3_tools.hpp` are now `ac3/core/coupling.hpp`
+and `ac3/core/eac3_tools.hpp`, with `src/encoder/coupling.cpp`/`eac3_tools.cpp` moved to
+`src/core/`. Their namespaces were already `ac3::coupling` and `ac3::eac3`, so only the path was
+wrong, and it was wrong in a way a decode-only consumer could see: `coupling.cpp` holds §7.4.3's
+coordinate dequantizer that both decoders call on every coupled block, `eac3_tools.cpp` the
+spx/ecpl band geometry and the §3.5.5 enhanced-coupling reconstruction the decoder shares, and
+the public `ac3/decoder/decoder.hpp` had to reach into `ac3/encoder/` to get at them.
+Source-breaking for the `#include` path, ABI unaffected, exactly as `ac3/sinks/` was — and done
+before the freeze rather than after it, where it would have been a major-version event. The two
+"despite the path" comments in `src/forge/minimal.cmake` that had stood in for the job are gone
+with it.
 </details>
 
 **AP3 (L, the library)** — Pimpl sweep — every exported class with non-trivial state now hides

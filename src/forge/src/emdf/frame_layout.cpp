@@ -10,10 +10,10 @@
 
 #include "ac3/core/bitalloc.hpp"
 #include "ac3/core/bitreader.hpp"
+#include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/emdf/emdf.hpp"
-#include "ac3/encoder/eac3_tools.hpp"
 
 namespace ac3::emdf {
 

@@ -34,7 +34,7 @@
 namespace {
 
 // 4 KiB. It was 64 KiB, sized against a 32 KiB thread_local
-// EcplSpectrumScratch that no longer exists: src/forge/src/encoder/eac3_tools.cpp
+// EcplSpectrumScratch that no longer exists: src/forge/src/core/eac3_tools.cpp
 // now keeps only a unique_ptr in TLS, because FreeRTOS carves each task's
 // thread-local area out of that task's own stack and a 32 KiB one made the
 // library unlinkable into any RTOS application (see that file's own comment).
