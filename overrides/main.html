@@ -1,0 +1,127 @@
+{#-
+  Homepage hero. Everything below only renders on the homepage
+  (page.is_homepage) — every other page falls straight through to
+  Material's own {% block content %}, untouched.
+-#}
+{% extends "base.html" %}
+
+{% block hero %}
+  {% if page.is_homepage %}
+    <section class="ac3f-hero">
+      <div class="ac3f-hero-inner">
+        <p class="ac3f-kicker">AC&#8209;3 &middot; E&#8209;AC&#8209;3 &middot; Dolby Atmos</p>
+        <h1>AC3Forge</h1>
+        <p class="ac3f-lede">A clean-room AC-3, E-AC-3 and Dolby Atmos codec, written from the
+          published standards in C++23 — <strong>Library</strong> — and the two applications
+          built on it: <strong>Forge</strong>, the CLI and GUI, and <strong>Crucible</strong>, a
+          desktop per-application Atmos mixer.</p>
+        <div class="ac3f-cta-row">
+          <a class="ac3f-btn ac3f-btn-primary" href="{{ 'quickstart/'|url }}">Getting started</a>
+          <a class="ac3f-btn ac3f-btn-ghost" href="{{ 'library/'|url }}">Browse the reference</a>
+        </div>
+      </div>
+      <div class="ac3f-framebar" aria-hidden="true">
+        <span class="ac3f-f-sync">SYNC</span><span class="ac3f-f-bsi">BSI</span><span class="ac3f-f-blk">AUDBLK &times;6</span><span class="ac3f-f-aux">AUX</span><span class="ac3f-f-crc">CRC</span>
+      </div>
+      <p class="ac3f-frame-caption"><span>one AC-3 syncframe</span><span>&sect;4.2</span></p>
+    </section>
+
+    <section class="ac3f-hero-section">
+      <div class="ac3f-family-grid">
+        <a class="ac3f-fam-card" href="{{ 'library/'|url }}">
+          <span class="ac3f-fam-tag">ac3::forge</span>
+          <h3>Library</h3>
+          <p>Encodes and decodes AC-3 and E-AC-3, including Atmos objects via Joint Object
+            Coding. C++23, with C, Python, Rust and WebAssembly bindings.</p>
+          <span class="ac3f-fam-go">Read the library docs &rarr;</span>
+        </a>
+        <a class="ac3f-fam-card" href="{{ 'forge/'|url }}">
+          <span class="ac3f-fam-tag">ac3cli &middot; ac3gui</span>
+          <h3>Forge</h3>
+          <p>One product, not two: <code>ac3cli</code> and <code>ac3gui</code> build together,
+            ship together, and the GUI shows the equivalent CLI command live at the bottom of
+            its window.</p>
+          <span class="ac3f-fam-go">Read the Forge docs &rarr;</span>
+        </a>
+        <a class="ac3f-fam-card" href="{{ 'crucible/'|url }}">
+          <span class="ac3f-fam-tag">desktop app</span>
+          <h3>Crucible</h3>
+          <p>Every application on your desktop becomes an object in an Atmos scene — drag one
+            into position, and what leaves for your receiver follows your hardware. Windows is
+            mature; Linux and macOS are newer.</p>
+          <span class="ac3f-fam-go">Read the Crucible docs &rarr;</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="ac3f-hero-section">
+      <div class="ac3f-block-head">
+        <h2>Demos &amp; examples</h2>
+        <p class="ac3f-kicker">browser, Android, C++</p>
+      </div>
+      <div class="ac3f-demo-grid">
+        <a class="ac3f-demo-card" href="{{ 'wasm-demo/'|url }}">
+          <span class="ac3f-demo-tag">Browser</span>
+          <h3>Live decode</h3>
+          <p>Decodes a real AC-3/E-AC-3 stream in a tab — WebAssembly, nothing to install.</p>
+        </a>
+        <a class="ac3f-demo-card" href="{{ 'wasm-encode-demo/'|url }}">
+          <span class="ac3f-demo-tag">Browser</span>
+          <h3>Live encode</h3>
+          <p>Encodes to E-AC-3 with Atmos objects, entirely client-side.</p>
+        </a>
+        <a class="ac3f-demo-card" href="{{ 'platforms/android/'|url }}">
+          <span class="ac3f-demo-tag">Android</span>
+          <h3>Shield</h3>
+          <p>Encodes Atmos/JOC live from a controller moving objects, and plays it out over
+            HDMI passthrough — confirmed on real 2017 Shield hardware.</p>
+        </a>
+        <a class="ac3f-demo-card" href="{{ 'library/examples/'|url }}">
+          <span class="ac3f-demo-tag">C++</span>
+          <h3>Example programs</h3>
+          <p>Compiled examples covering encode, decode, muxing and the object API end to end.</p>
+        </a>
+        <a class="ac3f-demo-card" href="{{ 'library/station-broadcast/'|url }}">
+          <span class="ac3f-demo-tag">Worked scene</span>
+          <h3>Station broadcast</h3>
+          <p>A multi-object scene built up step by step, from source to encoded stream.</p>
+        </a>
+        <a class="ac3f-demo-card" href="{{ 'cli/commands/'|url }}">
+          <span class="ac3f-demo-tag">CLI</span>
+          <h3>Probe a stream</h3>
+          <p><code>ac3cli probe --json</code> — every declared field, no decode required.</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="ac3f-hero-section">
+      <div class="ac3f-block-head">
+        <h2>Where it runs</h2>
+        <a class="ac3f-fam-go" href="{{ 'platforms/'|url }}">Full platform notes &rarr;</a>
+      </div>
+      <div class="ac3f-status-strip">
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>Windows</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>Linux</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-mid"></span>macOS</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>Raspberry Pi</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>Android (Shield)</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-mid"></span>WebAssembly</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-mid"></span>ESP32-S3</span>
+      </div>
+      <p class="ac3f-status-legend">
+        <span class="ac3f-dot ac3f-dot-good" style="display:inline-block"></span> confirmed on real hardware or required in CI &nbsp;
+        <span class="ac3f-dot ac3f-dot-mid" style="display:inline-block"></span> correct, but short of hardware confirmation — sandboxed, emulated, or CI-only
+      </p>
+    </section>
+
+    <section class="ac3f-hero-section">
+      <div class="ac3f-block-head">
+        <h2>Measured on every merge</h2>
+        <a class="ac3f-fam-go" href="{{ 'performance-quality/'|url }}">The full picture &rarr;</a>
+      </div>
+      <div class="ac3f-stat-grid" id="ac3f-stats">
+        <p class="ac3f-stat-status">Loading the latest measurements from <code>main</code>&hellip;</p>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}
