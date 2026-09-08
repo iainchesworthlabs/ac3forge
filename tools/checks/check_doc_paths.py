@@ -160,8 +160,8 @@ def expand_braces(token: str) -> list[str]:
     if not match:
         return [token]
     out: list[str] = []
-    for alternative in match.group(1).split(","):
-        alternative = alternative.strip()
+    for raw_alternative in match.group(1).split(","):
+        alternative = raw_alternative.strip()
         if not alternative:
             return [token]  # `{}` is not a set of alternatives; leave it alone
         out.extend(expand_braces(token[: match.start()] + alternative + token[match.end() :]))
@@ -279,8 +279,8 @@ def check_markdown_prose(path: Path, root: Path, patterns: list[str], report: Re
                 token = match.group(1).rstrip(".").split("#", 1)[0]
                 if not token or classify_token(token, patterns):
                     continue
-                for candidate in expand_braces(token):
-                    candidate = candidate.rstrip("/")
+                for expansion in expand_braces(token):
+                    candidate = expansion.rstrip("/")
                     if not candidate or candidate in FOREIGN_PATHS or candidate in PLANNED_PATHS:
                         continue
                     if is_ignored(candidate, patterns):
@@ -314,9 +314,8 @@ def classify_token(token: str, patterns: list[str]) -> str | None:
         return "glob"
     if any(mark in token for mark in PLACEHOLDER_MARKS):
         return "placeholder"
-    if "{" in token or "}" in token:
-        if not BRACE_GROUP.search(token):
-            return "placeholder"  # an unbalanced brace is not a path shape we expand
+    if ("{" in token or "}" in token) and not BRACE_GROUP.search(token):
+        return "placeholder"  # an unbalanced brace is not a path shape we expand
     if token.endswith(("_", "-")):
         return "line-wrapped identifier"
     if token in FOREIGN_PATHS:
@@ -339,8 +338,8 @@ def check_literals(path: Path, root: Path, patterns: list[str], report: Report) 
             if reason:
                 report.skipped.append(f"{where}:{number}: {token} ({reason})")
                 continue
-            for candidate in expand_braces(token):
-                candidate = candidate.rstrip("/")
+            for expansion in expand_braces(token):
+                candidate = expansion.rstrip("/")
                 if not candidate:
                     continue
                 if candidate in FOREIGN_PATHS:
@@ -353,7 +352,8 @@ def check_literals(path: Path, root: Path, patterns: list[str], report: Report) 
                     continue
                 if is_ignored(candidate, patterns):
                     report.skipped.append(
-                        f"{where}:{number}: {candidate} (gitignored, so generated rather than stale)")
+                        f"{where}:{number}: {candidate} "
+                        "(gitignored, so generated rather than stale)")
                     continue
                 report.checked += 1
                 if not (root / candidate).exists():
