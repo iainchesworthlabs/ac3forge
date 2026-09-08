@@ -3637,6 +3637,27 @@ jobs:
           . "$IDF_PATH/export.sh"
           ./tools/checks/run_esp32s3_probe.sh --encoder
 
+      # BUILD ONLY, and the reason is the peripheral rather than the code:
+      # qemu-system-xtensa has no I2S, so there is nothing for the DMA to drain
+      # into and the first i2s_channel_write would block until the job timed
+      # out. What this step proves is that the example still COMPILES and LINKS
+      # against the component - which is the failure this repo actually keeps
+      # hitting, an example nobody builds drifting away from the API it
+      # demonstrates. Whether it makes a noise is a hardware question, and the
+      # example prints the numbers that answer it when flashed.
+      #
+      # It also exercises the component through EXTRA_COMPONENT_DIRS from a
+      # DIFFERENT project directory than the probe uses, which is the closest
+      # this repo gets to testing the integrator's path.
+      - name: Build the I2S player example
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/i2s_player
+          idf.py set-target esp32s3
+          idf.py build
+          idf.py size | tee "$GITHUB_STEP_SUMMARY"
+
       - name: Upload the ESP32-S3 map and console output
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
