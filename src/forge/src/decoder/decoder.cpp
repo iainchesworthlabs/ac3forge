@@ -15,6 +15,7 @@
 
 #include "ac3/core/bitalloc.hpp"
 #include "ac3/core/bitreader.hpp"
+#include "ac3/core/coupling.hpp"
 #include "ac3/core/crc16.hpp"
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/exponents.hpp"
@@ -24,7 +25,6 @@
 #include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/syntax_trace.hpp"
-#include "ac3/encoder/coupling.hpp"
 #include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profile.hpp"
 #include "scalar_inverse.hpp"

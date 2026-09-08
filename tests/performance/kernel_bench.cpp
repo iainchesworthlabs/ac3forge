@@ -34,13 +34,13 @@
 #include <vector>
 
 #include "ac3/core/bitalloc.hpp"
+#include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/fft.hpp"
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/dsp/qmf.hpp"
-#include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/joc.hpp"

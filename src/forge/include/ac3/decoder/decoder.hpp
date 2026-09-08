@@ -11,12 +11,15 @@
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
+#include "ac3/core/eac3_tools.hpp"  // no longer needed here: the BlockTail that used
+                                    // eac3::BandLayout moved into eac3_decoder.cpp with
+                                    // AP3's pimpl sweep. Kept because dropping it from a
+                                    // public header is its own source break.
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/syntax_trace.hpp"
-#include "ac3/encoder/eac3_tools.hpp"  // eac3::BandLayout, for BlockTail below
 #include "ac3/export.hpp"
 #include "ac3/latency.hpp"
 #include "ac3/meta/bsi.hpp"

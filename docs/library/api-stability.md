@@ -35,9 +35,10 @@ it directly. Four tiers, assigned per header below:
 | `ac3/core/bitreader.hpp`, `bitwriter.hpp` | Internal — bitstream I/O primitives, never called directly by a caller using the encoder/decoder API. |
 | `ac3/core/mdct.hpp`, `window.hpp` | Internal — transform internals. |
 | `ac3/core/bitalloc.hpp`, `exponents.hpp`, `mantissas.hpp` | Internal — §7.1–7.3 coding internals shared by encoder and decoder. |
+| `ac3/core/coupling.hpp`, `eac3_tools.hpp` | Internal — coding-tool internals shared by encoder and decoder, selected via `plan::Tools`/content-adaptive search on the encode side and driven by the bitstream on the decode side; not instantiated directly by a caller. |
 | `ac3/core/crc16.hpp`, `fft.hpp`, `aht_tables.hpp`, `bitalloc_tables.hpp`, `oba/joc_tables.hpp` | Internal — already undiscussed in `header-map.md`'s own intro; this just makes the tier explicit. |
 | `ac3/encoder/encoder.hpp`, `eac3_frame.hpp`, `silent_frame.hpp`, `plan.hpp`, `assignment.hpp` | Public. |
-| `ac3/encoder/coupling.hpp`, `eac3_tools.hpp`, `transient.hpp` | Internal — coding-tool implementations selected via `plan::Tools`/content-adaptive search, not instantiated directly by a caller. |
+| `ac3/encoder/transient.hpp` | Internal — a coding-tool implementation selected via `plan::Tools`/content-adaptive search, not instantiated directly by a caller. |
 | `ac3/decoder/decoder.hpp`, `output.hpp` | Public. |
 | `ac3/decoder/syntax_trace.hpp` | Diagnostic. |
 | `ac3/decoder/transient_prenoise.hpp` | Internal — applied automatically by `Eac3Decoder`; a caller observes its buffering effect, never calls it. |

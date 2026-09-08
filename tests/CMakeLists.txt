@@ -632,10 +632,21 @@ include(Catch)
 #
 # The label that matters today is `concurrency`: tests/audio/ (the lock-free
 # SPSC ring, the silence watchdog, the clock-drift servo and the backend
-# contract) plus cli/test_cli_live.cpp (the commands that actually start the
-# capture and render threads). It is what CMakePresets.json's
-# test-linux-llvm-tsan preset runs - see .github/workflows/_build.yml's
-# ThreadSanitizer matrix entry and cmake/Sanitizers.cmake.
+# contract), cli/test_cli_live.cpp (the commands that actually start the
+# capture and render threads) and crucible/test_engine.cpp (the Crucible
+# engine's three threads - the frame loop, the session monitor and the probe
+# - over three mutexes, four atomics and an OutputStage, including one
+# deliberately unlocked read-then-take of the probe's arming flags). It is what
+# CMakePresets.json's test-linux-llvm-tsan preset runs - see
+# .github/workflows/_build.yml's ThreadSanitizer matrix entry and
+# cmake/Sanitizers.cmake.
+#
+# crucible/test_engine_start.cpp drives the same engine and is deliberately
+# NOT tagged: its cases assert that frames flow within two seconds, an upper
+# bound on how long the engine may take, and TSan's shadow memory would break
+# it. Widening that bound until it survived would delete what those cases
+# check. test_engine.cpp's own waits are the other kind - a lower bound on
+# stop(), and polls whose limit a slow run only approaches, never needs.
 #
 # The tag is on some single-threaded cases too (the resampler's own maths, the
 # watchdog's clock arithmetic), deliberately: the label marks what
