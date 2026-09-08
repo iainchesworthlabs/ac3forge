@@ -362,19 +362,24 @@ void mdct256_forward_second(std::span<const double, 256> windowed, std::span<dou
     internal::reference_mdct256_forward_second(windowed, coeffs);
 }
 
-// Scalar (roadmap PF7's float32 gap). The vectorised sections below are
-// double-only - the AVX2 tier's kernels take double spans, and the arch seam
-// carries an f64x2 and no f32 equivalent - so a float instantiation takes a
-// plain scalar loop at each of them, behind `if constexpr`. That is not a
-// concession: the profile this exists for (arm-none-eabi, and now Xtensa) has
-// has_avx2() constant-false and the generic f64x2, which is itself scalar, so
-// nothing is lost that those targets ever had. Giving float32 a vector type of
-// its own is roadmap PF7's PIE-SIMD step and belongs with the architecture
-// that can execute it.
+// Templated on the coefficient type (roadmap PF7). Each vectorised section
+// below has three branches: f32x4 for a float instantiation, the AVX2 tier's
+// four-wide double kernels where the CPU has them, and f64x2 otherwise. The
+// float branch is separate because the AVX2 kernels take double spans and
+// f64x2 holds two doubles - a float instantiation cannot reach either - and
+// it runs four lanes at a time for the same 128-bit register the double
+// branch fits two in.
+//
+// All three compute the same expressions in the same order, so each is
+// bit-exact against the scalar loop it replaced at its own precision; see the
+// arch seam's own header for that argument and
+// tests/core/test_simd_kernels.cpp for where it is checked.
 //
 // `if constexpr` rather than a preprocessor conditional, so
-// tools/checks/check_platform_macros.ps1 stays satisfied and both arms are
-// still parsed and type-checked on every build.
+// tools/checks/check_platform_macros.ps1 stays satisfied. Note that it
+// discards only inside a template, which is what lets the float branch name
+// f32x4::load(&t_re[n]) on an array of doubles: the expression is dependent,
+// so the discarded branch is never instantiated.
 template <typename Scalar>
 void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scalar, 512> x,
                             bool fast) {
@@ -409,25 +414,43 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
     std::array<Scalar, kQuarter> t_re{};
     std::array<Scalar, kQuarter> t_im{};
     if (fast) {
-        // Two (four under AVX2) k at a time through the arch seam (ROADMAP
-        // PF5, ac3::internal::cpu::has_avx2()), the same gather-compute-
-        // scatter shape as dct4_scaled's pre-twiddle: the coefficient
-        // gather runs at stride -2/+2 and the scatter target is bitrev[k],
-        // so both ends stay scalar and only the six multiplies and two adds
-        // between them go wide. kQuarter is 128, a multiple of 4, so
-        // neither width leaves a tail. See dct4_scaled's own comment for
+        // Two k at a time through f64x2, four through f32x4 or the AVX2
+        // tier (ROADMAP PF5, ac3::internal::cpu::has_avx2()), the same
+        // gather-compute-scatter shape as dct4_scaled's pre-twiddle: the
+        // coefficient gather runs at stride -2/+2 and the scatter target is
+        // bitrev[k], so both ends stay scalar and only the six multiplies
+        // and two adds between them go wide. kQuarter is 128, a multiple of
+        // 4, so no width leaves a tail. See dct4_scaled's own comment for
         // the bit-exactness argument this shares.
         const auto& fft = fast_mdct_tables<512, Scalar>().fft;
         if constexpr (!kWide) {
+            // Four k at a time through f32x4 - the same gather-compute-scatter
+            // shape as the f64x2 branch below, with twice the lanes because a
+            // float is half the width. kQuarter is 128, so this leaves no
+            // tail either.
             constexpr std::size_t kHalfN = static_cast<std::size_t>(kN) / 2;
-            for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); ++k) {
-                const Scalar a = coeffs[kHalfN - 2 * k - 1];
-                const Scalar b = coeffs[2 * k];
-                const Scalar c = tw.cos1[k];
-                const Scalar sn = tw.sin1[k];
-                const std::size_t d = fft.bitrev[k];
-                z_re[d] = a * c - b * sn;
-                z_im[d] = -(b * c + a * sn);
+            for (std::size_t k = 0; k < static_cast<std::size_t>(kQuarter); k += 4) {
+                const auto a = internal::arch::f32x4::set(
+                    coeffs[kHalfN - 2 * k - 1], coeffs[kHalfN - 2 * k - 3],
+                    coeffs[kHalfN - 2 * k - 5], coeffs[kHalfN - 2 * k - 7]);
+                const auto b = internal::arch::f32x4::set(coeffs[2 * k], coeffs[2 * k + 2],
+                                                          coeffs[2 * k + 4], coeffs[2 * k + 6]);
+                const auto c = internal::arch::f32x4::load(&tw.cos1[k]);
+                const auto sn = internal::arch::f32x4::load(&tw.sin1[k]);
+                const auto zr = a * c - b * sn;
+                const auto zi = -(b * c + a * sn);
+                const std::size_t d0 = fft.bitrev[k];
+                const std::size_t d1 = fft.bitrev[k + 1];
+                const std::size_t d2 = fft.bitrev[k + 2];
+                const std::size_t d3 = fft.bitrev[k + 3];
+                z_re[d0] = zr.lane0();
+                z_im[d0] = zi.lane0();
+                z_re[d1] = zr.lane1();
+                z_im[d1] = zi.lane1();
+                z_re[d2] = zr.lane2();
+                z_im[d2] = zi.lane2();
+                z_re[d3] = zr.lane3();
+                z_im[d3] = zi.lane3();
             }
         } else if (internal::cpu::has_avx2()) {
             internal::avx2::imdct512_pre_twiddle(coeffs, tw.cos1, tw.sin1, fft.bitrev, z_re,
@@ -454,9 +477,9 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
         // Unit stride throughout, so this negation goes wide with nothing
         // to gather or scatter.
         if constexpr (!kWide) {
-            for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); ++n) {
-                t_re[n] = z_re[n];
-                t_im[n] = -z_im[n];
+            for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 4) {
+                internal::arch::f32x4::load(&z_re[n]).store(&t_re[n]);
+                (-internal::arch::f32x4::load(&z_im[n])).store(&t_im[n]);
             }
         } else if (internal::cpu::has_avx2()) {
             internal::avx2::imdct512_negate_copy(z_re, z_im, t_re, t_im);
@@ -487,13 +510,17 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
 
     // Step 4: post-transform complex multiply. y[n] = z[n] * (xcos1[n] + j*xsin1[n])
     // Unit stride on every one of the six arrays, so this one vectorises
-    // with nothing to gather or scatter (ROADMAP PF5, wide under AVX2).
+    // with nothing to gather or scatter, at every width (ROADMAP PF5).
     std::array<Scalar, kQuarter> y_re{};
     std::array<Scalar, kQuarter> y_im{};
     if constexpr (!kWide) {
-        for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); ++n) {
-            y_re[n] = t_re[n] * tw.cos1[n] - t_im[n] * tw.sin1[n];
-            y_im[n] = t_im[n] * tw.cos1[n] + t_re[n] * tw.sin1[n];
+        for (std::size_t n = 0; n < static_cast<std::size_t>(kQuarter); n += 4) {
+            const auto c = internal::arch::f32x4::load(&tw.cos1[n]);
+            const auto sn = internal::arch::f32x4::load(&tw.sin1[n]);
+            const auto tr = internal::arch::f32x4::load(&t_re[n]);
+            const auto ti = internal::arch::f32x4::load(&t_im[n]);
+            (tr * c - ti * sn).store(&y_re[n]);
+            (ti * c + tr * sn).store(&y_im[n]);
         }
     } else if (internal::cpu::has_avx2()) {
         internal::avx2::imdct512_post_twiddle(tw.cos1, tw.sin1, t_re, t_im, y_re, y_im);
@@ -598,9 +625,11 @@ void mdct512_forward_batch4(std::span<const double, 512> w0, std::span<const dou
     mdct512_forward(w3, c3, /*fast=*/true);
 }
 
-// Scalar: see imdct512_windowed_impl above for why the wide sections are
-// double-only and what a float instantiation gets instead. This transform has
-// only one of them - its pre-twiddle was already a scalar loop.
+// See imdct512_windowed_impl above for how the three branches of each
+// vectorised section are chosen. This transform has only one such section -
+// its pre-twiddle is a scalar loop for every instantiation, because the two
+// half-block sets scatter to the same bitrev[k] and neither end is unit
+// stride.
 template <typename Scalar>
 void imdct256_pair_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scalar, 512> x,
                                  bool fast) {
@@ -682,18 +711,25 @@ void imdct256_pair_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<
     }
 
     // Step 4: post-IFFT complex multiply. y1[n] = z1[n] * (xcos2[n] + j*xsin2[n]).
-    // Both half-block sets, two (four under AVX2) n at a time, all unit
-    // stride (ROADMAP PF5, ac3::internal::cpu::has_avx2()).
+    // Both half-block sets: two n at a time through f64x2, four through
+    // f32x4 or the AVX2 tier, all unit stride (ROADMAP PF5,
+    // ac3::internal::cpu::has_avx2()).
     std::array<Scalar, kEighth> y1_re{};
     std::array<Scalar, kEighth> y1_im{};
     std::array<Scalar, kEighth> y2_re{};
     std::array<Scalar, kEighth> y2_im{};
     if constexpr (!kWide) {
-        for (std::size_t n = 0; n < static_cast<std::size_t>(kEighth); ++n) {
-            y1_re[n] = t1_re[n] * tw.cos2[n] - t1_im[n] * tw.sin2[n];
-            y1_im[n] = t1_im[n] * tw.cos2[n] + t1_re[n] * tw.sin2[n];
-            y2_re[n] = t2_re[n] * tw.cos2[n] - t2_im[n] * tw.sin2[n];
-            y2_im[n] = t2_im[n] * tw.cos2[n] + t2_re[n] * tw.sin2[n];
+        for (std::size_t n = 0; n < static_cast<std::size_t>(kEighth); n += 4) {
+            const auto c = internal::arch::f32x4::load(&tw.cos2[n]);
+            const auto sn = internal::arch::f32x4::load(&tw.sin2[n]);
+            const auto t1r = internal::arch::f32x4::load(&t1_re[n]);
+            const auto t1i = internal::arch::f32x4::load(&t1_im[n]);
+            const auto t2r = internal::arch::f32x4::load(&t2_re[n]);
+            const auto t2i = internal::arch::f32x4::load(&t2_im[n]);
+            (t1r * c - t1i * sn).store(&y1_re[n]);
+            (t1i * c + t1r * sn).store(&y1_im[n]);
+            (t2r * c - t2i * sn).store(&y2_re[n]);
+            (t2i * c + t2r * sn).store(&y2_im[n]);
         }
     } else if (internal::cpu::has_avx2()) {
         internal::avx2::imdct256_post_twiddle(tw.cos2, tw.sin2, t1_re, t1_im, t2_re, t2_im, y1_re,
