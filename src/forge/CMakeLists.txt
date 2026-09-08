@@ -28,6 +28,126 @@
 # this problem: matroska_static under the matroska:: namespace already lands
 # on the intended matroska::matroska_static with no stutter.)
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Resolved BEFORE the minimum-footprint branch below, because both shapes of
+# the library need the answer and that branch returns without reaching the
+# rest of this file. minimal.cmake used to name generic/ literally for want
+# of somewhere to read this from, which was right for as long as the
+# profile's targets were an FPU-less Cortex-M3 and an Xtensa LX7 whose
+# vector unit is fixed-point (docs/platforms/esp32.md), and stopped being
+# right when f32x4 arrived: a minimum-footprint decoder built for aarch64
+# carries a float32 decode path NEON holds four lanes of.
+# ---------------------------------------------------------------------------
+# CMAKE_SYSTEM_PROCESSOR names the machine CMake was configured for, which on
+# Apple platforms is NOT the same thing as the machine the compiler is asked to
+# emit code for: CMAKE_OSX_ARCHITECTURES overrides it per compile line. An
+# Intel Mac cross-building an arm64 wheel (cibuildwheel does exactly this - see
+# python/pyproject.toml and .github/workflows/wheels.yml) still reports
+# CMAKE_SYSTEM_PROCESSOR=x86_64 while every compile line carries `-arch arm64`,
+# so anything keyed on the raw variable - the SIMD directory and the AVX2 tier
+# below both are - silently picks the HOST's answer and hands the compiler an
+# x86 flag for an ARM target. That is a hard error, not a slow path -
+# `clang++: error: unsupported option '-mavx2' for target
+# 'x86_64-apple-darwin24.6.0'`, a diagnostic that unhelpfully names the host
+# triple rather than the -arch the flag is actually invalid for.
+#
+# `-arch` therefore wins wherever one is set. More than one of them is a
+# universal binary, where the same source is compiled once per slice from a
+# single configure: no compile-time SIMD choice can be right for both slices,
+# so that case gets its own name and lands on generic below rather than
+# guessing at whichever slice happens to be listed first.
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+    list(LENGTH CMAKE_OSX_ARCHITECTURES AC3FORGE_OSX_ARCH_COUNT)
+    if(AC3FORGE_OSX_ARCH_COUNT GREATER 1)
+        set(AC3FORGE_TARGET_PROCESSOR "universal")
+    else()
+        set(AC3FORGE_TARGET_PROCESSOR "${CMAKE_OSX_ARCHITECTURES}")
+    endif()
+    unset(AC3FORGE_OSX_ARCH_COUNT)
+else()
+    set(AC3FORGE_TARGET_PROCESSOR "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+if(AC3FORGE_TARGET_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    set(AC3FORGE_BUILD_ARCH "x86_64")
+elseif(AC3FORGE_TARGET_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
+    set(AC3FORGE_BUILD_ARCH "arm64")
+elseif(AC3FORGE_TARGET_PROCESSOR MATCHES "^(x86|i686|X86)$")
+    set(AC3FORGE_BUILD_ARCH "x86")
+else()
+    set(AC3FORGE_BUILD_ARCH "${AC3FORGE_TARGET_PROCESSOR}")
+endif()
+
+# ---------------------------------------------------------------------------
+# The SIMD arch tree (ROADMAP PF5).
+#
+# Exactly the mechanism directly above, on the architecture axis instead of
+# the profiling one: src/internal/arch/{generic,x86_64,aarch64}/ each hold an
+# identically-pathed ac3/internal/arch/simd.hpp, one of them goes on the
+# include path, and every `#include "ac3/internal/arch/simd.hpp"` in the
+# codec core resolves to it. No translation unit ever asks what it is being
+# compiled for - the rule tools/checks/check_platform_macros.ps1 enforces -
+# and adding an architecture means adding a directory, not editing
+# conditionals in the kernels.
+#
+# The kernels themselves are NOT duplicated per directory. They live once,
+# in shared code (src/core/fft_radix2.hpp, src/core/mdct.cpp,
+# src/core/bitalloc.cpp, src/core/exponents.cpp), written against the two
+# 128-bit vector types the header defines; the directories carry the types
+# and their operations. See the generic header for why that is what makes
+# the bit-exactness claim testable.
+#
+# AC3FORGE_SIMD forces a directory. `generic` in particular is what a
+# reproducibility comparison wants (is a difference between two machines the
+# vector kernels or something else?), and is the reference
+# tests/core/test_simd_kernels.cpp's scalar side is written to match.
+# ---------------------------------------------------------------------------
+set(AC3FORGE_SIMD "auto" CACHE STRING
+    "SIMD kernel directory: auto (from the effective target architecture), generic, x86_64, or aarch64")
+set_property(CACHE AC3FORGE_SIMD PROPERTY STRINGS auto generic x86_64 aarch64)
+
+if(AC3FORGE_SIMD STREQUAL "auto")
+    # AC3FORGE_BUILD_ARCH is resolved further up this file for version
+    # strings, from the effective target architecture (CMAKE_SYSTEM_PROCESSOR,
+    # or CMAKE_OSX_ARCHITECTURES where a cross-build sets one); reuse it
+    # rather than spelling the platform regexes a second time and letting the
+    # two drift - and rather than reading CMAKE_SYSTEM_PROCESSOR directly,
+    # which is the host's answer on an Apple cross-build and was how an
+    # arm64 wheel built on an Intel runner ended up being handed -mavx2.
+    # Anything that is not one of the two architectures with a directory -
+    # 32-bit x86, WebAssembly (Emscripten reports "x86"), a macOS universal
+    # binary, a soft-float embedded target - lands on generic, which is a
+    # complete implementation and not a stub.
+    if(AC3FORGE_BUILD_ARCH STREQUAL "x86_64")
+        set(AC3FORGE_SIMD_RESOLVED "x86_64")
+    elseif(AC3FORGE_BUILD_ARCH STREQUAL "arm64")
+        set(AC3FORGE_SIMD_RESOLVED "aarch64")
+    else()
+        set(AC3FORGE_SIMD_RESOLVED "generic")
+    endif()
+else()
+    set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD}")
+endif()
+
+set(AC3FORGE_ARCH_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/arch/${AC3FORGE_SIMD_RESOLVED}")
+if(NOT IS_DIRECTORY "${AC3FORGE_ARCH_INCLUDE_DIR}")
+    message(FATAL_ERROR
+        "AC3FORGE_SIMD=${AC3FORGE_SIMD} resolved to '${AC3FORGE_SIMD_RESOLVED}', which has no "
+        "directory under src/forge/src/internal/arch/. Add "
+        "src/forge/src/internal/arch/<name>/ac3/internal/arch/simd.hpp - the generic/ copy is "
+        "the portable implementation and is a working starting point.")
+endif()
+
+# tests/CMakeLists.txt reads this so test_simd_kernels.cpp sees the same
+# simd.hpp the library was built with - the same white-box arrangement
+# src/signing/src and AC3FORGE_AUDIO_BACKEND_DIR already have there.
+set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
+# For the configure summary at the end of the top-level CMakeLists.txt - which
+# a minimum-footprint configure reaches too, so that summary now names the
+# directory that build actually compiled rather than assuming generic.
+set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
+
 # Roadmap PF7's minimum-footprint decoder profile builds something different
 # enough - static only, decode only, no exceptions, no direct-form transform
 # tables - that it gets its own file rather than a dozen conditionals through
@@ -69,45 +189,6 @@ else()
     set(AC3FORGE_BUILD_OS "${CMAKE_SYSTEM_NAME}")
 endif()
 
-# CMAKE_SYSTEM_PROCESSOR names the machine CMake was configured for, which on
-# Apple platforms is NOT the same thing as the machine the compiler is asked to
-# emit code for: CMAKE_OSX_ARCHITECTURES overrides it per compile line. An
-# Intel Mac cross-building an arm64 wheel (cibuildwheel does exactly this - see
-# python/pyproject.toml and .github/workflows/wheels.yml) still reports
-# CMAKE_SYSTEM_PROCESSOR=x86_64 while every compile line carries `-arch arm64`,
-# so anything keyed on the raw variable - the SIMD directory and the AVX2 tier
-# below both are - silently picks the HOST's answer and hands the compiler an
-# x86 flag for an ARM target. That is a hard error, not a slow path -
-# `clang++: error: unsupported option '-mavx2' for target
-# 'x86_64-apple-darwin24.6.0'`, a diagnostic that unhelpfully names the host
-# triple rather than the -arch the flag is actually invalid for.
-#
-# `-arch` therefore wins wherever one is set. More than one of them is a
-# universal binary, where the same source is compiled once per slice from a
-# single configure: no compile-time SIMD choice can be right for both slices,
-# so that case gets its own name and lands on generic below rather than
-# guessing at whichever slice happens to be listed first.
-if(APPLE AND CMAKE_OSX_ARCHITECTURES)
-    list(LENGTH CMAKE_OSX_ARCHITECTURES AC3FORGE_OSX_ARCH_COUNT)
-    if(AC3FORGE_OSX_ARCH_COUNT GREATER 1)
-        set(AC3FORGE_TARGET_PROCESSOR "universal")
-    else()
-        set(AC3FORGE_TARGET_PROCESSOR "${CMAKE_OSX_ARCHITECTURES}")
-    endif()
-    unset(AC3FORGE_OSX_ARCH_COUNT)
-else()
-    set(AC3FORGE_TARGET_PROCESSOR "${CMAKE_SYSTEM_PROCESSOR}")
-endif()
-
-if(AC3FORGE_TARGET_PROCESSOR MATCHES "^(x86_64|AMD64)$")
-    set(AC3FORGE_BUILD_ARCH "x86_64")
-elseif(AC3FORGE_TARGET_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
-    set(AC3FORGE_BUILD_ARCH "arm64")
-elseif(AC3FORGE_TARGET_PROCESSOR MATCHES "^(x86|i686|X86)$")
-    set(AC3FORGE_BUILD_ARCH "x86")
-else()
-    set(AC3FORGE_BUILD_ARCH "${AC3FORGE_TARGET_PROCESSOR}")
-endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(AC3FORGE_BUILD_COMPILER "GCC ${CMAKE_CXX_COMPILER_VERSION}")
@@ -254,74 +335,8 @@ target_include_directories(forge_objects PRIVATE
 # level down from the header they share.
 target_include_directories(forge_objects PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
 
-# ---------------------------------------------------------------------------
-# The SIMD arch tree (ROADMAP PF5).
-#
-# Exactly the mechanism directly above, on the architecture axis instead of
-# the profiling one: src/internal/arch/{generic,x86_64,aarch64}/ each hold an
-# identically-pathed ac3/internal/arch/simd.hpp, one of them goes on the
-# include path, and every `#include "ac3/internal/arch/simd.hpp"` in the
-# codec core resolves to it. No translation unit ever asks what it is being
-# compiled for - the rule tools/checks/check_platform_macros.ps1 enforces -
-# and adding an architecture means adding a directory, not editing
-# conditionals in the kernels.
-#
-# The kernels themselves are NOT duplicated per directory. They live once,
-# in shared code (src/core/fft_radix2.hpp, src/core/mdct.cpp,
-# src/core/bitalloc.cpp, src/core/exponents.cpp), written against the two
-# 128-bit vector types the header defines; the directories carry the types
-# and their operations. See the generic header for why that is what makes
-# the bit-exactness claim testable.
-#
-# AC3FORGE_SIMD forces a directory. `generic` in particular is what a
-# reproducibility comparison wants (is a difference between two machines the
-# vector kernels or something else?), and is the reference
-# tests/core/test_simd_kernels.cpp's scalar side is written to match.
-# ---------------------------------------------------------------------------
-set(AC3FORGE_SIMD "auto" CACHE STRING
-    "SIMD kernel directory: auto (from the effective target architecture), generic, x86_64, or aarch64")
-set_property(CACHE AC3FORGE_SIMD PROPERTY STRINGS auto generic x86_64 aarch64)
-
-if(AC3FORGE_SIMD STREQUAL "auto")
-    # AC3FORGE_BUILD_ARCH is resolved further up this file for version
-    # strings, from the effective target architecture (CMAKE_SYSTEM_PROCESSOR,
-    # or CMAKE_OSX_ARCHITECTURES where a cross-build sets one); reuse it
-    # rather than spelling the platform regexes a second time and letting the
-    # two drift - and rather than reading CMAKE_SYSTEM_PROCESSOR directly,
-    # which is the host's answer on an Apple cross-build and was how an
-    # arm64 wheel built on an Intel runner ended up being handed -mavx2.
-    # Anything that is not one of the two architectures with a directory -
-    # 32-bit x86, WebAssembly (Emscripten reports "x86"), a macOS universal
-    # binary, a soft-float embedded target - lands on generic, which is a
-    # complete implementation and not a stub.
-    if(AC3FORGE_BUILD_ARCH STREQUAL "x86_64")
-        set(AC3FORGE_SIMD_RESOLVED "x86_64")
-    elseif(AC3FORGE_BUILD_ARCH STREQUAL "arm64")
-        set(AC3FORGE_SIMD_RESOLVED "aarch64")
-    else()
-        set(AC3FORGE_SIMD_RESOLVED "generic")
-    endif()
-else()
-    set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD}")
-endif()
-
-set(AC3FORGE_ARCH_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/arch/${AC3FORGE_SIMD_RESOLVED}")
-if(NOT IS_DIRECTORY "${AC3FORGE_ARCH_INCLUDE_DIR}")
-    message(FATAL_ERROR
-        "AC3FORGE_SIMD=${AC3FORGE_SIMD} resolved to '${AC3FORGE_SIMD_RESOLVED}', which has no "
-        "directory under src/forge/src/internal/arch/. Add "
-        "src/forge/src/internal/arch/<name>/ac3/internal/arch/simd.hpp - the generic/ copy is "
-        "the portable implementation and is a working starting point.")
-endif()
 target_include_directories(forge_objects PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 
-# tests/CMakeLists.txt reads this so test_simd_kernels.cpp sees the same
-# simd.hpp the library was built with - the same white-box arrangement
-# src/signing/src and AC3FORGE_AUDIO_BACKEND_DIR already have there.
-set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
-# For the configure summary at the end of the top-level CMakeLists.txt.
-set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
 
 # ---------------------------------------------------------------------------
 # Runtime CPU-feature detection (ROADMAP PF5's dynamic-dispatch follow-on).

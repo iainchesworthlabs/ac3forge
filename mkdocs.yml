@@ -12,18 +12,22 @@ exclude_docs: |
 
 theme:
   name: material
+  custom_dir: overrides
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
@@ -37,6 +41,14 @@ theme:
     - content.code.copy
     - content.tabs.link
     - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+  - stylesheets/new.css
+
+extra_javascript:
+  - javascripts/enhancements.js
+  - javascripts/hero-stats.js
 
 markdown_extensions:
   - admonition

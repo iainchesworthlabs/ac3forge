@@ -12,6 +12,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **An `f32x4` lane type in the SIMD arch seam** (roadmap PF7), alongside the `f64x2` and
+  `i32x4` already there, in all three of
+  `src/forge/src/internal/arch/{generic,x86_64,aarch64}/`. The float32 decode path's IMDCT
+  twiddle stages ran plain scalar loops for want of one; `mdct.cpp`'s four vectorised float32
+  sections now go four lanes at a time under SSE2 and NEON, in the same 128-bit register the
+  double path fits two in. `tests/core/test_simd_kernels.cpp` pins the type against scalar
+  `float` bit-for-bit, including 9,997 products that underflow into the denormal range - the
+  case a flush-to-zero vector unit is the only one to fail, and the reason this type is safe
+  on AArch64 where it would not have been on AArch32.
+
 ### Changed
 
 - **Two coding-tool headers moved out of `ac3/encoder/` into `ac3/core/`**, where the code
@@ -26,6 +38,12 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   nothing else is affected. This is source-breaking and deliberately lands before the v1.0 API
   freeze, with no compatibility shim — mangled names carry the namespace rather than the
   directory, so the ABI is unchanged, the same terms `ac3/sinks/` → `ac3/iec61937/` moved on.
+- **A minimum-footprint build resolves the arch seam** instead of naming `generic/` literally
+  (`src/forge/minimal.cmake`, and the resolution moved above the branch that includes it in
+  `src/forge/CMakeLists.txt`). Both bare-metal targets still land on `generic/` and nothing
+  about those builds changes - an `arm-none-eabi` Cortex-M3 has no vector unit and the
+  ESP32-S3's is fixed-point. What the literal spelling cost was a minimum-footprint decoder
+  built for aarch64, whose float32 decode path NEON holds four lanes of.
 
 - Four places now use the idiom SonarCloud's first scan asked for, because it is better code
   and not only a quieter report. `*opt = v` is defined only while an optional is engaged, so
@@ -169,6 +187,25 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   how sharply these gates can see.
 
 ### Added
+
+- **Heap churn is now gated before a merge, not only after one** (`Memory vs merge base` and
+  `Memory gate` in `ci.yml`, `tools/ci/compare_memory.py`). `ac3membench` was built and run
+  by exactly one job, `persist-performance-trend`, which is `push` to `main` only - so an
+  allocation regression turned the check red on a commit that had already landed, where it
+  blocked nothing. That is how E-AC-3 encode churn stepping 67 → 199 allocs/frame (and Atmos
+  106 → 219) was found at PR #352, and the regression is still open as #544. The new job
+  builds `ac3membench` at the pull request's head and at its merge base and compares
+  `allocs_per_frame` and `bytes_per_frame` per leg and config, reusing
+  `append_memory_history.py`'s tiers by import so the pre-merge and post-merge gates cannot
+  disagree about what a regression is. One run per side is the whole measurement - these
+  counts do not move between runs of a fixed binary - so it needs none of the repetition and
+  interleaving the speed comparison uses against timing noise, and costs less than it. The
+  hard tier (churn at least doubled) fails `Memory gate`; `memory-regression-approved` on the
+  pull request turns it back into an annotation. The `steady_live_growth` leak check keeps
+  its absolute thresholds but applies them to what the branch changed, because three of the
+  six workloads already retain bytes across their steady state and two sit past the 4 KiB
+  warn line - checking the head alone would have annotated every pull request for the merge
+  base's own findings.
 
 - **CI now asserts that Linux and macOS packages carry the `ac3cli` man page and the four
   shell completions** (`tools/ci/check_cli_docs_package.py`, run from `_build.yml`), so the
@@ -401,6 +438,17 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   an entry that returns nothing.
 
 ### Fixed
+
+- **A Crucible re-probe asked for while one was already running was dropped**
+  (`apps/crucible/engine/engine.cpp`). The frame loop tested `want_reprobe` before it tested
+  whether an enumeration was in flight, so a request that arrived during one was cleared by that
+  test and then served by nobody - not queued, not retried. The next probe came only from the
+  device watcher or from the user asking again. That is the case the request exists for: reading
+  the endpoint list is slow, so the world routinely changes after the running enumeration has
+  read it, and the request that would have caught the change was the one being thrown away.
+  Every caller was affected - Re-probe on the Room page, pinning a mode, choosing an endpoint,
+  loading or clearing a signing key, and the device watcher itself. A request that arrives during
+  an enumeration is now kept, and starts a fresh probe as soon as that one finishes.
 
 - **Crucible tapped applications before it had anywhere to play them**
   (`apps/crucible/engine/engine.cpp`). The frame loop refreshed the session list and opened a tap

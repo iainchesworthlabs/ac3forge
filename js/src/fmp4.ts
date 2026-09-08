@@ -202,8 +202,11 @@ function readTfhd(buffer: Uint8Array, tfhd: Box): Tfhd {
     defaultSampleSize = view.getUint32(p);
     p += 4;
   }
-  // default-sample-flags is read for completeness but unused - we only need
-  // sizes/durations to slice out access units, not the sync/redundancy bits.
+  // default-sample-flags is skipped for completeness but unused - we only
+  // need sizes/durations to slice out access units, not the sync/redundancy
+  // bits, and it is the last optional tfhd field, so leaving `p` here costs
+  // nothing.
+  if (flags & TFHD_DEFAULT_SAMPLE_FLAGS_PRESENT) p += 4;
   return {
     trackId,
     baseDataOffset,

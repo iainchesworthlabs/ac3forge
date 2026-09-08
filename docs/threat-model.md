@@ -110,7 +110,11 @@ What runs against it, continuously:
   nightly against `main` rather than per pull request; a run that finds something new opens a
   `nightly-analysis` issue, and the alerts themselves are triaged in Security > Code scanning.
   **SonarCloud** runs in the same window for maintainability, duplication and coverage on new
-  code; its findings live in its own dashboard, not the Security tab. **OSV scanning**
+  code, plus bug and vulnerability detection; its BUG and VULNERABILITY findings are also
+  triaged in Security > Code scanning (`tools/ci/sonar_to_sarif.py` converts them, since
+  SonarCloud has no server-side option to publish there itself), but maintainability findings,
+  duplication, coverage and the quality gate status stay in its own dashboard only.
+  **OSV scanning**
   (on pull requests, pushes to `main` and a weekly schedule) and **OpenSSF Scorecard** (pushes
   to `main` and a weekly schedule) upload to the same tab.
 

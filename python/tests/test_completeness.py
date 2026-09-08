@@ -5,7 +5,6 @@ CONTRIBUTING.md's "Test with real audio")."""
 import ac3forge as ac3
 import numpy as np
 import pytest
-from ac3forge import eac3
 
 RATE = 48_000
 FRAMES = 6
@@ -13,7 +12,7 @@ FRAMES = 6
 
 def tone_stream() -> tuple[bytes, list[bytes]]:
     """Six frames of stereo E-AC-3, plus its access units."""
-    encoder = eac3.FrameEncoder(eac3.FrameConfig(bitrate_kbps=192, acmod=ac3.Acmod.k2_0))
+    encoder = ac3.eac3.FrameEncoder(ac3.eac3.FrameConfig(bitrate_kbps=192, acmod=ac3.Acmod.k2_0))
     t = np.arange(ac3.SAMPLES_PER_FRAME * FRAMES, dtype=np.float32) / RATE
     stream = b""
     for frame in range(FRAMES):

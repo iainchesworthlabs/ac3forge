@@ -50,10 +50,11 @@ on the repo. Configure a protection rule (or ruleset) for `main` with:
 - **Block force pushes**
 - **Restrict deletions**
 
-### What the 2026-08 CI additions did and did not change here
+### What the recent CI additions did and did not change here
 
-Nothing in the `VX14`-`VX17` batch (script lint, the `apps/cli` coverage floor,
-the ThreadSanitizer leg, the PR-time performance comparison) **requires** a
+Nothing in the 2026-08 `VX14`-`VX17` batch (script lint, the `apps/cli`
+coverage floor, the ThreadSanitizer leg, the PR-time performance comparison),
+nor the PR-time memory comparison that followed it in 2026-09, **requires** a
 ruleset edit, and the list above is deliberately unchanged:
 
 - `Script Lint` (`ci.yml`) is in `CI Status`'s `needs` list, so it already
@@ -65,7 +66,15 @@ ruleset edit, and the list above is deliberately unchanged:
 - `Performance vs merge base` (`ci.yml`) must NOT be made required. It is
   informational, carries `continue-on-error`, and is deliberately absent from
   `CI Status`'s `needs`; requiring it would turn hosted-runner timing noise
-  into a merge blocker.
+  into a merge blocker. Its verdict still blocks, through the separate
+  `Performance gate` job, which is in `CI Status`'s `needs` and builds nothing
+  - that split is the whole point of the two-job shape.
+- `Memory vs merge base` (`ci.yml`, added 2026-09) is the same shape and the
+  same rule: informational, `continue-on-error`, not required, with
+  `Memory gate` carrying its verdict into `CI Status`'s `needs`. The noise
+  argument does not apply to it - `ac3membench`'s counts are deterministic for
+  a fixed binary - but the infrastructure one does, since it builds twice and a
+  container or vcpkg flake there must not block a PR.
 - `codeql.yml` is nightly-only since 2026-09 and no check-name constraint
   remains on it (its legs never report on a PR). Keep `CI Status`'s own
   `name:` stable - that rendered string is what the required check above is

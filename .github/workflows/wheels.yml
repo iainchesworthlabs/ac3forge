@@ -179,12 +179,16 @@ jobs:
       # dependency are all pinned by hash before the wheel is installed
       # offline on top - see that .in file's header for why numpy is satisfied
       # here rather than left to pip during the wheel install.
+      # requirements-pip-bootstrap.txt pins the venv's own pip upgrade the
+      # same way - see that file's header for why it can't just live in the
+      # pip-compile lock above.
       - name: Install the wheel and the pinned test tooling
         shell: bash
         run: |
           set -euo pipefail
           python3 -m venv .pyvenv
-          .pyvenv/bin/python -m pip install --quiet "pip==24.3.1"
+          .pyvenv/bin/python -m pip install --quiet --require-hashes \
+            -r requirements/requirements-pip-bootstrap.txt
           .pyvenv/bin/python -m pip install --quiet --require-hashes \
             -r requirements/requirements-pytest.txt
           # --find-links, not `pip install wheelhouse/*.whl`: cibuildwheel
