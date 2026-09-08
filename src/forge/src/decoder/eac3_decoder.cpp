@@ -2952,7 +2952,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // own channels, and out.object_indices is what says which.
     {
         AC3_ZONE_SCOPED_N("eac3_joc_reconstruct");
-        if (out.object_metadata && !joc_bytes.empty()) {
+        // DecoderConfig::skip_object_reconstruction stops here rather than
+        // further in, so the ReconstructionState is never allocated at all -
+        // which is the point of the flag on a target where that one 147,504-byte
+        // block is the thing that will not fit. object_metadata is already
+        // parsed and stays; only the audio the objects would carry is skipped.
+        if (out.object_metadata && !joc_bytes.empty() &&
+            !impl_->config_.skip_object_reconstruction) {
             const auto params = oba::joc::parse_payload(joc_bytes);
             const auto indices = oba::joc_object_indices(out.object_metadata->program);
             // §6.3.2.2 Table 47: the JOC downmix is the five channels this

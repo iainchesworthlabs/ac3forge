@@ -3,6 +3,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <ranges>
 #include <array>
 #include <cmath>
 #include <complex>
@@ -850,6 +851,68 @@ TEST_CASE("Eac3Decoder recovers the object positions AtmosEncoder wrote", "[atmo
         CHECK(metadata.objects[i].position.x == quantize_xy(placement[i].position.x));
         CHECK(metadata.objects[i].position.y == quantize_xy(placement[i].position.y));
         CHECK(metadata.objects[i].position.z == quantize_z(placement[i].position.z));
+    }
+}
+
+TEST_CASE("skip_object_reconstruction leaves the bed untouched and the objects absent",
+          "[atmos][decoder][joc]") {
+    // The embedded case: an Atmos stream decoded for its 5.1 bed on a target
+    // that cannot hold oba::joc::ReconstructionState. What has to hold is that
+    // the flag costs the BED nothing - a decoder that quietly changed the
+    // rendered audio to save memory would be worse than one that ran out of it.
+    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
+    const std::array<ac3::oba::ObjectPlacement, 3> placement{{
+        {.position = {.x = 0.1, .y = 0.2, .z = 0.5}},
+        {.position = {.x = 0.9, .y = 0.2, .z = 0.5}, .gain = 0.5},
+        {.position = {.x = 0.5, .y = 0.9, .z = -0.5}, .lfe_send = 0.3},
+    }};
+
+    std::vector<std::vector<float>> essences;
+    std::vector<std::span<const float>> views(3);
+    ac3::eac3::AccessUnit unit;
+    for (int frame = 0; frame < 3; ++frame) {
+        const auto start = static_cast<std::uint64_t>(frame) * kFrame;
+        essences = {tone(440.0, 0.3, 0.0, start), tone(880.0, 0.3, 0.5, start),
+                    tone(120.0, 0.3, 1.0, start)};
+        for (std::size_t i = 0; i < views.size(); ++i) {
+            views[i] = essences[i];
+        }
+        auto encoded = encoder.encode_frame(views, placement);
+        REQUIRE(encoded.has_value());
+        unit = *encoded;
+    }
+
+    ac3::Eac3Decoder full;
+    const auto with_objects = full.decode_substream(unit.substream(0));
+    REQUIRE(with_objects.has_value());
+    REQUIRE(with_objects->has_value());
+
+    ac3::Eac3Decoder bed_only{{.skip_object_reconstruction = true}};
+    const auto without = bed_only.decode_substream(unit.substream(0));
+    REQUIRE(without.has_value());
+    REQUIRE(without->has_value());
+
+    // The objects are gone, and only the objects.
+    CHECK_FALSE((*with_objects)->object_audio.empty());
+    CHECK((*without)->object_audio.empty());
+    CHECK((*without)->object_indices.empty());
+
+    // The metadata still arrives: it is parsed out of a block's skip field and
+    // costs nothing to keep, and a renderer choosing a speaker layout still
+    // wants to know what the stream declared.
+    REQUIRE((*without)->object_metadata.has_value());
+    REQUIRE((*with_objects)->object_metadata.has_value());
+    CHECK((*without)->object_metadata->objects.size() ==
+          (*with_objects)->object_metadata->objects.size());
+
+    // The bed is bit-for-bit what the full decode produced. Not "close":
+    // skipping reconstruction touches no coefficient the bed is built from, so
+    // any difference here would be a real one.
+    REQUIRE((*without)->channels.size() == (*with_objects)->channels.size());
+    for (std::size_t ch = 0; ch < (*without)->channels.size(); ++ch) {
+        CAPTURE(ch);
+        REQUIRE((*without)->channels[ch].size() == (*with_objects)->channels[ch].size());
+        CHECK(std::ranges::equal((*without)->channels[ch], (*with_objects)->channels[ch]));
     }
 }
 

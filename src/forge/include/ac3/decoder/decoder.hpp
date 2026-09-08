@@ -281,6 +281,27 @@ struct DecoderConfig {
     // subsequent field depends on them - a "parse" that skipped those would
     // not be parsing the same stream.
     bool skip_reconstruction = false;
+    // Decode the bed and leave the objects alone: §6 JOC reconstruction is not
+    // run, `object_audio` and `object_indices` come back empty, and everything
+    // else - the bed's PCM, `object_metadata`, the trace - is exactly what a
+    // full decode produces. Unlike `skip_reconstruction` above, this still
+    // renders audio; it renders the 5.1 downmix the objects were coded against
+    // rather than the objects.
+    //
+    // The reason is memory, and the number is specific. JOC reconstruction
+    // allocates an oba::joc::ReconstructionState - 147,504 bytes on a 32-bit
+    // target, in one block - plus a QmfState and its filterbanks under
+    // `joc_domain` kQmf, 233,064 bytes together. On an ESP32-S3 that is more
+    // than the 116,736-byte largest contiguous block a decode leaves free, so
+    // the allocation fails on contiguity before the budget is even reached, and
+    // an Atmos stream that would otherwise play as ordinary 5.1 takes the whole
+    // decode down partway through. See docs/platforms/esp32.md.
+    //
+    // Default false, because on a host the objects are the point. A caller that
+    // wants the bed - an embedded integrator, or anything rendering to a
+    // speaker layout rather than to positions - sets this and pays nothing for
+    // the object layer it is not going to use.
+    bool skip_object_reconstruction = false;
     // --- diagnostics (ac3/decoder/diagnostics.hpp) --------------------------
     // A recoverable, informational event the decode does not otherwise
     // surface - see DiagnosticEvent. Null by default, at the same

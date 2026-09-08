@@ -17,7 +17,8 @@ it is the first target where real-time decode is worth measuring.
 | E-AC-3 5.1 decode | Correct. Same, including AHT and spectral extension |
 | E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture, since `tools=all` does not select it; costs 126 allocations/frame against 86 |
 | E-AC-3 2/0, §7.5.4 rematrixing | Correct. A layout no 5.1 stream reaches whatever its tools are |
-| JOC / Atmos objects | Does not fit. Decodes correctly; see [Objects](#objects-do-not-fit-in-internal-sram) |
+| Atmos, bed | Correct. Its own fixture, decoded bed-only; costs 61 allocations/frame and nothing extra in peak heap |
+| Atmos, objects | Does not fit. Decodes correctly on a host; see [Objects](#objects-do-not-fit-in-internal-sram) |
 | Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 179,064-byte peak — see [Memory](#how-much-memory-there-actually-is) |
 | Retained after teardown | 34,232 bytes of `thread_local` enhanced-coupling scratch, held for the life of the decoding task — see [Building](../building.md#gaps) |
 | Real time | Not measured. See [Timing](#timing) |
@@ -230,9 +231,10 @@ float32 dot product, `dsps_dotprod_f32_aes3.S`, opens with `EE.LDF.128.IP` —
 a 128-bit load landing four floats in four FPU registers — and then runs four
 independent scalar `madd.s` into four accumulators. That is load bandwidth
 plus instruction-level parallelism rather than a four-wide float ALU, and it
-is worth having. The P4's equivalent has no wide float load; it loads one
-float at a time. Whatever the S3's float path is eventually worth, the P4 does
-not inherit it.
+is worth having — from hand-written assembly rather than from the arch seam,
+which [Not done](#not-done) measures. The P4's equivalent has no wide float
+load; it loads one float at a time. Whatever the S3's float path is eventually
+worth, the P4 does not inherit it.
 
 What the P4 does buy over the S3 is clock and memory. A frame is 1536 samples,
 32 ms at 48 kHz, which is 7.68 M cycles of budget at 240 MHz against 12.8 M at
@@ -257,11 +259,12 @@ than a technical one, and it was put to the project owner and decided on
 not to bear on this.** It is still unmeasured — [Timing](#timing)
 has what that costs, which is one board. The decision does not wait on it. The
 radio disqualifies the P4 on its own, so a decode that misses real time on the
-S3 gets fixed in the decoder rather than by changing part: the float path is
-still scalar, `src/internal/arch/` has no `f32x4` yet, and 46–87 heap
-allocations per frame remain PF7's other open gap. Those are the levers, and
-they apply to every target at once instead of to one that cannot reach the
-network.
+S3 gets fixed in the decoder rather than by changing part: 46–87 heap
+allocations per frame remain PF7's other open gap, and the float path has a
+hand-written-kernel option this page now sizes. `src/internal/arch/` does
+carry an `f32x4` since PF7's SIMD step, but it resolves to `generic/` here and
+buys this part nothing. Those are the levers, and they apply to every target
+at once instead of to one that cannot reach the network.
 
 The measurement is still worth taking, for the S3's own sake and for
 [topology](../family/topology.md)'s Phase 5. It is no longer a question about
@@ -269,15 +272,42 @@ the P4.
 
 ## Not done
 
-- **PIE SIMD.** `src/internal/arch/` has no `f32x4`, so the float path runs
-  scalar. Worth being precise about what the S3 offers here, because the name
-  oversells it: PIE's vector ALU is integer-only, and what
-  `esp-dsp`'s float32 kernels actually use is `EE.LDF.128.IP` — a 128-bit load
-  filling four FPU registers — feeding four independent scalar `madd.s` into
-  four accumulators. The gain available is load bandwidth and instruction-level
-  parallelism, not a four-wide float multiply. That is still worth having, and
-  it still needs a measurement from real silicon first rather than the
-  assumption that it is.
+- **A vectorised float32 path on this part.** `src/internal/arch/` carries an
+  `f32x4` since PF7's SIMD step, so the float32 IMDCT's twiddle stages go four
+  lanes at a time on SSE2 and NEON. On an S3 that type resolves to `generic/`
+  and compiles to four scalar operations, because PIE's vector ALU is
+  integer-only — the name oversells it, which is worth being precise about.
+
+  What `esp-dsp`'s float32 kernels use instead is `EE.LDF.128.IP`, a 128-bit
+  load filling four FPU registers, feeding four independent scalar `madd.s`
+  into four accumulators: load bandwidth and instruction-level parallelism
+  rather than a four-wide float multiply.
+
+  **That is not reachable from the arch seam**, which was measured rather than
+  assumed. An `f32x4` whose `load`/`store` are `EE.LDF.128.IP`/`EE.STF.128.IP`
+  through inline asm, compiled over `imdct256_pair_windowed`'s post-twiddle at
+  `-O2` under ESP-IDF v6.1's Xtensa GCC 15.2.0:
+
+  | Form | Instructions | Spills |
+  |---|---|---|
+  | Plain scalar, what `generic/` emits today | **68** | — |
+  | PIE loads, `asm volatile` | 73 | 22 `ssi` |
+  | PIE loads, non-volatile with memory operands | 99 | 33 `ssi` + 22 `lsi` |
+
+  The six wide accesses do replace twenty-four narrow ones and are then
+  swamped. `EE.LDF.128.IP` writes a *consecutive quad* of `f` registers, and
+  GCC's Xtensa port has no way to model that as a single value, so it spills
+  every asm block's outputs and loses the hardware `loop` along with them.
+  `esp-dsp` does not meet this because its kernels are assembly end to end and
+  allocate their own registers.
+
+  So the shape that could capture it is a hand-written Xtensa kernel tier,
+  like `src/internal/avx2/` rather than like `src/internal/arch/`: whole
+  twiddle stages in assembly, selected at build time. Reaching `esp-dsp`'s
+  figures also means `madd.s`, a deliberate fused multiply-add of exactly the
+  kind `-ffp-contract=off` forbids project-wide, so that tier would have to
+  carry its own bit-exactness argument rather than inherit the seam's. It
+  still wants a measurement from real silicon before any of it.
 - **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works
   but keeps both transform instantiations compiled.
 - **Audio output.** The probe decodes built-in fixtures. Nothing reaches I2S.
@@ -332,8 +362,31 @@ That last row fits, with about 21,000 bytes spare. So object decode here is reac
 all three — the float32 conversion is load-bearing twice over, once for the total and once for the
 contiguity.
 
-Adding more fixtures would not have found any of this, which is why the fixture was measured and
-removed rather than committed.
+Adding more fixtures would not have found any of this, which is why the full-object fixture was
+measured and removed rather than committed.
+
+### The bed plays, though
+
+None of the above stops an Atmos stream being played on this part. Its bed is ordinary E-AC-3 5.1
+and the objects are side data; only reconstructing them is expensive.
+`DecoderConfig::skip_object_reconstruction` decodes the bed and never allocates
+`ReconstructionState` at all, and `apps/baremetal/fixture.hpp` carries an Atmos fixture decoded
+that way:
+
+| | Full decode | Bed only |
+|---|---|---|
+| Peak heap | 449,826 | **179,064 — unchanged from a plain decode** |
+| Allocations/frame | 80 | 61 |
+| Bed channels correct | yes | yes, identically |
+
+The flag costs the bed nothing: `tests/oba/test_atmos.cpp` asserts the rendered channels are
+bit-for-bit what a full decode produces, since skipping reconstruction touches no coefficient the
+bed is built from. `object_metadata` still arrives — it is parsed out of a block's skip field and
+costs nothing to keep, and a renderer picking a speaker layout still wants what the stream
+declared.
+
+Without the flag an Atmos stream does not degrade on this part, it fails: the allocation is
+attempted, and the decode stops partway through in `operator new`.
 
 ## ESPHome
 
