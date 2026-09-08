@@ -108,18 +108,18 @@ struct Engine::Impl {
     // kBuilt -> kReady, with kRefused reachable from either of the first
     // two; the deadlines above say how long start() waits at each step.
     // `refusal` is written once, before the store that publishes kRefused,
-    // and read only after a load that saw kRefused - the release/acquire
-    // pair is what makes it visible, so a value written once needs no lock
-    // of its own.
+    // and read only after a load that saw kRefused - start_state's default
+    // sequentially-consistent ordering is what makes it visible, so a value
+    // written once needs no lock of its own.
     enum class StartState : int { kComing, kBuilt, kReady, kRefused };
     std::atomic<StartState> start_state{StartState::kComing};
     std::string refusal;
 
-    void publish(StartState state) { start_state.store(state, std::memory_order_release); }
+    void publish(StartState state) { start_state.store(state); }
 
     void refuse(std::string why) {
         refusal = std::move(why);
-        start_state.store(StartState::kRefused, std::memory_order_release);
+        start_state.store(StartState::kRefused);
     }
 
     mutable std::mutex mutex;  // commands and the status snapshot
@@ -708,7 +708,7 @@ struct Engine::Impl {
                     // up waiting for it (kProbeDeadline), where a loop that
                     // left would be a machine that never picks up the
                     // endpoint appearing or the default being moved.
-                    if (start_state.load(std::memory_order_relaxed) == StartState::kBuilt) {
+                    if (start_state.load() == StartState::kBuilt) {
                         if (output->status().running) {
                             publish(StartState::kReady);
                         } else {
@@ -892,7 +892,7 @@ std::expected<void, std::string> Engine::start() {
     // be this worker's rather than the last one's. Set before the thread
     // exists, so there is nothing to synchronise with yet.
     impl_->refusal.clear();
-    impl_->start_state.store(Impl::StartState::kComing, std::memory_order_relaxed);
+    impl_->start_state.store(Impl::StartState::kComing);
     impl_->worker = std::jthread([this](const std::stop_token& stop) { impl_->loop(stop); });
 
     // Everything that can fail happens on that thread, so returning here
@@ -901,10 +901,10 @@ std::expected<void, std::string> Engine::start() {
     // kProbeDeadline above carry the reasoning and the numbers.
     using Clock = std::chrono::steady_clock;
     const auto settle = [this](Clock::time_point deadline, Impl::StartState still) {
-        auto state = impl_->start_state.load(std::memory_order_acquire);
+        auto state = impl_->start_state.load();
         while (state == still && Clock::now() < deadline) {
             std::this_thread::sleep_for(kStartPollStep);
-            state = impl_->start_state.load(std::memory_order_acquire);
+            state = impl_->start_state.load();
         }
         return state;
     };

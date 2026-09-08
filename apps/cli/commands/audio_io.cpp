@@ -666,7 +666,7 @@ int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
     const auto unique =
         (static_cast<std::uint64_t>(rd()) << 32) ^
         static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
-        counter.fetch_add(1, std::memory_order_relaxed);
+        counter.fetch_add(1);
     return std::filesystem::temp_directory_path() / ("ac3play_" + std::to_string(unique) + ".ac3");
 }
 
