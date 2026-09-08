@@ -1845,8 +1845,8 @@ syncframes (the low-latency mode this was meant to document) have not landed - t
 latency section names the 512-1024-sample figures they would enable and says so.
 </details>
 
-**PF7 (L)** — A minimum-footprint decoder profile — 408 KB image, 265 KB peak heap, proven on
-a real cross-compiled bare-metal CI leg.
+**PF7 (L)** — A minimum-footprint decoder profile — 277 KB image, 168 KB peak heap, proven on
+a real cross-compiled bare-metal CI leg, with a vectorised float32 decode path.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1861,8 +1861,34 @@ coefficients, transform scratch and overlap-add history in a profile-selected `d
 agreeing with the double decode to ~139 dB across four real streams and to 2.7e-7 peak-normalised
 at the transform. No gold reference moved, since the ordinary build's `decode_scalar_t` is still
 `double`. That change and the removal of a 32 KB `thread_local` from every FreeRTOS task's stack
-took the figures above to 277 KB of image and 168 KB of peak heap. See `docs/building.md`'s Gaps
-section, `docs/performance-trend.md` for the current table, and `docs/platforms/esp32.md`.
+took that same leg to 277 KB of image and 168 KB of peak heap.
+
+That float32 path is no longer scalar. The arch seam gained an `f32x4` beside its `f64x2` and
+`i32x4`, in all three of `src/internal/arch/{generic,x86_64,aarch64}/`, and `mdct.cpp`'s four
+float32 IMDCT sections — the 512 pre-twiddle, its negate-copy, and both post-twiddles — run four
+lanes at a time in the same 128-bit register the double path fits two in.
+`tests/core/test_simd_kernels.cpp` pins the type against scalar `float` bit-for-bit over a value
+set whose products reach the denormal range, which is the only place a flush-to-zero vector unit
+disagrees and the reason the type is safe on AArch64 where it would not have been on AArch32.
+Two builds differing only in `AC3FORGE_SIMD` produce an identical digest over 65,536 floats of
+real IMDCT output, and the NEON build compares clean under `qemu-aarch64`. `minimal.cmake` also
+stopped naming `generic/` literally and now reads the resolved seam, so a minimum-footprint build
+for aarch64 gets NEON rather than silently getting the portable copy.
+
+The Xtensa half of that step is closed as not buildable rather than left open. The ESP32-S3's
+128-bit PIE has no float32 vector arithmetic — its vector ALU is integer-only, and its whole
+float involvement is the wide load/store `EE.LDF.128.IP` that `esp-dsp`'s own kernels pair with
+scalar `madd.s` — so an `f32x4` under `src/internal/arch/xtensa/` would be the four scalar
+operations `generic/` already performs. Reaching for that wide load from inside the seam measures
+worse than the plain form, 73 or 99 instructions against 68, because the instruction writes a
+consecutive quad of `f` registers that GCC's Xtensa port cannot model as one value and therefore
+spills. What is left for that part is a hand-written kernel tier shaped like
+`src/internal/avx2/`, which would need its own bit-exactness argument since reaching `esp-dsp`'s
+figures means the `madd.s` that `-ffp-contract=off` forbids project-wide. Whether any of it is
+warranted is still unmeasured: it wants one board, and QEMU cannot answer it.
+
+See `docs/building.md`'s Gaps section, `docs/performance-trend.md` for the current table, and
+`docs/platforms/esp32.md`.
 </details>
 
 **PF8 (S)** — The decoder's JOC bed analysis was still running direct forward transforms — now
