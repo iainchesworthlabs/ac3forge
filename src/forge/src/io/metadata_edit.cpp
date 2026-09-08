@@ -90,7 +90,7 @@ std::expected<Parsed, EditError> parse_ac3(std::span<const std::byte> frame) {
     out.meta.sample_rate = static_cast<SampleRate>(fscod);
     const auto bytes = frame_size_bytes(out.meta.sample_rate, kBitratesKbps[frmsizecod >> 1],
                                         (frmsizecod & 1) != 0);
-    if (!bytes) {
+    if (!bytes.has_value()) {
         return std::unexpected(EditError::kReservedValue);
     }
     out.meta.bytes = *bytes;
@@ -227,7 +227,7 @@ std::expected<Parsed, EditError> parse_eac3(std::span<const std::byte> frame) {
         // §E2.3.1.3: fscod2 replaces numblkscod outright - a reduced-rate
         // substream is implicitly always six blocks.
         const auto rate = sample_rate_from_fscod2(r.read(2));
-        if (!rate) {
+        if (!rate.has_value()) {
             return std::unexpected(EditError::kReservedValue);
         }
         out.meta.sample_rate = *rate;
@@ -321,36 +321,36 @@ std::expected<Parsed, EditError> parse(std::span<const std::byte> frame) {
 // frame claiming metadata nobody asked for.
 std::expected<void, EditError> check(const Parsed& parsed, const MetadataEdit& edit) {
     const auto in_range = [](int value, int low, int high) { return value >= low && value <= high; };
-    if (edit.dialnorm && !in_range(*edit.dialnorm, 1, 31)) {
+    if (edit.dialnorm.has_value() && !in_range(*edit.dialnorm, 1, 31)) {
         return std::unexpected(EditError::kOutOfRange);
     }
-    if (edit.dialnorm2) {
+    if (edit.dialnorm2.has_value()) {
         if (!in_range(*edit.dialnorm2, 1, 31)) {
             return std::unexpected(EditError::kOutOfRange);
         }
-        if (!parsed.meta.dialnorm2) {
+        if (!parsed.meta.dialnorm2.has_value()) {
             return std::unexpected(EditError::kFieldAbsent);
         }
     }
-    if (edit.compr && !parsed.meta.compr) {
+    if (edit.compr.has_value() && !parsed.meta.compr.has_value()) {
         return std::unexpected(EditError::kFieldAbsent);
     }
-    if (edit.compr2 && !parsed.meta.compr2) {
+    if (edit.compr2.has_value() && !parsed.meta.compr2.has_value()) {
         return std::unexpected(EditError::kFieldAbsent);
     }
-    if (edit.bsmod) {
+    if (edit.bsmod.has_value()) {
         if (!in_range(*edit.bsmod, 0, 7)) {
             return std::unexpected(EditError::kOutOfRange);
         }
-        if (!parsed.meta.bsmod) {
+        if (!parsed.meta.bsmod.has_value()) {
             return std::unexpected(EditError::kFieldAbsent);
         }
     }
-    if (edit.dsurmod) {
+    if (edit.dsurmod.has_value()) {
         if (!in_range(*edit.dsurmod, 0, 3)) {
             return std::unexpected(EditError::kOutOfRange);
         }
-        if (!parsed.meta.dsurmod) {
+        if (!parsed.meta.dsurmod.has_value()) {
             return std::unexpected(EditError::kFieldAbsent);
         }
     }
@@ -375,7 +375,7 @@ std::string_view describe(EditError error) {
 
 std::expected<FrameMetadata, EditError> read_frame_metadata(std::span<const std::byte> frame) {
     const auto parsed = parse(frame);
-    if (!parsed) {
+    if (!parsed.has_value()) {
         return std::unexpected(parsed.error());
     }
     return parsed->meta;
@@ -383,7 +383,7 @@ std::expected<FrameMetadata, EditError> read_frame_metadata(std::span<const std:
 
 std::expected<void, EditError> restamp_crc(std::span<std::byte> frame) {
     const auto parsed = parse(frame);
-    if (!parsed) {
+    if (!parsed.has_value()) {
         return std::unexpected(parsed.error());
     }
     const std::size_t bytes = parsed->meta.bytes;
@@ -412,33 +412,33 @@ std::expected<void, EditError> restamp_crc(std::span<std::byte> frame) {
 std::expected<FrameMetadata, EditError> edit_frame_metadata(std::span<std::byte> frame,
                                                             const MetadataEdit& edit) {
     auto parsed = parse(frame);
-    if (!parsed) {
+    if (!parsed.has_value()) {
         return std::unexpected(parsed.error());
     }
     if (const auto ok = check(*parsed, edit); !ok) {
         return std::unexpected(ok.error());
     }
-    if (edit.dialnorm) {
+    if (edit.dialnorm.has_value()) {
         write_bits(frame, parsed->at.dialnorm, static_cast<std::uint32_t>(*edit.dialnorm), 5);
         parsed->meta.dialnorm = *edit.dialnorm;
     }
-    if (edit.dialnorm2) {
+    if (edit.dialnorm2.has_value()) {
         write_bits(frame, parsed->at.dialnorm2, static_cast<std::uint32_t>(*edit.dialnorm2), 5);
         parsed->meta.dialnorm2 = edit.dialnorm2;
     }
-    if (edit.compr) {
+    if (edit.compr.has_value()) {
         write_bits(frame, parsed->at.compr, *edit.compr, 8);
         parsed->meta.compr = edit.compr;
     }
-    if (edit.compr2) {
+    if (edit.compr2.has_value()) {
         write_bits(frame, parsed->at.compr2, *edit.compr2, 8);
         parsed->meta.compr2 = edit.compr2;
     }
-    if (edit.bsmod) {
+    if (edit.bsmod.has_value()) {
         write_bits(frame, parsed->at.bsmod, static_cast<std::uint32_t>(*edit.bsmod), 3);
         parsed->meta.bsmod = edit.bsmod;
     }
-    if (edit.dsurmod) {
+    if (edit.dsurmod.has_value()) {
         write_bits(frame, parsed->at.dsurmod, static_cast<std::uint32_t>(*edit.dsurmod), 2);
         parsed->meta.dsurmod = edit.dsurmod;
     }
@@ -471,7 +471,7 @@ std::expected<EditSummary, EditError> edit_stream_metadata(std::span<std::byte> 
     bool any_dsurmod = false;
     for (std::size_t offset = 0; offset < stream.size();) {
         const auto parsed = parse(stream.subspan(offset));
-        if (!parsed) {
+        if (!parsed.has_value()) {
             return std::unexpected(parsed.error());
         }
         any_dialnorm2 = any_dialnorm2 || parsed->meta.dialnorm2.has_value();
@@ -492,35 +492,35 @@ std::expected<EditSummary, EditError> edit_stream_metadata(std::span<std::byte> 
     while (offset < stream.size()) {
         const auto remaining = stream.subspan(offset);
         const auto parsed = parse(remaining);
-        if (!parsed) {
+        if (!parsed.has_value()) {
             return std::unexpected(parsed.error());
         }
         const auto bytes = parsed->meta.bytes;
         auto frame = remaining.first(bytes);
 
         MetadataEdit per_frame = edit;
-        if (!parsed->meta.dialnorm2) {
+        if (!parsed->meta.dialnorm2.has_value()) {
             per_frame.dialnorm2.reset();
         }
         // compr/compr2 are the independent substream's alone (§E3.8.5) and
         // read back as absent on a dependent, so this covers both "not a
         // compression word here" and "compre was simply clear".
-        if (!parsed->meta.compr) {
+        if (!parsed->meta.compr.has_value()) {
             per_frame.compr.reset();
         }
-        if (!parsed->meta.compr2) {
+        if (!parsed->meta.compr2.has_value()) {
             per_frame.compr2.reset();
         }
-        if (!parsed->meta.bsmod) {
+        if (!parsed->meta.bsmod.has_value()) {
             per_frame.bsmod.reset();
         }
-        if (!parsed->meta.dsurmod) {
+        if (!parsed->meta.dsurmod.has_value()) {
             per_frame.dsurmod.reset();
         }
 
         const std::vector<std::byte> before(frame.begin(), frame.end());
         const auto edited = edit_frame_metadata(frame, per_frame);
-        if (!edited) {
+        if (!edited.has_value()) {
             return std::unexpected(edited.error());
         }
         ++summary.syncframes;

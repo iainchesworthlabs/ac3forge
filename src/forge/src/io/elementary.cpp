@@ -103,7 +103,7 @@ std::expected<FrameHeader, ScanError> read_ac3_header(std::span<const std::byte>
     h.bit_rate_code = static_cast<int>(frmsizecod >> 1);
     h.bitrate_kbps = kBitratesKbps[frmsizecod >> 1];
     const auto bytes = frame_size_bytes(h.sample_rate, h.bitrate_kbps, (frmsizecod & 1) != 0);
-    if (!bytes) {
+    if (!bytes.has_value()) {
         return std::unexpected(ScanError::kReservedValue);
     }
     h.bytes = *bytes;
@@ -168,7 +168,7 @@ std::expected<Ac3Syncinfo, ScanError> read_ac3_syncinfo(std::span<const std::byt
     const auto rate = static_cast<SampleRate>(fscod);
     const auto bytes =
         frame_size_bytes(rate, kBitratesKbps[frmsizecod >> 1], (frmsizecod & 1) != 0);
-    if (!bytes) {
+    if (!bytes.has_value()) {
         return std::unexpected(ScanError::kReservedValue);
     }
     return Ac3Syncinfo{.sample_rate = rate,
@@ -450,7 +450,7 @@ std::expected<ScannedStream, ScanError> scan_eac3(std::span<const std::byte> str
             return std::unexpected(ScanError::kLostSync);
         }
         const auto sub = read_eac3_header(stream.subspan(offset));
-        if (!sub) {
+        if (!sub.has_value()) {
             return std::unexpected(sub.error());
         }
         if (offset + sub->bytes > stream.size()) {
@@ -649,7 +649,7 @@ std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> 
 
         if (bsid <= kAc3MaxBsid) {
             const auto info = read_ac3_syncinfo(stream, offset);
-            if (!info) {
+            if (!info.has_value()) {
                 return std::unexpected(info.error());
             }
             if (offset + info->bytes > stream.size()) {
@@ -665,7 +665,7 @@ std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> 
                 // read_ac3_header is the one parse that fills the whole
                 // public FrameHeader - the same one `ac3cli probe` reports.
                 const auto header = read_ac3_header(stream.subspan(offset));
-                if (!header) {
+                if (!header.has_value()) {
                     return std::unexpected(header.error());
                 }
                 out.sample_rate = header->sample_rate;
@@ -697,7 +697,7 @@ std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> 
         // channels would be unioned into a layout they have nothing to do
         // with.
         const auto sub = read_eac3_header(stream.subspan(offset));
-        if (!sub) {
+        if (!sub.has_value()) {
             return std::unexpected(sub.error());
         }
         if (sub->strmtyp != eac3::StreamType::kDependent) {
@@ -722,7 +722,7 @@ std::expected<ScannedStream, ScanError> scan_ac3_led(std::span<const std::byte> 
         // TS 103 420 §8.3.1: the core cannot carry the object-audio marker
         // (addbsi's object-audio use is Annex E only), so in this arrangement
         // it is always a dependent that has it - see scan_eac3's own comment.
-        if (first_unit && sub->oba_complexity_index && !out.oba_complexity_index) {
+        if (first_unit && sub->oba_complexity_index.has_value() && !out.oba_complexity_index.has_value()) {
             out.oba_complexity_index = sub->oba_complexity_index;
         }
         ++substreams;
