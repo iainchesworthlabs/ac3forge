@@ -2,7 +2,7 @@
 //
 // ESP-IDF calls app_main() rather than main(), which is why apps/baremetal
 // exposes ac3probe::run() through probe.hpp instead of defining main() itself.
-// Everything the probe checks - both codecs against fixture.hpp's levels, the
+// Everything the probe checks - every fixture in fixture.hpp against its levels, the
 // allocation counts, the heap peak, the refusal of the direct-form transform -
 // is the same code the host and arm-none-eabi shapes run. Nothing about the
 // decode is special-cased here, and nothing should be.

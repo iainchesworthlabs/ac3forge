@@ -48,7 +48,7 @@ fi
 # Enhanced coupling costs more per frame than the other fixtures for reasons
 # that are in §E3.5 rather than in a regression - see run_baremetal_probe.sh's
 # own copy of this ceiling for the detail.
-: "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=130}"
+: "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=140}"
 # Bytes still live when the probe finishes, after every decoder it made has been
 # destroyed: the library's process-lifetime scratch, which nothing releases
 # while the task that decoded is still running. The arm-none-eabi leg measures

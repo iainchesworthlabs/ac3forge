@@ -22,10 +22,10 @@ channel layout is a row in the second. What each row is for:
     standard coupling stacked.
   - E-AC-3 5.1 at 384 kbit/s with tools=cpl+ecpl: §E3.5 enhanced coupling,
     which "all" does not select (parse_tools maps it to cpl+spx+aht) and which
-    no other fixture here reaches. It is the branch behind ecpl_channel_spectrum
-    and the 512-point DFT src/core/fft.cpp is in the minimal source list for -
-    both linked by every build of this profile and, until this stream existed,
-    never executed by the probe.
+    no other fixture here reaches. It is the branch behind ecpl_channel_spectrum,
+    and behind the 512-point DFT that src/forge/src/core/fft.cpp is in the minimal
+    source list for - both linked by every build of this profile and, until this
+    stream existed, executed by none of them.
   - E-AC-3 2/0 at 192 kbit/s with tools=all: a non-5.1 layout, and with it
     §7.5.4 rematrixing, which is 2/0-only and so unreachable from any of the
     above however their tools are set.

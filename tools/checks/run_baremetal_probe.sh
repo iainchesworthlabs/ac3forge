@@ -69,7 +69,14 @@ fi
 # either not covering §E3.5 at all or raising the ceiling for the other three
 # fixtures to a number none of them is anywhere near, which is what a single
 # global ceiling would have done here.
-: "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=130}"
+#
+# 140 against a measured 126 is the same ~11% margin the general ceiling leaves
+# over its own worst fixture. The margin is not slack for growth: allocation
+# counts come from std::vector growth inside the decoders, and the two
+# bare-metal legs run different libstdc++ versions (GCC 14.2 for arm-none-eabi
+# here, 15.2 for Xtensa under IDF 6.1), so a couple of allocations of
+# cross-toolchain difference is expected and should not read as a regression.
+: "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=140}"
 # Bytes still live when the probe finishes, after every decoder it made has
 # been destroyed. Not a leak and not per-frame growth: it is process-lifetime
 # scratch inside the library, and on this target nothing ever releases it

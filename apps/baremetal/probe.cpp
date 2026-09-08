@@ -455,9 +455,9 @@ const std::array<Eac3Fixture, 3> kEac3Fixtures{{
     {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
-    // ecpl_channel_spectrum - and the 512-point DFT src/core/fft.cpp is in the
-    // minimal source list for - are linked into every build of this profile
-    // and executed by none of them.
+    // ecpl_channel_spectrum - and the 512-point DFT
+    // src/forge/src/core/fft.cpp is in the minimal source list for - are
+    // linked into every build of this profile and executed by none of them.
     {"eac3_ecpl", ac3probe::kEac3EcplStream, ac3probe::kEac3EcplRms},
     // 2/0, the only layout §7.5.4 rematrixing exists in: no 5.1 fixture
     // reaches it whatever its tools are. Also the first fixture whose channel

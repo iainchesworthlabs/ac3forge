@@ -16,7 +16,11 @@ real time?" is a question worth asking rather than a foregone no.
 |---|---|
 | AC-3 5.1 decode | **Correct.** Six frames, all six channel levels exact against `apps/baremetal/fixture.hpp` |
 | E-AC-3 5.1 decode | **Correct.** Same, including AHT and spectral extension |
-| Fits internal SRAM | **Yes**, no PSRAM: 202,860 bytes free against a 171,558-byte peak |
+| E-AC-3 §E3.5 enhanced coupling | **Has a fixture** (`cpl+ecpl` — `tools=all` does not select it). Costs 126 allocations/frame against 86, and its scratch is the retained 32 KB below |
+| E-AC-3 2/0, §7.5.4 rematrixing | **Has a fixture.** A layout no 5.1 stream reaches whatever its tools are |
+| JOC / Atmos objects | **Does not fit.** Decodes correctly; see [Objects](#objects-do-not-fit-in-internal-sram) |
+| Fits internal SRAM | **Yes**, no PSRAM: 202,860 bytes free against a peak of 179,064 (`arm-none-eabi`; was 171,558 before the two fixtures above, and this leg's own peak is whatever `build-esp32s3` reports) |
+| Retained after teardown | 34,232 bytes of `thread_local` enhanced-coupling scratch, held for the life of the decoding task — see [Building](../building.md#gaps) |
 | Real time | **Not yet measured.** See [Timing](#timing-and-why-qemus-numbers-are-not-it) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
 
@@ -142,6 +146,40 @@ single-precision, so `double` is still soft-float there too.
 - **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works
   but keeps both transform instantiations compiled.
 - **Audio output.** The probe decodes a baked-in fixture. Nothing reaches I2S.
+
+## Objects do not fit in internal SRAM
+
+`src/forge/src/oba/joc.cpp` and `oamd.cpp` are both in `src/forge/minimal.cmake`'s source list
+and link into every build of this profile, so the question was never whether object decode
+compiles here. It was measured rather than argued: an `atmos-encode` fixture (six objects, JOC
+over a 5.1 downmix, 448 kbit/s) was added to the probe, run on the `arm-none-eabi` leg, and
+then removed.
+
+It **decodes correctly** — all six bed channels exact — and its allocation churn is 80 per frame,
+lower than the plain E-AC-3 fixture's 86. What it costs is memory:
+
+| | Bytes |
+|---|---|
+| `oba::joc::ReconstructionState` | 147,504 |
+| `ReconstructionState::QmfState` (`Domain::kQmf` is the default) | 34,360 |
+| QMF analysis bank (5 × 5,120) | 25,600 |
+| QMF synthesis banks (2 live × 12,800) | 25,600 |
+| **JOC state** | **233,064** |
+| **Probe peak heap, whole run** | **449,826** (against 179,064 without it) |
+
+341,760 is every byte of DIRAM this part has. The peak exceeds it by 108,066 — before PSRAM,
+which stays off for the reasons above. So this is not a ceiling to raise: the probe would die in
+`operator new` the way the port originally did at `bytes=86016`.
+
+All 233,064 bytes are `double`. `decode_scalar_t`'s float32 seam reaches both decoders' coefficient
+stores but not JOC's reconstruction or the QMF bank — [Building](../building.md#gaps) records
+that as a known non-gap. Halving it would give ~116,532, and ~295,000 peak against 207,084 free
+internal SRAM: necessary, not sufficient. Object decode on this part needs that conversion **and**
+a reconstruction that does not hold every object's synthesis buffer at once — `kMaxObjects` is 16
+and `synth_scratch` alone is 65,536 of the 147,504.
+
+Adding more fixtures would not have found this and cannot fix it, which is why the fixture was
+measured and removed rather than committed.
 
 ## ESPHome
 
