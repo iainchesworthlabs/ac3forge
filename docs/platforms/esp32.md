@@ -125,25 +125,107 @@ split, and measure a cosine at ~2,377 cycles on an ESP32-C3 against 121 on an
 ESP32-S3 ([Floating-Point Units on Espressif
 SoCs](https://developer.espressif.com/blog/2025/10/cores_with_fpu/)).
 
-| Part | Usable RAM | Clock | FPU | Suitable |
-|---|---|---|---|---|
-| ESP32-S3 | 341,760 DIRAM | 240 MHz | single + PIE SIMD | Yes — the target here |
-| ESP32-P4 | 768 KB L2MEM | 400 MHz | single + SIMD | Yes, but no integrated Wi-Fi |
-| ESP32 (LX6) | ~320 KB | 240 MHz | single, no SIMD | Workable, slower |
-| ESP32-S2 | 320 KB | 240 MHz | none | No |
-| ESP32-C3, C6 | 400/512 KB | 160 MHz | none | No |
+| Part | Usable RAM | Clock | FPU | Vector unit | Viable |
+|---|---|---|---|---|---|
+| **ESP32-S3** | 341,760 DIRAM | 240 MHz | single | PIE, integer-only; 128-bit float load/store | **Yes** — the target here |
+| **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — fits trivially, costs the radio; [below](#the-esp32-p4-and-why-it-is-not-a-target) |
+| ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
+| ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
+| ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | No — same, slower |
 
-The parts without an FPU have enough RAM for the working set; software floating
-point is what rules them out. The P4 would fit the working set without float32 at
-all, but its FPU is also single-precision, so `double` remains software-emulated
-there.
+Every part above that has an FPU at all has a single-precision one, so `double`
+is soft-float across the whole family and `decode_scalar_t` earns its keep on
+all of them rather than only here.
+
+### The ESP32-P4, and why it is not a target
+
+Assessed 2026-09-08 and declined. The P4 is dual-core RISC-V at 400 MHz with
+768 KB of SRAM, and it holds the 171,558-byte peak heap without the float32
+work this port needed — so it reads as the answer if the S3 turns out not to
+be real time. Three things were checked before writing any of it, and two of
+them settle it.
+
+**Its vector extension is vendor-specific, and it has no floating point at
+all.** The P4 is `RV32IMAFC` plus two custom extensions: `Xhwlp` (hardware
+loop) and `Xesppie` (the vector unit). RISC-V reserves the `X` prefix for
+vendor extensions no other implementation carries, so this is not the ratified
+RISC-V Vector extension, and kernels written against it would serve the P4
+alone — the same single-target bargain as the Xtensa work. Espressif document
+"PIE" for both parts, which makes it easy to assume otherwise.
+
+The floating-point half is the part that decides it. ESP-IDF carries an
+exhaustive decoder test for the extension in
+`components/esp_gdbstub/test_gdbstub_host/rv_decode/xesppie.S`; across its 360
+instructions the only data-type suffixes that appear are `s8`, `s16`, `s32`,
+`u8`, `u16` and `u32`. `esp-dl`'s own `esp32p4-pie-simd` notes say the same in
+one line — *"datatype: s8, s16, s32 (signed); u8, u16 (unsigned)"*. There is
+no `f32` anywhere in it.
+
+Espressif's own code agrees. In `esp-dsp`, every `_arp4` file that uses a PIE
+vector instruction sits under a `fixed/` directory. The float32 kernels —
+`dsps_dotprod_f32_arp4.S`, `dsps_fft2r_fc32_arp4.S`, `dsps_fft4r_fc32_arp4.S`,
+`dsps_biquad_f32_arp4.S` — contain exactly one `esp.` instruction each, and it
+is `esp.lp.setup`, the hardware loop. Their arithmetic is scalar `fmadd.s` on
+scalar `flw` loads. `esp-gmf`'s PIE-accelerated FFT for the part is
+`fft_pie_radix2_dit_s16.S`: int16. An FFT in fixed point is where a float
+vector unit would show up first if there were one to use.
+
+So a `f32x4` has nothing to compile to on a P4. The decode path is float32 by
+`decode_scalar_t`, and would stay scalar there.
+
+**For this workload the S3 has the better float path of the two.** The S3's
+float32 dot product, `dsps_dotprod_f32_aes3.S`, opens with `EE.LDF.128.IP` —
+a 128-bit load landing four floats in four FPU registers — and then runs four
+independent scalar `madd.s` into four accumulators. That is load bandwidth
+plus instruction-level parallelism rather than a four-wide float ALU, and it
+is worth having. The P4's equivalent has no wide float load; it loads one
+float at a time. Whatever the S3's float path is eventually worth, the P4 does
+not inherit it.
+
+What the P4 does buy over the S3 is clock and memory. A frame is 1536 samples,
+32 ms at 48 kHz, which is 7.68 M cycles of budget at 240 MHz against 12.8 M at
+400 MHz: **1.67×**, and it is per-core in both cases. The memory advantage is
+already spent — this port fits internal SRAM on the S3 with 202,860 bytes free
+against a 171,558-byte peak.
+
+**It has no radio, and the plan it would serve is a Wi-Fi plan.** The P4 has
+neither Wi-Fi nor Bluetooth and needs a companion ESP32-C6 or -H2 for either,
+making any networked build a two-chip design.
+[`docs/family/topology.md`](../family/topology.md) puts a network transport in
+front of the decoder, and its Phase 5 exit is *"an ESP32-S3 decoding E-AC-3
+from a network origin in real time"*; the bandwidth argument for carrying a
+compressed stream at all is stated there as the difference between an ESP32-S3
+receiving Atmos over Wi-Fi and one receiving no surround. ESPHome nodes are
+Wi-Fi devices. A part that has to be paired with a second chip to reach the
+network works against all of that. This was a product-shape question rather
+than a technical one, and it was put to the project owner and decided on
+2026-09-08: the radio is disqualifying on its own, whatever the S3 measures.
+
+**Whether the S3 needs rescuing was the third thing checked, and it turns out
+not to bear on this.** It is still unmeasured — [Timing](#timing-and-why-qemus-numbers-are-not-it)
+has what that costs, which is one board. The decision does not wait on it. The
+radio disqualifies the P4 on its own, so a decode that misses real time on the
+S3 gets fixed in the decoder rather than by changing part: the float path is
+still scalar, `src/internal/arch/` has no `f32x4` yet, and 46–87 heap
+allocations per frame remain PF7's other open gap. Those are the levers, and
+they apply to every target at once instead of to one that cannot reach the
+network.
+
+The measurement is still worth taking, for the S3's own sake and for
+[topology](../family/topology.md)'s Phase 5. It is no longer a question about
+the P4.
 
 ## Not done
 
 - **PIE SIMD.** `src/internal/arch/` has no `f32x4`, so the float path runs
-  scalar. The ESP32-S3's 128-bit extensions and `esp-dsp`'s published float32
-  kernel costs suggest this is worth doing; confirm against a measurement from
-  hardware before starting, since that is the claim it rests on.
+  scalar. Worth being precise about what the S3 offers here, because the name
+  oversells it: PIE's vector ALU is integer-only, and what
+  `esp-dsp`'s float32 kernels actually use is `EE.LDF.128.IP` — a 128-bit load
+  filling four FPU registers — feeding four independent scalar `madd.s` into
+  four accumulators. The gain available is load bandwidth and instruction-level
+  parallelism, not a four-wide float multiply. That is still worth having, and
+  it still needs a measurement from real silicon first rather than the
+  assumption that it is.
 - **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works
   but keeps both transform instantiations compiled.
 - **Audio output.** The probe decodes a built-in fixture. Nothing reaches I2S.

@@ -2959,6 +2959,15 @@ installer. GPG and Sigstore satisfy neither OS. Blocked on the certificates, not
 - **APT/DNF repositories and Docker images** — not planned. `docs/releasing.md` names where the
   workflows could be copied from if one were ever wanted; the previous roadmap's "ruled out"
   overstated it.
+- **An ESP32-P4 decoder target** — assessed 2026-09-08 and not taken;
+  `docs/platforms/esp32.md` has the evidence. Its vector extension is `Xesppie`, vendor-custom
+  rather than RISC-V Vector, and integer-only across all 360 instructions in ESP-IDF's own
+  decoder test — so the float32 decode path stays scalar there, and Espressif's own float
+  kernels for the part are scalar too. It also has no wide float load, which the ESP32-S3 does
+  have, leaving 1.67× of clock as the whole advantage over a part that already fits the working
+  set. Against that it has no radio, and the transport plan it would serve is a Wi-Fi one —
+  disqualifying on its own, independent of what the S3 eventually measures. Closed, not
+  deferred: if the S3 misses real time the fix is in the decoder, where it helps every target.
 
 ## Retired IDs
 
