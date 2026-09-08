@@ -19,7 +19,7 @@ real time?" is a question worth asking rather than a foregone no.
 | E-AC-3 §E3.5 enhanced coupling | **Correct.** Its own fixture, since `tools=all` does not select it; costs 126 allocations/frame against 86 |
 | E-AC-3 2/0, §7.5.4 rematrixing | **Correct.** A layout no 5.1 stream reaches whatever its tools are |
 | JOC / Atmos objects | **Does not fit.** Decodes correctly; see [Objects](#objects-do-not-fit-in-internal-sram) |
-| Fits internal SRAM | **Yes**, no PSRAM: 207,084 bytes free against a 179,064-byte peak |
+| Fits internal SRAM | **Yes**, no PSRAM: 280,792 bytes free against a 179,064-byte peak — see [Memory](#how-much-memory-there-actually-is) |
 | Retained after teardown | 34,232 bytes of `thread_local` enhanced-coupling scratch, held for the life of the decoding task — see [Building](../building.md#gaps) |
 | Real time | **Not yet measured.** See [Timing](#timing-and-why-qemus-numbers-are-not-it) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
@@ -112,6 +112,54 @@ emulate S3 PSRAM ([espressif/qemu#129](https://github.com/espressif/qemu/issues/
 so a build that needs it cannot run in CI; and the internal-SRAM budget is a
 number this build should have to meet rather than one it can hide from.
 
+## How much memory there actually is
+
+The datasheet says **512 KB** of internal SRAM, `idf.py size` says **341,760**, and the allocator
+says **280,792**. All three are true and they answer different questions.
+
+| | Bytes | |
+|---|---|---|
+| Physical SRAM | 524,288 | the datasheet's 512 KB |
+| − data cache | 32,768 | `CONFIG_ESP32S3_DATA_CACHE_SIZE`, carved out of SRAM2 |
+| − instruction cache | 16,384 | `CONFIG_ESP32S3_INSTRUCTION_CACHE_SIZE`, already the minimum |
+| = DRAM-addressable window | 491,520 | `SOC_DRAM_LOW`…`SOC_DRAM_HIGH` |
+| DIRAM pool `idf.py size` reports | 341,760 | after ROM reservations and the non-doubly-mapped region |
+| **free at runtime, this app** | **280,792** | what `heap_caps_get_free_size` returns |
+
+`idf.py size`'s "remain" is a **linker estimate** — it was 207,084 where the allocator reports
+280,792, 73,708 bytes pessimistic. A footprint budget quoted from it is a budget nobody checked.
+`app_main` prints the runtime figures now, before and after the decode.
+
+### Contiguity, not just total
+
+| | Free | Largest block |
+|---|---|---|
+| Before the decode | 280,792 | 217,088 |
+| After it | 245,248 | **116,736** |
+
+The total falls 35,544 (the retained scratch, mostly). The largest **contiguous run** falls
+100,352. That gap is the number that decides whether a large allocation succeeds, and the probe
+cannot see it — its allocator hooks count bytes, not runs.
+
+### There is no IRAM to reclaim here
+
+ESP-IDF donates whatever IRAM an application does not fill to the heap as **32-bit-access-only**
+memory, which `malloc` and `operator new` never return. That would suit this decoder well: its
+large buffers are `float` and `double` arrays and never byte-addressed. Measured, the pool is
+**0 bytes** — `idf.py size` reports IRAM as 16,384 of 16,384 used, so there is nothing left to
+donate. Reclaiming it is not an option that exists on this build.
+
+What is left is the caches. The instruction cache is already at its 16 KB minimum; the data
+cache could go 32 KB → 16 KB and return 16,384 bytes. It is not free: `fixture.hpp` lives in
+Flash Data, so a smaller data cache directly slows fixture reads. For a product streaming from
+I2S rather than decoding flash-resident fixtures, the trade may look different.
+
+### Stack
+
+The decode runs on the main task. `uxTaskGetStackHighWaterMark` leaves **14,000 bytes free** of
+the 32,768 `sdkconfig.defaults` sets, so the decode uses about 18,800. That file's own comment
+told an integrator to measure this; now something does, and the runner holds a floor under it.
+
 ## Timing, and why QEMU's numbers are not it
 
 The probe reports `decode_us`, `us_per_frame` and `realtime_permille` per codec.
@@ -173,19 +221,32 @@ lower than the plain E-AC-3 fixture's 86. What it costs is memory:
 | **JOC state** | **233,064** |
 | **Probe peak heap, whole run** | **449,826** (against 179,064 without it) |
 
-341,760 is every byte of DIRAM this part has. The peak exceeds it by 108,066 — before PSRAM,
-which stays off for the reasons above. So this is not a ceiling to raise: the probe would die in
-`operator new` the way the port originally did at `bytes=86016`.
+The allocator has 280,792 bytes free, so the peak overshoots by **169,034**. Not a ceiling to
+raise: the probe would die in `operator new` the way the port originally did at `bytes=86016`.
+
+**Contiguity rules it out a second time, independently.** `ReconstructionState` is one 147,504-byte
+allocation, and the largest free block after any other decode is 116,736 (see
+[Memory](#how-much-memory-there-actually-is)). It would fail on the single allocation even if the
+budget allowed it.
 
 All 233,064 bytes are `double`. `decode_scalar_t`'s float32 seam reaches both decoders' coefficient
-stores but not JOC's reconstruction or the QMF bank — [Building](../building.md#gaps) records
-that as a known non-gap. Halving it would give ~116,532, and ~295,000 peak against 207,084 free
-internal SRAM: necessary, not sufficient. Object decode on this part needs that conversion **and**
-a reconstruction that does not hold every object's synthesis buffer at once — `kMaxObjects` is 16
-and `synth_scratch` alone is 65,536 of the 147,504.
+stores but not JOC's reconstruction or the QMF bank — [Building](../building.md#gaps) records that
+as a known non-gap. Three changes stack, and the arithmetic below is calculation from measured
+sizes rather than a second measurement:
 
-Adding more fixtures would not have found this and cannot fix it, which is why the fixture was
-measured and removed rather than committed.
+| | Peak | |
+|---|---|---|
+| As measured | 449,826 | |
+| `Domain::kMdctBand` instead of `kQmf` | 364,266 | a config flag; `QmfState` and both banks stop existing |
+| + float32 the JOC path | 290,514 | also brings the biggest allocation to ~73,752, under the 116,736 block |
+| + size the object arrays to the stream | 259,794 | `kMaxObjects` is 16; the fixture carried 6 |
+
+That last row fits, with about 21,000 bytes spare. So object decode here is reachable, and it needs
+all three — the float32 conversion is load-bearing twice over, once for the total and once for the
+contiguity.
+
+Adding more fixtures would not have found any of this, which is why the fixture was measured and
+removed rather than committed.
 
 ## ESPHome
 

@@ -57,6 +57,13 @@ fi
 # It matters more here than there: these are bytes of the 341,760 internal SRAM
 # that the decode holds for as long as the task lives.
 : "${AC3FORGE_ESP32S3_MAX_RETAINED_BYTES:=40000}"
+# The decode runs on the main task, whose stack sdkconfig.defaults sets to
+# 32,768 bytes after an overflow that surfaced as a LoadProhibited panic on the
+# OTHER core - i.e. the failure mode here is not a clean error, it is corruption
+# somewhere unrelated. Measured high-water leaves 14,000 free, so the decode uses
+# about 18,800. This floor is what turns "we picked 32 KB and hoped" into a
+# number that has to keep holding.
+: "${AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES:=8192}"
 
 OUTPUT="$(mktemp)"
 trap 'rm -f "$OUTPUT"' EXIT
@@ -169,5 +176,31 @@ while read -r codec per_frame; do
         exit 1
     fi
 done <<< "$CHURN"
+
+# --- what the ALLOCATOR has, as opposed to what the linker estimated -------
+# `idf.py size` prints a DIRAM "remain" figure and it is a static estimate: it
+# was 207,084 against the 280,792 the allocator actually reports, 73,708 bytes
+# pessimistic. Quote the runtime numbers, not that one.
+#
+# The largest contiguous block is the one that decides whether a big allocation
+# SUCCEEDS, and it is not a refinement of the total. Measured here it falls from
+# 217,088 before the decode to 116,736 after, while the total only falls 35,544 -
+# so a single 147,504-byte oba::joc::ReconstructionState would already be
+# unallocatable after any other decode, on contiguity alone and whatever the
+# budget says. The probe cannot see this: its own hooks count bytes, not runs.
+for line in internal_free_bytes internal_largest_block_bytes internal_word_only_bytes; do
+    grep -o "esp32s3.${line}\[[a-z]*\]=[0-9]*" "$OUTPUT" | sed "s/^/  /" || true
+done
+
+stack_free=$(sed -n 's/.*esp32s3\.main_task_stack_free_bytes=\([0-9]*\).*/\1/p' "$OUTPUT" | head -1)
+if [[ -z "$stack_free" ]]; then
+    echo "error: the probe reported no esp32s3.main_task_stack_free_bytes line" >&2
+    exit 1
+fi
+echo "main task stack free at high-water: $stack_free bytes (floor $AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES)"
+if (( stack_free < AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES )); then
+    echo "::error title=ESP32-S3 stack headroom::the decode left only $stack_free bytes of main-task stack, floor is $AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES - raise CONFIG_ESP_MAIN_TASK_STACK_SIZE rather than lowering this" >&2
+    exit 1
+fi
 
 echo "ESP32-S3 decoder probe: pass"
