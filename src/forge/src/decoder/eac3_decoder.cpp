@@ -801,8 +801,8 @@ struct Eac3Decoder::Impl {
     // all. A member for the same churn reason as the buffers above: the
     // per-block geometry copies (chincpl, spxco, the enhanced-coupling
     // index sets...) land in vectors that keep their capacity across
-    // frames, and `coeffs` cycles storage with the parse loop by swap
-    // instead of forcing a fresh 14 KB allocation every block. The
+    // frames, and `coeffs` is what pass one parses into directly instead of
+    // allocating a fresh 14 KB every block. The
     // enhanced-coupling fields are only assigned under cplinu &&
     // ecplinu_now and only read under the same guard - both flags ARE
     // re-assigned every block - so a reused entry's stale conditional
@@ -911,13 +911,30 @@ struct Eac3Decoder::Impl {
     std::vector<std::vector<int>> ecplangle_raw_;
     std::vector<std::vector<int>> ecplchaos_raw_;
     std::vector<bool> ecpltrans_persist_;
-    // parse_coeffs is deliberately NOT here. It looks like the same case, and
-    // it is not: it is SWAPPED with a tails_ entry at each block's snapshot, so
-    // its storage already cycles through members and a frame does not allocate
-    // it fresh. Making it a member as well was measured on an ESP32-S3 and cost
-    // 7,168 bytes of peak - one 7-stream spectrum buffer live alongside the
-    // tails_ one it used to trade with, rather than instead of it.
+    // parse_coeffs is not here either, and no longer exists: rather than make
+    // the swap partner a second member - measured on an ESP32-S3 at 7,168
+    // bytes of peak, one 7-stream spectrum buffer live ALONGSIDE the tails_
+    // one it used to trade with - pass one now parses straight into the
+    // block's own tail and there is nothing to swap. The same zero
+    // allocations a frame, with the extra buffer gone rather than relocated.
     std::vector<std::byte> joc_bytes_;
+    // §E3.4.4.2's GAQ gains and the bins that carry one, for a single AHT
+    // stream of block 0. Declared INSIDE the block loop rather than ahead of
+    // it, which is why they are not in the list above - but between them they
+    // were the largest per-frame cost left in an AHT decode: one vector<int>
+    // as wide as the stream's coded region per stream, and a second grown from
+    // empty by push_back.
+    //
+    // (3) both. aht_gain_ is assign()ed to the Gk=1 default and then only the
+    // gain-CARRYING bins are written over, so that default is what every other
+    // bin reads back; aht_gain_bins_ carries its state in being empty.
+    std::vector<int> aht_gain_;
+    std::vector<int> aht_gain_bins_;
+    // One block's skipfld, read out bit by bit so it can be handed to
+    // emdf::parse_container as a self-contained buffer. (3): filled by
+    // push_back from empty, so the clear() is what makes its size mean "this
+    // block's skipl bytes" rather than the longest skip field seen so far.
+    std::vector<std::byte> skip_bytes_;
 };
 namespace {
 
@@ -1504,12 +1521,6 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // guard they are written under.
     auto& tails = impl_->tails_;
     tails.resize(static_cast<std::size_t>(nblks));
-    // The per-block spectra, declared here so the swap at each block's
-    // snapshot can cycle storage with the tails - see its assign() inside
-    // the block loop for the zeroing contract. Pass one aliases it as
-    // `coeffs` block-locally; pass two's own `coeffs` refers to each
-    // tail's, so the two never share a scope.
-    std::vector<std::array<internal::decode_scalar_t, 256>> parse_coeffs;
 
     // Captured alongside out.object_metadata below, from whichever block's
     // skip field carries the EMDF container - kept raw here (not parsed
@@ -2298,7 +2309,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             // out 8 bits at a time (matching exactly how eac3_frame.cpp's
             // put_skip_field wrote them) before they mean anything as a
             // self-contained EMDF container.
-            std::vector<std::byte> skip_bytes;
+            auto& skip_bytes = impl_->skip_bytes_;
+            skip_bytes.clear();
             skip_bytes.reserve(skipl);
             for (std::uint32_t i = 0; i < skipl; ++i) {
                 skip_bytes.push_back(static_cast<std::byte>(r.read(8)));
@@ -2499,10 +2511,19 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // Heap-backed, matching decoder.cpp's own per-block coeffs: at
         // kMaxSubstreamStreams * 256 doubles, a stack std::array here is the
         // single largest contributor to this function's frame size. The
-        // assign() re-zeroes exactly as the fresh vector did (uncoded bins
-        // must read zero) into whatever storage the swap with this block's
-        // tail handed back - see the swap at the snapshot below.
-        auto& coeffs = parse_coeffs;
+        // assign() re-zeroes exactly as a fresh vector did (uncoded bins must
+        // read zero).
+        //
+        // Parsed straight into this block's own tail, rather than into a
+        // separate buffer that the snapshot below then swapped in. The swap
+        // was there to hand the parse buffer some storage to reuse, and it
+        // did - but it also meant one more kMaxSubstreamStreams x 256 array
+        // existed than there were blocks to hold, which is what made moving
+        // that buffer onto the decoder cost 7,168 bytes of peak instead of
+        // saving an allocation. Nothing in pass one reads any tail, so
+        // writing into this one directly is the same sequence of values with
+        // one fewer buffer and nothing to swap.
+        auto& coeffs = tails[static_cast<std::size_t>(blk)].coeffs;
         coeffs.assign(static_cast<std::size_t>(kMaxSubstreamStreams), {});
         // §7.3.4, same split as decoder.cpp's own read_stream: only a stream
         // with its OWN dithflag (a full-bandwidth channel, s < nfchans)
@@ -2548,8 +2569,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             const auto& hebap = bap[us];
 
             const auto gaqmod = static_cast<int>(r.read(2));
-            std::vector<int> gain(static_cast<std::size_t>(end), 1);  // default Gk=1
-            std::vector<int> gain_carrying_bins;
+            // Both on impl_ (see its scratch block): assign()ed to the Gk=1
+            // default and cleared respectively, which is exactly the state the
+            // fresh vectors they replace arrived in.
+            auto& gain = impl_->aht_gain_;
+            gain.assign(static_cast<std::size_t>(end), 1);  // default Gk=1
+            auto& gain_carrying_bins = impl_->aht_gain_bins_;
+            gain_carrying_bins.clear();
             for (int bin = begin; bin < end; ++bin) {
                 if (eac3::aht_gaq_has_gain(hebap[static_cast<std::size_t>(bin)], gaqmod)) {
                     gain_carrying_bins.push_back(bin);
@@ -2760,10 +2786,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
 
         // Snapshot everything the second pass needs to finish this block.
         auto& tail = tails[static_cast<std::size_t>(blk)];
-        // Swap, not move: the tail gets this block's spectra either way, but
-        // coeffs gets the tail's previous-frame storage back, so the next
-        // block's assign() above never has to allocate.
-        tail.coeffs.swap(coeffs);
+        // tail.coeffs needs nothing here: pass one wrote this block's spectra
+        // into it directly (see the alias at the top of the block).
         tail.chincpl = chincpl;
         tail.cplinu = frm->cplinu[static_cast<std::size_t>(blk)];
         tail.ecplinu_now = ecplinu_now;
