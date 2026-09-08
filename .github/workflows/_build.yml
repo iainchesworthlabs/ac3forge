@@ -3658,6 +3658,46 @@ jobs:
           idf.py build
           idf.py size | tee "$GITHUB_STEP_SUMMARY"
 
+      # RUN, not just build, and that is the difference between this step and
+      # the i2s_player one above it. The streaming path - reading a partition a
+      # block at a time, assembling access units across those block boundaries,
+      # decoding them - is all ordinary code with no peripheral behind it, so it
+      # runs under QEMU perfectly well. What it needs is a sink that is not
+      # I2S, because qemu-system-xtensa has none and the real sink's first write
+      # blocks on a DMA that never drains.
+      #
+      # sdkconfig.ci supplies exactly that: the null sink, and a two-lap limit
+      # so the application stops with a verdict instead of playing forever. Two
+      # laps rather than one so the rewind at end of stream is exercised.
+      - name: Build and run the streaming player example under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/stream_player
+          idf.py set-target esp32s3
+          idf.py build
+          idf.py size | tee -a "$GITHUB_STEP_SUMMARY"
+          # Same shape as the probe legs: QEMU is killed on a timeout and the
+          # verdict is read from what it printed, because an ESP-IDF app that
+          # returns from app_main goes on idling rather than exiting.
+          timeout 300 idf.py qemu 2>&1 | tee qemu-stream.txt || true
+          if ! grep -q '^result=pass' qemu-stream.txt; then
+            echo "::error title=ESP32-S3 streaming player failed::the example did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-stream.txt >&2 || true
+            exit 1
+          fi
+          # Nothing should ever be skipped looking for a sync word: the build
+          # tells the player exactly how many bytes of the partition are audio.
+          # A non-zero count means either that length is wrong or the framing is.
+          resync=$(sed -n 's/.*stream\.resync_bytes=\([0-9]*\).*/\1/p' qemu-stream.txt | tail -1)
+          echo "resynchronised bytes: ${resync:-unknown}"
+          if [ "${resync:-1}" != "0" ]; then
+            echo "::error title=ESP32-S3 streaming player::${resync} bytes were skipped looking for a sync word, expected 0" >&2
+            exit 1
+          fi
+
       - name: Upload the ESP32-S3 map and console output
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -3667,6 +3707,7 @@ jobs:
             apps/baremetal/platform/esp32s3/build/ac3probe_esp32s3.map
             apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
+            esp-idf/ac3forge/examples/stream_player/qemu-stream.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.

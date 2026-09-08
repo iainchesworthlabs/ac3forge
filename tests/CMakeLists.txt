@@ -72,6 +72,7 @@ add_executable(ac3tests
     decoder/test_eac3_decoder.cpp
     decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
+    io/test_stream_accumulator.cpp
     io/test_metadata_edit.cpp
     io/test_probe.cpp
     emdf/test_emdf.cpp

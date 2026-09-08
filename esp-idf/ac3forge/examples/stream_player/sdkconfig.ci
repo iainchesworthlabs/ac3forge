@@ -1,0 +1,13 @@
+# What CI overlays on sdkconfig.defaults, via
+# SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci".
+#
+# qemu-system-xtensa has no I2S peripheral. With the output enabled the first
+# i2s_channel_write blocks on a DMA that will never drain and the job times out;
+# with it disabled everything this example is actually testing - reading the
+# partition a block at a time, assembling access units across those block
+# boundaries, decoding them - runs exactly as it does on hardware.
+CONFIG_AC3FORGE_EXAMPLE_SINK_NULL=y
+
+# Two passes, so the rewind path at end of stream is exercised rather than only
+# the first read, and then the application stops with a verdict.
+CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS=2

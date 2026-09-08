@@ -260,6 +260,7 @@ target_sources(forge_objects
         src/internal/cpu/cpu_features.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
+        src/io/stream_accumulator.cpp
         src/io/metadata_edit.cpp
         src/io/object_strip.cpp
         src/io/probe.cpp

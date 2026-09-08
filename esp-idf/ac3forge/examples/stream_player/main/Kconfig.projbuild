@@ -1,0 +1,53 @@
+menu "ac3forge stream player"
+
+# Defaults chosen to be safe on an ESP32-S3-DevKitC-1 rather than to match any
+# particular DAC board: 5, 6 and 7 are ordinary GPIOs - not strapping pins
+# (0, 45, 46), not the USB pair (19, 20), not the console UART (43, 44) and not
+# the flash/PSRAM range. Any free GPIO works; I2S goes through the GPIO matrix.
+config AC3FORGE_EXAMPLE_I2S_BCLK_GPIO
+    int "I2S bit clock (BCLK/SCK) GPIO"
+    default 5
+
+config AC3FORGE_EXAMPLE_I2S_WS_GPIO
+    int "I2S word select (WS/LRCK) GPIO"
+    default 6
+
+config AC3FORGE_EXAMPLE_I2S_DOUT_GPIO
+    int "I2S data out (DOUT/SDIN) GPIO"
+    default 7
+
+# WHICH SINK. Kconfig rather than a -D cache variable, because the component's
+# own CMakeLists is evaluated in IDF's separate requirements-expansion process,
+# which does not inherit cache variables set by the project above it - CONFIG_
+# values it does see. It also means CI selects the sink through the
+# sdkconfig.ci it already overlays, rather than through a second mechanism.
+#
+# Read from CMake (main/CMakeLists.txt picks a directory), never from C++: the
+# player does not know which sink it has, which is the point of the seam.
+choice AC3FORGE_EXAMPLE_SINK
+    prompt "Audio sink"
+    default AC3FORGE_EXAMPLE_SINK_I2S
+    help
+        Where decoded audio goes. The null sink is what CI builds:
+        qemu-system-xtensa has no I2S peripheral, so the real sink's first
+        write blocks on a DMA that never drains, while everything this example
+        exists to exercise - the partition reads, the access-unit framing, the
+        decode - runs perfectly well without one.
+
+config AC3FORGE_EXAMPLE_SINK_I2S
+    bool "I2S DAC"
+
+config AC3FORGE_EXAMPLE_SINK_NULL
+    bool "None (count frames only)"
+
+endchoice
+
+config AC3FORGE_EXAMPLE_MAX_LAPS
+    int "Stop after this many passes through the stream (0 = never stop)"
+    default 0
+    help
+        0 plays forever, which is what a demo on a board should do. CI sets a
+        small number so the application finishes and prints a verdict something
+        can gate on.
+
+endmenu

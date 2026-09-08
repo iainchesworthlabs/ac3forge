@@ -1,0 +1,13 @@
+# Name,     Type, SubType,  Offset,   Size,  Flags
+# The default table plus one data partition for the audio. `audio` is where
+# sample.ac3 is flashed at build time (see CMakeLists.txt); the application
+# reads it back through esp_partition_read, a block at a time, exactly as it
+# would read from an SD card or a socket.
+#
+# 0x40000 (256 KB) rather than the 10,752 bytes the sample actually needs: a
+# partition offset and size are baked into the flash layout, and sizing this to
+# one particular file would mean re-partitioning to try a longer one.
+nvs,        data, nvs,      0x9000,   0x6000,
+phy_init,   data, phy,      0xf000,   0x1000,
+factory,    app,  factory,  0x10000,  0x180000,
+audio,      data, 0x40,     ,         0x40000,
