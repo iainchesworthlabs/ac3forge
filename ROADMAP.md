@@ -1856,15 +1856,13 @@ object file), proven on a cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/bare
 `build-footprint`) that decodes real AC-3/E-AC-3 to the host build's own levels in 408 KB of
 image and 265 KB of peak heap. Two requirements are recorded as open gaps rather than
 half-enforced: zero heap traffic in the decode loop (today: 46-87 allocations/frame) and a
-float32-only internal path. That second one is now MET for the decode path: both decoders carry
-their coefficients, transform scratch and overlap-add history in a profile-selected
-`decode_scalar_t`, measured at ~139 dB against the double decode across four real streams
-including Dolby- and FFmpeg-encoded ones, and at 2.7e-7 peak-normalised at the transform itself.
-It changed no gold reference, because the ordinary build's `decode_scalar_t` is still `double`.
-That, plus moving a 32 KB `thread_local` off the stack of every FreeRTOS task, took the figures
-above to 277 KB of image and 168 KB of peak heap - see `docs/building.md`'s Gaps section,
-`docs/performance-trend.md` for the current table, and `docs/platforms/esp32.md` for the
-ESP32-S3 target that motivated it.
+float32-only internal path. The second is now met for the decode path: both decoders carry their
+coefficients, transform scratch and overlap-add history in a profile-selected `decode_scalar_t`,
+agreeing with the double decode to ~139 dB across four real streams and to 2.7e-7 peak-normalised
+at the transform. No gold reference moved, since the ordinary build's `decode_scalar_t` is still
+`double`. That change and the removal of a 32 KB `thread_local` from every FreeRTOS task's stack
+took the figures above to 277 KB of image and 168 KB of peak heap. See `docs/building.md`'s Gaps
+section, `docs/performance-trend.md` for the current table, and `docs/platforms/esp32.md`.
 </details>
 
 **PF8 (S)** — The decoder's JOC bed analysis was still running direct forward transforms — now
