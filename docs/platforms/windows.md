@@ -43,7 +43,7 @@ is deliberately explicit about the difference.
     `ac3cli monitor` / `ac3cli live --monitor` have actually played decoded AC-3 and E-AC-3
     (including an Atmos stream's 5.1 bed) through a real Realtek output in real time, and a live
     microphone capture→encode→monitor session has run end to end. Building this path against
-    real hardware surfaced two genuine bugs that neither unit tests nor silent/synthetic input
+    real hardware surfaced two bugs that neither unit tests nor silent/synthetic input
     would have caught — a fixed submit-readiness threshold smaller than an actual chunk, which
     let the ring buffer silently perform a partial write while reporting failure, and the live
     pipeline's Atmos metering step writing past the end of a buffer sized for the object count
@@ -63,7 +63,7 @@ is deliberately explicit about the difference.
     positions say it should — nobody running this had ears in the loop, only the OS's own
     accept-and-render behaviour — and the "bed as static objects" branch beyond the LFE, since
     every stream this project's own encoder produces is dynamic-object-only (`oamd.hpp`'s own
-    documented shape); a genuine third-party bed-plus-objects Annex E stream would be needed to
+    documented shape); a third-party bed-plus-objects Annex E stream would be needed to
     exercise the rest of `oba::bed_labels()` against a verified coded-channel-order mapping.
 
 !!! warning "Exclusive-mode passthrough bitstreaming has never been confirmed against a real receiver on Windows"
@@ -153,7 +153,7 @@ saved to disk. `carrier_from_capture` is the conversion back to PCM16 words, exa
 65536 of them.
 
 !!! warning "Passthrough capture has never been confirmed against a real capture device"
-    No HDMI or S/PDIF capture card, and no loopback of a genuinely bitstreaming player, has been
+    No HDMI or S/PDIF capture card, and no loopback of a bitstreaming player, has been
     available during development — the same gap the passthrough *output* side has, from the same
     missing hardware. What is verified: the burst de-framing itself round-trips byte-exactly
     against both this project's own wrapper and FFmpeg's `spdif` muxer, for AC-3 and E-AC-3 and
@@ -235,7 +235,7 @@ their own arm64 legs — generically, not hardcoded — and, for the arm64 case 
 more than one candidate directory: `bin/Hostarm64/arm64` (a native ARM64-hosted toolset) first,
 falling back to `bin/Hostx64/arm64` (the older x64-hosted cross toolset, which still produces
 ARM64 binaries, just via x64 tools running under Windows' x64 emulation). Which one this runner's
-VS Build Tools install actually ships was genuinely unconfirmed when this leg was written — it
+VS Build Tools install actually ships was unconfirmed when this leg was written — it
 needed a real CI run to answer, the same "confirmed empirically, not assumed" standard the rest of
 this codebase holds itself to (see e.g. `cmake/vcpkg/triplets/arm64-linux-gcc.cmake`'s own
 `VCPKG_FORCE_SYSTEM_BINARIES` comment). `cmake/toolchains/windows.msvc.environment.cmake`'s
@@ -251,7 +251,7 @@ once that is resolved.
 hosted runner's VS Build Tools install carries MSVC 14.44.35207 (VS2022, roughly the 17.14
 generation) — older than `windows-latest`'s x64 image, which is on the 14.5x ("VS 2026"/18.x)
 toolset every other Windows leg's `msvc_toolset` pin (`.github/toolchain-versions.json`) is written
-against. This is a genuine difference between the two runner images' own update cadences, not a
+against. This is a difference between the two runner images' own update cadences, not a
 misconfiguration — `vswhere`/`vcvarsall` resolution and the Ninja install both worked fine on the
 ARM64 runner in the same run that surfaced this. `_build.yml`'s "Report and assert toolchain
 versions" step accordingly does not hard-assert the shared pin for `windows-msvc-arm64` the way it
@@ -269,7 +269,7 @@ against exactly that combination (`qtpaths.bat` pointing at the wrong x64 setup)
 complexity a *native*-ARM64-host build does not actually need to take on for a first pass, so this
 leg stays CLI-only, the same deliberately-scoped shape `linux-llvm-asan-ubsan` already uses
 elsewhere in the matrix for a different reason. Revisiting this is a natural fast-follow once Qt
-ships a genuinely native-hosted ARM64 Windows kit.
+ships a native-hosted ARM64 Windows kit.
 
 **Gold-reference gate.** `choco`'s `ffmpeg` package is x64-only, so this leg installs a static
 `win-arm64` FFmpeg build from

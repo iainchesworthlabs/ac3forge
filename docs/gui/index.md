@@ -65,12 +65,12 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
   than the primary act: clicking the chip opens a popover with the complete live-generated
   line (wrapped, with Copy). Present in every tier, including Guided — a codec developer must
   always be able to get back to a command line from what the UI shows, and the popover is one
-  click away. The line is genuinely complete: extra
+  click away. The line is complete: extra
   sources ride as `src=`, the assignment as `map=`, non-default metadata in `print_meta_usage`'s
   own grammar, AC-3's bare `couple`, quoting where names carry spaces; a live source renders the
   `live` subcommand — a single command even with Matroska selected, via its `container=mkv` token
   (see [Live capture & session](live-session.md)) — while a *file* encode's Matroska container is
-  honestly *two* commands (`… && ac3cli mkv …`), because pasting one would write a raw elementary
+  *two* commands (`… && ac3cli mkv …`), because pasting one would write a raw elementary
   stream into a file named `.mkv`. Finished
   chips carry **Show in folder** and **Play** — sends that run's own output to a receiver over the
   same IEC 61937 passthrough path the Format tab's own Passthrough section uses (see [Format &

@@ -4,7 +4,7 @@
 
 `matroska/matroska.hpp`, library `matroska::matroska`. It links nothing from `ac3::forge` and
 takes frames as opaque bytes. Pairing it with `ac3::io::scan` is what keeps the track header
-honest.
+accurate.
 
 ```cpp
 // One Matroska frame per access unit. For E-AC-3 an access unit is the
@@ -348,7 +348,7 @@ if (!reader.finish(on_payload)) { /* ... */ }
 ```
 
 `Reader::finish` takes the callback — unlike the Matroska and MP4 readers' — because it can
-genuinely still emit: the unbounded PES form ends only at the next
+still emit: the unbounded PES form ends only at the next
 `payload_unit_start_indicator` or at end of input, so the last payload of a capture is only
 complete here.
 
@@ -360,7 +360,7 @@ believed — a bit-damaged PMT is thrown away rather than locking onto a wrong P
 the file. `ReadOptions` bounds the PES and PSI section sizes the reader will assemble (the
 unbounded PES form has no ceiling of its own otherwise) and how far it will search for the packet
 grid. `fuzz/fuzz_mpegts_demux.cpp` drives both entry points with arbitrary bytes — this is also
-the container reader most likely to find a genuine hang rather than a crash, since the sync
+the container reader most likely to find a hang rather than a crash, since the sync
 search, section reassembly and PES reassembly are all loops a hostile stream can try to stall.
 
 ## Fragmented MP4/CMAF + HLS/DASH: `mp4::fragment`, `mp4/hls.hpp`, `mp4/dash.hpp`
@@ -610,7 +610,7 @@ is the batch form, mirroring `wrap_stream`.
 The input is by definition untrusted — a burst carrier comes off a wire or out of a capture
 device — so nothing taken from `Pd` is believed past its data type's repetition period, and a
 preamble not backed by a `0x0B77` syncframe is treated as a false match to resync past rather
-than a fatal error. `fuzz/fuzz_iec61937_unwrap.cpp` keeps that honest.
+than a fatal error. `fuzz/fuzz_iec61937_unwrap.cpp` keeps that accurate.
 
 This is also what closes the loop on the wrap side: bursts written by this project *and* by
 FFmpeg's `spdif` muxer read back byte-exactly to the streams that went in, AC-3 and E-AC-3,
@@ -660,7 +660,7 @@ Real on exactly one backend today: ALSA, reading the HD-audio kernel driver's ow
 bytes, so there is no byte layout for this project to get wrong — only the driver's own field
 names to read). **Not verified against real HDMI/ELD hardware** — the development environment
 this shipped from has no Linux box with a bitstream-capable receiver attached; see
-[Linux](../platforms/linux.md) for the honest status. Every other backend (Windows, macOS,
+[Linux](../platforms/linux.md) for the current status. Every other backend (Windows, macOS,
 Android, PipeWire, and Linux without ALSA) reports `kNoBackend` rather than guessing: none has a
 documented user-mode API for reading a sink's raw SADs (Windows' WASAPI and macOS' CoreAudio
 both expose negotiated-format questions, the same kind `enumerate_render_devices()` already
@@ -678,7 +678,7 @@ bitstream-capable receiver. Backs `ac3cli monitor` and `live`'s monitor leg.
 Unlike passthrough, **this one is confirmed against real hardware.** It has actually played
 decoded AC-3 and E-AC-3 (including an Atmos stream's 5.1 bed) through real Windows (Realtek)
 hardware in real time, and a live microphone capture → encode → monitor session has run
-end-to-end. Building this path against real hardware surfaced two genuine bugs that neither
+end-to-end. Building this path against real hardware surfaced two bugs that neither
 unit tests nor silent/synthetic input would have caught — see
 [Windows](../platforms/windows.md#audio-backend-wasapi) for the details, and
 `src/audio/src/backend/windows/monitor.cpp` for the fixes.

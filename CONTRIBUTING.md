@@ -11,7 +11,7 @@ cmake --preset config-windows-msvc-debug && cmake --build --preset build-windows
 There is no bare `debug` preset — swap `windows-msvc` for whichever platform/compiler fragment matches your machine (`windows-llvm`, `linux-gcc`, `linux-llvm`, `linux-gcc-arm64`, `linux-llvm-arm64`, `macos-llvm`).
 
 Everything must pass before you push. There are no known-failing tests and no skips; if
-something fails, that is your change or a genuine regression, not noise.
+something fails, that is your change or a regression, not noise.
 
 ## Branches and pull requests
 

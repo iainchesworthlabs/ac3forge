@@ -102,7 +102,7 @@ configured, is in [Why ALSA still comes first](../building.md#why-alsa-still-com
     PipeWire session running at all, so nothing built there has ever been bitstreamed to a real
     S/PDIF or HDMI output from that environment, and PipeWire's own enumeration has only ever
     seen "no session" (`pw_context_connect()` failing fast, not a real graph with real nodes)
-    rather than a genuine node to negotiate a compressed format against.
+    rather than a real node to negotiate a compressed format against.
 
     That gap is now closed for ALSA specifically, on real hardware elsewhere: see
     [Raspberry Pi → Live HDMI passthrough to a real

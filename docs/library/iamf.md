@@ -7,8 +7,8 @@ AC-3, E-AC-3 or the JOC/Atmos object layer, and takes already-rendered PCM in, t
 `mp4::AudioTrack::codec_config` takes an opaque caller-built box payload.
 
 **Why a writer exists at all.** IAMF's codec list is Opus, AAC-LC, FLAC and LPCM — E-AC-3 can
-never be carried inside it. So this is not a new encoder output; it is a decode → rewrap bridge,
-phase 1 of three. A caller decoding a stream that is
+never be carried inside it. This is therefore a decode → rewrap bridge rather than a new encoder
+output, phase 1 of three. A caller decoding a stream that is
 already coded as a 7.1.4 channel layout (`ac3::plan::LayoutId::k714` — an independent substream
 plus two E-AC-3 dependents) gets the 12 discrete channels straight off
 `ac3::Eac3Decoder::decode_access_unit`; this module needs them permuted into its own channel

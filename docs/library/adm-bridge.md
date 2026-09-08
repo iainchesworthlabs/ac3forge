@@ -227,7 +227,7 @@ Scoped to exactly what this project's own decoder ever produces: a dynamic-objec
 bed-instance programme (`Eac3Decoder` never emits ISF objects, several bed instances, or
 non-standard Table 13 assignments — see `oamd.hpp`'s own `Program` comment), no nested
 `audioObject`s, cartesian positions only. `ac3cli decode`'s own `--adm` wiring (`decode.cpp`)
-additionally only attempts this for a `dynamic_only` programme — a genuine bed program (channel-
+additionally only attempts this for a `dynamic_only` programme — a channel-based bed program (
 based-immersive third-party content) is warned about and skipped, not written incorrectly.
 
 **`WriteObjectUpdate` is the write-direction input for one OAMD update**, timestamped in absolute

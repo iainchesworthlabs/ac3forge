@@ -45,7 +45,7 @@ mid-stream, so the VBR setting is dropped unconditionally before a session ever 
 run entry a real session opens says so too — its rate text is always the fixed rate.
 
 !!! note "No screenshot of an active session here"
-    The idle Card above is a real capture, taken against a running build with a genuine device
+    The idle Card above is a real capture, taken against a running build with a real device
     enumerated on the machine. A session actually *running* is not shown: driving one would mean
     recording live audio through a microphone just to illustrate a UI state, so the running
     transport, the chain strip mid-run, the reconnection banner, and the Live room's live-only
@@ -69,7 +69,7 @@ that:
 - **`ac3::audio::DriftResampler`** — a streaming linear-interpolation fractional resampler.
   Linear interpolation, not a windowed-sinc design: at the drift magnitudes a free-running consumer
   clock actually exhibits (tens of parts-per-million) linear interpolation's error sits far below
-  the codec's psychoacoustic floor, and at a genuine nominal-rate conversion (44.1 → 48 kHz) it
+  the codec's psychoacoustic floor, and at a nominal-rate conversion (44.1 → 48 kHz) it
   trades some high-frequency accuracy near Nyquist for an allocation-free, state-tiny
   implementation appropriate to a live capture hot path. It carries only a fractional read position
   between `render()` calls — no sample data of its own.
@@ -90,7 +90,7 @@ conversion and the drift correction together — one ratio, composed once per fr
 
 **Drift visibility.** The Live session tab's chain capture cell shows the slave's *measured*
 correction — `slave −18 ppm` — updated with the same ~30 Hz cadence as every other live stat,
-empty (and the line hidden) outside a two-device session. Honest, not estimated ahead of time:
+empty (and the line hidden) outside a two-device session. Measured, not estimated ahead of time:
 it is the correction the resampler is actually applying.
 
 **Channel space.** The flat capture-channel space object slots address gains the slave's channels
@@ -103,7 +103,7 @@ specific named WAV speaker layout (§7.8), which has no sound meaning for two in
 concatenated together, so there is no principled default position to auto-pan the slave's
 channels into. The slave's audio is still captured, drift-corrected, watched by its own silence
 watchdog and reflected in the drift readout either way — just not auto-routed into a bed position
-with no honest default.
+with no defensible default.
 
 **Session plumbing.** The second device is the rail's own selection state, not part of any one
 start request, so it persists across [a layout-switcher
@@ -117,7 +117,7 @@ text names the one that actually went quiet.
 built on the same shared resampler and drift estimator — see
 [CLI → Options & grammars](../cli/metadata-options.md#capture2) for its grammar.
 The GUI's own command bar emits it whenever the rail has two devices selected, so the line stays
-honest.
+accurate.
 
 ## The Live session tab
 
@@ -245,7 +245,7 @@ chosen destination — there is no separate spool file for any of them:
   cluster's worth of audio in memory regardless of how long it runs. A clean stop flushes the
   trailing partial cluster; nothing else needs closing, since Segment's size was never written as
   a real number to begin with. A crash truncates the take — whatever clusters had already reached
-  disk are complete, valid Matroska, so the `.mkv` itself plays up to that point: the same honest
+  disk are complete, valid Matroska, so the `.mkv` itself plays up to that point: the same
   "playable up to where it stopped" guarantee the elementary-stream path gives, not a companion
   file to fold in by hand afterward.
 - **Fragmented MP4/CMAF**: a folder, not a file, and the only container here whose *manifests*
@@ -340,7 +340,7 @@ the session's worker loop, alongside — never in place of — the main encode.
 
 **When it engages.** Exactly when passthrough is wanted, the main plan needs E-AC-3 (any object
 session, or a wide channel layout), and the chosen receiver cannot take E-AC-3 but can take plain
-AC-3. A receiver that can take neither format is still a genuine refusal — the leg only ever
+AC-3. A receiver that can take neither format is still a refusal — the leg only ever
 turns a receiver limitation into sound, never papers over an actual open failure.
 
 **What it encodes.** The leg carries no separate §7.8 fold-down math of its own: every layout
@@ -381,7 +381,7 @@ AVR-X3800H bitstreams Dolby Digital only, so this receiver hears a 5.1 downmix o
 the [parallel downmix leg](#parallel-downmix-receiver-leg) in place, a dotted layout is never a
 dead end: it still encodes and meters fully, the receiver just hears the capped 5.1 downmix rather
 than the layout itself. An E-AC-3-capable receiver bitstreams every layout as encoded, and the
-legend says that instead. The switcher refuses two states honestly: object mode (the layout is
+legend says that instead. The switcher refuses two states: object mode (the layout is
 fixed at a 5.1 bed — the card says so) and a take being written to disk (a restart would clobber
 the first half of the file; stop the session and start a new take instead).
 
@@ -422,7 +422,7 @@ capabilities this page describes, through the same code where the code is sharea
   [Two-device capture](#two-device-capture-clock-master-model)) uses the same shared
   `DriftResampler`/`ClockDriftEstimator` pair on both sides.
 
-**What is still GUI-only**, and honestly so: [receiver hot-swap](#receiver-hot-swap) (changing the
+**What is still GUI-only**: [receiver hot-swap](#receiver-hot-swap) (changing the
 passthrough endpoint mid-session), the live latency readout, and every interactive affordance this
 page describes — the soundfield view, the chips, the banners. A command line has no mid-session
 input, so a hot-swap has nothing to be triggered by; `ac3cli live` resolves its receiver once, at

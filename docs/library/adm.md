@@ -47,7 +47,7 @@ for (const auto& object : document->model.objects) {
 }
 ```
 
-Full program: [`examples/read_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) — writes a small but genuinely valid BW64 fixture (adapted
+Full program: [`examples/read_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) — writes a small but valid BW64 fixture (adapted
 from Recommendation ITU-R BS.2076-2's own worked "Car" object example) to a temp file, since a
 real ADM BWF master is production audio this project has no license to embed, then parses it
 back and prints what it found.

@@ -190,8 +190,8 @@ allocation — the reading this page carried before the census existed to check 
 A single floor for this fixture therefore had to clear 22.7 dB, and it was set at 22.
 Which meant the centre channel was gated at 22 dB while measuring 58.1 — it could have
 lost 36 dB, more than the entire dynamic range of the surround channels, without
-failing anything. The LFE had 60 dB of slack. That is not a gate; it is a gate on one
-channel and a rounding error on the other five, and it was blind to precisely the
+failing anything. The LFE had 60 dB of slack. That gated one channel and left a rounding error
+on the other five, and it was blind to precisely the
 per-channel syntax defects the third-party fixtures were added to catch (one of the
 five found there, `firstcplcos[ch]`, is per channel by nature).
 
@@ -300,7 +300,7 @@ was the same dither-dominated surround every single run.
    beside the current series rather than replacing it.
 
 Neither gap is a defect in the codec. Both are limits on how sharply the current
-instruments can see it, which is the more useful thing to be honest about.
+instruments can see it, which is the more useful thing to report.
 
 ## Performance and reference modes
 
@@ -503,7 +503,7 @@ Two divergences are recorded rather than resolved:
 
 FFmpeg and the in-repo decoder are complementary, not redundant, and neither covers everything
 alone. FFmpeg reads Annex E coupling, spectral extension and AHT (98+ dB SNR for coupling and
-spectral extension; 62–89 dB for AHT, which genuinely recodes mantissas rather than scaling or
+spectral extension; 62–89 dB for AHT, which recodes mantissas rather than scaling or
 synthesizing around already-decoded content, so a wider margin from bit-exact is expected there)
 — but it refuses any substream whose `substreamid != 0` (`ff_ac3_parse_header`), which rules out
 both the second *dependent* substream 7.1.4 needs and the second *independent* one a
@@ -634,7 +634,7 @@ the spec separately from the codec.
 FFmpeg implements no JOC reconstruction: it reads these streams correctly and renders the 5.1
 bed, which is the designed fallback, but it never produces objects to compare against. Dolby's
 own decoder does implement reconstruction — and gates it on a keyed authenticity tag this
-project ships no key for ([Atmos & JOC](concepts/atmos-joc.md#two-honest-limitations)), so it
+project ships no key for ([Atmos & JOC](concepts/atmos-joc.md#two-limitations)), so it
 plays them as the bed too. Nothing outside this repository can currently produce an independent
 object decode of an ac3forge stream, which makes this the one layer where even the partial
 oracle 7.1.4 gets is unavailable. What covers it instead is a self-consistency series with real
@@ -774,7 +774,7 @@ ruled out the way MediaInfo or DEE's own output rules it out for the channel-cod
 is stronger than self-consistency alone: the vectors caught two real bugs during construction (an
 array-index formula that was reversed for one of the two flag-array widths, and this parser's own
 handling of LFE at the same array position - included for `ac4_substream_info_obj()`'s std-flags
-branch but excluded for `bed_dyn_obj_assignment()`'s, a genuine spec difference this project's
+branch but excluded for `bed_dyn_obj_assignment()`'s, a spec difference this project's
 first draft assumed away). If `dee_ac4ajoc_encoder.exe`'s provenance gate or `dee_ac4ims_encoder.exe`'s
 behavior changes, that would upgrade this to a tier 2/3 check. `oamd_common_data()` (§6.2.8.1,
 reachable only via `ac4_substream_info_ajoc()`'s own `b_oamd_common_data_present` flag) remains
@@ -821,7 +821,7 @@ covered where it's most relevant rather than repeated here:
   HDMI to a real AV receiver, with object audio confirmed reconstructable (not just the panned
   bed). Verification specific to this one Android app on this one Shield + receiver pair, not a
   general claim about Android as a platform.
-- [Atmos & JOC](concepts/atmos-joc.md#two-honest-limitations) — Dolby's own decoder gates object
+- [Atmos & JOC](concepts/atmos-joc.md#two-limitations) — Dolby's own decoder gates object
   decoding on a keyed authenticity tag; the signer ships in-tree (`ac3::signing`) but this
   project ships no key for it, so its streams are unsigned unless an operator supplies one.
   Objects sharing a direction also can't be perfectly separated. Neither is a conformance gap.

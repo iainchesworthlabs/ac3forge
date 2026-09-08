@@ -98,7 +98,7 @@ These are **transmitted, not rendered here**. §4.3 makes the renderer, not the 
 responsible for turning an extent into loudspeaker feeds, and the 5.1 downmix this encoder
 builds is a point-source VBAP pan by construction — a downmix that spread the object would
 then be spread *again* by the receiving renderer. So a sized object is transmitted as sized and
-folded into the bed as a point, which is the honest split.
+folded into the bed as a point, which is the split used.
 
 `Keyframe` carries the same four fields. `size` interpolates between keyframes the way position
 and gain do (BS.2076-2 §10.3 lists width/height/depth among its interpolatable parameters);
@@ -128,7 +128,7 @@ complex QMF, which is the domain the decoder will apply the result in; see
 [which domain the matrix lives in](../concepts/atmos-joc.md#which-domain-the-matrix-lives-in).
 Two limits are structural, not bugs: objects sharing a direction cannot be separated by any
 linear combination of the bed, and Dolby's decoder will not treat these as objects at all. Both
-are covered in [Atmos & JOC](../concepts/atmos-joc.md#two-honest-limitations).
+are covered in [Atmos & JOC](../concepts/atmos-joc.md#two-limitations).
 
 ## Getting the objects back: `oba::joc::reconstruct`
 

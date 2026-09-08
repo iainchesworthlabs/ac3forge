@@ -146,7 +146,7 @@ for.
 
 Two criteria, because they are different questions rather than two points on one scale:
 
-- **`kDistortion`** minimises the reconstruction noise power. Honest and cheap, and still a
+- **`kDistortion`** minimises the reconstruction noise power. Cheap, and still a
   waveform criterion — it prices a decibel in a band nobody can hear the same as a decibel in one
   they can.
 - **`kPerceptual`** minimises the noise-to-mask ratio against the tonality/masking model, which
@@ -183,7 +183,7 @@ cycle as this table, and re-measuring against it is a follow-up, not done here:
 | film (stereo) | 192 kbit/s | `kPerceptual` | −2.18 dB | +0.46 (worse) | −0.06 |
 | film (stereo) | 448 kbit/s | `kPerceptual` | −1.30 dB | flat | flat |
 
-`kDistortion` is a genuine, repeatable win at 448 kbit/s and above on every material and metric
+`kDistortion` is a repeatable win at 448 kbit/s and above on every material and metric
 measured - the "structural unlock" this search exists to deliver. At the tighter 192 kbit/s budget
 its own criterion still improves (that is what it optimises: `kDistortion`'s score is the MEAN of
 each stream's own noise-to-signal ratio, not one ratio of power pooled across streams - a pooled

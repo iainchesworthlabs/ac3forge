@@ -662,7 +662,7 @@ receiver simply hears a capped downmix instead of a refusal. This is the CLI hal
 
 `downmix=off` refuses instead — the plain "does not accept E-AC-3 over IEC 61937" warning and a
 file-only session, which is what `live` did before. A receiver that accepts neither format is a
-genuine refusal either way.
+a refusal either way.
 
 ```bash
 ac3cli live out.ec3 0 30 448 -2 1 channels layout=714      # capped 5.1 AC-3 to receiver 1
@@ -969,7 +969,7 @@ the two agree to within 0.02 dB, which is why `ebur128` is a good cross-check fo
 
 For a plain 5.1 stream the two algorithms are the same function — `Ls`/`Rs` are M±110, inside Table 4's +1.5 dB
 sector, which is where Annex 1's Table 3 got its 1.41 — so `layout=` changes nothing there. The one Table 5.8
-layout where they genuinely differ is 2/1 and 3/1: Annex 1 has no Table 3 entry for a lone surround and this
+layout where they differ is 2/1 and 3/1: Annex 1 has no Table 3 entry for a lone surround and this
 meter reads it as the surround field collapsed to one channel (+1.5 dB), while Annex 3 sees Table E2.5's `Cs`,
 a rear centre at M+180, at unity.
 

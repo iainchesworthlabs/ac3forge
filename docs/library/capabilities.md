@@ -111,7 +111,7 @@ default so the decoders stay usable as a reference: §5.4.2.8 dialnorm normalisa
 −31 dBFS reference, §7.8's Lo/Ro, Lt/Rt and mono downmixes driven by the stream's own
 `cmixlev`/`surmixlev` or `mixmdate` levels, optional LFE mixing, and §7.7's line and RF operating
 modes — RF including the overload protection a fold needs but `compr` (which is computed for the
-*mono* downmix) does not provide. Lt/Rt's surround sum is genuinely phase shifted 90°. Layouts
+*mono* downmix) does not provide. Lt/Rt's surround sum is phase shifted 90°. Layouts
 §7.8 has no fold for, because they predate nothing that could code them, are reduced to the
 nearest acmod layout first rather than having their extra channels dropped. Verified against
 FFmpeg's `-ac 2` decode of the same stream.

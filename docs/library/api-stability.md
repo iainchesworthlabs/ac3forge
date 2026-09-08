@@ -147,7 +147,7 @@ being retrofitted by this page — every existing struct is passed by value/stac
 fixed, compiled-in `sizeof()` no runtime check can work around. The policy mirrors the C++ config
 aggregates' own (`docs/library/index.md`'s pimpl note): a field added to an existing struct after
 `v1.0.0` needs either a major version bump, or an additive sibling (`ac3forge_encoder_config_v2_t`
-plus a `_v2` creation function, the same shape a new field needing a genuinely different type
+plus a `_v2` creation function, the same shape a new field needing a different type
 would already require). A `struct_size`-sentinel scheme (`vkStructureType`/`pNext`-style
 extensibility) was considered and declined: it adds a branch to every function taking a config
 struct for a growth path the C++ side doesn't need either, and after `v1.0.0` a plain major bump

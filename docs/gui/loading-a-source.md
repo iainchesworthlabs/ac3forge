@@ -151,7 +151,7 @@ Two square plan views — **Ear level** and, whenever the plan carries height ch
 rail's width rather than pinning at a thumbnail. One dot per position at its real angle: **solid
 when a source feeds it, hollow when the stream carries it silent**, each dot brightening with
 its own live level, plus the energy vector the analysis layer computes. Mono draws too — one dot
-at centre is a true statement about where the sound sits; only dual mono has genuinely nothing
+at centre is a true statement about where the sound sits; only dual mono has nothing
 to draw. The LFE is stated, not drawn — it has no direction, so a caption beneath the rings
 reads `one low-frequency channel · no direction` (or `two independent low-frequency channels` on
 a 7.2.4) instead of a dot pretending it has a place.

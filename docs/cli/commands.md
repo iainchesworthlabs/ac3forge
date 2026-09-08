@@ -631,7 +631,7 @@ qc: atmos.ec3 (E-AC-3, L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE, 48000 Hz, 62 acc
   layout=rendered  (BS.1770-5 Annex 3, weighted by channel position)
 ```
 
-For a plain 5.1 stream both settings give the same number, by construction — see [Options & grammars](metadata-options.md#layoutbed-default-and-layoutrendered) for the weighting table and the one Table 5.8 layout where the two algorithms genuinely disagree.
+For a plain 5.1 stream both settings give the same number, by construction — see [Options & grammars](metadata-options.md#layoutbed-default-and-layoutrendered) for the weighting table and the one Table 5.8 layout where the two algorithms disagree.
 
 Neither `layout=` setting sees a dynamic object's own *position* — both meter channels, and this project's own encoder folds every object onto the flat 5.1 ring at encode time regardless of where it was authored. `objects=<layout>` re-renders a dynamic-object-only programme's objects by their own OAMD position instead, onto a chosen layout, per ITU-R BS.1770-5 Annex 4:
 
@@ -649,7 +649,7 @@ qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
 
 See [Options & grammars](metadata-options.md#objectslayout) for why this needs a dynamic-object-only programme and what a bed-and-objects one gets instead.
 
-`qc`'s exit code is 0 only when the file decodes cleanly **and** (if a preset was given) every requested gate passes, which is what makes it usable as an actual CI/pipeline QC step: `ac3cli qc out.ec3 preset=ebu-r128-s2 || echo "loudness QC failed"`. With no `preset=` at all it only ever measures and reports (no verdict to fail), so a plain `ac3cli qc <file>` is non-zero solely on a genuine input error. The two non-zero halves are now distinct: `6` means a gate failed (a result), `2` means the stream could not be read (a fault) — see [Exit codes](#exit-codes) below, so a pipeline can react differently to each:
+`qc`'s exit code is 0 only when the file decodes cleanly **and** (if a preset was given) every requested gate passes, which is what makes it usable as an actual CI/pipeline QC step: `ac3cli qc out.ec3 preset=ebu-r128-s2 || echo "loudness QC failed"`. With no `preset=` at all it only ever measures and reports (no verdict to fail), so a plain `ac3cli qc <file>` is non-zero solely on an input error. The two non-zero halves are now distinct: `6` means a gate failed (a result), `2` means the stream could not be read (a fault) — see [Exit codes](#exit-codes) below, so a pipeline can react differently to each:
 
 ```bash
 ac3cli qc out.ec3 preset=ebu-r128-s2

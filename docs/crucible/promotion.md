@@ -53,7 +53,7 @@ The gap between what exists and a product, in the order the phases take them.
 | Product qualities | a demo's first-run, no diagnostics, mechanical translations | first run, log export, settings migration, accessibility, licence notices |
 | Docs | one 89 KB design record under Platform notes | its own docs section with a user guide, per-platform install and troubleshooting |
 | CI and packaging | built, tested and packaged on Windows | the same on three platforms |
-| Verification | Windows workstation and a throwaway guest | a hardware matrix, and honesty where there is none |
+| Verification | Windows workstation and a throwaway guest | a hardware matrix, and a clear statement where there is none |
 
 ## Platform feasibility
 
@@ -205,8 +205,8 @@ error naming the two flags that fix it.
 against a real Atmos receiver — every stream shape locked and identified, zero underruns — was
 ALSA. Forcing PipeWire trades that for a path this project has never once seen work against
 hardware, and which additionally needs a WirePlumber codec rule the user has to supply. So
-DR9's PipeWire row is not a gap adjacent to this work; it is **on Crucible's critical path on
-Linux**, and the first hardware run has to answer it. Until it does, the honest position is that
+DR9's PipeWire row sits **on Crucible's critical path on
+Linux**, and the first hardware run has to answer it. Until it does, the position is that
 Crucible can tap applications on Linux and may have nowhere to send the result.
 
 `spatial` is the one capability with no cross-platform answer. `SpatialObjectSink` wraps
@@ -404,7 +404,7 @@ places one, and encodes; the signal path renders with the null sink as the defau
       registry walk.
     - **`Foreground`** — X11 can answer through `_NET_WM_STATE_FULLSCREEN`, at the cost of a
       libX11 dependency; Wayland cannot answer at all. The `ForegroundSupport` reason field
-      exists for exactly this, so the honest first cut refuses on both and X11 is a follow-up.
+      exists for exactly this, so the first cut refuses on both and X11 is a follow-up.
     - **`VirtualDevice`** — loading and unloading a `support.null-audio-sink` module.
       No driver, no signing, no elevation, but it is a module load from inside the application
       rather than anything the library already does.
@@ -1375,7 +1375,7 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
 
     Those three enumerate endpoints, walk audio sessions and ask the shell about windows. A
     runner with no sound device and no desktop takes the early return in each, so the code below
-    it never runs. Both readings are honest; the runner's is the one a gate has to hold on, so
+    it never runs. Both readings are defensible; the runner's is the one a gate has to hold on, so
     the floor is calibrated from it and the workstation figure is kept here as the ceiling the
     same suite reaches when the machine can answer.
 

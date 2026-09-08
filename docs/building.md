@@ -579,7 +579,7 @@ That is why ALSA keeps first precedence in `src/audio/CMakeLists.txt` whenever b
 rather than PipeWire winning by default for being the modern norm on most current desktops:
 preferring it unconditionally would silently regress `ac3cli outputs`/`play` on exactly the
 common case where nobody has configured `iec958Codecs`. The explicit escape hatch for a machine
-where PipeWire's compressed codecs genuinely are configured is
+where PipeWire's compressed codecs are configured is
 `-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON`, the same shape `-DAC3FORGE_WITH_ALSA=OFF`
 alone already has today.
 
@@ -797,7 +797,7 @@ One leg, `windows-msvc-arm64`, is still marked experimental, and still packages 
 The coverage job gates line and branch coverage per component, not as one blended
 number, using the same GCC 16 pin as the other Linux legs; the floor table, the measurement each
 floor was calibrated against, and why three components (`src/audio`'s device paths, `src/capi`'s
-E-AC-3 surface, `apps/cli`'s device-dependent command modules) are honestly floored low all live
+E-AC-3 surface, `apps/cli`'s device-dependent command modules) are floored low all live
 in `tools/checks/coverage_report.sh`, with the calibration history in the coverage job's own
 comment in `ci.yml`.
 
@@ -826,7 +826,7 @@ the gate required, by flipping that one value. When enforcing, `abidiff` fails o
 `ABI_ENFORCE` deliberately replaces the `continue-on-error: true` this job used to carry.
 That setting stops a failing job from failing the *workflow run*, but GitHub still reports the
 job's own check run as `failure` — so the gate showed a red X on every pull request while
-blocking nothing, and it hid genuine build failures behind the same state as an expected
+blocking nothing, and it hid build failures behind the same state as an expected
 pre-1.0 ABI change. With it gone, anything unexpected in this job is red and a policy finding
 is not.
 
@@ -1012,7 +1012,7 @@ process regardless of how many call sites ask.
 
 **`AC3FORGE_SIMD_TIER`** (environment variable, read once inside that same cached initialisation)
 overrides the answer: `sse2` always forces `has_avx2()` false, `avx2` forces it true — except when
-the hardware genuinely cannot run AVX2, where forcing up `std::abort()`s with a clear message
+the hardware cannot run AVX2, where forcing up `std::abort()`s with a clear message
 rather than risk an illegal-instruction fault. `auto` (the default, same as unset) is the real
 detected answer. This is what makes cross-tier correctness checking possible without needing AVX2
 hardware physically present for the "does this at least build and dispatch correctly" half of the
@@ -1035,7 +1035,7 @@ flag.
 linkable C++ on MSVC, clang-cl, GCC, Clang and AppleClang alike, with zero hardware dependency.
 `tests/core/test_simd_kernels.cpp`'s `[avx2]`-tagged cases go further and actually execute it —
 guarded by `has_avx2()`, with a loud, explicit `SKIP()` (never a silent pass) on hardware that
-genuinely lacks it. The four x86_64 CI legs resolve to self-hosted-or-GitHub-hosted dynamically per
+lacks it. The four x86_64 CI legs resolve to self-hosted-or-GitHub-hosted dynamically per
 run and self-hosted CPU features are not documented anywhere in this repo, so no leg may assume the
 host it landed on qualifies. `AC3FORGE_REQUIRE_AVX2=1` turns that skip into a hard failure instead —
 set on the `linux-llvm-asan-ubsan` leg (`.github/workflows/_build.yml`), the one leg pinned to a
@@ -1187,7 +1187,7 @@ instruction set" as an explanation in the abstract, and narrows what is left to 
 neither locally reproducible: the specific *natively*-packaged aarch64 compiler GitHub's hosted
 arm64/macOS runners use (as opposed to a Debian **cross**-compiler package, the only kind available
 without that hardware — a native package can carry different default codegen/tuning even with
-identical flags and the identical GCC version), or a genuine real-silicon floating-point behaviour
+identical flags and the identical GCC version), or a real-silicon floating-point behaviour
 `qemu-user`'s software emulation does not reproduce. Both need the real runners to test further.
 
 **FFmpeg's own architecture-specific kernels — tested directly, ruled out.** Every hypothesis

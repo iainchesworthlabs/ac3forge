@@ -6,7 +6,7 @@ living in-tree at
 [`rust/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/rust). See that directory's own
 [README](https://github.com/iainchesworthlabs/ac3forge/blob/main/rust/README.md) for build
 prerequisites, exactly what is and isn't wrapped yet, and the real defects this binding found in
-the C header while crossing it as a genuine FFI boundary for the first time.
+the C header while crossing it as a real FFI boundary for the first time.
 
 Python is pybind11-direct C++, WASM is Embind, Android is JNI over C++ — all three compiling the
 same C++23 source this binding instead links as a black box, against a header `bindgen`
