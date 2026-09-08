@@ -470,6 +470,11 @@ target_include_directories(ac3tests PRIVATE
 # instead. The one platform piece it does touch is ac3::audio's DeviceWatcher,
 # which is linked below and answers with kNoBackend where there is none; the
 # engine notes that and carries on.
+#
+# crucible/test_engine_start.cpp rides the same block for what start()
+# answers: that a machine with nothing to play into is refused rather than
+# reported as running, which is what the window's status strip prints and
+# what the QML suites' "the engine did not start here" skips test for.
 target_sources(ac3tests PRIVATE
     crucible/test_slots.cpp
     crucible/test_bed_mixer.cpp
@@ -477,6 +482,7 @@ target_sources(ac3tests PRIVATE
     crucible/test_output_policy.cpp
     crucible/test_tap_pool.cpp
     crucible/test_output_stage.cpp
+    crucible/test_engine_start.cpp
     crucible/test_nullsink_position.cpp
     crucible/test_platform_seams.cpp
     crucible/test_diagnostics.cpp

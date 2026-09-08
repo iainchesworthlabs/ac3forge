@@ -3,6 +3,7 @@ import QtTest
 
 import Ac3ForgeCrucible
 import Ac3ForgeCrucibleLanguage
+import Ac3ForgeCrucibleTest
 
 // The window itself: it comes up, switches pages, applies the persisted
 // theme, and closing it hides rather than quits while "keep running in the
@@ -37,6 +38,11 @@ TestCase {
 
     function cleanup() {
         CrucibleController.stop();
+        // The machine back for the one case here that scripts it, before
+        // anything else runs against the fake default device: a no-op for
+        // every other case (tst_accessibility.qml's cleanup says why this
+        // has to happen rather than being left to the next scriptSessions).
+        TestServices.clear();
         // A case that switched language leaves the rest of the suite in
         // English, whatever order they run in.
         if (LanguageManager.currentLanguage !== "en") {
@@ -81,6 +87,31 @@ TestCase {
             tryVerify(function() { return CrucibleController.framesEncoded > 0; }, 5000);
             verify(CrucibleController.tapChannels === 2 || CrucibleController.tapChannels === 6 || CrucibleController.tapChannels === 8);
         }
+    }
+
+    // The refusal half of the case above, on a machine scripted to have
+    // nothing to play into rather than one that happens to. Which branch the
+    // case above takes depends on the seat it runs on, so this is where the
+    // refused state is actually rendered and read back.
+    function test_statusStripSaysWhyTheEngineCouldNotStart() {
+        if (!TestServices.scriptMachineWithNoOutput()) {
+            skip("the scripted machine is not available in this harness");
+        }
+        const window = createTemporaryObject(shell, testCase);
+        verify(window);
+        tryCompare(window, "visible", true);
+        // Main.qml starts the engine as it comes up, and this machine has
+        // no endpoint, so that start refuses.
+        verify(!CrucibleController.running, "the engine started on a machine with no output");
+        verify(CrucibleController.lastError.length > 0, "a refusal with no reason to show");
+        const status = findChild(window, "engineStatus");
+        verify(status, "the status strip carries objectName engineStatus");
+        compare(status.text, CrucibleController.lastError);
+        // The reason is the output policy's, which is what says the refusal
+        // came from the probe reporting rather than from start() running out
+        // of time waiting for a worker that never came up.
+        verify(CrucibleController.lastError.indexOf("no render endpoint") >= 0,
+               CrucibleController.lastError);
     }
 
     function test_closingHidesWhileTrayResident() {

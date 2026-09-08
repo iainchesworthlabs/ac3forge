@@ -316,7 +316,13 @@ TEST_CASE("crucible engine: no application is tapped while the output stage has 
     rig.devices->devices = {};  // set before start(), so nothing else is running yet
     two_playing(rig);
     Engine engine(rig.config());
-    REQUIRE(engine.start().has_value());
+    // start() refuses on exactly this machine, and says why: nothing here can
+    // carry the stream (test_engine_start.cpp). That is incidental to the rule
+    // below rather than a different subject - the frame loop runs on after a
+    // refusal, deliberately, so what it does about taps is still observable.
+    const auto started = engine.start();
+    REQUIRE_FALSE(started.has_value());
+    CHECK(started.error().find("no render endpoint can carry any mode") != std::string::npos);
     REQUIRE(wait_for([&engine] { return listed_and_probed(engine); }));
     REQUIRE(engine.status().mode == OutputMode::kNone);
 
