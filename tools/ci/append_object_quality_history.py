@@ -58,6 +58,15 @@ REGRESSION_DROP_DB = 0.5
 HARD_REGRESSION_DROP_DB = 5.0
 
 
+def branch_slug(branch: str) -> str:
+    """A single flat filename component for `branch` - see
+    append_memory_history.py's identical branch_slug for why: every branch
+    here is feature/* or bugfix/*, and an un-sanitised '/' interpolated into
+    a Path joins as an extra path component rather than a literal
+    character."""
+    return branch.replace("/", "_").replace("\\", "_")
+
+
 def load_object_rows(objects_json: Path):
     payload = json.loads(objects_json.read_text())
     return payload["rows"]
@@ -99,7 +108,7 @@ def main() -> int:
                         help="Committer date, ISO 8601 (from `git show -s --format=%%cI`).")
     args = parser.parse_args()
 
-    history_path = args.history_dir / f"object-quality-{args.branch}.jsonl"
+    history_path = args.history_dir / f"object-quality-{branch_slug(args.branch)}.jsonl"
     rows = load_object_rows(args.objects_json)
     if not rows:
         print(f"::warning::no rows found in {args.objects_json}; nothing to append")
