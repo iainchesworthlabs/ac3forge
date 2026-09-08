@@ -198,15 +198,9 @@ std::array<std::span<float>, kMaxChannels> g_pcm_spans{};
 static_assert(ac3probe::kAc3Rms.size() <= kMaxChannels,
               "the AC-3 fixture has more channels than the probe's PCM block holds - raise "
               "kMaxChannels");
-static_assert(ac3probe::kEac3Rms.size() <= kMaxChannels,
-              "the E-AC-3 fixture has more channels than the probe's PCM block holds - raise "
-              "kMaxChannels");
-static_assert(ac3probe::kEac3EcplRms.size() <= kMaxChannels,
-              "the enhanced-coupling fixture has more channels than the probe's PCM block "
-              "holds - raise kMaxChannels");
-static_assert(ac3probe::kEac3StereoRms.size() <= kMaxChannels,
-              "the stereo fixture has more channels than the probe's PCM block holds - raise "
-              "kMaxChannels");
+// The E-AC-3 fixtures are checked the same way below, once, over their table -
+// see kEac3Fixtures. One assertion per fixture would be a second place to
+// remember when adding one, which is the seam this file is trying not to have.
 
 void bind_pcm_spans() {
     for (std::size_t ch = 0; ch < kMaxChannels; ++ch) {
@@ -451,7 +445,7 @@ struct Eac3Fixture {
     std::span<const std::int32_t> rms;
 };
 
-const std::array<Eac3Fixture, 3> kEac3Fixtures{{
+constexpr std::array<Eac3Fixture, 3> kEac3Fixtures{{
     {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
@@ -465,6 +459,22 @@ const std::array<Eac3Fixture, 3> kEac3Fixtures{{
     // exercised rather than merely written.
     {"eac3_stereo", ac3probe::kEac3StereoStream, ac3probe::kEac3StereoRms},
 }};
+
+// What the per-fixture static_asserts above used to say, said once. Regenerate
+// fixture.hpp with a layout wider than the PCM block and the build stops here,
+// instead of decode_access_unit_into writing past the end of a span.
+consteval bool every_fixture_fits() {
+    for (const auto& fixture : kEac3Fixtures) {
+        if (fixture.rms.size() > kMaxChannels) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static_assert(every_fixture_fits(),
+              "an E-AC-3 fixture has more channels than the probe's PCM block holds - raise "
+              "kMaxChannels");
 
 // The profile's one behavioural difference, checked rather than asserted in a
 // comment: asking for the direct-form transform this build does not carry is
