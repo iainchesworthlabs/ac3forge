@@ -63,6 +63,16 @@ std::string scratch_path(std::string_view name) {
     return (std::filesystem::temp_directory_path() / leaf).string();
 }
 
+// Exclusively creates an empty file at a scratch_path() result before anything else touches it -
+// same reasoning as examples/encode_iab.cpp's claim_temp_path: write_fixture() below also serves
+// --write-fixture's caller-chosen, intentionally-overwritable path, so it can't itself refuse to
+// replace an existing file; this closes the shared-temp-dir symlink/TOCTOU race before
+// write_fixture ever opens the scratch path scratch_path() picked.
+bool claim_temp_path(const std::string& path) {
+    std::ofstream claim(path, std::ios::binary | std::ios::noreplace);
+    return static_cast<bool>(claim);
+}
+
 void put_u16le(Bytes& out, std::uint16_t value) {
     out.push_back(static_cast<char>(value & 0xFFu));
     out.push_back(static_cast<char>((value >> 8) & 0xFFu));
@@ -252,6 +262,10 @@ int main(int argc, char** argv) {
     }
 
     const auto fixture_path = scratch_path("encode_adm_fixture.wav");
+    if (!claim_temp_path(fixture_path)) {
+        fmt::printf("could not claim scratch path\n");
+        return 1;
+    }
     if (!write_fixture(fixture_path)) {
         fmt::printf("could not write fixture file\n");
         return 1;
@@ -317,7 +331,7 @@ int main(int argc, char** argv) {
     }
 
     const auto out_path = scratch_path("encode_adm_out.ec3");
-    std::ofstream out(out_path, std::ios::binary);
+    std::ofstream out(out_path, std::ios::binary | std::ios::noreplace);
     out.write(reinterpret_cast<const char*>(stream.data()), static_cast<std::streamsize>(stream.size()));
     const bool wrote = static_cast<bool>(out);
     out.close();
