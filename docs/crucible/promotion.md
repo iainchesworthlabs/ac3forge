@@ -795,7 +795,7 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     because a 2 GB Pi could not run the one thing that would: an address sanitiser, or Qt's own
     debug symbols. So the next step was a machine that could.
 
-    **The VM.** [`apps/linux/tray-vm/`](../../apps/linux/tray-vm/) is a scripted VMware guest,
+    **The VM.** [`apps/linux/tray-vm/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/apps/linux/tray-vm) is a scripted VMware guest,
     the same shape as the Windows driver guest in `apps/windows/driver-vm/`: Debian 13, which
     carries the Pi's exact Qt (6.8.2) and publishes matching `-dbgsym` packages, on labwc with
     waybar as the panel — the Pi's own stack a step out, since `wf-panel-pi` has no amd64 build
