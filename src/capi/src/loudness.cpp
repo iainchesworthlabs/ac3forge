@@ -15,7 +15,7 @@ ac3forge_status_t ac3forge_loudness_meter_create(ac3forge_sample_rate_t sample_r
     if (out_meter == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&] {
+    return guard([&sample_rate, &acmod, &lfe, &out_meter] {
         auto owned = std::make_unique<ac3forge_loudness_meter>();
         owned->impl = std::make_unique<ac3::meta::LoudnessMeter>(to_cpp(sample_rate), to_cpp(acmod),
                                                                   lfe != 0);
@@ -34,7 +34,7 @@ ac3forge_status_t ac3forge_loudness_meter_create_for_chanmap(ac3forge_sample_rat
     if (layout.count == 0) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&] {
+    return guard([&sample_rate, &layout, &out_meter] {
         auto owned = std::make_unique<ac3forge_loudness_meter>();
         owned->impl = std::make_unique<ac3::meta::LoudnessMeter>(to_cpp(sample_rate), layout);
         *out_meter = owned.release();
@@ -54,7 +54,7 @@ ac3forge_status_t ac3forge_loudness_meter_push(ac3forge_loudness_meter_t* meter,
     if (meter == nullptr || channels == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&meter, &channels, &channel_count, &samples_per_channel]() -> ac3forge_status_t {
         std::vector<std::span<const float>> spans;
         spans.reserve(channel_count);
         for (size_t i = 0; i < channel_count; ++i) {

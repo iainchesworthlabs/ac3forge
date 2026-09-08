@@ -858,7 +858,7 @@ int run_demux(std::string_view in_path, std::string_view out_path) {
         // apps/common/container_input.cpp applies for the decode/qc path,
         // and byte-for-byte what 'ac3cli ts' produces for the same input.
         // A/52 tracks pass through untouched, exactly as before.
-        const auto on_mp4_sample = [&](std::span<const std::byte> sample) {
+        const auto on_mp4_sample = [&reader, &on_frame](std::span<const std::byte> sample) {
             if (reader.track().codec_id != mp4::kCodecAc4) {
                 on_frame(sample);
                 return;
