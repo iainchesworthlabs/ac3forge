@@ -1,6 +1,10 @@
 # Source, transport, sink: how the encoder and decoder reach people
 
-!!! note "Status: plan, written 2026-09-07. The transport is decided; the rest is not."
+!!! note "Status as of 2026-09-08: one decision taken, nothing built"
+    Written 2026-09-07. The transport question is settled ([decision 1](#decisions)); no code
+    on this page has been written, and the applications it frames — a plugin, a player, a
+    reporter — remain unstarted.
+
     Four plans are in flight, each scoped as an application — a plugin, a player, a reporter,
     an embedded port. This page is the frame they are missing: the roles those applications
     occupy, and the transport between them. The transport question was settled on 2026-09-07
@@ -9,7 +13,7 @@
     Shape follows [the recasting plan](recasting.md) and
     [the promotion plan](../crucible/promotion.md): design sections say what changes and why,
     phases carry exit criteria and how each is verified, [Decisions](#decisions) lists what only
-    the owner can settle, and [What cannot be verified](#what-cannot-be-verified-and-why) says
+    remains open, and [What cannot be verified](#what-cannot-be-verified-and-why) says
     where the evidence stops.
 
 An encoder and a decoder are not usable by anyone. They become usable when something wraps them,
@@ -416,7 +420,7 @@ is the one coordination item on this page with a real chance of landing a wrong 
 - **Making the QC reporter a node.**
 - **Renaming or moving anything.** No identifier, directory or package changes here.
 - **Editing `ROADMAP.md` or `CHANGELOG.md`** — the roadmap entry is proposed as text in each
-  plan, since ID allocation is the owner's.
+  plan, since no roadmap ID is allocated here.
 
 ## Decisions
 

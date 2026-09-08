@@ -1,19 +1,22 @@
 # Promoting the demo to AC3Forge Crucible
 
-!!! note "Status: plan, written 2026-09-04"
-    This page plans the promotion of the Windows Desktop Atmos Demo
-    ([`docs/platforms/windows-demo.md`](../platforms/windows-demo.md), roadmap UX11) from a
-    Windows-only demo into **AC3Forge Crucible**, a desktop product on Windows, Linux and
-    macOS. It keeps the shape the demo page kept from
-    [the Android page](../platforms/android.md): the design sections say what changes and why,
-    each phase carries an exit criterion and will carry its progress record, and
-    [What cannot be verified](#what-cannot-be-verified-and-why) says plainly which claims this
-    work will not be able to make. Roadmap item **UX12**.
+!!! success "Status as of 2026-09-08: largely a record of work done"
+    Written 2026-09-04 as a plan; twenty-one of its phases now carry a completion record and
+    five remain open. Crucible exists, runs on Windows and Linux, and reached a real receiver
+    over PipeWire on 2026-09-05. What is still open is on macOS, where the platform half
+    compiles and has never been launched, and at the driver, which is test-signed only.
+
+    The page plans the promotion of the Windows Desktop Atmos Demo
+    ([`docs/platforms/windows-demo.md`](../platforms/windows-demo.md)) into **AC3Forge
+    Crucible**, a desktop application on Windows, Linux and macOS. Design sections say what
+    changes and why, each phase carries an exit criterion and its progress record, and
+    [What cannot be verified](#what-cannot-be-verified-and-why) says which claims this work
+    cannot make.
 
 The demo works. It taps every application playing on a Windows PC, lets each be dragged to a
-position in a room, and streams the result as live E-AC-3 JOC to a receiver. What it is not
-yet is a product: it is named after a trademark it does not own, it exists only on Windows, it
-is documented as a footnote under Platform notes, and half its engine is welded to
+position in a room, and streams the result as live E-AC-3 JOC to a receiver. Four things keep it
+short of being a product: it is named after a trademark it does not own, it exists only on
+Windows, it is documented as a footnote under Platform notes, and half its engine is welded to
 `platform/windows/` headers. This page is the work that closes each of those.
 
 ## The name
@@ -1126,7 +1129,7 @@ run by anyone here**; see below.
     - which is what the tap's aggregate names as its main sub-device and is clocked by. It has a
     window session: `launchctl managername` answers `Aqua`. And it granted the tap without a
     prompt. Whether a virtualised sound device is *why* the IOProc registration never completes
-    is not established here; it is the most obvious candidate and the first thing to try on real
+    is not established here, though it is the most obvious candidate and the first thing to try on real
     hardware.
 
     **The window froze because that request wedged the whole HAL client.** `CrucibleController::poll()`

@@ -1,12 +1,15 @@
 # A playback appliance: the player as a product
 
-!!! note "Status: plan, written and decided 2026-09-07. Reframed the same day."
+!!! note "Status as of 2026-09-08: not started"
+    Written and decided 2026-09-07, and reframed the same day. Nothing here is built: there is
+    no `apps/hearth` in the tree, and no phase has an exit met.
+
     This page plans **Hearth**, the sink member: the project's decode and passthrough path as a
     product, on a machine that plays what it is given and turns it into sound in a room. It keeps
     the shape of [the recasting plan](recasting.md) and
     [the promotion plan](../crucible/promotion.md): design sections say what changes and why,
     each phase carries an exit criterion and says how it is verified,
-    [Decisions](#decisions) lists what only the owner could decide, and
+    [Decisions](#decisions) lists the open questions and the option taken on each, and
     [What cannot be verified, and why](#what-cannot-be-verified-and-why) says where the evidence
     runs out.
 
@@ -144,7 +147,7 @@ because of what it *is*, not because a plan says so:
   window.
 
 The cost of a fourth member is precise, and it is a documentation cost rather than a code one:
-`docs/index.md:39` "The three members" becomes four, the README's three-row table gains a row,
+`docs/index.md`'s "What is here" gains a fourth product, the README's three-row table gains a row,
 [recasting](recasting.md)'s own model section gains a member and its "Deliberately not in scope"
 bullet on a fourth member is superseded by name, `CONTRIBUTING.md:54`'s consumer list gains
 `hearth`, and the seven-tab nav becomes eight. That is about six files and no identifier anyone
@@ -694,7 +697,7 @@ documentation. It must answer, in this order, the questions someone actually has
 
 - `README.md`: the three-row member table gains a fourth row (what it is, how to get it, where
   its docs are); the layout block gains `apps/hearth`; the Documentation table gains its guide.
-- `docs/index.md:39` "The three members" becomes "The four members", with a `### Hearth` section
+- `docs/index.md`'s "What is here" gains a fourth product, with a `### Hearth` section
   in the same shape as `### Crucible` (:64-74) — what it does, which platforms, what is
   confirmed on hardware and what is not, and a link to install-and-first-run as the fastest way
   in. The "Where to go next" list (:83) gains a row.
@@ -893,7 +896,7 @@ write to the SD card owns the appliance. That belongs on the install page in tho
 
 ## The roadmap entry
 
-`ROADMAP.md` is not edited by this plan — ID allocation is the owner's. The entry below is
+`ROADMAP.md` is not edited by this plan, and no roadmap ID is allocated here. The entry below is
 proposed text, in the file's own form, with a `CR`-style code for a new member (the recasting
 plan's Phase 5 established `CR` for Crucible; a fourth member takes the next such code).
 
@@ -1048,11 +1051,11 @@ which is the only way to catch a missing runtime dependency.
 
 ### Phase 6: the docs and the member
 
-The eight-page guide, the eighth nav tab, the README row, `docs/index.md`'s four members, the
+The eight-page guide, the eighth nav tab, the README row, `docs/index.md`'s fourth product, the
 CONTRIBUTING list, the recasting supersession note, and this page relabelled and moved in the
 nav. Depends on [decisions 1 and 2](#decisions).
 
-**Exit:** a reader arriving at the home page sees four members and can reach each one's guide and
+**Exit:** a reader arriving at the home page sees four products and can reach each one's guide and
 its download in one link; someone with a Pi, a receiver and no prior knowledge can get from the
 install page to sound.
 
@@ -1132,7 +1135,7 @@ needs none, which is the point.
 
 ## Decisions
 
-Only what the owner had to decide. Each carries the options it was put with, the recommendation,
+The open questions. Each carries the options it was put with, the recommendation,
 and the cost. **All ten were taken on 2026-09-07.** Six went as recommended; **four did not**,
 and those four are marked, because a plan that quietly rewrites its recommendation to match the
 answer is worth less than one that records the disagreement.
@@ -1182,7 +1185,7 @@ The original ten, as put:
 2. **Which member.** (a) **a fourth member**; (b) part of Crucible; (c) part of Forge.
    **Recommend (a)**, on the six-way test in
    [Which member it belongs to](#which-member-it-belongs-to). Cost: about six documentation files
-   — `docs/index.md`'s "The three members" becomes four, the README table gains a row,
+   — `docs/index.md`'s "What is here" gains a fourth product, the README table gains a row,
    `CONTRIBUTING.md`'s consumer list gains one, the nav becomes eight tabs, and
    [recasting](recasting.md)'s "a fourth member" exclusion is superseded by name. No identifier
    anyone has installed changes.

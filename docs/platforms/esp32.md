@@ -254,7 +254,7 @@ compressed stream at all is stated there as the difference between an ESP32-S3
 receiving Atmos over Wi-Fi and one receiving no surround. ESPHome nodes are
 Wi-Fi devices. A part that has to be paired with a second chip to reach the
 network works against all of that. This was a product-shape question rather
-than a technical one, and it was put to the project owner and decided on
+than a technical one, and it was decided on
 2026-09-08: the radio is disqualifying on its own, whatever the S3 measures.
 
 **Whether the S3 needs rescuing was the third thing checked, and it turns out

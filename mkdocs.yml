@@ -127,7 +127,6 @@ nav:
           - Encode in the browser: wasm-encode-demo.md
   - Forge:
       - Overview: forge/index.md
-      - Delivery QC reports: forge/qc-report.md
       - CLI reference:
           - Overview: cli/index.md
           - Commands: cli/commands.md
@@ -175,6 +174,7 @@ nav:
       - History: history.md
       - Roadmap: roadmap.md
       - Design notes:
+          - Delivery QC reports (plan): forge/qc-report.md
           - Product naming and scope: family/recasting.md
           - Source, transport, sink: family/topology.md
           - Playback appliance (plan): family/player-appliance.md

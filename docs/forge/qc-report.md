@@ -1,12 +1,16 @@
 # Delivery QC reports
 
-!!! note "Status: plan, written 2026-09-07. Nothing here is decided."
+!!! warning "Status as of 2026-09-08: a plan for something that does not exist yet"
+    Written 2026-09-07, nothing decided and nothing built. `ac3cli qc` prints its findings and
+    exits; it writes no report file, and no option on this page is implemented. Read this as a
+    design proposal rather than as documentation of a feature.
+
     This page plans a **delivery-shaped QC report** — the artefact someone attaches when handing
     a file to a broadcaster or a streaming platform. It keeps the shape of
     [the recasting plan](../family/recasting.md) and
     [the promotion plan](../crucible/promotion.md): design sections say what changes and why,
     each phase carries an exit criterion and says how it is verified,
-    [Decisions](#decisions) lists what only the owner can decide with a recommendation and its
+    [Decisions](#decisions) lists the open questions, each with a recommendation and its
     cost, and [What cannot be verified](#what-cannot-be-verified-and-why) says where the plan
     stops. The central question — which member this belongs to — is decision 1; the name, if it
     needs one, is decision 2.
@@ -239,7 +243,7 @@ Method and its limit: HTTP status and body checks against each registry's own AP
 code search for the winget Moniker. A code search indexes rather than enumerates, so a zero there
 is weaker evidence than the four 404s; a winget Moniker is in any case advisory, while
 `iainchesworthlabs.<name>` is the identifier that must be unique and is in a namespace this
-project owns. **The name is Iain's decision.** This table is the evidence, not the choice.
+project owns. **The name is not settled here.** This table is the evidence, not the choice.
 
 ## Scope
 
@@ -528,7 +532,7 @@ because `mkdocs.yml` declares no redirects plugin.
 | `docs/gui/qc.md` | the **Save report…** button, what it writes, and where | unchanged |
 | `docs/verification.md` | one paragraph under **Quality**: what the report asserts, what it does not, and that its loudness figures are the ones IO10 cross-checked against ffmpeg's `ebur128` on 5.1 | unchanged |
 | `docs/library/quality.md` | one sentence saying the distortion and perceptual headers are encoder in-loop and are not what a delivery report measures — the confusion this plan had to resolve, written down once | unchanged |
-| `docs/index.md` | the **Forge** paragraph of "The three members" gains "and writes a delivery QC report" to its `ac3cli` sentence | unchanged |
+| `docs/index.md` | the **Forge** paragraph of "What is here" gains "and writes a delivery QC report" to its `ac3cli` sentence | unchanged |
 
 `README.md`: the Documentation table gains a row for this page, and the Forge row of the
 three-member table gains the same clause as `docs/index.md`. Nothing else — the README's
@@ -735,7 +739,7 @@ read yet; and the icon work identity assets would need under option C.
 
 ## The proposed ROADMAP entry
 
-`ROADMAP.md` is not edited by this plan — **ID allocation is Iain's.** The natural theme is **IO**
+`ROADMAP.md` is not edited by this plan, and no roadmap ID is allocated here. The natural theme is **IO**
 ("Streams in and out", member "the library, Forge"), whose last three items are IO10, IO11 and
 IO12, all QC and loudness; IO13 is the next free number. Proposed text, in the theme's own format:
 
@@ -822,7 +826,7 @@ and should not be batched with unrelated prose.
 
 ## Decisions
 
-Only what the owner has to decide. Each carries a recommendation and the cost of taking it.
+The open questions. Each carries a recommendation and the cost of taking it.
 **None of these is decided.**
 
 1. **Which member this belongs to.** (a) a new output mode on `ac3cli qc` with the model promoted
@@ -842,7 +846,7 @@ Only what the owner has to decide. Each carries a recommendation and the cost of
    is taken on PyPI and npm, which rules out a bare-token package scheme but not the
    `ac3forge`-prefixed one every other member already uses. Cost of taking a name now: every
    identity in [Packaging and release identity](#packaging-and-release-identity) is frozen at first
-   install. **This is Iain's decision; the table above is evidence, not a choice.**
+   install. **This is not settled here; the table above is evidence, not a choice.**
 
 3. **The JSON schema identifier and its shape.** `ac3forge.qc/1`, following `ac3forge.probe/1`'s
    contract unchanged, with `gates` an array even for one preset and a top-level `verdict` boolean.
