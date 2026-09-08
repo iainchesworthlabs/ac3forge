@@ -13,8 +13,16 @@
 # install pip via `--require-hashes -r requirements/requirements-pip-bootstrap.txt`
 # instead. Bump the version and hashes here, in one place, when it needs to move.
 #
-# Hashes are pip 24.3.1's published sdist and wheel digests from
-# https://pypi.org/pypi/pip/24.3.1/json.
-pip==24.3.1 \
-    --hash=sha256:3790624780082365f47549d032f3770eeb2b1e8bd1f7b2e02dace1afa361b4ed \
-    --hash=sha256:ebcb60557f2aefabc2e0f918751cd24ea0d56d8ec5445fe1807f1d2109660b99
+# pip 24.3.1 was the first version pinned here, and dependency-review.yml
+# promptly failed the PR that added this file over it: five moderate-severity
+# advisories against pip itself (tar/zip extraction and path-traversal
+# issues), all fixed by 26.2.0 - a bare `pip install "pip==X.Y.Z"` shell
+# command was invisible to the dependency graph, so those had been running
+# in CI unnoticed until this file made pip a tracked dependency. 26.2.1 is
+# clean per https://api.osv.dev/v1/query (PyPI, pip, 26.2.1).
+#
+# Hashes are pip 26.2.1's published sdist and wheel digests from
+# https://pypi.org/pypi/pip/26.2.1/json.
+pip==26.2.1 \
+    --hash=sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e \
+    --hash=sha256:f6ad667e89a1fe78046c8f13232b247200f5258d7828f3f7883d660878e0813f
