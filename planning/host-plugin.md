@@ -1,13 +1,16 @@
 # A host plugin: what one could do, which formats are open, and what shipping one takes
 
-!!! note "Status: study and plan, written 2026-09-07. Nothing here is decided."
+!!! note "Status as of 2026-09-08: a study, not started and not decided"
+    Written 2026-09-07. No decision on this page has been taken and no code exists for it.
+    Read Part 1 as a capability survey; Part 2 is what would follow if the survey is accepted.
+
     The library has C, Python, Rust and npm bindings and no form a DAW, an NLE or a media
     pipeline can load. This page asks first whether a useful plugin is possible at all
     ([Part 1](#part-1-the-capability-study)), and then plans the one Part 1 recommends
     ([Part 2](#part-2-the-plan)). It keeps the shape of
-    [the family recasting](recasting.md) and [the Crucible promotion](../crucible/promotion.md):
+    [the family recasting](recasting.md) and [the Crucible promotion](../docs/crucible/promotion.md):
     design sections saying what changes and why, phases carrying an exit criterion and how it is
-    verified, a [Decisions](#decisions) section listing what only the owner can settle, and a
+    verified, a [Decisions](#decisions) section listing the open questions, and a
     [What cannot be verified](#what-cannot-be-verified-and-why) table written before the work
     rather than after it.
 
@@ -364,7 +367,7 @@ Youlean Loudness Meter, LCAST and Loud-A.
 [the recasting](recasting.md#the-name): "AC3Forge Assay" in prose, every identifier lowercase and
 `ac3`-prefixed, and the string "AC3Forge Forge" is still never written.
 
-**The name is Iain's decision, not this page's** — see [decision 1](#decisions).
+**The name is not settled here** — see [decision 1](#decisions).
 
 **Identifiers that freeze on first release.** Plugin formats carry identities of their own, and
 these cannot change afterwards without breaking every session that loaded the plugin. A host
@@ -622,7 +625,7 @@ checked, and hosts nobody has tried are listed as untried rather than omitted.
 
 **`README.md`** gains an Assay row in the layout block and a line in the family statement.
 
-**`docs/index.md`'s "The three members"** becomes "The four members" — one heading, one
+**`docs/index.md`'s "What is here"** gains a fourth product — one heading, one
 paragraph, and the [family recasting](recasting.md) page gains a note that its
 "no fourth member" scope line was revisited by this plan and why. That page should not be
 silently contradicted; if [decision 2](#decisions) goes this way, the recasting page says so and
@@ -854,7 +857,7 @@ and the phase does not close on a green build.
 
 ## The proposed ROADMAP entry
 
-Roadmap ID allocation is Iain's, so this is text to place rather than an edit to make. `ROADMAP.md`
+This plan does not allocate a roadmap ID, so the following is text to place rather than an edit to make. `ROADMAP.md`
 is deliberately untouched by this plan.
 
 **The media-pipeline half needs no new entry.** AP10 already covers it, and this page's
@@ -892,7 +895,7 @@ code is finished.
 | The plugin works in any specific DAW | **no**, not in CI | no hosted runner has a DAW licence; hand-checked per host, with dates |
 | Screen readers reach the plugin UI in a given host | **no** | depends on the host's window hierarchy; needs that host and that screen reader |
 | AAX's full terms | **no** | behind a click-through agreement and a non-disclosable signing arrangement |
-| macOS behaviour of any kind | **no** | DR6 for signing, and a Mac to run it — the same row the [Crucible plan](../crucible/promotion.md#what-cannot-be-verified-and-why) carries |
+| macOS behaviour of any kind | **no** | DR6 for signing, and a Mac to run it — the same row the [Crucible plan](../docs/crucible/promotion.md#what-cannot-be-verified-and-why) carries |
 | "Assay" is free as a trademark | **no** | product listings were searched on 2026-09-07; trademark registers were not, and that is a search for a professional |
 | CI cost of the four extra legs | not yet | estimated as single-digit minutes; to be measured on the first run and written here |
 | FFmpeg's AC-3/E-AC-3 encoder is still 5.1-max | **verified 2026-09-07** from `ff_ac3_ch_layouts` in FFmpeg master's `libavcodec/ac3enc.c` | none |
@@ -917,11 +920,11 @@ code is finished.
 - **Solving the family icon gap** ([section 11](#11-identity-assets)), which is named here and
   fixed elsewhere.
 - **Editing `ROADMAP.md` or `CHANGELOG.md`.** The roadmap entry is
-  [proposed as text](#the-proposed-roadmap-entry); the ID is Iain's.
+  [proposed as text](#the-proposed-roadmap-entry); the ID is allocated separately.
 
 ## Decisions
 
-Only what the owner has to decide. Each carries options, a recommendation and the cost of taking
+The open questions. Each carries options, a recommendation and the cost of taking
 it. **None of these is taken as this page is written.**
 
 1. **The name.** (a) AC3Forge Assay; (b) AC3Forge Gauge; (c) AC3Forge Touchstone; (d) AC3Forge

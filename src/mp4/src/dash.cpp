@@ -81,7 +81,7 @@ using manifest_detail::segment_infos;
             "value=\"{}\"/>\n",
             options.dolby_channel_configuration);
     }
-    if (options.joc_complexity_index) {
+    if (options.joc_complexity_index.has_value()) {
         out +=
             "    <SupplementalProperty "
             "schemeIdUri=\"tag:dolby.com,2018:dash:EC3_ExtensionType:2018\" value=\"JOC\"/>\n";

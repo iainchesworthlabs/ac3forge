@@ -215,13 +215,27 @@ const FastMdctTables<NLen, Scalar>& fast_mdct_tables() {
 //
 // P is kM/2 - 128 for the long transform, 64 for the short pair - so it is
 // always even and neither loop needs a scalar tail.
-template <int NLen>
-void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
-                 std::span<double> out, double scale) {
-    constexpr std::size_t M = FastMdctTables<NLen>::kM;
-    constexpr std::size_t P = FastMdctTables<NLen>::kP;
-    std::array<double, P> z_re{};
-    std::array<double, P> z_im{};
+template <int NLen, typename Scalar = double>
+void dct4_scaled(const FastMdctTables<NLen, Scalar>& t, std::span<const Scalar> u,
+                 std::span<Scalar> out, Scalar scale) {
+    constexpr std::size_t M = FastMdctTables<NLen, Scalar>::kM;
+    constexpr std::size_t P = FastMdctTables<NLen, Scalar>::kP;
+    // The double instantiation keeps every path it had - the AVX2 tier, the
+    // f64x2 seam, the same arithmetic in the same order. It is pinned by the
+    // fifteen bitstream hashes and by every gold reference, so this
+    // templatization deliberately changes nothing it does.
+    //
+    // float takes the plain scalar loops below instead. The vector seam has an
+    // f32x4 now (ROADMAP PF5's follow-on), and using it here is worth doing -
+    // but it is a separate change with its own measurement, and correctness on
+    // a path that had no float form at all comes first. The AVX2 kernels are
+    // double-only in any case: internal::avx2::dct4_pre_twiddle and friends
+    // take double spans, so the branch below is not merely skipped for float,
+    // it could not be taken.
+    constexpr bool kWide = std::is_same_v<Scalar, double>;
+    std::array<Scalar, P> z_re{};
+    std::array<Scalar, P> z_im{};
+    if constexpr (kWide) {
     if (internal::cpu::has_avx2()) {
         internal::avx2::dct4_pre_twiddle(u, t.pre_re, t.pre_im, t.fft.bitrev, z_re, z_im);
     } else {
@@ -240,8 +254,18 @@ void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
             z_im[d1] = zi.lane1();
         }
     }
-    internal::fft_forward_bitrev<P, double>(t.fft, z_re, z_im);
+    } else {
+        for (std::size_t m = 0; m < P; ++m) {
+            const Scalar a = u[2 * m];
+            const Scalar b = u[M - 1 - 2 * m];
+            const std::size_t d = t.fft.bitrev[m];
+            z_re[d] = a * t.pre_re[m] - b * t.pre_im[m];
+            z_im[d] = a * t.pre_im[m] + b * t.pre_re[m];
+        }
+    }
+    internal::fft_forward_bitrev<P, Scalar>(t.fft, z_re, z_im);
 
+    if constexpr (kWide) {
     if (internal::cpu::has_avx2()) {
         internal::avx2::dct4_post_twiddle(z_re, z_im, t.post_re, t.post_im, scale, out);
         return;
@@ -259,19 +283,27 @@ void dct4_scaled(const FastMdctTables<NLen>& t, std::span<const double> u,
         out[M - 1 - 2 * k] = odd.lane0();
         out[M - 3 - 2 * k] = odd.lane1();
     }
+    } else {
+        for (std::size_t k = 0; k < P; ++k) {
+            const Scalar zr = z_re[k];
+            const Scalar zi = z_im[k];
+            out[2 * k] = scale * (zr * t.post_re[k] - zi * t.post_im[k]);
+            out[M - 1 - 2 * k] = scale * (-(zr * t.post_im[k] + zi * t.post_re[k]));
+        }
+    }
 }
 
 // DCT-IV-via-FFT fast path for the LONG transform (alpha = 0; see the block
 // comment above): M = NLen/2, Q = NLen/4. Quarters of `windowed`: a = [0,Q),
 // b = [Q,2Q), c = [2Q,3Q), d = [3Q,4Q). u = concat(-c_R - d, a - b_R),
 // R = reversed, length M; coeffs = (-2/NLen) * DCT4_M(u).
-template <int NLen>
-void mdct_forward_fast_core(std::span<const double> windowed, std::span<double> coeffs) {
+template <int NLen, typename Scalar = double>
+void mdct_forward_fast_core(std::span<const Scalar> windowed, std::span<Scalar> coeffs) {
     constexpr std::size_t Q = static_cast<std::size_t>(NLen) / 4;
-    constexpr std::size_t M = FastMdctTables<NLen>::kM;
-    const auto& t = fast_mdct_tables<NLen>();
+    constexpr std::size_t M = FastMdctTables<NLen, Scalar>::kM;
+    const auto& t = fast_mdct_tables<NLen, Scalar>();
 
-    std::array<double, M> u{};
+    std::array<Scalar, M> u{};
     for (std::size_t i = 0; i < Q; ++i) {
         // -c_R[i] - d[i] = -windowed[3Q-1-i] - windowed[3Q+i]
         u[i] = -windowed[3 * Q - 1 - i] - windowed[3 * Q + i];
@@ -280,7 +312,7 @@ void mdct_forward_fast_core(std::span<const double> windowed, std::span<double> 
         // a[j] - b_R[j] = windowed[j] - windowed[2Q-1-j]
         u[Q + j] = windowed[j] - windowed[2 * Q - 1 - j];
     }
-    dct4_scaled<NLen>(t, u, coeffs, -2.0 / NLen);
+    dct4_scaled<NLen, Scalar>(t, u, coeffs, static_cast<Scalar>(-2.0 / NLen));
 }
 
 }  // namespace
@@ -310,10 +342,36 @@ void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512
 void mdct512_forward(std::span<const double, 512> windowed, std::span<double, 256> coeffs,
                      bool fast) {
     if (fast) {
-        mdct_forward_fast_core<512>(windowed, coeffs);
+        mdct_forward_fast_core<512, double>(windowed, coeffs);
     } else {
         internal::reference_mdct512_forward(windowed, coeffs);
     }
+}
+
+// The float32 forms of the two above (roadmap PF7's float32 gap), for the
+// object reconstruction in src/oba/joc.cpp - which runs a FORWARD transform in
+// a decode, analysing the bed it is about to un-mix (PF8). Every other forward
+// caller is the encoder, and the encoder stays double: the fifteen bitstream
+// hashes in tests/golden/bitstream-hashes.json pin its output and nothing here
+// is on its path.
+//
+// No `fast` parameter, the same as the float32 inverse already declared in
+// mdct.hpp: the direct evaluation is the spec's own statement of the transform
+// and the oracle the fast path is validated against, so it stays double.
+// Offering a `false` a float32 caller could pass and then ignoring it would be
+// worse than not offering it.
+void apply_analysis_window(std::span<const float, 512> x, std::span<float, 512> windowed) {
+    // A scalar loop, not the arch seam. The window table is constexpr double
+    // (ac3/core/window.hpp) and is the SAME table the double form reads, so the
+    // narrowing happens per element here rather than in a second float copy of
+    // 512 constants that would then have to be kept agreeing with the first.
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kN); ++n) {
+        windowed[n] = x[n] * static_cast<float>(kAnalysisWindow[n]);
+    }
+}
+
+void mdct512_forward(std::span<const float, 512> windowed, std::span<float, 256> coeffs) {
+    mdct_forward_fast_core<512, float>(windowed, coeffs);
 }
 
 void mdct256_forward_first(std::span<const double, 256> windowed, std::span<double, 128> coeffs,
@@ -333,7 +391,7 @@ void mdct256_forward_first(std::span<const double, 256> windowed, std::span<doub
         for (std::size_t n = 0; n < 128; ++n) {
             v[n] = windowed[n] - windowed[255 - n];
         }
-        dct4_scaled<256>(fast_mdct_tables<256>(), v, coeffs, -2.0 / 256);
+        dct4_scaled<256, double>(fast_mdct_tables<256, double>(), v, coeffs, -2.0 / 256);
         return;
     }
     internal::reference_mdct256_forward_first(windowed, coeffs);
@@ -356,7 +414,7 @@ void mdct256_forward_second(std::span<const double, 256> windowed, std::span<dou
         for (std::size_t n = 0; n < 128; ++n) {
             w_r[n] = windowed[127 - n] + windowed[128 + n];
         }
-        dct4_scaled<256>(fast_mdct_tables<256>(), w_r, coeffs, 2.0 / 256);
+        dct4_scaled<256, double>(fast_mdct_tables<256, double>(), w_r, coeffs, 2.0 / 256);
         return;
     }
     internal::reference_mdct256_forward_second(windowed, coeffs);
@@ -785,6 +843,37 @@ void imdct256_pair_windowed(std::span<const double, 256> coeffs, std::span<doubl
 // float overload gives.
 void imdct256_pair_windowed(std::span<const float, 256> coeffs, std::span<float, 512> x) {
     imdct256_pair_windowed_impl<float>(coeffs, x, true);
+}
+
+// The float32 batch forms. Four independent calls, not four lanes.
+//
+// The double batch kernels exist because four transforms in lockstep keep an
+// AVX2 register full where four separate ones do not (ROADMAP PF5's batch
+// axis). There is no float32 AVX2 kernel to fill, so batching would buy the
+// float path nothing today and would mean a second body to keep agreeing with
+// the scalar one. These are here so a caller can be written once against the
+// batch shape - joc.cpp's bed analysis and object synthesis both are - and
+// pick up a real float32 batch later without changing.
+void mdct512_forward_batch4(std::span<const float, 512> w0, std::span<const float, 512> w1,
+                            std::span<const float, 512> w2, std::span<const float, 512> w3,
+                            std::span<float, 256> c0, std::span<float, 256> c1,
+                            std::span<float, 256> c2, std::span<float, 256> c3) {
+    mdct512_forward(w0, c0);
+    mdct512_forward(w1, c1);
+    mdct512_forward(w2, c2);
+    mdct512_forward(w3, c3);
+}
+
+void imdct512_windowed_batch4(std::span<const float, 256> coeffs0,
+                              std::span<const float, 256> coeffs1,
+                              std::span<const float, 256> coeffs2,
+                              std::span<const float, 256> coeffs3, std::span<float, 512> x0,
+                              std::span<float, 512> x1, std::span<float, 512> x2,
+                              std::span<float, 512> x3) {
+    imdct512_windowed(coeffs0, x0);
+    imdct512_windowed(coeffs1, x1);
+    imdct512_windowed(coeffs2, x2);
+    imdct512_windowed(coeffs3, x3);
 }
 
 }  // namespace ac3

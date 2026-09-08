@@ -1,0 +1,33 @@
+# ESP-IDF configuration for the I2S player example.
+#
+# Deliberately NOT a copy of the probe's sdkconfig.defaults. The probe is a
+# batch computation that runs the CPU flat out and never yields; this is a
+# player, paced by a DAC's clock, and two of the probe's settings would be
+# actively wrong here. Where they agree, they agree for the same reason.
+
+CONFIG_IDF_TARGET="esp32s3"
+
+# -Os, the same as the probe and the arm-none-eabi leg. Size is what the
+# minimum-footprint profile is about, and an example that quietly built -O2
+# would give an integrator a misleading first impression of the cost.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# The task app_main() runs on, and therefore the task the decode runs on.
+# IDF's 3,584-byte default overflowed on the probe, and the symptom was not a
+# clean stack-overflow report but a LoadProhibited panic on the other core.
+# Measured high-water for a decode leaves about 11 KB free of 32 KB, so this is
+# roughly 21 KB used and 11 KB of margin.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+# The task watchdog STAYS ON here, where the probe turns it off.
+#
+# That difference is the point rather than an oversight. The probe disables it
+# because a deliberate flat-out batch run is exactly what the watchdog exists to
+# catch; a player is the opposite case - it blocks on i2s_channel_write between
+# frames, so it yields constantly, and if it ever stops yielding something has
+# gone wrong that an integrator wants to be told about.
+
+# PSRAM stays off. The whole profile is sized to run out of internal SRAM, and
+# this example is the demonstration of that: peak decode is 233,546 bytes and
+# the I2S buffers are another 3,840. Turning PSRAM on here would make the
+# example prove something weaker than it currently does.

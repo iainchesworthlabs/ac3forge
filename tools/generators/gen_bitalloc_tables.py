@@ -38,7 +38,11 @@ def _find(lines, needle):
 def _parse_pairs(lines, start, count, hex_vals=True):
     """Rows of 'index value' (possibly two column-pairs per line)."""
     values = {}
-    pattern = re.compile(r"(\d+)\s+(0x[0-9a-fA-F]+|\d+)")
+    # Bounded repetition rather than unbounded '+': every index/value here is
+    # a short table entry, and the bound caps the backtracking an all-digit
+    # run with no trailing whitespace can force per start position, which is
+    # what made the unbounded form super-linear.
+    pattern = re.compile(r"(\d{1,6})\s+(0x[0-9a-fA-F]{1,8}|\d{1,10})")
     for line in lines[start:start + count + 40]:
         for index_text, value in pattern.findall(line):
             index = int(index_text)
@@ -80,7 +84,9 @@ def parse_tables():
     # Table 7.12: 'band bndtab bndsz  band bndtab bndsz' double columns.
     bnd_start = _find(lines, "Table 7.12 Banding Structure")
     bndtab, bndsz = {}, {}
-    row = re.compile(r"(\d+)\s+(\d+)\s+(\d+)")
+    # See _parse_pairs' identical note: bounded repetition avoids the
+    # super-linear backtracking an unbounded '+' has on an all-digit run.
+    row = re.compile(r"(\d{1,6})\s+(\d{1,6})\s+(\d{1,6})")
     for line in lines[bnd_start:bnd_start + 40]:
         for band_text, tab, size in row.findall(line):
             band = int(band_text)
@@ -100,7 +106,10 @@ def parse_tables():
     # Table 7.15: 'band h0 h1 h2  band h0 h1 h2' double columns, 50 bands.
     hth_start = _find(lines, "Table 7.15 Hearing Threshold")
     hth = {}
-    row = re.compile(r"(\d+)\s+(0x[0-9a-fA-F]+)\s+(0x[0-9a-fA-F]+)\s+(0x[0-9a-fA-F]+)")
+    # See _parse_pairs' identical note: bounded repetition avoids the
+    # super-linear backtracking an unbounded '+' has on an all-digit run.
+    row = re.compile(
+        r"(\d{1,6})\s+(0x[0-9a-fA-F]{1,8})\s+(0x[0-9a-fA-F]{1,8})\s+(0x[0-9a-fA-F]{1,8})")
     for line in lines[hth_start:hth_start + 45]:
         for band_text, h0, h1, h2 in row.findall(line):
             band = int(band_text)

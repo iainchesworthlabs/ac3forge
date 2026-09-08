@@ -403,7 +403,7 @@ which one it means. `objm` folds the whole range into ONE mono object (equal-wei
 than one object per channel the way a plain `obj` range does. Two entries naming the same location,
 or more than one entry per dual-mono programme, is refused.
 
-The `obj`/`objm` destinations are acted on by the two object-capable commands (roadmap IO9):
+The `obj`/`objm` destinations are acted on by the two object-capable commands:
 `atmos-encode` and `live mode=atmos` both assemble them. Each `obj` row becomes its own dynamic
 object; a contiguous `objm` range folds to a single mono object (equal-weight sum, scaled by
 `1/n`); the objects appear in `map=` order — every `obj` row first, in source-then-channel order,
@@ -662,7 +662,7 @@ receiver simply hears a capped downmix instead of a refusal. This is the CLI hal
 
 `downmix=off` refuses instead — the plain "does not accept E-AC-3 over IEC 61937" warning and a
 file-only session, which is what `live` did before. A receiver that accepts neither format is a
-genuine refusal either way.
+a refusal either way.
 
 ```bash
 ac3cli live out.ec3 0 30 448 -2 1 channels layout=714      # capped 5.1 AC-3 to receiver 1
@@ -679,13 +679,13 @@ play options (play; after the positional arguments):
 
 ### `follow=`
 
-Roadmap UX9. When `play` is given a `device_index`, it asks what that sink actually accepts —
+When `play` is given a `device_index`, it asks what that sink actually accepts —
 its own EDID/ELD-carried Short Audio Descriptors where a backend can read them (real today only
 on ALSA; see [Linux](../platforms/linux.md)), the same live probe `outputs` uses everywhere
 else. By default (`follow=on`, the implicit default), a source format the sink rejects gets an
 automatic fallback:
 
-- E-AC-3 on an AC-3-only sink is transcoded to AC-3 first (`transcode`, roadmap DC9, through a
+- E-AC-3 on an AC-3-only sink is transcoded to AC-3 first (`transcode`, through a
   temporary file — dialnorm, `compr` and the mix metadata carry across exactly as a direct
   `ac3cli transcode` call would), then plays as AC-3. This is the "no 5.1 PCM over optical"
   case: an optical link can carry compressed AC-3 but never multichannel PCM, so a 5.1 E-AC-3
@@ -800,7 +800,7 @@ Not yet supported, and refused rather than ignored:
 - `programme2=` together with `src=`/`map=`. The multi-source router assigns channels to one
   programme.
 - Labelling a programme as a service (`bsmod`) or supplying the mixing metadata a receiver would
-  use to mix an associated service against the main one — that is roadmap `DC3`/`DC4`, and this
+  use to mix an associated service against the main one, and this
   is the structural half.
 
 One thing worth knowing before shipping such a stream: **FFmpeg refuses it outright**, and not
@@ -969,7 +969,7 @@ the two agree to within 0.02 dB, which is why `ebur128` is a good cross-check fo
 
 For a plain 5.1 stream the two algorithms are the same function — `Ls`/`Rs` are M±110, inside Table 4's +1.5 dB
 sector, which is where Annex 1's Table 3 got its 1.41 — so `layout=` changes nothing there. The one Table 5.8
-layout where they genuinely differ is 2/1 and 3/1: Annex 1 has no Table 3 entry for a lone surround and this
+layout where they differ is 2/1 and 3/1: Annex 1 has no Table 3 entry for a lone surround and this
 meter reads it as the surround field collapsed to one channel (+1.5 dB), while Annex 3 sees Table E2.5's `Cs`,
 a rear centre at M+180, at unity.
 

@@ -79,7 +79,7 @@ test('decodes the bundled Atmos-in-DD+ fixture with real, moving object position
 
     // x, y, z are the first three values of each stride-wide frame. A real
     // decode of moving object metadata puts the first and last frame at
-    // genuinely different positions - a decoder that silently returned a
+    // different positions - a decoder that silently returned a
     // static placement (or garbage) would not clear this bar reliably.
     const [x0, y0, z0] = result.firstFrame;
     const [x1, y1, z1] = result.lastFrame;

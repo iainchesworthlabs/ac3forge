@@ -71,7 +71,7 @@ std::filesystem::path make_temp_path() {
     std::random_device rd;
     const auto unique = (static_cast<std::uint64_t>(rd()) << 32) ^
                         static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
-                        counter.fetch_add(1, std::memory_order_relaxed);
+                        counter.fetch_add(1);
     return std::filesystem::temp_directory_path() / ("ac3adm_" + std::to_string(unique) + ".wav");
 }
 
@@ -383,7 +383,10 @@ std::expected<AdmDocument, AdmError> parse_bw64(std::istream& in) {
     // to a real temporary file first.
     const auto temp_path = make_temp_path();
     {
-        std::ofstream out(temp_path, std::ios::binary);
+        // noreplace: the system temp directory is shared/world-writable, and make_temp_path()'s
+        // name is ours alone to use - fail instead of writing through a symlink another local
+        // user pre-planted at this exact (astronomically unlikely to guess) name.
+        std::ofstream out(temp_path, std::ios::binary | std::ios::noreplace);
         if (!out) {
             return std::unexpected(AdmError::kCannotOpen);
         }

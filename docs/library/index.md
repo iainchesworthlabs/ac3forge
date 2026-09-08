@@ -41,7 +41,7 @@ The public API is the headers under `src/forge/include/ac3/`. Link `ac3::forge`;
 `ac3::signing` if you want to apply the EMDF object-signing tag (see [Object signing](signing.md)),
 [`ac3iab::ac3iab`](iab.md) if you want to read a SMPTE ST 2098-2 Immersive Audio Bitstream, a bare
 elementary `.iab` file or a real MXF Track File alike (it links nothing from `ac3::forge` and knows
-nothing about AC-3 — roadmap IM1 phases 1-2), or
+nothing about AC-3 — phases 1-2), or
 `ac3adm::ac3adm` if you want to read or write a professional ADM BWF master — it does not need
 `ac3::forge` linked alongside it on its own (`ac3::admbridge` is the module that needs both, for
 mapping an ADM object graph onto/from `ac3::oba::AtmosEncoder`/`ac3::Eac3Decoder`). Unlike every
@@ -189,15 +189,15 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [Object signing](signing.md) — `ac3::signing`, the EMDF protection tag.
 - [Header map](header-map.md) — the headers a caller normally reaches for, and what lives in each.
 - [API stability](api-stability.md) — the v1.0 freeze plan: header tiers, SemVer and deprecation
-  policy, and what's decided versus still deliberately deferred (roadmap `AP1`).
+  policy, and what's decided versus still deliberately deferred.
 - [C API](c-api.md) — `ac3::forge_c`, a stable, minimal C-callable surface over encode/decode for
-  bindings and embedding (roadmap item F1).
+  bindings and embedding.
 - [Rust bindings](rust-api.md) — `ac3forge-sys` (raw, `bindgen`-generated) plus the safe
   `ac3forge` crate, both over the C API.
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over
   `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder` and
   `eac3::FrameEncoder`/`AccessUnitEncoder`.
-- [WebAssembly](../platforms/wasm.md) — the `ac3forge-wasm-decoder` package (roadmap UX5), built
+- [WebAssembly](../platforms/wasm.md) — the `ac3forge-wasm-decoder` package, built
   from this tree and not yet on the npm registry: a
   push-frame decode API, an AudioWorklet playback pipeline, and an hls.js/MSE bridge over the
   decoder compiled to WASM.

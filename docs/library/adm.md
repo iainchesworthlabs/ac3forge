@@ -6,7 +6,7 @@ pipelines require. Like `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts`, i
 from `ac3::forge` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
 
 Mapping the graph this module parses onto `ac3::oba::AtmosEncoder` (ADM → encode) or building it
-from a decoded `ac3::Eac3Decoder` programme (decode → ADM, roadmap item IM2) is a separate module,
+from a decoded `ac3::Eac3Decoder` programme (decode → ADM) is a separate module,
 [`ac3::admbridge`](adm-bridge.md); driving the read direction end to end — a real ADM BWF master
 straight to a DD+ JOC E-AC-3 stream — is `ac3cli atmos-adm`, and the write direction is
 `ac3cli decode ... adm_out` (see [Commands](../cli/commands.md)) and
@@ -47,7 +47,7 @@ for (const auto& object : document->model.objects) {
 }
 ```
 
-Full program: [`examples/read_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) — writes a small but genuinely valid BW64 fixture (adapted
+Full program: [`examples/read_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) — writes a small but valid BW64 fixture (adapted
 from Recommendation ITU-R BS.2076-2's own worked "Car" object example) to a temp file, since a
 real ADM BWF master is production audio this project has no license to embed, then parses it
 back and prints what it found.

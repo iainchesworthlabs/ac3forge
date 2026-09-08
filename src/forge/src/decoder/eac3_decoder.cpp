@@ -12,7 +12,6 @@
 #include <memory>
 #include <optional>
 #include <span>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -25,7 +24,6 @@
 #include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/mantissas.hpp"
-#include "ac3/core/mdct.hpp"
 #include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/transient_prenoise.hpp"
@@ -346,7 +344,7 @@ std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes)
         // the always-six-blocks case?" - keeps working unmodified.
         const auto fscod2 = r.read(2);
         const auto rate = sample_rate_from_fscod2(fscod2);
-        if (!rate) {
+        if (!rate.has_value()) {
             return std::unexpected(DecodeError::kReservedValue);
         }
         bsi.sample_rate = *rate;
@@ -739,6 +737,30 @@ struct Eac3Decoder::Impl {
     // channel through here keeps the decoder's own store in decode_scalar_t
     // without pushing a float overload onto the encoder's side of the wall.
     std::array<double, 256> ecpl_coeff_scratch_{};
+    // §3.5.5.2/.3's per-bin amplitude and angle, for one channel of one block.
+    //
+    // Members rather than locals in the reconstruction loop, which is where
+    // they were: a std::vector each, constructed and destroyed once per COUPLED
+    // CHANNEL per BLOCK. On a 5.1 stream with five channels in the coupling
+    // range that is 5 x 6 x 2 = 60 allocations per frame, and the bare-metal
+    // probe measured exactly that - 60 per frame in the 1,024-1,535 byte class,
+    // a class no other fixture touches at all (bins x sizeof(double) lands
+    // there for any usual coupling range). It was 48% of enhanced coupling's
+    // whole per-frame churn.
+    //
+    // std::vector grown on first use, NOT std::array<double, 256> like the
+    // three ecpl scratches above it. Those are unconditional members and cost
+    // their 6,144 bytes on every Eac3Decoder ever built; two more arrays would
+    // have added 4,096 to that, and the probe measured exactly that - peak heap
+    // 233,546 to 237,642, a third of the remaining margin under a ceiling this
+    // port has spent a lot of effort getting under.
+    //
+    // Grown once, at the coupling range's width, and never shrunk, so the
+    // steady state still allocates nothing. A stream that never uses enhanced
+    // coupling - which is most streams, and notably the object fixture that
+    // SETS that peak - pays nothing at all rather than 4 KB it never reads.
+    std::vector<double> ecpl_amp_scratch_;
+    std::vector<double> ecpl_angle_scratch_;
     // decode_substream's frame-lifetime coefficient buffers - the AHT
     // stream store (§3.4: all six blocks decoded at block 0) and the
     // enhanced-coupling channel store (§3.5.5.1: a block's reconstruction
@@ -756,6 +778,21 @@ struct Eac3Decoder::Impl {
     std::vector<std::array<std::array<internal::decode_scalar_t, 256>, kBlocksPerFrame>>
         aht_coeffs_;
     std::vector<std::array<double, 256>> ecpl_all_coeffs_;
+    // §7.1.3's packed exponent groups, for one stream of one block.
+    //
+    // A member, reused by assign(), because the two sites that read it are
+    // inside the block loop and each constructed a fresh std::vector - so a
+    // 5.1 frame paid one allocation per (stream, block) that sent exponents,
+    // measured at 14 to 28 a frame. src/forge/src/decoder/decoder.cpp has done
+    // this for AC-3 all along (its own `groups` is declared once at frame scope
+    // and assign()ed at both its use sites); this is the same shape, taken one
+    // step further to a member so it survives the frame as well as the block.
+    //
+    // Never read across a call - both sites fill it completely from the
+    // bitstream before decode_exponents() sees it - so reuse cannot leak one
+    // block's exponents into another's. assign() rather than resize() to keep
+    // that explicit, and to match what the vectors it replaced did.
+    std::vector<std::uint8_t> exp_groups_;
     // One entry per block: everything decode_substream's second pass (spx
     // synthesis, rematrixing, IMDCT and PCM write) needs from pass one -
     // the .cpp's comment at the use site explains why two passes exist at
@@ -1048,7 +1085,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // checkpoint, which FrameDecoder does itself.
     if (const auto bsid = stream_bsid(frame); bsid && *bsid <= 8) {
         auto core = decode_ac3_core(frame);
-        if (!core) {
+        if (!core.has_value()) {
             return std::unexpected(core.error());
         }
         return std::optional<DecodedSubstream>(std::move(*core));
@@ -1068,7 +1105,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
 
     BitReader r{frame};
     const auto bsi = parse_bsi(r, frame.size());
-    if (!bsi) {
+    if (!bsi.has_value()) {
         return std::unexpected(bsi.error());
     }
     const int nblks = eac3::blocks_per_syncframe(bsi->numblkscod);
@@ -1119,7 +1156,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // §E2.3.1.8: a chanmap that does not account for exactly the channels
     // acmod and lfeon code would put audio in the wrong speakers rather than
     // fail to parse, so it has to be caught explicitly.
-    if (bsi->chanmap && eac3::chanmap::channel_count(*bsi->chanmap) != nchans) {
+    if (bsi->chanmap.has_value() && eac3::chanmap::channel_count(*bsi->chanmap) != nchans) {
         return std::unexpected(DecodeError::kInvalidStream);
     }
 
@@ -1890,7 +1927,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 }
                 const int ngrps = span / (3 * group_size);
                 const auto cplabsexp = static_cast<std::uint8_t>(r.read(4));
-                std::vector<std::uint8_t> groups(static_cast<std::size_t>(ngrps));
+                auto& groups = impl_->exp_groups_;
+                groups.assign(static_cast<std::size_t>(ngrps), 0);
                 for (auto& g : groups) {
                     g = static_cast<std::uint8_t>(r.read(7));
                     if (g > 124) {  // §7.10.2 error condition 17
@@ -1928,7 +1966,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 endmant[static_cast<std::size_t>(ch)] = end;
                 const int ngrps = ch < nfchans ? exponent_group_count(strat, end) : 2;
                 const auto absolute = static_cast<std::uint8_t>(r.read(4));
-                std::vector<std::uint8_t> groups(static_cast<std::size_t>(ngrps));
+                auto& groups = impl_->exp_groups_;
+                groups.assign(static_cast<std::size_t>(ngrps), 0);
                 for (auto& g : groups) {
                     g = static_cast<std::uint8_t>(r.read(7));
                     if (g > 124) {  // §7.10.2 error condition 17
@@ -2120,7 +2159,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
             if (cplinu_blk && cplcode == 1) {  // new info follows
                 auto segs = parse_segments(bin_to_band(cplstrtmant));
-                if (!segs) {
+                if (!segs.has_value()) {
                     return std::unexpected(segs.error());
                 }
                 delta[static_cast<std::size_t>(kCplStream)] = *segs;
@@ -2131,7 +2170,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 const int chcode = chcodes[static_cast<std::size_t>(ch)];
                 if (chcode == 1) {  // new info follows
                     auto segs = parse_segments(0);
-                    if (!segs) {
+                    if (!segs.has_value()) {
                         return std::unexpected(segs.error());
                     }
                     delta[static_cast<std::size_t>(ch)] = *segs;
@@ -2184,7 +2223,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             // fails the surrounding frame decode, matching EMDF's whole
             // reason for existing: a decoder that does not understand this
             // data reads the rest of the frame exactly as it would without it.
-            if (!out.object_metadata) {
+            if (!out.object_metadata.has_value()) {
                 const auto container = emdf::parse_container(skip_bytes);
                 if (container.has_value() && container->has_value()) {
                     for (const auto& payload : **container) {
@@ -2544,7 +2583,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 if (frm->cplinu[static_cast<std::size_t>(blk)] &&
                     chincpl[static_cast<std::size_t>(ch)] && !read_coupling) {
                     const auto shared = read_stream_dispatch(kCplStream, cplstrtmant);
-                    if (!shared) {
+                    if (!shared.has_value()) {
                         return std::unexpected(shared.error());
                     }
                     read_coupling = true;
@@ -2740,8 +2779,25 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 }
                 const auto uch = static_cast<std::size_t>(ch);
                 const bool is_first = ch == tail.firstchincpl;
-                std::vector<double> amp_bin(static_cast<std::size_t>(bins));
-                std::vector<double> angle_bin(static_cast<std::size_t>(bins));
+                // Grow to the widest coupling range seen, never shrink. The
+                // range is a property of the stream rather than of the block,
+                // so in practice this allocates on the first coupled block of
+                // the first frame and never again.
+                const auto ubins = static_cast<std::size_t>(bins);
+                if (impl_->ecpl_amp_scratch_.size() < ubins) {
+                    impl_->ecpl_amp_scratch_.resize(ubins);
+                    impl_->ecpl_angle_scratch_.resize(ubins);
+                }
+                // Zeroed to the width in use before each call, because the two
+                // callees write only the bins their band structure covers and
+                // the vectors these replaced were value-initialised. Reusing
+                // storage means that is no longer implied by the construction,
+                // so it is done here - a few hundred stores against an
+                // allocation and a free.
+                const std::span<double> amp_bin{impl_->ecpl_amp_scratch_.data(), ubins};
+                const std::span<double> angle_bin{impl_->ecpl_angle_scratch_.data(), ubins};
+                std::fill(amp_bin.begin(), amp_bin.end(), 0.0);
+                std::fill(angle_bin.begin(), angle_bin.end(), 0.0);
                 eac3::ecpl_amplitudes(tail.ecplamp_raw[uch], tail.ecplchaos_raw[uch],
                                       tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
                                       tail.ecpl_end_subbnd, tail.ecpl_structure, amp_bin);
@@ -3203,7 +3259,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     std::span<const std::byte> unit, std::span<const std::span<float>> external) {
     AC3_ZONE_SCOPED_N("eac3_decode_access_unit");
     const auto frames = split_frames(unit);
-    if (!frames) {
+    if (!frames.has_value()) {
         return std::unexpected(frames.error());
     }
     if (frames->empty()) {
@@ -3225,9 +3281,9 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // parsed as a plausible id and silently selected the wrong programme. The
     // identity is asserted rather than parsed, exactly as the key loop below
     // and decode_substream both already do.
-    if (impl_->config_.programme) {
+    if (impl_->config_.programme.has_value()) {
         const auto lead_bsid = stream_bsid(frames->front());
-        if (!lead_bsid) {
+        if (!lead_bsid.has_value()) {
             return std::unexpected(lead_bsid.error());
         }
         if (*lead_bsid <= 8) {
@@ -3239,7 +3295,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         } else {
             BitReader peek{frames->front()};
             const auto lead_bsi = parse_bsi(peek, frames->front().size());
-            if (!lead_bsi) {
+            if (!lead_bsi.has_value()) {
                 return std::unexpected(lead_bsi.error());
             }
             if (lead_bsi->substreamid != *impl_->config_.programme ||
@@ -3267,7 +3323,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         // parse_bsi would read strmtyp out of crc1 and substreamid out of the
         // rest of it, so the key is asserted here rather than parsed.
         const auto frame_bsid = stream_bsid(frame);
-        if (!frame_bsid) {
+        if (!frame_bsid.has_value()) {
             return std::unexpected(frame_bsid.error());
         }
         // §E2.3.1.2's AC-3 core is always the independent substream, never a
@@ -3280,7 +3336,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         } else {
             BitReader peek{frame};
             const auto bsi = parse_bsi(peek, frame.size());
-            if (!bsi) {
+            if (!bsi.has_value()) {
                 return std::unexpected(bsi.error());
             }
             keys.push_back(static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid);
@@ -3369,7 +3425,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // own the winner wherever there is one, which is every stream this
     // project produces, so nothing about those changes.
     for (const auto& sub : substreams) {
-        if (sub.object_metadata) {
+        if (sub.object_metadata.has_value()) {
             out.object_metadata = sub.object_metadata;
             out.object_audio = sub.object_audio;
             out.object_indices = sub.object_indices;
@@ -3387,11 +3443,11 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // program as a whole was concealed by, and it outranks a narrowed layout
     // because it says the audio itself was substituted rather than merely
     // that some of it is missing.
-    if (bed_only) {
+    if (bed_only.has_value()) {
         out.concealed = Concealment{.error = *bed_only, .action = ConcealmentAction::kBedOnly};
     }
     for (const auto& sub : substreams) {
-        if (sub.concealed) {
+        if (sub.concealed.has_value()) {
             out.concealed = sub.concealed;
             break;
         }
