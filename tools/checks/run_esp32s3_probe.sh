@@ -8,9 +8,9 @@
 #
 # WHAT THIS GATES, and what it deliberately does not:
 #
-#   - The probe's own verdict. Both fixtures decoded, every channel's level
-#     against apps/baremetal/fixture.hpp, result=pass. A failure here means the
-#     decode is wrong on Xtensa.
+#   - The probe's own verdict. Every fixture in apps/baremetal/fixture.hpp
+#     decoded, every channel's level checked, result=pass. A failure here
+#     means the decode is wrong on Xtensa.
 #   - Internal SRAM. The ESP32-S3 has 341,760 bytes of DIRAM and this profile
 #     has to fit its static data AND its peak heap inside it. That is the
 #     constraint the port actually ran into - it failed with
@@ -45,6 +45,19 @@ fi
 : "${AC3FORGE_ESP32S3_MAX_DIRAM_BYTES:=170000}"
 : "${AC3FORGE_ESP32S3_MAX_HEAP_BYTES:=200000}"
 : "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
+# Enhanced coupling costs more per frame than the other fixtures for reasons
+# that are in §E3.5 rather than in a regression - see run_baremetal_probe.sh's
+# own copy of this ceiling for the detail.
+: "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=130}"
+# Bytes still live when the probe finishes, after every decoder it made has been
+# destroyed: the library's process-lifetime scratch, which nothing releases
+# while the task that decoded is still running. The arm-none-eabi leg measures
+# 34,232 and this leg has not been measured (no qemu-system-xtensa or ESP-IDF on
+# the machine the fixtures were added on), so this ceiling is that number with
+# headroom rather than one derived from this target. It matters more here than
+# there: these are bytes of the 341,760 internal SRAM that the decode holds for
+# as long as the task lives.
+: "${AC3FORGE_ESP32S3_MAX_RETAINED_BYTES:=40000}"
 
 OUTPUT="$(mktemp)"
 trap 'rm -f "$OUTPUT"' EXIT
@@ -118,16 +131,44 @@ if (( heap > AC3FORGE_ESP32S3_MAX_HEAP_BYTES )); then
     exit 1
 fi
 
-for codec in ac3 eac3; do
-    per_frame=$(sed -n "s/.*${codec}\.steady_allocs_per_frame=\([0-9]*\).*/\1/p" "$OUTPUT" | head -1)
-    if [[ -z "$per_frame" ]]; then
-        echo "error: the probe reported no ${codec}.steady_allocs_per_frame line" >&2
+retained=$(sed -n 's/.*heap\.retained_bytes=\([0-9]*\).*/\1/p' "$OUTPUT" | head -1)
+if [[ -z "$retained" ]]; then
+    echo "error: the probe reported no heap.retained_bytes line" >&2
+    exit 1
+fi
+echo "retained after teardown: $retained bytes (ceiling $AC3FORGE_ESP32S3_MAX_RETAINED_BYTES)"
+if (( retained > AC3FORGE_ESP32S3_MAX_RETAINED_BYTES )); then
+    echo "::error title=ESP32-S3 footprint regression::$retained bytes are still live after every decoder was destroyed, ceiling is $AC3FORGE_ESP32S3_MAX_RETAINED_BYTES - see the heap.retained_bucket lines for which buffer" >&2
+    exit 1
+fi
+
+# Every fixture's steady-state churn, held to one ceiling: they are the same
+# requirement and a regression in any of them is the same kind of news.
+#
+# The fixture names come from the probe's own output rather than from a list
+# kept here, so adding one (apps/baremetal/probe.cpp's kEac3Fixtures and
+# tools/generators/gen_baremetal_fixture.py's STREAMS) does not also mean
+# remembering to widen a gate in two runner scripts. A hardcoded list still
+# PASSES when a fixture is added and left off it, and the fixture nobody
+# remembered is exactly the one whose churn nobody has seen.
+# grep -o rather than a sed capture: the probe puts several key=value pairs on
+# one line, and a leading `.*` in a substitution is greedy enough to swallow the
+# fixture name and leave the capture empty.
+CHURN=$(grep -o '[a-z0-9_]*\.steady_allocs_per_frame=[0-9]*' "$OUTPUT" | sed 's/\.steady_allocs_per_frame=/ /')
+if [[ -z "$CHURN" ]]; then
+    echo "error: the probe reported no <fixture>.steady_allocs_per_frame line" >&2
+    exit 1
+fi
+while read -r codec per_frame; do
+    case "$codec" in
+        *ecpl*) ceiling=$AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ECPL ;;
+        *) ceiling=$AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME ;;
+    esac
+    echo "churn: ${codec} = ${per_frame} allocations/frame (ceiling ${ceiling})"
+    if (( per_frame > ceiling )); then
+        echo "::error title=ESP32-S3 footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $ceiling" >&2
         exit 1
     fi
-    if (( per_frame > AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME )); then
-        echo "::error title=ESP32-S3 footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME" >&2
-        exit 1
-    fi
-done
+done <<< "$CHURN"
 
 echo "ESP32-S3 decoder probe: pass"

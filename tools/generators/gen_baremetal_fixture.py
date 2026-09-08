@@ -13,14 +13,26 @@ reproduces the header byte for byte.
 
     python tools/generators/gen_baremetal_fixture.py --ac3cli build/.../bin/ac3cli
 
-Two streams, because the profile's library contains two decoders and a probe
-that exercised only one would leave the other unproven at link time as well as
-at run time:
+The streams are declared in one table (STREAMS below), each naming a layout
+from another (LAYOUTS). Adding a configuration is a row in the first; adding a
+channel layout is a row in the second. What each row is for:
 
   - AC-3 5.1 at 448 kbit/s: the widest classic layout, coupling on.
   - E-AC-3 5.1 at 384 kbit/s with tools=all: AHT, spectral extension and
-    coupling stacked, so the Annex E paths and the tables behind them are all
-    reached.
+    standard coupling stacked.
+  - E-AC-3 5.1 at 384 kbit/s with tools=cpl+ecpl: §E3.5 enhanced coupling,
+    which "all" does not select (parse_tools maps it to cpl+spx+aht) and which
+    no other fixture here reaches. It is the branch behind ecpl_channel_spectrum
+    and the 512-point DFT src/core/fft.cpp is in the minimal source list for -
+    both linked by every build of this profile and, until this stream existed,
+    never executed by the probe.
+  - E-AC-3 2/0 at 192 kbit/s with tools=all: a non-5.1 layout, and with it
+    §7.5.4 rematrixing, which is 2/0-only and so unreachable from any of the
+    above however their tools are set.
+
+The profile's library contains two decoders, and a probe that exercised only
+one would leave the other unproven at link time as well as at run time - which
+is why the AC-3 row is here at all.
 
 Six frames each. Enough that frame 0's cold MDCT overlap is not the whole
 sample (the same reason the C++ suite compares from frame 1 onward), small
@@ -36,23 +48,97 @@ import struct
 import subprocess
 import sys
 import tempfile
+import typing
 import wave
 
 SAMPLES_PER_FRAME = 1536
 FRAMES = 6
 
+# --- the fixture tables ------------------------------------------------------
 # ac3cli's decode writes a WAV, and a WAV interleaves 5.1 as FL FR FC LFE BL BR
 # (WAVE_FORMAT_EXTENSIBLE) - not the order the DECODER hands its channels back
 # in, which is AC-3's own Table 5.8 order L C R Ls Rs LFE. The probe reads the
 # decoder's output directly, so the levels here have to be permuted into coded
 # order or every channel but the first is compared against its neighbour's
-# number. Entry i is the WAV position holding coded channel i; it is the
-# inverse of ac3::plan::wav_order()'s own mapping for this layout, written out
-# rather than derived because this fixture is 5.1 and only 5.1.
-WAV_TO_CODED_51 = [0, 2, 1, 4, 5, 3]
+# number.
+#
+# `wav_position[i]` is the WAV position holding coded channel i - the inverse of
+# ac3::plan::wav_order()'s own mapping for that layout. Written out per layout
+# rather than derived, because deriving it means reimplementing wav_order() and
+# kWavSpeakerOrder in Python and then keeping two statements of the same
+# permutation agreeing. One row is checked here (it must be a permutation) and
+# the whole row is checked on the target: a wrong entry makes the probe compare
+# a channel against its neighbour's level, which for these fixtures differ by
+# well over the 5% tolerance in probe.cpp's level_matches.
+
+
+class Layout(typing.NamedTuple):
+    cli_name: str  # what ac3cli's [layout] positional calls it
+    source: str  # programme material under tests/golden/audio/
+    wav_position: tuple[int, ...]
+    coded_order: str  # the channel names in coded order, for the emitted comment
+
+
+LAYOUTS = {
+    "51": Layout(
+        cli_name="51",
+        source="reference_51.wav",
+        wav_position=(0, 2, 1, 4, 5, 3),
+        coded_order="Table 5.8: L, C, R, Ls, Rs, LFE",
+    ),
+    # Two channels, and both orders agree: WAV's FL FR and coded L R are the
+    # same sequence, so this row is an identity permutation rather than a
+    # simplification of one.
+    "stereo": Layout(
+        cli_name="stereo",
+        source="reference_stereo.wav",
+        wav_position=(0, 1),
+        coded_order="Table 5.8 acmod 2: L, R",
+    ),
+}
+
+
+class Stream(typing.NamedTuple):
+    cxx: str  # the generated array's name, minus the k prefix and the suffix
+    key: str  # what probe.cpp's output labels this stream's lines with
+    label: str  # the emitted comment
+    layout: str  # a key into LAYOUTS
+    encode: tuple[str, ...]  # ac3cli's argv after <in> <out>
+
+
+STREAMS = (
+    Stream(
+        cxx="Ac3",
+        key="ac3",
+        label="AC-3 5.1 448 kbit/s, coupling",
+        layout="51",
+        encode=("encode", "448", "51", "couple"),
+    ),
+    Stream(
+        cxx="Eac3",
+        key="eac3",
+        label="E-AC-3 5.1 384 kbit/s, tools=all (AHT + spx + standard coupling)",
+        layout="51",
+        encode=("eac3-encode", "384", "all", "51"),
+    ),
+    Stream(
+        cxx="Eac3Ecpl",
+        key="eac3_ecpl",
+        label="E-AC-3 5.1 384 kbit/s, tools=cpl+ecpl (§E3.5 enhanced coupling)",
+        layout="51",
+        encode=("eac3-encode", "384", "cpl+ecpl", "51"),
+    ),
+    Stream(
+        cxx="Eac3Stereo",
+        key="eac3_stereo",
+        label="E-AC-3 2/0 192 kbit/s, tools=all (§7.5.4 rematrixing)",
+        layout="stereo",
+        encode=("eac3-encode", "192", "all", "stereo"),
+    ),
+)
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-REFERENCE_WAV = REPO / "tests" / "golden" / "audio" / "reference_51.wav"
+AUDIO = REPO / "tests" / "golden" / "audio"
 OUTPUT = REPO / "apps" / "baremetal" / "fixture.hpp"
 
 
@@ -120,13 +206,16 @@ def channel_rms(path: pathlib.Path) -> list[float]:
     return [(sums[c] / counts[c]) ** 0.5 if counts[c] else 0.0 for c in range(channels)]
 
 
-def to_coded_order(wav_values: list[float]) -> list[float]:
-    """Reorder per-channel values from WAV interleave order to AC-3 coded order."""
-    if len(wav_values) != len(WAV_TO_CODED_51):
+def to_coded_order(layout: Layout, wav_values: list[float]) -> list[float]:
+    """Reorder per-channel values from WAV interleave order to coded order."""
+    if sorted(layout.wav_position) != list(range(len(layout.wav_position))):
+        raise SystemExit(f"{layout.cli_name}: wav_position is not a permutation")
+    if len(wav_values) != len(layout.wav_position):
         raise SystemExit(
-            f"expected {len(WAV_TO_CODED_51)} channels for 5.1, got {len(wav_values)}"
+            f"{layout.cli_name}: expected {len(layout.wav_position)} channels, "
+            f"got {len(wav_values)}"
         )
-    return [wav_values[position] for position in WAV_TO_CODED_51]
+    return [wav_values[position] for position in layout.wav_position]
 
 
 def hex_array(data: bytes, indent: str = "    ") -> str:
@@ -145,28 +234,30 @@ def main() -> int:
     ac3cli = pathlib.Path(args.ac3cli).resolve()
     if not ac3cli.exists():
         raise SystemExit(f"no such file: {ac3cli}")
-    if not REFERENCE_WAV.exists():
-        raise SystemExit(f"missing fixture source: {REFERENCE_WAV}")
+    for layout in LAYOUTS.values():
+        if not (AUDIO / layout.source).exists():
+            raise SystemExit(f"missing fixture source: {AUDIO / layout.source}")
 
     work = pathlib.Path(tempfile.mkdtemp(prefix="ac3-baremetal-"))
     try:
-        source = work / "source.wav"
-        trim_wav(REFERENCE_WAV, source, FRAMES)
+        # One trimmed source per layout, shared by every stream that names it.
+        sources = {}
+        for name, layout in LAYOUTS.items():
+            sources[name] = work / f"source_{name}.wav"
+            trim_wav(AUDIO / layout.source, sources[name], FRAMES)
 
-        ac3 = work / "fixture.ac3"
-        ec3 = work / "fixture.ec3"
-        run([str(ac3cli), "encode", str(source), str(ac3), "448", "51", "couple"])
-        run([str(ac3cli), "eac3-encode", str(source), str(ec3), "384", "all", "51"])
-
-        ac3_decoded = work / "fixture_ac3.wav"
-        ec3_decoded = work / "fixture_ec3.wav"
-        run([str(ac3cli), "decode", str(ac3), str(ac3_decoded)])
-        run([str(ac3cli), "decode", str(ec3), str(ec3_decoded)])
-
-        streams = {
-            "ac3": (ac3.read_bytes(), to_coded_order(channel_rms(ac3_decoded))),
-            "eac3": (ec3.read_bytes(), to_coded_order(channel_rms(ec3_decoded))),
-        }
+        streams = []
+        for stream in STREAMS:
+            layout = LAYOUTS[stream.layout]
+            command, *tail = stream.encode
+            suffix = "ac3" if command == "encode" else "ec3"
+            coded = work / f"{stream.key}.{suffix}"
+            decoded = work / f"{stream.key}.wav"
+            run([str(ac3cli), command, str(sources[stream.layout]), str(coded), *tail])
+            run([str(ac3cli), "decode", str(coded), str(decoded)])
+            streams.append(
+                (stream, coded.read_bytes(), to_coded_order(layout, channel_rms(decoded)))
+            )
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -180,11 +271,12 @@ def main() -> int:
         "// GENERATED by tools/generators/gen_baremetal_fixture.py - do not edit by hand.",
         "//",
         "// The bitstreams apps/baremetal/probe.cpp decodes and the per-channel levels it",
-        "// checks them against (roadmap PF7). Both streams are this project's own encoder",
-        f"// over the first {FRAMES} frames of tests/golden/audio/reference_51.wav; the",
-        "// expected levels are that encoder's output decoded by this project's own decoder,",
-        "// so they are a REGRESSION reference (has this build changed?), not an independent",
-        "// oracle - the FFmpeg and Dolby comparisons in tools/ci/ are that.",
+        "// checks them against (roadmap PF7). Every stream is this project's own encoder",
+        f"// over the first {FRAMES} frames of a file under tests/golden/audio/ (named per",
+        "// layout by LAYOUTS in the generator); the expected levels are that encoder's",
+        "// output decoded by this project's own decoder, so they are a REGRESSION reference",
+        "// (has this build changed?), not an independent oracle - the FFmpeg and Dolby",
+        "// comparisons in tools/ci/ are that.",
         "//",
         "// RMS is stored scaled by 1e6 and rounded, as an integer: newlib-nano's printf has",
         "// no floating-point support unless -u _printf_float is linked in, and a probe whose",
@@ -196,19 +288,17 @@ def main() -> int:
         "",
     ]
 
-    for name, (data, rms) in streams.items():
-        label = "AC-3 5.1 448 kbit/s, coupling" if name == "ac3" else \
-                "E-AC-3 5.1 384 kbit/s, tools=all (AHT + spx + coupling)"
-        stream_name = f"k{name.capitalize()}Stream"
+    for stream, data, rms in streams:
+        layout = LAYOUTS[stream.layout]
         body += [
-            f"// {label} - {len(data)} bytes, {FRAMES} frames.",
-            f"inline constexpr std::array<std::uint8_t, {len(data)}> {stream_name}{{{{",
+            f"// {stream.label} - {len(data)} bytes, {FRAMES} frames.",
+            f"inline constexpr std::array<std::uint8_t, {len(data)}> k{stream.cxx}Stream{{{{",
             hex_array(data),
             "}};",
             "",
-            "// Per-channel RMS x 1e6, in the decoder's own AC-3 coded order",
-            "// (Table 5.8: L, C, R, Ls, Rs, LFE) - see WAV_TO_CODED_51 in the generator.",
-            f"inline constexpr std::array<std::int32_t, {len(rms)}> k{name.capitalize()}Rms{{{{",
+            "// Per-channel RMS x 1e6, in the decoder's own coded order",
+            f"// ({layout.coded_order}) - see LAYOUTS in the generator.",
+            f"inline constexpr std::array<std::int32_t, {len(rms)}> k{stream.cxx}Rms{{{{",
             "    " + ", ".join(str(round(value * 1e6)) for value in rms),
             "}};",
             "",
@@ -220,7 +310,7 @@ def main() -> int:
     ]
 
     OUTPUT.write_text("\n".join(body), encoding="utf-8", newline="\n")
-    total = sum(len(data) for data, _ in streams.values())
+    total = sum(len(data) for _, data, _ in streams)
     print(f"wrote {OUTPUT.relative_to(REPO)} ({total} bitstream bytes)")
     return 0
 

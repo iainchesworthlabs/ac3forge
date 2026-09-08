@@ -7,7 +7,7 @@
 #
 # Two things are checked, and they fail for different reasons:
 #
-#   1. The probe's own verdict. It decodes both fixtures, compares every
+#   1. The probe's own verdict. It decodes every fixture, compares every
 #      channel's level against apps/baremetal/fixture.hpp, and prints
 #      result=pass or result=fail (see apps/baremetal/probe.cpp). A failure
 #      here means the decode is wrong on this target.
@@ -57,8 +57,26 @@ fi
 # Allocations per frame in the steady state, whichever codec is worse. The
 # requirement PF7 states is ZERO and this is not it - see docs/building.md's
 # gap note. The ceiling exists so the distance from zero cannot quietly grow
-# while that gap is open: today's numbers are 46 (AC-3) and 87 (E-AC-3).
+# while that gap is open: today's numbers are 47 (AC-3), 86 (E-AC-3 tools=all)
+# and 43 (E-AC-3 2/0).
 : "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
+# Enhanced coupling's own ceiling, because 126 per frame under it is not the
+# same news as 126 under any of the three above. §E3.5 reconstructs each
+# coupled channel through three 512-point inverse transforms and a DFT per
+# block (ecpl_channel_spectrum), and carries a 22-sub-band geometry instead of
+# standard coupling's 18 - so it allocates more per block for reasons that are
+# in the tool, not in a regression. Holding it to the general 100 would mean
+# either not covering §E3.5 at all or raising the ceiling for the other three
+# fixtures to a number none of them is anywhere near, which is what a single
+# global ceiling would have done here.
+: "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=130}"
+# Bytes still live when the probe finishes, after every decoder it made has
+# been destroyed. Not a leak and not per-frame growth: it is process-lifetime
+# scratch inside the library, and on this target nothing ever releases it
+# because the only thread never exits. Measured 34,232 - see the
+# heap.retained_bucket lines for the breakdown and docs/building.md's gap note
+# for what the three contributors are.
+: "${AC3FORGE_MAX_RETAINED_BYTES:=40000}"
 
 if [[ "$HOST" == "1" ]]; then
     PRESET=config-linux-gcc-minimal
@@ -120,19 +138,45 @@ if (( heap > AC3FORGE_MAX_HEAP_BYTES )); then
     exit 1
 fi
 
-# Both codecs' steady-state churn, held to one ceiling: they are the same
-# requirement and a regression in either is the same kind of news.
-for codec in ac3 eac3; do
-    per_frame=$(sed -n "s/.*${codec}\.steady_allocs_per_frame=\([0-9]*\).*/\1/p" "$OUTPUT" | head -1)
-    if [[ -z "$per_frame" ]]; then
-        echo "error: the probe reported no ${codec}.steady_allocs_per_frame line" >&2
+retained=$(sed -n 's/.*heap\.retained_bytes=\([0-9]*\).*/\1/p' "$OUTPUT" | head -1)
+if [[ -z "$retained" ]]; then
+    echo "error: the probe reported no heap.retained_bytes line" >&2
+    exit 1
+fi
+echo "retained after teardown: $retained bytes (ceiling $AC3FORGE_MAX_RETAINED_BYTES)"
+if (( retained > AC3FORGE_MAX_RETAINED_BYTES )); then
+    echo "::error title=Footprint regression::$retained bytes are still live after every decoder was destroyed, ceiling is $AC3FORGE_MAX_RETAINED_BYTES - see the heap.retained_bucket lines for which buffer" >&2
+    exit 1
+fi
+
+# Every fixture's steady-state churn, held to one ceiling: they are the same
+# requirement and a regression in any of them is the same kind of news.
+#
+# The fixture names come from the probe's own output rather than from a list
+# kept here, so adding one (apps/baremetal/probe.cpp's kEac3Fixtures and
+# tools/generators/gen_baremetal_fixture.py's STREAMS) does not also mean
+# remembering to widen a gate in two runner scripts. A hardcoded list still
+# PASSES when a fixture is added and left off it, and the fixture nobody
+# remembered is exactly the one whose churn nobody has seen.
+# grep -o rather than a sed capture: the probe puts several key=value pairs on
+# one line, and a leading `.*` in a substitution is greedy enough to swallow the
+# fixture name and leave the capture empty.
+CHURN=$(grep -o '[a-z0-9_]*\.steady_allocs_per_frame=[0-9]*' "$OUTPUT" | sed 's/\.steady_allocs_per_frame=/ /')
+if [[ -z "$CHURN" ]]; then
+    echo "error: the probe reported no <fixture>.steady_allocs_per_frame line" >&2
+    exit 1
+fi
+while read -r codec per_frame; do
+    case "$codec" in
+        *ecpl*) ceiling=$AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ECPL ;;
+        *) ceiling=$AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME ;;
+    esac
+    echo "churn: ${codec} = ${per_frame} allocations/frame (ceiling ${ceiling})"
+    if (( per_frame > ceiling )); then
+        echo "::error title=Footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $ceiling" >&2
         exit 1
     fi
-    if (( per_frame > AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME )); then
-        echo "::error title=Footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME" >&2
-        exit 1
-    fi
-done
+done <<< "$CHURN"
 
 if [[ -n "${AC3FORGE_FOOTPRINT_SUMMARY:-}" ]]; then
     cp "$OUTPUT" "$AC3FORGE_FOOTPRINT_SUMMARY"

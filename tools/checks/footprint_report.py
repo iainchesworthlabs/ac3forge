@@ -198,9 +198,13 @@ def main() -> int:
         for key, label in (
             ("ac3.steady_allocs_per_frame", "AC-3 allocations per frame (steady state)"),
             ("eac3.steady_allocs_per_frame", "E-AC-3 allocations per frame (steady state)"),
+            ("eac3_ecpl.steady_allocs_per_frame",
+             "E-AC-3 enhanced coupling allocations per frame (steady state)"),
+            ("eac3_stereo.steady_allocs_per_frame",
+             "E-AC-3 2/0 allocations per frame (steady state)"),
             ("ac3.first_frame_allocs", "AC-3 allocations, first frame"),
             ("eac3.first_frame_allocs", "E-AC-3 allocations, first frame"),
-            ("heap.leaked_bytes", "Leaked at exit"),
+            ("heap.retained_bytes", "Retained after teardown"),
         ):
             if key in probe:
                 rows.append((label, probe[key]))

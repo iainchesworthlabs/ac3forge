@@ -12,9 +12,9 @@
 //      src/forge/minimal.cmake, and --gc-sections means an unreachable
 //      function cannot paper over one.
 //
-//   2. Does it produce the right audio? Every frame of both fixtures is
-//      decoded and each channel's RMS compared against what the same library
-//      produced on the host (apps/baremetal/fixture.hpp).
+//   2. Does it produce the right audio? Every frame of every fixture in
+//      apps/baremetal/fixture.hpp is decoded and each channel's RMS compared
+//      against what the same library produced on the host.
 //
 //   3. What does it actually cost? Peak heap in bytes, allocation counts split
 //      between the first frame and the steady state, and the static working
@@ -201,6 +201,12 @@ static_assert(ac3probe::kAc3Rms.size() <= kMaxChannels,
 static_assert(ac3probe::kEac3Rms.size() <= kMaxChannels,
               "the E-AC-3 fixture has more channels than the probe's PCM block holds - raise "
               "kMaxChannels");
+static_assert(ac3probe::kEac3EcplRms.size() <= kMaxChannels,
+              "the enhanced-coupling fixture has more channels than the probe's PCM block "
+              "holds - raise kMaxChannels");
+static_assert(ac3probe::kEac3StereoRms.size() <= kMaxChannels,
+              "the stereo fixture has more channels than the probe's PCM block holds - raise "
+              "kMaxChannels");
 
 void bind_pcm_spans() {
     for (std::size_t ch = 0; ch < kMaxChannels; ++ch) {
@@ -239,6 +245,16 @@ void fail(const char* what, long got, long expected) {
     g_failed = true;
 }
 
+// The same, for a check a fixture owns rather than the run as a whole. The
+// codec prefix is what says WHICH fixture, now that three of them share one
+// decode function: "eac3.frames" would name the first of them for a failure in
+// any of the three.
+void fail(const char* codec, const char* what, long got, long expected) {
+    std::printf("check=%s.%s status=fail got=%ld expected=%ld\n", codec, what, got,
+                expected);
+    g_failed = true;
+}
+
 // 5% of the expected value, floored so a near-silent channel is not held to an
 // impossible absolute bound. Generous on purpose: this checks that the decode
 // is RIGHT, not that two floating-point implementations agree bit for bit -
@@ -256,7 +272,7 @@ void report_levels(const char* codec, const LevelAccumulator& levels,
         std::printf("%s.rms[%u]=%ld expected=%ld\n", codec, static_cast<unsigned>(ch),
                     static_cast<long>(got), static_cast<long>(expected[ch]));
         if (!level_matches(got, expected[ch])) {
-            fail("rms", got, expected[ch]);
+            fail(codec, "rms", got, expected[ch]);
         }
     }
 }
@@ -357,13 +373,22 @@ int decode_ac3() {
     return 0;
 }
 
-int decode_eac3() {
+// Every E-AC-3 fixture goes through this one function. What differs between
+// them is the tool set and the layout the ENCODER chose, which is a property
+// of the bitstream rather than of the call: decode_access_unit_into's contract
+// is the same for all of them, and a per-fixture copy of this loop would only
+// give three places for a check to be dropped from.
+//
+// `codec` prefixes every line this emits, so each fixture's levels, churn and
+// timing stay separable in the output the runner scripts gate on.
+int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
+                std::span<const std::int32_t> expected) {
     const std::span<const std::byte> stream{
-        reinterpret_cast<const std::byte*>(ac3probe::kEac3Stream.data()),
-        ac3probe::kEac3Stream.size()};
+        reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
     const auto units = ac3::split_access_units(stream);
     if (!units) {
-        std::printf("check=eac3.split status=fail error=%d\n", static_cast<int>(units.error()));
+        std::printf("check=%s.split status=fail error=%d\n", codec,
+                    static_cast<int>(units.error()));
         return 1;
     }
 
@@ -379,14 +404,15 @@ int decode_eac3() {
         const auto decoded = decoder.decode_access_unit_into(unit, g_pcm_spans);
         churn.decode_us += ac3probe::now_us() - started_us;
         if (!decoded) {
-            std::printf("check=eac3.decode status=fail unit=%d error=%d\n", index,
+            std::printf("check=%s.decode status=fail unit=%d error=%d\n", codec, index,
                         static_cast<int>(decoded.error()));
             return 1;
         }
-        // std::nullopt is the §3.7 hold-back, not an error. tools=all does not
-        // turn that tool on, so this fixture never takes the branch - handled
-        // anyway so a regenerated fixture that DOES use it fails on levels
-        // rather than on a silent miscount.
+        // std::nullopt is the §3.7 hold-back, not an error. No fixture here
+        // selects transient pre-noise processing - neither "all" nor "cpl+ecpl"
+        // includes tpn - so none of them takes this branch today; handled anyway
+        // so a fixture that DOES use it fails on levels rather than on a silent
+        // miscount.
         if (decoded->has_value()) {
             channels = static_cast<int>((*decoded)->layout.count);
             for (int ch = 0; ch < channels; ++ch) {
@@ -403,16 +429,42 @@ int decode_eac3() {
     }
 
     if (churn.frames != ac3probe::kFrames) {
-        fail("eac3.frames", churn.frames, ac3probe::kFrames);
+        fail(codec, "frames", churn.frames, ac3probe::kFrames);
     }
-    if (channels != static_cast<int>(ac3probe::kEac3Rms.size())) {
-        fail("eac3.channels", channels, static_cast<long>(ac3probe::kEac3Rms.size()));
+    if (channels != static_cast<int>(expected.size())) {
+        fail(codec, "channels", channels, static_cast<long>(expected.size()));
     }
-    report_levels("eac3", levels, ac3probe::kEac3Rms);
-    report_churn("eac3", churn);
-    report_timing("eac3", churn);
+    report_levels(codec, levels, expected);
+    report_churn(codec, churn);
+    report_timing(codec, churn);
     return 0;
 }
+
+// The E-AC-3 fixtures, in the order the probe decodes them. Adding one is a
+// row here and a stream in tools/generators/gen_baremetal_fixture.py's own
+// table; nothing else in this file changes, and neither runner script names a
+// fixture - both gate every `<name>.steady_allocs_per_frame` line the probe
+// prints.
+struct Eac3Fixture {
+    const char* codec;
+    std::span<const std::uint8_t> stream;
+    std::span<const std::int32_t> rms;
+};
+
+const std::array<Eac3Fixture, 3> kEac3Fixtures{{
+    {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms},
+    // §E3.5's alternate coupling mode. `tools=all` does not select it
+    // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
+    // ecpl_channel_spectrum - and the 512-point DFT src/core/fft.cpp is in the
+    // minimal source list for - are linked into every build of this profile
+    // and executed by none of them.
+    {"eac3_ecpl", ac3probe::kEac3EcplStream, ac3probe::kEac3EcplRms},
+    // 2/0, the only layout §7.5.4 rematrixing exists in: no 5.1 fixture
+    // reaches it whatever its tools are. Also the first fixture whose channel
+    // count is not six, so the layout-driven half of the level check is
+    // exercised rather than merely written.
+    {"eac3_stereo", ac3probe::kEac3StereoStream, ac3probe::kEac3StereoRms},
+}};
 
 // The profile's one behavioural difference, checked rather than asserted in a
 // comment: asking for the direct-form transform this build does not carry is
@@ -454,17 +506,37 @@ int ac3probe::run() {
 
     bind_pcm_spans();
 
-    if (decode_ac3() != 0 || decode_eac3() != 0) {
+    if (decode_ac3() != 0) {
         std::printf("result=fail\n");
         return 1;
     }
+    for (const auto& fixture : kEac3Fixtures) {
+        if (decode_eac3(fixture.codec, fixture.stream, fixture.rms) != 0) {
+            std::printf("result=fail\n");
+            return 1;
+        }
+    }
     check_reference_transform_refused();
 
-    std::printf("heap.peak_bytes=%lu heap.allocs=%lu heap.frees=%lu heap.leaked_bytes=%lu\n",
+    // Every decoder this run made is out of scope by now, so whatever is still
+    // live is held by something with process lifetime inside the library rather
+    // than by a frame that forgot to free. RETAINED, not leaked: the two are
+    // different news and only one of them grows. The per-size breakdown below
+    // says which buffer, because a total on its own cannot be acted on.
+    std::printf("heap.peak_bytes=%lu heap.allocs=%lu heap.frees=%lu heap.retained_bytes=%lu\n",
                 static_cast<unsigned long>(g_peak_bytes),
                 static_cast<unsigned long>(g_alloc_calls),
                 static_cast<unsigned long>(g_free_calls),
                 static_cast<unsigned long>(g_live_bytes));
+    for (std::size_t bucket = 0; bucket < kBuckets; ++bucket) {
+        if (g_live_by_bucket[bucket] == 0) {
+            continue;
+        }
+        std::printf("heap.retained_bucket[%lu]=%lu count=%lu\n",
+                    static_cast<unsigned long>(std::size_t{1} << bucket),
+                    static_cast<unsigned long>(g_live_by_bucket[bucket]),
+                    static_cast<unsigned long>(g_live_count_by_bucket[bucket]));
+    }
     std::printf("heap.largest_alloc_bytes=%lu\n",
                 static_cast<unsigned long>(g_largest_alloc));
     for (std::size_t bucket = 0; bucket < kBuckets; ++bucket) {
@@ -483,9 +555,12 @@ int ac3probe::run() {
                     static_cast<unsigned long>(g_large_peak[i]),
                     static_cast<unsigned long>(g_large_size[i] * g_large_peak[i]));
     }
-    if (g_live_bytes != 0) {
-        fail("heap.leaked", static_cast<long>(g_live_bytes), 0);
-    }
+    // Not failed here. Retained bytes are a FOOTPRINT number, and every other
+    // footprint ceiling in this profile lives in the runner scripts where it can
+    // be overridden and read next to the rest - see
+    // AC3FORGE_MAX_RETAINED_BYTES in tools/checks/run_baremetal_probe.sh. What
+    // this function fails on is correctness: levels, frame and channel counts,
+    // and the direct-form transform being refused.
 
     std::printf("result=%s\n", g_failed ? "fail" : "pass");
     return g_failed ? 1 : 0;

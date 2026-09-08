@@ -553,8 +553,17 @@ struct EcplSpectrumScratch {
 //
 // A pointer costs every task four bytes instead, and the 32 KB is paid once per
 // thread that actually decodes enhanced coupling. std::unique_ptr rather than a
-// raw pointer so it is still released at thread exit and the probe's
-// heap.leaked_bytes stays at zero.
+// raw pointer so it is released at thread exit where there is one.
+//
+// On a bare-metal target there is not one. apps/baremetal's probe measures
+// 34,232 bytes still live when it finishes - this 32,768, the 1,440-byte
+// ecpl_bin_angle_scratch vector above, and 24 bytes of __cxa_thread_atexit
+// registration for the two of them - because the only thread never exits, so
+// the destructor that would release them never runs. That is retention, not a
+// leak: it is bounded, paid once, and the point of caching it. It is still 32 KB
+// of an ESP32-S3's 341,760 bytes of internal SRAM held for the life of the task,
+// which is why the probe reports it as its own number (heap.retained_bytes)
+// against its own ceiling rather than folding it into the peak.
 //
 // The three properties the previous comment was protecting are all kept: no
 // 32 KB stack frame (PREfast C6262, alert #64), no allocation per call, and no
