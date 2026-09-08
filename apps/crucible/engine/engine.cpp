@@ -12,6 +12,7 @@
 #include <functional>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -50,6 +51,38 @@ constexpr int kTapWaitMs = 80;
 constexpr std::size_t kMaxSinkQueueFrames = 2;
 constexpr std::size_t kMinSinkQueueBound = 1440;
 
+// How long start() waits for the worker to say what happened before it
+// answers its caller. The two deadlines are different lengths because they
+// are waiting for different kinds of thing, and the difference is the whole
+// design:
+//
+//   kBuildDeadline covers the half of loop() that builds - the output
+//   stage, the signing hook, the encoder, the device watcher, the session
+//   monitor's thread. None of it enumerates or opens anything, so on a
+//   working machine it is over in microseconds and this deadline is pure
+//   headroom. A worker that has not got here has stopped inside a platform
+//   call that is not coming back, and saying so is the point: a window that
+//   hangs on start is worse than one that says it could not start
+//   (docs/crucible/promotion.md, Phase 5, where a macOS platform call that
+//   never returned became a frozen window rather than a refusal).
+//
+//   kProbeDeadline covers the first probe's verdict, which is what says
+//   whether this machine has anything that will take the stream. Running
+//   out of it is NOT a refusal, and that asymmetry is deliberate: PipeWire
+//   spends up to two seconds per endpoint (src/audio/src/backend/pipewire/
+//   passthrough.cpp, kProbeTimeoutSeconds), so the machines slow to answer
+//   are exactly the ones that have endpoints to answer with, while a
+//   machine with nothing to probe answers at once. Giving up here reports
+//   started, and the mode and reason reach the UI through the status
+//   snapshot as they always have.
+//
+// So a healthy Windows or CI start returns in about a frame, a desktop
+// Linux start blocks the caller for at most kProbeDeadline, and a wedged
+// platform call is refused after kBuildDeadline instead of never.
+constexpr auto kBuildDeadline = std::chrono::milliseconds(2000);
+constexpr auto kProbeDeadline = std::chrono::milliseconds(400);
+constexpr auto kStartPollStep = std::chrono::milliseconds(1);
+
 float dbfs(std::span<const float> interleaved) {
     if (interleaved.empty()) {
         return -120.0F;
@@ -70,6 +103,24 @@ struct Engine::Impl {
     std::jthread worker;
     std::atomic_bool running{false};
     std::atomic_bool want_reprobe{true};
+
+    // What the worker has told start(). It moves forwards only, kComing ->
+    // kBuilt -> kReady, with kRefused reachable from either of the first
+    // two; the deadlines above say how long start() waits at each step.
+    // `refusal` is written once, before the store that publishes kRefused,
+    // and read only after a load that saw kRefused - the release/acquire
+    // pair is what makes it visible, so a value written once needs no lock
+    // of its own.
+    enum class StartState : int { kComing, kBuilt, kReady, kRefused };
+    std::atomic<StartState> start_state{StartState::kComing};
+    std::string refusal;
+
+    void publish(StartState state) { start_state.store(state, std::memory_order_release); }
+
+    void refuse(std::string why) {
+        refusal = std::move(why);
+        start_state.store(StartState::kRefused, std::memory_order_release);
+    }
 
     mutable std::mutex mutex;  // commands and the status snapshot
     std::vector<std::function<void()>> commands;
@@ -101,6 +152,7 @@ struct Engine::Impl {
     std::vector<AppId> keep_ids;  // placed applications, for the monitor to keep listed
     std::shared_ptr<AudioDevices> devices;
     TapPool taps;
+    std::vector<AppId> wanted_taps;  // what the last session list said is worth tapping
     SlotAllocator slots;
     PlacementSmoother placement;
     BedMix bed;
@@ -139,6 +191,11 @@ struct Engine::Impl {
     // frames, noted on the transition only.
     std::unordered_set<AppId> tap_refused;
     bool encode_refusing = false;
+    // Whether taps were allowed to be open when sync_taps() last ran; the
+    // frame loop runs it again as soon as this and output_has_endpoint()
+    // disagree. Down here beside encode_refusing rather than up beside
+    // wanted_taps so that the two flags share one slot of padding.
+    bool taps_allowed = false;
 
     explicit Impl(EngineConfig c)
         : config(std::move(c)),
@@ -239,6 +296,64 @@ struct Engine::Impl {
         slots.set_width(app, split ? 2 : 1);
     }
 
+    // Whether the output stage has somewhere to play. OutputMode::kNone is
+    // all three of "the policy found no endpoint that can carry anything",
+    // "the chosen sink refused to start" and - the case the rule below
+    // exists for - "no probe has been applied yet", which is where the stage
+    // sits on the first frame.
+    [[nodiscard]] bool output_has_endpoint() const {
+        return output && output->status().mode != OutputMode::kNone;
+    }
+
+    // Opens and closes taps to follow `wanted_taps`, but only while the
+    // output stage has an endpoint; with none, every tap is released and
+    // none is opened.
+    //
+    // Without that condition taps are opened before the first endpoint probe
+    // has even been started, let alone applied: want_reprobe is true at
+    // construction and refresh_sessions() runs earlier in the frame than the
+    // block that applies a probe, so the first frame taps whatever the
+    // session monitor listed and only then goes looking for somewhere to
+    // play it.
+    //
+    // Which platform this protects, and from what:
+    //
+    //   macOS - correctness. The Core Audio process tap is created with
+    //     muteBehavior = CATapMutedWhenTapped
+    //     (src/audio/src/backend/macos/process_tap.mm), so tapping an
+    //     application silences it at the point the tap takes its audio.
+    //     That is deliberate - it is why this platform needs no silent
+    //     device at all (docs/platforms/macos.md, "Per-application
+    //     capture") - and it is exactly what makes an ungated tap harmful:
+    //     on a machine where the policy lands on kNone, Crucible would mute
+    //     the user's applications and deliver their audio nowhere.
+    //
+    //   Windows, Linux - nothing audible changes. A WASAPI process-loopback
+    //     activation and a PipeWire link to the application's sink monitor
+    //     are both pure captures: the application is heard the same whether
+    //     or not anyone is reading the tap, which is why those two need a
+    //     silent device in the first place. The rule only stops a tap being
+    //     opened to be thrown away, so while there is no output the meters
+    //     read silence instead of levels for audio nobody can hear.
+    void sync_taps() {
+        const bool allowed = output_has_endpoint();
+        if (allowed != taps_allowed) {
+            note(allowed ? "output endpoint available: tapping applications"
+                         : "no output endpoint: taps released until there is somewhere to play");
+        }
+        taps_allowed = allowed;
+        const std::span<const AppId> want =
+            allowed ? std::span<const AppId>{wanted_taps} : std::span<const AppId>{};
+        for (const AppId app : taps.sync(want)) {
+            if (tap_refused.insert(app).second) {
+                note("tap refused for app " + std::to_string(app) + " (" + name_of(app) + ")");
+            }
+        }
+        // Once the tap opens, or the application leaves, the refusal is over
+        // and a later one is worth a note again.
+        std::erase_if(tap_refused, [this](AppId app) { return taps.has(app) || !known.contains(app); });
+    }
+
     // Called every frame: nothing to do unless the monitor's thread has a
     // new list.
     void refresh_sessions() {
@@ -290,14 +405,8 @@ struct Engine::Impl {
             sizes.erase(app);
             levels.erase(app);
         }
-        for (const AppId app : taps.sync(ids)) {
-            if (tap_refused.insert(app).second) {
-                note("tap refused for app " + std::to_string(app) + " (" + name_of(app) + ")");
-            }
-        }
-        // Once the tap opens, or the application leaves, the refusal is over
-        // and a later one is worth a note again.
-        std::erase_if(tap_refused, [this](AppId app) { return taps.has(app) || !known.contains(app); });
+        wanted_taps = std::move(ids);
+        sync_taps();
 
         // The full-screen rule. The pid was read on the monitor's thread in
         // the same pass as this list, so it is matched against the processes
@@ -457,6 +566,12 @@ struct Engine::Impl {
             .null_sink_substring = config.null_sink_substring,
             .pinned = config.pinned,
             .preferred_endpoint_id = config.preferred_endpoint_id});
+        // A fresh stage has probed nothing, so every run asks for its own
+        // first probe. The flag starts true and the first frame clears it,
+        // which was enough while an engine was only ever started once - a
+        // stopped one started again inherited the cleared flag, never
+        // enumerated, and sat in "none" whatever the machine had.
+        want_reprobe.store(true, std::memory_order_release);
         signing_status = signing.load(config.signing_key_path);
         build_encoder();
         note("engine started: " + std::to_string(config.low_latency ? 1 : ac3::kBlocksPerFrame) + "-block frames, " +
@@ -516,6 +631,11 @@ struct Engine::Impl {
         const auto frame_duration =
             std::chrono::microseconds(static_cast<long long>(1e6 * static_cast<double>(frames_per) / 48000.0));
 
+        // Everything the loop cannot run without now exists. start() has
+        // been waiting on this since it spawned the thread; what it waits
+        // for next is the first probe, published below.
+        publish(StartState::kBuilt);
+
         while (!stop.stop_requested()) {
             AC3_ZONE_SCOPED_N("crucible frame");
             const auto frame_start = std::chrono::steady_clock::now();
@@ -562,6 +682,27 @@ struct Engine::Impl {
                     const auto before = output->status().mode;
                     const auto before_endpoint = output->status().endpoint_id;
                     output->apply(std::move(*facts), signing.available());
+                    // The first probe is start()'s second answer, and the
+                    // only one that can say the machine has nothing to play
+                    // into. Read before follow_null_sink_width(), which
+                    // reopens taps and is the sort of platform call this
+                    // wants to have answered ahead of.
+                    //
+                    // A refusal here reports; it does not stop the loop.
+                    // Both callers discard an engine start() refused, so
+                    // leaving is never needed - and it would be wrong on the
+                    // one path where this verdict arrives after start() gave
+                    // up waiting for it (kProbeDeadline), where a loop that
+                    // left would be a machine that never picks up the
+                    // endpoint appearing or the default being moved.
+                    if (start_state.load(std::memory_order_relaxed) == StartState::kBuilt) {
+                        if (output->status().running) {
+                            publish(StartState::kReady);
+                        } else {
+                            note("nothing to play into: " + output->status().reason);
+                            refuse(output->status().reason);
+                        }
+                    }
                     follow_null_sink_width();
                     if (output->status().mode != before ||
                         output->status().endpoint_id != before_endpoint) {
@@ -573,6 +714,14 @@ struct Engine::Impl {
                              "\" - " + applied.reason);
                     }
                 }
+            }
+            // The tap gate (sync_taps): an endpoint can appear or go away
+            // between session refreshes - the block above has just applied
+            // one such change - so it is checked every frame rather than
+            // only when the monitor brings a new list. Half a second of
+            // muted applications on macOS is half a second too many.
+            if (output_has_endpoint() != taps_allowed) {
+                sync_taps();
             }
 
             // Taps in, slots out.
@@ -726,7 +875,42 @@ std::expected<void, std::string> Engine::start() {
     if (impl_->running.exchange(true)) {
         return std::unexpected("already running");
     }
+    // A stopped engine can be started again, and the answer it gets has to
+    // be this worker's rather than the last one's. Set before the thread
+    // exists, so there is nothing to synchronise with yet.
+    impl_->refusal.clear();
+    impl_->start_state.store(Impl::StartState::kComing, std::memory_order_relaxed);
     impl_->worker = std::jthread([this](const std::stop_token& stop) { impl_->loop(stop); });
+
+    // Everything that can fail happens on that thread, so returning here
+    // would report success for a machine with no audio endpoint at all.
+    // Wait instead for the worker to say which it is; kBuildDeadline and
+    // kProbeDeadline above carry the reasoning and the numbers.
+    using Clock = std::chrono::steady_clock;
+    const auto settle = [this](Clock::time_point deadline, Impl::StartState still) {
+        auto state = impl_->start_state.load(std::memory_order_acquire);
+        while (state == still && Clock::now() < deadline) {
+            std::this_thread::sleep_for(kStartPollStep);
+            state = impl_->start_state.load(std::memory_order_acquire);
+        }
+        return state;
+    };
+
+    auto state = settle(Clock::now() + kBuildDeadline, Impl::StartState::kComing);
+    if (state == Impl::StartState::kComing) {
+        // stop() still has to join this thread, so a platform call that
+        // never returns is a hang deferred rather than one avoided; what
+        // this buys is the refusal for every cause that is not a wedge - a
+        // machine loaded past the deadline, or a stage that would not build.
+        return std::unexpected("the engine did not come up within " +
+                               std::to_string(kBuildDeadline.count()) + " ms");
+    }
+    if (state == Impl::StartState::kBuilt) {
+        state = settle(Clock::now() + kProbeDeadline, Impl::StartState::kBuilt);
+    }
+    if (state == Impl::StartState::kRefused) {
+        return std::unexpected(impl_->refusal);
+    }
     return {};
 }
 

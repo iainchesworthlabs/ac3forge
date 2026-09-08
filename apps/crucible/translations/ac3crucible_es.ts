@@ -154,42 +154,42 @@
         <translation>Sin salida</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="748"/>
+        <location filename="../ui/crucible_controller.cpp" line="752"/>
         <source>This build carries no embedded notices file (:/notices/NOTICES.txt was not compiled in); the NOTICES.txt beside the application and the repository&apos;s LICENSE say what it ships.</source>
         <translation>Esta compilación no lleva ningún archivo de avisos incrustado (:/notices/NOTICES.txt no se compiló); el NOTICES.txt que está junto a la aplicación y el LICENSE del repositorio indican lo que se distribuye.</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1241"/>
+        <location filename="../ui/crucible_controller.cpp" line="1245"/>
         <source>saved to %1</source>
         <translation>guardado en %1</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1244"/>
+        <location filename="../ui/crucible_controller.cpp" line="1248"/>
         <source>could not write %1: %2</source>
         <translation>no se pudo escribir %1: %2</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1034"/>
+        <location filename="../ui/crucible_controller.cpp" line="1038"/>
         <source>installing, answer the elevation prompt ...</source>
         <translation>instalando, responda a la solicitud de elevación…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1049"/>
+        <location filename="../ui/crucible_controller.cpp" line="1053"/>
         <source>removing, answer the elevation prompt ...</source>
         <translation>quitando, responda a la solicitud de elevación…</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1069"/>
+        <location filename="../ui/crucible_controller.cpp" line="1073"/>
         <source>installed</source>
         <translation>instalado</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1069"/>
+        <location filename="../ui/crucible_controller.cpp" line="1073"/>
         <source>removed</source>
         <translation>quitado</translation>
     </message>
     <message>
-        <location filename="../ui/crucible_controller.cpp" line="1073"/>
+        <location filename="../ui/crucible_controller.cpp" line="1077"/>
         <source>%1 failed (exit code %2)</source>
         <translation>%1 falló (código de salida %2)</translation>
     </message>

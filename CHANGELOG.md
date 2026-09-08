@@ -389,6 +389,38 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **Crucible tapped applications before it had anywhere to play them**
+  (`apps/crucible/engine/engine.cpp`). The frame loop refreshed the session list and opened a tap
+  per application earlier in the frame than the block that applies an endpoint probe, and a probe
+  is requested rather than applied at construction - so the first frame tapped whatever was
+  playing and only then went looking for an output. On macOS that is audible: the Core Audio
+  process tap is created with `CATapMutedWhenTapped`, which is what lets that platform do
+  without a silent device, so on a Mac whose output policy finds nothing usable Crucible would
+  have muted the user's applications and delivered their audio nowhere. Taps are now opened only
+  while the output stage has an endpoint and released as soon as it has none, checked on every
+  frame so an endpoint that appears or vanishes between session refreshes is followed at once.
+  Windows and Linux hear no difference - a WASAPI process-loopback activation and a PipeWire link
+  to a sink monitor both capture without muting - and the rule only stops a tap being opened to
+  be thrown away.
+
+- **AC3Forge Crucible reported a running engine on a machine with nothing to play into**
+  (`apps/crucible/engine/engine.cpp`). `Engine::start()` spawned its worker thread and reported
+  success unconditionally, while everything that can actually fail - building the output stage,
+  the first device enumeration, opening a sink - happened on that thread after the answer had
+  already been given. On a machine with no usable audio endpoint the window therefore came up
+  saying the engine was running, with no error to show and nothing being played, and the two
+  test branches written for that state could never be reached. `start()` now waits for the
+  worker to report, under two short deadlines: the half that builds has to be up promptly and a
+  silent worker is refused, while the first probe's verdict is waited on only briefly, because
+  PipeWire spends two seconds per endpoint and the machines slow to answer are the ones with
+  endpoints to answer with. A working start still costs about a frame. The status strip now
+  prints why the engine could not start - no endpoint can carry any mode, or the sink refused -
+  instead of claiming it is running. Writing the test for that turned up a second bug beside
+  it: a `Engine` that was stopped and started again never enumerated, because the flag asking
+  for the first probe was set once at construction and cleared by the first frame, so the
+  second run sat in "none" whatever the machine had. Nothing shipped took that path - the
+  window builds a new engine each time - but the API allowed it.
+
 - **Every Linux and macOS package shipped without the `ac3cli` man page or any of the four
   shell completions** (`apps/cli/CMakeLists.txt`). The generated `ac3cli.1` and the
   bash/zsh/fish/PowerShell completion scripts were guarded by `if(CMAKE_CROSSCOMPILING)` on the

@@ -148,6 +148,7 @@ nav:
       - The Windows demo, the record: platforms/windows-demo.md
       - The null-sink driver on ACX: platforms/windows-driver-acx.md
   - Platforms:
+      - platforms/index.md
       - Windows: platforms/windows.md
       - Linux: platforms/linux.md
       - Raspberry Pi: platforms/raspberry-pi.md
@@ -159,5 +160,7 @@ nav:
       - History: history.md
       - Roadmap: roadmap.md
       - The family recasting: family/recasting.md
+      - Source, transport, sink: family/topology.md
+      - The playback appliance, a plan: family/player-appliance.md
       - A host plugin, studied: family/host-plugin.md
       - Self-hosted CI runners: ci-self-hosted-runners.md

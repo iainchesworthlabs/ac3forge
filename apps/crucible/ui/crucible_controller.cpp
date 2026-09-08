@@ -238,6 +238,10 @@ void CrucibleController::start() {
         emit stateChanged();
         return;
     }
+    // A refusal is reachable now, so a start that follows one has to clear
+    // it here rather than leave the strip showing the old sentence until
+    // the first poll overwrites it from the engine's own status.
+    last_error_.clear();
     running_ = true;
     poll_timer_.start();
     emit stateChanged();

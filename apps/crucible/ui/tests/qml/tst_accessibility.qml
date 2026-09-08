@@ -272,6 +272,17 @@ TestCase {
     }
 
     function test_announcerRelaysStateChangesOnceNotPerPoll() {
+        // The scripted machine, so the engine runs here whatever this seat
+        // has. This case used to take whichever direction the machine was
+        // already in - stop it if running, start it if not - on the reading
+        // that either way round is a state change. Since Engine::start()
+        // began refusing where nothing can carry the stream, the second
+        // direction is not: a refused start that refuses again with the
+        // same sentence leaves the announcer with nothing new to say, which
+        // is what the Windows CI runner (no audio endpoint) then hit.
+        if (!TestServices.scriptSessions([{ app: 900, name: "Chrome", active: true }])) {
+            skip("the scripted machine is not available in this harness");
+        }
         const window = createTemporaryObject(shell, testCase);
         verify(window);
         tryCompare(window, "visible", true);
@@ -280,13 +291,16 @@ TestCase {
         // The launch state is not a change and is not announced; the item is
         // primed one turn later.
         tryVerify(function() { return announcer.primed; }, 5000, "the announcer primes after the launch");
+        // Main.qml started it as the window came up. Back to stopped, before
+        // the spy, so the change the spy sees is the start below - the
+        // direction that leaves the engine running, which is what makes the
+        // per-poll half of this case mean anything: a stopped controller
+        // does not poll at all.
+        CrucibleController.stop();
         const spy = createTemporaryObject(spyComponent, testCase, { target: A11y, signalName: "announced" });
-        // A state the controller always changes, whichever way round it is
-        // on this machine.
-        if (CrucibleController.running) {
-            CrucibleController.stop();
-        } else {
-            CrucibleController.start();
+        CrucibleController.start();
+        if (!CrucibleController.running) {
+            skip("the engine did not run over the scripted machine here: " + CrucibleController.lastError);
         }
         tryVerify(function() { return spy.count >= 1; }, 3000, "the change is announced");
         // What was said is what the announcer reports as its own name, which

@@ -103,3 +103,17 @@ then on.
 So Crucible takes an output exclusively only after the default has moved to the silent device and
 nothing is left on the endpoint it wants. If you see it decline to take your receiver, this is
 usually why: something is still playing to it.
+
+## Nothing is tapped until there is somewhere to play
+
+Crucible opens no tap while station 3 has no endpoint, and releases every tap it holds the moment
+one goes away. Probing takes a moment — on PipeWire each answer is a real connect — so on the
+first frame of a session there is nothing chosen yet, and that is the state this rule is mostly
+about.
+
+On Windows and Linux the rule only keeps things tidy: a tap there is a pure capture, and an
+application sounds the same whether or not anyone is reading it. On macOS it decides what you
+hear. The tap is what silences the application (that is why there is no station 1 on that platform), so a tap held open
+with nothing at station 3 would mute what you are listening to and send it nowhere. If Crucible
+finds no usable output on a Mac, your applications keep playing to your speakers and Crucible
+stays out of the way until there is somewhere for their audio to go.

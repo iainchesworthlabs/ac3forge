@@ -464,9 +464,17 @@ target_include_directories(ac3tests PRIVATE
 # sessions, foreground), so with fakes in all three it runs here as plain C++
 # on any platform - and until crucible/test_engine.cpp nothing in the suite
 # constructed an Engine at all, which is how a probe thread that was never
-# joined reached a released branch. The one platform piece it does touch is
-# ac3::audio's DeviceWatcher, which is linked below and answers with
-# kNoBackend where there is none; the engine notes that and carries on.
+# joined reached a released branch. That file also asserts what the loop does
+# about opening taps: the platform seams it would otherwise reach for are the
+# ones platform_services_stub.cpp answers, and every case passes fakes
+# instead. The one platform piece it does touch is ac3::audio's DeviceWatcher,
+# which is linked below and answers with kNoBackend where there is none; the
+# engine notes that and carries on.
+#
+# crucible/test_engine_start.cpp rides the same block for what start()
+# answers: that a machine with nothing to play into is refused rather than
+# reported as running, which is what the window's status strip prints and
+# what the QML suites' "the engine did not start here" skips test for.
 target_sources(ac3tests PRIVATE
     crucible/test_slots.cpp
     crucible/test_bed_mixer.cpp
@@ -474,6 +482,7 @@ target_sources(ac3tests PRIVATE
     crucible/test_output_policy.cpp
     crucible/test_tap_pool.cpp
     crucible/test_output_stage.cpp
+    crucible/test_engine_start.cpp
     crucible/test_nullsink_position.cpp
     crucible/test_platform_seams.cpp
     crucible/test_diagnostics.cpp

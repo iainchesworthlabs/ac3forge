@@ -473,7 +473,7 @@ matrix leg can be added without editing the rule. Nothing here needs that.
 
 **Cost in matrix time: none added.** Every leg already builds `src/forge` and `ac3cli`; this adds
 source files to targets that are already compiled everywhere. What it does cost is the docs-only
-fast path: `ci.yml:311` classifies a PR as docs-only by a regex over `docs/`, `*.md`, `mkdocs.yml`
+fast path: `ci.yml:314` classifies a PR as docs-only by a regex over `docs/`, `*.md`, `mkdocs.yml`
 and `docs.yml`, so **this page** rides the fast path and every subsequent phase pays for all
 eleven legs — which is the standing cost of any code change here rather than a new one.
 
@@ -787,15 +787,15 @@ nothing. Phase 2 edits `apps/gui`, so it should re-check the queue first.
 two: leaving either surface on its own copy for a release would make the duplication permanent in
 exactly the way it became permanent the first time.
 
-**`docs/family/topology.md` (PR #539).** That page is not on `main`, and a relative link to it
-from here aborts `mkdocs build --strict` with "the target 'family/topology.md' is not found among
-documentation files" — measured on this branch, not assumed. Both pages therefore name each other
-by path or by branch URL until one of them merges, and **whichever merges second converts its own
-reference to a relative link**. One thing for #539 to fix on its own side: its "Where everything
-sits" table links this page at `blob/feature/qc-report-plan/...`, which 404s once this branch is
-deleted after merge.
+**`docs/family/topology.md`.** *Resolved 2026-09-07.* While neither page was on `main`, each
+named the other by branch URL, because a relative link to a file not yet in `docs/` aborts
+`mkdocs build --strict`. #537, #538 and #540 merged first, so #539 — the last of them — converted
+every such link to a relative path in one change, on both sides. Nothing here is a branch URL any
+more. The rule that produced it is worth keeping for the next time two doc PRs cross:
+**whichever merges last converts all of them**, and `tools/checks/check_doc_paths.py` cannot
+help, because it skips http(s) targets by design (its own docstring, line 13).
 
-**The docs-only fast path.** This page touches only `docs/` and `mkdocs.yml`, so `ci.yml:311`
+**The docs-only fast path.** This page touches only `docs/` and `mkdocs.yml`, so `ci.yml:314`
 classifies it as docs-only, it runs the strict docs build and skips the matrix. Phases 2–5 do not,
 and should not be batched with unrelated prose.
 
