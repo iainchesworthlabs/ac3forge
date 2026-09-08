@@ -874,7 +874,74 @@ struct Eac3Decoder::Impl {
     // noise stay uncorrelated, which independent draws from one sequential
     // generator already give.
     DitherGenerator dither_{};
+
+    // --- per-frame scratch --------------------------------------------------
+    // Everything decode_substream_core used to declare as a local before its
+    // block loop. The same move tails_, aht_coeffs_, ecpl_all_coeffs_ and
+    // exp_groups_ above have already had, and for the same reason: a local is
+    // freshly allocated every frame, and at 5.1 this cluster was most of that
+    // fixture's per-frame allocation count.
+    //
+    // WHAT MAKES IT SAFE, which is not automatic. A member carries the previous
+    // frame's contents, and stale state leaking across a frame boundary is a
+    // fault fixtures do not catch. decode_substream_core therefore
+    // re-establishes every one of these at the top of the frame with exactly
+    // the arguments its declaration used to carry - assign(n, v) where it read
+    // `(n, v)`, clear() where it was default-constructed - so a frame begins
+    // with contents identical to before, element for element. Only capacity
+    // survives.
+    //
+    // The nested ones go through reset_nested(), which resizes the outer and
+    // clears each inner rather than assign(n, {}): assign would free the inner
+    // buffers this exists to keep, and they are where the cost was (cplco,
+    // spxco and the three ecpl_*_raw are 1 + nfchans each).
+    std::array<std::vector<std::uint8_t>, kMaxSubstreamStreams> exps_;
+    std::array<std::vector<std::uint8_t>, kMaxSubstreamStreams> bap_;
+    std::vector<bool> chincpl_;
+    std::vector<int> subband_band_;
+    std::vector<bool> cpl_structure_;
+    std::vector<std::vector<double>> cplco_;
+    std::vector<bool> phsflg_;
+    std::vector<bool> chinspx_;
+    std::vector<bool> firstspxcos_;
+    std::vector<bool> firstcplcos_;
+    std::vector<std::vector<double>> spxco_;
+    std::vector<int> spxblnd_;
+    std::vector<std::vector<int>> ecplamp_raw_;
+    std::vector<std::vector<int>> ecplangle_raw_;
+    std::vector<std::vector<int>> ecplchaos_raw_;
+    std::vector<bool> ecpltrans_persist_;
+    // parse_coeffs is deliberately NOT here. It looks like the same case, and
+    // it is not: it is SWAPPED with a tails_ entry at each block's snapshot, so
+    // its storage already cycles through members and a frame does not allocate
+    // it fresh. Making it a member as well was measured on an ESP32-S3 and cost
+    // 7,168 bytes of peak - one 7-stream spectrum buffer live alongside the
+    // tails_ one it used to trade with, rather than instead of it.
+    std::vector<std::byte> joc_bytes_;
 };
+namespace {
+
+// resize() the outer and clear() each inner, rather than assign(n, {}): same
+// observable state - n empty vectors - while keeping the inner allocations.
+template <typename T>
+void reset_nested(std::vector<std::vector<T>>& v, std::size_t n) {
+    v.resize(n);
+    for (auto& inner : v) {
+        inner.clear();
+    }
+}
+
+// The std::array flavour, for the per-stream buffers whose outer storage is
+// already fixed-size and never allocated.
+template <typename T, std::size_t N>
+void reset_nested(std::array<std::vector<T>, N>& a) {
+    for (auto& inner : a) {
+        inner.clear();
+    }
+}
+
+}  // namespace
+
 
 Eac3Decoder::Eac3Decoder() : impl_(std::make_unique<Impl>()) {}
 
@@ -1243,8 +1310,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     auto& delay = *delay_slot;
 
     std::array<int, kMaxSubstreamStreams> endmant{};
-    std::array<std::vector<std::uint8_t>, kMaxSubstreamStreams> exps;
-    std::array<std::vector<std::uint8_t>, kMaxSubstreamStreams> bap;
+    // Per-frame scratch owned by Impl, re-established here with exactly the
+    // arguments these declarations used to carry - see Impl's own note.
+    auto& exps = impl_->exps_;
+    reset_nested(exps);
+    auto& bap = impl_->bap_;
+    reset_nested(bap);
     // Only meaningful when block_trace != nullptr below (roadmap AP12) - see
     // decoder.cpp's identical comment on its own `mask` array.
     std::array<std::array<int, 50>, kMaxSubstreamStreams> mask{};
@@ -1279,17 +1350,22 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     int ncplbnd = 0;
     int cplfleak = 0;
     int cplsleak = 0;
-    std::vector<bool> chincpl(static_cast<std::size_t>(nfchans), false);
+    auto& chincpl = impl_->chincpl_;
+    chincpl.assign(static_cast<std::size_t>(nfchans), false);
     // Which coupling band each sub-band belongs to (cplbndstrc expansion).
-    std::vector<int> subband_band;
+    auto& subband_band = impl_->subband_band_;
+    subband_band.clear();
     // The cplbndstrc[] merge flags themselves, indexed relative to this
     // block's cplbegf. Kept for the whole frame because a later block may
     // reuse them - see spx_structure_set below for the rule all three band
     // structures share.
-    std::vector<bool> cpl_structure;
+    auto& cpl_structure = impl_->cpl_structure_;
+    cpl_structure.clear();
     // [channel][sub-band] - already expanded from bands to sub-bands.
-    std::vector<std::vector<double>> cplco(static_cast<std::size_t>(nfchans));
-    std::vector<bool> phsflg;
+    auto& cplco = impl_->cplco_;
+    reset_nested(cplco, static_cast<std::size_t>(nfchans));
+    auto& phsflg = impl_->phsflg_;
+    phsflg.clear();
 
     // Spectral extension state (§3.6). Persists until re-transmitted, same as
     // coupling above - this encoder only ever (re)sends geometry in block 0.
@@ -1297,7 +1373,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // BAND already (no sub-band duplication step), so spx_bands/spxco are
     // indexed by band directly throughout.
     bool spxinu = false;
-    std::vector<bool> chinspx(static_cast<std::size_t>(nfchans), false);
+    auto& chinspx = impl_->chinspx_;
+    chinspx.assign(static_cast<std::size_t>(nfchans), false);
     int spxstrtf = 0;
     int spxbegf = 0;
     int spx_startmant = 0;  // spx_band_start(spx_begin_subbnd) - extension begins here
@@ -1339,12 +1416,16 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // Dolby Encoding Engine 6.5.4 stream brings channels into coupling
     // part-way through a frame; see the third-party interop checks in
     // tools/checks/verify_gold_reference.sh.
-    std::vector<bool> firstspxcos(static_cast<std::size_t>(nfchans), true);
-    std::vector<bool> firstcplcos(static_cast<std::size_t>(nfchans), true);
+    auto& firstspxcos = impl_->firstspxcos_;
+    firstspxcos.assign(static_cast<std::size_t>(nfchans), true);
+    auto& firstcplcos = impl_->firstcplcos_;
+    firstcplcos.assign(static_cast<std::size_t>(nfchans), true);
     bool firstcplleak = true;
     // [channel][band]
-    std::vector<std::vector<double>> spxco(static_cast<std::size_t>(nfchans));
-    std::vector<int> spxblnd(static_cast<std::size_t>(nfchans), 0);
+    auto& spxco = impl_->spxco_;
+    reset_nested(spxco, static_cast<std::size_t>(nfchans));
+    auto& spxblnd = impl_->spxblnd_;
+    spxblnd.assign(static_cast<std::size_t>(nfchans), 0);
     eac3::SpxNoise spx_noise;
 
     // AHT-decoded coefficients (§3.4), one array of all six blocks per
@@ -1375,10 +1456,14 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // re-sent. Kept as indices (not decoded values) because decoding
     // depends on a channel's role this block (is-first-channel, ecpltrans),
     // which can only be resolved once chincpl for THIS block is known.
-    std::vector<std::vector<int>> ecplamp_raw(static_cast<std::size_t>(nfchans));
-    std::vector<std::vector<int>> ecplangle_raw(static_cast<std::size_t>(nfchans));
-    std::vector<std::vector<int>> ecplchaos_raw(static_cast<std::size_t>(nfchans));
-    std::vector<bool> ecpltrans_persist(static_cast<std::size_t>(nfchans), false);
+    auto& ecplamp_raw = impl_->ecplamp_raw_;
+    reset_nested(ecplamp_raw, static_cast<std::size_t>(nfchans));
+    auto& ecplangle_raw = impl_->ecplangle_raw_;
+    reset_nested(ecplangle_raw, static_cast<std::size_t>(nfchans));
+    auto& ecplchaos_raw = impl_->ecplchaos_raw_;
+    reset_nested(ecplchaos_raw, static_cast<std::size_t>(nfchans));
+    auto& ecpltrans_persist = impl_->ecpltrans_persist_;
+    ecpltrans_persist.assign(static_cast<std::size_t>(nfchans), false);
     eac3::EcplNoise ecpl_noise;
     // Every block's enhanced coupling channel raw mantissas (§3.5.5.1's
     // XCURR), stashed as each block is parsed so the second pass below can
@@ -1431,7 +1516,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // yet) because oba::joc::parse_payload needs FrameParameters::objects to
     // agree with the OAMD program it rides beside, which is only known once
     // both payloads have been seen.
-    std::vector<std::byte> joc_bytes;
+    auto& joc_bytes = impl_->joc_bytes_;
+    joc_bytes.clear();
 
     for (int blk = 0; blk < nblks; ++blk) {
         AC3_ZONE_SCOPED_N("eac3_parse_block");
