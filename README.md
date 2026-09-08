@@ -123,10 +123,11 @@ have, and how much weight each evidence level carries, is in
 
 ## Building
 
-Requires CMake ≥ 3.28, Ninja, a [vcpkg](https://github.com/microsoft/vcpkg) checkout with
-`VCPKG_ROOT` set (it supplies Catch2 — plus Boost and Tracy only for the opt-in `adm` and
-`profiling` features), and — for the GUI — a prebuilt Qt 6.5+ kit, never from vcpkg. Windows needs Visual Studio 2026 (MSVC) or clang-cl; Linux needs GCC ≥ 15
-or Clang ≥ 21.
+Requires CMake ≥ 3.28, Ninja, and — for the GUI — a prebuilt Qt 6.5+ kit, never from vcpkg.
+Windows needs Visual Studio 2026 (MSVC) or clang-cl 22; Linux needs GCC 16 or Clang 22. A
+[vcpkg](https://github.com/microsoft/vcpkg) checkout with `VCPKG_ROOT` set supplies fmt and
+Catch2, plus Boost and Tracy for the opt-in `adm` and `profiling` features; without one, fmt and
+Catch2 fall back to a `FetchContent` build from source.
 
 ```bash
 cmake --preset config-windows-msvc-debug

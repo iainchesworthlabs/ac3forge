@@ -201,8 +201,8 @@ with evidence to turn on, and only where the material and rate resemble what was
 5.1 is not in the table above: the mirror self-check proves the search's mechanism correct at
 `Acmod::k3_2` + LFE (same candidates, same settlement, same re-settle-on-mismatch path
 `tests/quality/test_search.cpp` exercises for stereo), but external-metric validation on real 5.1
-material hit a measurement-harness alignment problem this session ran out of time to resolve, not
-an encoder defect. Left for a follow-up.
+material hit an alignment problem in the measurement harness rather than an encoder defect.
+That is left for a follow-up.
 
 See `docs/library/quality.md` for
 the model and the reproduction commands.

@@ -386,13 +386,11 @@ decoders' coefficient stores, transform scratch and overlap-add history follow i
 `imdct512_windowed`/`imdct256_pair_windowed` have float32 overloads built from the same templated
 body as the double ones, so §7.9.4.1 is implemented once.
 
-No gold-reference number moved. This paragraph previously predicted that one would; the
-prediction assumed a global change, and the choice is per-profile. The ordinary build's
-`decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite passes identically
-(4,032,916 assertions).
+No gold-reference number moved, because the choice is per-profile rather than global. The
+ordinary build's `decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite
+passes identically (4,032,916 assertions).
 
-The oracle run this paragraph asked for was done separately, and for a long time it could not be
-done again. `decode_scalar_t` used to live in `ac3/internal/profile.hpp` alongside the profile's
+The oracle run was done separately, and for a long time it could not be done again. `decode_scalar_t` used to live in `ac3/internal/profile.hpp` alongside the profile's
 other facts, so `float` was reachable only in a build that was also decode-only, exception-free
 and without a CLI — there was no float32 `ac3cli` any preset could produce, and the ~139 dB
 figure came from one made by hand. Which profile a build is and which scalar its decoder carries

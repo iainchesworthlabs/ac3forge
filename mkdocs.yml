@@ -80,7 +80,7 @@ nav:
       - Quick start: quickstart.md
       - Building from source: building.md
   - Library:
-      - What it is: library/index.md
+      - Overview: library/index.md
       - Capabilities: library/capabilities.md
       - Concepts:
           - Overview: concepts/index.md
@@ -93,7 +93,7 @@ nav:
           - Encoding E-AC-3: library/encoding-eac3.md
           - Decoding: library/decoding.md
           - Spatial & Atmos objects: library/spatial-and-atmos.md
-          - A worked scene — station broadcast: library/station-broadcast.md
+          - Worked example — station broadcast: library/station-broadcast.md
           - Channel plans & routing: library/channel-plans-and-routing.md
           - Metadata: library/metadata.md
           - Muxing & sinks: library/muxing-and-sinks.md
@@ -127,7 +127,7 @@ nav:
           - Decode in the browser: wasm-demo.md
           - Encode in the browser: wasm-encode-demo.md
   - Forge:
-      - What it is: forge/index.md
+      - Overview: forge/index.md
       - Delivery QC reports: forge/qc-report.md
       - CLI reference:
           - Overview: cli/index.md
@@ -148,7 +148,7 @@ nav:
           - Localisation: gui/localisation.md
           - Keyboard & text size: gui/accessibility.md
   - Crucible:
-      - What it is: crucible/index.md
+      - Overview: crucible/index.md
       - Install & first run: crucible/install.md
       - The room: crucible/room.md
       - The signal path: crucible/signal-path.md
@@ -172,10 +172,11 @@ nav:
   - Project:
       - Contributing: contributing.md
       - Releasing: releasing.md
+      - Self-hosted CI runners: ci-self-hosted-runners.md
       - History: history.md
       - Roadmap: roadmap.md
-      - The family recasting: family/recasting.md
-      - Source, transport, sink: family/topology.md
-      - The playback appliance, a plan: family/player-appliance.md
-      - A host plugin, studied: family/host-plugin.md
-      - Self-hosted CI runners: ci-self-hosted-runners.md
+      - Design notes:
+          - Product naming and scope: family/recasting.md
+          - Source, transport, sink: family/topology.md
+          - Playback appliance (plan): family/player-appliance.md
+          - Host plugin (study): family/host-plugin.md

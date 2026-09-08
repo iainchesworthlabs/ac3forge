@@ -730,7 +730,8 @@ gate is gcov on the Linux preset and the demo is Windows-only. Three steps, in t
 2. *Coverage on Windows.* `Coverage.cmake` gains a clang-cl arm (`-fprofile-instr-generate
    -fcoverage-mapping`, the profile runtime linked explicitly because the MSVC-style link
    step does not go through the compiler driver) and a `config-windows-llvm-coverage`
-   preset; `tools/checks/coverage_windemo.ps1` runs the `windemo` and `desk` ctest labels
+   preset; that coverage script (`tools/checks/coverage_crucible.ps1` since the rename)
+   ran the `windemo` and `desk` ctest labels
    under `LLVM_PROFILE_FILE`, merges with `llvm-profdata` and prints `llvm-cov report` over
    `apps/windows`, which gives line and *branch* figures per file (OpenCppCoverage, the
    MSVC alternative, reports lines only). The numbers go into this page and, once stable,

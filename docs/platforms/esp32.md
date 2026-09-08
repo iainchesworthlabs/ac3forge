@@ -85,11 +85,13 @@ anything downstream can use. Memory was the binding constraint: the per-block
 `coeffs` store is 100,352 bytes and `aht_coeffs_` 86,016, against 160,764 bytes
 of free internal SRAM at the time.
 
-`src/internal/profile/{minimal,full}/`'s seam carries `decode_scalar_t` — `float`
-in the minimum-footprint profile, `double` in every other build — and four
-decoder buffers follow it. See
-[Building](../building.md#minimum-footprint-decoder-profile) for what the profile
-changes, and its Gaps section for the measured accuracy cost.
+`src/forge/src/internal/scalar/{float32,float64}/`'s seam carries
+`decode_scalar_t` — `float` under the minimum-footprint profile, `double` by
+default elsewhere, and selectable in any build with
+`-DAC3FORGE_DECODE_SCALAR=float`. Four decoder buffers follow it. Which profile
+a build is and which scalar its decoder carries are two independent CMake axes.
+See [Building](../building.md#minimum-footprint-decoder-profile) for what the
+profile changes, and its Gaps section for the measured accuracy cost.
 
 ## Configuration
 
@@ -261,7 +263,7 @@ has what that costs, which is one board. The decision does not wait on it. The
 radio disqualifies the P4 on its own, so a decode that misses real time on the
 S3 gets fixed in the decoder rather than by changing part: 46–87 heap
 allocations per frame remain PF7's other open gap, and the float path has a
-hand-written-kernel option this page now sizes. `src/internal/arch/` does
+hand-written-kernel option this page now sizes. `src/forge/src/internal/arch/` does
 carry an `f32x4` since PF7's SIMD step, but it resolves to `generic/` here and
 buys this part nothing. Those are the levers, and they apply to every target
 at once instead of to one that cannot reach the network.
@@ -272,7 +274,7 @@ the P4.
 
 ## Not done
 
-- **A vectorised float32 path on this part.** `src/internal/arch/` carries an
+- **A vectorised float32 path on this part.** `src/forge/src/internal/arch/` carries an
   `f32x4` since PF7's SIMD step, so the float32 IMDCT's twiddle stages go four
   lanes at a time on SSE2 and NEON. On an S3 that type resolves to `generic/`
   and compiles to four scalar operations, because PIE's vector ALU is
@@ -302,7 +304,7 @@ the P4.
   allocate their own registers.
 
   So the shape that could capture it is a hand-written Xtensa kernel tier,
-  like `src/internal/avx2/` rather than like `src/internal/arch/`: whole
+  like `src/forge/src/internal/avx2/` rather than like `src/forge/src/internal/arch/`: whole
   twiddle stages in assembly, selected at build time. Reaching `esp-dsp`'s
   figures also means `madd.s`, a deliberate fused multiply-add of exactly the
   kind `-ffp-contract=off` forbids project-wide, so that tier would have to

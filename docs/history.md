@@ -70,7 +70,7 @@ energy-normalized 2D VBAP with per-block gain ramps and explicit LFE sends. `ac3
 renders a tone circling the listener into 5.1 AC-3. An end-to-end test parks the object at
 each speaker in turn and asserts the decoded energy follows it: C → L → SL → SR → R.
 
-The IEC 61937 packer (`src/forge/src/sinks/`) wraps frames into S/PDIF bursts byte-exact against
+The IEC 61937 packer (`src/forge/src/iec61937/`) wraps frames into S/PDIF bursts byte-exact against
 FFmpeg's `spdif` muxer. `ac3cli spdif` emits them as a PCM16 WAV; played bit-exactly through a
 passthrough output, a receiver locks on and lights its Dolby Digital indicator.
 

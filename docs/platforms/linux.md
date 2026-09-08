@@ -137,7 +137,7 @@ that read is real on ALSA only: the HD-audio kernel driver populates
 already decoded into text fields, for every HDMI/DisplayPort output — a documented, stable
 kernel interface, not a private one this project reaches around. `ac3::audio::sink_capabilities`
 locates the right card/device the same way `enumerate_render_devices()` already does
-(`src/backend/alsa/candidates.hpp`, shared between the two) and reads that file.
+(`src/audio/src/backend/alsa/candidates.hpp`, shared between the two) and reads that file.
 
 PipeWire has no equivalent here, on purpose rather than by omission: an ALSA-backed PipeWire
 node likely carries enough in its own properties to find the same `/proc/asound` file, but no

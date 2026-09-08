@@ -576,7 +576,7 @@ than twice.
 
 **The driver-signing session.** `apps/windows/driver/` is being worked in a separate session.
 Nothing in Phases 1 to 6 touches it, `Ac3ForgeNullSink`, or the "Desktop Atmos" endpoint string;
-Phase 7 is that session's landing plus one coordinated change.
+Phase 7 is that work landing plus one coordinated change.
 
 **Open pull requests.** A tree-wide edit (Phase 1's `AC3DESK_*` fold, Phase 4's strings) lands
 in one short-lived PR with the queue drained, the way UX12's Phase 1 did; check `gh pr list`
