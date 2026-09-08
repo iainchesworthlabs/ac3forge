@@ -102,10 +102,12 @@ jobs:
     # Generous on purpose for the first cold-cache run - tighten it once a
     # week of real runs has a number in it.
     timeout-minutes: 150
-    # No issues: write - opening the issue is the `surface` job's business now,
-    # and this job only reads the tree it analyses.
+    # No issues: write - opening the issue is the `surface` job's business now.
+    # security-events: write is for the SARIF upload below, the same
+    # permission msvc-analysis.yml's analyze job carries for the same reason.
     permissions:
       contents: read
+      security-events: write
     env:
       BUILD_DIR: build/config-linux-gcc-coverage
     steps:
@@ -240,15 +242,51 @@ jobs:
             -Dsonar.coverageReportPaths=${{ env.BUILD_DIR }}/coverage-sonarqube.xml
             -Dsonar.qualitygate.wait=true
 
+      # Unlike the other three nightlies, SonarCloud has no server-side
+      # option to publish into Security > Code scanning -
+      # tools/ci/sonar_to_sarif.py bridges it by querying the issues the scan
+      # above just produced and converting them to SARIF. `!cancelled()`
+      # rather than `always()`, matching the `surface` job below: this should
+      # still run when the scan step failed the quality gate (the analysis it
+      # failed on was uploaded and processed before the gate check ran, so
+      # the issues queried here are tonight's, not stale), but not when
+      # someone cancelled the run by hand. Scoped to BUG and VULNERABILITY,
+      # not CODE_SMELL - see the script's own header for why the
+      # maintainability view stays on the SonarCloud dashboard instead.
+      - name: Export SonarQube issues to SARIF
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          python3 tools/ci/sonar_to_sarif.py \
+            --organization iainchesworthlabs \
+            --project-key iainchesworthlabs_ac3forge \
+            --branch main \
+            --output "${BUILD_DIR}/sonarqube.sarif"
+
+      # No explicit category: the SARIF's own tool name (SonarQube Cloud) is
+      # what the alert history is keyed by, the same reasoning
+      # msvc-analysis.yml's upload gives for PREfast.
+      - name: Upload SARIF to GitHub
+        if: ${{ !cancelled() }}
+        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        with:
+          sarif_file: ${{ env.BUILD_DIR }}/sonarqube.sarif
+
   # A job of its own, on a runner with no container - the same shape
   # codeql.yml, msvc-analysis.yml and static-analysis.yml all use. It cannot
   # be a step inside `scan`: report-nightly-failure is a gh CLI script, and gh
   # is not in ubuntu:26.04, so inlining it there fails with "gh: command not
   # found" and the nightly stays silent about its own failure.
   #
-  # Unlike the other three nightlies, SonarCloud findings do not land in
-  # Security > Code scanning, so there is no alerts API to query - the quality
-  # gate failing (or the build failing) is the whole signal.
+  # Unlike the other three nightlies, the quality gate failing (or the build
+  # failing) is still the whole signal this job reacts to, even though BUG
+  # and VULNERABILITY findings now also reach Security > Code scanning (see
+  # the SARIF export step above) - CODE_SMELL findings and the gate's overall
+  # pass/fail never do, so a maintainability-only regression or a gate
+  # tightened without new BUG/VULNERABILITY findings would still be invisible
+  # without this issue.
   #
   # `== 'failure'` rather than the `!= 'success'` the other three use: `scan`
   # here skips itself deliberately when SONAR_TOKEN is absent, and a skip is
@@ -269,4 +307,4 @@ jobs:
       - uses: ./.github/actions/report-nightly-failure
         with:
           engine: SonarCloud
-          detail: "The SonarCloud quality gate failed on new code, or the build or scan itself failed. The findings are in the project dashboard, not Security > Code scanning: https://sonarcloud.io/project/overview?id=iainchesworthlabs_ac3forge"
+          detail: "The SonarCloud quality gate failed on new code, or the build or scan itself failed. BUG and VULNERABILITY findings are also in Security > Code scanning; everything else, and the gate status itself, is only in the project dashboard: https://sonarcloud.io/project/overview?id=iainchesworthlabs_ac3forge"
