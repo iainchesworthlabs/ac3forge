@@ -448,12 +448,16 @@ jobs:
       # --generate-hashes lock like requirements-coverage.txt and
       # requirements-ffmpeg-validate.txt, so all three linter versions are
       # pinned by hash and move only when the lock is regenerated.
+      # requirements-pip-bootstrap.txt pins the venv's own pip upgrade the
+      # same way - see that file's header for why it can't just live in the
+      # pip-compile lock above.
       - name: Install linters
         shell: bash
         run: |
           set -euo pipefail
           python3 -m venv .lintvenv
-          .lintvenv/bin/python -m pip install --quiet "pip==24.3.1"
+          .lintvenv/bin/python -m pip install --quiet --require-hashes \
+            -r requirements/requirements-pip-bootstrap.txt
           .lintvenv/bin/python -m pip install --quiet --require-hashes \
             -r requirements/requirements-lint.txt
           .lintvenv/bin/ruff --version

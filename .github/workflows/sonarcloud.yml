@@ -45,6 +45,12 @@ concurrency:
   group: sonarcloud-nightly
   cancel-in-progress: false
 
+# Deliberately empty: every job below states its own full permissions set (see
+# each job's own comment), so this top-level block is only ever a fallback for
+# a future job that forgets to - it should never itself carry anything wider
+# than read.
+permissions: {}
+
 jobs:
   # Single source of truth for the vcpkg pin this build resolves against -
   # the same reusable workflow ci.yml's own jobs call.
@@ -66,10 +72,10 @@ jobs:
   preflight:
     name: Check SonarCloud is configured
     runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
-    # Every job here states its own permissions rather than inheriting a
-    # workflow-level block, so that widening one job never silently widens the
-    # others. This one reads nothing and writes nothing; it only looks at
-    # whether a secret is non-empty.
+    # Every job here states its own permissions rather than relying on the
+    # workflow-level default above, so that widening one job never silently
+    # widens the others. This one reads nothing and writes nothing; it only
+    # looks at whether a secret is non-empty.
     permissions: {}
     outputs:
       configured: ${{ steps.check.outputs.configured }}

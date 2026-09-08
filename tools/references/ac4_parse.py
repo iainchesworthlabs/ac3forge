@@ -358,7 +358,11 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
     substreams = []
     emdf_substreams = []
     if not b_single_substream and presentation_config == 6:
-        b_add_emdf_substreams = True
+        # §4.2.3.2: presentation_config == 6 implies b_add_emdf_substreams is
+        # always true, so unlike the `else` branch below it is never read from
+        # the bitstream here - the shared tail after this if/else parses the
+        # EMDF substream count and list unconditionally for this branch.
+        pass
     else:
         md_compat = r.bits(3)
         presentation_id = None
