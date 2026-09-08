@@ -143,7 +143,14 @@ HTTP_URL = re.compile(r"^https?://", re.IGNORECASE)
 # is not one), and ends at whitespace, a quote, a bracket or a punctuation mark
 # that never appears inside a path here. PowerShell writes its paths with
 # backslashes, so the .ps1 variant accepts either separator and normalises.
-TOKEN_TAIL = r"[^\s\"'`\[\]()<>,;:|]+"
+#
+# A brace group is the one place a comma belongs to the path rather than ending
+# it: a token of the form <prefix>/x/{a,b}/y names two paths, not one path and
+# some prose. Without the first branch below the token stopped at the comma,
+# leaving a dangling open brace that was then declined as a placeholder, so
+# expand_braces never saw a group at all and the expansion was dead code.
+TOKEN_CHAR = r"[^\s\"'`\[\]()<>,;:|{}]"
+TOKEN_TAIL = r"(?:\{" + TOKEN_CHAR + r"*(?:," + TOKEN_CHAR + r"*)*\}|" + TOKEN_CHAR + r")+"
 PREFIX_ALTERNATION = "|".join(LITERAL_PREFIXES)
 PATH_TOKEN = re.compile(r"(?<![\w./\\-])((?:" + PREFIX_ALTERNATION + r")/" + TOKEN_TAIL + ")")
 PS1_TOKEN = re.compile(r"(?<![\w./\\-])((?:" + PREFIX_ALTERNATION + r")[/\\]" + TOKEN_TAIL + ")")
@@ -315,8 +322,6 @@ def classify_token(token: str, patterns: list[str]) -> str | None:
         return "glob"
     if any(mark in token for mark in PLACEHOLDER_MARKS):
         return "placeholder"
-    if ("{" in token or "}" in token) and not BRACE_GROUP.search(token):
-        return "placeholder"  # an unbalanced brace is not a path shape we expand
     if token.endswith(("_", "-")):
         return "line-wrapped identifier"
     if token in FOREIGN_PATHS:
