@@ -4,6 +4,7 @@
 #include <type_traits>
 
 #include "ac3/core/mdct.hpp"
+#include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profile.hpp"
 
 // The §7.9.4 inverse pair, selected by the scalar type the decoder stores its

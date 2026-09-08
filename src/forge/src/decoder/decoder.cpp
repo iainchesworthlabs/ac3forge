@@ -25,6 +25,7 @@
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/syntax_trace.hpp"
 #include "ac3/encoder/coupling.hpp"
+#include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profile.hpp"
 #include "scalar_inverse.hpp"
 #include "ac3/internal/profiling.hpp"

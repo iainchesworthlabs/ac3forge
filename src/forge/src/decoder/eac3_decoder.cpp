@@ -30,6 +30,7 @@
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/eac3_tools.hpp"
+#include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profile.hpp"
 #include "scalar_inverse.hpp"
 #include "ac3/internal/profiling.hpp"
