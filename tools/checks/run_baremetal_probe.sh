@@ -26,9 +26,18 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO"
 
 HOST=0
-if [[ "${1:-}" == "--host" ]]; then
-    HOST=1
-fi
+# Which direction. The two profiles are mutually exclusive (no two of decode /
+# AC-3 encode / E-AC-3 encode fit in an ESP32-S3's internal SRAM at once), so
+# this picks a preset rather than adding a fixture.
+DIRECTION=decoder
+for arg in "$@"; do
+    case "$arg" in
+        --host) HOST=1 ;;
+        --encoder) DIRECTION=encoder ;;
+        --decoder) DIRECTION=decoder ;;
+        *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder]" >&2; exit 2 ;;
+    esac
+done
 
 # --- ceilings --------------------------------------------------------------
 # Bytes. text+data+bss of the linked probe on the bare-metal target, and the
@@ -103,6 +112,15 @@ else
     PRESET=config-arm-none-eabi-minimal
     BUILD_PRESET=build-arm-none-eabi-minimal
 fi
+if [[ "$DIRECTION" == "encoder" ]]; then
+    PRESET="${PRESET}-encoder"
+    BUILD_PRESET="${BUILD_PRESET}-encoder"
+    # The encode probe reports no per-fixture churn lines and no image ceiling
+    # of its own yet - it has no linked-in fixture, so its image is a different
+    # kind of number. What it does report, and what is gated below, is the peak
+    # and the retained bytes.
+    : "${AC3FORGE_MAX_HEAP_BYTES:=250000}"
+fi
 
 cmake --preset "$PRESET"
 cmake --build --preset "$BUILD_PRESET"
@@ -142,7 +160,7 @@ else
 fi
 
 if ! grep -q '^result=pass$' "$OUTPUT"; then
-    echo "::error title=Minimum-footprint decoder probe failed::the probe did not report result=pass" >&2
+    echo "::error title=Minimum-footprint ${DIRECTION} probe failed::the probe did not report result=pass" >&2
     exit 1
 fi
 
@@ -180,6 +198,16 @@ fi
 # one line, and a leading `.*` in a substitution is greedy enough to swallow the
 # fixture name and leave the capture empty.
 CHURN=$(grep -o '[a-z0-9_]*\.steady_allocs_per_frame=[0-9]*' "$OUTPUT" | sed 's/\.steady_allocs_per_frame=/ /')
+if [[ "$DIRECTION" == "encoder" ]]; then
+    # 260 rather than 100. E-AC-3 encode measures 249 allocations per frame and
+    # AC-3 78, against the decoders' 43-126 - and the reason is in the API, not
+    # the implementation: both encoders return std::vector<std::byte> from
+    # encode_frame, with no encode_frame_into to match decode_frame_into. That
+    # is PF7's zero-heap gap seen from the encode side, and it is wider here.
+    # Holding this to the decoder's number would gate a difference nothing in
+    # this profile can currently close.
+    AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME=${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ENCODE:-260}
+fi
 if [[ -z "$CHURN" ]]; then
     echo "error: the probe reported no <fixture>.steady_allocs_per_frame line" >&2
     exit 1
@@ -200,4 +228,4 @@ if [[ -n "${AC3FORGE_FOOTPRINT_SUMMARY:-}" ]]; then
     cp "$OUTPUT" "$AC3FORGE_FOOTPRINT_SUMMARY"
 fi
 
-echo "minimum-footprint decoder probe: pass"
+echo "minimum-footprint ${DIRECTION} probe: pass"

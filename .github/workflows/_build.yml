@@ -3668,6 +3668,22 @@ jobs:
           AC3FORGE_FOOTPRINT_SUMMARY: ${{ runner.temp }}/footprint.txt
         run: ./tools/checks/run_baremetal_probe.sh
 
+      # The other direction of the same profile, on the same target. A second
+      # configure and build rather than a second fixture, because the two are
+      # mutually exclusive: on an ESP32-S3 with 277,400 bytes of internal SRAM
+      # free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode
+      # at 243,770 - each fits alone and no two fit at once, so a library
+      # carrying both would be carrying something the part cannot run.
+      #
+      # Worth a leg rather than a local check. The encoder had never been
+      # compiled for a 32-bit embedded ABI before this profile existed, and the
+      # first attempt found four std::min calls that do not compile where
+      # int32_t is long int, a translation unit pulling in fmt for one
+      # presentation function, and a printf conversion newlib-nano does not
+      # carry. None of those were reachable from the decode side.
+      - name: Build and run the ENCODE probe under QEMU
+        run: ./tools/checks/run_baremetal_probe.sh --encoder
+
       # The footprint table in docs/performance-trend.md is written by hand
       # from these numbers, so keep the run's own copy: a table nobody can
       # check against the run that produced it is a claim, not a measurement.

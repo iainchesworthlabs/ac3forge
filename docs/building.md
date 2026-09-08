@@ -347,6 +347,49 @@ re-based onto the encoder of the day. This does not weaken what the probe measur
 decode regression reference either way — but a fixture is only evidence about the encoder that
 produced it.
 
+### The encode direction
+
+The same profile pointed the other way. `AC3FORGE_MINIMAL_ENCODER` builds an encode-only
+`ac3::forge_minimal` carrying both codecs, and `apps/baremetal/encode_probe.cpp` is its probe:
+
+```bash
+tools/checks/run_baremetal_probe.sh --encoder          # arm-none-eabi under QEMU
+tools/checks/run_baremetal_probe.sh --encoder --host   # natively
+```
+
+It is **mutually exclusive** with the decoder, and that is measured rather than a simplification.
+On an ESP32-S3 with 277,400 bytes of internal SRAM free:
+
+| | Peak heap |
+|---|---|
+| Decode, including Atmos objects | 233,546 |
+| AC-3 encode | 201,770 |
+| E-AC-3 encode | 243,770 |
+| Both encoders at once | 440,420 |
+
+Each fits alone; no two fit together. A build offering both would be offering something the part
+cannot run, so the option refuses the combination rather than letting it arrive as `out_of_memory`
+on a device. Sequential use is fine — tear one down, build the other.
+
+Two things about the probe differ from the decode one, and both follow from the direction:
+
+- **The input is synthesised.** A decoder's fixture is a 10,752-byte bitstream; an encoder's is the
+  221,184 bytes of PCM behind it, which is most of an ESP32-S3's internal SRAM. Six sines at
+  non-harmonic frequencies, computed in `double` with a single narrowing to `float`, so every IEEE
+  target produces identical samples.
+- **The check is a checksum**, because there is no decoder in this profile to reconstruct with. It
+  says the target produced what the host produced from the same input. Measured, the two agree
+  exactly — so this project's encoder is bit-exact between x86_64 hardware doubles and
+  `arm-none-eabi` soft float, which extends what
+  `tests/golden/bitstream-hashes.json` already pins across x86_64 and aarch64 to a target with no
+  FPU at all.
+
+Steady-state churn is **78 allocations per frame for AC-3 and 249 for E-AC-3**, against the
+decoders' 43–126. That gap is in the API rather than the implementation: both encoders return
+`std::vector<std::byte>` from `encode_frame`, and there is no `encode_frame_into` to match
+`decode_frame_into`. It is the same zero-heap gap [above](#gaps) records for the decode side, wider
+here, and it is the thing to close before this profile is fit for a real-time encode.
+
 The measured numbers are in [the footprint table](performance-trend.md#minimum-footprint-decoder).
 CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`).
 
