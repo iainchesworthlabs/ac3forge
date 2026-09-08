@@ -780,6 +780,21 @@ struct Eac3Decoder::Impl {
     std::vector<std::array<std::array<internal::decode_scalar_t, 256>, kBlocksPerFrame>>
         aht_coeffs_;
     std::vector<std::array<double, 256>> ecpl_all_coeffs_;
+    // §7.1.3's packed exponent groups, for one stream of one block.
+    //
+    // A member, reused by assign(), because the two sites that read it are
+    // inside the block loop and each constructed a fresh std::vector - so a
+    // 5.1 frame paid one allocation per (stream, block) that sent exponents,
+    // measured at 14 to 28 a frame. src/forge/src/decoder/decoder.cpp has done
+    // this for AC-3 all along (its own `groups` is declared once at frame scope
+    // and assign()ed at both its use sites); this is the same shape, taken one
+    // step further to a member so it survives the frame as well as the block.
+    //
+    // Never read across a call - both sites fill it completely from the
+    // bitstream before decode_exponents() sees it - so reuse cannot leak one
+    // block's exponents into another's. assign() rather than resize() to keep
+    // that explicit, and to match what the vectors it replaced did.
+    std::vector<std::uint8_t> exp_groups_;
     // One entry per block: everything decode_substream's second pass (spx
     // synthesis, rematrixing, IMDCT and PCM write) needs from pass one -
     // the .cpp's comment at the use site explains why two passes exist at
@@ -1914,7 +1929,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 }
                 const int ngrps = span / (3 * group_size);
                 const auto cplabsexp = static_cast<std::uint8_t>(r.read(4));
-                std::vector<std::uint8_t> groups(static_cast<std::size_t>(ngrps));
+                auto& groups = impl_->exp_groups_;
+                groups.assign(static_cast<std::size_t>(ngrps), 0);
                 for (auto& g : groups) {
                     g = static_cast<std::uint8_t>(r.read(7));
                     if (g > 124) {  // §7.10.2 error condition 17
@@ -1952,7 +1968,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 endmant[static_cast<std::size_t>(ch)] = end;
                 const int ngrps = ch < nfchans ? exponent_group_count(strat, end) : 2;
                 const auto absolute = static_cast<std::uint8_t>(r.read(4));
-                std::vector<std::uint8_t> groups(static_cast<std::size_t>(ngrps));
+                auto& groups = impl_->exp_groups_;
+                groups.assign(static_cast<std::size_t>(ngrps), 0);
                 for (auto& g : groups) {
                     g = static_cast<std::uint8_t>(r.read(7));
                     if (g > 124) {  // §7.10.2 error condition 17
