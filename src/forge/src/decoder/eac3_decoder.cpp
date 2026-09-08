@@ -739,6 +739,30 @@ struct Eac3Decoder::Impl {
     // channel through here keeps the decoder's own store in decode_scalar_t
     // without pushing a float overload onto the encoder's side of the wall.
     std::array<double, 256> ecpl_coeff_scratch_{};
+    // §3.5.5.2/.3's per-bin amplitude and angle, for one channel of one block.
+    //
+    // Members rather than locals in the reconstruction loop, which is where
+    // they were: a std::vector each, constructed and destroyed once per COUPLED
+    // CHANNEL per BLOCK. On a 5.1 stream with five channels in the coupling
+    // range that is 5 x 6 x 2 = 60 allocations per frame, and the bare-metal
+    // probe measured exactly that - 60 per frame in the 1,024-1,535 byte class,
+    // a class no other fixture touches at all (bins x sizeof(double) lands
+    // there for any usual coupling range). It was 48% of enhanced coupling's
+    // whole per-frame churn.
+    //
+    // std::vector grown on first use, NOT std::array<double, 256> like the
+    // three ecpl scratches above it. Those are unconditional members and cost
+    // their 6,144 bytes on every Eac3Decoder ever built; two more arrays would
+    // have added 4,096 to that, and the probe measured exactly that - peak heap
+    // 233,546 to 237,642, a third of the remaining margin under a ceiling this
+    // port has spent a lot of effort getting under.
+    //
+    // Grown once, at the coupling range's width, and never shrunk, so the
+    // steady state still allocates nothing. A stream that never uses enhanced
+    // coupling - which is most streams, and notably the object fixture that
+    // SETS that peak - pays nothing at all rather than 4 KB it never reads.
+    std::vector<double> ecpl_amp_scratch_;
+    std::vector<double> ecpl_angle_scratch_;
     // decode_substream's frame-lifetime coefficient buffers - the AHT
     // stream store (§3.4: all six blocks decoded at block 0) and the
     // enhanced-coupling channel store (§3.5.5.1: a block's reconstruction
@@ -2740,8 +2764,25 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 }
                 const auto uch = static_cast<std::size_t>(ch);
                 const bool is_first = ch == tail.firstchincpl;
-                std::vector<double> amp_bin(static_cast<std::size_t>(bins));
-                std::vector<double> angle_bin(static_cast<std::size_t>(bins));
+                // Grow to the widest coupling range seen, never shrink. The
+                // range is a property of the stream rather than of the block,
+                // so in practice this allocates on the first coupled block of
+                // the first frame and never again.
+                const auto ubins = static_cast<std::size_t>(bins);
+                if (impl_->ecpl_amp_scratch_.size() < ubins) {
+                    impl_->ecpl_amp_scratch_.resize(ubins);
+                    impl_->ecpl_angle_scratch_.resize(ubins);
+                }
+                // Zeroed to the width in use before each call, because the two
+                // callees write only the bins their band structure covers and
+                // the vectors these replaced were value-initialised. Reusing
+                // storage means that is no longer implied by the construction,
+                // so it is done here - a few hundred stores against an
+                // allocation and a free.
+                const std::span<double> amp_bin{impl_->ecpl_amp_scratch_.data(), ubins};
+                const std::span<double> angle_bin{impl_->ecpl_angle_scratch_.data(), ubins};
+                std::fill(amp_bin.begin(), amp_bin.end(), 0.0);
+                std::fill(angle_bin.begin(), angle_bin.end(), 0.0);
                 eac3::ecpl_amplitudes(tail.ecplamp_raw[uch], tail.ecplchaos_raw[uch],
                                       tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
                                       tail.ecpl_end_subbnd, tail.ecpl_structure, amp_bin);

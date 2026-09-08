@@ -78,11 +78,12 @@ fi
 # the arm-none-eabi leg can still fail here. It did: at 267,754, before the
 # scratch was released, this leg died on a 6,144-byte request.
 : "${AC3FORGE_ESP32S3_MAX_HEAP_BYTES:=245000}"
+# One ceiling for all eight fixtures. Enhanced coupling had its own of 140
+# until the 60 allocations per frame behind that exemption turned out to be two
+# std::vector<double> in the reconstruction loop rather than anything §E3.5
+# asks for; it now measures 66, below eac3's 86. See run_baremetal_probe.sh's
+# own copy of this ceiling for the fixture-by-fixture numbers.
 : "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
-# Enhanced coupling costs more per frame than the other fixtures for reasons
-# that are in §E3.5 rather than in a regression - see run_baremetal_probe.sh's
-# own copy of this ceiling for the detail.
-: "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=140}"
 # Bytes still live when the probe finishes, after every decoder it made has been
 # destroyed. 24 - two __cxa_thread_atexit registration records, one per
 # thread_local the library declares.
@@ -150,13 +151,7 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     # decoder's number would gate a difference nothing in this profile can
     # currently close. run_baremetal_probe.sh carries the same ceiling.
     #
-    # The ecpl ceiling collapses onto it because there is no enhanced-coupling
-    # FIXTURE in this direction - the encode probe runs one AC-3 and one E-AC-3
-    # encode, neither named *ecpl*, so the branch that selects it below is dead
-    # here. Kept equal rather than left at 140, so that if an ecpl encode
-    # fixture is ever added it starts under a ceiling that means something.
     AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME=${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ENCODE:-260}
-    AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ECPL=$AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME
 fi
 
 OUTPUT="$(mktemp)"
@@ -277,10 +272,7 @@ if [[ -z "$CHURN" ]]; then
     exit 1
 fi
 while read -r codec per_frame; do
-    case "$codec" in
-        *ecpl*) ceiling=$AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ECPL ;;
-        *) ceiling=$AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME ;;
-    esac
+    ceiling=$AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME
     echo "churn: ${codec} = ${per_frame} allocations/frame (ceiling ${ceiling})"
     if (( per_frame > ceiling )); then
         echo "::error title=ESP32-S3 footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $ceiling" >&2

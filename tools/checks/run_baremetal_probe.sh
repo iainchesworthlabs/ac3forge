@@ -63,30 +63,29 @@ done
 # margin only ever has to absorb a deliberate change, never run-to-run noise.
 # See docs/performance-trend.md's footprint table.
 : "${AC3FORGE_MAX_HEAP_BYTES:=300000}"
-# Allocations per frame in the steady state, whichever codec is worse. The
+# Allocations per frame in the steady state, whichever fixture is worst. The
 # requirement PF7 states is ZERO and this is not it - see docs/building.md's
 # gap note. The ceiling exists so the distance from zero cannot quietly grow
-# while that gap is open: today's numbers are 47 (AC-3), 86 (E-AC-3 tools=all)
-# and 43 (E-AC-3 2/0).
-: "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
-# Enhanced coupling's own ceiling, because 126 per frame under it is not the
-# same news as 126 under any of the three above. §E3.5 reconstructs each
-# coupled channel through three 512-point inverse transforms and a DFT per
-# block (ecpl_channel_spectrum), and carries a 22-sub-band geometry instead of
-# standard coupling's 18 - so it allocates more per block for reasons that are
-# in the tool, not in a regression. Holding it to the general 100 would mean
-# either not covering §E3.5 at all or raising the ceiling for the other three
-# fixtures to a number none of them is anywhere near, which is what a single
-# global ceiling would have done here.
+# while that gap is open. Today's numbers, all eight fixtures:
 #
-# 140 against a measured 126 is the same ~11% margin the general ceiling leaves
-# over its own worst fixture, and for the same reason: a deliberate change should
-# be noticed here, not blocked. It is not slack for cross-toolchain drift. Both
-# bare-metal legs were measured and report 126 exactly, on different libstdc++
-# versions (GCC 14.2 for arm-none-eabi, 15.2 for Xtensa under IDF 6.1) - these
-# counts come from the decoders' own per-block geometry, not from anything the
-# standard library is free to vary.
-: "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=140}"
+#   16 ac3_mono   19 ac3_stereo   43 eac3_stereo   47 ac3
+#   61 eac3_atmos_bed   66 eac3_ecpl   79 eac3_atmos_objects   86 eac3
+#
+# ONE ceiling, where there used to be a second one of 140 for enhanced coupling
+# alone. That exemption was real while it lasted: §E3.5 reconstructs each
+# coupled channel through three 512-point inverse transforms and a DFT per
+# block, carries a 22-sub-band geometry against standard coupling's 18, and
+# measured 126 per frame - so holding it to 100 would have meant either not
+# covering §E3.5 or lifting the ceiling for every other fixture to a number
+# none of them was near.
+#
+# It is gone because the 126 was not the tool's geometry after all. Sixty of it
+# were two std::vector<double> constructed per coupled channel per block in
+# eac3_decoder.cpp's reconstruction loop - hoisted into decoder scratch, ecpl
+# now measures 66 and sits below eac3's own 86. A ceiling of 140 over a
+# measurement of 66 would be dead slack, and the exemption would go on implying
+# that enhanced coupling is inherently the expensive one.
+: "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 # Bytes still live when the probe finishes, after every decoder it made has been
 # destroyed. 24 - two __cxa_thread_atexit registration records, one per
 # thread_local the library declares.
@@ -221,10 +220,7 @@ if [[ -z "$CHURN" ]]; then
     exit 1
 fi
 while read -r codec per_frame; do
-    case "$codec" in
-        *ecpl*) ceiling=$AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ECPL ;;
-        *) ceiling=$AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME ;;
-    esac
+    ceiling=$AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME
     echo "churn: ${codec} = ${per_frame} allocations/frame (ceiling ${ceiling})"
     if (( per_frame > ceiling )); then
         echo "::error title=Footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $ceiling" >&2

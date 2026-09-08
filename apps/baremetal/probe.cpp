@@ -109,6 +109,20 @@ void note_large_alloc(std::size_t size, bool freeing) {
     }
 }
 
+// Every allocation ever made, by size bucket - a COUNT, not a live total, and
+// never decremented. The other two bucket arrays answer "how much is resident"
+// (at the peak, and at the end); this one answers "how much traffic", which is
+// the question PF7's open gap is actually about. A buffer allocated and freed
+// every frame never appears in a live figure at all and is exactly the thing
+// worth finding.
+//
+// Size is what identifies the buffer. There is no call site here - a probe
+// built -fno-exceptions -Os on a target with no unwind tables cannot walk a
+// stack - so the bucket is the handle: match a per-frame count against the
+// dimensions in the source and the candidate is usually unique. See
+// docs/building.md's gap note for the ones already attributed this way.
+std::array<std::size_t, kBuckets> g_churn_count_by_bucket{};
+
 std::size_t size_bucket(std::size_t size) {
     std::size_t bucket = 0;
     while (bucket + 1 < kBuckets && (std::size_t{1} << (bucket + 1)) <= size) {
@@ -143,6 +157,7 @@ void* operator new(std::size_t size) {
     const std::size_t bucket = size_bucket(size);
     g_live_by_bucket[bucket] += size;
     ++g_live_count_by_bucket[bucket];
+    ++g_churn_count_by_bucket[bucket];
     if (size > g_largest_alloc) {
         g_largest_alloc = size;
     }
@@ -272,6 +287,14 @@ void report_levels(const char* codec, const LevelAccumulator& levels,
 }
 
 struct Churn {
+    // Snapshot of g_churn_count_by_bucket at the end of the FIRST frame, and
+    // the running total after the last. The difference over the frames between
+    // them is the steady state - first-frame allocations are one-off setup
+    // (a decoder sizing its state to the stream it just saw) and averaging
+    // them in would make every fixture look worse than it steadily is, which
+    // is the number that has to reach zero.
+    std::array<std::size_t, kBuckets> bucket_at_first{};
+    std::array<std::size_t, kBuckets> bucket_at_last{};
     std::size_t first_frame_allocs = 0;
     std::size_t steady_allocs = 0;
     int frames = 0;
@@ -281,6 +304,34 @@ struct Churn {
     // decoder depending on how expensive they happen to be on a given target.
     std::uint64_t decode_us = 0;
 };
+
+// One line per size bucket that saw any steady-state traffic, as a rate per
+// frame. Printed after the summary line rather than on it: the summary is what
+// the runner scripts gate on and it should stay one line per fixture, while
+// this is for a reader working out which buffer to move off the heap.
+void report_churn_buckets(const char* codec, const Churn& churn) {
+    const int steady_frames = churn.frames - 1;
+    if (steady_frames <= 0) {
+        return;
+    }
+    for (std::size_t bucket = 0; bucket < kBuckets; ++bucket) {
+        const std::size_t traffic =
+            churn.bucket_at_last[bucket] - churn.bucket_at_first[bucket];
+        if (traffic == 0) {
+            continue;
+        }
+        // Tenths, because several of these are below one per frame - a buffer
+        // allocated once per BLOCK of six is 0.17 - and an integer rate would
+        // round every one of them to zero and hide it.
+        const std::size_t per_frame_tenths =
+            (traffic * 10) / static_cast<std::size_t>(steady_frames);
+        std::printf("%s.churn_bucket[%lu]=%lu.%lu count=%lu\n", codec,
+                    static_cast<unsigned long>(std::size_t{1} << bucket),
+                    static_cast<unsigned long>(per_frame_tenths / 10),
+                    static_cast<unsigned long>(per_frame_tenths % 10),
+                    static_cast<unsigned long>(traffic));
+    }
+}
 
 void report_churn(const char* codec, const Churn& churn) {
     const int steady_frames = churn.frames - 1;
@@ -355,9 +406,11 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
         }
         if (index == 0) {
             churn.first_frame_allocs = g_alloc_calls - before;
+            churn.bucket_at_first = g_churn_count_by_bucket;
         } else {
             churn.steady_allocs += g_alloc_calls - before;
         }
+        churn.bucket_at_last = g_churn_count_by_bucket;
         before = g_alloc_calls;
         ++index;
     }
@@ -370,6 +423,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
     }
     report_levels(codec, levels, expected);
     report_churn(codec, churn);
+    report_churn_buckets(codec, churn);
     report_timing(codec, churn);
     return 0;
 }
@@ -424,9 +478,11 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         }
         if (index == 0) {
             churn.first_frame_allocs = g_alloc_calls - before;
+            churn.bucket_at_first = g_churn_count_by_bucket;
         } else {
             churn.steady_allocs += g_alloc_calls - before;
         }
+        churn.bucket_at_last = g_churn_count_by_bucket;
         before = g_alloc_calls;
         ++index;
     }
@@ -439,6 +495,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     }
     report_levels(codec, levels, expected);
     report_churn(codec, churn);
+    report_churn_buckets(codec, churn);
     report_timing(codec, churn);
     return 0;
 }
