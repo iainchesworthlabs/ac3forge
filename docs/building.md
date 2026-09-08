@@ -423,8 +423,14 @@ Two things it does not cover:
 - The **encoder** is `double` everywhere and stays so. It is not built in this profile, and the
   fifteen cross-platform bitstream hashes in `tests/golden/bitstream-hashes.json` pin its output.
 - The **transforms' direct form**, the QMF bank and JOC's object reconstruction are still
-  `double`. The float32 inverses take no `fast` parameter: the direct form is the spec's own
+  `double`. The float32 forms take no `fast` parameter: the direct form is the spec's own
   evaluation and the oracle the fast path is validated against, so it stays double-precision.
+
+  Both directions have float32 fast paths now. The forward's exist for `oba::joc`, which analyses
+  the bed inside a *decode* before un-mixing it — the only forward transform a decode runs (PF8).
+  The encoder's forward path is untouched and stays `double`: the fifteen bitstream hashes in
+  `tests/golden/bitstream-hashes.json` pin its output, and they are byte-identical across this
+  change.
 
 The profile still exercises the `double` path without hardware floating point. `decode_scalar_t`
 is a profile choice, so an `arm-none-eabi` build of the ordinary profile software-emulates every
