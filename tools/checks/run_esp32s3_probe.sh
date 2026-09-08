@@ -43,20 +43,46 @@ fi
 # is what squeezes the heap: every byte of static data here is a byte the
 # decode cannot allocate.
 : "${AC3FORGE_ESP32S3_MAX_DIRAM_BYTES:=170000}"
-: "${AC3FORGE_ESP32S3_MAX_HEAP_BYTES:=200000}"
+# 245,000, raised from 200,000 when the probe started reconstructing Atmos
+# objects rather than only decoding their bed. oba::joc::reconstruct now runs on
+# this target, which it could not before: 449,826 bytes of peak as found,
+# 233,546 after Domain::kMdctBand, a float32 ReconstructionState, per-object
+# scratches sized to the stream, and handing back the enhanced-coupling scratch
+# between decodes. docs/platforms/esp32.md has what each was worth.
+#
+# 245,000 sits below the 280,792 bytes the allocator reports free, not at it: a
+# ceiling at the hardware limit fails at the same moment the part does, which is
+# too late to be a warning. This leaves 35,792 bytes in which CI goes red while
+# a board would still be running, and 11,454 of margin over the measurement.
+#
+# The margin matters more here than the arithmetic suggests. This part's heap is
+# REGIONED - 280,792 free but a largest block of 217,088 - so a total-free figure
+# is not an allocation budget, and a peak that packs into a flat newlib heap on
+# the arm-none-eabi leg can still fail here. It did: at 267,754, before the
+# scratch was released, this leg died on a 6,144-byte request.
+: "${AC3FORGE_ESP32S3_MAX_HEAP_BYTES:=245000}"
 : "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 # Enhanced coupling costs more per frame than the other fixtures for reasons
 # that are in §E3.5 rather than in a regression - see run_baremetal_probe.sh's
 # own copy of this ceiling for the detail.
 : "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=140}"
 # Bytes still live when the probe finishes, after every decoder it made has been
-# destroyed: the library's process-lifetime scratch, which nothing releases
-# while the task that decoded is still running. Measured 34,232 here, the same
-# number the arm-none-eabi leg reports - the allocations are the two thread_local
-# scratch buffers in eac3_tools.cpp, so neither target's toolchain changes them.
-# It matters more here than there: these are bytes of the 341,760 internal SRAM
-# that the decode holds for as long as the task lives.
-: "${AC3FORGE_ESP32S3_MAX_RETAINED_BYTES:=40000}"
+# destroyed. 24 - two __cxa_thread_atexit registration records, one per
+# thread_local the library declares.
+#
+# It was 34,232 until the probe started calling ac3::eac3::release_ecpl_scratch()
+# between fixtures. That difference is enhanced coupling's 32,768-byte spectrum
+# scratch and its 1,440-byte bin-angle vector, which are thread_local and so
+# were resident for the life of a task that never exits. Not a leak - bounded,
+# paid once, and the point of caching them - but enough to decide whether
+# something else fits: object reconstruction did not, on an ESP32-S3, whenever
+# it ran after an enhanced-coupling decode.
+#
+# 1,024 against a measured 24 is deliberately tight. There is nothing here that
+# grows a little; either the scratch is being handed back or it is not, and the
+# difference is five figures. A ceiling with room for half of it would report
+# nothing useful.
+: "${AC3FORGE_ESP32S3_MAX_RETAINED_BYTES:=1024}"
 # The decode runs on the main task, whose stack sdkconfig.defaults sets to
 # 32,768 bytes after an overflow that surfaced as a LoadProhibited panic on the
 # OTHER core - i.e. the failure mode here is not a clean error, it is corruption

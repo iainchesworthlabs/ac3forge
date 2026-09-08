@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <span>
 
+#include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 
@@ -376,7 +377,8 @@ int decode_ac3() {
 // `codec` prefixes every line this emits, so each fixture's levels, churn and
 // timing stay separable in the output the runner scripts gate on.
 int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
-                std::span<const std::int32_t> expected, bool bed_only) {
+                std::span<const std::int32_t> expected, bool bed_only,
+                ac3::oba::joc::Domain domain) {
     const std::span<const std::byte> stream{
         reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
     const auto units = ac3::split_access_units(stream);
@@ -386,7 +388,8 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         return 1;
     }
 
-    ac3::Eac3Decoder decoder{{.skip_object_reconstruction = bed_only}};
+    ac3::Eac3Decoder decoder{{.joc_domain = domain,
+                             .skip_object_reconstruction = bed_only}};
     LevelAccumulator levels;
     Churn churn;
     churn.frames = static_cast<int>(units->size());
@@ -446,9 +449,11 @@ struct Eac3Fixture {
     // DecoderConfig::skip_object_reconstruction. Only the Atmos fixture sets
     // it, and it is the whole reason that fixture can be here: see its row.
     bool bed_only = false;
+    // DecoderConfig::joc_domain. Only the object row sets it; see there.
+    ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
 };
 
-constexpr std::array<Eac3Fixture, 4> kEac3Fixtures{{
+constexpr std::array<Eac3Fixture, 5> kEac3Fixtures{{
     {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
@@ -469,6 +474,23 @@ constexpr std::array<Eac3Fixture, 4> kEac3Fixtures{{
     // paragraph. Levels are the bed's, which is what ac3cli decode writes for
     // an Atmos stream too, so the host reference needed no special case.
     {"eac3_atmos_bed", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms, true},
+    // The Atmos bitstream again, this time reconstructing its objects. Two
+    // rows off one stream: it is already linked in, so the second path costs
+    // nothing in image size, and what differs is a decoder setting.
+    //
+    // kMdctBand rather than the kQmf default, which is what makes it fit -
+    // kQmf allocates a QmfState and two filterbanks on top and peaks at
+    // 449,826 bytes. This is the configuration an embedded integrator would
+    // use, not the reference one.
+    //
+    // It runs AFTER the enhanced-coupling row on purpose. That ordering used
+    // to fail outright - ecpl leaves 34,232 bytes of thread_local scratch
+    // behind on a target whose thread never exits, and object reconstruction
+    // then had nowhere to go. release_ecpl_scratch() below is what makes the
+    // order stop mattering, so this row sits where it would naturally rather
+    // than where it happens to pass.
+    {"eac3_atmos_objects", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms,
+     false, ac3::oba::joc::Domain::kMdctBand},
     {"eac3_stereo", ac3probe::kEac3StereoStream, ac3probe::kEac3StereoRms},
 }};
 
@@ -534,10 +556,22 @@ int ac3probe::run() {
     }
     for (const auto& fixture : kEac3Fixtures) {
         if (decode_eac3(fixture.codec, fixture.stream, fixture.rms,
-                        fixture.bed_only) != 0) {
+                        fixture.bed_only, fixture.joc_domain) != 0) {
             std::printf("result=fail\n");
             return 1;
         }
+        // Hand back what enhanced coupling cached, if this fixture used it.
+        // Its scratch is thread_local and this thread never exits, so without
+        // this it stays resident for the rest of the run - not a leak, but
+        // 34,232 bytes the next fixture cannot have. It is what stopped
+        // object reconstruction fitting on an ESP32-S3 whenever it ran after
+        // the ecpl row, and calling it here is what lets these rows sit in
+        // any order.
+        //
+        // Every fixture, not just the coupled one: nothing outside the
+        // decoder can tell which streams used which tools, and this costs a
+        // null check where the scratch was never built.
+        ac3::eac3::release_ecpl_scratch();
     }
     check_reference_transform_refused();
 

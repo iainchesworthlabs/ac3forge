@@ -153,6 +153,7 @@ ac3::eac3::group_bands(int, int, int, std::span<bool const, 18446744073709551615
 ac3::eac3::quantize_ecplamp(double)
 ac3::eac3::quantize_ecplangle(double)
 ac3::eac3::quantize_ecplchaos(double)
+ac3::eac3::release_ecpl_scratch()
 ac3::eac3::spx_apply_notch(std::span<double, 18446744073709551615ul>, int, ac3::eac3::BandLayout const&, std::span<bool const, 18446744073709551615ul>, int)
 ac3::eac3::spx_attenuation(int, int)
 ac3::eac3::spx_noise_ratio(int, int, int, int)

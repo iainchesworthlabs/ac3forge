@@ -78,13 +78,23 @@ fi
 # counts come from the decoders' own per-block geometry, not from anything the
 # standard library is free to vary.
 : "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=140}"
-# Bytes still live when the probe finishes, after every decoder it made has
-# been destroyed. Not a leak and not per-frame growth: it is process-lifetime
-# scratch inside the library, and on this target nothing ever releases it
-# because the only thread never exits. Measured 34,232 - see the
-# heap.retained_bucket lines for the breakdown and docs/building.md's gap note
-# for what the three contributors are.
-: "${AC3FORGE_MAX_RETAINED_BYTES:=40000}"
+# Bytes still live when the probe finishes, after every decoder it made has been
+# destroyed. 24 - two __cxa_thread_atexit registration records, one per
+# thread_local the library declares.
+#
+# It was 34,232 until the probe started calling ac3::eac3::release_ecpl_scratch()
+# between fixtures. That difference is enhanced coupling's 32,768-byte spectrum
+# scratch and its 1,440-byte bin-angle vector, which are thread_local and so
+# were resident for the life of a task that never exits. Not a leak - bounded,
+# paid once, and the point of caching them - but enough to decide whether
+# something else fits: object reconstruction did not, on an ESP32-S3, whenever
+# it ran after an enhanced-coupling decode.
+#
+# 1,024 against a measured 24 is deliberately tight. There is nothing here that
+# grows a little; either the scratch is being handed back or it is not, and the
+# difference is five figures. A ceiling with room for half of it would report
+# nothing useful.
+: "${AC3FORGE_MAX_RETAINED_BYTES:=1024}"
 
 if [[ "$HOST" == "1" ]]; then
     PRESET=config-linux-gcc-minimal

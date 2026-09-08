@@ -340,57 +340,40 @@ The largest allocation is now the E-AC-3 decoder's own AHT buffer rather than an
 which removes the contiguity blocker: 43,008 fits the 116,736-byte free run easily, where 147,504
 never could.
 
-### Whether it fits depends on what ran first
+### It fits, and what it took to stop the order mattering
 
-267,754 against 280,792 bytes of free internal SRAM looks like 13,038 spare. On this part it is
-not, and the difference is worth stating precisely because a total-free figure is not an
-allocation budget here.
+267,754 against 280,792 bytes of free internal SRAM looks like 13,038 spare. On this part it was
+not, and the reason is worth keeping because a total-free figure is not an allocation budget here.
 
-Measured on the ESP32-S3 itself, same fixture, same build, only the order changed:
+Measured on the ESP32-S3 itself, same build, same fixture, only the order changed:
 
 | | Peak heap | Result |
 |---|---|---|
-| Objects decoded after the enhanced-coupling fixture | 267,754 | **fails** — `out_of_memory bytes=6144` |
-| Objects decoded first, on a clean heap | 233,522 | **passes**, all six bed channels exact |
+| Objects after the enhanced-coupling fixture | 267,754 | **failed** — `out_of_memory bytes=6144` |
+| Objects first, on a clean heap | 233,522 | passed |
 
-The 34,232 bytes between them are `eac3_tools.cpp`'s `thread_local` enhanced-coupling scratch —
-allocated on the first §E3.5 decode and never released, because the only thread never exits (see
-[Building](../building.md#gaps)). Once it is resident, object reconstruction no longer fits.
+The 34,232 bytes between them are `eac3_tools.cpp`'s enhanced-coupling scratch — a 32,768-byte
+spectrum buffer and a 1,440-byte bin-angle vector, both `thread_local` so that §E3.5 neither
+allocates per call nor puts 32 KB on the stack. On a hosted platform they go at thread exit. Here
+the only thread never exits, so they stayed resident and object reconstruction had nowhere to go.
 
-So the constraint is the **process**, not the codec. A decoder that plays Atmos does not decode
-enhanced coupling — they are different content — and on a clean heap it has 47,270 bytes of room.
-A probe that does both in one process is the pathological case, and it is the one CI runs, which
-is why objects are not gated on this leg.
+`ac3::eac3::release_ecpl_scratch()` hands them back, and the next call rebuilds what it needs. The
+probe calls it between fixtures, so the rows sit in the order they belong rather than the order
+that happens to pass:
 
-Closing that properly means making the ecpl scratch releasable rather than resident for the life
-of the task. Until then, ordering decides it, and ordering is not a property anything should rely
-on.
+| | Peak heap | Retained at exit |
+|---|---|---|
+| Before | 267,754 | 34,232 |
+| After | **233,546** | **24** |
 
-The `arm-none-eabi` leg does not show this: its newlib heap is flat, so 267,754 of 280,792 packs
-there and the same build passes. Two allocators, one number, two answers — the ESP32-S3's is the
-one that counts, since it is the part.
+24 bytes is two `__cxa_thread_atexit` registration records. Both legs report the same figures.
 
-What each one is:
+That leaves **47,246 bytes spare** against free SRAM rather than 13,038, and it is why object
+decode is gated in CI on both bare-metal legs instead of documented as almost fitting.
 
-- **`Domain::kMdctBand`** is a `DecoderConfig` flag, not a code change. It drops `QmfState` and
-  both filterbanks — 85,560 bytes — and adds 23,040 of its own scratch, for a net 63,056. It is
-  the cheaper approximation of §6.6.6 rather than the domain the clause describes, so it is a
-  quality choice as well as a memory one.
-- **float32** halves the state. `recon_scalar_t` is pinned to `float` in every build rather than
-  following `decode_scalar_t`, because `ReconstructionState` is installed API and a build-variant
-  type has no business in a shipped struct's layout. `QmfState` stays `double`: it is allocated
-  only under `kQmf`, which is the reference path, and narrowing it would change the reference to
-  save memory on a target that does not use it.
-- **Stream-sized scratches.** `object_mdct_scratch` and `synth_scratch` were `kMaxObjects` wide —
-  16 — where the content carries six. Two thirds of the struct was provisioning for objects no
-  stream in hand contains.
-
-The accuracy cost is measured. `tests/oba/test_atmos.cpp`'s fast-versus-direct check on the bed
-analysis fell from >200 dB to **134–136 dB**, which is float32's own epsilon (1.19e-7, about 138 dB
-for a single rounding) and not a defect in either path — the transforms still agree, the storage
-between them no longer carries 53 bits. Its floor is 120 dB now, with the reason recorded beside it.
-
-PSRAM stays off for the reasons above, and is not what made this fit.
+The `arm-none-eabi` leg could not have found this. Its newlib heap is flat, so 267,754 of 280,792
+packs there and the same build passed. This part's heap is regioned — 280,792 free against a
+largest block of 217,088 — and that is the number that decides.
 
 ### The bed plays, though
 
