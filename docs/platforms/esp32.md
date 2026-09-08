@@ -29,8 +29,9 @@ it is the first target where real-time decode is worth measuring.
 ESP-IDF owns the top-level build, as Gradle does for [Android](android.md), so
 there is no ac3forge preset for this target and no entry in `cmake/toolchains/`.
 The project reaches into this repo from the other direction:
-`apps/baremetal/platform/esp32s3/components/ac3forge/` pre-seeds the root's
-`option()`s and `add_subdirectory()`s the repo root, the same shape
+`apps/baremetal/platform/esp32s3/CMakeLists.txt` points `EXTRA_COMPONENT_DIRS`
+at `esp-idf/`, and the component there pre-seeds the root's `option()`s and
+`add_subdirectory()`s the repo root, the same shape
 `apps/android/app/src/main/cpp/CMakeLists.txt` uses.
 
 The alternative was re-listing `src/forge/minimal.cmake`'s source list in an
@@ -313,7 +314,9 @@ the P4.
   still wants a measurement from real silicon before any of it.
 - **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works
   but keeps both transform instantiations compiled.
-- **Audio output.** The probe decodes built-in fixtures. Nothing reaches I2S.
+- **Audio output from the probe.** The footprint probe decodes built-in fixtures and
+  reports levels; it drives no peripheral. Sound out of this part goes through the
+  separate I2S example described in [Audio output](#audio-output) below.
 
 Adding fixtures does not move the internal-SRAM figure. The enhanced-coupling and 2/0 streams
 added 13,824 bytes and DIRAM stayed at 134,676: `fixture.hpp` is `constexpr` data, and on this
@@ -401,18 +404,60 @@ declared.
 Without the flag an Atmos stream does not degrade on this part, it fails: the allocation is
 attempted, and the decode stops partway through in `operator new`.
 
+## The ESP-IDF component
+
+`esp-idf/ac3forge/` is the profile packaged as a component, so a project outside
+this repository can build against it without vendoring the source list:
+
+```cmake
+set(EXTRA_COMPONENT_DIRS "/path/to/ac3forge/esp-idf")
+set(AC3FORGE_ESP_PROFILE "decoder")   # or "encoder"
+```
+
+The two profiles are mutually exclusive — `AC3FORGE_MINIMAL_DECODER` and
+`AC3FORGE_MINIMAL_ENCODER` fail configure together, because neither fits beside
+the other in internal SRAM. Build one, tear it down, rebuild for the other if a
+target needs both in sequence.
+
+`idf_component.yml` carries the registry metadata and names `esp32s3` as the
+only target, which is a measurement rather than a shrug at the rest: the S3 is
+the part this was ported to and the one CI exercises. **Nothing publishes the
+component** — there is no upload step in any workflow, deliberately, since
+publishing to a registry is a distribution decision rather than a build one.
+
+## Audio output
+
+`esp-idf/ac3forge/examples/i2s_player/` decodes the AC-3 5.1 fixture, folds it
+to stereo through the decoder's own §7.8 output stage, and writes it to an I2S
+DAC at 48 kHz, 16-bit, on a loop. Three GPIOs, set under `ac3forge I2S player`
+in `idf.py menuconfig`, defaulting to BCLK 5, WS 6, DOUT 7 — chosen to avoid the
+strapping pins, the USB pair and the console UART. The example's README names
+the DAC shapes it is written for (a MAX98357A, a PCM5102), and no MCLK pin is
+configured, so a DAC that needs one has to have it added.
+
+It is a smaller build than the footprint probe — 94,383 bytes of DIRAM against
+134,676 — because it reaches only the AC-3 path: no Annex E decoder, no QMF
+bank, no object reconstruction. An E-AC-3 or Atmos player is a bigger build.
+
+Unlike the probe under QEMU, the I2S peripheral is a real clock: the DMA drains
+at 48,000 frames a second whatever the CPU does, so the example's
+`realtime_permille` and `worst_frame_us` are the timing figures this port has
+otherwise had no way to take. What the [Timing](#timing) section says about QEMU
+still holds for the probe.
+
 ## ESPHome
 
-Not built. The pathway is three steps, each of which exists:
+Not built. The first of the three steps it needs is now done:
+[the ESP-IDF component](#the-esp-idf-component) above is reusable and reachable
+through `EXTRA_COMPONENT_DIRS`. Two remain:
 
-1. **ac3forge as an ESP-IDF component.**
-   `apps/baremetal/platform/esp32s3/components/ac3forge/` is one, though it sits
-   inside the probe app and would need relocating somewhere reusable.
-2. **An ESPHome external component**, `components/ac3_decoder/{__init__.py,
+1. **An ESPHome external component**, `components/ac3_decoder/{__init__.py,
    *.cpp}` in a git repo, referenced from YAML via `external_components:`.
-3. **Pulling the library in**, with `add_idf_component(name=..., repo=..., ref=...)`
+2. **Pulling the library in**, with `add_idf_component(name=..., repo=..., ref=...)`
    from that component's `to_code()` — the mechanism ESPHome's own `mqtt` and
-   `usb_host` components use for IDF 6.0's registry-hosted dependencies.
+   `usb_host` components use for IDF 6.0's registry-hosted dependencies. That
+   mechanism wants a registry-hosted dependency, and nothing publishes this
+   component, so an ESPHome build would reach it by git reference instead.
 
 ESPHome's `speaker` media_player platform is ESP-IDF-only, so the frameworks are
-compatible. The open question is real-time decode, which is unmeasured.
+compatible.
