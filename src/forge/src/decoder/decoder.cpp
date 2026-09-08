@@ -20,7 +20,6 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/mantissas.hpp"
-#include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
