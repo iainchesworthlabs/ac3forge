@@ -1856,15 +1856,13 @@ object file), proven on a cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/bare
 `build-footprint`) that decodes real AC-3/E-AC-3 to the host build's own levels in 408 KB of
 image and 265 KB of peak heap. Two requirements are recorded as open gaps rather than
 half-enforced: zero heap traffic in the decode loop (today: 46-87 allocations/frame) and a
-float32-only internal path. That second one is now MET for the decode path: both decoders carry
-their coefficients, transform scratch and overlap-add history in a profile-selected
-`decode_scalar_t`, measured at ~139 dB against the double decode across four real streams
-including Dolby- and FFmpeg-encoded ones, and at 2.7e-7 peak-normalised at the transform itself.
-It changed no gold reference, because the ordinary build's `decode_scalar_t` is still `double`.
-That, plus moving a 32 KB `thread_local` off the stack of every FreeRTOS task, took the figures
-above to 277 KB of image and 168 KB of peak heap - see `docs/building.md`'s Gaps section,
-`docs/performance-trend.md` for the current table, and `docs/platforms/esp32.md` for the
-ESP32-S3 target that motivated it.
+float32-only internal path. The second is now met for the decode path: both decoders carry their
+coefficients, transform scratch and overlap-add history in a profile-selected `decode_scalar_t`,
+agreeing with the double decode to ~139 dB across four real streams and to 2.7e-7 peak-normalised
+at the transform. No gold reference moved, since the ordinary build's `decode_scalar_t` is still
+`double`. That change and the removal of a 32 KB `thread_local` from every FreeRTOS task's stack
+took the figures above to 277 KB of image and 168 KB of peak heap. See `docs/building.md`'s Gaps
+section, `docs/performance-trend.md` for the current table, and `docs/platforms/esp32.md`.
 </details>
 
 **PF8 (S)** — The decoder's JOC bed analysis was still running direct forward transforms — now
@@ -2961,6 +2959,15 @@ installer. GPG and Sigstore satisfy neither OS. Blocked on the certificates, not
 - **APT/DNF repositories and Docker images** — not planned. `docs/releasing.md` names where the
   workflows could be copied from if one were ever wanted; the previous roadmap's "ruled out"
   overstated it.
+- **An ESP32-P4 decoder target** — assessed 2026-09-08 and not taken;
+  `docs/platforms/esp32.md` has the evidence. Its vector extension is `Xesppie`, vendor-custom
+  rather than RISC-V Vector, and integer-only across all 360 instructions in ESP-IDF's own
+  decoder test — so the float32 decode path stays scalar there, and Espressif's own float
+  kernels for the part are scalar too. It also has no wide float load, which the ESP32-S3 does
+  have, leaving 1.67× of clock as the whole advantage over a part that already fits the working
+  set. Against that it has no radio, and the transport plan it would serve is a Wi-Fi one —
+  disqualifying on its own, independent of what the S3 eventually measures. Closed, not
+  deferred: if the S3 misses real time the fix is in the decoder, where it helps every target.
 
 ## Retired IDs
 

@@ -27,9 +27,8 @@ CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 #      against roughly 400 KB of usable internal SRAM. That is tight, and PF7
 #      records "no heap traffic in the decode loop" as an OPEN gap (45
 #      allocations per frame for AC-3, 87 for E-AC-3 - see docs/building.md).
-#      Turning PSRAM on would make the tightness invisible rather than fixed.
-#      Leaving it off means the SRAM budget is a number this build has to
-#      meet, which is the honest way round.
+#      Turning PSRAM on would hide that rather than fix it. Leaving it off
+#      means the SRAM budget is enforced on every build.
 #
 # Turn it on for a board build that needs the headroom; do not turn it on to
 # make a footprint number go away.
