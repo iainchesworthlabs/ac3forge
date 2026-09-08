@@ -664,9 +664,11 @@ soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`
 [Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
 for what the profile changes and why.
 
-`apps/baremetal/probe.cpp` decodes six frames each of real 5.1 AC-3 (448 kbit/s, coupling) and
-E-AC-3 (384 kbit/s, AHT + spx + coupling) and reports what it cost. Numbers below are from a run
-against `main` at `e982712b`; `build-footprint` in
+`apps/baremetal/probe.cpp` decodes six frames each of four real streams — 5.1 AC-3 (448 kbit/s,
+coupling), 5.1 E-AC-3 (384 kbit/s, AHT + spx + standard coupling), 5.1 E-AC-3 with §E3.5
+enhanced coupling (384 kbit/s, `cpl+ecpl`) and 2/0 E-AC-3 (192 kbit/s, which is the only layout
+§7.5.4 rematrixing exists in) — and reports what it cost. Numbers below are from a run
+against `main` at `a2330dae` plus the two fixtures above; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
@@ -696,10 +698,10 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 185,932 |
+| `.text` (code + read-only data) | 200,060 |
 | `.data` (initialised) | 400 |
 | `.bss` (zero-initialised) | 97,152 |
-| **Image total** | **283,484** (276.8 KiB) |
+| **Image total** | **297,612** (290.6 KiB) |
 
 `.bss` fell 140,440 bytes from the 237,592 this table carried before, in two steps. Moving
 `ecpl_channel_spectrum`'s 32 KB scratch off thread-local storage — it made the library
@@ -709,12 +711,19 @@ match. The decode path then moved to float32 under this profile, halving every c
 buffer. `.text` rose 5,680 bytes over the same span, which is the float32 transform
 instantiation.
 
+`.text` then rose a further 14,128 bytes when the enhanced-coupling and 2/0 fixtures were added.
+All but ~300 bytes of that is the two bitstreams themselves: `fixture.hpp` is `constexpr`
+`std::array` data linked into `probe.cpp.obj`'s read-only section, and it went from 19,968 bytes
+of stream to 33,792. Neither §E3.5 nor §7.5.4 added code — `eac3_tools.cpp` and `fft.cpp` were
+already in `src/forge/minimal.cmake`'s source list and already linked, which is the point: what
+the fixtures added was execution, not size.
+
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
 
 | Object | `.text` | `.bss` |
 |---|---|---|
-| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 23.2 KiB | 48.7 KiB |
+| `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks) | 37.0 KiB | 48.7 KiB |
 | `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 4.0 KiB |
 | `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 8.6 KiB | 10.3 KiB |
 | `eac3_decoder.cpp.obj` (all of Annex E) | 48.5 KiB | 0 |
@@ -773,24 +782,50 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 171,558 bytes (167.5 KiB) |
-| Leaked at exit | 0 |
+| Peak heap | 179,064 bytes (174.9 KiB) |
+| Retained after teardown | 34,232 bytes |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
 | Caller-owned PCM buffer (8 × 1536 `float`, via `decode_*_into`) | 49,152 bytes |
-| AC-3 allocations per frame, steady state | 46 |
-| E-AC-3 allocations per frame, steady state | 87 |
+| AC-3 allocations per frame, steady state | 47 |
+| E-AC-3 allocations per frame, steady state | 86 |
+| E-AC-3 enhanced coupling allocations per frame, steady state | 126 |
+| E-AC-3 2/0 allocations per frame, steady state | 43 |
 
 The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
-for zero, and this is 46/87 — from the per-block geometry vectors inside the decoders and the
+for zero, and this is 43–126 — from the per-block geometry vectors inside the decoders and the
 `std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`, none of which the
 memory programme's [`_into` forms](#whole-frame-trend) removed because they are inherent to
 those two return types, not to allocation *reuse*. Reaching zero means those becoming
 fixed-capacity, a public-type change tracked separately from this profile.
 
-`tools/checks/run_baremetal_probe.sh` gates the image, the heap peak and both allocation counts
-at ceilings above these measured values, so a regression stops the build instead of drifting
-the table silently.
+Enhanced coupling's 126 is the outlier and has its own ceiling. §E3.5 reconstructs each coupled
+channel through three 512-point inverse transforms and a DFT per block and carries a 22-sub-band
+geometry against standard coupling's 18, so it allocates more per block for a reason that is in
+the tool. Holding it to the general ceiling would have meant either not covering §E3.5 or
+raising the bound on three fixtures that sit at 43–86. Its own ceiling is 140, the same ~11%
+margin the general 100 leaves over its worst fixture.
+
+Both bare-metal legs report all four of these counts identically, on different libstdc++ versions
+(GCC 14.2 for `arm-none-eabi`, 15.2 for Xtensa under ESP-IDF 6.1), as they do the peak and the
+retained bytes. The counts come from the decoders' own per-block geometry rather than from
+anything the standard library is free to vary, so a divergence between the legs would itself be
+news.
+
+**Retained after teardown** is bytes still live when the probe finishes, after every decoder it
+made has been destroyed — so not per-frame growth and not a leak. All 34,232 of it is
+`eac3_tools.cpp`'s enhanced-coupling scratch: the 32,768-byte `EcplSpectrumScratch`, the
+1,440-byte bin-angle vector, and 24 bytes of `__cxa_thread_atexit` registration for the two.
+Both are `thread_local`, and on a target whose only thread never exits the destructor that would
+release them never runs. It is bounded and paid once, which is what caching it is for; it is
+also 32 KB of an ESP32-S3's 341,760 bytes of internal SRAM held for the life of the task, which
+is why it is reported and gated rather than folded into the peak. Nothing could measure it until
+a fixture reached §E3.5.
+
+`tools/checks/run_baremetal_probe.sh` gates the image, the heap peak, the retained bytes and
+every fixture's allocation count at ceilings above these measured values, so a regression stops
+the build instead of drifting the table silently. The fixture names come from the probe's own
+output rather than a list in the script, so a fixture added and forgotten cannot pass unnoticed.
 
 <div id="memory-trend-app">
   <p class="performance-trend-status">Loading memory trend data…</p>

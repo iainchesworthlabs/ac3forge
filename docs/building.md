@@ -324,15 +324,28 @@ writes down, and substituting a different arithmetic would defeat its only purpo
 
 ### The probe
 
-`apps/baremetal/probe.cpp` links the archive, decodes six frames each of real 5.1 AC-3 (448
-kbit/s, coupling) and E-AC-3 (384 kbit/s, AHT + spx + coupling), compares every channel's level
-against `apps/baremetal/fixture.hpp`, and prints `key=value` lines that
+`apps/baremetal/probe.cpp` links the archive, decodes six frames each of four real streams —
+5.1 AC-3 (448 kbit/s, coupling), 5.1 E-AC-3 (384 kbit/s, AHT + spx + standard coupling), 5.1
+E-AC-3 with §E3.5 enhanced coupling (`cpl+ecpl`, which `tools=all` does not select) and 2/0
+E-AC-3 (192 kbit/s, the only layout §7.5.4 rematrixing exists in) — compares every channel's
+level against `apps/baremetal/fixture.hpp`, and prints `key=value` lines that
 `tools/checks/run_baremetal_probe.sh` gates on. It is not a unit test — the profile requires
 `AC3FORGE_BUILD_TESTS=OFF`, since nothing under `tests/` builds against a decode-only archive —
 and it answers three questions a test could not: does the archive link with everything else
 absent, does it produce the right audio on a 32-bit soft-float target, and what did it cost.
-Regenerate its fixture with
-`python tools/generators/gen_baremetal_fixture.py --ac3cli <path>`.
+Regenerate its fixtures with
+`python tools/generators/gen_baremetal_fixture.py --ac3cli <path>`. Adding a configuration is a
+row in that script's `STREAMS`, a layout is a row in its `LAYOUTS`, and a fixture is a row in
+`probe.cpp`'s `kEac3Fixtures`; neither runner script names a fixture, so nothing else has to be
+widened to keep gating one.
+
+Nothing regenerates the fixtures automatically and nothing detects that they have drifted from
+the encoder — the probe decodes the committed bitstream and compares it against the committed
+levels, so both moving together is invisible to it. The header committed in August 2026 was 131
+encoder commits stale by the time the §E3.5 and 2/0 streams were added and every stream was
+re-based onto the encoder of the day. This does not weaken what the probe measures — it is a
+decode regression reference either way — but a fixture is only evidence about the encoder that
+produced it.
 
 The measured numbers are in [the footprint table](performance-trend.md#minimum-footprint-decoder).
 CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`).
@@ -344,12 +357,27 @@ third, a float32-only path, is met for the decode path; its scope is described b
 
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
 (`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
-the probe uses) and it leaks nothing, but the steady state is **46 allocations per frame for
-AC-3 and 87 for E-AC-3**, from the per-block geometry vectors inside the decoders and the
+the probe uses) and no frame leaks (what stays live after teardown is the bounded scratch below,
+not per-frame growth), but the steady state is **47 allocations per frame for
+AC-3, 86 for E-AC-3, 126 for E-AC-3 with §E3.5 enhanced coupling and 43 for 2/0**, from the
+per-block geometry vectors inside the decoders and the
 `std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`. Reaching zero means
 those becoming fixed-capacity storage, which changes the public types — a design change, not a
-build option. The runner gates the number at 100 so the distance from zero cannot grow while the
-gap is open.
+build option. The runner gates the number at 100, and enhanced coupling at 130 for reasons that
+are in §E3.5 rather than in a regression ([the footprint
+table](performance-trend.md#minimum-footprint-decoder) has the detail), so the distance from
+zero cannot grow while the gap is open.
+
+**Scratch that is never released — newly visible, and bounded.** 34,232 bytes are still live
+when the probe finishes, after every decoder it made has been destroyed: `eac3_tools.cpp`'s
+32,768-byte `EcplSpectrumScratch`, its 1,440-byte bin-angle vector, and 24 bytes of
+`__cxa_thread_atexit` registration for the two. Both are `thread_local`, deliberately, so that
+enhanced coupling neither allocates per call nor puts 32 KB on the stack; on a target whose only
+thread never exits the destructor that would release them never runs. This is not the heap gap
+above — it does not grow, and it is paid once — but on an ESP32-S3 it is 32 KB of 341,760 bytes
+of internal SRAM held for the life of the decoding task. The probe reports it as
+`heap.retained_bytes` and both runners gate it. It could not be measured until a fixture reached
+§E3.5, which none did before the enhanced-coupling stream was added.
 
 **A float32-only path — met for the decode path.** `src/internal/profile/{minimal,full}/`'s
 seam carries `decode_scalar_t`: `float` under this profile, `double` in every other build. Both

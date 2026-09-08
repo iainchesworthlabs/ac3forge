@@ -191,16 +191,20 @@ def main() -> int:
             ("heap.peak_bytes", "Peak heap"),
             ("static.frame_decoder_bytes", "sizeof(ac3::FrameDecoder)"),
             ("static.eac3_decoder_bytes", "sizeof(ac3::Eac3Decoder)"),
-            ("static.pcm_bytes", "Caller-owned PCM (16 x 1536 float)"),
+            ("static.pcm_bytes", "Caller-owned PCM (8 x 1536 float)"),
         ):
             if key in probe:
                 rows.append((label, human(int(probe[key]))))
         for key, label in (
             ("ac3.steady_allocs_per_frame", "AC-3 allocations per frame (steady state)"),
             ("eac3.steady_allocs_per_frame", "E-AC-3 allocations per frame (steady state)"),
+            ("eac3_ecpl.steady_allocs_per_frame",
+             "E-AC-3 enhanced coupling allocations per frame (steady state)"),
+            ("eac3_stereo.steady_allocs_per_frame",
+             "E-AC-3 2/0 allocations per frame (steady state)"),
             ("ac3.first_frame_allocs", "AC-3 allocations, first frame"),
             ("eac3.first_frame_allocs", "E-AC-3 allocations, first frame"),
-            ("heap.leaked_bytes", "Leaked at exit"),
+            ("heap.retained_bytes", "Retained after teardown"),
         ):
             if key in probe:
                 rows.append((label, probe[key]))
