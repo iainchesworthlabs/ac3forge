@@ -318,52 +318,48 @@ part it lands in **Flash Data** (112,524 bytes) rather than DIRAM. The `arm-none
 ceiling is the one fixture size spends against; here it costs flash, of which the app partition
 has 66% free.
 
-## Objects do not fit in internal SRAM
+## Objects, and what it took to fit them
 
-`src/forge/src/oba/joc.cpp` and `oamd.cpp` are both in `src/forge/minimal.cmake`'s source list
-and link into every build of this profile, so the question was never whether object decode
-compiles here. It was measured rather than argued: an `atmos-encode` fixture (six objects, JOC
-over a 5.1 downmix, 448 kbit/s) was added to the probe, run on the `arm-none-eabi` leg, and
-then removed.
+`src/forge/src/oba/joc.cpp` and `oamd.cpp` are both in `src/forge/minimal.cmake`'s source list and
+link into every build of this profile, so object decode always compiled here. It did not fit. An
+`atmos-encode` fixture (six objects, JOC over a 5.1 downmix, 448 kbit/s) decoded correctly on the
+`arm-none-eabi` leg and peaked at **449,826 bytes of heap** against 280,792 free — and worse,
+`oba::joc::ReconstructionState` was a single 147,504-byte allocation, larger than the 116,736-byte
+contiguous block a decode leaves free, so it failed on contiguity before any budget was consulted.
 
-It decodes correctly — all six bed channels exact — and its allocation churn is 80 per frame,
-lower than the plain E-AC-3 fixture's 86. What it costs is memory:
+Three changes, each measured on its own rather than stacked in arithmetic:
 
-| | Bytes |
-|---|---|
-| `oba::joc::ReconstructionState` | 147,504 |
-| `ReconstructionState::QmfState` (`Domain::kQmf` is the default) | 34,360 |
-| QMF analysis bank (5 × 5,120) | 25,600 |
-| QMF synthesis banks (2 live × 12,800) | 25,600 |
-| **JOC state** | 233,064 |
-| **Probe peak heap, whole run** | 449,826 (against 179,064 without it) |
-
-The allocator has 280,792 bytes free, so the peak overshoots by 169,034. Not a ceiling to
-raise: the probe would die in `operator new` the way the port originally did at `bytes=86016`.
-
-**Contiguity rules it out a second time, independently.** `ReconstructionState` is one 147,504-byte
-allocation, and the largest free block after any other decode is 116,736 (see
-[Memory](#how-much-memory-there-actually-is)). It would fail on the single allocation even if the
-budget allowed it.
-
-All 233,064 bytes are `double`. `decode_scalar_t`'s float32 seam reaches both decoders' coefficient
-stores but not JOC's reconstruction or the QMF bank — [Building](../building.md#gaps) records that
-as a known non-gap. Three changes stack, and the arithmetic below is calculation from measured
-sizes rather than a second measurement:
-
-| | Peak | |
+| | Peak heap | Largest single allocation |
 |---|---|---|
-| As measured | 449,826 | |
-| `Domain::kMdctBand` instead of `kQmf` | 364,266 | a config flag; `QmfState` and both banks stop existing |
-| + float32 the JOC path | 290,514 | also brings the biggest allocation to ~73,752, under the 116,736 block |
-| + size the object arrays to the stream | 259,794 | `kMaxObjects` is 16; the fixture carried 6 |
+| As found (`Domain::kQmf`, `double`, arrays at `kMaxObjects`) | 449,826 | 147,504 |
+| `Domain::kMdctBand` | 386,770 | 147,504 |
+| + `ReconstructionState` in float32 | 301,522 | 73,776 |
+| + per-object scratches sized to the stream | **267,754** | 43,008 |
 
-That last row fits, with about 21,000 bytes spare. So object decode here is reachable, and it needs
-all three — the float32 conversion is load-bearing twice over, once for the total and once for the
-contiguity.
+Against 280,792 bytes of free internal SRAM that leaves **13,038 spare**, and the largest
+allocation is now the E-AC-3 decoder's own AHT buffer rather than anything JOC owns.
 
-Adding more fixtures would not have found any of this, which is why the full-object fixture was
-measured and removed rather than committed.
+What each one is:
+
+- **`Domain::kMdctBand`** is a `DecoderConfig` flag, not a code change. It drops `QmfState` and
+  both filterbanks — 85,560 bytes — and adds 23,040 of its own scratch, for a net 63,056. It is
+  the cheaper approximation of §6.6.6 rather than the domain the clause describes, so it is a
+  quality choice as well as a memory one.
+- **float32** halves the state. `recon_scalar_t` is pinned to `float` in every build rather than
+  following `decode_scalar_t`, because `ReconstructionState` is installed API and a build-variant
+  type has no business in a shipped struct's layout. `QmfState` stays `double`: it is allocated
+  only under `kQmf`, which is the reference path, and narrowing it would change the reference to
+  save memory on a target that does not use it.
+- **Stream-sized scratches.** `object_mdct_scratch` and `synth_scratch` were `kMaxObjects` wide —
+  16 — where the content carries six. Two thirds of the struct was provisioning for objects no
+  stream in hand contains.
+
+The accuracy cost is measured. `tests/oba/test_atmos.cpp`'s fast-versus-direct check on the bed
+analysis fell from >200 dB to **134–136 dB**, which is float32's own epsilon (1.19e-7, about 138 dB
+for a single rounding) and not a defect in either path — the transforms still agree, the storage
+between them no longer carries 53 bits. Its floor is 120 dB now, with the reason recorded beside it.
+
+PSRAM stays off for the reasons above, and is not what made this fit.
 
 ### The bed plays, though
 
