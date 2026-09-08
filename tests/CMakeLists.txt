@@ -635,7 +635,8 @@ include(Catch)
 # contract), cli/test_cli_live.cpp (the commands that actually start the
 # capture and render threads) and crucible/test_engine.cpp (the Crucible
 # engine's three threads - the frame loop, the session monitor and the probe
-# - sharing two mutexes, two atomics and an OutputStage). It is what
+# - over three mutexes, four atomics and an OutputStage, including one
+# deliberately unlocked read-then-take of the probe's arming flags). It is what
 # CMakePresets.json's test-linux-llvm-tsan preset runs - see
 # .github/workflows/_build.yml's ThreadSanitizer matrix entry and
 # cmake/Sanitizers.cmake.

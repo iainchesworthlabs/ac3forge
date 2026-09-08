@@ -389,6 +389,17 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **A Crucible re-probe asked for while one was already running was dropped**
+  (`apps/crucible/engine/engine.cpp`). The frame loop tested `want_reprobe` before it tested
+  whether an enumeration was in flight, so a request that arrived during one was cleared by that
+  test and then served by nobody - not queued, not retried. The next probe came only from the
+  device watcher or from the user asking again. That is the case the request exists for: reading
+  the endpoint list is slow, so the world routinely changes after the running enumeration has
+  read it, and the request that would have caught the change was the one being thrown away.
+  Every caller was affected - Re-probe on the Room page, pinning a mode, choosing an endpoint,
+  loading or clearing a signing key, and the device watcher itself. A request that arrives during
+  an enumeration is now kept, and starts a fresh probe as soon as that one finishes.
+
 - **Crucible tapped applications before it had anywhere to play them**
   (`apps/crucible/engine/engine.cpp`). The frame loop refreshed the session list and opened a tap
   per application earlier in the frame than the block that applies an endpoint probe, and a probe

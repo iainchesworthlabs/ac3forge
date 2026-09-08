@@ -685,8 +685,8 @@ both decoders a `struct Impl; std::unique_ptr<Impl> impl_;`
 `sizeof(ac3::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
 the state they used to hold in place now lives on the heap. That state came out of automatic
 storage: both decoders are locals in `decode_ac3()` and `decode_eac3()`, and `.bss` was unchanged
-at 237,592 bytes across those two measurements — it has moved a great deal since, for unrelated
-reasons the Static footprint section below sets out. Peak heap rose by 27,416 bytes, which is the E-AC-3
+at 237,592 bytes across those two measurements. It has moved since, for unrelated reasons the
+Static footprint section below sets out. Peak heap rose by 27,416 bytes, which is the E-AC-3
 decoder's former in-place size rather than the two summed — `decode_ac3()` returns before
 `decode_eac3()` runs, so only the larger of the two is ever live at the peak. The rest of the
 delta is `.text`, up 5,728 bytes and the whole of the image change, from the ordinary work of the
@@ -701,13 +701,13 @@ intervening commits.
 | `.bss` (zero-initialised) | 97,152 |
 | **Image total** | **283,484** (276.8 KiB) |
 
-`.bss` fell 140,440 bytes from the 237,592 this table carried before, in two steps and for one
-reason each. Moving `ecpl_channel_spectrum`'s 32 KB scratch off thread-local storage — it made
-the library unlinkable into any FreeRTOS application, see
-[the ESP32-S3 page](platforms/esp32.md) — took `.tbss` from 32,784 bytes to 24, and let
-`tls.cpp`'s block follow it from 64 KiB to 4 KiB. Then the decode path moved to float32 under
-this profile, halving every coefficient buffer. `.text` rose 5,680 bytes over the same span,
-which is the float32 transform instantiation.
+`.bss` fell 140,440 bytes from the 237,592 this table carried before, in two steps. Moving
+`ecpl_channel_spectrum`'s 32 KB scratch off thread-local storage — it made the library
+unlinkable into any FreeRTOS application, see [the ESP32-S3 page](platforms/esp32.md) — took
+`.tbss` from 32,784 bytes to 24, and `tls.cpp`'s block was resized from 64 KiB to 4 KiB to
+match. The decode path then moved to float32 under this profile, halving every coefficient
+buffer. `.text` rose 5,680 bytes over the same span, which is the float32 transform
+instantiation.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
@@ -744,13 +744,12 @@ re-measurement, and both columns now reconcile with `arm-none-eabi-size`'s own t
 (`apps/baremetal/platform/baremetal/tls.cpp`), checked by two `ASSERT()`s in the linker script
 rather than trusted.
 
-It was 64 KiB, and this paragraph used to defend that as "oversized on purpose so ordinary growth
-in `ecpl_channel_spectrum`'s `thread_local` scratch does not need it revisited". That scratch is
-no longer thread-local — a 32 KB one made the library unlinkable into any FreeRTOS application,
+It was 64 KiB, sized against `ecpl_channel_spectrum`'s `thread_local` scratch. That scratch is no
+longer thread-local: at 32 KB it made the library unlinkable into any FreeRTOS application,
 because FreeRTOS carves each task's thread-local area out of that task's own stack and ESP-IDF's
-1 KB IPC task could not be created. With the storage moved to the heap behind a `unique_ptr`, the
-measured `.tbss` is **24 bytes**, so 4 KiB is still more than seven times what is there, on the
-same reasoning that chose the old number.
+1 KB IPC task could not then be created. With the storage moved to the heap behind a
+`unique_ptr`, the measured `.tbss` is 24 bytes, so 4 KiB leaves the same order of headroom the
+old number did.
 
 ### Table ROM budget
 

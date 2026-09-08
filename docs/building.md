@@ -339,9 +339,8 @@ CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`)
 
 ### Gaps
 
-Two of PF7's requirements are not met, and are recorded here rather than half-enforced.
-The third — a float32-only path — is now met for the decode path; what that did and
-did not cover is below.
+Two of PF7's requirements are not met, and are recorded here rather than half-enforced. The
+third, a float32-only path, is met for the decode path; its scope is described below.
 
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
 (`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
@@ -356,31 +355,30 @@ gap is open.
 seam carries `decode_scalar_t`: `float` under this profile, `double` in every other build. Both
 decoders' coefficient stores, transform scratch and overlap-add history follow it, and
 `imdct512_windowed`/`imdct256_pair_windowed` have float32 overloads built from the same templated
-body as the double ones — one statement of §7.9.4.1, not two that have to be kept agreeing.
+body as the double ones, so §7.9.4.1 is implemented once.
 
-This was expected to "change every gold-reference number in [the quality trend](quality-trend.md)".
-It changed none, because the choice is per-profile rather than global: the ordinary build's
-`decode_scalar_t` is `double`, so its arithmetic is untouched and the whole suite passes
-identically (4,032,916 assertions). The oracle run the paragraph asked for was still done, by
-building a float32 `ac3cli` and decoding real fixtures with both: **~139 dB** worst-channel SNR
-against the double decode across four streams including Dolby- and FFmpeg-encoded ones, measured
-with `tools/checks/compare_wav.py`. For scale, the gold-reference gate's tightest per-channel
-floor is 60 dB, so float32 contributes essentially nothing to the error budget that gate measures.
-At the transform alone the disagreement is 2.7e-7 peak-normalised
-(`tests/core/test_mdct_fast.cpp`), roughly one LSB at 24 bits.
+No gold-reference number moved. This paragraph previously predicted that one would; the
+prediction assumed a global change, and the choice is per-profile. The ordinary build's
+`decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite passes identically
+(4,032,916 assertions).
 
-Two things it does **not** cover, and neither is a decode-path gap:
+The oracle run this paragraph asked for was done separately: a float32 `ac3cli` decoding four
+real streams, including Dolby- and FFmpeg-encoded ones, agrees with the double build to ~139 dB
+worst-channel SNR, measured with `tools/checks/compare_wav.py`. The gold-reference gate's
+tightest per-channel floor is 60 dB. At the transform alone the disagreement is 2.7e-7
+peak-normalised (`tests/core/test_mdct_fast.cpp`), about one LSB at 24 bits.
 
-- The **encoder** is still `double` everywhere, and stays so: it is not built in this profile at
-  all, and the fifteen cross-platform bitstream hashes in `tests/golden/bitstream-hashes.json`
-  pin its output.
+Two things it does not cover:
+
+- The **encoder** is `double` everywhere and stays so. It is not built in this profile, and the
+  fifteen cross-platform bitstream hashes in `tests/golden/bitstream-hashes.json` pin its output.
 - The **transforms' direct form**, the QMF bank and JOC's object reconstruction are still
-  `double`. The float32 inverses deliberately take no `fast` parameter, because the direct form
-  is the spec's own evaluation and the oracle the fast path is validated against.
+  `double`. The float32 inverses take no `fast` parameter: the direct form is the spec's own
+  evaluation and the oracle the fast path is validated against, so it stays double-precision.
 
-What the profile also still proves is that the `double` path works without hardware floating
-point: `decode_scalar_t` is a profile choice, and an `arm-none-eabi` build of the ordinary
-profile would software-emulate every operation exactly as before.
+The profile still exercises the `double` path without hardware floating point. `decode_scalar_t`
+is a profile choice, so an `arm-none-eabi` build of the ordinary profile software-emulates every
+operation as before.
 
 **`-fno-exceptions` removes the tables, not the throw sites.** The codec has no `throw`, `try` or
 `catch` of its own. What remains is the standard library's: `std::vector`'s `length_error` and

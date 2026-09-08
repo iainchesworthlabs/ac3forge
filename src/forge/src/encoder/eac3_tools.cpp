@@ -536,9 +536,8 @@ struct EcplSpectrumScratch {
     std::array<double, 512> zi{};
 };
 
-// The storage is on the heap and only the POINTER is thread_local, which looks
-// like an indirection for nothing until you try to link this library into an
-// RTOS.
+// The storage is on the heap and only the POINTER is thread_local. The reason
+// is not the indirection but the size of the thread-local area it avoids.
 //
 // FreeRTOS carves each task's thread-local area out of that task's own stack
 // (components/freertos/FreeRTOS-Kernel/portable/xtensa/port.c: `tls_area_size`

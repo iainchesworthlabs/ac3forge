@@ -251,6 +251,19 @@ public:
     bool refuse_sink_starts = false;
 
     std::vector<DeviceFacts> render_devices(std::uint32_t) override {
+        // The list is read first and the gate parked at second, so an
+        // enumeration held here is carrying the world as it was *before*
+        // whatever the test changes while it waits. That is the shape of the
+        // race a re-probe exists to correct, and a case cannot reproduce it
+        // if the parked call reads the list on its way out instead: it would
+        // then answer with the change it is supposed to have missed. Nothing
+        // that only wants a caller stopped inside enumerate() can tell the
+        // difference.
+        std::vector<DeviceFacts> answer;
+        {
+            const std::lock_guard lock(mutex);
+            answer = devices;
+        }
         {
             std::unique_lock<std::mutex> gate(gate_mutex_);
             if (!gate_open_) {
@@ -259,9 +272,12 @@ public:
                 gate_cv_.wait(gate, [this] { return gate_open_; });
             }
         }
+        // Counted here rather than above so `enumerations` stays what
+        // enumerations_finished() promises: the ones that have answered, not
+        // the ones still parked.
         const std::lock_guard lock(mutex);
         ++enumerations;
-        return devices;
+        return answer;
     }
     std::unique_ptr<BurstSink> burst_sink() override {
         const std::lock_guard lock(mutex);
