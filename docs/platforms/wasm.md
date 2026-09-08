@@ -29,6 +29,18 @@ not general-purpose in-browser tools. This page covers what is specific to WASM;
 library and the desktop platforms, see [Building from source](../building.md) and the other
 pages in this section.
 
+## Status
+
+| | |
+|---|---|
+| What runs here | The decode and encode modules over `ac3::forge` compiled to WebAssembly |
+| Decode demo | Built and [published live](../wasm-demo.md) |
+| Encode demo, and the Atmos authoring page | Built and [published live](../wasm-encode-demo.md) |
+| `ac3forge-wasm-decoder` npm package | **Never released to npm.** Building it from `js/` is the only way to get it |
+| Why the package exists | Chrome still cannot decode EC-3 |
+| Correctness | Checked in CI against the native decoder's own output, not by hand |
+| Real hardware | Not applicable — the browser is the target |
+
 ## Encode module
 
 The decode demo's own docs used to call WASM-encode "a separate, much larger undertaking" and leave

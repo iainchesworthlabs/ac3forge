@@ -4,6 +4,18 @@ ac3forge builds and is tested on Linux today, on both GCC and Clang, CLI and GUI
 page covers what is specific to Linux; for the full preset reference, options list and
 troubleshooting, see [Building from source](../building.md).
 
+## Status
+
+| | |
+|---|---|
+| What runs here | The library, `ac3cli`, `ac3gui` and Crucible |
+| Build | GCC and Clang, x64 and arm64, all four required and green in CI |
+| GUI | Opt-in at build time (`-DAC3FORGE_BUILD_GUI=ON`), not on by default as it is on Windows |
+| Audio backends | ALSA or PipeWire, selected at configure time. Crucible requires PipeWire |
+| Bitstream to a real receiver | Confirmed on one machine, a Raspberry Pi 4B: over ALSA on 2026-08-20, and over PipeWire on 2026-09-05, the receiver's own front panel read both times |
+| Other Linux hardware | Untried. Treat the Pi as two confirmed configurations on one box, not as Linux generally |
+| Packaging | DEB and RPM, plus an AppImage — see [Packaging](#packaging) |
+
 ## Toolchains
 
 Built and tested with **GCC 16** and **Clang 22.1** on **Ubuntu 26.04 (WSL2)** — the versions

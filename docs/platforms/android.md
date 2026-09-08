@@ -8,6 +8,17 @@ encoder's object audio moving in 3D space on consumer hardware, and is not a gen
 encoding tool. This page covers what is specific to Android; for the core library and the desktop
 platforms, see [Building from source](../building.md) and the other pages in this section.
 
+## Status
+
+| | |
+|---|---|
+| What runs here | Shield Atmos Demo only. Neither `ac3cli` nor `ac3gui` is ported |
+| Live Atmos out HDMI passthrough | Confirmed on real 2017 Shield hardware, into an AV receiver |
+| Object motion from the controller | Confirmed moving; nobody has listened to check a flyover arrives overhead |
+| Capture | None. The app plays; it records nothing |
+| Distribution | Personal sideload via `adb install`, **never the Play Store** |
+| CI | A required build leg; the hardware behaviour is not reproducible in CI |
+
 Distribution is **personal sideload only, via `adb install` — never the Play Store**. That is a
 deliberate choice, not a placeholder: the app can be built with [object signing](#object-signing)
 enabled, and that build (which carries the key) must never leave the user's own device (see below).

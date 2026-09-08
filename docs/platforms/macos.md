@@ -25,6 +25,17 @@
     where the call after it never returned. That section says what each part rests on and what
     that one run settled.
 
+## Status
+
+| | |
+|---|---|
+| What runs here | The library, `ac3cli` and `ac3gui`. Crucible's macOS half compiles and its suites run |
+| Build | Two required CI legs, Apple Silicon and native Intel; neither is experimental |
+| Sound | **Nothing on macOS has captured or played anything.** No Mac host is available to this project, and no hosted runner has an audio device, a desktop session, or a way to grant a consent prompt |
+| Core Audio process tap | Written, compiled, **never created at runtime** |
+| Crucible | Compiles and is exercised by the CI suites; the application has never been launched on a Mac |
+| Packaging | A `.dmg` for the CLI and a cask for the GUI; the cask has not been installed end to end on a Mac |
+
 ## Toolchain
 
 Homebrew-installed LLVM (`cmake/toolchains/macos.llvm.toolchain.cmake` prefers it over Apple's

@@ -4,6 +4,19 @@ ac3forge is built and tested on Windows today — both toolchains, CLI and GUI a
 required, green CI legs. This page covers what is specific to Windows; for the full preset
 reference, options list and troubleshooting, see [Building from source](../building.md).
 
+## Status
+
+| | |
+|---|---|
+| What runs here | The library, `ac3cli`, `ac3gui` and Crucible |
+| Build | MSVC and clang-cl, both required and green in CI; the GUI is on by default |
+| Capture and monitor playback | Confirmed on real hardware — a Realtek endpoint, live microphone capture through encode to playback |
+| Windows Spatial Sound (`ac3cli spatial`) | Confirmed on real hardware, with Windows Sonic enabled; nobody has listened to check the positions |
+| IEC 61937 passthrough output | **Never accepted by a real device.** The exclusive-mode path works with PCM; no AV receiver has been cabled to a Windows machine |
+| Passthrough capture | **Never confirmed** — no HDMI or S/PDIF capture card has been available |
+| Crucible's null sink | A kernel driver, **test-signed only**; a default-settings machine refuses to load it — see [the driver page](windows-driver-acx.md) |
+| ARM64 | One CI leg, still marked experimental, and it packages for release |
+
 ## Toolchains
 
 Built and tested with **MSVC 14.51** and **clang-cl 22.1** on **Windows 11**, via Visual Studio
