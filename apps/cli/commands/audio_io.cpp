@@ -42,7 +42,7 @@ namespace plan = ac3::plan;
 
 int run_devices() {
     const auto devices = ac3::audio::enumerate_devices();
-    if (!devices) {
+    if (!devices.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
@@ -114,7 +114,7 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
     const auto drain = [&](std::span<const std::byte> carrier) {
         payload.clear();
         const auto pushed = reader.push(carrier, payload);
-        if (!pushed) {
+        if (!pushed.has_value()) {
             fmt::println(stderr, "error: {}", ac3::iec61937::describe(pushed.error()));
             return false;
         }
@@ -215,7 +215,7 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
 int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
                int device_index, const Options& meta) {
     const auto devices = ac3::audio::enumerate_devices();
-    if (!devices) {
+    if (!devices.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
@@ -248,14 +248,14 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     // the two shared a capture path, an encoder and a container writer, so the
     // gap was entirely in what the CLI would let you ask for.
     const auto take = resolve_take_plan(meta, bitrate, sr);
-    if (!take) {
+    if (!take.has_value()) {
         return kExitUsage;
     }
     const auto channel_plan = plan::resolve(take->plan);
 
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
-    if (!started) {
+    if (!started.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
         return kExitUnavailable;
     }
@@ -336,7 +336,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     // encoded onto 5.1 does (plan::route's own model). A source wider than the
     // target folds down per 7.8.
     const auto routing = plan::route(channel_plan, channels, meta.p.cmixlev, meta.p.surmixlev);
-    if (!routing) {
+    if (!routing.has_value()) {
         fmt::println(stderr, "error: {} capture channels - {}", channels,
                      plan::describe(plan::PlanError::kNoSourceLayout));
         return kExitUsage;
@@ -450,7 +450,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         std::vector<std::byte> unit_bytes;
         if (take->eac3) {
             const auto unit = eac3_encoder->encode_access_unit(views);
-            if (!unit) {
+            if (!unit.has_value()) {
                 fmt::println(stderr, "error: the encoder cannot express this configuration");
                 if (sink_open) {
                     std::ignore = sink.close();
@@ -460,7 +460,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
             unit_bytes = unit->bytes;
         } else {
             auto frame = ac3_encoder->encode_frame(views);
-            if (!frame) {
+            if (!frame.has_value()) {
                 fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
                 if (sink_open) {
                     std::ignore = sink.close();
@@ -532,7 +532,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
 
 int run_outputs() {
     const auto devices = ac3::audio::enumerate_render_devices();
-    if (!devices) {
+    if (!devices.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
@@ -598,14 +598,14 @@ struct SplitStream {
     }
     if (eac3) {
         const auto split = ac3::split_access_units(result.bytes);
-        if (!split || split->empty()) {
+        if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", path);
             return std::nullopt;
         }
         result.units = *split;
     } else {
         const auto split = ac3::split_frames(result.bytes);
-        if (!split || split->empty()) {
+        if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid AC-3 stream", path);
             return std::nullopt;
         }
@@ -626,7 +626,7 @@ int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
         std::vector<std::byte> burst;
         if (eac3) {
             auto result = eac3_packer.push(unit);
-            if (!result) {
+            if (!result.has_value()) {
                 fmt::println(stderr, "error: burst wrap failed");
                 return kExitRuntime;
             }
@@ -636,7 +636,7 @@ int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
             burst = std::move(**result);
         } else {
             const auto wrapped = ac3::iec61937::wrap_frame(unit);
-            if (!wrapped) {
+            if (!wrapped.has_value()) {
                 fmt::println(stderr, "error: burst wrap failed");
                 return kExitRuntime;
             }
@@ -691,7 +691,7 @@ int play_via_ac3_transcode(std::string_view in_path, const std::string& device_i
     }
 
     const auto split = split_playable_stream(temp_path_str, /*eac3=*/false);
-    if (!split) {
+    if (!split.has_value()) {
         std::error_code ec;
         std::filesystem::remove(temp_path, ec);
         return kExitRuntime;
@@ -702,7 +702,7 @@ int play_via_ac3_transcode(std::string_view in_path, const std::string& device_i
         sink.start(device_id, split->content_rate, ac3::audio::BitstreamFormat::kAc3);
     std::error_code ec;
     std::filesystem::remove(temp_path, ec);
-    if (!started) {
+    if (!started.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
         return kExitUnavailable;
     }
@@ -724,7 +724,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
         return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid) {
+    if (!bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
@@ -734,7 +734,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     std::uint32_t content_rate = 0;
     if (eac3) {
         const auto split = ac3::split_access_units(stream);
-        if (!split || split->empty()) {
+        if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
             return kExitInput;        }
         units = *split;
@@ -743,7 +743,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
                 std::to_integer<std::uint32_t>(units[0][4]) >> 6));
     } else {
         const auto split = ac3::split_frames(stream);
-        if (!split || split->empty()) {
+        if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
             return kExitInput;        }
         units = *split;
@@ -758,7 +758,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     // is it looking and seeing no endpoints. Reporting both as "none
     // available" sent people hunting for a missing sound device when the real
     // answer was a COM failure.
-    if (!devices) {
+    if (!devices.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
@@ -791,7 +791,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     bool takes_pcm = false;
     if (chosen != nullptr) {
         const auto edid = ac3::audio::read_sink_capabilities(chosen->id);
-        if (edid) {
+        if (edid.has_value()) {
             takes_native = eac3 ? edid->eac3 : edid->ac3;
             takes_ac3 = edid->ac3;
             takes_pcm = edid->pcm;
@@ -836,7 +836,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     const auto started = sink.start(
         device_id, content_rate,
         eac3 ? ac3::audio::BitstreamFormat::kEac3 : ac3::audio::BitstreamFormat::kAc3);
-    if (!started) {
+    if (!started.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
         return kExitUnavailable;
     }
