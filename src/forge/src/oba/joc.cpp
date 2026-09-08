@@ -1065,7 +1065,7 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
                                           static_cast<double>(kQmfTimeslots - kHalfWindow);
                             break;
                         case MixRule::kSteepPrevious:
-                            m = state.previous_matrix[index];
+                            m = static_cast<double>(state.previous_matrix[index]);
                             break;
                         case MixRule::kSteepFirst:
                             m = dq0;
