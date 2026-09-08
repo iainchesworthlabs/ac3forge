@@ -2967,9 +2967,9 @@ installer. GPG and Sigstore satisfy neither OS. Blocked on the certificates, not
   decoder test — so the float32 decode path stays scalar there, and Espressif's own float
   kernels for the part are scalar too. It also has no wide float load, which the ESP32-S3 does
   have, leaving 1.67× of clock as the whole advantage over a part that already fits the working
-  set. Against that it has no radio, and the transport plan it would serve is a Wi-Fi one.
-  Reopen only on a measurement from ESP32-S3 silicon showing the decode short of real time by
-  less than that 1.67×.
+  set. Against that it has no radio, and the transport plan it would serve is a Wi-Fi one —
+  disqualifying on its own, independent of what the S3 eventually measures. Closed, not
+  deferred: if the S3 misses real time the fix is in the decoder, where it helps every target.
 
 ## Retired IDs
 

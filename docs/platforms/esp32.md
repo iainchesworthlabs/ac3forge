@@ -125,7 +125,7 @@ The dividing line is the FPU, not the RAM.
 | Part | Usable RAM | Clock | FPU | Vector unit | Viable |
 |---|---|---|---|---|---|
 | **ESP32-S3** | 341,760 DIRAM | 240 MHz | single | PIE, integer-only; 128-bit float load/store | **Yes** — the target here |
-| **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | Fits trivially, costs the radio — [below](#the-esp32-p4-and-why-it-is-not-the-next-target) |
+| **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — fits trivially, costs the radio; [below](#the-esp32-p4-and-why-it-is-not-a-target) |
 | ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
 | ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
 | ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | No — same, slower |
@@ -134,13 +134,13 @@ Every part above that has an FPU at all has a single-precision one, so `double`
 is soft-float across the whole family and `decode_scalar_t` earns its keep on
 all of them rather than only here.
 
-### The ESP32-P4, and why it is not the next target
+### The ESP32-P4, and why it is not a target
 
-Assessed 2026-09-08. The P4 is dual-core RISC-V at 400 MHz with 768 KB of
-SRAM, and it holds the 171,558-byte peak heap without the float32 work that
-this port needed. It looks like the answer if the S3 turns out not to be real
-time. Three things were checked before writing any of it. Two came back
-against.
+Assessed 2026-09-08 and declined. The P4 is dual-core RISC-V at 400 MHz with
+768 KB of SRAM, and it holds the 171,558-byte peak heap without the float32
+work this port needed — so it reads as the answer if the S3 turns out not to
+be real time. Three things were checked before writing any of it, and two of
+them settle it.
 
 **Its vector extension is vendor-specific, and it has no floating point at
 all.** The P4 is `RV32IMAFC` plus two custom extensions: `Xhwlp` (hardware
@@ -170,7 +170,7 @@ vector unit would show up first if there were one to use.
 So a `f32x4` has nothing to compile to on a P4. The decode path is float32 by
 `decode_scalar_t`, and would stay scalar there.
 
-**For this workload the P4 is behind the S3, not ahead of it.** The S3's
+**For this workload the S3 has the better float path of the two.** The S3's
 float32 dot product, `dsps_dotprod_f32_aes3.S`, opens with `EE.LDF.128.IP` —
 a 128-bit load landing four floats in four FPU registers — and then runs four
 independent scalar `madd.s` into four accumulators. That is load bandwidth
@@ -194,19 +194,23 @@ from a network origin in real time"*; the bandwidth argument for carrying a
 compressed stream at all is stated there as the difference between an ESP32-S3
 receiving Atmos over Wi-Fi and one receiving no surround. ESPHome nodes are
 Wi-Fi devices. A part that has to be paired with a second chip to reach the
-network is working against that, and it is a product-shape question rather
-than a technical one.
+network works against all of that. This was a product-shape question rather
+than a technical one, and it was put to the project owner and decided on
+2026-09-08: the radio is disqualifying on its own, whatever the S3 measures.
 
-**Whether the S3 needs rescuing is still unmeasured**, which is the only one of
-the three that could reopen this. [Timing](#timing-and-why-qemus-numbers-are-not-it)
-has what that costs: one board. Until that number exists, the P4's headroom is
-headroom nobody has shown is needed, bought by giving up the radio.
+**Whether the S3 needs rescuing was the third thing checked, and it turns out
+not to bear on this.** It is still unmeasured — [Timing](#timing-and-why-qemus-numbers-are-not-it)
+has what that costs, which is one board. The decision does not wait on it. The
+radio disqualifies the P4 on its own, so a decode that misses real time on the
+S3 gets fixed in the decoder rather than by changing part: the float path is
+still scalar, `src/internal/arch/` has no `f32x4` yet, and 46–87 heap
+allocations per frame remain PF7's other open gap. Those are the levers, and
+they apply to every target at once instead of to one that cannot reach the
+network.
 
-**What would change the answer.** A measurement from S3 silicon showing the
-decode short of real time by less than about 1.67× — close enough that clock
-alone closes it, since no SIMD gain is coming from the P4. Short by more than
-that, and neither part is the answer and the fix is in the decoder. Comfortably
-real time, and the question does not arise.
+The measurement is still worth taking, for the S3's own sake and for
+[topology](../family/topology.md)'s Phase 5. It is no longer a question about
+the P4.
 
 ## Not done
 
