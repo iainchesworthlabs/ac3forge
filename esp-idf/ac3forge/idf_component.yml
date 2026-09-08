@@ -1,0 +1,88 @@
+# The ESP Component Registry manifest for ac3forge's minimum-footprint profile
+# (roadmap PF7). Read by `idf.py add-dependency` and by the registry's own
+# upload tooling; ignored by a build that reaches this component through
+# EXTRA_COMPONENT_DIRS, which is how this repo's own probe uses it.
+#
+# NOT PUBLISHED YET. Nothing uploads this - there is no `compote component
+# upload` step in .github/workflows/, deliberately, because publishing to a
+# registry is a distribution decision rather than a build one and the version
+# below is not yet a released one. It is here so the shape is right and the
+# metadata is reviewed alongside the code it describes rather than written in a
+# hurry at upload time.
+
+version: "0.10.0-beta.1"
+description: >-
+  Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) decoding and encoding for
+  ESP32-S3, in the minimum-footprint profile: a static archive built without
+  exceptions or RTTI, decode-only or encode-only, sized to run out of internal
+  SRAM with no PSRAM.
+url: https://github.com/iainchesworthlabs/ac3forge
+repository: https://github.com/iainchesworthlabs/ac3forge.git
+documentation: https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/esp32.md
+issues: https://github.com/iainchesworthlabs/ac3forge/issues
+license: "GPL-3.0-or-later"  # matches LICENSE at the repo root
+
+# esp32s3 alone, and that is a measurement rather than a shrug at the others.
+#
+#   - The ESP32-S3 is the part this was ported to and the one CI runs under
+#     QEMU on every push. Its LX7 has a single-precision FPU, which is what
+#     makes the float32 decode path worth having.
+#   - The original ESP32 and the S2 have no FPU worth the name for this (the S2
+#     has none at all), so every operation would be a software float call.
+#     Not refused here - untested, which is a different thing, and listing a
+#     target the archive has never been linked for would be a claim rather than
+#     a fact.
+#   - The ESP32-P4 is CLOSED, not deferred: its PIE vector unit is integer-only,
+#     so there is no float SIMD there to port to. See
+#     docs/platforms/esp32.md and PR #551.
+#   - The C3/C6 are RISC-V and a different port entirely.
+targets:
+  - esp32s3
+
+dependencies:
+  # 5.3 is the floor the CMake in this directory needs, not the version it is
+  # tested against - CI runs v6.1 (see .github/workflows/_build.yml's
+  # build-esp32s3 leg). The component itself uses no IDF API at all; the floor
+  # is for idf_component_register() accepting a registration with no SRCS and
+  # for EXTRA_COMPONENT_DIRS resolving a component outside the project tree.
+  idf: ">=5.3"
+
+# The repository is the whole of ac3forge - a C++ library, a CLI, a GUI, three
+# container muxers and several language bindings - and a component archive
+# should carry the part that builds for this chip and nothing else. What remains
+# is this directory plus the sources src/forge/minimal.cmake names.
+#
+# `use_gitignore` rather than an exclude list of build outputs: the repo's own
+# .gitignore already knows what is generated, and two lists that mean the same
+# thing drift.
+files:
+  use_gitignore: true
+  exclude:
+    - "apps/**/*"
+    - "docs/**/*"
+    - "tests/**/*"
+    - "tools/**/*"
+    - "examples/**/*"
+    - "python/**/*"
+    - "rust/**/*"
+    - "js/**/*"
+    - "packaging/**/*"
+    - "src/matroska/**/*"
+    - "src/mp4/**/*"
+    - "src/mpegts/**/*"
+    - "src/ac3iab/**/*"
+    - "src/ac3iamf/**/*"
+    - "src/ac4/**/*"
+  include:
+    # apps/baremetal is excluded above, but its probes are the only application
+    # that exercises this component - an integrator wanting to check the port on
+    # their own board has nothing else to flash. The two probes and their
+    # fixtures are small (the decode fixtures total 27 KB) and they are the
+    # difference between "it linked" and "it decoded to the right levels".
+    - "apps/baremetal/probe.cpp"
+    - "apps/baremetal/probe.hpp"
+    - "apps/baremetal/fixture.hpp"
+    - "apps/baremetal/encode_probe.cpp"
+    - "apps/baremetal/encode_fixture.hpp"
+    - "apps/baremetal/platform/esp32s3/**/*"
+    - "docs/platforms/esp32.md"

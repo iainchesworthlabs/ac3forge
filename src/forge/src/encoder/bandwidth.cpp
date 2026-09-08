@@ -71,9 +71,15 @@ int audible_endmant(std::span<const std::uint8_t> peak_exponents, SampleRate sam
         if (bndpsd[static_cast<std::size_t>(band)] <= hth[static_cast<std::size_t>(band)]) {
             continue;
         }
-        const int end = std::min(tables::kBandStart[static_cast<std::size_t>(band)] +
-                                     tables::kBandSize[static_cast<std::size_t>(band)],
-                                 bins);
+        // std::min<int>, not bare std::min: kBandStart/kBandSize are
+        // std::int32_t, which is 'long int' on arm-none-eabi and 'int' on the
+        // hosted targets this had only ever been compiled for. Bare std::min
+        // cannot deduce one type from the two and fails to compile there -
+        // which is how a bare-metal build of the ENCODER found it, the decoder
+        // having never reached this file.
+        const int end = std::min<int>(tables::kBandStart[static_cast<std::size_t>(band)] +
+                                          tables::kBandSize[static_cast<std::size_t>(band)],
+                                      bins);
         return std::clamp(end, kMinEndmant, kMaxEndmant);
     }
     return kMinEndmant;

@@ -658,11 +658,29 @@ struct EcplBandFit {
     int chaos_code = 0;
 };
 
+// `amp_scratch` and `angle_scratch` are caller-owned, at least `channel.size()`
+// wide, and their contents on entry mean nothing.
+//
+// Parameters rather than locals, which is where they were: a std::vector each,
+// constructed and destroyed once per BAND per CHANNEL per send-block. Three
+// send-blocks by five channels by ten-odd merged bands by two is 240
+// allocations a frame at 5.1 - the single largest churn site in the encoder,
+// and roughly the same defect as the decoder's own reconstruction loop had.
+// The array beside them (recon_scratch) was always a stack array; these two
+// were not, because their width is only known at run time.
+//
+// They come from the encoder's Impl rather than becoming stack arrays here for
+// the arm-none-eabi leg's sake: this function already puts 2 KB of
+// recon_scratch on the stack, and a Cortex-M3 running out of a hand-written
+// linker script is not the place to add 4 KB more to a frame nested three loops
+// deep.
 [[nodiscard]] EcplBandFit fit_ecpl_band(std::span<const double> channel,
                                         std::span<const double> baseline_a,
                                         std::span<const double> baseline_b,
                                         std::span<const double, 256> zr,
-                                        std::span<const double, 256> zi, int ch, int low) {
+                                        std::span<const double, 256> zi, int ch, int low,
+                                        std::span<double> amp_scratch,
+                                        std::span<double> angle_scratch) {
     AC3_ZONE_SCOPED_N("fit_ecpl_band");
     const std::size_t n = channel.size();
     double saa = 0.0;
@@ -696,8 +714,14 @@ struct EcplBandFit {
     const double amp0 = std::hypot(g_re, g_im);
     const double angle0 = std::atan2(g_im, g_re) / std::numbers::pi;
 
-    const std::vector<double> amp_scratch(n, amp0);
-    std::vector<double> angle_scratch(n);
+    // The vectors these replaced were (n, amp0) and (n) - filled and
+    // zero-filled respectively. Reused storage carries the previous band's
+    // values, so both are re-established here rather than being implied by
+    // construction. angle_scratch is written in full by the loop below before
+    // it is read, so only the amplitude actually needs the fill.
+    const std::span<double> amp_band = amp_scratch.first(n);
+    const std::span<double> angle_band = angle_scratch.first(n);
+    std::fill(amp_band.begin(), amp_band.end(), amp0);
     std::array<double, 256> recon_scratch{};
     int best_code = 0;
     double best_err = 0.0;
@@ -712,9 +736,9 @@ struct EcplBandFit {
             } else if (angle >= 1.0) {
                 angle -= 2.0;
             }
-            angle_scratch[i] = angle;
+            angle_band[i] = angle;
         }
-        ecpl_channel_coefficients(zr, zi, amp_scratch, angle_scratch, low,
+        ecpl_channel_coefficients(zr, zi, amp_band, angle_band, low,
                                   low + static_cast<int>(n), recon_scratch);
         double err = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
@@ -2308,7 +2332,15 @@ std::expected<std::vector<std::byte>, FrameError> finish_frame(
         return std::unexpected(FrameError::kInvalidObjectAudio);
     }
 
+    // reserve(), which this did not do until the bare-metal probe counted what
+    // it cost. BitWriter::put grows bytes_ one byte at a time - its own header
+    // puts the bill at "~11 geometric reallocations for a full syncframe" - and
+    // both writers here start from capacity 0, so a frame paid that twice for
+    // nothing. src/forge/src/encoder/encoder.cpp does reserve on the AC-3 side;
+    // this is the same line, and total_bytes was already sitting two statements
+    // above it.
     BitWriter probe;
+    probe.reserve(total_bytes);
     emit_frame(probe, config, words, payload, aux);
     const auto content_bits = static_cast<std::uint32_t>(probe.bit_count());
     if (content_bits + kTailBits > total_bits) {
@@ -2317,6 +2349,7 @@ std::expected<std::vector<std::byte>, FrameError> finish_frame(
     const std::uint32_t spare = total_bits - content_bits - kTailBits;
 
     BitWriter w;
+    w.reserve(total_bytes);
     emit_frame(w, config, words, payload, aux, config.trace);
     for (std::uint32_t i = 0; i < spare; ++i) {
         w.put(0, 1);  // auxbits: padding, and nothing else
@@ -2514,6 +2547,11 @@ struct FrameEncoder::Impl {
     std::array<double, 256> ecpl_curr_scratch_{};
     std::array<double, 256> ecpl_next_scratch_{};
     std::array<double, 256> ecpl_recon_scratch_{};
+    // fit_ecpl_band's per-band amplitude and angle - see that function for what
+    // they cost as locals. 256 for the same reason as every array above: the
+    // spectrum is 256 bins and a band is a subset of it.
+    std::array<double, 256> ecpl_fit_amp_scratch_{};
+    std::array<double, 256> ecpl_fit_angle_scratch_{};
     // encode_frame's per-(stream, block) fixed-point spectra (~43 KB at
     // 5.1+coupling), a frame-lifetime work buffer under the same reasoning
     // and single-instance contract as the scratch above: re-assign()ed
@@ -3513,8 +3551,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                     &baseline_a[ulow], uwidth};
                                 const std::span<const double> baseline_b_band{
                                     &baseline_b[ulow], uwidth};
-                                const auto fit = fit_ecpl_band(channel_band, baseline_a_band,
-                                                               baseline_b_band, zr, zi, ch, low);
+                                const auto fit = fit_ecpl_band(
+                                    channel_band, baseline_a_band, baseline_b_band, zr, zi, ch,
+                                    low, impl_->ecpl_fit_amp_scratch_,
+                                    impl_->ecpl_fit_angle_scratch_);
                                 cpl.ecplamp[slot] = quantize_ecplamp(fit.amp);
                                 cpl.ecplangle[slot] = quantize_ecplangle(fit.angle);
                                 cpl.ecplchaos[slot] = fit.chaos_code;
@@ -3571,7 +3611,24 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                         blk + 1 < kBlocksPerFrame ? coeffs_at(cpl_stream, blk + 1) : kZero;
                     auto& zr = impl_->ecpl_zr_scratch_;
                     auto& zi = impl_->ecpl_zi_scratch_;
-                    ecpl_channel_spectrum(prev, curr, next, zr, zi);
+                    // config_.fast_mdct, like the other two ecpl_channel_spectrum
+                    // call sites in this file. This one omitted it and took the
+                    // parameter's own default, which is false - the DIRECT form.
+                    //
+                    // Two things were wrong with that. In the full library it
+                    // analysed the same spectrum through a different transform
+                    // than the sites that then encode it, so the ecplangleintrp
+                    // decision was made against arithmetic the rest of the frame
+                    // did not use. In the minimum-footprint profile it is worse
+                    // than wrong: that build deliberately carries no direct form
+                    // at all (src/core/transform/stub/), so this reached a stub
+                    // that asserts - and on an ESP32-S3 the encode aborted here.
+                    //
+                    // It survived because nothing executed it. The encode probe
+                    // had no enhanced-coupling fixture until the one this commit
+                    // adds, and on a hosted NDEBUG build the stub's assert
+                    // compiles out and it silently zero-fills instead.
+                    ecpl_channel_spectrum(prev, curr, next, zr, zi, impl_->config_.fast_mdct);
                     for (int ch = 1; ch < nfchans; ++ch) {
                         for (std::size_t bnd = 0; bnd < nbnd_e; ++bnd) {
                             const auto slot = ecpl_slot(blk, ch) + bnd;
@@ -4251,6 +4308,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // size there, rather than the size deciding how much content fits.
     const auto measure_side_bits = [&] {
         BitWriter probe;
+        // kMaxFrameWords rather than this frame's own size, because this probe
+        // is deliberately given words=1: it is measuring the side info alone,
+        // so there is no frame size in scope to reserve from. 4,096 bytes is
+        // §E2.3.1's own ceiling on a syncframe, allocated once and freed at the
+        // end of this lambda, against the nine or so geometric growths put()
+        // would otherwise do on every call - and this runs up to four times per
+        // frame during the delta-allocation decision.
+        probe.reserve(kMaxFrameWords * 2);
         emit_frame(probe, impl_->config_, 1, payload, aux);
         return static_cast<std::uint32_t>(probe.bit_count());
     };

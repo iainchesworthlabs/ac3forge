@@ -318,52 +318,62 @@ part it lands in **Flash Data** (112,524 bytes) rather than DIRAM. The `arm-none
 ceiling is the one fixture size spends against; here it costs flash, of which the app partition
 has 66% free.
 
-## Objects do not fit in internal SRAM
+## Objects, and what it took to fit them
 
-`src/forge/src/oba/joc.cpp` and `oamd.cpp` are both in `src/forge/minimal.cmake`'s source list
-and link into every build of this profile, so the question was never whether object decode
-compiles here. It was measured rather than argued: an `atmos-encode` fixture (six objects, JOC
-over a 5.1 downmix, 448 kbit/s) was added to the probe, run on the `arm-none-eabi` leg, and
-then removed.
+`src/forge/src/oba/joc.cpp` and `oamd.cpp` are both in `src/forge/minimal.cmake`'s source list and
+link into every build of this profile, so object decode always compiled here. It did not fit. An
+`atmos-encode` fixture (six objects, JOC over a 5.1 downmix, 448 kbit/s) decoded correctly on the
+`arm-none-eabi` leg and peaked at **449,826 bytes of heap** against 280,792 free — and worse,
+`oba::joc::ReconstructionState` was a single 147,504-byte allocation, larger than the 116,736-byte
+contiguous block a decode leaves free, so it failed on contiguity before any budget was consulted.
 
-It decodes correctly — all six bed channels exact — and its allocation churn is 80 per frame,
-lower than the plain E-AC-3 fixture's 86. What it costs is memory:
+Three changes, each measured on its own rather than stacked in arithmetic:
 
-| | Bytes |
-|---|---|
-| `oba::joc::ReconstructionState` | 147,504 |
-| `ReconstructionState::QmfState` (`Domain::kQmf` is the default) | 34,360 |
-| QMF analysis bank (5 × 5,120) | 25,600 |
-| QMF synthesis banks (2 live × 12,800) | 25,600 |
-| **JOC state** | 233,064 |
-| **Probe peak heap, whole run** | 449,826 (against 179,064 without it) |
-
-The allocator has 280,792 bytes free, so the peak overshoots by 169,034. Not a ceiling to
-raise: the probe would die in `operator new` the way the port originally did at `bytes=86016`.
-
-**Contiguity rules it out a second time, independently.** `ReconstructionState` is one 147,504-byte
-allocation, and the largest free block after any other decode is 116,736 (see
-[Memory](#how-much-memory-there-actually-is)). It would fail on the single allocation even if the
-budget allowed it.
-
-All 233,064 bytes are `double`. `decode_scalar_t`'s float32 seam reaches both decoders' coefficient
-stores but not JOC's reconstruction or the QMF bank — [Building](../building.md#gaps) records that
-as a known non-gap. Three changes stack, and the arithmetic below is calculation from measured
-sizes rather than a second measurement:
-
-| | Peak | |
+| | Peak heap | Largest single allocation |
 |---|---|---|
-| As measured | 449,826 | |
-| `Domain::kMdctBand` instead of `kQmf` | 364,266 | a config flag; `QmfState` and both banks stop existing |
-| + float32 the JOC path | 290,514 | also brings the biggest allocation to ~73,752, under the 116,736 block |
-| + size the object arrays to the stream | 259,794 | `kMaxObjects` is 16; the fixture carried 6 |
+| As found (`Domain::kQmf`, `double`, arrays at `kMaxObjects`) | 449,826 | 147,504 |
+| `Domain::kMdctBand` | 386,770 | 147,504 |
+| + `ReconstructionState` in float32 | 301,522 | 73,776 |
+| + per-object scratches sized to the stream | **267,754** | 43,008 |
 
-That last row fits, with about 21,000 bytes spare. So object decode here is reachable, and it needs
-all three — the float32 conversion is load-bearing twice over, once for the total and once for the
-contiguity.
+The largest allocation is now the E-AC-3 decoder's own AHT buffer rather than anything JOC owns,
+which removes the contiguity blocker: 43,008 fits the 116,736-byte free run easily, where 147,504
+never could.
 
-Adding more fixtures would not have found any of this, which is why the full-object fixture was
-measured and removed rather than committed.
+### It fits, and what it took to stop the order mattering
+
+267,754 against 280,792 bytes of free internal SRAM looks like 13,038 spare. On this part it was
+not, and the reason is worth keeping because a total-free figure is not an allocation budget here.
+
+Measured on the ESP32-S3 itself, same build, same fixture, only the order changed:
+
+| | Peak heap | Result |
+|---|---|---|
+| Objects after the enhanced-coupling fixture | 267,754 | **failed** — `out_of_memory bytes=6144` |
+| Objects first, on a clean heap | 233,522 | passed |
+
+The 34,232 bytes between them are `eac3_tools.cpp`'s enhanced-coupling scratch — a 32,768-byte
+spectrum buffer and a 1,440-byte bin-angle vector, both `thread_local` so that §E3.5 neither
+allocates per call nor puts 32 KB on the stack. On a hosted platform they go at thread exit. Here
+the only thread never exits, so they stayed resident and object reconstruction had nowhere to go.
+
+`ac3::eac3::release_ecpl_scratch()` hands them back, and the next call rebuilds what it needs. The
+probe calls it between fixtures, so the rows sit in the order they belong rather than the order
+that happens to pass:
+
+| | Peak heap | Retained at exit |
+|---|---|---|
+| Before | 267,754 | 34,232 |
+| After | **233,546** | **24** |
+
+24 bytes is two `__cxa_thread_atexit` registration records. Both legs report the same figures.
+
+That leaves **47,246 bytes spare** against free SRAM rather than 13,038, and it is why object
+decode is gated in CI on both bare-metal legs instead of documented as almost fitting.
+
+The `arm-none-eabi` leg could not have found this. Its newlib heap is flat, so 267,754 of 280,792
+packs there and the same build passed. This part's heap is regioned — 280,792 free against a
+largest block of 217,088 — and that is the number that decides.
 
 ### The bed plays, though
 
