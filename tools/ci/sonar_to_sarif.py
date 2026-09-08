@@ -224,6 +224,26 @@ def rule_to_descriptor(rule_key, name, issue_type, sonar_url, organization):
 
 
 def build_sarif(issues, components, rule_names, project_key, sonar_url, organization):
+    # GitHub's SARIF ingestion rejects the whole file if any result has no
+    # location ("locationFromSarifResult: expected at least one location"),
+    # even though the SARIF spec itself makes locations optional. A handful
+    # of Sonar issues are genuinely locationless - project-level findings
+    # like a missing lock file, reported against the project rather than a
+    # file - so those can never satisfy that requirement and are dropped
+    # rather than emitted as an invalid result.
+    locatable = [
+        issue for issue in issues if issue.get("textRange") or issue.get("line")
+    ]
+    dropped = len(issues) - len(locatable)
+    if dropped:
+        print(
+            f"::warning::Dropped {dropped} issue(s) with no file/line location "
+            "(e.g. project-level findings) - GitHub Code Scanning requires "
+            "every SARIF result to have one.",
+            file=sys.stderr,
+        )
+    issues = locatable
+
     rule_types = {issue["rule"]: issue["type"] for issue in issues}
     rule_keys = sorted(rule_types)
     rule_index = {key: index for index, key in enumerate(rule_keys)}
