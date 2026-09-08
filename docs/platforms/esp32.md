@@ -336,8 +336,39 @@ Three changes, each measured on its own rather than stacked in arithmetic:
 | + `ReconstructionState` in float32 | 301,522 | 73,776 |
 | + per-object scratches sized to the stream | **267,754** | 43,008 |
 
-Against 280,792 bytes of free internal SRAM that leaves **13,038 spare**, and the largest
-allocation is now the E-AC-3 decoder's own AHT buffer rather than anything JOC owns.
+The largest allocation is now the E-AC-3 decoder's own AHT buffer rather than anything JOC owns,
+which removes the contiguity blocker: 43,008 fits the 116,736-byte free run easily, where 147,504
+never could.
+
+### Whether it fits depends on what ran first
+
+267,754 against 280,792 bytes of free internal SRAM looks like 13,038 spare. On this part it is
+not, and the difference is worth stating precisely because a total-free figure is not an
+allocation budget here.
+
+Measured on the ESP32-S3 itself, same fixture, same build, only the order changed:
+
+| | Peak heap | Result |
+|---|---|---|
+| Objects decoded after the enhanced-coupling fixture | 267,754 | **fails** — `out_of_memory bytes=6144` |
+| Objects decoded first, on a clean heap | 233,522 | **passes**, all six bed channels exact |
+
+The 34,232 bytes between them are `eac3_tools.cpp`'s `thread_local` enhanced-coupling scratch —
+allocated on the first §E3.5 decode and never released, because the only thread never exits (see
+[Building](../building.md#gaps)). Once it is resident, object reconstruction no longer fits.
+
+So the constraint is the **process**, not the codec. A decoder that plays Atmos does not decode
+enhanced coupling — they are different content — and on a clean heap it has 47,270 bytes of room.
+A probe that does both in one process is the pathological case, and it is the one CI runs, which
+is why objects are not gated on this leg.
+
+Closing that properly means making the ecpl scratch releasable rather than resident for the life
+of the task. Until then, ordering decides it, and ordering is not a property anything should rely
+on.
+
+The `arm-none-eabi` leg does not show this: its newlib heap is flat, so 267,754 of 280,792 packs
+there and the same build passes. Two allocators, one number, two answers — the ESP32-S3's is the
+one that counts, since it is the part.
 
 What each one is:
 
