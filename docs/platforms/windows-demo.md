@@ -5,12 +5,12 @@
     built with (`ac3desk`, `ac3::windemo`, `apps/windows/`). The application was promoted to a
     cross-platform product on 2026-09-04 and renamed: it is now **AC3Forge Crucible**,
     `ac3crucible`, `ac3::crucible`, under `apps/crucible/`. For what it is today, and for the
-    Linux and macOS work, see [the promotion plan](../crucible/promotion.md) and roadmap UX12.
+    Linux and macOS work, see [the promotion plan](../crucible/promotion.md).
     Only the null-sink driver keeps its old names, under `apps/windows/driver/`, until
     attestation signing lands.
 
 !!! note "Status: built, one item open"
-    Phases 1 to 5 landed 2026-09-03 (roadmap UX11): the library taps and watcher, the engine
+    Phases 1 to 5 landed 2026-09-03: the library taps and watcher, the engine
     and its console runner, the `ac3desk` window, the null-sink driver verified in a throwaway
     guest, and the fast follows. Phase 6 (docs, CI, release) is done except for one thing: the
     driver ships **test-signed only** and will not load on a normal Windows machine yet. It
@@ -37,7 +37,7 @@ and an AV receiver renders exactly that. A full-screen application becomes the b
 Nobody needs their spreadsheet audio to come from overhead; the point of building it is to
 exercise, live and in real time, parts of the library the Shield app does not: per-application
 capture, a dynamic object count, a headphone path, output hot-switching, and the Windows
-exclusive-mode bitstream path that [roadmap DR9](../roadmap.md) still lists as unconfirmed on
+exclusive-mode bitstream path that is still unconfirmed on
 real hardware.
 
 ## How it works
@@ -1038,7 +1038,7 @@ and keeps the folder and the remove button under Advanced.
 
 ### Phase 6: docs, CI, release
 
-Five items. The first three, this page rewritten from plan to record, the roadmap record and
+Five items. The first three, this page rewritten from plan to record, the release record and
 the CHANGELOG entry, are done by the documentation pass of 2026-09-03, the one the status
 note at the top describes.
 
@@ -1158,7 +1158,7 @@ each other.
 
 What the phase records above claim was checked on the workstation or in the guest, as each
 record says; the bitstream modes, the spatial path and a real device-arrival switch wait on
-hardware. When S2 runs, the "Windows/WASAPI exclusive: unconfirmed" line in roadmap DR9 and
+hardware. When S2 runs, the "Windows/WASAPI exclusive: unconfirmed" line and
 the warning in [Windows](windows.md) are the first two things to change.
 
 ## Open questions this plan does not settle
@@ -1174,7 +1174,7 @@ the warning in [Windows](windows.md) are the first two things to change.
 ## Deliberately not in scope
 
 - Per-tab or per-stream separation inside one application.
-- An in-repo HRTF or binaural renderer. The roadmap rules it out; the OS renders headphones.
+- An in-repo HRTF or binaural renderer. It is ruled out; the OS renders headphones.
 - Per-application rerouting through undocumented policy interfaces.
 - The Shield extras: scenes and tour, phone remote, path record, rumble. None of them earn
   their place on a desk.

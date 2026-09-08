@@ -212,7 +212,7 @@ cost or save a byte. E-AC-3 has the same search, through `eac3::FrameConfig::sea
 `bamode = 1` — which this encoder writes — states the allocation parameters in the frame's own
 `baie` element, so the codes are per-frame there too. Its second axis is not free the way AC-3's
 is: `baie` carries no `fgaincod` at all, so a non-default fast gain has to open the per-block
-`fgaincode` element (roadmap EQ7/EQ13), which is why the candidates are scored after a refit
+`fgaincode` element, which is why the candidates are scored after a refit
 against their own side-info cost. See [Encoding E-AC-3](encoding-eac3.md).
 
 ### Dither substitution

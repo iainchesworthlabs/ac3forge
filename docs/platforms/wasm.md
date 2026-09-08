@@ -1,11 +1,11 @@
 # WebAssembly (browser demos and package)
 
 WASM support is `ac3::forge` compiled to WebAssembly, reached three ways. Two small demo apps
-under **`apps/wasm/`** run it client-side in a static HTML page: a **decode** demo (roadmap F3)
+under **`apps/wasm/`** run it client-side in a static HTML page: a **decode** demo
 loads an elementary stream, plays the decoded bed through the Web Audio API, and shows
 per-channel energy on a speaker-ring visualization; for a stream carrying Atmos objects, each
 object's decoded position (OAMD) moves in a room view and its reconstructed audio (JOC) can be
-soloed. As of roadmap UX6, an **encode** demo drops a `.wav` file — mono, stereo, 5.1, or the
+soloed. An **encode** demo drops a `.wav` file — mono, stereo, 5.1, or the
 wide E-AC-3 layouts 7.1/5.1.4/7.1.4 — or records live from the microphone, and returns an
 AC-3/E-AC-3 elementary stream carrying a measured dialnorm, a BS.1770 loudness/true-peak QC
 verdict against five delivery presets, and a round-trip preview through the decode module; a
@@ -13,12 +13,12 @@ subdirectory of the same demo (`apps/wasm/atmos/`) is an **Atmos object-authorin
 audio objects around a room canvas while the page encodes, each drag becoming that frame's OAMD
 placement in an E-AC-3 + JOC stream. The third surface is
 **[`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)**, the
-`ac3forge-wasm-decoder` npm package (roadmap UX5) that turns the same decode path into a
+`ac3forge-wasm-decoder` npm package that turns the same decode path into a
 push-frame API, a realtime AudioWorklet pipeline, and an hls.js/MSE bridge, answering the fact
 that **Chrome still cannot decode EC-3**
 ([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297) is open).
 That package is named but **not published**: this repository has never released it to npm, so
-building it from `js/` is the only way to get it — see [Publishing](#publishing-roadmap-ux5)
+building it from `js/` is the only way to get it — see [Publishing](#publishing)
 below.
 The decode demo consumes the package (see "What's reused, what's new" below) rather than
 reimplementing it — see [js/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md)
@@ -33,7 +33,7 @@ pages in this section.
 
 The decode demo's own docs used to call WASM-encode "a separate, much larger undertaking" and leave
 it deliberately out of scope, reasoning from first principles about "real-time MDCT/bit-allocation/
-JOC matrix work in a browser thread." Roadmap UX6 measured it instead of assuming it, on the same
+JOC matrix work in a browser thread." That was measured rather than assumed, on the same
 WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
 
 - **Binary size.** A module binding the AC-3 encoder (`ac3::FrameEncoder`), the E-AC-3 encoder
@@ -124,8 +124,8 @@ for having no browser platform directory).
 `decoder_bindings.cpp` (the Embind wrapper) is new, but is now deliberately minimal: `scanStream()`
 (a thin wrapper over `ac3::io::scan`) and `PushDecoder`, one `ac3::Eac3Decoder` per instance
 decoding through `decode_access_unit_into`'s caller-buffer form - buffers allocated once at
-construction, reused for every call, so the hot path allocates nothing on the C++ side (roadmap
-UX5's explicit ask). `Eac3Decoder` alone handles every `ac3::io::StreamKind` - a plain AC-3
+construction, reused for every call, so the hot path allocates nothing on the C++ side.
+`Eac3Decoder` alone handles every `ac3::io::StreamKind` - a plain AC-3
 syncframe "comes back as substream (kIndependent, 0)" per `decode_access_unit`'s own doc comment -
 so `scanStream()`'s reported kind is informational only, not something `PushDecoder` branches on.
 The optional §7.8 fold (`ac3::OutputStage`/DC1, never a hand-rolled one) is applied over a small
@@ -135,7 +135,7 @@ in place. Everything the OLD whole-file Embind `Decoder` class used to accumulat
 channel/energy buffers, object position/audio bookkeeping, the stereo fold) now lives in
 `js/src/decode-file.ts`, built on top of `PushDecoder` rather than duplicating it.
 
-`js/` is the package itself (not published — see [Publishing](#publishing-roadmap-ux5) below):
+`js/` is the package itself (not published — see [Publishing](#publishing) below):
 `push-decoder.ts` (the typed wrapper over the Embind class above), `decode-file.ts` (the
 whole-file convenience helper the demo's scrub/solo experience needs),
 `ring-buffer.ts`/`decoder-worker.ts`/`worklet-processor.ts`/`decoder-node.ts` (the realtime
@@ -212,7 +212,7 @@ Verified against **Emscripten 6.0.6**. No version is pinned in the toolchain fil
 Android NDK's explicit pin) — there is no CMake-side equivalent of `local.properties`' `sdk.dir` to
 pin against yet; whatever `$EMSDK` resolves to is what gets used.
 
-## Publishing (roadmap UX5)
+## Publishing
 
 `ac3forge-wasm-decoder` has **never been published to npm**, so there is no release of it to
 install; the two things holding that are set out at the end of this section. What the CI does
@@ -313,14 +313,14 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     round-trip preview decodes the just-produced bytes through the decode module — not
     the source audio replayed — and reports the right sample rate and channel count back.
 
-!!! note "Automated in CI (roadmap VX18a)"
+!!! note "Automated in CI"
     `apps/wasm/tests/` is a Playwright harness `build-wasm` now runs on every push, right after the
     demo artifact uploads: two projects, one per demo, each serving its own just-built directory.
     `decode.spec.js` loads `index.html` in a headless Chromium and drives the packaged decoder
     (`js/`'s `decodeFile()` and `Ac3ForgeDecoderNode` — the same calls `demo.js` itself
     makes) to decode the bundled fixture and assert on its values — `48000 Hz, 6 channels,
     3 Atmos objects, 8.0s`, that the same object's decoded position differs between its
-    first and last frame, and — new for roadmap UX5 — that the AudioWorklet pipeline (a Worker
+    first and last frame, and that the AudioWorklet pipeline (a Worker
     doing the WASM decode, a `SharedArrayBuffer` ring buffer, an `AudioWorkletNode`)
     produces non-silent decoded audio out an `OfflineAudioContext` — not just that the worker
     didn't throw. `encode.spec.js` does the same for the encode module: encodes a 997 Hz tone

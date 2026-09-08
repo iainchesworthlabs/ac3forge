@@ -120,7 +120,7 @@ E-AC-3 â€” `independent_substreams` plus a `SubstreamService` for substreams 1â€
 `ac3::io::build_codec_config_box`'s `dac3`/`dec3` payload and the MPEG-TS PMT descriptors of
 both broadcast profiles (see [Muxing & sinks](muxing-and-sinks.md#muxing-mpegtsmux)).
 `independent_substreams` is an *observation* of which substream ids appear; it deliberately does
-not change how `scan` groups access units, which stays one-programme (ROADMAP.md's DC5).
+not change how `scan` groups access units, which stays one-programme.
 
 ## Object-layer strip
 

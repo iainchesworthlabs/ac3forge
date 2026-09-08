@@ -1,6 +1,6 @@
 # Rust bindings
 
-Roadmap item AP9: the first non-Python binding over [the C API](c-api.md) — a `-sys` crate
+The first non-Python binding over [the C API](c-api.md) — a `-sys` crate
 (`ac3forge-sys`, raw `bindgen`-generated FFI declarations) plus a safe wrapper (`ac3forge`), both
 living in-tree at
 [`rust/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/rust). See that directory's own

@@ -1,6 +1,6 @@
 # C API
 
-Roadmap item F1: a stable, minimal C-callable surface over `ac3::forge`'s encode/decode core —
+A stable, minimal C-callable surface over `ac3::forge`'s encode/decode core —
 AC-3, E-AC-3 and Atmos (OAMD + JOC) — for bindings and embedding by callers that cannot or do not
 want to link C++23. The whole surface is one header,
 [`ac3forge_c/ac3forge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/ac3forge_c/ac3forge.h),
@@ -49,7 +49,7 @@ C++ exception — realistically only `std::bad_alloc` for a codec core that neve
 `AC3FORGE_ERROR_INTERNAL` instead of propagating into a (possibly non-C++) caller frame.
 
 **No ABI-compatibility promise before v1.0.** Same pre-1.0 stance as the rest of the project (see
-roadmap item AP1): a rebuild against a newer `ac3forge` may need a recompile, not merely a relink.
+see [API stability](api-stability.md)): a rebuild against a newer `ac3forge` may need a recompile, not merely a relink.
 `ac3forge_version()` reports what was actually linked at runtime.
 
 ## Encoding
@@ -305,7 +305,7 @@ every field this struct doesn't carry.
 export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
 here either, and that is a decision rather than an omission - but no longer the shape-instability
 one it used to be. `SceneCursor` existed precisely because the seam a live position source would
-plug into wasn't finished; roadmap `UX4`'s OSC wire form
+plug into wasn't finished; the OSC wire form
 ([`ac3/oba/scene_osc.hpp`](spatial-and-atmos.md#the-osc-wire-form)) has since landed as a sibling
 header, and it changed nothing about `scene.hpp`: no method on `ObjectScene`/`SceneCursor` gained
 or lost a parameter, nothing was added to either class. The shape has settled. What is left is a

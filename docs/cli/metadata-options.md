@@ -403,7 +403,7 @@ which one it means. `objm` folds the whole range into ONE mono object (equal-wei
 than one object per channel the way a plain `obj` range does. Two entries naming the same location,
 or more than one entry per dual-mono programme, is refused.
 
-The `obj`/`objm` destinations are acted on by the two object-capable commands (roadmap IO9):
+The `obj`/`objm` destinations are acted on by the two object-capable commands:
 `atmos-encode` and `live mode=atmos` both assemble them. Each `obj` row becomes its own dynamic
 object; a contiguous `objm` range folds to a single mono object (equal-weight sum, scaled by
 `1/n`); the objects appear in `map=` order — every `obj` row first, in source-then-channel order,
@@ -679,13 +679,13 @@ play options (play; after the positional arguments):
 
 ### `follow=`
 
-Roadmap UX9. When `play` is given a `device_index`, it asks what that sink actually accepts —
+When `play` is given a `device_index`, it asks what that sink actually accepts —
 its own EDID/ELD-carried Short Audio Descriptors where a backend can read them (real today only
 on ALSA; see [Linux](../platforms/linux.md)), the same live probe `outputs` uses everywhere
 else. By default (`follow=on`, the implicit default), a source format the sink rejects gets an
 automatic fallback:
 
-- E-AC-3 on an AC-3-only sink is transcoded to AC-3 first (`transcode`, roadmap DC9, through a
+- E-AC-3 on an AC-3-only sink is transcoded to AC-3 first (`transcode`, through a
   temporary file — dialnorm, `compr` and the mix metadata carry across exactly as a direct
   `ac3cli transcode` call would), then plays as AC-3. This is the "no 5.1 PCM over optical"
   case: an optical link can carry compressed AC-3 but never multichannel PCM, so a 5.1 E-AC-3
@@ -800,7 +800,7 @@ Not yet supported, and refused rather than ignored:
 - `programme2=` together with `src=`/`map=`. The multi-source router assigns channels to one
   programme.
 - Labelling a programme as a service (`bsmod`) or supplying the mixing metadata a receiver would
-  use to mix an associated service against the main one — that is roadmap `DC3`/`DC4`, and this
+  use to mix an associated service against the main one, and this
   is the structural half.
 
 One thing worth knowing before shipping such a stream: **FFmpeg refuses it outright**, and not

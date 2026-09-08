@@ -391,7 +391,7 @@ passthrough, running continuously and still writing the file `record` always has
 `live mode` distinction between `channels` and `atmos` — the GUI's Atmos-mode live room is that
 same `atmos` mode, with the timeline replaced by real-time motion.
 
-**What is now at parity** (roadmap IO9). `ac3cli record` and `ac3cli live` reach the same
+**What is now at parity**. `ac3cli record` and `ac3cli live` reach the same
 capabilities this page describes, through the same code where the code is shareable:
 
 - **Wide layouts and E-AC-3.** `record` and `live mode=channels` take `layout=` and `codec=`

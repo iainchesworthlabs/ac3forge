@@ -38,8 +38,9 @@ fi
 # past one should stop here and be explained rather than land silently.
 #
 # DIRAM is the interesting one. The ESP32-S3's internal SRAM is 341,760 bytes
-# and the linked app currently uses 134,676 of it, leaving 207,084 against a
-# 171,558-byte peak heap. The ceiling is on what the IMAGE uses, because that
+# and the linked app currently uses 134,676 of it. That leaves 207,084 by the
+# linker's estimate, though the allocator reports 280,792 free at runtime,
+# against a 179,064-byte peak heap. The ceiling is on what the IMAGE uses, because that
 # is what squeezes the heap: every byte of static data here is a byte the
 # decode cannot allocate.
 : "${AC3FORGE_ESP32S3_MAX_DIRAM_BYTES:=170000}"

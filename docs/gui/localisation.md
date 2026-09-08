@@ -66,7 +66,7 @@ lapsing.
 ## Crucible shares this pipeline
 
 Everything above is `ac3gui`, half of [Forge](../forge/index.md).
-[Crucible](../crucible/index.md) (`apps/crucible/`, roadmap UX11/UX12) is the family's other Qt
+[Crucible](../crucible/index.md) (`apps/crucible/`) is the family's other Qt
 application, and reuses `LanguageManager` rather than copying it: the class takes a translation
 basename (`"ac3gui"` by default, `"ac3crucible"` for Crucible) that names the `.qm` files it
 loads from `:/i18n/`, and `useSystemLanguage()` forgets a saved override so the app follows the

@@ -27,7 +27,7 @@ Usage:
   ac3cli eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
   ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source. programme2= is a different thing entirely - a second, independent E-AC-3 substream (its own layout/bitrate/dialnorm via programme2-layout=/-bitrate=/-dialnorm=), not another channel of this one)
-  ac3cli decode        <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out] (AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there (roadmap IM2) - bed LFE plus every dynamic object, positioned by its own decoded OAMD)
+  ac3cli decode        <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out] (AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there - bed LFE plus every dynamic object, positioned by its own decoded OAMD)
   ac3cli probe         <in.ac3|in.ec3> [json=1] [detail=frames|blocks] (what the stream declares: layout, substreams, rates, metadata ranges, object layer, tool usage and per-frame CRC - as a table, or as a documented JSON contract)
   ac3cli transcode     <in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the output name's suffix, or from codec=)
   ac3cli metadata      <in.ac3|in.ec3> <out.ac3|out.ec3>      (rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the audio is copied through untouched, not re-encoded)
@@ -49,7 +49,7 @@ Usage:
   ac3cli outputs                                              (render endpoints + AC-3/E-AC-3 passthrough support)
   ac3cli play          <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index] (exclusive-mode IEC 61937 passthrough, following the sink (bsid decides the source format; a named device that rejects it gets an automatic AC-3/PCM fallback - follow=off for the plain refusal))
   ac3cli monitor       <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index] (decode and play on an ordinary (non-bitstreamed) output)
-  ac3cli spatial       <in.ec3> [device_index]                (decode the object layer onto Windows Spatial Sound - dynamic objects at their OAMD positions, the bed's LFE static (roadmap UX8))
+  ac3cli spatial       <in.ec3> [device_index]                (decode the object layer onto Windows Spatial Sound - dynamic objects at their OAMD positions, the bed's LFE static)
   ac3cli help          [<command>|exit-codes]                 (one command's own arguments and grammars, not the whole manual)
   ac3cli man                                                  (the generated groff man page, on stdout)
   ac3cli completions   <bash|zsh|fish|powershell>             (the generated completion script for that shell, on stdout)
@@ -139,7 +139,7 @@ The status text these commands normally print (frame count, routing, per-channel
 `dialnorm=auto`'s measurement line) goes to stderr instead of stdout whenever the output side is
 `-`, so it never ends up inside the piped stream — `src=`/`map=` multi-source runs included.
 
-### ADM ingest — real professional master files (opt-in, roadmap B1)
+### ADM ingest — professional master files (opt-in)
 
 **Only *runnable* in a build with `-DAC3FORGE_BUILD_ADM=ON`** — but always *listed*, the same
 "a command a build cannot run is shown, not hidden" treatment the live-audio commands below get
@@ -155,7 +155,7 @@ with the flag on (the usage block at the top of this page is from a *default* bu
 this row instead reads `UNAVAILABLE HERE`):
 
 ```text
-  ac3cli atmos-adm    <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, roadmap B1) straight to DD+ JOC E-AC-3; every bed/object channel the resolved audioProgramme names becomes an AtmosEncoder object, driven by the file's own authored automation - no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON)
+  ac3cli atmos-adm    <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (an ADM BWF master (BS.2076-2 ADM XML + BW64/RF64) straight to DD+ JOC E-AC-3; every bed/object channel the resolved audioProgramme names becomes an AtmosEncoder object, driven by the file's own authored automation - no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON)
 ```
 
 | Command | What it does |
@@ -188,12 +188,12 @@ for the parser and the mapping layer this command drives, and
 [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp)
 for the same pipeline as a minimal, standalone, self-fixturing program.
 
-### IAB ingest — real Dolby Atmos cinema/IMF masters (opt-in, roadmap IM1)
+### IAB ingest — Dolby Atmos cinema/IMF masters (opt-in)
 
 **Only *runnable* in a build with `-DAC3FORGE_BUILD_ADM=ON`** — the identical gate and the same
 `UNAVAILABLE HERE`/clear-error treatment `atmos-adm` above gets, and for the same underlying
 reason even though `ac3iab::ac3iab` itself is on by default: this command needs
-[`ac3::admbridge`'s own IAB mapping](../library/adm-bridge.md#bridging-iab-roadmap-im1-phase-3)
+[`ac3::admbridge`'s own IAB mapping](../library/adm-bridge.md#bridging-iab)
 (`build_iab()`), and that whole module rides `AC3FORGE_BUILD_ADM` (see
 [ADM / BW64 reading](../library/adm.md#why-opt-in)) since it PUBLIC-links `ac3adm::ac3adm`
 alongside `ac3iab::ac3iab`. What the row looks like in a build configured with the flag on (the
@@ -201,12 +201,12 @@ usage block at the top of this page is from a *default* build, where this row in
 `UNAVAILABLE HERE`):
 
 ```text
-  ac3cli atmos-iab     <in.iab|in.mxf> <out.ec3> [bitrate_kbps] (a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare elementary .iab file or a real MXF Track File alike - roadmap IM1) straight to DD+ JOC E-AC-3; every Bed channel/Object the file names becomes an AtmosEncoder object, driven by the file's own authored panning - no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON)
+  ac3cli atmos-iab     <in.iab|in.mxf> <out.ec3> [bitrate_kbps] (a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare elementary .iab file or a real MXF Track File alike) straight to DD+ JOC E-AC-3; every Bed channel/Object the file names becomes an AtmosEncoder object, driven by the file's own authored panning - no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON)
 ```
 
 | Command | What it does |
 |---|---|
-| `atmos-iab` | A real Immersive Audio Bitstream (SMPTE ST 2098-2) master — a bare elementary `.iab` file or a real MXF Track File alike, sniffed automatically by its first byte — straight to DD+ JOC E-AC-3: [`ac3::admbridge::build_iab`](../library/adm-bridge.md#bridging-iab-roadmap-im1-phase-3) classifies every Bed channel/Object and builds its own `ac3::oba::ObjectPath` from the file's own per-frame panning, driven frame by frame the same way `atmos-adm` drives an ADM master |
+| `atmos-iab` | A real Immersive Audio Bitstream (SMPTE ST 2098-2) master — a bare elementary `.iab` file or a real MXF Track File alike, sniffed automatically by its first byte — straight to DD+ JOC E-AC-3: [`ac3::admbridge::build_iab`](../library/adm-bridge.md#bridging-iab) classifies every Bed channel/Object and builds its own `ac3::oba::ObjectPath` from the file's own per-frame panning, driven frame by frame the same way `atmos-adm` drives an ADM master |
 
 ```bash
 ac3cli atmos-iab master.iab out.ec3 448
@@ -229,7 +229,7 @@ essence that never resolved) — prints a real diagnosis via that error's own `d
 opaque crash or a bare non-zero exit.
 
 See [IAB reading](../library/iab.md) and
-[ADM → Atmos bridging](../library/adm-bridge.md#bridging-iab-roadmap-im1-phase-3) for the parser
+[ADM → Atmos bridging](../library/adm-bridge.md#bridging-iab) for the parser
 and the mapping layer this command drives, and
 [`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp)
 for the same pipeline as a minimal, standalone, self-fixturing program.
@@ -275,11 +275,11 @@ requirements ask for beside an Atmos one.
 
 | Command | What it does |
 |---|---|
-| `decode` | AC-3 or E-AC-3 → WAV; `bsid` in the stream decides which decoder runs. The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream (roadmap IO2), sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
+| `decode` | AC-3 or E-AC-3 → WAV; `bsid` in the stream decides which decoder runs. The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
 | `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1`. Auto-detects AC-4 too (TOC/presentation/substream-group framing only) |
-| `levels` | Per-channel peak/RMS report — takes a WAV, a bare encoded stream, or (roadmap IO2) a Matroska/MP4/MPEG-TS container carrying one |
+| `levels` | Per-channel peak/RMS report — takes a WAV, a bare encoded stream, or a Matroska/MP4/MPEG-TS container carrying one |
 | `loudness` | BS.1770-4 gated loudness on a WAV, reported as the `dialnorm` it implies |
-| `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3/E-AC-3 stream — bare, or (roadmap IO2) inside a Matroska/MP4/MPEG-TS container — measures it with the real BS.1770-4/EBU Tech 3342 meter — the Table 5.8 bed by default, the whole rendered program with `layout=rendered`, or a dynamic-object-only programme's objects re-rendered onto a named layout with `objects=<layout>` (BS.1770-5 Annex 4) — and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate |
+| `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3/E-AC-3 stream — bare, or inside a Matroska/MP4/MPEG-TS container — measures it with the real BS.1770-4/EBU Tech 3342 meter — the Table 5.8 bed by default, the whole rendered program with `layout=rendered`, or a dynamic-object-only programme's objects re-rendered onto a named layout with `objects=<layout>` (BS.1770-5 Annex 4) — and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate |
 
 ```bash
 ac3cli decode out.ec3 out.wav
@@ -315,7 +315,7 @@ ac3cli decode atmos.ec3 bed.wav objects/
 
 Or add a fourth argument (`objects_dir` empty or not) to write an ADM BWF master instead —
 positions come from the stream's own decoded OAMD, so `master.wav` round-trips through
-`ac3cli atmos-adm` (roadmap IM2, needs `-DAC3FORGE_BUILD_ADM=ON`; without that flag an `adm_out`
+`ac3cli atmos-adm` (needs `-DAC3FORGE_BUILD_ADM=ON`; without that flag an `adm_out`
 on an E-AC-3 input is refused before the decode starts, exit `2`, naming the flag):
 
 ```bash
@@ -542,7 +542,7 @@ coded channel, LFE last) and `coupling_exponent_strategy`.
 
 ##### AC-4
 
-`probe` auto-detects AC-4 (`ac4::`, roadmap IM4) by its first byte — `0xAC` rather than AC-3/
+`probe` auto-detects AC-4 (`ac4::`) by its first byte — `0xAC` rather than AC-3/
 E-AC-3's `0x0B` — so `ac3cli probe stream.ac4` needs no extra flag, and works on `-` (stdin) the
 same way. It reads the sync frame, table of contents, presentation and substream-group framing —
 channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike; audio content is
@@ -633,7 +633,7 @@ qc: atmos.ec3 (E-AC-3, L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE, 48000 Hz, 62 acc
 
 For a plain 5.1 stream both settings give the same number, by construction — see [Options & grammars](metadata-options.md#layoutbed-default-and-layoutrendered) for the weighting table and the one Table 5.8 layout where the two algorithms genuinely disagree.
 
-Neither `layout=` setting sees a dynamic object's own *position* — both meter channels, and this project's own encoder folds every object onto the flat 5.1 ring at encode time regardless of where it was authored. `objects=<layout>` (roadmap IO12) re-renders a dynamic-object-only programme's objects by their own OAMD position instead, onto a chosen layout, per ITU-R BS.1770-5 Annex 4:
+Neither `layout=` setting sees a dynamic object's own *position* — both meter channels, and this project's own encoder folds every object onto the flat 5.1 ring at encode time regardless of where it was authored. `objects=<layout>` re-renders a dynamic-object-only programme's objects by their own OAMD position instead, onto a chosen layout, per ITU-R BS.1770-5 Annex 4:
 
 ```bash
 ac3cli qc atmos.ec3 objects=514
@@ -737,11 +737,11 @@ practice; `dsurmod` additionally exists only for coding mode 2/0 (§5.4.2.7).
 |---|---|
 | `spdif` | Wraps AC-3 or E-AC-3 as IEC 61937 bursts inside a playable PCM16 WAV — `bsid` in the stream decides which, and the E-AC-3 carrier runs at four times the content sample rate. For feeding a receiver through an ordinary audio path |
 | `unspdif` | The inverse of `spdif`: reads IEC 61937 bursts back and writes the AC-3 or E-AC-3 elementary stream inside them. Takes the WAV `spdif` writes, a capture of an S/PDIF or HDMI input, or a bare dump of carrier bytes with no RIFF header at all — the data type in `Pc` decides AC-3 vs. E-AC-3, and both 16-bit word orders are read. Nothing is re-encoded: the output is what the source sent, byte for byte. `-` works on either end — a capture tool piped straight in, the stream piped straight out — with the report going to stderr, same convention as `encode`/`decode` |
-| `mkv` | Wraps AC-3 or E-AC-3 as Matroska, reading format/packet boundaries/sample rate/channel count from the bitstream itself so the container can't be told the wrong ones. The input may itself be a container (roadmap IO2) — Matroska/MP4/MPEG-TS are sniffed by content, not by name — which is what makes `mkv`/`mp4`/`ts` container-to-container remuxers as well as encode targets |
+| `mkv` | Wraps AC-3 or E-AC-3 as Matroska, reading format/packet boundaries/sample rate/channel count from the bitstream itself so the container can't be told the wrong ones. The input may itself be a container — Matroska/MP4/MPEG-TS are sniffed by content, not by name — which is what makes `mkv`/`mp4`/`ts` container-to-container remuxers as well as encode targets |
 | `mp4` | Wraps AC-3, E-AC-3 **or AC-4** as a single-file MP4/ISOBMFF (an AC-4 input takes TS 103 190-2 Annex E's `ac-4`/`dac4` path, with the Annex E.13 codecs string reported), writing a spec-correct `dac3`/`dec3` sample-entry box (fscod/bsid/bsmod/acmod/lfeon, plus the Atmos complexity-index extension for JOC content) read straight off the bitstream — never off whatever a container INPUT declared, which is the dec3-repair case: a source with a broken or missing Atmos `dec3` flag gets a correct one on the way out |
 | `ts` | Wraps AC-3, E-AC-3 **or AC-4** (DVB profile only — EN 300 468 Annex D.7; `atsc` is refused for AC-4) as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per whichever broadcast profile the optional third argument names — `dvb` (the default) or `atsc`. See below |
 | `demux` | The inverse of `mkv`: reads a container and writes the bare AC-3/E-AC-3 elementary stream inside it, which is what every other command here takes as input. The container is identified by its **own magic bytes**, never by the file name — a rip called `title00.mkv` that is really something else, or one with no extension at all, is the normal case. Unlike the wrapping commands it streams: the reader is fed in 64 KiB chunks and each access unit is written as it comes out, so peak memory is a chunk plus a frame whatever the file's duration. Matroska/WebM, MP4 (plain and fragmented) and MPEG-2 Transport Stream (188/192/204-byte packet grids; DVB, ATSC and registration-descriptor codec signalling all read). An MP4 whose `moov` follows its `mdat` is refused with an explanation rather than read wrong — that layout cannot be streamed. For MPEG-TS the destination gets the concatenated PES payloads rather than a guaranteed one-access-unit-per-payload split, since PES makes no such promise — the status line omits sample rate/channels for it, since a transport stream's PMT names the codec but not those |
-| `remux` (roadmap IO2) | Container-to-container in one step: `mkv`/`mp4`/`ts` under the hood, picked by `out_path`'s **extension** (`.mkv`/`.webm`, `.mp4`/`.m4a`/`.mov`, `.ts`/`.m2ts`) since a file that doesn't exist yet has no bytes to sniff. The input is still identified by its own magic bytes, exactly as `demux`'s. `[dvb\|atsc]` is passed through when the target is a Transport Stream and ignored otherwise |
+| `remux` | Container-to-container in one step: `mkv`/`mp4`/`ts` under the hood, picked by `out_path`'s **extension** (`.mkv`/`.webm`, `.mp4`/`.m4a`/`.mov`, `.ts`/`.m2ts`) since a file that doesn't exist yet has no bytes to sniff. The input is still identified by its own magic bytes, exactly as `demux`'s. `[dvb\|atsc]` is passed through when the target is a Transport Stream and ignored otherwise |
 | `fmp4` | Writes fragmented MP4/CMAF — an init segment plus one media segment per fragment — alongside an HLS media+master playlist pair and a DASH MPD, all pointing at the same segments, ready for a real HLS/DASH origin or packager. `[frames_per_fragment]` defaults to 48 access units per fragment, about 1.5 s at 48 kHz. Atmos content signals itself automatically and completely: `CHANNELS="<N>/JOC"` in the HLS playlists, the two `EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` supplemental descriptors ETSI TS 103 420 clause D.2 defines in the MPD, and the `ceao` compatibility brand its Annex E requires on the segments. Every representation also states its channel configuration, on the Dolby scheme TS 102 366 clause I.1.2.1 defines. `fallback-51` additionally writes the paired 5.1 rendition |
 
 #### `ts` broadcast profiles
@@ -788,8 +788,8 @@ each OS.
 | `devices` | Lists capture endpoints (microphones, playback-device loopbacks) |
 | `outputs` | Lists render endpoints and whether each supports AC-3/E-AC-3 passthrough |
 | `record` | Captures from a device straight to a file, metering live. `layout=`/`codec=` choose the shape (any layout up to 7.1.4, AC-3 or E-AC-3), `container=` the wrapper (`raw`, `mkv`, `ts`, `spdif`, `fmp4`), `watchdog=` how long a silent device is tolerated. If the endpoint turns out to be bitstreaming IEC 61937 rather than delivering PCM (an HDMI/S/PDIF capture card, or a loopback of a player set to bitstream), `record` recognises that within about a quarter of a second and writes the **elementary stream** instead of encoding the bursts as if they were audio — see [passthrough capture](#passthrough-capture) below |
-| `play` | Exclusive-mode IEC 61937 passthrough of an existing file, bare or (roadmap IO2) inside a container — `bsid` decides AC-3 vs. E-AC-3. When a `device_index` is named, `play` follows the sink (roadmap UX9): a source format it rejects gets transcoded to AC-3 or decoded to PCM automatically instead of refused — see [Following the sink](#following-the-sink) below |
-| `monitor` | Decodes an existing file, bare or (roadmap IO2) inside a container, and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. |
+| `play` | Exclusive-mode IEC 61937 passthrough of an existing file, bare or inside a container — `bsid` decides AC-3 vs. E-AC-3. When a `device_index` is named, `play` follows the sink: a source format it rejects gets transcoded to AC-3 or decoded to PCM automatically instead of refused — see [Following the sink](#following-the-sink) below |
+| `monitor` | Decodes an existing file, bare or inside a container, and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. |
 | `spatial` | Decodes an E-AC-3 stream's object layer and hands the objects to the platform's spatial renderer, each at its own OAMD position — the one playback path that renders objects as objects rather than as a bed. Windows only today; see [`spatial`](#spatial-objects-on-the-platform-renderer) below |
 | `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has. Everything `record` takes, plus a second clock-conformed capture device (`capture2=`), an object-slot budget and `map=` binding (`objects=`, `mode=atmos`), and a parallel 5.1 AC-3 leg for an AC-3-only receiver (`downmix=`) |
 
@@ -821,7 +821,7 @@ start — `objects=<N>` sets the budget, `map=` binds capture channels to slots 
 it is carried silent rather than changing the object count a decoder read from the first access
 unit.
 
-**Live object positions over OSC (roadmap UX4).** `positions=<scheme>:[<bind>:]<port>` (`mode=atmos`
+**Live object positions over OSC.** `positions=<scheme>:[<bind>:]<port>` (`mode=atmos`
 only — refused with `mode=channels`, since there are no objects to place) swaps the built-in
 synthetic orbit for a real live position source: a show-control rig, a DAW, or any OSC 1.0 sender
 addressing this session's objects over UDP. The token is scheme-prefixed on purpose — only `osc`
@@ -909,7 +909,7 @@ bed the main plan already computed, while the file and the monitor still carry t
 
 ### `spatial` — objects on the platform renderer
 
-Roadmap UX8. `spatial` decodes an E-AC-3 stream's object layer and submits each reconstructed
+`spatial` decodes an E-AC-3 stream's object layer and submits each reconstructed
 object to the operating system's own spatial renderer at the position its OAMD carries, instead
 of folding the objects into a bed first. On Windows that renderer is
 `ISpatialAudioObjectRenderStream`, reached through `ac3::audio::SpatialObjectSink`; no other
@@ -960,14 +960,14 @@ confirmed that the objects arrive from where their positions say they should.
 
 ### Following the sink
 
-Roadmap UX9. When `play` is given a `device_index`, it first asks what that sink actually
+When `play` is given a `device_index`, it first asks what that sink actually
 accepts before committing to a format — its own EDID/ELD-carried CEA-861 Short Audio
 Descriptors where a backend can read them (real today only on ALSA — see
 [Linux](../platforms/linux.md)), the same live probe `outputs` uses everywhere else, noted on
 stderr when that fallback happens. A source format the sink rejects then gets an automatic
 fallback instead of a plain refusal:
 
-- **E-AC-3 on an AC-3-only sink** is transcoded to AC-3 first (`transcode`, roadmap DC9, run
+- **E-AC-3 on an AC-3-only sink** is transcoded to AC-3 first (`transcode`, run
   against a temporary file and cleaned up afterwards — dialnorm, `compr` and the mix metadata
   carry across exactly as a direct `ac3cli transcode` call would), then that AC-3 plays the way
   a plain AC-3 source file always has. This is the "no 5.1 PCM over optical" case: an optical

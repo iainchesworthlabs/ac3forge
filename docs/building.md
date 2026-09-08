@@ -146,7 +146,7 @@ ctest --preset test-linux-llvm-tsan
 
 There is also a `minimal-decoder` fragment and the three configure/build presets that inherit
 it — `config-arm-none-eabi-minimal`, `config-linux-gcc-minimal`, `config-linux-llvm-minimal`.
-They are not part of the table above because they do not build the project: they build roadmap
+They are not part of the table above because they do not build the project: they build
 PF7's decode-only library and its probe, and nothing else. The arm one does not inherit `core`
 either — there is no vcpkg triplet for bare-metal arm and nothing that profile builds has a
 third-party dependency, the same reasoning the Emscripten preset follows. See
@@ -279,7 +279,7 @@ without the preset and pass the generator and build type by hand.
 
 ## Minimum-footprint decoder profile
 
-Roadmap PF7. The next users of the decoder are set-top boxes, receivers and DSP ports, and what
+The next users of the decoder are set-top boxes, receivers and DSP ports, and what
 they need is not a claim about being small but a build that is small, a target it demonstrably
 runs on, and a number that stops moving quietly.
 
@@ -363,7 +363,7 @@ AC-3, 86 for E-AC-3, 126 for E-AC-3 with §E3.5 enhanced coupling and 43 for 2/0
 per-block geometry vectors inside the decoders and the
 `std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`. Reaching zero means
 those becoming fixed-capacity storage, which changes the public types — a design change, not a
-build option. The runner gates the number at 100, and enhanced coupling at 130 for reasons that
+build option. The runner gates the number at 100, and enhanced coupling at 140 for reasons that
 are in §E3.5 rather than in a regression ([the footprint
 table](performance-trend.md#minimum-footprint-decoder) has the detail), so the distance from
 zero cannot grow while the gap is open.
@@ -774,7 +774,7 @@ linux-llvm-tsan (ThreadSanitizer over the `concurrency` ctest label — `tests/a
 headless CLI device paths — via `config-linux-llvm-tsan`), macos-llvm,
 linux-appimage (builds `ac3gui`'s self-contained AppImage in an older `ubuntu:22.04` container and
 smoke-tests it in a second container that never had Qt installed at all — see
-[Linux](platforms/linux.md#appimage), roadmap DR8),
+[Linux](platforms/linux.md#appimage)),
 script-lint (ruff over every `.py`, shellcheck over every `.sh`, actionlint over the workflows,
 all three pinned in `requirements/requirements-lint.txt`),
 coverage (`tools/checks/coverage_report.sh` over every `src/` library
@@ -818,7 +818,7 @@ ABI"; on a push or a tag it is the last release tag instead, which is the releas
 instantiations that are not part of any ABI this project controls.
 
 Both checks report into the job summary and leave the job green, gated on a single
-`ABI_ENFORCE: 'false'` job-level variable; roadmap AP1's interface freeze is what would make
+`ABI_ENFORCE: 'false'` job-level variable; [the interface freeze](library/api-stability.md) is what would make
 the gate required, by flipping that one value. When enforcing, `abidiff` fails only on an
 *incompatible* change — a pure addition passes. The job is deliberately absent from
 `CI Status`'s `needs` list either way.
@@ -937,7 +937,7 @@ carry the types, not a copy of each kernel:
 | `to_fixed25_block` | `src/forge/src/core/exponents.cpp` | Batched form of `to_fixed25`, about 9,100 calls a frame. SSE2/NEON only, same reason as `dft512` above. |
 
 **The FFT/DCT-IV core itself is not part of this seam.** `src/forge/src/core/fft_kernel.hpp`
-(ROADMAP PF4) is a radix-4 decimation-in-time kernel with a trailing radix-2 stage where
+ is a radix-4 decimation-in-time kernel with a trailing radix-2 stage where
 `log2(P)` is odd, trivial-twiddle elimination on its first stage, and the digit-reversal
 permutation folded into each caller's own input-producing loop rather than run as a pass of its
 own. That is an *algorithmic* speedup — fewer operations, not wider lanes — and it carries its
@@ -954,7 +954,7 @@ for the same reason (its cost is the MDCT inside it, which does get faster). Ste
 inverses are permutation-dominated. This seam itself stays SSE2-width on x86-64: AVX and FMA3 are
 CPU features rather than architecture, so a compile-time `-march=` for them would produce a binary
 that faults on older hardware. [Runtime AVX2 dispatch](#runtime-avx2-dispatch) below covers the
-`cpuid`-gated mechanism that makes a *wider* tier safe to ship without that risk — ROADMAP PF5's
+`cpuid`-gated mechanism that makes a *wider* tier safe to ship without that risk — the
 dynamic-dispatch follow-on wired it to the analysis windowing and DCT-IV/IMDCT twiddle kernels in
 the table above (the two Phase 1's own measurement found a real win for); `dft512`'s normalisation,
 exponent-to-PSD and `to_fixed25_block` stay SSE2/NEON-only for the same reason. 128 bits is the native width of
@@ -1055,7 +1055,7 @@ guarantee, never silently claiming a check that did not run:
 AC3FORGE_CROSS_TIER_CHECK=1 ./tools/ci/run_codec_matrix.sh build/config-linux-llvm/bin/ac3cli
 ```
 
-ROADMAP PF5's dynamic-dispatch follow-on proved this whole mechanism end to end against one trivial
+The dynamic-dispatch follow-on proved this whole mechanism end to end against one trivial
 function first (`ac3::internal::avx2::avx2_probe_matches_expected()`, no codec bit-exactness stakes
 of its own) — deliberately, so the build/link/dispatch/test pipeline was proven before any kernel's
 correctness depended on it — then wired two real kernels behind it: `apply_analysis_window` and the
@@ -1153,7 +1153,7 @@ as the explanation for this gap; the correlation that matters is architecture (a
 three cases — `macos-llvm`'s GitHub-hosted runner is Apple Silicon), not compiler family or libm
 package.
 
-**Architecture-specific libm `sin`/`cos` — tested directly (roadmap VX11), also ruled out.** The
+**Architecture-specific libm `sin`/`cos` — tested directly, also ruled out.** The
 standing hypothesis was aarch64's own compiled `libm` (glibc ships an architecture-specific
 `sincos`/`cos`/`sin`, so "the same libm" as a source package does not mean bit-identical machine
 code) producing different last-bit results in the transform twiddle tables. Two things needed
@@ -1230,7 +1230,7 @@ instruction to emit — proven, not assumed, by the corpus comparison above comi
 byte-identical against a build without the flag. On aarch64 it gives up FMLA in the transform
 inner loops for a bit-exactness guarantee, not for a change in the gold-gate numbers.
 
-ROADMAP VX11's mystery therefore stays open — both hypotheses proposed for it are now closed out
+That mystery therefore stays open — both hypotheses proposed for it are now closed out
 by direct measurement rather than by argument — but it is no longer *unwatched*: a cross-platform
 bitstream-hash gate (`tools/checks/check_cross_platform_hash.py`, wired into
 [the gold-reference gate](#gold-reference-correctness-gate)) pins a SHA-256 of the actual encoded
@@ -1274,8 +1274,7 @@ CI-hosted runner already ships Python 3, so this needs no new provisioning). The
 checks are perceptual/SNR-based rather than a bit-exact bitstream comparison deliberately: nothing
 in this project verifies that Homebrew LLVM, GCC and MSVC round the codec's floating-point
 pipeline identically, and the real numbers above show they in fact do not, by a small but
-measurable margin. `tools/checks/check_cross_platform_hash.py` runs immediately after (roadmap
-VX11) and does add a bit-exact comparison, but as a pinned-regression gate over each leg's own
+measurable margin. `tools/checks/check_cross_platform_hash.py` runs immediately after and does add a bit-exact comparison, but as a pinned-regression gate over each leg's own
 encoded bytes rather than a cross-leg equality assertion — see
 [Floating-point contraction](#floating-point-contraction) above for why the latter cannot pass
 today.

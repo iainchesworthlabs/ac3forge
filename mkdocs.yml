@@ -156,16 +156,19 @@ nav:
       - Keyboard & screen readers: crucible/accessibility.md
       - Languages: crucible/localisation.md
       - Troubleshooting: crucible/troubleshooting.md
-      - Promotion plan & record: crucible/promotion.md
-      - The Windows demo, the record: platforms/windows-demo.md
-      - The null-sink driver on ACX: platforms/windows-driver-acx.md
+      - Promotion plan and record: crucible/promotion.md
+      - The Windows demo it grew from: platforms/windows-demo.md
   - Platforms:
-      - platforms/index.md
+      - Which platform: platforms/index.md
       - Windows: platforms/windows.md
       - Linux: platforms/linux.md
       - Raspberry Pi: platforms/raspberry-pi.md
       - macOS: platforms/macos.md
-      - Android, the Shield demo: platforms/android.md
+      - Android (Shield demo): platforms/android.md
+      - WebAssembly (browser): platforms/wasm.md
+      - ESP32-S3 (ESP-IDF): platforms/esp32.md
+      - Bare metal: platforms/bare-metal.md
+      - Windows null-sink driver: platforms/windows-driver-acx.md
   - Project:
       - Contributing: contributing.md
       - Releasing: releasing.md

@@ -1,6 +1,6 @@
 # ESP32-S3
 
-The minimum-footprint decoder profile (roadmap PF7) on an Espressif ESP32-S3: a
+The minimum-footprint decoder profile on an Espressif ESP32-S3: a
 240 MHz dual-core Xtensa LX7 with a single-precision FPU, 128-bit PIE SIMD
 extensions, 512 KB of internal SRAM and hardware I2S.
 
@@ -193,8 +193,8 @@ all of them rather than only here.
 ### The ESP32-P4, and why it is not a target
 
 Assessed 2026-09-08 and declined. The P4 is dual-core RISC-V at 400 MHz with
-768 KB of SRAM, and it holds the 171,558-byte peak heap without the float32
-work this port needed — so it reads as the answer if the S3 turns out not to
+768 KB of SRAM, and it holds the 179,064-byte peak heap without the float32
+work this port needed, so it reads as the answer if the S3 turns out not to
 be real time. Three things were checked before writing any of it, and two of
 them settle it.
 
@@ -239,8 +239,8 @@ worth, the P4 does not inherit it.
 What the P4 does buy over the S3 is clock and memory. A frame is 1536 samples,
 32 ms at 48 kHz, which is 7.68 M cycles of budget at 240 MHz against 12.8 M at
 400 MHz: **1.67×**, and it is per-core in both cases. The memory advantage is
-already spent — this port fits internal SRAM on the S3 with 202,860 bytes free
-against a 171,558-byte peak.
+already spent: this port fits internal SRAM on the S3 with 280,792 bytes free
+against a 179,064-byte peak.
 
 **It has no radio, and the plan it would serve is a Wi-Fi plan.** The P4 has
 neither Wi-Fi nor Bluetooth and needs a companion ESP32-C6 or -H2 for either,

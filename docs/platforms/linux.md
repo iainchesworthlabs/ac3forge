@@ -111,8 +111,8 @@ configured, is in [Why ALSA still comes first](../building.md#why-alsa-still-com
     identified every time. PipeWire has now met real hardware once, on the same Pi, on 2026-09-05: the backend
     enumerated the receiver's HDMI sink with its compressed codecs set by WirePlumber from the
     EDID, and streamed E-AC-3 bursts to it. The receiver's own lock is still to be read off its
-    display, so this is "delivered" rather than "confirmed" — see roadmap DR9 for what that run
-    found and fixed. Whether a given output accepts a bitstream is per-device anyway; `ac3cli
+    display, so this is "delivered" rather than "confirmed"; the rest of this note is what that
+    run found and fixed. Whether a given output accepts a bitstream is per-device anyway; `ac3cli
     outputs` probes each one and reports what it finds, and since that run it reports a bitstream
     format only on a sink whose `iec958.codecs` lists it, because the connect alone said yes on a
     headphone jack.
@@ -128,7 +128,7 @@ That trade is uncomfortable and worth stating here rather than only there: forci
 up the passthrough path confirmed against a real receiver (ALSA `iec958`, on the Pi) for the one
 that is not. See [the plan](../crucible/promotion.md#alsa-or-pipewire).
 
-## Reading a sink's own EDID/ELD (roadmap UX9)
+## Reading a sink's own EDID/ELD
 
 `ac3cli play`, given a `device_index`, asks the sink what it actually accepts before committing
 to a format — see [CLI → Following the sink](../cli/commands.md#following-the-sink). On Linux
@@ -222,7 +222,7 @@ launcher fires.
 The `.deb`/`.rpm` above are only as portable as the host distro's own Qt 6 packaging: a distro
 whose Qt is too old for this project's `find_package(Qt6 6.5 REQUIRED ...)` floor, or whose
 `qml6-module-*` split doesn't match what `qt6-declarative-dev`/`qt6-declarative-dev-tools` expect
-(roadmap DR8), simply cannot install one of them. `ac3gui` also ships as a self-contained
+, simply cannot install one of them. `ac3gui` also ships as a self-contained
 AppImage that carries its own Qt 6 and QML modules, so that gap doesn't apply — the two package
 kinds are complementary, not a replacement for each other.
 

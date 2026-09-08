@@ -6,7 +6,7 @@ pipelines require. Like `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts`, i
 from `ac3::forge` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
 
 Mapping the graph this module parses onto `ac3::oba::AtmosEncoder` (ADM → encode) or building it
-from a decoded `ac3::Eac3Decoder` programme (decode → ADM, roadmap item IM2) is a separate module,
+from a decoded `ac3::Eac3Decoder` programme (decode → ADM) is a separate module,
 [`ac3::admbridge`](adm-bridge.md); driving the read direction end to end — a real ADM BWF master
 straight to a DD+ JOC E-AC-3 stream — is `ac3cli atmos-adm`, and the write direction is
 `ac3cli decode ... adm_out` (see [Commands](../cli/commands.md)) and

@@ -184,13 +184,14 @@ protocol work changes it.
 
 ## What the ESP32-S3 result establishes
 
-Measured in the bare-metal session under `idf.py qemu`, now open as
-[PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). **Updated 2026-09-07: both codecs now decode, and the figures below
-supersede the ones this section carried when it was written.**
+Measured under `idf.py qemu` and landed in
+[PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). The current figures live on
+[the ESP32-S3 page](../platforms/esp32.md); the summary below is what this page's argument rests
+on.
 
 - **AC-3 *and* E-AC-3 5.1 both decode correctly on an ESP32-S3.** Six frames each, all twelve
   channel levels exact against `apps/baremetal/fixture.hpp`. It **fits internal SRAM with no
-  PSRAM**: 134,676 bytes used, 207,084 free, against a 171,558-byte peak heap.
+  PSRAM**: the allocator reports 280,792 bytes free against a 179,064-byte peak heap.
 - **float32 closed it, and closed PF7's float32 gap with it.** A profile-selected
   `decode_scalar_t`, validated at roughly 139 dB against the double decode on four real streams
   and 2.7e-7 at the transform. The memory fix and the speed fix were the same fix, because the
@@ -203,30 +204,22 @@ supersede the ones this section carried when it was written.**
   task's thread-local area out of that task's own stack, and IDF's IPC task has 1 KB, so the app
   died inside `esp_ipc_init()` before `app_main`, having never decoded a frame.
 
-| | `main` | PR #546 |
+| | Before #546 | After #546 |
 |---|---|---|
 | `arm-none-eabi` image | 418,244 | **283,484** (−32%) |
 | `.bss` | 237,592 | **97,152** |
 | Peak heap | 270,886 | **171,558** (−37%) |
 
+Those were the figures #546 itself moved. Fixture coverage added since has taken the peak to
+179,064; [the ESP32-S3 page](../platforms/esp32.md#how-much-memory-there-actually-is) carries the
+current set.
+
 There is now a `build-esp32s3` CI leg (in `espressif/idf:v6.1`, leg 6 of the Linux fan-out) and a
 `docs/platforms/esp32.md`.
 
-!!! warning "This section had a wrong number, from the class this session kept finding"
-    It previously said the `thread_local` fix "shrank the ARM image by 7.7%". That came from an
-    early figure the ESP32 session has since retracted as a **mixed-baseline** measurement — its
-    working tree carried extra `.text` and `.bss` that `main` does not, so the baseline it was
-    compared against was never `main`'s. The real reduction is −32%, and the rule that session
-    drew from it is worth repeating here: run `arm-none-eabi-size -A` on a clean tree before
-    publishing any per-section number.
-
-What that means for this page: **the sink role reaches a microcontroller.** Not as a projection
-— as a decode that ran and matched. That is what makes the network transport worth building,
+What that means for this page: **the sink role reaches a microcontroller**, as a decode that ran
+and matched rather than as a projection. That is what makes the network transport worth building,
 because the population of possible sinks is no longer "a Pi or a PC".
-
-The current PF7 numbers it rests on are being re-measured separately
-([#540](https://github.com/iainchesworthlabs/ac3forge/pull/540)); the published footprint tables
-were stale after AP3's pimpl sweep.
 
 ## Where everything sits
 

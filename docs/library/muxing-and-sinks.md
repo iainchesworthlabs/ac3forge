@@ -111,7 +111,7 @@ whatever `ac3::io::scan` read out of the bitstream, fscod/bsid/bsmod/acmod/lfeon
 stream carries Dolby Atmos objects, the `flag_ec3_extension_type_a`/`complexity_index_type_a`
 extension (TS 103 420 §8.3.1/§8.3.2.2) alike.
 
-The same codec-blind contract carries **AC-4** (roadmap IM4): `codec_id = mp4::kCodecAc4`
+The same codec-blind contract carries **AC-4**: `codec_id = mp4::kCodecAc4`
 selects TS 103 190-2 Annex E.4's `ac-4` sample entry with a `dac4` configuration box, whose
 payload comes from `ac4::build_dac4()` off the stream's own parsed TOC — the AC-4 twin of
 `build_codec_config_box`, in `ac4::` where the codec knowledge lives. An ISOBMFF `ac-4`
@@ -365,7 +365,7 @@ search, section reassembly and PES reassembly are all loops a hostile stream can
 
 ## Fragmented MP4/CMAF + HLS/DASH: `mp4::fragment`, `mp4/hls.hpp`, `mp4/dash.hpp`
 
-ROADMAP.md's A2, the streaming-delivery follow-up `mp4::mux`'s own header deliberately left for
+The streaming-delivery follow-up `mp4::mux`'s own header deliberately left for
 later: `mp4::fragment` lays out the same track and frames as `mux`, but as a fragmented movie
 (ISO/IEC 14496-12 §8.8's `moof`/`mfhd`/`traf`/`tfhd`/`tfdt`/`trun`) split into CMAF-shaped pieces
 (ISO/IEC 23000-19) — an initialization segment (`ftyp`+`moov`, whose one `trak` carries
@@ -646,7 +646,7 @@ itself, and that check has only been tried for AC-3, not E-AC-3.
 
 ### `ac3::audio::sink_capabilities` — reading what a sink says it accepts
 
-`ac3/audio/sink_capabilities.hpp` (roadmap UX9). `read_sink_capabilities(device_id)` reads a
+`ac3/audio/sink_capabilities.hpp`. `read_sink_capabilities(device_id)` reads a
 render endpoint's own advertised capabilities — CEA-861 Short Audio Descriptors, the part of
 EDID (over HDMI) or ELD (ALSA's own EDID-Like Data, which carries the same SADs) that says which
 codecs, how many channels and which sample rates a sink accepts — rather than
@@ -692,7 +692,7 @@ or both). On macOS capture is input-only: no loopback endpoint is ever enumerate
 `start()` refuses `DeviceKind::kLoopback` outright rather than silently opening a microphone.
 This is what backs `ac3cli record`/`live` and the GUI's live-session tab.
 
-A third way in, `Capture::start_process_loopback(pid, mode, format)` (roadmap UX11), taps what
+A third way in, `Capture::start_process_loopback(pid, mode, format)`, taps what
 one process renders and nothing else, whichever endpoint it renders to — and it is the piece the
 [AC3Forge Crucible](../crucible/index.md) is built on. Three backends have one, over three
 different mechanisms: Windows 10 build 20348+'s process-loopback activation, a PipeWire capture
@@ -715,7 +715,7 @@ what turns it back on. `process_loopback_available()` and `audio_backend().proce
 which of those it is, up front) and `kProcessNotFound`, which the library checks itself because
 the OS does not.
 
-`ac3/audio/device_watcher.hpp`. `DeviceWatcher` (roadmap UX11) delivers endpoint
+`ac3/audio/device_watcher.hpp`. `DeviceWatcher` delivers endpoint
 added/removed/state-changed and default-changed events on a callback, so an application that
 follows the sink can re-probe when something is plugged or unplugged instead of polling
 `enumerate_render_devices()`. Three backends have one, each over its own mechanism: Windows'

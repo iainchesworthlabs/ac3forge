@@ -1,6 +1,6 @@
 # API stability and the road to v1.0
 
-The concrete freeze plan roadmap item `AP1` asked for: what "stable" will mean once this project
+What "stable" will mean once this project
 tags `v1.0.0`, and what has to be true first. Every release to date has been a `0.x.y` prerelease
 — nothing has promised compatibility across two tags yet, deliberately (see
 [Versioning](../releasing.md#versioning)). This page is where that promise gets defined before it
@@ -76,7 +76,7 @@ surface; a minor release adds to it; a major release is the only place a Public 
 permitted, and per-header ABI compatibility only holds within a major version (see
 [SOVERSION](#soversion) below). Before `v1.0.0`, none of that holds — every `0.x` tag may break
 anything, and has (this is what "all releases are prereleases" means to the vcpkg registry
-reviewer's maturity rule cited in the roadmap entry this page replaces).
+reviewer's maturity rule).
 
 `AC3FORGE_DEPRECATED` (and each module's own equivalent — `MATROSKA_DEPRECATED`,
 `AC3ADM_DEPRECATED`, and so on, all `generate_export_header()` output) exists in every generated
@@ -156,14 +156,14 @@ already covers the same case without it.
 ## Experimental modules
 
 Not every installed, default-on module is part of the `v1.0.0` freeze. `ac3iab::ac3iab` (the
-SMPTE ST 2098-2 IAB reader, roadmap `IM1` phase 1 of 3) is real, tested, and default-built
+SMPTE ST 2098-2 IAB reader, phase 1 of 3) is real, tested, and default-built
 (`AC3FORGE_BUILD_IAB`), but nothing in the CLI or GUI consumes it yet and its own model is still
 being built out (`AudioDataDLC`'s Annex B coder is read by identity only, not decoded — see
 `header-map.md`). It is **Experimental**: installed, versioned, and functional, but explicitly
 outside the compatibility promise `v1.0.0` makes for the Public tier above, until `IM1` finishes
 and this page is updated to promote it. The same designation applies to any future codec-blind
 reader added the same way (an `iamf::` IAMF reader or an `ac4::` AC-4 reader, should either be
-started) and to `ac3::mlp` when the TrueHD/MLP branch lands (roadmap `IM5`, itself already
+started) and to `ac3::mlp` when the TrueHD/MLP branch lands (itself already
 scoped as "an explicitly experimental module" gated behind its own `AC3FORGE_BUILD_MLP` — this
 page's policy just confirms that plan rather than overriding it; real interoperability, `IM6`,
 stays separately blocked on MLP/FBA source material that isn't public). A new module defaults to

@@ -8,7 +8,7 @@ AC-3, E-AC-3 or the JOC/Atmos object layer, and takes already-rendered PCM in, t
 
 **Why a writer exists at all.** IAMF's codec list is Opus, AAC-LC, FLAC and LPCM — E-AC-3 can
 never be carried inside it. So this is not a new encoder output; it is a decode → rewrap bridge,
-roadmap item IM3 phase 1 (see [ROADMAP.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/ROADMAP.md)). A caller decoding a stream that is
+phase 1 of three. A caller decoding a stream that is
 already coded as a 7.1.4 channel layout (`ac3::plan::LayoutId::k714` — an independent substream
 plus two E-AC-3 dependents) gets the 12 discrete channels straight off
 `ac3::Eac3Decoder::decode_access_unit`; this module needs them permuted into its own channel
@@ -16,7 +16,7 @@ order and handed over as PCM.
 
 **Two routes to the same ecosystem.** [ADM / BW64 writing](adm.md)'s `write_bw64()` already opens
 an *indirect* one: AOM's own `iamf-tools` encoder accepts ADM-BWF input, so a decoded programme
-written as an ADM master (roadmap IM2) already reaches IAMF via a second, external encoder — but
+written as an ADM master already reaches IAMF via a second, external encoder — but
 only for IM2's own scope (dynamic-object-only programmes, cartesian positions). `iamf::iamf`
 writes the IAMF bitstream directly, for any 7.1.4-coded programme this decoder can render, with
 nothing else in the chain.

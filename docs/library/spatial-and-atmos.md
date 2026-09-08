@@ -253,7 +253,7 @@ scene.set_orientation(ac3::oba::orientation_from_degrees(90, 0, 0));  // front w
 
 `SceneCursor` is the same timeline with per-object overrides an external source pushes in as
 they arrive — the seam a live position source and the GUI's live room plug into, and the reason
-the scene type isn't just a static table. Roadmap `UX4` is that seam: OSC (below) is a real live
+the scene type is not just a static table. That seam exists: OSC (below) is a live
 source today; MIDI and a game controller are follow-ons under the same `positions=` token, not
 implemented yet.
 

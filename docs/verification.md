@@ -64,7 +64,7 @@ In rough order of strength:
    `signing::verify_atmos_stream`/`verify_atmos_frame` and (opt-in) `ac3adm::parse_bw64`, each
    seeded from the real payloads inside this project's own Atmos streams. A sixth,
    `oba::parse_osc_packet` — the OSC 1.0 wire form a live session's object positions arrive over
-   (roadmap UX4), driving `live mode=atmos positions=osc:<port>` and the GUI live room — is
+  , driving `live mode=atmos positions=osc:<port>` and the GUI live room — is
    covered the same direct way by `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list
    and so covered by CI exactly as the five above are; its own seeds are hand-built OSC packets
    (`fuzz/seeds/fuzz_osc_parse/`) rather than extracted from an Atmos stream, since there is no
@@ -77,7 +77,7 @@ In rough order of strength:
    four unrepaired so the rejection path itself stays reachable.
 
    Out of the encoder: `tools/ci/fuzz_encoder_space.py` (AC-3) and
-   `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3, roadmap VX1) draw random legal encoder
+   `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3) draw random legal encoder
    configurations crossed with adversarial PCM — transients, silence↔loud transitions inside one
    frame, spectral jumps between blocks, dense harmonics, clipping — and hold every stream they
    produce against both decoders. This is the one check here that varies the *input material*
@@ -219,7 +219,7 @@ if the single-floor form is ever restored.
 
 The legs split into two groups on the high-SNR channels, ~6.02 dB apart, and this was
 carried for a long time as an unexplained effect attributed to "arm64 and macOS" legs
-(roadmap VX11). Two things are now settled.
+. Two things are now settled.
 
 **It is architecture, not OS or compiler.** `macos-llvm` (arm64) sits with the arm64
 group; `macos-llvm-x64` sits with the x86-64 group. Same OS, same Homebrew LLVM, opposite
@@ -525,7 +525,7 @@ only the in-repo decoder can read is checked against itself, not against anythin
 
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
 which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
-(roadmap VX1) is built around: it classifies every case it draws by which of these rows it lands
+ is built around: it classifies every case it draws by which of these rows it lands
 on, and checks the *framing* of the ones FFmpeg cannot decode — which needs no decode at all. Two
 things do it: a walk over the four fields that fix E-AC-3's framing (syncword, `strmtyp`,
 `substreamid`, `frmsiz`, all at fixed bit offsets), which shares nothing with the encoder and
@@ -690,11 +690,11 @@ FFmpeg decodes the audio, `header_only` for the `fscod2` rates, `none` for 7.1.4
 coupling / transient pre-noise processing.
 
 Two limits are worth stating on this page rather than only in the bundle: the source material is
-synthetic, and the hashes are per-toolchain. On the first — roadmap VX7 has landed and the CC0
+synthetic, and the hashes are per-toolchain. On the first, the CC0
 speech and music fixtures are committed (`tests/golden/audio/programme_{speech,music}_stereo.flac`),
 but the vector generator was never pointed at them: `tools/generators/gen_conformance_vectors.py`
 still synthesizes its own sources and marks the spot where those files would join the set. Wiring
-this bundle to that material is outstanding work, not a pending roadmap item. On the second —
+this bundle to that material is outstanding work. On the second —
 encoded output is not bit-identical across compilers or architectures, so a bundle regenerated
 elsewhere differs from the published one for the same correct streams. VX11 closed without
 explaining the 6.02 dB arm64 offset (both hypotheses it proposed were falsified by direct
@@ -706,7 +706,7 @@ See [Conformance vectors](conformance-vectors.md).
 
 ## AC-4
 
-`ac4::` (roadmap IM4) is a bitstream inspector, not a decoder: it parses the sync frame, table of
+`ac4::` is a bitstream inspector, not a decoder: it parses the sync frame, table of
 contents, presentation and substream-group framing (ETSI TS 103 190-1/-2) — channel-coded,
 A-JOC-coded, direct-coded-object and OAMD alike — and reports `audio_data`/`metadata()` payloads
 as byte ranges without decoding them. That narrower scope changes which of this page's usual

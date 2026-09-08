@@ -28,7 +28,7 @@ On Windows, the three features that touch sound hardware are all implemented ove
   E-AC-3 burst framing (IEC 61937).
 - **`ac3::audio::MonitorSink`** — shared-mode PCM playback: a non-bitstreamed preview/monitor
   path that decodes what is being encoded and plays it back on an ordinary output.
-- **`ac3::audio::SpatialObjectSink`** (roadmap UX8) — `ISpatialAudioObjectRenderStream`: decoded
+- **`ac3::audio::SpatialObjectSink`** — `ISpatialAudioObjectRenderStream`: decoded
   Atmos objects go out as dynamic objects at their real OAMD positions, and the bed's LFE (never
   a JOC output, TS 103 420 §6.3.2.2) as a static one. Behind `ac3cli spatial`. This is the one
   path that lets Dolby's own renderer engage with this project's reconstructed objects at all — a
@@ -71,7 +71,7 @@ is deliberately explicit about the difference.
     machine during development. A receiver is available now — the one used for [Raspberry Pi's
     HDMI passthrough
     validation](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) — it just hasn't been
-    cabled to this workstation yet; see roadmap `DR9` for that as outstanding work.
+    cabled to this workstation yet; that run is outstanding work.
     `IsFormatSupported` correctly answers no everywhere it has been tried, for
     both `KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL` and `..._DOLBY_DIGITAL_PLUS`, and neither
     descriptor has been accepted by a real device. What *is* verified: the exclusive-mode path
@@ -86,18 +86,18 @@ is deliberately explicit about the difference.
     itself); the same trick now exists for E-AC-3 (`ac3cli spdif`/`monitor`/`live`, branching on
     bsid) but has not itself been tried against a receiver either.
 
-!!! note "No EDID/ELD backend on Windows (roadmap UX9)"
+!!! note "No EDID/ELD backend on Windows"
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
     see [CLI → Following the sink](../cli/commands.md#following-the-sink) — and that read
     (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
-    [Linux](linux.md#reading-a-sinks-own-edideld-roadmap-ux9)). WASAPI answers "will this
+    [Linux](linux.md#reading-a-sinks-own-edideld)). WASAPI answers "will this
     endpoint accept this format" (`IsFormatSupported`, what `enumerate_render_devices()` already
     uses) but does not re-expose the sink's own raw EDID-carried Short Audio Descriptors to
     user-mode code — the driver consumes them internally to decide what to offer and no
     documented public API was found that hands the source data back. `play` falls back to the
     same `IsFormatSupported` probe here, exactly as it always has.
 
-### Per-process loopback and device notifications (roadmap UX11)
+### Per-process loopback and device notifications
 
 Two more WASAPI paths, added to the shared audio layer for [Crucible](../crucible/index.md)
 and available to anything else that links it, both Windows-only in the backend tree:
@@ -221,7 +221,7 @@ The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointi
 on every push; running it and double-clicking a `.ac3` file to confirm the file association end
 to end is still a manual, unautomated check.
 
-## ARM64 (roadmap DR8)
+## ARM64
 
 A third Windows leg, `windows-msvc-arm64`, targets GitHub's hosted `windows-11-arm` runner — real
 ARM64 hardware, not x64 emulation. It shares every file the two x64 legs above use; only the
@@ -285,7 +285,7 @@ install, failing only at the toolset-version assertion described above (since re
 report-only for this leg). Iteration continues from there.
 
 **Unsigned binaries.** Like every other Windows binary this project ships today, this leg's output
-is unsigned — Authenticode signing (roadmap `DR6`) is blocked project-wide on acquiring a
+is unsigned — Authenticode signing is blocked project-wide on acquiring a
 certificate, not on code, and that applies here exactly as it does to the x64 legs. It is worth
 stating plainly for ARM64 specifically: SmartScreen will warn on install, and an ARM64 user has
 fewer alternative trusted sources to fall back on than an x64 user does.

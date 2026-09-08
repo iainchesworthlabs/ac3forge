@@ -121,12 +121,12 @@ So the backend is genuinely split, unlike the other three:
   (`AudioTrack.isDirectPlaybackSupported`/`isPcmSupported`, called separately per format since
   AC-3 and E-AC-3 need different carrier rates — see `carrier_rate()` in `android_support.hpp`),
   not from a static claim.
-- **`sink_capabilities.cpp`** (roadmap UX9) — reports `kNoBackend`. `AudioTrack`'s own
+- **`sink_capabilities.cpp`** — reports `kNoBackend`. `AudioTrack`'s own
   `isDirectPlaybackSupported`/`isPcmSupported` above already answer the "does this sink accept
   this format" question this app needs, and there is exactly one addressable output route on
   this hardware (`android_support.hpp`'s `make_render_device_info()`), so a second, lower-level
   path to the sink's raw EDID would not add anything the existing probe does not already give —
-  see [Linux](linux.md#reading-a-sinks-own-edideld-roadmap-ux9) for where that read is real.
+  see [Linux](linux.md#reading-a-sinks-own-edideld) for where that read is real.
 
 ### Partial `AudioTrack` writes are resumed from, not restarted
 
@@ -781,7 +781,7 @@ every other required leg.
     covered by the key-free assertion in [Release / CI](#release-ci) instead. `build-android` has itself now run
     green three consecutive times on GitHub's hosted runners — see [Release / CI](#release-ci) above.
 
-!!! note "Automated in CI (roadmap VX18b)"
+!!! note "Automated in CI"
     `apps/android/app/src/androidTest/` adds `NativeBridgeInstrumentedTest` and
     `PassthroughBridgeInstrumentedTest`, which `build-android` runs on every build via
     `./gradlew :app:connectedDebugAndroidTest` against a GitHub-hosted API-30 x86_64 emulator

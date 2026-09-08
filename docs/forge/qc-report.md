@@ -41,14 +41,14 @@ tested today.
 | Integrated loudness (BS.1770-4 gated), momentary, short-term | `ac3/meta/loudness.hpp:128,136,140` (`LoudnessMeter`) | shipped |
 | Loudness range (EBU Tech 3342) | `loudness.hpp:150` | shipped |
 | True peak (BS.1770-4 Annex 2, oversampled) | `loudness.hpp:159` | shipped |
-| Rendered-layout loudness (BS.1770-5 Annex 3, per-position weights) | `loudness.hpp:73` `position_weight()`, and `LoudnessMeter`'s second constructor | shipped, roadmap IO10 |
-| Object re-render loudness (BS.1770-5 Annex 4) | `qc ... objects=71\|512\|514\|714`, `apps/cli/commands/analysis.cpp:539` | shipped, roadmap IO12 |
+| Rendered-layout loudness (BS.1770-5 Annex 3, per-position weights) | `loudness.hpp:73` `position_weight()`, and `LoudnessMeter`'s second constructor | shipped |
+| Object re-render loudness (BS.1770-5 Annex 4) | `qc ... objects=71\|512\|514\|714`, `apps/cli/commands/analysis.cpp:539` | shipped |
 | dialnorm derivation and consistency | `loudness.hpp:186` `dialnorm_from_lkfs()`; `analysis.cpp:705-717` | shipped |
-| Five delivery presets with primary-source citations | `ac3/meta/qc.hpp` — `ebu-r128-s2`, `atsc-a85`, `atsc-a85-streaming`, `netflix`, `apple-music-atmos` | shipped, roadmap IO11 |
+| Five delivery presets with primary-source citations | `ac3/meta/qc.hpp` — `ebu-r128-s2`, `atsc-a85`, `atsc-a85-streaming`, `netflix`, `apple-music-atmos` | shipped |
 | Band-vs-ceiling gate semantics | `qc.hpp` `QcLoudnessLimit`, `evaluate_qc_gate()` | shipped |
 | **An exit code a CI job can gate on** | `apps/cli/exit_codes.hpp:63` `kExitQcGate = 6`, returned at `analysis.cpp:1055` | **shipped** |
 | The same gates through the C API | `ac3forge_qc_preset`, `ac3forge_evaluate_qc_gate` (`src/capi/src/qc.cpp`) | shipped |
-| The same gates in a window | `apps/gui/qc_controller.cpp`, `qml/QcDialog.qml`, `qml/QcGateMeter.qml` | shipped, roadmap C3 |
+| The same gates in a window | `apps/gui/qc_controller.cpp`, `qml/QcDialog.qml`, `qml/QcGateMeter.qml` | shipped |
 | Declared stream facts — layout, substream map, OAMD counts, CRC integrity | `ac3cli probe`, and its `ac3forge.probe/1` JSON document | shipped |
 
 The third of the brief's three candidate output forms — an exit code — therefore already exists,
@@ -160,7 +160,7 @@ so this option has to argue past that, and the argument it would have to make is
 rather than a codec engineer, and the tool such an operator wants runs over the formats they are
 handed — which today would include PCM masters, and tomorrow formats this project does not
 implement. A member whose scope is "audio deliverables" rather than "AC-3 and E-AC-3
-deliverables" is a different product with a different roadmap, and it would deserve its own name.
+deliverables" is a different product with a different scope, and it would deserve its own name.
 
 Nothing in the tree points that way yet. The measurement is AC-3/E-AC-3-shaped end to end: the
 presets are gated against a decoded elementary stream, the layout vocabulary is
@@ -644,7 +644,7 @@ wonder whether an attached QC record is encumbered.
 
 ## Signing and install
 
-Roadmap **DR6** — Developer ID and notarisation for macOS, Authenticode for Windows — is blocked
+**Code signing** — Developer ID and notarisation for macOS, Authenticode for Windows — is blocked
 on certificates rather than on code, and is a Known gap in every release since 0.8.0-beta.2. It
 gates every application member, and this plan's dependency on it differs sharply by option.
 
