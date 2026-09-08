@@ -551,9 +551,9 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
 
 // The float32 form (roadmap PF7). No `fast` parameter: the direct-form
 // evaluation is the spec's own and is the oracle the fast path is measured
-// against, so it stays double - narrowing it would remove the thing it exists
-// to be. Leaving the parameter off is the honest way to say a caller has no
-// choice here, rather than accepting a `false` and quietly ignoring it.
+// against, so it stays double; narrowing it would defeat its purpose. The
+// parameter is omitted rather than accepted and ignored, so the absence of a
+// choice is visible at the call site.
 void imdct512_windowed(std::span<const float, 256> coeffs, std::span<float, 512> x) {
     imdct512_windowed_impl<float>(coeffs, x, true);
 }
