@@ -81,8 +81,10 @@ fi
 # One ceiling for all eight fixtures. Enhanced coupling had its own of 140
 # until the 60 allocations per frame behind that exemption turned out to be two
 # std::vector<double> in the reconstruction loop rather than anything §E3.5
-# asks for; it now measures 66, below eac3's 86. See run_baremetal_probe.sh's
-# own copy of this ceiling for the fixture-by-fixture numbers.
+# asks for; it now measures 12, level with plain eac3. See
+# run_baremetal_probe.sh's own copy of this ceiling for the fixture-by-fixture
+# numbers - this leg reports every one of them identically, which is the check
+# that section is really there for.
 : "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 # Bytes still live when the probe finishes, after every decoder it made has been
 # destroyed. 24 - two __cxa_thread_atexit registration records, one per
