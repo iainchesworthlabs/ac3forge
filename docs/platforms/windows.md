@@ -4,6 +4,19 @@ ac3forge is built and tested on Windows today — both toolchains, CLI and GUI a
 required, green CI legs. This page covers what is specific to Windows; for the full preset
 reference, options list and troubleshooting, see [Building from source](../building.md).
 
+## Status
+
+| | |
+|---|---|
+| What runs here | The library, `ac3cli`, `ac3gui` and Crucible |
+| Build | MSVC and clang-cl, both required and green in CI; the GUI is on by default |
+| Capture and monitor playback | Confirmed on real hardware — a Realtek endpoint, live microphone capture through encode to playback |
+| Windows Spatial Sound (`ac3cli spatial`) | Confirmed on real hardware, with Windows Sonic enabled; nobody has listened to check the positions |
+| IEC 61937 passthrough output | **Never accepted by a real device.** The exclusive-mode path works with PCM; no AV receiver has been cabled to a Windows machine |
+| Passthrough capture | **Never confirmed** — no HDMI or S/PDIF capture card has been available |
+| Crucible's null sink | A kernel driver, **test-signed only**; a default-settings machine refuses to load it — see [the driver page](windows-driver-acx.md) |
+| ARM64 | One CI leg, still marked experimental, and it packages for release |
+
 ## Toolchains
 
 Built and tested with **MSVC 14.51** and **clang-cl 22.1** on **Windows 11**, via Visual Studio
@@ -28,7 +41,7 @@ On Windows, the three features that touch sound hardware are all implemented ove
   E-AC-3 burst framing (IEC 61937).
 - **`ac3::audio::MonitorSink`** — shared-mode PCM playback: a non-bitstreamed preview/monitor
   path that decodes what is being encoded and plays it back on an ordinary output.
-- **`ac3::audio::SpatialObjectSink`** (roadmap UX8) — `ISpatialAudioObjectRenderStream`: decoded
+- **`ac3::audio::SpatialObjectSink`** — `ISpatialAudioObjectRenderStream`: decoded
   Atmos objects go out as dynamic objects at their real OAMD positions, and the bed's LFE (never
   a JOC output, TS 103 420 §6.3.2.2) as a static one. Behind `ac3cli spatial`. This is the one
   path that lets Dolby's own renderer engage with this project's reconstructed objects at all — a
@@ -43,7 +56,7 @@ is deliberately explicit about the difference.
     `ac3cli monitor` / `ac3cli live --monitor` have actually played decoded AC-3 and E-AC-3
     (including an Atmos stream's 5.1 bed) through a real Realtek output in real time, and a live
     microphone capture→encode→monitor session has run end to end. Building this path against
-    real hardware surfaced two genuine bugs that neither unit tests nor silent/synthetic input
+    real hardware surfaced two bugs that neither unit tests nor silent/synthetic input
     would have caught — a fixed submit-readiness threshold smaller than an actual chunk, which
     let the ring buffer silently perform a partial write while reporting failure, and the live
     pipeline's Atmos metering step writing past the end of a buffer sized for the object count
@@ -63,7 +76,7 @@ is deliberately explicit about the difference.
     positions say it should — nobody running this had ears in the loop, only the OS's own
     accept-and-render behaviour — and the "bed as static objects" branch beyond the LFE, since
     every stream this project's own encoder produces is dynamic-object-only (`oamd.hpp`'s own
-    documented shape); a genuine third-party bed-plus-objects Annex E stream would be needed to
+    documented shape); a third-party bed-plus-objects Annex E stream would be needed to
     exercise the rest of `oba::bed_labels()` against a verified coded-channel-order mapping.
 
 !!! warning "Exclusive-mode passthrough bitstreaming has never been confirmed against a real receiver on Windows"
@@ -71,7 +84,7 @@ is deliberately explicit about the difference.
     machine during development. A receiver is available now — the one used for [Raspberry Pi's
     HDMI passthrough
     validation](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) — it just hasn't been
-    cabled to this workstation yet; see roadmap `DR9` for that as outstanding work.
+    cabled to this workstation yet; that run is outstanding work.
     `IsFormatSupported` correctly answers no everywhere it has been tried, for
     both `KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL` and `..._DOLBY_DIGITAL_PLUS`, and neither
     descriptor has been accepted by a real device. What *is* verified: the exclusive-mode path
@@ -86,18 +99,18 @@ is deliberately explicit about the difference.
     itself); the same trick now exists for E-AC-3 (`ac3cli spdif`/`monitor`/`live`, branching on
     bsid) but has not itself been tried against a receiver either.
 
-!!! note "No EDID/ELD backend on Windows (roadmap UX9)"
+!!! note "No EDID/ELD backend on Windows"
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
     see [CLI → Following the sink](../cli/commands.md#following-the-sink) — and that read
     (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
-    [Linux](linux.md#reading-a-sinks-own-edideld-roadmap-ux9)). WASAPI answers "will this
+    [Linux](linux.md#reading-a-sinks-own-edideld)). WASAPI answers "will this
     endpoint accept this format" (`IsFormatSupported`, what `enumerate_render_devices()` already
     uses) but does not re-expose the sink's own raw EDID-carried Short Audio Descriptors to
     user-mode code — the driver consumes them internally to decide what to offer and no
     documented public API was found that hands the source data back. `play` falls back to the
     same `IsFormatSupported` probe here, exactly as it always has.
 
-### Per-process loopback and device notifications (roadmap UX11)
+### Per-process loopback and device notifications
 
 Two more WASAPI paths, added to the shared audio layer for [Crucible](../crucible/index.md)
 and available to anything else that links it, both Windows-only in the backend tree:
@@ -153,7 +166,7 @@ saved to disk. `carrier_from_capture` is the conversion back to PCM16 words, exa
 65536 of them.
 
 !!! warning "Passthrough capture has never been confirmed against a real capture device"
-    No HDMI or S/PDIF capture card, and no loopback of a genuinely bitstreaming player, has been
+    No HDMI or S/PDIF capture card, and no loopback of a bitstreaming player, has been
     available during development — the same gap the passthrough *output* side has, from the same
     missing hardware. What is verified: the burst de-framing itself round-trips byte-exactly
     against both this project's own wrapper and FFmpeg's `spdif` muxer, for AC-3 and E-AC-3 and
@@ -221,7 +234,7 @@ The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointi
 on every push; running it and double-clicking a `.ac3` file to confirm the file association end
 to end is still a manual, unautomated check.
 
-## ARM64 (roadmap DR8)
+## ARM64
 
 A third Windows leg, `windows-msvc-arm64`, targets GitHub's hosted `windows-11-arm` runner — real
 ARM64 hardware, not x64 emulation. It shares every file the two x64 legs above use; only the
@@ -235,7 +248,7 @@ their own arm64 legs — generically, not hardcoded — and, for the arm64 case 
 more than one candidate directory: `bin/Hostarm64/arm64` (a native ARM64-hosted toolset) first,
 falling back to `bin/Hostx64/arm64` (the older x64-hosted cross toolset, which still produces
 ARM64 binaries, just via x64 tools running under Windows' x64 emulation). Which one this runner's
-VS Build Tools install actually ships was genuinely unconfirmed when this leg was written — it
+VS Build Tools install actually ships was unconfirmed when this leg was written — it
 needed a real CI run to answer, the same "confirmed empirically, not assumed" standard the rest of
 this codebase holds itself to (see e.g. `cmake/vcpkg/triplets/arm64-linux-gcc.cmake`'s own
 `VCPKG_FORCE_SYSTEM_BINARIES` comment). `cmake/toolchains/windows.msvc.environment.cmake`'s
@@ -251,7 +264,7 @@ once that is resolved.
 hosted runner's VS Build Tools install carries MSVC 14.44.35207 (VS2022, roughly the 17.14
 generation) — older than `windows-latest`'s x64 image, which is on the 14.5x ("VS 2026"/18.x)
 toolset every other Windows leg's `msvc_toolset` pin (`.github/toolchain-versions.json`) is written
-against. This is a genuine difference between the two runner images' own update cadences, not a
+against. This is a difference between the two runner images' own update cadences, not a
 misconfiguration — `vswhere`/`vcvarsall` resolution and the Ninja install both worked fine on the
 ARM64 runner in the same run that surfaced this. `_build.yml`'s "Report and assert toolchain
 versions" step accordingly does not hard-assert the shared pin for `windows-msvc-arm64` the way it
@@ -269,7 +282,7 @@ against exactly that combination (`qtpaths.bat` pointing at the wrong x64 setup)
 complexity a *native*-ARM64-host build does not actually need to take on for a first pass, so this
 leg stays CLI-only, the same deliberately-scoped shape `linux-llvm-asan-ubsan` already uses
 elsewhere in the matrix for a different reason. Revisiting this is a natural fast-follow once Qt
-ships a genuinely native-hosted ARM64 Windows kit.
+ships a native-hosted ARM64 Windows kit.
 
 **Gold-reference gate.** `choco`'s `ffmpeg` package is x64-only, so this leg installs a static
 `win-arm64` FFmpeg build from
@@ -285,7 +298,7 @@ install, failing only at the toolset-version assertion described above (since re
 report-only for this leg). Iteration continues from there.
 
 **Unsigned binaries.** Like every other Windows binary this project ships today, this leg's output
-is unsigned — Authenticode signing (roadmap `DR6`) is blocked project-wide on acquiring a
+is unsigned — Authenticode signing is blocked project-wide on acquiring a
 certificate, not on code, and that applies here exactly as it does to the x64 legs. It is worth
 stating plainly for ARM64 specifically: SmartScreen will warn on install, and an ARM64 user has
 fewer alternative trusted sources to fall back on than an x64 user does.

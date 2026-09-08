@@ -43,7 +43,7 @@ them.
 
 | Example | What it shows | Discussed in |
 |---|---|---|
-| [`mux_mkv`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_mkv.cpp) | Wrap in Matroska, the track header kept honest by a bitstream scan. | [Muxing & sinks](muxing-and-sinks.md) |
+| [`mux_mkv`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_mkv.cpp) | Wrap in Matroska, the track header kept accurest by a bitstream scan. | [Muxing & sinks](muxing-and-sinks.md) |
 | [`mux_mp4`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_mp4.cpp) | Wrap in MP4, with the `dec3`/Atmos box built from the bitstream. | [Muxing & sinks](muxing-and-sinks.md) |
 | [`mux_fmp4`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_fmp4.cpp) | Fragment into CMAF and emit HLS/DASH manifests. | [Muxing & sinks](muxing-and-sinks.md) |
 | [`mux_ts`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_ts.cpp) | Wrap in MPEG-2 TS with the right PMT descriptor. | [Muxing & sinks](muxing-and-sinks.md) |

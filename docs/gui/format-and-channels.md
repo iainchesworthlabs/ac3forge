@@ -20,7 +20,7 @@ Digital Plus, so ticking one under plain AC-3 *promotes the codec on the spot* (
 confirmation first, if the [Explanations preference](index.md#preferences) asks for one); while
 anything is forcing it, the field reads *Codec — follows the channels* (or *fixed by object
 mode*) and is disabled. With nothing forcing it — a plain bed, with or without its LFE — the
-choice is real (both codecs genuinely carry it, and VBR needs E-AC-3), so the field is live
+choice is real (both codecs carry it, and VBR needs E-AC-3), so the field is live
 there. What never happens is a circular gate where extras are locked behind a codec the extras
 themselves change.
 
@@ -33,7 +33,7 @@ height` — even mid-drag). See
 
 The **Bit rate** list carries the nominal rates from 96 kbps up (thirteen rungs, 96 through 640)
 plus a 768 kbps rung that exists for E-AC-3 only — E-AC-3 signals its frame size directly rather
-than indexing Table 5.18, and a wide object or 7.2.4 session genuinely wants it. Switching back to AC-3 clamps an over-table rate to
+than indexing Table 5.18, and a wide object or 7.2.4 session wants it. Switching back to AC-3 clamps an over-table rate to
 640 rather than leaving a plan `validate()` would refuse at encode time.
 
 A muted line can appear under the field itself: *"N coded channels at M kbps will audibly
@@ -52,7 +52,7 @@ bit-exactly (100% volume, no mixing) into an S/PDIF or HDMI output so a receiver
 lights up its Dolby Digital indicator. Works for both codecs: an E-AC-3 stream's carrier runs at
 four times the content sample rate (Dolby Digital Plus over IEC 60958/61937), which is legal and
 expected, if unusual for a plain PCM16 file. Like Matroska, this container is not something the
-encoder itself writes in one step — the copyable command line is honestly two commands
+encoder itself writes in one step — the copyable command line is two commands
 (`ac3cli encode … out.ac3 && ac3cli spdif out.ac3 out.wav`), because pasting one command would
 otherwise write a raw elementary stream into a file the receiver expects to be a WAV.
 
@@ -60,7 +60,7 @@ otherwise write a raw elementary stream into a file the receiver expects to be a
 exactly what `ac3cli mp4` produces from a finished file — with a `dac3`/`dec3` sample-entry box
 built straight off the bitstream (ETSI TS 102 366 Annex F): fscod, bsid, bsmod, acmod and lfeon,
 plus, for a stream carrying Dolby Atmos objects, the `flag_ec3_extension_type_a` extension TS
-103 420 §8.3.2.2 defines. Works for both codecs. Like Matroska and S/PDIF, this is honestly two
+103 420 §8.3.2.2 defines. Works for both codecs. Like Matroska and S/PDIF, this is two
 commands (`ac3cli encode … out.ac3 && ac3cli mp4 out.ac3 out.mp4`).
 
 **Container**'s fifth option, **fragmented MP4/CMAF**, is different in kind from the other five:
@@ -73,14 +73,14 @@ Atmos stream signals itself throughout automatically, from the same object count
 already gives the dec3 box above: `CHANNELS="<N>/JOC"` on the HLS rendition, the
 `EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` supplemental descriptors that spec's clause
 D.2 defines in the MPD, and the `ceao` compatibility brand its Annex E requires on the segments
-themselves. Still honestly two commands (`ac3cli encode … out.ac3 && ac3cli fmp4 out.ac3
+themselves. Still two commands (`ac3cli encode … out.ac3 && ac3cli fmp4 out.ac3
 out_dir`), for the same reason as every other container here.
 
 **Container**'s sixth option, **MPEG-TS (.ts)**, wraps the stream as a DVB-profile MPEG-2
 Transport Stream — exactly what `ac3cli ts` produces — stream_type 0x06 plus the
 AC3_descriptor/Enhanced_AC3_descriptor ETSI EN 300 468 Annex D.3/D.5 defines. Works for both
 codecs; there is no Atmos-specific signaling on this path — DVB's descriptors carry no JOC
-marker, unlike MP4's dec3 box or fMP4's HLS playlist above. Honestly two commands here too
+marker, unlike MP4's dec3 box or fMP4's HLS playlist above. Two commands here too
 (`ac3cli encode … out.ac3 && ac3cli ts out.ac3 out.ts`).
 
 Of the four containers above, only **fragmented MP4/CMAF** carries over to a **live session** the
@@ -157,7 +157,7 @@ whole selection. Beneath it, the two tiers:
 
 The derived shape name (`5.1`, `7.1.4`, `7.2`, …) follows the selection —
 `<ear-level count>.<LFE count>[.<ceiling count>]` — so an unnamed combination still reads
-honestly. Substreams are not a UI concept: the picker expresses a set of positions, and which
+correctly. Substreams are not a UI concept: the picker expresses a set of positions, and which
 substream carries what is the encoder's business.
 
 ### Dual mono

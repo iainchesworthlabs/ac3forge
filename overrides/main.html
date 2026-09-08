@@ -38,7 +38,7 @@
         <a class="ac3f-fam-card" href="{{ 'forge/'|url }}">
           <span class="ac3f-fam-tag">ac3cli &middot; ac3gui</span>
           <h3>Forge</h3>
-          <p>One product, not two: <code>ac3cli</code> and <code>ac3gui</code> build together,
+          <p><code>ac3cli</code> and <code>ac3gui</code> are one product: they build together,
             ship together, and the GUI shows the equivalent CLI command live at the bottom of
             its window.</p>
           <span class="ac3f-fam-go">Read the Forge docs &rarr;</span>
@@ -47,8 +47,8 @@
           <span class="ac3f-fam-tag">desktop app</span>
           <h3>Crucible</h3>
           <p>Every application on your desktop becomes an object in an Atmos scene — drag one
-            into position, and what leaves for your receiver follows your hardware. Windows is
-            mature; Linux and macOS are newer.</p>
+            into position, and what leaves for your receiver follows your hardware. Windows and
+            Linux run it; the macOS half compiles but has never been launched.</p>
           <span class="ac3f-fam-go">Read the Crucible docs &rarr;</span>
         </a>
       </div>
@@ -63,7 +63,7 @@
         <a class="ac3f-demo-card" href="{{ 'wasm-demo/'|url }}">
           <span class="ac3f-demo-tag">Browser</span>
           <h3>Live decode</h3>
-          <p>Decodes a real AC-3/E-AC-3 stream in a tab — WebAssembly, nothing to install.</p>
+          <p>Decodes an AC-3/E-AC-3 stream in a tab — WebAssembly, nothing to install.</p>
         </a>
         <a class="ac3f-demo-card" href="{{ 'wasm-encode-demo/'|url }}">
           <span class="ac3f-demo-tag">Browser</span>
@@ -102,15 +102,17 @@
       <div class="ac3f-status-strip">
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>Windows</span>
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>Linux</span>
-        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-mid"></span>macOS</span>
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>Raspberry Pi</span>
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-good"></span>Android (Shield)</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-mid"></span>macOS</span>
         <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-mid"></span>WebAssembly</span>
-        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-mid"></span>ESP32-S3</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-low"></span>ESP32-S3</span>
+        <span class="ac3f-status-item"><span class="ac3f-dot ac3f-dot-low"></span>Bare metal</span>
       </div>
       <p class="ac3f-status-legend">
-        <span class="ac3f-dot ac3f-dot-good" style="display:inline-block"></span> confirmed on real hardware or required in CI &nbsp;
-        <span class="ac3f-dot ac3f-dot-mid" style="display:inline-block"></span> correct, but short of hardware confirmation — sandboxed, emulated, or CI-only
+        <span class="ac3f-dot ac3f-dot-good" style="display:inline-block"></span> confirmed against real hardware &nbsp;
+        <span class="ac3f-dot ac3f-dot-mid" style="display:inline-block"></span> required and green in CI, no hardware confirmation &nbsp;
+        <span class="ac3f-dot ac3f-dot-low" style="display:inline-block"></span> correct under emulation only
       </p>
     </section>
 

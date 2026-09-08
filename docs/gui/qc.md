@@ -19,7 +19,7 @@ nothing to do with whatever source is currently being configured for a new encod
 never interact.
 
 **Choose file…** opens a standard file picker with three filters — `*.ac3`/`*.ec3`, **Containers**
-(`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`, roadmap IO2) and **All files**. The filters are a
+(`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`) and **All files**. The filters are a
 convenience for the picker only: `QcController` sniffs the actual bytes rather than trusting the
 extension, so a container works whatever the name says.
 Picking one starts the measurement immediately, the same way `ac3cli qc <file>` runs the moment

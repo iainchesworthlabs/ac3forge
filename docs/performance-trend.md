@@ -681,7 +681,7 @@ runs the old numbers on purpose.
 
 ## Minimum-footprint decoder
 
-Roadmap PF7. Not a trend series — one measured configuration, on the concrete target the
+Not a trend series — one measured configuration, on the concrete target the
 roadmap names: `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine (Cortex-M3,
 soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`. See
 [Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
@@ -828,8 +828,8 @@ Enhanced coupling's 126 is the outlier and has its own ceiling. §E3.5 reconstru
 channel through three 512-point inverse transforms and a DFT per block and carries a 22-sub-band
 geometry against standard coupling's 18, so it allocates more per block for a reason that is in
 the tool. Holding it to the general ceiling would have meant either not covering §E3.5 or
-raising the bound on three fixtures that sit at 43–86. Its own ceiling is 140, the same ~11%
-margin the general 100 leaves over its worst fixture.
+raising the bound on three fixtures that sit at 43–86. Its own ceiling is 140, about 11% over
+its own worst case, where the general 100 leaves about 16% over the 86 that is theirs.
 
 Both bare-metal legs report all four of these counts identically, on different libstdc++ versions
 (GCC 14.2 for `arm-none-eabi`, 15.2 for Xtensa under ESP-IDF 6.1), as they do the peak and the
