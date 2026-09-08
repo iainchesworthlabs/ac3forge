@@ -1,0 +1,268 @@
+// The minimum-footprint ENCODER probe (roadmap PF7): ac3::forge_minimal
+// encoding real audio on a target with no operating system, no filesystem and
+// no C++ exceptions, and reporting what that cost.
+//
+// The mirror of probe.cpp, which does the same for the decode direction, and it
+// answers the same three questions. Two things about it are different, and both
+// follow from the direction rather than from taste:
+//
+//   1. The INPUT is synthesised, not linked in. A decoder's fixture is a
+//      bitstream - 10,752 bytes for six frames of 5.1 AC-3, which is nothing.
+//      An encoder's fixture is the PCM those frames came from: 221,184 bytes
+//      for the same six frames, which is most of an ESP32-S3's internal SRAM
+//      and more than the arm-none-eabi image ceiling has spare. So the signal
+//      is computed here instead, from a formula, costing a few hundred bytes of
+//      code and giving any number of frames.
+//
+//   2. The CHECK is a checksum of the encoded bytes rather than per-channel
+//      levels. There is no decoder in this profile to reconstruct with - that
+//      is the whole point of it - so what a run can say is that the same input
+//      produced the same bitstream it produced on the host. See kExpected below
+//      for what that does and does not establish.
+//
+// The output is machine-readable (`key=value` lines) so the CI leg can gate on
+// it; tools/checks/run_baremetal_probe.sh parses the same lines for either
+// direction.
+
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <span>
+
+#include "ac3/core/tables.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/encoder.hpp"
+
+#include "encode_fixture.hpp"
+#include "probe.hpp"
+
+namespace {
+
+// --- heap accounting -------------------------------------------------------
+// The same global replacement probe.cpp uses, and for the same reason: PF7's
+// requirement is no heap traffic in the codec loop, and the honest way to
+// report progress against it is a number per frame that a CI leg can hold.
+//
+// It matters more here. Both encoders return std::vector<std::byte> from
+// encode_frame - there is no encode_frame_into to match the decoder's
+// decode_frame_into - so an allocation per frame is in the API rather than
+// merely in the implementation, and the counts below say what that costs.
+std::size_t g_alloc_calls = 0;
+std::size_t g_free_calls = 0;
+std::size_t g_live_bytes = 0;
+std::size_t g_peak_bytes = 0;
+
+constexpr std::size_t kHeaderBytes = sizeof(std::size_t) < alignof(std::max_align_t)
+                                         ? alignof(std::max_align_t)
+                                         : sizeof(std::size_t);
+
+}  // namespace
+
+void* operator new(std::size_t size) {
+    // Cannot throw: -fno-exceptions, so std::bad_alloc is not available to
+    // report failure with. Saying so on the console and stopping beats
+    // returning null into code written to trust operator new.
+    void* raw = std::malloc(size + kHeaderBytes);
+    if (raw == nullptr) {
+        std::printf("result=fail reason=out_of_memory bytes=%lu\n",
+                    static_cast<unsigned long>(size));
+        std::exit(1);
+    }
+    *static_cast<std::size_t*>(raw) = size;
+    ++g_alloc_calls;
+    g_live_bytes += size;
+    if (g_live_bytes > g_peak_bytes) {
+        g_peak_bytes = g_live_bytes;
+    }
+    return static_cast<std::byte*>(raw) + kHeaderBytes;
+}
+
+void* operator new[](std::size_t size) { return ::operator new(size); }
+
+void operator delete(void* p) noexcept {
+    if (p == nullptr) {
+        return;
+    }
+    void* raw = static_cast<std::byte*>(p) - kHeaderBytes;
+    g_live_bytes -= *static_cast<std::size_t*>(raw);
+    ++g_free_calls;
+    std::free(raw);
+}
+
+void operator delete[](void* p) noexcept { ::operator delete(p); }
+void operator delete(void* p, std::size_t) noexcept { ::operator delete(p); }
+void operator delete[](void* p, std::size_t) noexcept { ::operator delete(p); }
+
+namespace {
+
+bool g_failed = false;
+
+// --- the signal ------------------------------------------------------------
+// Six sines, one per 5.1 channel, at frequencies that are not harmonically
+// related so no two channels share a partial and the coupling decision has
+// something to actually decide. Deterministic to the last bit: the arithmetic
+// is double throughout and the only rounding is the final narrowing to float,
+// so every target that has IEEE doubles computes the identical samples.
+//
+// Not silence and not one tone, per CONTRIBUTING.md's rule that both make weak
+// fixtures - silence encodes to nothing interesting and a single tone exercises
+// one band. Not real programme material either, because that would have to be
+// linked in, which is the whole problem this avoids.
+constexpr int kChannels = 6;
+
+// At namespace scope, not in run()'s frame. Six channels of 1,536 floats is
+// 36,864 bytes, and the mps2-an385's stack is nowhere near that - declaring it
+// as a local hard-faults the target before the first frame is encoded, which is
+// exactly how this comment came to be written. probe.cpp keeps its own PCM
+// block here for the same reason.
+//
+// It is also what an embedded integrator has: one block, sized once, reused
+// every frame. The encoders read through spans over it.
+std::array<std::array<float, ac3::kSamplesPerFrame>, kChannels> g_pcm{};
+std::array<std::span<const float>, kChannels> g_views{};
+
+void fill_signal(std::array<std::array<float, ac3::kSamplesPerFrame>, kChannels>& pcm,
+                 int frame) {
+    for (std::size_t ch = 0; ch < kChannels; ++ch) {
+        // 220, 337, 554, 881, 1409, 2273 Hz - each roughly 1.6x the last and
+        // none an integer multiple of another.
+        constexpr std::array<double, kChannels> kHz{220.0, 337.0, 554.0,
+                                                    881.0, 1409.0, 2273.0};
+        const double hz = kHz[ch];
+        for (std::size_t n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            // Sample index continues across frames, so successive frames are a
+            // continuous signal rather than six copies of one - which is what
+            // gives block switching and the exponent strategy something to
+            // track.
+            const double t =
+                static_cast<double>(static_cast<std::size_t>(frame) * ac3::kSamplesPerFrame + n) /
+                48000.0;
+            pcm[ch][n] = static_cast<float>(0.25 * std::sin(2.0 * 3.14159265358979323846 * hz * t));
+        }
+    }
+}
+
+// FNV-1a over the encoded bytes. Not a cryptographic hash and does not need to
+// be: it is comparing this run's output against the same library's output on
+// the host, where the question is "did anything change at all", not "can an
+// adversary find a collision". 64-bit, so an accidental collision across a
+// change to the bitstream is not a thing that happens.
+constexpr std::uint64_t kFnvOffset = 1469598103934665603ULL;
+constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+
+void hash_bytes(std::uint64_t& h, std::span<const std::byte> data) {
+    for (const std::byte b : data) {
+        h ^= static_cast<std::uint64_t>(b);
+        h *= kFnvPrime;
+    }
+}
+
+void fail(const char* what, unsigned long long got, unsigned long long expected) {
+    std::printf("check=%s status=fail got=%llu expected=%llu\n", what, got, expected);
+    g_failed = true;
+}
+
+struct EncodeResult {
+    std::size_t bytes = 0;
+    std::uint64_t hash = kFnvOffset;
+    std::size_t first_frame_allocs = 0;
+    std::size_t steady_allocs = 0;
+};
+
+void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes,
+            std::uint64_t expected_hash) {
+    const std::size_t steady_frames = ac3probe::kEncodeFrames - 1;
+    std::printf("%s.bytes=%lu %s.hash=%llu %s.first_frame_allocs=%lu "
+                "%s.steady_allocs_per_frame=%lu\n",
+                codec, static_cast<unsigned long>(r.bytes), codec,
+                static_cast<unsigned long long>(r.hash), codec,
+                static_cast<unsigned long>(r.first_frame_allocs), codec,
+                static_cast<unsigned long>(steady_frames > 0 ? r.steady_allocs / steady_frames
+                                                             : 0));
+    if (r.bytes != expected_bytes) {
+        fail("bytes", r.bytes, expected_bytes);
+    }
+    if (r.hash != expected_hash) {
+        // A hash mismatch with the right byte count is the interesting case: the
+        // encoder still produced a well-formed frame of the expected size and
+        // put different bits in it. That is a real difference in the
+        // arithmetic, not a configuration slip.
+        fail("hash", r.hash, expected_hash);
+    }
+}
+
+template <typename Encoder>
+EncodeResult encode_all(Encoder& encoder,
+                        std::array<std::array<float, ac3::kSamplesPerFrame>, kChannels>& pcm,
+                        std::array<std::span<const float>, kChannels>& views) {
+    EncodeResult result;
+    std::size_t before = g_alloc_calls;
+    for (int frame = 0; frame < ac3probe::kEncodeFrames; ++frame) {
+        fill_signal(pcm, frame);
+        const auto encoded = encoder.encode_frame(views);
+        if (!encoded) {
+            std::printf("check=encode status=fail frame=%d error=%d\n", frame,
+                        static_cast<int>(encoded.error()));
+            g_failed = true;
+            return result;
+        }
+        result.bytes += encoded->size();
+        hash_bytes(result.hash, *encoded);
+        if (frame == 0) {
+            result.first_frame_allocs = g_alloc_calls - before;
+        } else {
+            result.steady_allocs += g_alloc_calls - before;
+        }
+        before = g_alloc_calls;
+    }
+    return result;
+}
+
+}  // namespace
+
+int ac3probe::run() {
+    std::printf("profile=minimal-encoder\n");
+    std::printf("static.pcm_bytes=%lu static.frame_encoder_bytes=%lu "
+                "static.eac3_frame_encoder_bytes=%lu\n",
+                static_cast<unsigned long>(sizeof(g_pcm)),
+                static_cast<unsigned long>(sizeof(ac3::FrameEncoder)),
+                static_cast<unsigned long>(sizeof(ac3::eac3::FrameEncoder)));
+
+    for (std::size_t ch = 0; ch < kChannels; ++ch) {
+        g_views[ch] = std::span<const float>(g_pcm[ch]);
+    }
+
+    // Scoped so each encoder is destroyed before the next is built. That is not
+    // tidiness - it is the shape this profile exists to prove. Holding both at
+    // once peaks at 440,420 bytes against an ESP32-S3's 277,400 free, and
+    // holding one peaks at 201,770 or 243,770. Sequential is what fits, so
+    // sequential is what the probe measures.
+    {
+        ac3::FrameEncoder encoder{
+            {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+        const auto r = encode_all(encoder, g_pcm, g_views);
+        report("ac3", r, ac3probe::kAc3Bytes, ac3probe::kAc3Hash);
+    }
+    const std::size_t peak_after_ac3 = g_peak_bytes;
+
+    {
+        ac3::eac3::FrameEncoder encoder{
+            {.bitrate_kbps = 384, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+        const auto r = encode_all(encoder, g_pcm, g_views);
+        report("eac3", r, ac3probe::kEac3Bytes, ac3probe::kEac3Hash);
+    }
+
+    std::printf("heap.peak_bytes=%lu heap.peak_after_ac3_bytes=%lu heap.allocs=%lu "
+                "heap.frees=%lu heap.retained_bytes=%lu\n",
+                static_cast<unsigned long>(g_peak_bytes),
+                static_cast<unsigned long>(peak_after_ac3),
+                static_cast<unsigned long>(g_alloc_calls),
+                static_cast<unsigned long>(g_free_calls),
+                static_cast<unsigned long>(g_live_bytes));
+
+    std::printf("result=%s\n", g_failed ? "fail" : "pass");
+    return g_failed ? 1 : 0;
+}

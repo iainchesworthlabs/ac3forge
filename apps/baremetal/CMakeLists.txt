@@ -59,7 +59,16 @@ endif()
 # main.cpp is the entry point both hosted shapes share; probe.cpp is the probe
 # itself, which defines ac3probe::run() rather than main() so that ESP-IDF (which
 # calls app_main) can run the same code. See apps/baremetal/probe.hpp.
-add_executable(ac3probe probe.cpp main.cpp)
+# One probe or the other, never both: the two profiles are mutually exclusive
+# at the root (no two of decode / AC-3 encode / E-AC-3 encode fit in an
+# ESP32-S3's internal SRAM at once). Both define ac3probe::run() rather than
+# main(), so main.cpp and the ESP-IDF application run whichever was built
+# without knowing which it is.
+if(AC3FORGE_MINIMAL_ENCODER)
+    add_executable(ac3probe encode_probe.cpp main.cpp)
+else()
+    add_executable(ac3probe probe.cpp main.cpp)
+endif()
 
 # ac3probe::now_us(). One implementation per platform, chosen here rather than
 # by a conditional in probe.cpp - the host has std::chrono, newlib on the
