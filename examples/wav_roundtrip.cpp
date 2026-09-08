@@ -75,7 +75,7 @@ int main() {
         }
     }
     const auto write_order = ac3::io::wav_channel_order(kAcmod, kLfe);
-    if (const auto wrote = ac3::io::write_wav_f32(source_path, ac3_order, 48000, write_order); !wrote) {
+    if (const auto wrote = ac3::io::write_wav_f32(source_path, ac3_order, 48000, write_order); !wrote.has_value()) {
         return fail("write_wav_f32 failed", ac3::io::describe(wrote.error()));
     }
     fmt::printf("wrote %s\n", source_path.c_str());
@@ -83,11 +83,11 @@ int main() {
     // Read it back - read_wav hands the samples back in WAV order, so
     // ac3_layout_for's wav_index permutes them onto AC-3 channel k.
     const auto read = ac3::io::read_wav(source_path);
-    if (!read) {
+    if (!read.has_value()) {
         return fail("read_wav failed", ac3::io::describe(read.error()));
     }
     const auto layout = ac3::io::ac3_layout_for(read->channels.size());
-    if (!layout || layout->acmod != kAcmod || layout->lfe != kLfe) {
+    if (!layout.has_value() || layout->acmod != kAcmod || layout->lfe != kLfe) {
         fmt::printf("unexpected WAV channel count: %zu\n", read->channels.size());
         return 1;
     }
@@ -110,12 +110,12 @@ int main() {
                 static_cast<std::size_t>(frame) * ac3::kSamplesPerFrame, ac3::kSamplesPerFrame));
         }
         const auto encoded = encoder->encode_frame(views);
-        if (!encoded) {
+        if (!encoded.has_value()) {
             fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         const auto decoded = decoder.decode_frame(*encoded);
-        if (!decoded) {
+        if (!decoded.has_value()) {
             return fail("decode failed", ac3::describe(decoded.error()));
         }
         for (std::size_t ch = 0; ch < decoded->channels.size(); ++ch) {
@@ -127,7 +127,7 @@ int main() {
     // Write the round trip back out, permuted into WAV order the same way the
     // source was.
     if (const auto wrote = ac3::io::write_wav_f32(result_path, decoded_ac3_order, 48000, write_order);
-        !wrote) {
+        !wrote.has_value()) {
         return fail("write_wav_f32 failed", ac3::io::describe(wrote.error()));
     }
     fmt::printf("wrote %s (%zu frames)\n", result_path.c_str(), decoded_ac3_order.front().size());
