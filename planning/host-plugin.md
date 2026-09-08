@@ -8,7 +8,7 @@
     pipeline can load. This page asks first whether a useful plugin is possible at all
     ([Part 1](#part-1-the-capability-study)), and then plans the one Part 1 recommends
     ([Part 2](#part-2-the-plan)). It keeps the shape of
-    [the family recasting](recasting.md) and [the Crucible promotion](../crucible/promotion.md):
+    [the family recasting](recasting.md) and [the Crucible promotion](../docs/crucible/promotion.md):
     design sections saying what changes and why, phases carrying an exit criterion and how it is
     verified, a [Decisions](#decisions) section listing the open questions, and a
     [What cannot be verified](#what-cannot-be-verified-and-why) table written before the work
@@ -895,7 +895,7 @@ code is finished.
 | The plugin works in any specific DAW | **no**, not in CI | no hosted runner has a DAW licence; hand-checked per host, with dates |
 | Screen readers reach the plugin UI in a given host | **no** | depends on the host's window hierarchy; needs that host and that screen reader |
 | AAX's full terms | **no** | behind a click-through agreement and a non-disclosable signing arrangement |
-| macOS behaviour of any kind | **no** | DR6 for signing, and a Mac to run it — the same row the [Crucible plan](../crucible/promotion.md#what-cannot-be-verified-and-why) carries |
+| macOS behaviour of any kind | **no** | DR6 for signing, and a Mac to run it — the same row the [Crucible plan](../docs/crucible/promotion.md#what-cannot-be-verified-and-why) carries |
 | "Assay" is free as a trademark | **no** | product listings were searched on 2026-09-07; trademark registers were not, and that is a search for a professional |
 | CI cost of the four extra legs | not yet | estimated as single-digit minutes; to be measured on the first run and written here |
 | FFmpeg's AC-3/E-AC-3 encoder is still 5.1-max | **verified 2026-09-07** from `ff_ac3_ch_layouts` in FFmpeg master's `libavcodec/ac3enc.c` | none |

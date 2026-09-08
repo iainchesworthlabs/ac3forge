@@ -63,7 +63,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from urllib.parse import unquote
 
-MARKDOWN_GLOBS = ("docs/**/*.md",)
+MARKDOWN_GLOBS = ("docs/**/*.md", "planning/*.md")
 MARKDOWN_FILES = ("README.md", "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md", "ROADMAP.md")
 # Files whose links must be absolute rather than resolvable from this tree,
 # with the reason the inverted rule applies to them.
@@ -121,13 +121,14 @@ PLANNED_PATHS = {
 # code spans are exempt, because those pages are not claiming the tree looks
 # like that today.
 PROSE_PATHS_UNCHECKED = {
-    "docs/family/recasting.md": "plan; proposes a layout that does not exist yet",
-    "docs/family/topology.md": "plan; proposes applications that do not exist yet",
-    "docs/family/player-appliance.md": "plan; proposes an apps tree that does not exist",
-    "docs/family/host-plugin.md": "study; proposes an Assay component and its own docs tree",
+    "planning/README.md": "index of plans; names the directories they propose",
+    "planning/recasting.md": "plan; proposes a layout that does not exist yet",
+    "planning/topology.md": "plan; proposes applications that do not exist yet",
+    "planning/player-appliance.md": "plan; proposes an apps tree that does not exist",
+    "planning/host-plugin.md": "study; proposes an Assay component and its own docs tree",
+    "planning/qc-report.md": "plan; proposes source files it would add",
     "docs/crucible/promotion.md": "phase record; names the pre-promotion apps/windows layout",
     "docs/platforms/windows-demo.md": "phase record; names the pre-promotion apps/windows layout",
-    "docs/forge/qc-report.md": "plan; proposes source files it would add",
     "CHANGELOG.md": "released entries are an immutable record of the tree as it was",
 }
 

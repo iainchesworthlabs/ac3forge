@@ -64,7 +64,7 @@ those identifiers name its packages too. `apps/cli`, `apps/gui` and `apps/common
 in `apps/windows`, is **Crucible**. `apps/android` and `apps/wasm` are demonstrations of the
 library rather than products of their own. `src/audio`, `tests/`, `tools/`, `cmake/`,
 `packaging/` and the version line are shared by all three and owned by none of them.
-[The family recasting](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/family/recasting.md)
+[The naming and scope plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/recasting.md)
 records what each member owns, down to the targets, packages and CI legs.
 
 **Three naming rules follow, and they govern prose as much as code.** `ac3forge` and

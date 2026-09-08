@@ -11,7 +11,7 @@
     ([decision 1](#decisions)); everything else here carries a recommendation and a cost.
 
     Shape follows [the recasting plan](recasting.md) and
-    [the promotion plan](../crucible/promotion.md): design sections say what changes and why,
+    [the promotion plan](../docs/crucible/promotion.md): design sections say what changes and why,
     phases carry exit criteria and how each is verified, [Decisions](#decisions) lists what only
     remains open, and [What cannot be verified](#what-cannot-be-verified-and-why) says
     where the evidence stops.
@@ -22,7 +22,7 @@ and the repository now has four wrappers planned at once, written independently:
 | In flight | Wraps | State |
 |---|---|---|
 | [Host plugin study](host-plugin.md) | the encoder, in a DAW | Study done. No open plugin format carries object metadata; beds only. The VST 3 SDK is MIT, per Steinberg's licensing FAQ. |
-| [Delivery-QC report](../forge/qc-report.md) | the analysis code | Plan. |
+| [Delivery-QC report](qc-report.md) | the analysis code | Plan. |
 | [The playback appliance](player-appliance.md) | the decoder, in a room | Plan, parked on the question this page answers. |
 | The ESP32-S3 port | the decoder, on a microcontroller | **AC-3 and E-AC-3 both decode on an ESP32-S3**, inside internal SRAM. [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). |
 
@@ -190,7 +190,7 @@ protocol work changes it.
 
 Measured under `idf.py qemu` and landed in
 [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). The current figures live on
-[the ESP32-S3 page](../platforms/esp32.md); the summary below is what this page's argument rests
+[the ESP32-S3 page](../docs/platforms/esp32.md); the summary below is what this page's argument rests
 on.
 
 - **AC-3 *and* E-AC-3 5.1 both decode correctly on an ESP32-S3.** Six frames each, all twelve
@@ -215,7 +215,7 @@ on.
 | Peak heap | 270,886 | **171,558** (−37%) |
 
 Those were the figures #546 itself moved. Fixture coverage added since has taken the peak to
-179,064; [the ESP32-S3 page](../platforms/esp32.md#how-much-memory-there-actually-is) carries the
+179,064; [the ESP32-S3 page](../docs/platforms/esp32.md#how-much-memory-there-actually-is) carries the
 current set.
 
 There is now a `build-esp32s3` CI leg (in `espressif/idf:v6.1`, leg 6 of the Linux fan-out) and a
@@ -240,7 +240,7 @@ because the population of possible sinks is no longer "a Pi or a PC".
 | An ESP32-S3 node | sink | HTTP client, then Sendspin | **both codecs decode, fits internal SRAM** ([#546](https://github.com/iainchesworthlabs/ac3forge/pull/546)); real time unmeasured |
 | The WASM decode page | sink | a file today; could be an HLS client for free | shipped |
 | A DAW **metering** plugin | **neither** — an instrument, not a node | n/a | what [the study](host-plugin.md)'s Part 2 actually plans; no capability blocker |
-| The delivery-QC report | **neither** — an instrument, not a node | n/a | [plan](../forge/qc-report.md); belongs under Forge, and this page is why |
+| The delivery-QC report | **neither** — an instrument, not a node | n/a | [plan](qc-report.md); belongs under Forge, and this page is why |
 
 Three notes on those rows, all from [the plugin study](host-plugin.md).
 
@@ -303,7 +303,7 @@ is a design constraint on work already planned, not new work.
 Land the frame; rewrite [the appliance plan](player-appliance.md) against it (it currently
 answers a whole-house question this page makes obsolete, and predates the ESP32 result and the
 transport decision); add a pointer from [the plugin study](host-plugin.md) and
-[the QC plan](../forge/qc-report.md) naming their role.
+[the QC plan](qc-report.md) naming their role.
 
 **Exit:** each of the four plans states its role in the first screen and links here; no plan
 proposes joining a third-party protocol as a client.

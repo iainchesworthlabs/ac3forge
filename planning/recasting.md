@@ -8,7 +8,7 @@
 
     This page plans the recasting of the repository from one name over everything into three
     named products: **the library**, **Forge** (the `ac3cli` and `ac3gui` tooling) and
-    **Crucible** ([the Crucible guide](../crucible/index.md)). Design sections say what changes
+    **Crucible** ([the Crucible guide](../docs/crucible/index.md)). Design sections say what changes
     and why, each phase carries an exit criterion and says how it is verified, and
     [Decisions](#decisions) records the fifteen open questions and the option taken on each.
 
@@ -178,7 +178,7 @@ as it is.
    packages ride on the artifact glob rather than on a release gate. The other qualification
    recorded here — that the leg was x86_64 alone, so no release carried an aarch64 Linux Crucible
    package — closed on 2026-09-06, when linux-llvm-arm64 took the same pass and its own pair
-   joined the same artifact glob ([the promotion plan](../crucible/promotion.md), Phase 8,
+   joined the same artifact glob ([the promotion plan](../docs/crucible/promotion.md), Phase 8,
    records what that took and what it asserts). No tag has been cut since, so the route is
    wired and not yet exercised by a published release.
 2. **Two version-string styles in one release.** *Deliberate*, and [decision
@@ -495,7 +495,7 @@ opening `ROADMAP.md` on GitHub and following each of the DR8 links; a one-off co
     new section points back at them; anything opened after the promotion that belongs to
     `apps/crucible` alone is numbered here instead. It opens with one item, `CR1` — the six
     mechanically translated languages, regenerated and read by someone who speaks each of
-    them, which is the one item of [the promotion plan](../crucible/promotion.md)'s Phase 6
+    them, which is the one item of [the promotion plan](../docs/crucible/promotion.md)'s Phase 6
     still open — so the new Overview row has something to count. The right-to-left half that
     note pairs with it is not open: the window took its `LayoutMirroring` root on 2026-09-05
     and two cases in `tst_shell.qml` hold it, so `CR1` says so and the note is corrected.
@@ -546,7 +546,7 @@ dry run's assets finds both patterns it looks for.
 
 ### Phase 7: the driver, at signing time
 
-Sequenced by [the promotion plan](../crucible/promotion.md#coordination-with-the-driver-signing-session),
+Sequenced by [the promotion plan](../docs/crucible/promotion.md#coordination-with-the-driver-signing-session),
 and by decision 14. In one change after the signing session lands: the four INF strings
 (`Ac3ForgeNullSink.inx:97-102`) and the `.rc` description to Crucible; `null_sink_substring` and
 its tests and fakes; the About licence line; the `windows-driver` artifact name;

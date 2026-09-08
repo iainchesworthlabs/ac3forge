@@ -247,7 +247,8 @@ against a 179,064-byte peak.
 **It has no radio, and the plan it would serve is a Wi-Fi plan.** The P4 has
 neither Wi-Fi nor Bluetooth and needs a companion ESP32-C6 or -H2 for either,
 making any networked build a two-chip design.
-[`docs/family/topology.md`](../family/topology.md) puts a network transport in
+The [source/transport/sink plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md), which is
+kept in the repository rather than published here, puts a network transport in
 front of the decoder, and its Phase 5 exit is *"an ESP32-S3 decoding E-AC-3
 from a network origin in real time"*; the bandwidth argument for carrying a
 compressed stream at all is stated there as the difference between an ESP32-S3
@@ -269,7 +270,7 @@ buys this part nothing. Those are the levers, and they apply to every target
 at once instead of to one that cannot reach the network.
 
 The measurement is still worth taking, for the S3's own sake and for
-[topology](../family/topology.md)'s Phase 5. It is no longer a question about
+[the topology plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md)'s Phase 5. It is no longer a question about
 the P4.
 
 ## Not done

@@ -173,9 +173,3 @@ nav:
       - Self-hosted CI runners: ci-self-hosted-runners.md
       - History: history.md
       - Roadmap: roadmap.md
-      - Design notes:
-          - Delivery QC reports (plan): forge/qc-report.md
-          - Product naming and scope: family/recasting.md
-          - Source, transport, sink: family/topology.md
-          - Playback appliance (plan): family/player-appliance.md
-          - Host plugin (study): family/host-plugin.md

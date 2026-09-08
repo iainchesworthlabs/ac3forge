@@ -7,7 +7,7 @@
     This page plans **Hearth**, the sink member: the project's decode and passthrough path as a
     product, on a machine that plays what it is given and turns it into sound in a room. It keeps
     the shape of [the recasting plan](recasting.md) and
-    [the promotion plan](../crucible/promotion.md): design sections say what changes and why,
+    [the promotion plan](../docs/crucible/promotion.md): design sections say what changes and why,
     each phase carries an exit criterion and says how it is verified,
     [Decisions](#decisions) lists the open questions and the option taken on each, and
     [What cannot be verified, and why](#what-cannot-be-verified-and-why) says where the evidence
@@ -40,7 +40,7 @@ or `.ts`, works out whether the chosen endpoint takes the bitstream, and streams
 bursts to it — and, when the sink refuses, transcodes E-AC-3 to AC-3 or falls back to decoded
 PCM. That path has been run against a real Atmos-capable receiver: a Raspberry Pi 4B over HDMI,
 every stream shape locking correctly at zero underruns, including signed Atmos with four height
-channels ([Raspberry Pi](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver),
+channels ([Raspberry Pi](../docs/platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver),
 2026-08-20). The GUI has a player too — `StreamPlayerController`
 (`apps/gui/stream_player_controller.hpp`) — with transport, seeking, metering and export, but
 it decodes to PCM and plays through a shared-mode `MonitorSink`, and it lives inside a window on
@@ -195,7 +195,7 @@ this list is revised.
   accept.
 - **No encoding of live inputs.** That is Crucible.
 - **No room correction, no renderer, no binaural fold.** Already
-  [deliberately not on the roadmap](../roadmap.md); the receiver renders.
+  [deliberately not on the roadmap](../docs/roadmap.md); the receiver renders.
 - **No mixing.** One stream at a time to one sink.
 - **No cloud, no account, no telemetry.** It has no outbound network need at all, and
   [Phase 4](#phase-4-the-appliance-shape) makes that an assertion rather than a claim.
@@ -257,7 +257,7 @@ is the original assessment, kept because the costs it names are what the split i
 
 | Form | What it is | Verdict |
 |---|---|---|
-| **A package that turns an existing Linux install into an appliance** | `ac3forge-hearth` DEB/RPM: one binary, a systemd unit, a service user, a default config, a control page. `apt install`, `systemctl enable`, done. | **Recommended for v1.** It rides packaging and CI the project already has — `linux-gcc-arm64` is already `packageable` and `release_package`, and the arm64 `.deb` has already been inspected on a Pi ([Raspberry Pi](../platforms/raspberry-pi.md#packaging)). It adds no distribution form, no hosting, no OS to maintain, and it says what it is: the appliance is software, and the user brought the hardware. |
+| **A package that turns an existing Linux install into an appliance** | `ac3forge-hearth` DEB/RPM: one binary, a systemd unit, a service user, a default config, a control page. `apt install`, `systemctl enable`, done. | **Recommended for v1.** It rides packaging and CI the project already has — `linux-gcc-arm64` is already `packageable` and `release_package`, and the arm64 `.deb` has already been inspected on a Pi ([Raspberry Pi](../docs/platforms/raspberry-pi.md#packaging)). It adds no distribution form, no hosting, no OS to maintain, and it says what it is: the appliance is software, and the user brought the hardware. |
 | **A headless service with a control surface** | The runtime shape, orthogonal to how it is delivered | **Recommended**, and it is what the package installs. See [The control surface](#the-control-surface). |
 | **A kiosk QML application** | `ac3crucible`'s window, full-screen, no chrome, driven by a remote | **Not recommended for v1.** It requires a display attached to the appliance, which the product premise says there is not; it drags in Qt Quick, Quick Controls, a compositor and a GPU stack onto a 2 GB Pi that must also stream bursts without underrunning; and it puts the interface on the *television*, which is the one screen that is showing something else. A ten-foot interface is a later, separate product decision — [decision 4](#decisions) records it as such. |
 | **An SD-card image** | A bootable Raspberry Pi OS image with the appliance pre-installed | **Not recommended for v1; a candidate for a later phase.** Fully costed in [Packaging](#the-sd-card-image-costed-not-recommended-for-v1), because it is a distribution form this project has never had and the costs are not obvious. |
@@ -330,9 +330,9 @@ The evidence, unchanged:
 
 - **ALSA on real HDMI hardware: confirmed.** A Pi 4B drove an Atmos-capable AVR through
   `ac3cli play`, every stream shape locking, zero underruns
-  ([Raspberry Pi](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)).
+  ([Raspberry Pi](../docs/platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)).
 - **PipeWire on real HDMI hardware: confirmed 2026-09-05.** The receiver's own front panel read
-  "5.1 DD+" and "Atmos/DD+" at 7.1 ([DR9](../roadmap.md)).
+  "5.1 DD+" and "Atmos/DD+" at 7.1 ([DR9](../docs/roadmap.md)).
 - **Windows/WASAPI exclusive passthrough: unconfirmed.** DR9 says only a Realtek analogue
   endpoint has ever been tried. An appliance is a passthrough product; shipping one on a backend
   whose passthrough has never locked a receiver would be shipping the unverified part as the
@@ -689,7 +689,7 @@ documentation. It must answer, in this order, the questions someone actually has
 4. How do I point it at my music? (A directory, an NFS or SMB mount, a USB stick.)
 5. How do I know it worked? (What the control page says, and what the receiver's front panel
    should read for each stream shape — the table
-   [Raspberry Pi](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) already
+   [Raspberry Pi](../docs/platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) already
    has.)
 6. What if there is no sound? (Which of the six UX9 states applies, in the page's own words.)
 
