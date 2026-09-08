@@ -1,8 +1,10 @@
 # ---------------------------------------------------------------------------
-# ac3probe - the minimum-footprint decoder probe (roadmap PF7). See probe.cpp's
-# own header for what it checks and why it is not a unit test.
+# ac3probe - the minimum-footprint probe (roadmap PF7). See probe.cpp's and
+# encode_probe.cpp's own headers for what each checks and why neither is a unit
+# test.
 #
-# Built only under AC3FORGE_MINIMAL_DECODER, and in two shapes from one source:
+# Built under AC3FORGE_MINIMAL_DECODER or AC3FORGE_MINIMAL_ENCODER, and in two
+# shapes from one source:
 #
 #   - Cross-compiled for arm-none-eabi (see cmake/toolchains/arm-none-eabi.toolchain.cmake).
 #     Adds the reset vector and the linker script from platform/baremetal/, and
@@ -17,9 +19,10 @@
 # CMake adds, per the platform-tree rule (tools/checks/check_platform_macros.ps1).
 #
 # A third target, ESP32-S3, is driven from outside: platform/esp32s3/ is an
-# ESP-IDF project whose ac3forge component add_subdirectory()s the repo root,
-# the way apps/android's Gradle build does. It owns its own application, so
-# this file must NOT also build one - see the platform resolution below.
+# ESP-IDF project that points EXTRA_COMPONENT_DIRS at esp-idf/, whose ac3forge
+# component add_subdirectory()s the repo root - the way apps/android's Gradle
+# build does. It owns its own application, so this file must NOT also build
+# one - see the platform resolution below.
 # ---------------------------------------------------------------------------
 
 # Which of the three shapes this configure is. Resolved once, here, rather than
@@ -35,9 +38,8 @@
 # the failure would have surfaced as an undefined-symbol error a long way from
 # its cause.
 #
-# The esp32s3 value is set by platform/esp32s3/components/ac3forge/CMakeLists.txt
-# before it add_subdirectory()s the root, so it is already in the cache when
-# this runs.
+# The esp32s3 value is set by esp-idf/ac3forge/CMakeLists.txt before it
+# add_subdirectory()s the root, so it is already in the cache when this runs.
 if(NOT DEFINED AC3FORGE_BAREMETAL_PLATFORM)
     if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
         set(AC3FORGE_BAREMETAL_PLATFORM "baremetal")
@@ -59,7 +61,16 @@ endif()
 # main.cpp is the entry point both hosted shapes share; probe.cpp is the probe
 # itself, which defines ac3probe::run() rather than main() so that ESP-IDF (which
 # calls app_main) can run the same code. See apps/baremetal/probe.hpp.
-add_executable(ac3probe probe.cpp main.cpp)
+# One probe or the other, never both: the two profiles are mutually exclusive
+# at the root (no two of decode / AC-3 encode / E-AC-3 encode fit in an
+# ESP32-S3's internal SRAM at once). Both define ac3probe::run() rather than
+# main(), so main.cpp and the ESP-IDF application run whichever was built
+# without knowing which it is.
+if(AC3FORGE_MINIMAL_ENCODER)
+    add_executable(ac3probe encode_probe.cpp main.cpp)
+else()
+    add_executable(ac3probe probe.cpp main.cpp)
+endif()
 
 # ac3probe::now_us(). One implementation per platform, chosen here rather than
 # by a conditional in probe.cpp - the host has std::chrono, newlib on the

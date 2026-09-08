@@ -70,7 +70,7 @@ energy-normalized 2D VBAP with per-block gain ramps and explicit LFE sends. `ac3
 renders a tone circling the listener into 5.1 AC-3. An end-to-end test parks the object at
 each speaker in turn and asserts the decoded energy follows it: C → L → SL → SR → R.
 
-The IEC 61937 packer (`src/forge/src/sinks/`) wraps frames into S/PDIF bursts byte-exact against
+The IEC 61937 packer (`src/forge/src/iec61937/`) wraps frames into S/PDIF bursts byte-exact against
 FFmpeg's `spdif` muxer. `ac3cli spdif` emits them as a PCM16 WAV; played bit-exactly through a
 passthrough output, a receiver locks on and lights its Dolby Digital indicator.
 
@@ -107,7 +107,7 @@ Above the coupling frequency the full-bandwidth channels stop carrying their own
 and share one coupling channel plus per-band coordinates. This is the tool that makes 5.1
 viable well below 448 kbit/s. `ac3cli sine … 51c` and `ac3cli encode … couple` enable it.
 
-FFmpeg strict-decodes coupled 5.1. A targeted probe confirms the envelope is genuinely
+FFmpeg strict-decodes coupled 5.1. A targeted probe confirms the envelope is
 preserved: a channel carrying a 12 kHz tone stays 113 dB above a silent one in that band,
 while the region below the coupling frequency is bit-for-bit untouched. The in-repo decoder
 reads coupling too — strategy, banded coordinates, phase flags, leak parameters — so coupled
@@ -388,7 +388,7 @@ than a separate system — `ac3::plan::channel_plan_for(id)` is a one-line looku
 The two Annex E tools left refused above are now implemented on both encoder and decoder, closing
 the last gap in the tool table. Enhanced coupling (§E3.5) reuses the existing coupling machinery's
 shape but not its content: 22 sub-bands instead of 18, amplitude/angle/chaos-quantized complex
-coordinates instead of per-band scale factors, and a genuinely new decode path — §3.5.5's four
+coordinates instead of per-band scale factors, and a new decode path — §3.5.5's four
 steps, built on a new `dft512` (a direct O(N²) complex DFT; correctness-by-transcription first,
 same stance as the MDCT before it) rather than anything the MDCT machinery already had. A real
 §3.3.2 `nrematbd` conformance bug (the enhanced-coupling branch of the rematrix band count formula
@@ -445,7 +445,7 @@ The regression test built for the amplitude-only MVP (two channels' different to
 one 6-bin coupling band, the narrowest §E3.5.2 allows) measured the improvement directly rather
 than assuming one: ~3 dB under the old fit, ~6 dB under the real one. Real, worthwhile — and also
 the ceiling this test was designed to demonstrate rather than defeat, since no single coordinate
-pair per band can fully separate two genuinely different signals sharing that few bins; the test's
+pair per band can fully separate two different signals sharing that few bins; the test's
 own comment and threshold were updated to say so rather than imply the tool has been made
 transparent there. Verified against real gcc-15, clang-21 and MSVC builds before landing, following
 the lesson from the previous merge: a feature exercised only on one compiler locally is not
@@ -467,7 +467,7 @@ it too, closing a three-way literal duplication risk that predated this work rat
 new one.
 
 Two existing bit-placement tests (`tests/encoder/test_eac3.cpp`) had hardcoded `rematflg` at zero,
-true only because the encoder never set it before; both now assert genuine engagement (at least one
+true only because the encoder never set it before; both now assert engagement (at least one
 band fires) for their already-correlated test material instead, catching the field's PRESENCE
 without pinning a value that is legitimately content-dependent. The existing stereo round-trip
 test's identical-tone case already exercised the decoder's real undo path end to end once

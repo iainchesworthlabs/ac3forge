@@ -48,6 +48,15 @@ target_sources(forge_minimal
         src/core/mantissas.cpp       # §7.3 mantissa ungrouping and dither
         src/core/mdct.cpp            # §7.9.4 inverse transform (and the unused forward)
         src/core/transform/stub/reference_transform.cpp
+        # --- the syntax/trace types BOTH directions reference --------------
+        # Not decode-only, though they were listed that way while this profile
+        # only had a decoder. FrameEncoder::encode_frame calls
+        # verify::FrameTrace::reset() and eac3::emit_frame calls
+        # Eac3SubstreamTrace::reset() unconditionally, exactly as the decoders
+        # do, whether or not a caller ever sets a trace - so leaving them in the
+        # decode half made the encode profile fail to link.
+        src/verify/mirror.cpp
+        src/verify/eac3_mirror.cpp
         # ROADMAP PF5's runtime-dispatch follow-on. mdct.cpp asks
         # ac3::internal::cpu::has_avx2() before each vectorised kernel, so
         # this profile has to answer - and both answers must LINK, not just
@@ -61,7 +70,19 @@ target_sources(forge_minimal
         # the std::unreachable() bodies for the declarations mdct.cpp calls on
         # the branch a constant-false has_avx2() makes dead.
         src/internal/cpu/minimal/cpu_features.cpp
-        src/internal/avx2/none/mdct_avx2.cpp
+        src/internal/avx2/none/mdct_avx2.cpp)
+
+# --- and then one direction or the other ------------------------------------
+#
+# The list above is what BOTH need: the bitstream layer, the shared coding
+# tools, the transform. What follows is the half that differs, and the two are
+# never both added - AC3FORGE_MINIMAL_DECODER and AC3FORGE_MINIMAL_ENCODER are
+# mutually exclusive at the root, because measured on an ESP32-S3 no two of
+# these shapes fit in internal SRAM at once (233,546 / 201,770 / 243,770 peak
+# against 277,400 free).
+if(AC3FORGE_MINIMAL_DECODER)
+target_sources(forge_minimal
+    PRIVATE
         # --- decode ------------------------------------------------------
         src/decoder/decoder.cpp             # AC-3, plus split_frames/split_access_units
         src/decoder/diagnostics.cpp         # DecoderConfig::diagnostics' describe() (AP11)
@@ -77,10 +98,33 @@ target_sources(forge_minimal
         src/meta/mixing.cpp        # §7.8 downmix coefficients - OutputStage::apply's own
         src/oba/joc.cpp            # §6 object reconstruction from the bed
         src/oba/oamd.cpp           # §H.1 object metadata
-        src/verify/eac3_mirror.cpp # DecoderConfig::syntax's E-AC-3 trace types - unconditionally
-                                   # referenced at the top of Eac3Decoder::decode_substream, whether
-                                   # or not a caller ever sets one
-        src/verify/mirror.cpp)     # DecoderConfig::trace's own types
+)
+else()
+target_sources(forge_minimal
+    PRIVATE
+        # --- encode ------------------------------------------------------
+        src/encoder/encoder.cpp     # AC-3
+        src/encoder/eac3_frame.cpp  # Annex E. The bigger half by a long way -
+                                    # 5,715 lines against encoder.cpp's 2,516,
+                                    # and 243,770 bytes of peak against 201,770
+        src/encoder/plan.cpp        # layout/tool selection and the CLI vocabulary
+        src/encoder/assignment.cpp  # channel assignment
+        src/encoder/bandwidth.cpp   # §7.2.2's coded bandwidth
+        src/encoder/transient.cpp   # block-switch detection
+        src/encoder/silent_frame.cpp
+        # --- what the encoders call into ---------------------------------
+        src/meta/bsi.cpp            # valid_bsi_info/valid_alternate_bsi, which
+                                    # encode_frame checks its config against.
+                                    # format_timecode is deliberately NOT here:
+                                    # it is the file's only fmt user and lives in
+                                    # bsi_format.cpp so this one can be built
+                                    # without fmt at all
+        src/meta/drc.cpp            # §7.7 dynrng/compr the encoder writes
+        src/meta/mixing.cpp         # §7.8 mix metadata
+        src/quality/perceptual.cpp  # the masking model bit allocation consults
+        src/quality/distortion.cpp) # EQ13's decision search
+endif()
+     # DecoderConfig::trace's own types
 
 target_include_directories(forge_minimal
     PUBLIC

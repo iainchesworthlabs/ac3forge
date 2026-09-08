@@ -207,9 +207,9 @@ bool MonitorSink::running() const {
 }
 
 MonitorStats MonitorSink::stats() const {
-    return {.frames_submitted = impl_->submitted.load(std::memory_order_relaxed),
-            .frames_rendered = impl_->rendered.load(std::memory_order_relaxed),
-            .underruns = impl_->underruns.load(std::memory_order_relaxed)};
+    return {.frames_submitted = impl_->submitted.load(),
+            .frames_rendered = impl_->rendered.load(),
+            .underruns = impl_->underruns.load()};
 }
 
 bool MonitorSink::can_submit() const {
@@ -239,7 +239,7 @@ bool MonitorSink::submit(std::span<const float> interleaved) {
     if (wrote != interleaved.size()) {
         return false;
     }
-    impl_->submitted.fetch_add(interleaved.size() / impl_->channels, std::memory_order_relaxed);
+    impl_->submitted.fetch_add(interleaved.size() / impl_->channels);
     return true;
 }
 
@@ -292,9 +292,9 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     impl_->queue =
         std::make_unique<RingBuffer>(static_cast<std::size_t>(channels) * sample_rate);
     impl_->channels = channels;
-    impl_->submitted.store(0, std::memory_order_relaxed);
-    impl_->rendered.store(0, std::memory_order_relaxed);
-    impl_->underruns.store(0, std::memory_order_relaxed);
+    impl_->submitted.store(0);
+    impl_->rendered.store(0);
+    impl_->underruns.store(0);
     impl_->running.store(true, std::memory_order_release);
     impl_->pcm = opened->pcm.release();
 
@@ -325,7 +325,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                 // Nothing queued: emit silence for the remainder, counted
                 // rather than hidden, matching PassthroughSink's discipline.
                 std::fill(chunk.begin() + static_cast<std::ptrdiff_t>(got), chunk.end(), 0.0f);
-                impl_->underruns.fetch_add(1, std::memory_order_relaxed);
+                impl_->underruns.fetch_add(1);
             }
             convert(chunk, format.kind, raw);
 
@@ -336,7 +336,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                 }
                 continue;
             }
-            impl_->rendered.fetch_add(got / channels, std::memory_order_relaxed);
+            impl_->rendered.fetch_add(got / channels);
         }
 
         snd_pcm_drop(pcm);

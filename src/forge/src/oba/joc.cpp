@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
@@ -344,6 +345,51 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
 
 namespace {
 
+// The float32 transforms have no direct form: the direct evaluation is the
+// spec's own statement of the transform and the oracle the fast path is
+// validated against, so it stays double (ac3/core/mdct.hpp).
+//
+// reconstruct() still offers fast_mdct/fast_imdct = false, and
+// tests/oba/test_atmos.cpp passes exactly that - it is how this reconstruction
+// is checked against the arithmetic the spec writes down. Dropping the option
+// when the state went float32 would have made that test unable to ask its
+// question, so the direct path widens into a local double buffer, transforms,
+// and narrows back.
+//
+// The temporaries are on the DIRECT path only. DecoderConfig defaults both
+// flags to true, so a real decode never takes this branch and never pays for
+// them; a validation run does, and does not care.
+void forward_512(std::span<const recon_scalar_t, 512> windowed,
+                 std::span<recon_scalar_t, 256> coeffs, bool fast) {
+    if (fast) {
+        mdct512_forward(windowed, coeffs);
+        return;
+    }
+    std::array<double, 512> wide{};
+    std::array<double, 256> narrow{};
+    std::ranges::copy(windowed, wide.begin());
+    mdct512_forward(wide, narrow, /*fast=*/false);
+    for (std::size_t i = 0; i < narrow.size(); ++i) {
+        coeffs[i] = static_cast<recon_scalar_t>(narrow[i]);
+    }
+}
+
+void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
+                 std::span<recon_scalar_t, 512> x, bool fast) {
+    if (fast) {
+        imdct512_windowed(coeffs, x);
+        return;
+    }
+    std::array<double, 256> wide{};
+    std::array<double, 512> out{};
+    std::ranges::copy(coeffs, wide.begin());
+    imdct512_windowed(wide, out, /*fast=*/false);
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        x[i] = static_cast<recon_scalar_t>(out[i]);
+    }
+}
+
+
 // §6.6.5 Pseudocode 6, for one (object, channel, subband) at one timeslot,
 // within a smooth-interpolation segment whose two endpoints are `previous`
 // (joc_mix_mtx_prev) and this object's own `dq` (its one or two transmitted
@@ -427,6 +473,15 @@ namespace {
         state.object_history.assign(static_cast<std::size_t>(objects), {});
     }
 
+    // The per-object scratches follow the same count. They hold nothing
+    // between calls - every entry is written before it is read within one
+    // reconstruct() - so unlike the history above this is purely about not
+    // provisioning for objects the stream does not carry.
+    if (static_cast<int>(state.object_mdct_scratch.size()) != objects) {
+        state.object_mdct_scratch.assign(static_cast<std::size_t>(objects), {});
+        state.synth_scratch.assign(static_cast<std::size_t>(objects), {});
+    }
+
     std::vector<std::vector<float>> out(
         static_cast<std::size_t>(objects),
         std::vector<float>(static_cast<std::size_t>(frame_samples)));
@@ -450,7 +505,7 @@ namespace {
                 const int index = block * kSamplesPerBlock + n - 256;
                 time[static_cast<std::size_t>(n)] =
                     index >= 0
-                        ? static_cast<double>(
+                        ? static_cast<recon_scalar_t>(
                               bed[static_cast<std::size_t>(ch)][static_cast<std::size_t>(index)])
                         : state.bed_history[static_cast<std::size_t>(ch)]
                                            [static_cast<std::size_t>(256 + index)];
@@ -479,7 +534,7 @@ namespace {
                 continue;
             }
             gather_and_window(bed_ch, 0);
-            mdct512_forward(windowed[0], bed_mdct[static_cast<std::size_t>(bed_ch)], fast_mdct);
+            forward_512(windowed[0], bed_mdct[static_cast<std::size_t>(bed_ch)], fast_mdct);
             ++bed_ch;
         }
 
@@ -510,7 +565,7 @@ namespace {
                 auto& history = state.object_history[static_cast<std::size_t>(object)];
                 for (int n = 0; n < kSamplesPerBlock; ++n) {
                     pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] =
-                        static_cast<float>(2.0 * history[static_cast<std::size_t>(n)]);
+                        static_cast<float>(2.0F * history[static_cast<std::size_t>(n)]);
                     history[static_cast<std::size_t>(n)] = 0.0;
                 }
                 continue;
@@ -545,7 +600,8 @@ namespace {
                             static_cast<std::size_t>(kQmfSubbands) +
                         static_cast<std::size_t>(subband);
                     const double previous =
-                        has_ramp ? state.previous_matrix[previous_index] : dq[0];
+                        has_ramp ? static_cast<double>(state.previous_matrix[previous_index])
+                                 : dq[0];
                     m[static_cast<std::size_t>(ch)] =
                         has_ramp ? interpolate(shape, previous, dq, ts, slots)
                                  : dq[static_cast<std::size_t>(shape.data_points - 1)];
@@ -554,10 +610,11 @@ namespace {
                     double sum = 0.0;
                     for (int ch = 0; ch < channels; ++ch) {
                         sum += m[static_cast<std::size_t>(ch)] *
-                               bed_mdct[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bin)];
+                               static_cast<double>(bed_mdct[static_cast<std::size_t>(ch)]
+                                                           [static_cast<std::size_t>(bin)]);
                     }
                     object_mdct[static_cast<std::size_t>(object)][static_cast<std::size_t>(bin)] =
-                        sum;
+                        static_cast<recon_scalar_t>(sum);
                 }
             }
         }
@@ -590,8 +647,8 @@ namespace {
                 continue;
             }
             const int o = present[static_cast<std::size_t>(idx)];
-            imdct512_windowed(object_mdct[static_cast<std::size_t>(o)],
-                              x[static_cast<std::size_t>(o)], fast_imdct);
+            inverse_512(object_mdct[static_cast<std::size_t>(o)],
+                        x[static_cast<std::size_t>(o)], fast_imdct);
             ++idx;
         }
 
@@ -602,7 +659,7 @@ namespace {
             const auto& xo = x[static_cast<std::size_t>(object)];
             for (int n = 0; n < kSamplesPerBlock; ++n) {
                 pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] = static_cast<float>(
-                    2.0 * (xo[static_cast<std::size_t>(n)] + history[static_cast<std::size_t>(n)]));
+                    2.0F * (xo[static_cast<std::size_t>(n)] + history[static_cast<std::size_t>(n)]));
                 history[static_cast<std::size_t>(n)] = xo[static_cast<std::size_t>(256 + n)];
             }
         }
@@ -611,7 +668,7 @@ namespace {
     for (int ch = 0; ch < channels; ++ch) {
         for (int n = 0; n < 256; ++n) {
             state.bed_history[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
-                static_cast<double>(
+                static_cast<recon_scalar_t>(
                     bed[static_cast<std::size_t>(ch)]
                        [static_cast<std::size_t>(frame_samples - 256 + n)]);
         }
@@ -633,9 +690,9 @@ namespace {
                         static_cast<std::size_t>(kQmfSubbands) +
                     static_cast<std::size_t>(subband);
                 state.previous_matrix[index] =
-                    shape.present ? wb_view.at(shape.data_points - 1, ch,
+                    static_cast<recon_scalar_t>(shape.present ? wb_view.at(shape.data_points - 1, ch,
                                                mapping[static_cast<std::size_t>(subband)])
-                                  : 0.0;
+                                  : 0.0);
             }
         }
     }
@@ -729,7 +786,8 @@ namespace {
                          static_cast<std::size_t>(ch)) *
                             static_cast<std::size_t>(kQmfSubbands) +
                         static_cast<std::size_t>(subband);
-                    const double previous = has_ramp ? state.previous_matrix[index] : dq[0];
+                    const double previous =
+                        has_ramp ? static_cast<double>(state.previous_matrix[index]) : dq[0];
                     mix[index] = has_ramp
                                      ? interpolate(shape, previous, dq, ts, slots)
                                      : dq[static_cast<std::size_t>(shape.data_points - 1)];
@@ -804,9 +862,9 @@ namespace {
                         static_cast<std::size_t>(kQmfSubbands) +
                     static_cast<std::size_t>(subband);
                 state.previous_matrix[index] =
-                    shape.present ? tail_view.at(shape.data_points - 1, ch,
+                    static_cast<recon_scalar_t>(shape.present ? tail_view.at(shape.data_points - 1, ch,
                                                  mapping[static_cast<std::size_t>(subband)])
-                                  : 0.0;
+                                  : 0.0);
             }
         }
     }
@@ -978,9 +1036,11 @@ namespace {
                     switch (rule) {
                         case MixRule::kTailBlend: {
                             const double previous_val =
-                                has_previous ? state.previous_matrix[index] : dq0;
+                                has_previous ? static_cast<double>(state.previous_matrix[index])
+                                             : dq0;
                             const double older_val =
-                                has_older ? state.older_matrix[index] : previous_val;
+                                has_older ? static_cast<double>(state.older_matrix[index])
+                                          : previous_val;
                             m = older_val + tail_frac * (previous_val - older_val);
                             break;
                         }
@@ -988,15 +1048,15 @@ namespace {
                             m = shape.data_points > 1 ? view.at(1, ch, band) : dq0;
                             break;
                         case MixRule::kSmoothWhole:
-                            m = state.previous_matrix[index] +
+                            m = static_cast<double>(state.previous_matrix[index]) +
                                 static_cast<double>(ts + 1) *
-                                    (dq0 - state.previous_matrix[index]) /
+                                    (dq0 - static_cast<double>(state.previous_matrix[index])) /
                                     static_cast<double>(kQmfTimeslots);
                             break;
                         case MixRule::kSmoothFirst:
-                            m = state.previous_matrix[index] +
+                            m = static_cast<double>(state.previous_matrix[index]) +
                                 static_cast<double>(ts + 1) *
-                                    (dq0 - state.previous_matrix[index]) /
+                                    (dq0 - static_cast<double>(state.previous_matrix[index])) /
                                     static_cast<double>(kHalfWindow);
                             break;
                         case MixRule::kSmoothSecond:
@@ -1005,7 +1065,7 @@ namespace {
                                           static_cast<double>(kQmfTimeslots - kHalfWindow);
                             break;
                         case MixRule::kSteepPrevious:
-                            m = state.previous_matrix[index];
+                            m = static_cast<double>(state.previous_matrix[index]);
                             break;
                         case MixRule::kSteepFirst:
                             m = dq0;
@@ -1066,9 +1126,9 @@ namespace {
                         static_cast<std::size_t>(kQmfSubbands) +
                     static_cast<std::size_t>(subband);
                 state.previous_matrix[index] =
-                    shape.present ? wb_view.at(shape.data_points - 1, ch,
+                    static_cast<recon_scalar_t>(shape.present ? wb_view.at(shape.data_points - 1, ch,
                                                mapping[static_cast<std::size_t>(subband)])
-                                  : 0.0;
+                                  : 0.0);
             }
         }
     }

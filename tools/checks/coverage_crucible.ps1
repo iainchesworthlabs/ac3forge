@@ -23,8 +23,8 @@
 # floors, one row per component with a line percentage and a branch
 # percentage, every figure reported before the script exits so the log shows
 # the whole picture rather than only the first miss. One row, because
-# apps/crucible IS the component - it sits in the family beside src/forge and
-# apps/cli, not as a tree of components (docs/family/recasting.md). The
+# apps/crucible IS the component - it sits beside src/forge and apps/cli,
+# not as a tree of components (planning/recasting.md). The
 # per-file breakdown printed under it is reported and never gated, the way
 # apps/cli's per-command breakdown is: one floor on the aggregate is what
 # stops a regression, and a floor per file would be twenty-five numbers to

@@ -1,12 +1,16 @@
 # Delivery QC reports
 
-!!! note "Status: plan, written 2026-09-07. Nothing here is decided."
+!!! warning "Status as of 2026-09-08: a plan for something that does not exist yet"
+    Written 2026-09-07, nothing decided and nothing built. `ac3cli qc` prints its findings and
+    exits; it writes no report file, and no option on this page is implemented. Read this as a
+    design proposal rather than as documentation of a feature.
+
     This page plans a **delivery-shaped QC report** — the artefact someone attaches when handing
     a file to a broadcaster or a streaming platform. It keeps the shape of
-    [the recasting plan](../family/recasting.md) and
-    [the promotion plan](../crucible/promotion.md): design sections say what changes and why,
+    [the recasting plan](recasting.md) and
+    [the promotion plan](../docs/crucible/promotion.md): design sections say what changes and why,
     each phase carries an exit criterion and says how it is verified,
-    [Decisions](#decisions) lists what only the owner can decide with a recommendation and its
+    [Decisions](#decisions) lists the open questions, each with a recommendation and its
     cost, and [What cannot be verified](#what-cannot-be-verified-and-why) says where the plan
     stops. The central question — which member this belongs to — is decision 1; the name, if it
     needs one, is decision 2.
@@ -41,14 +45,14 @@ tested today.
 | Integrated loudness (BS.1770-4 gated), momentary, short-term | `ac3/meta/loudness.hpp:128,136,140` (`LoudnessMeter`) | shipped |
 | Loudness range (EBU Tech 3342) | `loudness.hpp:150` | shipped |
 | True peak (BS.1770-4 Annex 2, oversampled) | `loudness.hpp:159` | shipped |
-| Rendered-layout loudness (BS.1770-5 Annex 3, per-position weights) | `loudness.hpp:73` `position_weight()`, and `LoudnessMeter`'s second constructor | shipped, roadmap IO10 |
-| Object re-render loudness (BS.1770-5 Annex 4) | `qc ... objects=71\|512\|514\|714`, `apps/cli/commands/analysis.cpp:539` | shipped, roadmap IO12 |
+| Rendered-layout loudness (BS.1770-5 Annex 3, per-position weights) | `loudness.hpp:73` `position_weight()`, and `LoudnessMeter`'s second constructor | shipped |
+| Object re-render loudness (BS.1770-5 Annex 4) | `qc ... objects=71\|512\|514\|714`, `apps/cli/commands/analysis.cpp:539` | shipped |
 | dialnorm derivation and consistency | `loudness.hpp:186` `dialnorm_from_lkfs()`; `analysis.cpp:705-717` | shipped |
-| Five delivery presets with primary-source citations | `ac3/meta/qc.hpp` — `ebu-r128-s2`, `atsc-a85`, `atsc-a85-streaming`, `netflix`, `apple-music-atmos` | shipped, roadmap IO11 |
+| Five delivery presets with primary-source citations | `ac3/meta/qc.hpp` — `ebu-r128-s2`, `atsc-a85`, `atsc-a85-streaming`, `netflix`, `apple-music-atmos` | shipped |
 | Band-vs-ceiling gate semantics | `qc.hpp` `QcLoudnessLimit`, `evaluate_qc_gate()` | shipped |
 | **An exit code a CI job can gate on** | `apps/cli/exit_codes.hpp:63` `kExitQcGate = 6`, returned at `analysis.cpp:1055` | **shipped** |
 | The same gates through the C API | `ac3forge_qc_preset`, `ac3forge_evaluate_qc_gate` (`src/capi/src/qc.cpp`) | shipped |
-| The same gates in a window | `apps/gui/qc_controller.cpp`, `qml/QcDialog.qml`, `qml/QcGateMeter.qml` | shipped, roadmap C3 |
+| The same gates in a window | `apps/gui/qc_controller.cpp`, `qml/QcDialog.qml`, `qml/QcGateMeter.qml` | shipped |
 | Declared stream facts — layout, substream map, OAMD counts, CRC integrity | `ac3cli probe`, and its `ac3forge.probe/1` JSON document | shipped |
 
 The third of the brief's three candidate output forms — an exit code — therefore already exists,
@@ -57,7 +61,7 @@ and is already documented as distinguishing a failed gate from a failed read
 
 ### Two headers that do not belong to this
 
-[`ac3/quality/distortion.hpp`](../library/quality.md) and `ac3/quality/perceptual.hpp` are named
+[`ac3/quality/distortion.hpp`](../docs/library/quality.md) and `ac3/quality/perceptual.hpp` are named
 in this page's brief as things a delivery report would build on. They answer a different
 question and cannot be reached from a delivered file.
 
@@ -151,16 +155,16 @@ A fourth member: its own target, `ac3::<name>` namespace, `AC3FORGE_BUILD_<NAME>
 component, DEB/RPM/archive tokens, winget identifier, Homebrew formula, `.desktop` and AppStream
 entries, bundle id, icon, six `.ts` catalogues plus the `xx` pseudo-locale, a notices fragment
 set, a docs tab, and a row in every table on
-[the recasting page](../family/recasting.md#what-each-member-owns) and in
-[docs/index.md](../index.md)'s three-members section.
+[the recasting page](recasting.md#what-each-member-owns) and in
+[docs/index.md](../docs/index.md)'s three-members section.
 
-[The recasting plan ruled a fourth member out of its own scope](../family/recasting.md#deliberately-not-in-scope),
+[The recasting plan ruled a fourth member out of its own scope](recasting.md#deliberately-not-in-scope),
 so this option has to argue past that, and the argument it would have to make is about
 **audience and reach** rather than code volume. A delivery QC tool serves a delivery operator
 rather than a codec engineer, and the tool such an operator wants runs over the formats they are
 handed — which today would include PCM masters, and tomorrow formats this project does not
 implement. A member whose scope is "audio deliverables" rather than "AC-3 and E-AC-3
-deliverables" is a different product with a different roadmap, and it would deserve its own name.
+deliverables" is a different product with a different scope, and it would deserve its own name.
 
 Nothing in the tree points that way yet. The measurement is AC-3/E-AC-3-shaped end to end: the
 presets are gated against a decoded elementary stream, the layout vocabulary is
@@ -210,12 +214,12 @@ describe this application precisely: one is the test, the other is the certifica
 | **Proof** | AC3Forge Proof · `ac3proof` · `ac3::proof` | Proof house, proving — the same trade vocabulary | Collides with proofreading, mathematical proof and proof-of-concept in every search; the least distinctive of the three |
 | **No name** (options A/B) | none; `ac3cli qc`, schema `ac3forge.qc/1` | Nothing new is published, so nothing new is frozen | The capability has no name to point at in a release note; the docs say "`ac3cli qc`'s report" |
 
-Spelling follows [the settled rule](../family/recasting.md#the-name): capitalised in prose,
+Spelling follows [the settled rule](recasting.md#the-name): capitalised in prose,
 lowercase `ac3forge`-prefixed in identifiers, and the family named beneath the member.
 
 ### Availability, checked by hand on 2026-09-07
 
-Checked because [the recasting plan's S2 row](../family/recasting.md#the-name) records that a
+Checked because [the recasting plan's S2 row](recasting.md#the-name) records that a
 bare generic token needs a check in seven namespaces before it can be taken, and because a
 published name is frozen the moment anyone installs it.
 
@@ -232,14 +236,14 @@ Two readings. The PyPI and npm collisions matter only for a route this plan does
 neither a Python binding nor an npm package is part of it, and the library's own PyPI project is
 `ac3forge`. The registries that would actually carry a member package (Homebrew, Debian, Fedora,
 winget) are clear for both words. The `ac3forge`-prefixed forms are free everywhere, which is
-what [decision 5 of the recasting plan](../family/recasting.md#decisions) already settled for
+what [decision 5 of the recasting plan](recasting.md#decisions) already settled for
 every other member's package tokens.
 
 Method and its limit: HTTP status and body checks against each registry's own API, plus a GitHub
 code search for the winget Moniker. A code search indexes rather than enumerates, so a zero there
 is weaker evidence than the four 404s; a winget Moniker is in any case advisory, while
 `iainchesworthlabs.<name>` is the identifier that must be unique and is in a namespace this
-project owns. **The name is Iain's decision.** This table is the evidence, not the choice.
+project owns. **The name is not settled here.** This table is the evidence, not the choice.
 
 ## Scope
 
@@ -288,7 +292,7 @@ delivery operator's position both are "this file is not what was ordered".
   has read; `qc.hpp` already records why EBU R 128 s4, Netflix's Atmos Home Mix v2.3 and Amazon
   are deliberately absent.
 - **It does not compare against a source.** There is no reference file, no PEAQ, no ViSQOL. Those
-  are [`docs/verification.md`](../verification.md)'s territory and answer "did the encoder do
+  are [`docs/verification.md`](../docs/verification.md)'s territory and answer "did the encoder do
   well", not "is this deliverable conformant".
 - **It does not render PDF itself.** See [Third-party notices](#third-party-notices).
 - **It does not sign the report.** An attestable QC record is a separate question, downstream of
@@ -510,14 +514,14 @@ is frozen, because a package anyone has installed cannot be renamed without a
 | Artifact prefix | `packages-assay-<preset>` | must match `packages-*` or `release.yml` will not collect it |
 
 That last row is the trap
-[the recasting plan recorded](../family/recasting.md#packaging-and-release-identities) and
+[the recasting plan recorded](recasting.md#packaging-and-release-identities) and
 Crucible hit: an artifact not named `packages-*` is built, uploaded, and silently absent from the
 release.
 
 ## Documentation
 
 Six pages change and one is added. Everything sits in the seven-tab nav
-[the recasting plan settled](../family/recasting.md#the-docs); no page moves, which matters
+[the recasting plan settled](recasting.md#the-docs); no page moves, which matters
 because `mkdocs.yml` declares no redirects plugin.
 
 | Page | Change | Nav |
@@ -528,7 +532,7 @@ because `mkdocs.yml` declares no redirects plugin.
 | `docs/gui/qc.md` | the **Save report…** button, what it writes, and where | unchanged |
 | `docs/verification.md` | one paragraph under **Quality**: what the report asserts, what it does not, and that its loudness figures are the ones IO10 cross-checked against ffmpeg's `ebur128` on 5.1 | unchanged |
 | `docs/library/quality.md` | one sentence saying the distortion and perceptual headers are encoder in-loop and are not what a delivery report measures — the confusion this plan had to resolve, written down once | unchanged |
-| `docs/index.md` | the **Forge** paragraph of "The three members" gains "and writes a delivery QC report" to its `ac3cli` sentence | unchanged |
+| `docs/index.md` | the **Forge** paragraph of "What is here" gains "and writes a delivery QC report" to its `ac3cli` sentence | unchanged |
 
 `README.md`: the Documentation table gains a row for this page, and the Forge row of the
 three-member table gains the same clause as `docs/index.md`. Nothing else — the README's
@@ -551,8 +555,8 @@ states.
   this inherits rather than adds.
 - **Accessibility.** `Accessible.role`, `.name` and `.description` on the new button and on any new
   custom control, matching what `QcDialog.qml` and `QcGateMeter.qml` already carry.
-  [`docs/gui/accessibility.md`](../gui/accessibility.md) and
-  [`docs/gui/localisation.md`](../gui/localisation.md) are the pages that record this.
+  [`docs/gui/accessibility.md`](../docs/gui/accessibility.md) and
+  [`docs/gui/localisation.md`](../docs/gui/localisation.md) are the pages that record this.
 - **The report itself is not localised.** It is a delivery document quoting ATSC, EBU, Netflix and
   Apple specifications by their English titles and clause numbers, sent to a recipient who may not
   share the operator's locale. Its `<html lang="en">` says so. Translating the chrome around
@@ -587,7 +591,7 @@ dependency on this plan and no reason to block it; it is worth doing before any 
 submitted to a store or a distribution that displays an icon.
 
 Bundle id under option C would be `com.iainchesworthlabs.ac3assay`, following
-[decision 12 of the recasting plan](../family/recasting.md#decisions) and the existing
+[decision 12 of the recasting plan](recasting.md#decisions) and the existing
 `com.iainchesworthlabs.ac3gui`. Crucible has no bundle id yet, so this would be the second
 outstanding one rather than the first.
 
@@ -644,7 +648,7 @@ wonder whether an attached QC record is encumbered.
 
 ## Signing and install
 
-Roadmap **DR6** — Developer ID and notarisation for macOS, Authenticode for Windows — is blocked
+**Code signing** — Developer ID and notarisation for macOS, Authenticode for Windows — is blocked
 on certificates rather than on code, and is a Known gap in every release since 0.8.0-beta.2. It
 gates every application member, and this plan's dependency on it differs sharply by option.
 
@@ -735,7 +739,7 @@ read yet; and the icon work identity assets would need under option C.
 
 ## The proposed ROADMAP entry
 
-`ROADMAP.md` is not edited by this plan — **ID allocation is Iain's.** The natural theme is **IO**
+`ROADMAP.md` is not edited by this plan, and no roadmap ID is allocated here. The natural theme is **IO**
 ("Streams in and out", member "the library, Forge"), whose last three items are IO10, IO11 and
 IO12, all QC and loudness; IO13 is the next free number. Proposed text, in the theme's own format:
 
@@ -809,7 +813,7 @@ and should not be batched with unrelated prose.
 - **New presets.** IO11's shape and a primary document are the bar.
 - **A dialogue gate for `LoudnessMeter`.** A gap, inherited and stated, not closed here.
 - **Reference-based quality measurement.** No PEAQ, no ViSQOL, no source comparison — that is
-  [`docs/verification.md`](../verification.md)'s territory and a different question.
+  [`docs/verification.md`](../docs/verification.md)'s territory and a different question.
 - **Encoder in-loop quality in the report.** `distortion.hpp` and `perceptual.hpp` cannot be
   reached from a delivered file.
 - **Batch or manifest reporting.** One file per invocation; a delivery manifest would change the
@@ -822,7 +826,7 @@ and should not be batched with unrelated prose.
 
 ## Decisions
 
-Only what the owner has to decide. Each carries a recommendation and the cost of taking it.
+The open questions. Each carries a recommendation and the cost of taking it.
 **None of these is decided.**
 
 1. **Which member this belongs to.** (a) a new output mode on `ac3cli qc` with the model promoted
@@ -842,7 +846,7 @@ Only what the owner has to decide. Each carries a recommendation and the cost of
    is taken on PyPI and npm, which rules out a bare-token package scheme but not the
    `ac3forge`-prefixed one every other member already uses. Cost of taking a name now: every
    identity in [Packaging and release identity](#packaging-and-release-identity) is frozen at first
-   install. **This is Iain's decision; the table above is evidence, not a choice.**
+   install. **This is not settled here; the table above is evidence, not a choice.**
 
 3. **The JSON schema identifier and its shape.** `ac3forge.qc/1`, following `ac3forge.probe/1`'s
    contract unchanged, with `gates` an array even for one preset and a top-level `verdict` boolean.

@@ -42,20 +42,20 @@ for arg in "$@"; do
         *) echo "unknown argument: $arg" >&2; exit 2 ;;
     esac
 done
-if [ -z "$builddir" ]; then
+if [[ -z "$builddir" ]]; then
     builddir=$SRC/build/crucible
-    [ $tray = 0 ] || builddir=$builddir-tray
-    [ $nest = 0 ] || builddir=$builddir-nested
-    [ $asan = 0 ] || builddir=$builddir-asan
+    [[ $tray = 0 ]] || builddir=$builddir-tray
+    [[ $nest = 0 ]] || builddir=$builddir-nested
+    [[ $asan = 0 ]] || builddir=$builddir-asan
 fi
 
 export VCPKG_ROOT=${VCPKG_ROOT:-/opt/vcpkg}
 qml=$SRC/apps/crucible/ui/qml/Main.qml
-[ -f "$qml" ] || { echo "no $qml; run Sync-Source.ps1 from the host first" >&2; exit 1; }
-[ -f "$qml.pristine" ] || cp "$qml" "$qml.pristine"
+[[ -f "$qml" ]] || { echo "no $qml; run Sync-Source.ps1 from the host first" >&2; exit 1; }
+[[ -f "$qml.pristine" ]] || cp "$qml" "$qml.pristine"
 cp "$qml.pristine" "$qml"
 
-if [ $tray = 1 ]; then
+if [[ $tray = 1 ]]; then
     # \r? because a tree synced from a Windows working copy can arrive with
     # CRLF and an anchored match would then silently find nothing.
     sed -i 's/^\(\s*\)visible: CrucibleController\.trayAvailable\r\?$/\1visible: true/' "$qml"
@@ -63,7 +63,7 @@ if [ $tray = 1 ]; then
     echo "edit applied: SystemTrayIcon visible: true, whatever the seam says"
 fi
 
-if [ $nest = 1 ]; then
+if [[ $nest = 1 ]]; then
     # One submenu, of literals, in the tray's menu. Anchored on the tray
     # menu's first item so it lands inside that menu and nowhere else.
     python3 - "$qml" <<'PY'
@@ -82,7 +82,7 @@ PY
 fi
 
 flags=()
-if [ $asan = 1 ]; then
+if [[ $asan = 1 ]]; then
     flags+=(-DCMAKE_CXX_FLAGS='-fsanitize=address -fno-omit-frame-pointer -g'
             -DCMAKE_C_FLAGS='-fsanitize=address -fno-omit-frame-pointer -g'
             -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address)

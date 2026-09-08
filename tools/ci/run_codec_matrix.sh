@@ -66,7 +66,7 @@ case "$CLI" in
     *) CLI="$PWD/$CLI" ;;
 esac
 
-if [ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]; then
+if [[ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]]; then
     # This script's own path, resolved the same way FIXTURES below resolves
     # its own - so re-invoking it works regardless of where THIS invocation
     # was launched from.
@@ -87,11 +87,11 @@ if [ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]; then
     # by-hand run on a platform without /proc/cpuinfo - this degrades to a
     # skip, exactly like genuinely lacking AVX2 hardware would.
     avx2_capable=0
-    if [ -r /proc/cpuinfo ] && grep -qw avx2 /proc/cpuinfo; then
+    if [[ -r /proc/cpuinfo ]] && grep -qw avx2 /proc/cpuinfo; then
         avx2_capable=1
     fi
 
-    if [ "$avx2_capable" != "1" ]; then
+    if [[ "$avx2_capable" != "1" ]]; then
         echo "cross-tier: this host does not report AVX2 in /proc/cpuinfo (or it cannot be read) - skipping the avx2 pass; the sse2 pass above still ran and passed"
         rm -rf "$sse2_dir" "$avx2_dir"
         exit 0
@@ -310,7 +310,7 @@ run_ffmpeg_check orbit.ac3
 for layout in mono stereo 51 71 512 514 714 1+1; do
     run eac3-sine "eac3_${layout}.ec3" 2 192 1000 80 "$layout"
     run decode "eac3_${layout}.ec3" "eac3_${layout}.wav"
-    if [ "$layout" != "714" ]; then
+    if [[ "$layout" != "714" ]]; then
         run_ffmpeg_check "eac3_${layout}.ec3"
     fi
 done
@@ -413,12 +413,12 @@ done
 for layout in 71 512 714; do
     run eac3-encode bootstrap_51.wav "eac3_${layout}.ec3" 256 none "$layout"
     run decode "eac3_${layout}.ec3" "eac3_${layout}_decoded.wav"
-    if [ "$layout" != "714" ]; then
+    if [[ "$layout" != "714" ]]; then
         run_ffmpeg_check "eac3_${layout}.ec3"
     fi
     run eac3-encode bootstrap_51.wav "eac3_${layout}_all.ec3" 256 all "$layout"
     run decode "eac3_${layout}_all.ec3" "eac3_${layout}_all.wav"
-    if [ "$layout" != "714" ]; then
+    if [[ "$layout" != "714" ]]; then
         run_ffmpeg_check "eac3_${layout}_all.ec3"
     else
         echo "    [skip] eac3_${layout}_all.ec3: no FFmpeg oracle for 7.1.4 (README.md Verification gaps) - the in-repo decoder is still checked above"
@@ -654,7 +654,7 @@ run_atmos_profile_check() {
         -of default=nw=1:nk=1 "$1")"
     case "$2" in
         atmos)
-            [ "$profile" = "Dolby Digital Plus + Dolby Atmos" ] || {
+            [[ "$profile" = "Dolby Digital Plus + Dolby Atmos" ]] || {
                 echo "$1: expected the Dolby Atmos profile, got '$profile'" >&2
                 exit 1
             }
@@ -729,7 +729,7 @@ run_ffmpeg_check atmos_path.ec3
 ADM_FIXTURE_TOOL="$(dirname "$CLI")/encode_adm"
 if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-adm[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
     echo "    [skip] atmos-adm: this ac3cli build has no -DAC3FORGE_BUILD_ADM=ON (apps/cli/adm/atmos_adm.hpp) - covered instead by the adm-validate CI job and tests/cli/test_cli_atmos_adm.cpp, which do build with it"
-elif [ ! -x "$ADM_FIXTURE_TOOL" ]; then
+elif [[ ! -x "$ADM_FIXTURE_TOOL" ]]; then
     echo "    [skip] atmos-adm: examples/encode_adm was not built alongside this ac3cli (AC3FORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real ADM file"
 else
     "$ADM_FIXTURE_TOOL" --write-fixture atmos_adm_fixture.wav
@@ -749,7 +749,7 @@ fi
 IAB_FIXTURE_TOOL="$(dirname "$CLI")/encode_iab"
 if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-iab[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
     echo "    [skip] atmos-iab: this ac3cli build has no -DAC3FORGE_BUILD_ADM=ON (apps/cli/adm/atmos_iab.hpp) - covered instead by tests/cli/test_cli_atmos_iab.cpp, which does build with it"
-elif [ ! -x "$IAB_FIXTURE_TOOL" ]; then
+elif [[ ! -x "$IAB_FIXTURE_TOOL" ]]; then
     echo "    [skip] atmos-iab: examples/encode_iab was not built alongside this ac3cli (AC3FORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real IAB file"
 else
     "$IAB_FIXTURE_TOOL" --write-fixture atmos_iab_fixture.iab
@@ -938,18 +938,18 @@ count=$((count + 1))
 echo "[$count] exit-code scheme: usage (1), input (2), qc gate (0 or 6)"
 rc=0
 "$CLI" encode >/dev/null 2>&1 || rc=$?
-[ "$rc" -eq 1 ] || { echo "a usage error should exit 1, got $rc" >&2; exit 1; }
+[[ "$rc" -eq 1 ]] || { echo "a usage error should exit 1, got $rc" >&2; exit 1; }
 : > not_a_stream.ac3
 rc=0
 "$CLI" decode not_a_stream.ac3 not_a_stream.wav >/dev/null 2>&1 || rc=$?
-[ "$rc" -eq 2 ] || { echo "an unreadable input should exit 2, got $rc" >&2; exit 1; }
+[[ "$rc" -eq 2 ]] || { echo "an unreadable input should exit 2, got $rc" >&2; exit 1; }
 rc=0
 "$CLI" qc bootstrap_51.ac3 preset=all >/dev/null 2>&1 || rc=$?
-[ "$rc" -eq 0 ] || [ "$rc" -eq 6 ] || { echo "qc should exit 0 or 6, got $rc" >&2; exit 1; }
+[[ "$rc" -eq 0 ]] || [[ "$rc" -eq 6 ]] || { echo "qc should exit 0 or 6, got $rc" >&2; exit 1; }
 # quiet prints nothing at all on a clean run; the payload still lands.
 "$CLI" sine quiet_probe.ac3 1 192 1000 50 stereo quiet > quiet_probe.log 2>&1
-[ ! -s quiet_probe.log ] || { echo "quiet should print nothing, got:" >&2; cat quiet_probe.log >&2; exit 1; }
-[ -s quiet_probe.ac3 ] || { echo "quiet should still write the stream" >&2; exit 1; }
+[[ ! -s quiet_probe.log ]] || { echo "quiet should print nothing, got:" >&2; cat quiet_probe.log >&2; exit 1; }
+[[ -s quiet_probe.ac3 ]] || { echo "quiet should still write the stream" >&2; exit 1; }
 
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts

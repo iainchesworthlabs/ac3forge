@@ -39,7 +39,7 @@ note() { echo "::error::$1"; echo "  $1"; fail=1; }
 # other and with the directory name, and the installer's hash/URL must be
 # well-formed. ---
 winget_root="$root/packaging/winget/manifests/i/iainchesworthlabs/ac3forge"
-if [ -d "$winget_root" ]; then
+if [[ -d "$winget_root" ]]; then
     for dir in "$winget_root"/*/; do
         version="$(basename "$dir")"
         installer="$dir/iainchesworthlabs.ac3forge.installer.yaml"
@@ -47,13 +47,13 @@ if [ -d "$winget_root" ]; then
         manifest="$dir/iainchesworthlabs.ac3forge.yaml"
 
         for f in "$installer" "$locale" "$manifest"; do
-            [ -f "$f" ] || note "winget $version: missing $(basename "$f")"
+            [[ -f "$f" ]] || note "winget $version: missing $(basename "$f")"
         done
-        [ -f "$installer" ] && [ -f "$locale" ] && [ -f "$manifest" ] || continue
+        [[ -f "$installer" ]] && [[ -f "$locale" ]] && [[ -f "$manifest" ]] || continue
 
         for f in "$installer" "$locale" "$manifest"; do
             pv="$(grep -m1 '^PackageVersion:' "$f" | sed 's/^PackageVersion:[[:space:]]*//')"
-            if [ "$pv" != "$version" ]; then
+            if [[ "$pv" != "$version" ]]; then
                 note "winget $version: $(basename "$f") has PackageVersion: $pv, expected $version"
             fi
         done
@@ -95,7 +95,7 @@ if [ -d "$winget_root" ]; then
                     *) note "winget $version: InstallerType is zip but InstallerUrl does not point at a .zip ($url)" ;;
                 esac
                 nested_type="$(grep -m1 '^NestedInstallerType:' "$installer" | sed 's/^NestedInstallerType:[[:space:]]*//')"
-                if [ "$nested_type" != "portable" ]; then
+                if [[ "$nested_type" != "portable" ]]; then
                     note "winget $version: InstallerType is zip but NestedInstallerType is '$nested_type', expected portable"
                 fi
                 grep -q 'RelativeFilePath:' "$installer" || note "winget $version: InstallerType is zip but no NestedInstallerFiles entries were found"
@@ -112,7 +112,7 @@ fi
 # --- conan: every sources: entry's key, url and sha256 must agree with each
 # other. ---
 conandata="$root/packaging/conan/conandata.yml"
-if [ -f "$conandata" ]; then
+if [[ -f "$conandata" ]]; then
     # Each version block is "  \"X.Y.Z...\":" followed by indented url:/sha256: lines.
     version=""
     while IFS= read -r line; do
@@ -150,10 +150,10 @@ formula="$root/packaging/homebrew/Formula/ac3forge.rb"
 cask="$root/packaging/homebrew/Casks/ac3gui.rb"
 formula_version=""
 cask_version=""
-if [ -f "$formula" ] && [ -f "$cask" ]; then
+if [[ -f "$formula" ]] && [[ -f "$cask" ]]; then
     formula_version="$(grep -m1 -oE 'archive/refs/tags/v[0-9][^"'"'"']*' "$formula" | sed -E 's#archive/refs/tags/v##; s/\.tar\.gz$//')"
     cask_version="$(grep -m1 -oE '^\s*version\s+"[^"]+"' "$cask" | sed -E 's/^\s*version\s+"([^"]+)"/\1/')"
-    if [ -n "$formula_version" ] && [ -n "$cask_version" ] && [ "$formula_version" != "$cask_version" ]; then
+    if [[ -n "$formula_version" ]] && [[ -n "$cask_version" ]] && [[ "$formula_version" != "$cask_version" ]]; then
         note "homebrew: Formula pins v$formula_version but Cask pins v$cask_version"
     fi
 else
@@ -162,7 +162,7 @@ fi
 
 # --- vcpkg port: portfile's SHA512 must be well-formed. ---
 portfile="$root/packaging/vcpkg-port/ac3forge/portfile.cmake"
-if [ -f "$portfile" ]; then
+if [[ -f "$portfile" ]]; then
     sha="$(grep -m1 -oE 'SHA512 [0-9A-Fa-f]+' "$portfile" | awk '{print $2}')"
     if ! echo "$sha" | grep -qE '^[0-9A-Fa-f]{128}$'; then
         note "vcpkg port: SHA512 is not 128 hex characters ($sha)"
@@ -178,16 +178,16 @@ fi
 vcpkg_json="$root/packaging/vcpkg-port/ac3forge/vcpkg.json"
 conanfile="$root/packaging/conan/conanfile.py"
 pyproject="$root/python/pyproject.toml"
-if [ -f "$vcpkg_json" ] && [ -f "$conanfile" ] && [ -f "$formula" ] && [ -f "$pyproject" ]; then
+if [[ -f "$vcpkg_json" ]] && [[ -f "$conanfile" ]] && [[ -f "$formula" ]] && [[ -f "$pyproject" ]]; then
     vcpkg_license="$(grep -m1 '"license"' "$vcpkg_json" | sed -E 's/.*"license":[[:space:]]*"([^"]*)".*/\1/')"
     conan_license="$(grep -m1 '^[[:space:]]*license = ' "$conanfile" | sed -E 's/^[[:space:]]*license = "([^"]*)".*/\1/')"
     formula_license="$(grep -m1 '^[[:space:]]*license ' "$formula" | sed -E 's/^[[:space:]]*license[[:space:]]+"([^"]*)".*/\1/')"
     pyproject_license="$(grep -m1 '^license = ' "$pyproject" | sed -E 's/^license = "([^"]*)".*/\1/')"
 
-    if [ -n "$vcpkg_license" ]; then
-        [ "$conan_license" = "$vcpkg_license" ] || note "licence drift: packaging/conan/conanfile.py says '$conan_license', vcpkg.json says '$vcpkg_license'"
-        [ "$formula_license" = "$vcpkg_license" ] || note "licence drift: packaging/homebrew/Formula/ac3forge.rb says '$formula_license', vcpkg.json says '$vcpkg_license'"
-        [ "$pyproject_license" = "$vcpkg_license" ] || note "licence drift: python/pyproject.toml says '$pyproject_license', vcpkg.json says '$vcpkg_license'"
+    if [[ -n "$vcpkg_license" ]]; then
+        [[ "$conan_license" = "$vcpkg_license" ]] || note "licence drift: packaging/conan/conanfile.py says '$conan_license', vcpkg.json says '$vcpkg_license'"
+        [[ "$formula_license" = "$vcpkg_license" ]] || note "licence drift: packaging/homebrew/Formula/ac3forge.rb says '$formula_license', vcpkg.json says '$vcpkg_license'"
+        [[ "$pyproject_license" = "$vcpkg_license" ]] || note "licence drift: python/pyproject.toml says '$pyproject_license', vcpkg.json says '$vcpkg_license'"
     else
         note "licence check: could not extract vcpkg.json's \"license\" field"
     fi
@@ -199,7 +199,7 @@ fi
 # into portfile.cmake's vcpkg_check_features() call, and vice versa - the exact class of gap
 # roadmap AP7's "capi" feature closed (a CMake option existed, a vcpkg feature didn't). Catches
 # it for any future feature too, not just this one. ---
-if [ -f "$vcpkg_json" ] && [ -f "$portfile" ]; then
+if [[ -f "$vcpkg_json" ]] && [[ -f "$portfile" ]]; then
     vcpkg_features="$(awk '/"features":/{found=1; next} found' "$vcpkg_json" \
         | grep -oE '"[a-zA-Z0-9_-]+":[[:space:]]*\{' \
         | sed -E 's/^"([^"]+)".*/\1/' | sort -u)"
@@ -208,8 +208,8 @@ if [ -f "$vcpkg_json" ] && [ -f "$portfile" ]; then
 
     missing_in_portfile="$(comm -23 <(printf '%s\n' "$vcpkg_features") <(printf '%s\n' "$portfile_features") | grep -v '^$' || true)"
     missing_in_vcpkg_json="$(comm -13 <(printf '%s\n' "$vcpkg_features") <(printf '%s\n' "$portfile_features") | grep -v '^$' || true)"
-    [ -z "$missing_in_portfile" ] || note "vcpkg.json feature(s) not wired into portfile.cmake's vcpkg_check_features(): $(echo "$missing_in_portfile" | tr '\n' ' ')"
-    [ -z "$missing_in_vcpkg_json" ] || note "portfile.cmake's vcpkg_check_features() names feature(s) missing from vcpkg.json's \"features\": $(echo "$missing_in_vcpkg_json" | tr '\n' ' ')"
+    [[ -z "$missing_in_portfile" ]] || note "vcpkg.json feature(s) not wired into portfile.cmake's vcpkg_check_features(): $(echo "$missing_in_portfile" | tr '\n' ' ')"
+    [[ -z "$missing_in_vcpkg_json" ]] || note "portfile.cmake's vcpkg_check_features() names feature(s) missing from vcpkg.json's \"features\": $(echo "$missing_in_vcpkg_json" | tr '\n' ' ')"
 else
     note "vcpkg feature-parity check: vcpkg.json or portfile.cmake not found"
 fi
@@ -217,11 +217,11 @@ fi
 # --- Conan option <-> generate() parity: every AC3FORGE_BUILD_<NAME>-shaped Conan option
 # (excluding shared/fPIC, which aren't component switches) must actually be wired into
 # generate()'s tc.variables[...] - same gap class as the vcpkg check above. ---
-if [ -f "$conanfile" ]; then
+if [[ -f "$conanfile" ]]; then
     conan_options="$(awk '/^[[:space:]]*options = \{/{found=1; next} found && /^[[:space:]]*\}/{exit} found' "$conanfile" \
         | grep -oE '"[a-zA-Z0-9_]+"' | tr -d '"' | grep -vE '^(shared|fPIC)$' | sort -u)"
     while IFS= read -r opt; do
-        [ -n "$opt" ] || continue
+        [[ -n "$opt" ]] || continue
         grep -q "self\.options\.$opt" "$conanfile" \
             || note "conanfile.py: option '$opt' has no matching AC3FORGE_BUILD_<NAME> wiring (no self.options.$opt reference found)"
     done <<< "$conan_options"
@@ -234,10 +234,10 @@ fi
 # component that adds one but forgets the other (roadmap AP7's original gap: no pkg-config files
 # existed for any component) fails here immediately. ---
 install_lib="$root/cmake/InstallLibrary.cmake"
-if [ -f "$install_lib" ]; then
+if [[ -f "$install_lib" ]]; then
     export_count="$(grep -cE '^[[:space:]]*EXPORT [A-Za-z0-9]+Targets$' "$install_lib" || true)"
     pkgconfig_count="$(grep -cE '^[[:space:]]*ac3forge_install_pkgconfig\($' "$install_lib" || true)"
-    if [ "$export_count" -ne "$pkgconfig_count" ]; then
+    if [[ "$export_count" -ne "$pkgconfig_count" ]]; then
         note "cmake/InstallLibrary.cmake: $export_count install(TARGETS ... EXPORT ...) component block(s) but $pkgconfig_count ac3forge_install_pkgconfig() call(s) - every installed/exported component needs a matching pkg-config file"
     fi
 else
@@ -254,38 +254,38 @@ fi
 # `v*` tag reachable from HEAD (a shallow clone with no tags fetched, or a checkout with
 # no releases yet). ---
 latest_tag="$(git -C "$root" describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
-if [ -n "$latest_tag" ]; then
+if [[ -n "$latest_tag" ]]; then
     latest_version="${latest_tag#v}"
     advise() { echo "::warning::$1"; echo "  (advisory) $1"; }
 
     vcpkg_json="$root/packaging/vcpkg-port/ac3forge/vcpkg.json"
-    if [ -f "$vcpkg_json" ]; then
+    if [[ -f "$vcpkg_json" ]]; then
         v="$(grep -m1 '"version-semver"' "$vcpkg_json" | sed -E 's/.*"version-semver":[[:space:]]*"([^"]+)".*/\1/')"
-        [ "$v" = "$latest_version" ] ||
+        [[ "$v" = "$latest_version" ]] ||
             advise "vcpkg port is at $v, latest release is $latest_version - packaging/vcpkg-port/ac3forge/ needs a bump (docs/releasing.md#vcpkg-port)"
     fi
 
-    if [ -f "$formula" ]; then
-        [ "$formula_version" = "$latest_version" ] ||
+    if [[ -f "$formula" ]]; then
+        [[ "$formula_version" = "$latest_version" ]] ||
             advise "Homebrew formula is at $formula_version, latest release is $latest_version - packaging/homebrew/Formula/ac3forge.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
     fi
-    if [ -f "$cask" ]; then
-        [ "$cask_version" = "$latest_version" ] ||
+    if [[ -f "$cask" ]]; then
+        [[ "$cask_version" = "$latest_version" ]] ||
             advise "Homebrew cask is at $cask_version, latest release is $latest_version - packaging/homebrew/Casks/ac3gui.rb needs a bump (docs/releasing.md#homebrew-formula-and-cask)"
     fi
 
-    if [ -f "$conandata" ] && ! grep -q "\"$latest_version\":" "$conandata"; then
+    if [[ -f "$conandata" ]] && ! grep -q "\"$latest_version\":" "$conandata"; then
         advise "conandata.yml has no entry for $latest_version - packaging/conan/conandata.yml needs a bump (docs/releasing.md#conan-recipe)"
     fi
 
     winget_dir="$root/packaging/winget/manifests/i/iainchesworthlabs/ac3forge/$latest_version"
-    [ -d "$winget_dir" ] ||
+    [[ -d "$winget_dir" ]] ||
         advise "no winget manifest directory for $latest_version - packaging/winget/manifests/ needs a new version directory (docs/releasing.md#winget-manifest)"
 else
     echo "(latest-tag advisory skipped: no v* tag reachable from HEAD)"
 fi
 
-if [ "$fail" -ne 0 ]; then
+if [[ "$fail" -ne 0 ]]; then
     echo ""
     echo "Packaging manifest inconsistency found - see docs/releasing.md for the per-ecosystem update steps."
     exit 1

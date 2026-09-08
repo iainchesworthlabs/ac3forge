@@ -4,6 +4,18 @@ ac3forge builds and is tested on Linux today, on both GCC and Clang, CLI and GUI
 page covers what is specific to Linux; for the full preset reference, options list and
 troubleshooting, see [Building from source](../building.md).
 
+## Status
+
+| | |
+|---|---|
+| What runs here | The library, `ac3cli`, `ac3gui` and Crucible |
+| Build | GCC and Clang, x64 and arm64, all four required and green in CI |
+| GUI | Opt-in at build time (`-DAC3FORGE_BUILD_GUI=ON`), not on by default as it is on Windows |
+| Audio backends | ALSA or PipeWire, selected at configure time. Crucible requires PipeWire |
+| Bitstream to a real receiver | Confirmed on one machine, a Raspberry Pi 4B: over ALSA on 2026-08-20, and over PipeWire on 2026-09-05, the receiver's own front panel read both times |
+| Other Linux hardware | Untried. Treat the Pi as two confirmed configurations on one box, not as Linux generally |
+| Packaging | DEB and RPM, plus an AppImage — see [Packaging](#packaging) |
+
 ## Toolchains
 
 Built and tested with **GCC 16** and **Clang 22.1** on **Ubuntu 26.04 (WSL2)** — the versions
@@ -102,7 +114,7 @@ configured, is in [Why ALSA still comes first](../building.md#why-alsa-still-com
     PipeWire session running at all, so nothing built there has ever been bitstreamed to a real
     S/PDIF or HDMI output from that environment, and PipeWire's own enumeration has only ever
     seen "no session" (`pw_context_connect()` failing fast, not a real graph with real nodes)
-    rather than a genuine node to negotiate a compressed format against.
+    rather than a real node to negotiate a compressed format against.
 
     That gap is now closed for ALSA specifically, on real hardware elsewhere: see
     [Raspberry Pi → Live HDMI passthrough to a real
@@ -110,9 +122,10 @@ configured, is in [Why ALSA still comes first](../building.md#why-alsa-still-com
     every AC-3/E-AC-3/Atmos shape tried to a real Atmos-capable AVR over HDMI, correctly
     identified every time. PipeWire has now met real hardware once, on the same Pi, on 2026-09-05: the backend
     enumerated the receiver's HDMI sink with its compressed codecs set by WirePlumber from the
-    EDID, and streamed E-AC-3 bursts to it. The receiver's own lock is still to be read off its
-    display, so this is "delivered" rather than "confirmed" — see roadmap DR9 for what that run
-    found and fixed. Whether a given output accepts a bitstream is per-device anyway; `ac3cli
+    EDID, and streamed E-AC-3 bursts to it. The receiver's own front panel was read the same
+    evening: "5.1 DD+" from a pre-encoded fixture, and "Atmos/DD+" at 7.1 from Crucible's live
+    engine with a placed object, so this is confirmed rather than merely delivered. The rest of
+    this note is what that run found and fixed. Whether a given output accepts a bitstream is per-device anyway; `ac3cli
     outputs` probes each one and reports what it finds, and since that run it reports a bitstream
     format only on a sink whose `iec958.codecs` lists it, because the connect alone said yes on a
     headphone jack.
@@ -128,7 +141,7 @@ That trade is uncomfortable and worth stating here rather than only there: forci
 up the passthrough path confirmed against a real receiver (ALSA `iec958`, on the Pi) for the one
 that is not. See [the plan](../crucible/promotion.md#alsa-or-pipewire).
 
-## Reading a sink's own EDID/ELD (roadmap UX9)
+## Reading a sink's own EDID/ELD
 
 `ac3cli play`, given a `device_index`, asks the sink what it actually accepts before committing
 to a format — see [CLI → Following the sink](../cli/commands.md#following-the-sink). On Linux
@@ -137,7 +150,7 @@ that read is real on ALSA only: the HD-audio kernel driver populates
 already decoded into text fields, for every HDMI/DisplayPort output — a documented, stable
 kernel interface, not a private one this project reaches around. `ac3::audio::sink_capabilities`
 locates the right card/device the same way `enumerate_render_devices()` already does
-(`src/backend/alsa/candidates.hpp`, shared between the two) and reads that file.
+(`src/audio/src/backend/alsa/candidates.hpp`, shared between the two) and reads that file.
 
 PipeWire has no equivalent here, on purpose rather than by omission: an ALSA-backed PipeWire
 node likely carries enough in its own properties to find the same `/proc/asound` file, but no
@@ -222,7 +235,7 @@ launcher fires.
 The `.deb`/`.rpm` above are only as portable as the host distro's own Qt 6 packaging: a distro
 whose Qt is too old for this project's `find_package(Qt6 6.5 REQUIRED ...)` floor, or whose
 `qml6-module-*` split doesn't match what `qt6-declarative-dev`/`qt6-declarative-dev-tools` expect
-(roadmap DR8), simply cannot install one of them. `ac3gui` also ships as a self-contained
+, simply cannot install one of them. `ac3gui` also ships as a self-contained
 AppImage that carries its own Qt 6 and QML modules, so that gap doesn't apply — the two package
 kinds are complementary, not a replacement for each other.
 

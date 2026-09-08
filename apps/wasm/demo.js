@@ -20,7 +20,7 @@ import { decodeFile, DownmixTarget, Ac3ForgeDecoderNode, scanStream } from './pa
 // front, left positive. Ceiling ring: the same azimuth convention extended to
 // Table E2.5's height locations, matching apps/gui/qml/SoundfieldView.qml's own
 // extension (its location_azimuth_deg()) - a second, smaller, dashed ring for
-// genuinely elevated channels, not a fabricated height axis. A plain 5.1/7.1
+// elevated channels, not a fabricated height axis. A plain 5.1/7.1
 // stream (like the bundled demo) never populates it; a real 7.1.4 stream does.
 const EAR_LEVEL_AZIMUTH_DEG = { L: 30, C: 0, R: -30, Ls: 110, Rs: -110 };
 const CEILING_AZIMUTH_DEG = { Vhl: 45, Vhr: -45, Vhc: 0, Lts: 110, Rts: -110 };
@@ -171,7 +171,7 @@ function drawSpeaker(ctx, cx, cy, radius, az, label, level, color) {
 }
 
 // Ported from apps/gui/qml/SoundfieldView.qml: an ear-level ring plus a
-// smaller, dashed ceiling ring for genuinely elevated channels (its own
+// smaller, dashed ceiling ring for elevated channels (its own
 // visual cue for "a conceptually different, flattened-height plane"), driven
 // throughout by real per-channel RMS from the decoder - not a fabricated
 // height axis; channels this stream doesn't have simply don't light up.
@@ -459,7 +459,7 @@ async function loadBundledDemo() {
 }
 
 // The demo materialises the decoded programme in the WASM heap and again in
-// JS copies, so input size is the honest proxy for peak memory: past this
+// JS copies, so input size is the closest proxy for peak memory: past this
 // cap the decode would only run into the module's memory ceiling and fail
 // there anyway. 24 MiB of E-AC-3 at 448 kbps is about seven minutes.
 const MAX_UPLOAD_BYTES = 24 * 1024 * 1024;
