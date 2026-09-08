@@ -19,7 +19,7 @@ ac3forge_status_t ac3forge_eac3_decoder_create(const ac3forge_decoder_config_t* 
     if (config == nullptr || out_decoder == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&] {
+    return guard([&config, &out_decoder] {
         *out_decoder = new ac3forge_eac3_decoder(
             ac3::DecoderConfig{.drc_scale = config->drc_scale,
                                .heavy_compression = config->heavy_compression != 0});
@@ -35,7 +35,7 @@ ac3forge_status_t ac3forge_eac3_decoder_decode_substream(
     if (decoder == nullptr || frame == nullptr || out_substream == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&decoder, &frame, &frame_size, &out_substream]() -> ac3forge_status_t {
         auto result = decoder->impl.decode_substream(
             std::as_bytes(std::span<const uint8_t>(frame, frame_size)));
         if (!result) {
@@ -58,7 +58,7 @@ ac3forge_status_t ac3forge_eac3_decoder_decode_access_unit(
     if (decoder == nullptr || unit == nullptr || out_unit == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&decoder, &unit, &unit_size, &out_unit]() -> ac3forge_status_t {
         auto result = decoder->impl.decode_access_unit(
             std::as_bytes(std::span<const uint8_t>(unit, unit_size)));
         if (!result) {
@@ -86,7 +86,8 @@ ac3forge_status_t ac3forge_eac3_decoder_decode_access_unit_into(
         samples_per_channel != AC3FORGE_SAMPLES_PER_FRAME) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&decoder, &unit, &unit_size, &channels, &channel_count, &samples_per_channel,
+                  &out_unit]() -> ac3forge_status_t {
         std::vector<std::span<float>> spans;
         spans.reserve(channel_count);
         for (size_t i = 0; i < channel_count; ++i) {
@@ -117,7 +118,7 @@ ac3forge_status_t ac3forge_eac3_decoder_flush(ac3forge_eac3_decoder_t* decoder,
     if (decoder == nullptr || out_substreams == nullptr || out_count == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&] {
+    return guard([&decoder, &out_substreams, &out_count] {
         std::vector<ac3::DecodedSubstream> flushed = decoder->impl.flush();
         if (flushed.empty()) {
             *out_substreams = nullptr;
@@ -490,7 +491,7 @@ ac3forge_status_t split_into_spans(const uint8_t* stream, size_t stream_size,
     if (stream == nullptr || out_spans == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&stream, &stream_size, &out_spans, &access_units]() -> ac3forge_status_t {
         const auto bytes = std::as_bytes(std::span<const uint8_t>(stream, stream_size));
         auto result = access_units ? ac3::split_access_units(bytes) : ac3::split_frames(bytes);
         if (!result) {
@@ -524,7 +525,7 @@ ac3forge_status_t ac3forge_stream_bsid(const uint8_t* frame, size_t frame_size, 
     if (frame == nullptr || out_bsid == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&frame, &frame_size, &out_bsid]() -> ac3forge_status_t {
         auto result = ac3::stream_bsid(std::as_bytes(std::span<const uint8_t>(frame, frame_size)));
         if (!result) {
             return ac3forge_c::from_cpp(result.error());

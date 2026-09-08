@@ -4385,7 +4385,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         AC3_ZONE_SCOPED_N("search");
         const int found = internal::search_max_fitting(
             1023, impl_->snr_search_hint_,
-            [&](int composite) { return bits_at(composite) <= budget; });
+            [&bits_at, &budget](int composite) { return bits_at(composite) <= budget; });
         impl_->snr_search_hint_ = found;
         return found;
     };

@@ -52,7 +52,8 @@ struct Candidate {
     unsigned hdmi_index = 0;
     unsigned spdif_index = 0;
 
-    for_each_pcm(SND_PCM_STREAM_PLAYBACK, [&](const PcmEntry& entry) {
+    for_each_pcm(SND_PCM_STREAM_PLAYBACK,
+                 [&candidates, &counted_card, &hdmi_index, &spdif_index](const PcmEntry& entry) {
         if (entry.card != counted_card) {
             counted_card = entry.card;
             hdmi_index = 0;

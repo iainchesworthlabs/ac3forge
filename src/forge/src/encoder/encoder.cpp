@@ -1888,11 +1888,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         int last_eval = -1;
         std::uint32_t last_bits = 0;
         const int found =
-            internal::search_max_fitting(1023, impl_->snr_search_hint_, [&](int composite) {
-                last_eval = composite;
-                last_bits = bits_at(composite);
-                return last_bits <= search_budget;
-            });
+            internal::search_max_fitting(
+                1023, impl_->snr_search_hint_,
+                [&last_eval, &last_bits, &bits_at, &search_budget](int composite) {
+                    last_eval = composite;
+                    last_bits = bits_at(composite);
+                    return last_bits <= search_budget;
+                });
         return {found, last_eval == found ? last_bits : bits_at(found)};
     };
 
