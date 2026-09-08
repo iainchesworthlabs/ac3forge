@@ -84,6 +84,9 @@ compiled to WebAssembly. Both demonstrate the library.
 
 - **Getting started** — [Quick start](quickstart.md): clone to first encode in under ten
   minutes.
+- **Platforms** — [which page applies to what you have](platforms/index.md): a PC, a Mac, a
+  Raspberry Pi, a Shield, a browser or a board with no operating system, each with what has
+  actually been shown to work on it.
 - **Concepts** — [Overview](concepts/index.md): AC-3, E-AC-3 and the Atmos/JOC object layer
   explained.
 - **Capabilities** — [what the library encodes and decodes](library/capabilities.md): every

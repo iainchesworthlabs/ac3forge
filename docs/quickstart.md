@@ -4,6 +4,12 @@ Clone to first encode in under ten minutes. This page shows the shortest path; s
 [building.md](building.md) for the full preset list, building without Qt, the Linux GUI opt-in,
 and machine-local preset overrides.
 
+The build below is for a Windows or Linux desktop. If you are on something else — a Mac, a
+Raspberry Pi, an Android TV box, a browser, or a board with no operating system —
+[Platforms](platforms/index.md) says which page covers it and what has been shown to work there.
+If you would rather install `ac3cli` and `ac3gui` than build them, [Forge](forge/index.md) has
+the three ways to do that.
+
 ## Prerequisites
 
 | | Version | Notes |
@@ -81,7 +87,7 @@ for (int frame = 0; frame < 31; ++frame) {
 - [Library conventions](library/index.md) — the full API reference: `ac3::eac3::FrameEncoder`
   and `AccessUnitEncoder`, both decoders, `ac3::io::scan`, the spatial object layer, the Atmos
   encoder, and `matroska::mux`.
-- [CLI reference](cli/index.md) — `ac3cli`, the thirty-nine-command front end, for encoding and
+- [CLI reference](cli/index.md) — `ac3cli`, the forty-one-command front end, for encoding and
   decoding from the shell without writing any C++.
 - [GUI guide](gui/index.md) — `ac3gui`, the Qt Quick front end: file and live-capture encoding,
   a plan view for placing objects, and channel-level metering. With `ac3cli` it makes up
