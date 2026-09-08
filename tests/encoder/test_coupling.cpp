@@ -5,8 +5,8 @@
 #include <random>
 #include <vector>
 
+#include "ac3/core/coupling.hpp"
 #include "ac3/core/exponents.hpp"
-#include "ac3/encoder/coupling.hpp"
 
 using ac3::coupling::choose_master;
 using ac3::coupling::decode_coordinate;

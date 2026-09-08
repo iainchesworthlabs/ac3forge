@@ -38,7 +38,11 @@ target_sources(forge_minimal
     PRIVATE
         # --- bitstream and shared coding tools ---------------------------
         src/core/bitalloc.cpp        # §7.2 bit allocation, both generations
+        src/core/coupling.cpp        # §7.4.3's coordinate dequantizer, which both decoders
+                                     # call on every coupled block
         src/core/eac3_tables.cpp     # Annex E tables and the chanmap layout algebra
+        src/core/eac3_tools.cpp      # spx/ecpl band geometry and the §3.5.5 enhanced-coupling
+                                     # reconstruction the decoder shares
         src/core/exponents.cpp       # §7.1 exponent decoding
         src/core/fft.cpp             # the 512-point DFT §3.5.5 enhanced coupling needs
         src/core/mantissas.cpp       # §7.3 mantissa ungrouping and dither
@@ -69,11 +73,6 @@ target_sources(forge_minimal
         # --- what the decoders call into ---------------------------------
         src/dsp/qmf.cpp            # the polyphase QMF bank JOC's reconstruction runs through
         src/emdf/emdf.cpp          # the TS 102 366 Annex H container the objects ride in
-        src/encoder/coupling.cpp   # despite the path: §7.4.3's coordinate DEQUANTIZER, which
-                                   # both decoders call on every coupled block
-        src/encoder/eac3_tools.cpp # despite the path: spx/ecpl band geometry and the
-                                   # §3.5.5 reconstruction the DECODER shares (AP2's
-                                   # naming sweep owns moving it)
         src/meta/drc.cpp           # §7.7 dynrng/compr application
         src/meta/mixing.cpp        # §7.8 downmix coefficients - OutputStage::apply's own
         src/oba/joc.cpp            # §6 object reconstruction from the bed

@@ -1,4 +1,4 @@
-#include "ac3/encoder/coupling.hpp"
+#include "ac3/core/coupling.hpp"
 
 #include <algorithm>
 #include <array>

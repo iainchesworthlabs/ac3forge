@@ -14,10 +14,10 @@ omitted internals) is actually part of the frozen surface once `v1.0.0` ships.
 | `ac3/core/bitreader.hpp`, `bitwriter.hpp` | MSB-first bit I/O. |
 | `ac3/core/mdct.hpp`, `window.hpp` | The 512-point MDCT and the KBD window. |
 | `ac3/core/bitalloc.hpp`, `exponents.hpp`, `mantissas.hpp` | The §7.2 allocation model and §7.1/§7.3 coding, shared by encoder and decoder. |
+| `ac3/core/coupling.hpp`, `eac3_tools.hpp` | Coupling, spectral extension, AHT. Shared the same way: §7.4.3's coordinate dequantizer and §3.5.5's enhanced-coupling reconstruction run on every decode, not only on an encode. |
 | `ac3/encoder/encoder.hpp` | `EncoderConfig`, `FrameEncoder`. |
 | `ac3/encoder/eac3_frame.hpp` | `FrameConfig`, `FrameEncoder`, `AccessUnitConfig`, `AccessUnitEncoder`, `AccessUnit`. |
 | `ac3/encoder/silent_frame.hpp` | `FrameError`, and pure-syntax silent frames. |
-| `ac3/encoder/coupling.hpp`, `eac3_tools.hpp` | Coupling, spectral extension, AHT. |
 | `ac3/encoder/transient.hpp` | `TransientDetector` — the §8.2.2 recipe that decides `blksw`, shared by both encoders; block switching itself has no config field, it is what this class's output drives. |
 | `ac3/encoder/plan.hpp` | `ac3::plan` — `Plan`, `Codec`, `LayoutId`, `Tools`, `Metadata`, `Routing`. The layout table, Annex E tool tokens, metadata defaults and source-to-coded-channel routing, shared by `ac3cli` and `ac3gui` so the two front ends cannot disagree about what a layout or a tools token means. `Plan::custom_locations`, `resolve(plan)` and `parse_channels`/`format_channels` are the escape hatch onto `chanmap::allocate` for a channel set none of the eight named `LayoutId`s cover. |
 | `ac3/encoder/assignment.hpp` | `ac3::plan::Assignment`, `Destination`, `SourceShape`, `parse_assignment`/`format_assignment`, `derive_codec`. The explicit, channel-by-channel alternative to `plan::route()` for multiple loaded sources — backs the CLI's `src=`/`map=` options and the GUI's multi-source controller. |

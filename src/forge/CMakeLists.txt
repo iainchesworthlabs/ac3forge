@@ -231,7 +231,9 @@ target_sources(forge_objects
     PRIVATE
         src/analysis/levels.cpp
         src/core/bitalloc.cpp
+        src/core/coupling.cpp
         src/core/eac3_tables.cpp
+        src/core/eac3_tools.cpp
         src/core/exponents.cpp
         src/core/fft.cpp
         src/core/mantissas.cpp
@@ -249,9 +251,7 @@ target_sources(forge_objects
         src/emdf/frame_layout.cpp
         src/encoder/assignment.cpp
         src/encoder/bandwidth.cpp
-        src/encoder/coupling.cpp
         src/encoder/eac3_frame.cpp
-        src/encoder/eac3_tools.cpp
         src/encoder/encoder.cpp
         src/encoder/plan.cpp
         src/encoder/silent_frame.cpp

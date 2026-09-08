@@ -16,8 +16,8 @@
 
 #include "ac3/core/bitreader.hpp"
 #include "ac3/core/crc16.hpp"
+#include "ac3/core/eac3_tools.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
-#include "ac3/encoder/eac3_tools.hpp"
 
 namespace {
 
