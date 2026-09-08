@@ -133,3 +133,32 @@
 [data-md-color-scheme="slate"] .ac3f-dot-good { background: #57bb87; }
 [data-md-color-scheme="slate"] .ac3f-dot-mid { background: #e0ae4b; }
 .ac3f-status-legend { font-size: 0.68rem; color: var(--md-default-fg-color--light); margin: 0; }
+
+/* Stat tiles: same semantic ok/watch colors as performance-quality.md's own
+   .pq-badge, so "ok"/"watch" mean the same thing and look the same on both
+   pages - not reinvented here. */
+.ac3f-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-top: 1rem; }
+@media (max-width: 52rem) { .ac3f-stat-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 30rem) { .ac3f-stat-grid { grid-template-columns: 1fr; } }
+.ac3f-stat-status { grid-column: 1 / -1; font-size: 0.8rem; color: var(--md-default-fg-color--light); margin: 0; }
+.ac3f-stat-card {
+  border: 1px solid var(--md-default-fg-color--lightest); border-radius: 0.45rem;
+  padding: 0.85rem 1rem; background: var(--md-default-bg-color);
+}
+.ac3f-stat-head {
+  font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--md-default-fg-color--light); margin-bottom: 0.2rem;
+}
+.ac3f-stat-value { font-family: "Big Shoulders Display", "IBM Plex Sans", sans-serif; font-size: 1.7rem; font-weight: 700; line-height: 1.1; color: var(--md-default-fg-color); }
+.ac3f-stat-unit { font-family: "IBM Plex Sans", sans-serif; font-size: 0.85rem; font-weight: 500; color: var(--md-default-fg-color--light); }
+.ac3f-stat-note { font-size: 0.72rem; color: var(--md-default-fg-color--light); margin-top: 0.25rem; }
+.ac3f-stat-badge {
+  display: inline-block; font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.62rem; font-weight: 700; padding: 0.05rem 0.4rem; border-radius: 3px;
+  vertical-align: middle; margin-left: 0.35rem;
+}
+.ac3f-stat-ok { background: rgba(67, 160, 71, 0.16); color: #2e7d32; }
+.ac3f-stat-watch { background: rgba(251, 140, 0, 0.18); color: #ef6c00; }
+.ac3f-stat-unknown { background: var(--md-default-fg-color--lightest); color: var(--md-default-fg-color--light); }
+[data-md-color-scheme="slate"] .ac3f-stat-ok { color: #81c784; }
+[data-md-color-scheme="slate"] .ac3f-stat-watch { color: #ffb74d; }

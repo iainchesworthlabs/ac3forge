@@ -117,11 +117,11 @@
     <section class="ac3f-hero-section">
       <div class="ac3f-block-head">
         <h2>Measured on every merge</h2>
-        <a class="ac3f-fam-go" href="{{ 'performance-quality/'|url }}">See the current numbers &rarr;</a>
+        <a class="ac3f-fam-go" href="{{ 'performance-quality/'|url }}">The full picture &rarr;</a>
       </div>
-      <p class="ac3f-lede" style="margin-bottom:0">Speed, decode accuracy, predicted listening
-        quality and memory per frame — tracked continuously against real programme material,
-        not just measured on release day, and kept forever.</p>
+      <div class="ac3f-stat-grid" id="ac3f-stats">
+        <p class="ac3f-stat-status">Loading the latest measurements from <code>main</code>&hellip;</p>
+      </div>
     </section>
   {% endif %}
 {% endblock %}

@@ -48,6 +48,7 @@ extra_css:
 
 extra_javascript:
   - javascripts/enhancements.js
+  - javascripts/hero-stats.js
 
 markdown_extensions:
   - admonition
