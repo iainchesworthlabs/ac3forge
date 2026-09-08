@@ -131,6 +131,81 @@ std::vector<double> adversarial_doubles() {
     return v;
 }
 
+// The float32 counterpart, for f32x4. Same rule, 32 bits.
+bool same_bits(float a, float b) {
+    return std::bit_cast<std::uint32_t>(a) == std::bit_cast<std::uint32_t>(b);
+}
+
+// The float32 spread. The interesting values are not the doubles' values
+// scaled down: a float's integer-resolution boundary is 2^23 rather than
+// 2^52, and its denormal range starts around 1.18e-38.
+//
+// The pairs whose PRODUCT underflows into that denormal range are the point
+// of this set. A vector unit that flushes denormals to zero agrees with the
+// scalar reference on every normal value and disagrees only there, so a
+// value set without them would pass on hardware this seam's bit-exactness
+// claim is false for - which is exactly what AArch32's Advanced SIMD did to
+// single precision, and what -ffast-math asks for on any target.
+std::vector<float> adversarial_floats() {
+    std::vector<float> v{
+        0.0F,
+        -0.0F,
+        0.5F,
+        -0.5F,
+        1.5F,
+        -1.5F,
+        2.5F,
+        -2.5F,
+        // Either side of a tie by one ulp, at float precision.
+        0.49999997F,
+        -0.49999997F,
+        std::nextafterf(0.5F, 1.0F),
+        std::nextafterf(2.5F, 0.0F),
+        // A float's integer-resolution boundary and its neighbours.
+        8388608.0F,   // 2^23
+        8388607.5F,   // largest float below 2^23 with a fraction
+        -8388608.0F,
+        16777216.0F,  // 2^24
+        // Coefficient-range boundaries.
+        1.0F,
+        -1.0F,
+        0.99999994F,
+        -1.0000001F,
+        // Denormals themselves, and the smallest normal either side of them.
+        std::numeric_limits<float>::denorm_min(),
+        -std::numeric_limits<float>::denorm_min(),
+        std::numeric_limits<float>::min(),
+        -std::numeric_limits<float>::min(),
+        std::nextafterf(std::numeric_limits<float>::min(), 0.0F),
+        std::numeric_limits<float>::max(),
+        std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(),
+    };
+    // The tie ladder, over the range twiddle-scaled coefficients reach.
+    for (int i = 0; i <= 2048; ++i) {
+        v.push_back(static_cast<float>(i) + 0.5F);
+        v.push_back(-(static_cast<float>(i) + 0.5F));
+    }
+    // Seeded, so a failure on a CI leg reproduces exactly. The test below
+    // pairs lane j of a block of eight with lane j of the next four, so both
+    // halves of each pair come from the same run of pushes - which is what
+    // makes the tiny*tiny block below produce denormal products rather than
+    // merely containing small numbers.
+    std::mt19937_64 rng(0x4e4d4c4b'4a494847ULL);
+    std::uniform_real_distribution<float> coefficient(-1.5F, 1.5F);
+    std::uniform_real_distribution<float> tiny(-1.0e-20F, 1.0e-20F);
+    for (int i = 0; i < 10000; ++i) {
+        v.push_back(coefficient(rng));
+        v.push_back(coefficient(rng));
+    }
+    // ~1e-20 squared is ~1e-40, an order of magnitude below FLT_MIN.
+    for (int i = 0; i < 10000; ++i) {
+        v.push_back(tiny(rng));
+        v.push_back(tiny(rng));
+    }
+    return v;
+}
+
 }  // namespace
 
 TEST_CASE("arch seam reports which directory was compiled", "[simd]") {
@@ -209,6 +284,77 @@ TEST_CASE("round_ties_away is exactly std::round", "[simd]") {
         }
     }
     CHECK(mismatches == 0);
+}
+
+TEST_CASE("f32x4 load, store, set and broadcast keep lane order", "[simd]") {
+    const std::array<float, 4> src{-3.25F, 7.5F, 0.125F, -64.0F};
+    std::array<float, 4> dst{};
+    arch::f32x4::load(src.data()).store(dst.data());
+    for (std::size_t lane = 0; lane < 4; ++lane) {
+        CHECK(same_bits(dst[lane], src[lane]));
+    }
+
+    // Lane 0 first, which is the order the seam states and the order
+    // _mm_setr_ps takes but _mm_set_ps does not.
+    const auto quad = arch::f32x4::set(1.5F, -2.5F, 3.5F, -4.5F);
+    CHECK(same_bits(quad.lane0(), 1.5F));
+    CHECK(same_bits(quad.lane1(), -2.5F));
+    CHECK(same_bits(quad.lane2(), 3.5F));
+    CHECK(same_bits(quad.lane3(), -4.5F));
+
+    const auto all = arch::f32x4::broadcast(-0.0F);
+    CHECK(same_bits(all.lane0(), -0.0F));
+    CHECK(same_bits(all.lane1(), -0.0F));
+    CHECK(same_bits(all.lane2(), -0.0F));
+    CHECK(same_bits(all.lane3(), -0.0F));
+}
+
+TEST_CASE("f32x4 arithmetic is lane-wise IEEE-754", "[simd]") {
+    // The f64x2 argument at single precision: every operation is one IEEE-754
+    // add, subtract or multiply per lane, so mdct.cpp's float32 twiddle
+    // stages produce the same floats the scalar loops they replaced produced.
+    // The float32 decode path feeds the same exponent extraction the double
+    // one does, so a last-place difference here is still 6.02 dB downstream.
+    const auto values = adversarial_floats();
+    std::size_t mismatches = 0;
+    std::size_t denormal_products = 0;
+    for (std::size_t i = 0; i + 8 <= values.size(); i += 8) {
+        const auto va =
+            arch::f32x4::set(values[i], values[i + 1], values[i + 2], values[i + 3]);
+        const auto vb =
+            arch::f32x4::set(values[i + 4], values[i + 5], values[i + 6], values[i + 7]);
+        const auto sum = va + vb;
+        const auto diff = va - vb;
+        const auto prod = va * vb;
+        const auto neg = -va;
+        const std::array<float, 4> got_sum{sum.lane0(), sum.lane1(), sum.lane2(), sum.lane3()};
+        const std::array<float, 4> got_diff{diff.lane0(), diff.lane1(), diff.lane2(),
+                                            diff.lane3()};
+        const std::array<float, 4> got_prod{prod.lane0(), prod.lane1(), prod.lane2(),
+                                            prod.lane3()};
+        const std::array<float, 4> got_neg{neg.lane0(), neg.lane1(), neg.lane2(), neg.lane3()};
+        for (std::size_t lane = 0; lane < 4; ++lane) {
+            const float a = values[i + lane];
+            const float b = values[i + 4 + lane];
+            // Skip the pairs whose scalar answer is a NaN, as the f64x2 case
+            // does and for the same reason.
+            if (std::isnan(a + b) || std::isnan(a - b) || std::isnan(a * b)) {
+                continue;
+            }
+            if (std::fpclassify(a * b) == FP_SUBNORMAL) {
+                ++denormal_products;
+            }
+            if (!same_bits(got_sum[lane], a + b) || !same_bits(got_diff[lane], a - b) ||
+                !same_bits(got_prod[lane], a * b) || !same_bits(got_neg[lane], -a)) {
+                ++mismatches;
+            }
+        }
+    }
+    CHECK(mismatches == 0);
+    // A flush-to-zero vector unit is only detectable above if the value set
+    // actually reaches the denormal range, so assert that it did rather than
+    // trusting the constants to stay where they are.
+    CHECK(denormal_products > 0);
 }
 
 TEST_CASE("i32x4 widening, shift and subtract match the scalar form", "[simd]") {

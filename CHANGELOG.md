@@ -12,7 +12,26 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
+### Added
+
+- **An `f32x4` lane type in the SIMD arch seam** (roadmap PF7), alongside the `f64x2` and
+  `i32x4` already there, in all three of
+  `src/forge/src/internal/arch/{generic,x86_64,aarch64}/`. The float32 decode path's IMDCT
+  twiddle stages ran plain scalar loops for want of one; `mdct.cpp`'s four vectorised float32
+  sections now go four lanes at a time under SSE2 and NEON, in the same 128-bit register the
+  double path fits two in. `tests/core/test_simd_kernels.cpp` pins the type against scalar
+  `float` bit-for-bit, including 9,997 products that underflow into the denormal range - the
+  case a flush-to-zero vector unit is the only one to fail, and the reason this type is safe
+  on AArch64 where it would not have been on AArch32.
+
 ### Changed
+
+- **A minimum-footprint build resolves the arch seam** instead of naming `generic/` literally
+  (`src/forge/minimal.cmake`, and the resolution moved above the branch that includes it in
+  `src/forge/CMakeLists.txt`). Both bare-metal targets still land on `generic/` and nothing
+  about those builds changes - an `arm-none-eabi` Cortex-M3 has no vector unit and the
+  ESP32-S3's is fixed-point. What the literal spelling cost was a minimum-footprint decoder
+  built for aarch64, whose float32 decode path NEON holds four lanes of.
 
 - Four places now use the idiom SonarCloud's first scan asked for, because it is better code
   and not only a quieter report. `*opt = v` is defined only while an optional is engaged, so

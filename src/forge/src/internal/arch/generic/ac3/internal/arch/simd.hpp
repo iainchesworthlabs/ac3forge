@@ -101,6 +101,56 @@ struct f64x2 {
     return f64x2{std::round(a.lo), std::round(a.hi)};
 }
 
+// Four IEEE-754 single-precision floats: the float32 decode path's lane type
+// (roadmap PF7). src/internal/profile/minimal/'s decode_scalar_t is `float`
+// and mdct.cpp's IMDCT twiddle stages are templated on it, so on that profile
+// those stages had nothing to vectorise against until this type existed.
+//
+// Four named scalars, for the same reason f64x2 is two: the generic build is
+// the reference the other two directories are measured against, so it should
+// read as the scalar arithmetic a kernel would otherwise write by hand.
+//
+// This type carries no round_ties_away. f64x2 has one because exponents.cpp's
+// to_fixed25_block calls it; nothing on the float32 decode path rounds.
+// Adding one means adding its own tie ladder to
+// tests/core/test_simd_kernels.cpp - the f64x2 ladder pivots on 2^52 and says
+// nothing about a float's 2^23.
+struct f32x4 {
+    float v0{};
+    float v1{};
+    float v2{};
+    float v3{};
+
+    [[nodiscard]] static f32x4 load(const float* p) { return f32x4{p[0], p[1], p[2], p[3]}; }
+    [[nodiscard]] static f32x4 set(float a, float b, float c, float d) {
+        return f32x4{a, b, c, d};
+    }
+    [[nodiscard]] static f32x4 broadcast(float a) { return f32x4{a, a, a, a}; }
+
+    void store(float* p) const {
+        p[0] = v0;
+        p[1] = v1;
+        p[2] = v2;
+        p[3] = v3;
+    }
+
+    [[nodiscard]] float lane0() const { return v0; }
+    [[nodiscard]] float lane1() const { return v1; }
+    [[nodiscard]] float lane2() const { return v2; }
+    [[nodiscard]] float lane3() const { return v3; }
+};
+
+[[nodiscard]] inline f32x4 operator+(f32x4 a, f32x4 b) {
+    return f32x4{a.v0 + b.v0, a.v1 + b.v1, a.v2 + b.v2, a.v3 + b.v3};
+}
+[[nodiscard]] inline f32x4 operator-(f32x4 a, f32x4 b) {
+    return f32x4{a.v0 - b.v0, a.v1 - b.v1, a.v2 - b.v2, a.v3 - b.v3};
+}
+[[nodiscard]] inline f32x4 operator*(f32x4 a, f32x4 b) {
+    return f32x4{a.v0 * b.v0, a.v1 * b.v1, a.v2 * b.v2, a.v3 * b.v3};
+}
+[[nodiscard]] inline f32x4 operator-(f32x4 a) { return f32x4{-a.v0, -a.v1, -a.v2, -a.v3}; }
+
 // Four 32-bit signed integers. Only the operations §7.2.2.2's
 // exponent-to-PSD conversion needs, all of them exact by construction.
 struct i32x4 {
