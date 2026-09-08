@@ -1,13 +1,16 @@
 # Recasting ac3forge as a family: the library, Forge and Crucible
 
-!!! note "Status: plan, written and decided 2026-09-05"
+!!! success "Status as of 2026-09-08: mostly landed"
+    Written and decided 2026-09-05. **Phases 1 to 5 are in.** Phase 6 is partly in — the
+    `ac3forge-crucible-*` packages and the release-doc rows exist, the per-component description
+    strings do not. **Phase 7 has not started**: it is sequenced by the driver signing session,
+    and the driver's INF still declares the endpoint as "Desktop Atmos".
+
     This page plans the recasting of the repository from one name over everything into three
-    named members: **the library**, **Forge** (the `ac3cli` and `ac3gui` tooling) and
-    **Crucible** ([the Crucible guide](../crucible/index.md)). It keeps the shape of
-    [the promotion plan](../crucible/promotion.md): the design sections say what changes and
-    why, each phase carries an exit criterion and says how it is verified, and
-    [Decisions](#decisions) lists what only the owner could decide, with the option taken. All
-    fifteen were decided on 2026-09-05, each as recommended; Phase 1 started the same day.
+    named products: **the library**, **Forge** (the `ac3cli` and `ac3gui` tooling) and
+    **Crucible** ([the Crucible guide](../docs/crucible/index.md)). Design sections say what changes
+    and why, each phase carries an exit criterion and says how it is verified, and
+    [Decisions](#decisions) records the fifteen open questions and the option taken on each.
 
 Today `ac3forge` names everything at once. It is the repository, the site, `project(ac3forge)`
 (`CMakeLists.txt:8`), the CPack package, the PyPI project, the vcpkg port, the Conan recipe, the
@@ -175,7 +178,7 @@ as it is.
    packages ride on the artifact glob rather than on a release gate. The other qualification
    recorded here — that the leg was x86_64 alone, so no release carried an aarch64 Linux Crucible
    package — closed on 2026-09-06, when linux-llvm-arm64 took the same pass and its own pair
-   joined the same artifact glob ([the promotion plan](../crucible/promotion.md), Phase 8,
+   joined the same artifact glob ([the promotion plan](../docs/crucible/promotion.md), Phase 8,
    records what that took and what it asserts). No tag has been cut since, so the route is
    wired and not yet exercised by a published release.
 2. **Two version-string styles in one release.** *Deliberate*, and [decision
@@ -229,7 +232,7 @@ After, seven tabs:
 
 ```yaml
 nav:
-  - Home: index.md                       # the family: three members, one paragraph and one link each
+  - Home: index.md                       # the three products, one paragraph and one link each
   - Getting started:
       - Quick start: quickstart.md
       - Building from source: building.md
@@ -409,8 +412,12 @@ moves, a small check makes that class of drift visible: `tools/checks/check_doc_
 resolves every markdown link target under `docs/`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`
 and `CHANGELOG.md`, and every `docs/...md`, `apps/...`, `src/...`, `tools/...` path literal in
 `.github/workflows/*.yml`, `cmake/*.cmake`, `CMakeLists.txt`, `CMakePresets.json` and
-`tools/**`, against the tree. Inline code inside ROADMAP records is out of its scope on purpose:
-those are history. It joins `ci.yml`'s `script-lint` job.
+`tools/**`, against the tree. It joins `ci.yml`'s `script-lint` job.
+
+It has since been widened twice, on the evidence that the first scope was too narrow: it now
+also reads the paths a documentation page names in its own prose and code spans, and expands
+brace groups rather than skipping them. Plans, phase records and `CHANGELOG.md` are exempt from
+the prose check by name, because they describe proposed or past layouts on purpose.
 
 **Exit:** the check is green on `main` after Phase 1's fixes.
 
@@ -425,7 +432,7 @@ landing page (and `docs/library/capabilities.md` under 8(b)), the seven-tab nav,
 wrapper if wanted, the reworded cross-mentions, the three naming rules on the Library and Forge
 index pages, and the Shield and WASM placements. No file under `docs/` moves and no URL changes.
 
-**Exit:** a reader arriving at the home page, the README or any tab sees three members and can
+**Exit:** a reader arriving at the home page, the README or any tab sees three products and can
 reach each member's guide and its download in one link; the phrase "AC3Forge Forge" appears
 nowhere; `docs/index.md`, `quickstart.md` and `concepts/index.md` each name Crucible at least
 once.
@@ -488,7 +495,7 @@ opening `ROADMAP.md` on GitHub and following each of the DR8 links; a one-off co
     new section points back at them; anything opened after the promotion that belongs to
     `apps/crucible` alone is numbered here instead. It opens with one item, `CR1` — the six
     mechanically translated languages, regenerated and read by someone who speaks each of
-    them, which is the one item of [the promotion plan](../crucible/promotion.md)'s Phase 6
+    them, which is the one item of [the promotion plan](../docs/crucible/promotion.md)'s Phase 6
     still open — so the new Overview row has something to count. The right-to-left half that
     note pairs with it is not open: the window took its `LayoutMirroring` root on 2026-09-05
     and two cases in `tst_shell.qml` hold it, so `CR1` says so and the note is corrected.
@@ -539,7 +546,7 @@ dry run's assets finds both patterns it looks for.
 
 ### Phase 7: the driver, at signing time
 
-Sequenced by [the promotion plan](../crucible/promotion.md#coordination-with-the-driver-signing-session),
+Sequenced by [the promotion plan](../docs/crucible/promotion.md#coordination-with-the-driver-signing-session),
 and by decision 14. In one change after the signing session lands: the four INF strings
 (`Ac3ForgeNullSink.inx:97-102`) and the `.rc` description to Crucible; `null_sink_substring` and
 its tests and fakes; the About licence line; the `windows-driver` artifact name;
@@ -576,7 +583,7 @@ than twice.
 
 **The driver-signing session.** `apps/windows/driver/` is being worked in a separate session.
 Nothing in Phases 1 to 6 touches it, `Ac3ForgeNullSink`, or the "Desktop Atmos" endpoint string;
-Phase 7 is that session's landing plus one coordinated change.
+Phase 7 is that work landing plus one coordinated change.
 
 **Open pull requests.** A tree-wide edit (Phase 1's `AC3DESK_*` fold, Phase 4's strings) lands
 in one short-lived PR with the queue drained, the way UX12's Phase 1 did; check `gh pr list`
@@ -607,7 +614,7 @@ it touches a `.cmake` or a `.qml` it pays for eleven legs.
 
 ## Decisions
 
-Only what the owner had to decide. Each carries the recommendation and the cost of taking it;
+The open questions. Each carries the recommendation and the cost of taking it;
 every one was taken as recommended on 2026-09-05, so the recommendation is the decision.
 
 1. **What Forge covers.** (a) the CLI alone; (b) `ac3cli` + `ac3gui` + `apps/common`; (c) the

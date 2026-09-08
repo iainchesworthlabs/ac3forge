@@ -55,7 +55,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid) {
+    if (!bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
@@ -68,7 +68,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     std::uint16_t device_channels = 0;
     if (device_index >= 0) {
         const auto devices = ac3::audio::enumerate_render_devices();
-        if (!devices) {
+        if (!devices.has_value()) {
             fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
             return kExitUnavailable;
         }
@@ -147,7 +147,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         std::vector<std::size_t> order;
         for (const auto& unit : *units) {
             const auto decoded = decoder->decode_access_unit(unit);
-            if (!decoded) {
+            if (!decoded.has_value()) {
                 fmt::println(stderr, "error: decode failed: {}",
                              ac3::describe(decoded.error()));
                 return kExitInput;
@@ -183,7 +183,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 }
                 const auto started = sink.start(device_id, sample_rate_hz(out.sample_rate),
                                                 static_cast<std::uint16_t>(order.size()));
-                if (!started) {
+                if (!started.has_value()) {
                     fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
                     return kExitUnavailable;
                 }
@@ -194,7 +194,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 // report_decoded_objects) - this path still only plays the
                 // 5.1 bed (this function's own header comment), so it says
                 // so rather than implying object playback is coming.
-                if (out.object_metadata) {
+                if (out.object_metadata.has_value()) {
                     // Guarded by the if above; clang-tidy's
                     // bugprone-unchecked-optional-access doesn't trace the
                     // guard through into a multi-argument fmt::println call,
@@ -229,7 +229,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         std::vector<std::size_t> order;
         for (const auto& frame : *frames) {
             const auto decoded = decoder.decode_frame(frame);
-            if (!decoded) {
+            if (!decoded.has_value()) {
                 fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
                 return kExitInput;
             }
@@ -245,7 +245,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 }
                 const auto started = sink.start(device_id, sample_rate_hz(decoded->sample_rate),
                                                 static_cast<std::uint16_t>(order.size()));
-                if (!started) {
+                if (!started.has_value()) {
                     fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
                     return kExitUnavailable;
                 }
@@ -320,7 +320,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
         return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid) {
+    if (!bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
@@ -335,7 +335,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     std::string device_name = "default endpoint";
     if (device_index >= 0) {
         const auto devices = ac3::audio::enumerate_render_devices();
-        if (!devices) {
+        if (!devices.has_value()) {
             fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
             return kExitUnavailable;
         }
@@ -354,7 +354,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     // project cannot already do with 'monitor', and the roadmap calls for
     // exactly this clean, named refusal rather than a generic failure.
     const auto capability = ac3::audio::probe_spatial_capability(device_id);
-    if (!capability) {
+    if (!capability.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(capability.error()));
         return kExitUnavailable;
     }
@@ -383,7 +383,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
 
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
-        if (!decoded) {
+        if (!decoded.has_value()) {
             fmt::println(stderr, "error: decode failed: {}",
                          ac3::describe(decoded.error()));
             return kExitInput;
@@ -402,7 +402,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
                 sink.start(device_id, sample_rate_hz(out.sample_rate),
                           has_lfe ? kSpeakerLowFrequency : 0U,
                           static_cast<std::uint32_t>(out.object_audio.size()));
-            if (!started_result) {
+            if (!started_result.has_value()) {
                 fmt::println(stderr, "error: {}", ac3::audio::describe(started_result.error()));
                 return kExitUnavailable;
             }
@@ -413,7 +413,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
         }
 
         dynamic_updates.clear();
-        if (out.object_metadata) {
+        if (out.object_metadata.has_value()) {
             const auto positions = ac3::oba::describe_objects(*out.object_metadata);
             for (std::size_t i = 0; i < out.object_audio.size() && i < positions.size(); ++i) {
                 const auto xyz = to_windows_spatial(positions[i].position);
@@ -469,7 +469,7 @@ std::optional<std::vector<ObjectSlot>> resolve_object_slots(
     const std::size_t combined = master_channels + slave_channels;
     std::vector<ObjectSlot> slots;
 
-    if (meta.map_spec) {
+    if (meta.map_spec.has_value()) {
         // The two capture devices are the two sources, concatenated in the
         // order `live` already concatenates their channels - so map=0.N
         // addresses the master and map=1.N the slave, matching what 'devices'
@@ -507,7 +507,7 @@ std::optional<std::vector<ObjectSlot>> resolve_object_slots(
     // assignment needs is refused rather than silently truncated (the GUI
     // refuses the same way - see EncoderController's own "Refused rather than
     // truncated" note), a larger one allocates the extra slots unbound.
-    if (meta.live_objects) {
+    if (meta.live_objects.has_value()) {
         if (slots.size() > *meta.live_objects) {
             fmt::println(stderr,
                          "error: map= assigns {} objects but objects={} allows {} - raise the "
@@ -539,7 +539,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // positions= only means anything once objects exist to drive - a pure
     // input-shape conflict, so it is refused before any device I/O rather
     // than after: the answer does not depend on what hardware is present.
-    if (meta.positions && !atmos) {
+    if (meta.positions.has_value() && !atmos) {
         fmt::println(stderr,
                      "error: positions= drives object placement, which only 'live mode=atmos' "
                      "has");
@@ -547,7 +547,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     }
 
     const auto devices = ac3::audio::enumerate_devices();
-    if (!devices) {
+    if (!devices.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
@@ -617,7 +617,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     std::optional<TakePlan> take;
     if (!atmos) {
         take = resolve_take_plan(meta, bitrate, sr);
-        if (!take) {
+        if (!take.has_value()) {
             return kExitUsage;
         }
     }
@@ -625,7 +625,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
 
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
-    if (!started) {
+    if (!started.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
         return kExitUnavailable;
     }
@@ -647,7 +647,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     const auto status = status_stream();
     if (device2) {
         const auto started2 = capture2.start(device2->id, device2->kind);
-        if (!started2) {
+        if (!started2.has_value()) {
             fmt::println(stderr, "error: {}", ac3::audio::describe(started2.error()));
             return kExitUnavailable;
         }
@@ -671,11 +671,11 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     std::vector<ObjectSlot> slots;
     if (atmos) {
         auto resolved = resolve_object_slots(meta, channels, capture2_channels);
-        if (!resolved) {
+        if (!resolved.has_value()) {
             return kExitUsage;
         }
         slots = std::move(*resolved);
-    } else if (meta.map_spec) {
+    } else if (meta.map_spec.has_value()) {
         fmt::println(stderr,
                      "error: map= binds capture channels to OBJECT slots, which only "
                      "'live mode=atmos' has; a channel session places its channels by "
@@ -696,10 +696,10 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // asked for, discovered only at playback.
     std::unique_ptr<ac3::audio::LivePositionSource> position_source;
     std::optional<ac3::oba::SceneCursor> position_cursor;
-    if (atmos && meta.positions) {
+    if (atmos && meta.positions.has_value()) {
         position_source = std::make_unique<ac3::audio::LivePositionSource>(nobjects);
         const auto bound = position_source->start(meta.positions->bind, meta.positions->port);
-        if (!bound) {
+        if (!bound.has_value()) {
             fmt::println(stderr, "error: positions={}:{}:{} - {}", meta.positions->scheme,
                          meta.positions->bind, meta.positions->port,
                          ac3::audio::describe(bound.error()));
@@ -729,7 +729,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                  .lfe_send = i == 0 ? 0.2 : 0.0});
         }
         auto scene = ac3::oba::ObjectScene::create(std::move(objects));
-        if (!scene) {
+        if (!scene.has_value()) {
             fmt::println(stderr, "error: internal: {}", scene.error().message);
             return kExitUsage;
         }
@@ -743,7 +743,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     std::optional<plan::Routing> routing;
     if (!atmos) {
         routing = plan::route(channel_plan, channels, meta.p.cmixlev, meta.p.surmixlev);
-        if (!routing) {
+        if (!routing.has_value()) {
             fmt::println(stderr, "error: {} capture channels - {}", channels,
                          plan::describe(plan::PlanError::kNoSourceLayout));
             return kExitUsage;
@@ -779,13 +779,13 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     bool monitoring = false;
     if (monitor_device != -2) {
         const auto target = resolve_render_device(monitor_device);
-        if (!target) {
+        if (!target.has_value()) {
             fmt::println(stderr, "warning: monitor device index {} out of range; monitoring off",
                          monitor_device);
         } else {
             const auto mstarted = monitor_sink.start(
                 target->id, rate_hz, static_cast<std::uint16_t>(rendered_channels));
-            if (!mstarted) {
+            if (!mstarted.has_value()) {
                 fmt::println(stderr, "warning: monitor unavailable: {}",
                              ac3::audio::describe(mstarted.error()));
             } else {
@@ -807,7 +807,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     bool downmix_leg = false;
     if (passthrough_device != -2) {
         const auto target = resolve_render_device(passthrough_device);
-        if (!target) {
+        if (!target.has_value()) {
             fmt::println(stderr,
                          "warning: passthrough device index {} out of range; passthrough off",
                          passthrough_device);
@@ -831,7 +831,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                 const auto format = leg_eac3 ? ac3::audio::BitstreamFormat::kEac3
                                              : ac3::audio::BitstreamFormat::kAc3;
                 const auto pstarted = passthrough_sink.start(target->id, rate_hz, format);
-                if (!pstarted) {
+                if (!pstarted.has_value()) {
                     fmt::println(stderr, "warning: passthrough unavailable: {}",
                                  ac3::audio::describe(pstarted.error()));
                 } else {
@@ -1117,7 +1117,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                 }
             }
             const auto unit = atmos_encoder->encode_frame(views, placement);
-            if (!unit) {
+            if (!unit.has_value()) {
                 fmt::println(stderr, "error: cannot encode {} objects at {} kbps",
                              nobjects, bitrate);
                 encode_failed = true;
@@ -1139,7 +1139,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             }
             if (take->eac3) {
                 const auto unit = eac3_encoder->encode_access_unit(coded_views);
-                if (!unit) {
+                if (!unit.has_value()) {
                     fmt::println(stderr, "error: the encoder cannot express this configuration");
                     encode_failed = true;
                     break;
@@ -1147,7 +1147,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                 unit_bytes = unit->bytes;
             } else {
                 auto frame = ac3_encoder->encode_frame(coded_views);
-                if (!frame) {
+                if (!frame.has_value()) {
                     fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
                     encode_failed = true;
                     break;
@@ -1164,7 +1164,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                 // access unit is being held back pending transient
                 // pre-noise processing (decode_access_unit's own doc
                 // comment) - live monitoring just waits for the next one.
-                if (decoded && decoded->has_value()) {
+                if (decoded.has_value() && decoded->has_value()) {
                     const auto order =
                         plan::monitor_order(std::span{(*decoded)->layout.items}.first(
                                                 static_cast<std::size_t>((*decoded)->layout.count)),
@@ -1173,7 +1173,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                 }
             } else {
                 const auto decoded = ac3_monitor_decoder->decode_frame(unit_bytes);
-                if (decoded) {
+                if (decoded.has_value()) {
                     const auto order = ac3::io::wav_channel_order(decoded->acmod, decoded->lfe);
                     to_play = interleave_reordered(decoded->channels, order);
                 }
@@ -1193,7 +1193,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                 // above (unit_bytes) is untouched and still reaches the
                 // meters, the monitor and the file exactly as it always has.
                 const auto leg_frame = downmix_encoder->encode_frame(bed_views);
-                if (leg_frame) {
+                if (leg_frame.has_value()) {
                     if (const auto wrapped = ac3::iec61937::wrap_frame(*leg_frame)) {
                         burst = *wrapped;
                     }
@@ -1208,7 +1208,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                     burst = *wrapped;
                 }
             }
-            if (burst) {
+            if (burst.has_value()) {
                 while (!passthrough_sink.submit(*burst)) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(4));
                 }

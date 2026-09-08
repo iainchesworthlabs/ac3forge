@@ -80,7 +80,7 @@ nav:
       - Quick start: quickstart.md
       - Building from source: building.md
   - Library:
-      - What it is: library/index.md
+      - Overview: library/index.md
       - Capabilities: library/capabilities.md
       - Concepts:
           - Overview: concepts/index.md
@@ -93,7 +93,7 @@ nav:
           - Encoding E-AC-3: library/encoding-eac3.md
           - Decoding: library/decoding.md
           - Spatial & Atmos objects: library/spatial-and-atmos.md
-          - A worked scene — station broadcast: library/station-broadcast.md
+          - Worked example — station broadcast: library/station-broadcast.md
           - Channel plans & routing: library/channel-plans-and-routing.md
           - Metadata: library/metadata.md
           - Muxing & sinks: library/muxing-and-sinks.md
@@ -110,8 +110,7 @@ nav:
           - C API: library/c-api.md
           - Python: library/python-api.md
           - Rust: library/rust-api.md
-          - WebAssembly (npm): platforms/wasm.md
-          - ESP32-S3 (ESP-IDF): platforms/esp32.md
+          - JavaScript / WebAssembly: platforms/wasm.md
       - Validation:
           - How output is checked: verification.md
           - Threat model: threat-model.md
@@ -127,8 +126,7 @@ nav:
           - Decode in the browser: wasm-demo.md
           - Encode in the browser: wasm-encode-demo.md
   - Forge:
-      - What it is: forge/index.md
-      - Delivery QC reports: forge/qc-report.md
+      - Overview: forge/index.md
       - CLI reference:
           - Overview: cli/index.md
           - Commands: cli/commands.md
@@ -148,7 +146,7 @@ nav:
           - Localisation: gui/localisation.md
           - Keyboard & text size: gui/accessibility.md
   - Crucible:
-      - What it is: crucible/index.md
+      - Overview: crucible/index.md
       - Install & first run: crucible/install.md
       - The room: crucible/room.md
       - The signal path: crucible/signal-path.md
@@ -156,23 +154,22 @@ nav:
       - Keyboard & screen readers: crucible/accessibility.md
       - Languages: crucible/localisation.md
       - Troubleshooting: crucible/troubleshooting.md
-      - Promotion plan & record: crucible/promotion.md
-      - The Windows demo, the record: platforms/windows-demo.md
-      - The null-sink driver on ACX: platforms/windows-driver-acx.md
+      - Promotion plan and record: crucible/promotion.md
+      - The Windows demo it grew from: platforms/windows-demo.md
   - Platforms:
-      - platforms/index.md
+      - Which platform: platforms/index.md
       - Windows: platforms/windows.md
       - Linux: platforms/linux.md
       - Raspberry Pi: platforms/raspberry-pi.md
       - macOS: platforms/macos.md
-      - Android, the Shield demo: platforms/android.md
+      - Android (Shield demo): platforms/android.md
+      - WebAssembly (browser): platforms/wasm.md
+      - ESP32-S3 (ESP-IDF): platforms/esp32.md
+      - Bare metal: platforms/bare-metal.md
+      - Windows null-sink driver: platforms/windows-driver-acx.md
   - Project:
       - Contributing: contributing.md
       - Releasing: releasing.md
+      - Self-hosted CI runners: ci-self-hosted-runners.md
       - History: history.md
       - Roadmap: roadmap.md
-      - The family recasting: family/recasting.md
-      - Source, transport, sink: family/topology.md
-      - The playback appliance, a plan: family/player-appliance.md
-      - A host plugin, studied: family/host-plugin.md
-      - Self-hosted CI runners: ci-self-hosted-runners.md

@@ -1,15 +1,19 @@
 # Source, transport, sink: how the encoder and decoder reach people
 
-!!! note "Status: plan, written 2026-09-07. The transport is decided; the rest is not."
+!!! note "Status as of 2026-09-08: one decision taken, nothing built"
+    Written 2026-09-07. The transport question is settled ([decision 1](#decisions)); no code
+    on this page has been written, and the applications it frames — a plugin, a player, a
+    reporter — remain unstarted.
+
     Four plans are in flight, each scoped as an application — a plugin, a player, a reporter,
     an embedded port. This page is the frame they are missing: the roles those applications
     occupy, and the transport between them. The transport question was settled on 2026-09-07
     ([decision 1](#decisions)); everything else here carries a recommendation and a cost.
 
     Shape follows [the recasting plan](recasting.md) and
-    [the promotion plan](../crucible/promotion.md): design sections say what changes and why,
+    [the promotion plan](../docs/crucible/promotion.md): design sections say what changes and why,
     phases carry exit criteria and how each is verified, [Decisions](#decisions) lists what only
-    the owner can settle, and [What cannot be verified](#what-cannot-be-verified-and-why) says
+    remains open, and [What cannot be verified](#what-cannot-be-verified-and-why) says
     where the evidence stops.
 
 An encoder and a decoder are not usable by anyone. They become usable when something wraps them,
@@ -18,7 +22,7 @@ and the repository now has four wrappers planned at once, written independently:
 | In flight | Wraps | State |
 |---|---|---|
 | [Host plugin study](host-plugin.md) | the encoder, in a DAW | Study done. No open plugin format carries object metadata; beds only. The VST 3 SDK is MIT, per Steinberg's licensing FAQ. |
-| [Delivery-QC report](../forge/qc-report.md) | the analysis code | Plan. |
+| [Delivery-QC report](qc-report.md) | the analysis code | Plan. |
 | [The playback appliance](player-appliance.md) | the decoder, in a room | Plan, parked on the question this page answers. |
 | The ESP32-S3 port | the decoder, on a microcontroller | **AC-3 and E-AC-3 both decode on an ESP32-S3**, inside internal SRAM. [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). |
 
@@ -184,13 +188,14 @@ protocol work changes it.
 
 ## What the ESP32-S3 result establishes
 
-Measured in the bare-metal session under `idf.py qemu`, now open as
-[PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). **Updated 2026-09-07: both codecs now decode, and the figures below
-supersede the ones this section carried when it was written.**
+Measured under `idf.py qemu` and landed in
+[PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). The current figures live on
+[the ESP32-S3 page](../docs/platforms/esp32.md); the summary below is what this page's argument rests
+on.
 
 - **AC-3 *and* E-AC-3 5.1 both decode correctly on an ESP32-S3.** Six frames each, all twelve
   channel levels exact against `apps/baremetal/fixture.hpp`. It **fits internal SRAM with no
-  PSRAM**: 134,676 bytes used, 207,084 free, against a 171,558-byte peak heap.
+  PSRAM**: the allocator reports 280,792 bytes free against a 179,064-byte peak heap.
 - **float32 closed it, and closed PF7's float32 gap with it.** A profile-selected
   `decode_scalar_t`, validated at roughly 139 dB against the double decode on four real streams
   and 2.7e-7 at the transform. The memory fix and the speed fix were the same fix, because the
@@ -203,30 +208,22 @@ supersede the ones this section carried when it was written.**
   task's thread-local area out of that task's own stack, and IDF's IPC task has 1 KB, so the app
   died inside `esp_ipc_init()` before `app_main`, having never decoded a frame.
 
-| | `main` | PR #546 |
+| | Before #546 | After #546 |
 |---|---|---|
 | `arm-none-eabi` image | 418,244 | **283,484** (−32%) |
 | `.bss` | 237,592 | **97,152** |
 | Peak heap | 270,886 | **171,558** (−37%) |
 
+Those were the figures #546 itself moved. Fixture coverage added since has taken the peak to
+179,064; [the ESP32-S3 page](../docs/platforms/esp32.md#how-much-memory-there-actually-is) carries the
+current set.
+
 There is now a `build-esp32s3` CI leg (in `espressif/idf:v6.1`, leg 6 of the Linux fan-out) and a
 `docs/platforms/esp32.md`.
 
-!!! warning "This section had a wrong number, from the class this session kept finding"
-    It previously said the `thread_local` fix "shrank the ARM image by 7.7%". That came from an
-    early figure the ESP32 session has since retracted as a **mixed-baseline** measurement — its
-    working tree carried extra `.text` and `.bss` that `main` does not, so the baseline it was
-    compared against was never `main`'s. The real reduction is −32%, and the rule that session
-    drew from it is worth repeating here: run `arm-none-eabi-size -A` on a clean tree before
-    publishing any per-section number.
-
-What that means for this page: **the sink role reaches a microcontroller.** Not as a projection
-— as a decode that ran and matched. That is what makes the network transport worth building,
+What that means for this page: **the sink role reaches a microcontroller**, as a decode that ran
+and matched rather than as a projection. That is what makes the network transport worth building,
 because the population of possible sinks is no longer "a Pi or a PC".
-
-The current PF7 numbers it rests on are being re-measured separately
-([#540](https://github.com/iainchesworthlabs/ac3forge/pull/540)); the published footprint tables
-were stale after AP3's pimpl sweep.
 
 ## Where everything sits
 
@@ -243,7 +240,7 @@ were stale after AP3's pimpl sweep.
 | An ESP32-S3 node | sink | HTTP client, then Sendspin | **both codecs decode, fits internal SRAM** ([#546](https://github.com/iainchesworthlabs/ac3forge/pull/546)); real time unmeasured |
 | The WASM decode page | sink | a file today; could be an HLS client for free | shipped |
 | A DAW **metering** plugin | **neither** — an instrument, not a node | n/a | what [the study](host-plugin.md)'s Part 2 actually plans; no capability blocker |
-| The delivery-QC report | **neither** — an instrument, not a node | n/a | [plan](../forge/qc-report.md); belongs under Forge, and this page is why |
+| The delivery-QC report | **neither** — an instrument, not a node | n/a | [plan](qc-report.md); belongs under Forge, and this page is why |
 
 Three notes on those rows, all from [the plugin study](host-plugin.md).
 
@@ -306,7 +303,7 @@ is a design constraint on work already planned, not new work.
 Land the frame; rewrite [the appliance plan](player-appliance.md) against it (it currently
 answers a whole-house question this page makes obsolete, and predates the ESP32 result and the
 transport decision); add a pointer from [the plugin study](host-plugin.md) and
-[the QC plan](../forge/qc-report.md) naming their role.
+[the QC plan](qc-report.md) naming their role.
 
 **Exit:** each of the four plans states its role in the first screen and links here; no plan
 proposes joining a third-party protocol as a client.
@@ -423,7 +420,7 @@ is the one coordination item on this page with a real chance of landing a wrong 
 - **Making the QC reporter a node.**
 - **Renaming or moving anything.** No identifier, directory or package changes here.
 - **Editing `ROADMAP.md` or `CHANGELOG.md`** — the roadmap entry is proposed as text in each
-  plan, since ID allocation is the owner's.
+  plan, since no roadmap ID is allocated here.
 
 ## Decisions
 

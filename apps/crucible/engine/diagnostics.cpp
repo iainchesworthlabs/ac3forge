@@ -262,7 +262,7 @@ std::string render_report(const ReportFacts& facts, const EngineStatus& engine, 
         if (a.fullscreen) {
             entry += ", full-screen";
         }
-        if (a.slot) {
+        if (a.slot.has_value()) {
             entry += ", slot " + std::to_string(*a.slot) + " " + position_of(a.position) + " width " +
                      std::to_string(a.width) + " size " + fixed(a.size, 2);
             if (a.width == 2) {

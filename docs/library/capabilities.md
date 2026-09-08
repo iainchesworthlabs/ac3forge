@@ -111,7 +111,7 @@ default so the decoders stay usable as a reference: §5.4.2.8 dialnorm normalisa
 −31 dBFS reference, §7.8's Lo/Ro, Lt/Rt and mono downmixes driven by the stream's own
 `cmixlev`/`surmixlev` or `mixmdate` levels, optional LFE mixing, and §7.7's line and RF operating
 modes — RF including the overload protection a fold needs but `compr` (which is computed for the
-*mono* downmix) does not provide. Lt/Rt's surround sum is genuinely phase shifted 90°. Layouts
+*mono* downmix) does not provide. Lt/Rt's surround sum is phase shifted 90°. Layouts
 §7.8 has no fold for, because they predate nothing that could code them, are reduced to the
 nearest acmod layout first rather than having their extra channels dropped. Verified against
 FFmpeg's `-ac 2` decode of the same stream.
@@ -187,7 +187,7 @@ this library does not carry its own Parquet writer for one research-only export 
 | `ac3::audio` | Live input/loopback capture — WASAPI on Windows, ALSA or PipeWire on Linux, CoreAudio on macOS (input only, no loopback) — through a lock-free SPSC ring. |
 | `ac3::audio::PassthroughSink` | Exclusive-mode/direct bitstream output, AC-3 or E-AC-3 — WASAPI on Windows, ALSA or PipeWire on Linux, CoreAudio on macOS, JNI-bridged `AudioTrack` on Android. See the caveats below (Windows, Android and Raspberry Pi hardware-confirmed; the CoreAudio backend is not, and PipeWire's negotiation needs a compressed codec enabled on the target node — see [Linux audio](../building.md#linux-audio)). |
 | `ac3::audio::MonitorSink` | Shared-mode PCM playback — WASAPI, ALSA, PipeWire or CoreAudio: a non-bitstreamed preview/monitor path that decodes what is being encoded and plays it back on an ordinary output. Confirmed against real Windows hardware. |
-| `ac3::audio::LivePositionSource` | A live object-position source over OSC 1.0/UDP (roadmap UX4), draining into `ac3::oba::SceneCursor` once per encode frame — for `ac3cli live mode=atmos positions=osc:<port>` and the GUI live room's "Drive objects from OSC" toggle, replacing the built-in synthetic orbit for whichever objects it drives. Binds loopback (`127.0.0.1`) unless the operator opts into `osc:any:<port>` (CLI) or the "any interface" checkbox (GUI). `osc` is the only implemented `positions=` scheme — the grammar is scheme-prefixed so MIDI and a game controller could land later without a grammar change, but neither exists yet. This project's first network-facing parser; see [Threat model](../threat-model.md#trust-boundary). |
+| `ac3::audio::LivePositionSource` | A live object-position source over OSC 1.0/UDP, draining into `ac3::oba::SceneCursor` once per encode frame — for `ac3cli live mode=atmos positions=osc:<port>` and the GUI live room's "Drive objects from OSC" toggle, replacing the built-in synthetic orbit for whichever objects it drives. Binds loopback (`127.0.0.1`) unless the operator opts into `osc:any:<port>` (CLI) or the "any interface" checkbox (GUI). `osc` is the only implemented `positions=` scheme — the grammar is scheme-prefixed so MIDI and a game controller could land later without a grammar change, but neither exists yet. This project's first network-facing parser; see [Threat model](../threat-model.md#trust-boundary). |
 | `ac3::analysis` | Peak/RMS metering with console ballistics, and the Gerzon energy vector over the BS.775 ring. |
 | `ac3::meta::qc` | Bitstream-aware loudness QC (`ac3cli qc`): decodes a stream, measures it with the real BS.1770-4/EBU Tech 3342 meter, and compares against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate — EBU R 128 s2, ATSC A/85, or Netflix's Sound Mix Specifications, each preset's target/tolerance/true-peak ceiling cited from its own primary source. |
 
@@ -214,11 +214,14 @@ load-bearing enough to flag up front:
     machine: a Raspberry Pi 4B driving an Atmos-capable AVR over HDMI, everything from plain AC-3
     through signed Atmos/JOC locking correctly (see
     [Raspberry Pi](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver), which is
-    also where the vc4-hdmi device-classifier bug that run found is written up). No other Linux
-    machine, sound card or receiver has been tried, and the **PipeWire** backend has not reached a
-    receiver at all — its passthrough negotiation is real but needs a compressed codec enabled on
-    the target node by the session manager first. Treat the Pi result as one confirmed
-    configuration, not as ALSA-on-Linux generally.
+    also where the vc4-hdmi device-classifier bug that run found is written up). The **PipeWire**
+    backend reached the same receiver on 2026-09-05, on the same Pi: a pre-encoded 5.1 fixture
+    that the receiver's front panel read as "5.1 DD+", and Crucible's own live engine with a
+    placed object, read as "Atmos/DD+" at 7.1 — see
+    [the promotion record](../crucible/promotion.md). PipeWire needs a compressed codec enabled
+    on the target node by the session manager first, which WirePlumber filled there from the
+    receiver's EDID. No other Linux machine, sound card or receiver has been tried: treat this as
+    two confirmed configurations on one box, not as Linux generally.
 
 Enhanced coupling and transient pre-noise processing have no external decode oracle at all —
 not even the FFmpeg-can't-but-the-in-repo-decoder-can situation 7.1.4 is in, since FFmpeg's own

@@ -14,7 +14,7 @@ anywhere in the path — the same "distinct surface, reachable from the header" 
 regardless of what (if anything) is loaded in the main workbench.
 
 **Choose file…** opens a standard file picker with three filters — `*.ac3`/`*.ec3`, **Containers**
-(`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`, roadmap IO2) and **All files**. The filters are a
+(`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`) and **All files**. The filters are a
 convenience for the picker only: `ObjectDecodeController` sniffs the actual bytes rather than
 trusting the extension, so a container works whatever the name says.
 Picking one starts the decode immediately, off the window's own event loop so the dialog stays

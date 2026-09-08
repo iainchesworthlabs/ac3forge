@@ -1,12 +1,23 @@
 # Android (NVIDIA Shield)
 
-Android support is not `ac3cli`/`ac3gui` ported to a phone — it is a separate, small,
-Shield-specific demo app, **Shield Atmos Demo** (`apps/android/`), that plays a real Atmos/JOC
-stream out through the Shield's HDMI passthrough output to an AV receiver, with a controller or
-remote moving one of a few objects around the room live. It exists to prove the encoder's object
-audio audibly moves in 3D space on real consumer hardware, not to be a general-purpose encoding
-tool. This page covers what is specific to Android; for the core library and the desktop
+Android support is a separate, small, Shield-specific demo app, **Shield Atmos Demo**
+(`apps/android/`), that plays an Atmos/JOC stream out through the Shield's HDMI passthrough
+output to an AV receiver, with a controller or remote moving one of a few objects around the
+room live. Neither `ac3cli` nor `ac3gui` is ported to Android. The app exists to show the
+encoder's object audio moving in 3D space on consumer hardware, and is not a general-purpose
+encoding tool. This page covers what is specific to Android; for the core library and the desktop
 platforms, see [Building from source](../building.md) and the other pages in this section.
+
+## Status
+
+| | |
+|---|---|
+| What runs here | Shield Atmos Demo only. Neither `ac3cli` nor `ac3gui` is ported |
+| Live Atmos out HDMI passthrough | Confirmed on real 2017 Shield hardware, into an AV receiver |
+| Object motion from the controller | Confirmed moving; nobody has listened to check a flyover arrives overhead |
+| Capture | None. The app plays; it records nothing |
+| Distribution | Personal sideload via `adb install`, **never the Play Store** |
+| CI | A required build leg; the hardware behaviour is not reproducible in CI |
 
 Distribution is **personal sideload only, via `adb install` — never the Play Store**. That is a
 deliberate choice, not a placeholder: the app can be built with [object signing](#object-signing)
@@ -103,7 +114,7 @@ explicitly so it is not rediscovered:
     is a *decode/encode* pipeline API, with no mode for "inject an already-encoded bitstream
     verbatim onto passthrough output."
 
-So the backend is genuinely split, unlike the other three:
+So the backend is split, unlike the other three:
 
 - **`monitor.cpp`** — real AAudio (`AAudioStreamBuilder`, PCM float), for local preview. This is
   exactly what AAudio is good at, and the only place in this backend that uses it.
@@ -121,12 +132,12 @@ So the backend is genuinely split, unlike the other three:
   (`AudioTrack.isDirectPlaybackSupported`/`isPcmSupported`, called separately per format since
   AC-3 and E-AC-3 need different carrier rates — see `carrier_rate()` in `android_support.hpp`),
   not from a static claim.
-- **`sink_capabilities.cpp`** (roadmap UX9) — reports `kNoBackend`. `AudioTrack`'s own
+- **`sink_capabilities.cpp`** — reports `kNoBackend`. `AudioTrack`'s own
   `isDirectPlaybackSupported`/`isPcmSupported` above already answer the "does this sink accept
   this format" question this app needs, and there is exactly one addressable output route on
   this hardware (`android_support.hpp`'s `make_render_device_info()`), so a second, lower-level
   path to the sink's raw EDID would not add anything the existing probe does not already give —
-  see [Linux](linux.md#reading-a-sinks-own-edideld-roadmap-ux9) for where that read is real.
+  see [Linux](linux.md#reading-a-sinks-own-edideld) for where that read is real.
 
 ### Partial `AudioTrack` writes are resumed from, not restarted
 
@@ -332,7 +343,7 @@ own phone with no pairing and no explaining.
     bounded request line, one page held as a constant, no filesystem access,
     every incoming number clamped to [-1, 1] before it reaches the native
     side, and a 404 for everything else. **There is no authentication** —
-    anyone who can reach the port can move the object. That is the honest
+    anyone who can reach the port can move the object. That is the
     trade for a sideloaded personal demo on a home network, and it is exactly
     why it does not start by itself.
 
@@ -343,7 +354,7 @@ post-signing, post-strip, the bytes going out of HDMI — and reports what a dec
 The lower part of the elevation card becomes the lead object's height over the last few seconds:
 the intended line, and the line a decoder read back off the wire.
 
-**What it is honestly good for, and what it is not.** This is the part worth reading before
+**What it is good for, and what it is not.** This is the part worth reading before
 believing anything the panel says.
 
 - **It is not a measurement of reconstruction quality, and deliberately computes none.** Both ends
@@ -359,7 +370,7 @@ believing anything the panel says.
   line the decoded height is a visible staircase. That is a fact about the format, not a claim about
   this encoder, and it is the one thing on the dashboard that shows the wire format's own resolution
   rather than the demo's intent.
-- **What is genuinely falsifiable:** that the container survives on the wire at all, and that
+- **What is falsifiable:** that the container survives on the wire at all, and that
   [OBJECTS OFF](#objects-off-taking-the-object-layer-away-live) really removes it. A decoder reading
   the post-strip bytes and reporting zero objects is independent of the byte counter that claims the
   removal. Frames with no object layer are drawn as a **gap** with a baseline marker, never as zero
@@ -515,7 +526,7 @@ three separately-tuned screens):
   Deliberately square, not a wide rectangle: the isometric projection's own natural bounding box is
   close to square, so a wider container mostly added dead margin rather than more visible content.
   Its header also carries a live encode-stats readout (`bursts N/N | encode X.Xms/32ms | Atmos
-  (signed)`, underruns only appended when actually nonzero) — real-time viability was a genuine,
+  (signed)`, underruns only appended when actually nonzero) — real-time viability was a
   previously-hit problem on this SoC (see
   [Real-time performance](#real-time-performance-relwithdebinfo-and-a-real-mdct-bug-it-uncovered)
   above), so showing the live number is worth more here than in most encode loops.
@@ -529,7 +540,7 @@ three separately-tuned screens):
   sync by comment on both ends, not queried over JNI, since it's fixed at compile time on both). Each
   panel's own plotted room stays a true square, centred inside whatever rectangle its card actually
   is — both axes share the same normalized `[0,1]` scale, so a non-square plot would stretch one
-  axis relative to the other and turn the (genuinely circular) guide into a misleading ellipse.
+  axis relative to the other and turn the (circular) guide into a misleading ellipse.
 - **The soundfield arrow** (top-down panel, drawn from the listener marker) —
   `ac3::analysis::energy_vector()` over the metered bed, a tapered triangle whose length and opacity
   track the vector's magnitude. The room panels plot where the demo *asked* the object to go; this
@@ -756,7 +767,7 @@ every other required leg.
     corrupting a large fraction of signed frames) and the real receiver powered on and HDMI-linked,
     the receiver's own front-panel display read **Atmos/DD+, 48kHz in, 5.0.4 out**, and the object's
     motion was audible. This resolves what had been an open question in
-    [Two honest limitations](../concepts/atmos-joc.md#two-honest-limitations) for this specific
+    [Two limitations](../concepts/atmos-joc.md#two-limitations) for this specific
     encoder/signer pair, though the general caveat there still applies to any *other* clean-room
     encoder without a matching signing key.
 
@@ -781,7 +792,7 @@ every other required leg.
     covered by the key-free assertion in [Release / CI](#release-ci) instead. `build-android` has itself now run
     green three consecutive times on GitHub's hosted runners — see [Release / CI](#release-ci) above.
 
-!!! note "Automated in CI (roadmap VX18b)"
+!!! note "Automated in CI"
     `apps/android/app/src/androidTest/` adds `NativeBridgeInstrumentedTest` and
     `PassthroughBridgeInstrumentedTest`, which `build-android` runs on every build via
     `./gradlew :app:connectedDebugAndroidTest` against a GitHub-hosted API-30 x86_64 emulator

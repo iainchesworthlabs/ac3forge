@@ -12,11 +12,21 @@
 # copies of a source list drift, and the drift is silent until a link error on
 # a target nobody builds locally.
 #
-# NOTE ON PLACEMENT. This lives inside the probe app for now. The eventual
-# publishable component (an integrator running `idf.py add-dependency`, or the
-# ESPHome external component calling add_idf_component()) wants it somewhere
-# reusable instead - see docs/platforms/esp32.md. Moving it is a relocation,
-# not a rewrite: nothing below depends on where it sits except AC3FORGE_ROOT.
+# PLACEMENT. Top level, beside python/, rust/ and js/ - the repo's existing
+# convention of one directory per binding, and an ESP-IDF component is one.
+# It used to live inside apps/baremetal/platform/esp32s3/, which made it the
+# probe's private business; an integrator running `idf.py add-dependency`, or an
+# ESPHome external component calling add_idf_component(), needs it somewhere it
+# can be pointed at without dragging a test application along.
+#
+# Consumers add the DIRECTORY ABOVE this one to EXTRA_COMPONENT_DIRS - IDF wants
+# the directory that CONTAINS components, not the component itself:
+#
+#     set(EXTRA_COMPONENT_DIRS "/path/to/ac3forge/esp-idf")
+#
+# The probe application under apps/baremetal/platform/esp32s3/ is now just
+# another consumer of this, which is the point: if it stops working the way an
+# integrator's project would, its own build says so.
 # ---------------------------------------------------------------------------
 
 # Registered with no sources and no include directories of its own: both come
@@ -27,20 +37,46 @@
 # PUBLIC, which CMake refuses on an interface target.
 idf_component_register()
 
-# apps/baremetal/platform/esp32s3/components/ac3forge -> repo root is six up:
-# ac3forge -> components -> esp32s3 -> platform -> baremetal -> apps -> root.
-get_filename_component(AC3FORGE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../.." ABSOLUTE)
+# esp-idf/ac3forge -> repo root is two up: ac3forge -> esp-idf -> root.
+get_filename_component(AC3FORGE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 
-# Pre-seed the root's option()s before pulling it in: option() only sets a
-# cache variable if one is not already present, so FORCE-ing these first means
-# the root CMakeLists.txt's own option(...) calls see these values already set
-# and leave them alone.
+# WHICH DIRECTION. Decode by default - that is what a player wants, and what
+# most of this port has been about; AC3FORGE_ESP_PROFILE=encoder builds the
+# other half. Never both: the root refuses the combination, for the measured
+# reason that no two of decode / AC-3 encode / E-AC-3 encode fit in this part's
+# internal SRAM at once (233,546 / 201,770 / 243,770 bytes of peak against
+# 277,400 free).
+#
+# A consuming project sets it before the component is scanned, in its top-level
+# CMakeLists.txt above the include of project.cmake:
+#
+#     set(AC3FORGE_ESP_PROFILE encoder)
+#
+# It is a STRING rather than the two booleans it expands to so that the illegal
+# state - both on, or both off - cannot be spelled at all from outside.
+set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
+    "Which half of the minimum-footprint profile to build: decoder or encoder")
+set_property(CACHE AC3FORGE_ESP_PROFILE PROPERTY STRINGS decoder encoder)
+if(AC3FORGE_ESP_PROFILE STREQUAL "encoder")
+    set(AC3FORGE_MINIMAL_ENCODER ON CACHE BOOL "" FORCE)
+    set(AC3FORGE_MINIMAL_DECODER OFF CACHE BOOL "" FORCE)
+elseif(AC3FORGE_ESP_PROFILE STREQUAL "decoder")
+    set(AC3FORGE_MINIMAL_DECODER ON CACHE BOOL "" FORCE)
+    set(AC3FORGE_MINIMAL_ENCODER OFF CACHE BOOL "" FORCE)
+else()
+    message(FATAL_ERROR
+        "AC3FORGE_ESP_PROFILE is 'decoder' or 'encoder' (got '${AC3FORGE_ESP_PROFILE}')")
+endif()
+
+# Everything else the profile excludes. Pre-seeded before the root is pulled in:
+# option() only sets a cache variable if one is not already present, so FORCEing
+# these first means the root CMakeLists.txt's own option(...) calls see the
+# values already set and leave them alone.
 #
 # This is the same fourteen the root's own guard (CMakeLists.txt:230) refuses
-# the profile alongside, plus the profile switch itself. They are spelled out
-# rather than looped because the guard names them individually too, and a
-# mismatch between the two lists should be visible in a diff.
-set(AC3FORGE_MINIMAL_DECODER ON CACHE BOOL "" FORCE)
+# the profile alongside. They are spelled out rather than looped because the
+# guard names them individually too, and a mismatch between the two lists should
+# be visible in a diff.
 set(AC3FORGE_BUILD_CLI OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_GUI OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_TESTS OFF CACHE BOOL "" FORCE)

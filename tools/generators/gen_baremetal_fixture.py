@@ -110,6 +110,20 @@ LAYOUTS = {
         wav_position=(0, 1),
         coded_order="Table 5.8 acmod 2: L, R",
     ),
+    # One channel, so the permutation is the one-element identity.
+    #
+    # The SOURCE is the stereo file: there is no mono programme under
+    # tests/golden/audio/ and adding one would be a third reference file to keep
+    # in step for a single channel. ac3cli's encode folds a stereo source down
+    # to 1/0 itself (plan.cpp's mono_downmix), which is also the more honest
+    # fixture - a mono stream that real material was folded into, rather than
+    # one channel of something that was never anything else.
+    "mono": Layout(
+        cli_name="mono",
+        source="reference_stereo.wav",
+        wav_position=(0,),
+        coded_order="Table 5.8 acmod 1: C",
+    ),
 }
 
 
@@ -128,6 +142,34 @@ STREAMS = (
         label="AC-3 5.1 448 kbit/s, coupling",
         layout="51",
         encode=("encode", "448", "51", "couple"),
+    ),
+    # AC-3 2/0. §7.5.4 rematrixing exists in this layout and no other, and it is
+    # a DIFFERENT code path from the E-AC-3 fixture's - Annex E carries its own
+    # rematrixing syntax - so the eac3_stereo row below does not cover it.
+    #
+    # No tools argument, so no coupling: the 448 kbit/s row above passes
+    # `couple` and was the only AC-3 fixture, which left the uncoupled path
+    # linked into every build of this profile and executed by none of them. The
+    # same gap enhanced coupling had.
+    Stream(
+        cxx="Ac3Stereo",
+        key="ac3_stereo",
+        label="AC-3 2/0 192 kbit/s, no coupling (§7.5.4 rematrixing)",
+        layout="stereo",
+        encode=("encode", "192", "stereo"),
+    ),
+    # AC-3 1/0. The narrowest programme the syntax has: one full-bandwidth
+    # channel, no LFE, no coupling possible (§7.4 needs two channels to share a
+    # band between), and no downmix to apply. Everything the decoder does per
+    # channel it does exactly once here, which is what makes it worth a row -
+    # the per-channel loops are all bounded by a count that is 6 in every other
+    # AC-3 fixture, and 1 is the value that catches an off-by-one they cannot.
+    Stream(
+        cxx="Ac3Mono",
+        key="ac3_mono",
+        label="AC-3 1/0 128 kbit/s, single channel",
+        layout="mono",
+        encode=("encode", "128", "mono"),
     ),
     Stream(
         cxx="Eac3",

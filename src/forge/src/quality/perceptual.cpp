@@ -14,6 +14,12 @@
 #include "ac3/internal/profiling.hpp"
 #include "ac3/quality/distortion.hpp"  // kBands, BandNoise
 
+// std::min<int> rather than bare std::min throughout this file: the band
+// tables are std::int32_t, which is 'long int' on arm-none-eabi and 'int' on
+// the hosted targets this code had only ever been compiled for, and bare
+// std::min cannot deduce one type from the two. See
+// src/encoder/bandwidth.cpp for where a bare-metal build of the encoder first
+// hit it.
 namespace ac3::quality {
 
 namespace {
@@ -261,7 +267,8 @@ void PerceptualModel::analyse(int channel, std::span<const double> coefficients,
 
     for (int band = 0; band < kBands; ++band) {
         const int start = tables::kBandStart[static_cast<std::size_t>(band)];
-        const int stop = std::min(start + tables::kBandSize[static_cast<std::size_t>(band)], end);
+        const int stop =
+            std::min<int>(start + tables::kBandSize[static_cast<std::size_t>(band)], end);
         if (start >= stop) {
             continue;
         }

@@ -146,7 +146,7 @@ for.
 
 Two criteria, because they are different questions rather than two points on one scale:
 
-- **`kDistortion`** minimises the reconstruction noise power. Honest and cheap, and still a
+- **`kDistortion`** minimises the reconstruction noise power. Cheap, and still a
   waveform criterion — it prices a decibel in a band nobody can hear the same as a decibel in one
   they can.
 - **`kPerceptual`** minimises the noise-to-mask ratio against the tonality/masking model, which
@@ -183,7 +183,7 @@ cycle as this table, and re-measuring against it is a follow-up, not done here:
 | film (stereo) | 192 kbit/s | `kPerceptual` | −2.18 dB | +0.46 (worse) | −0.06 |
 | film (stereo) | 448 kbit/s | `kPerceptual` | −1.30 dB | flat | flat |
 
-`kDistortion` is a genuine, repeatable win at 448 kbit/s and above on every material and metric
+`kDistortion` is a repeatable win at 448 kbit/s and above on every material and metric
 measured - the "structural unlock" this search exists to deliver. At the tighter 192 kbit/s budget
 its own criterion still improves (that is what it optimises: `kDistortion`'s score is the MEAN of
 each stream's own noise-to-signal ratio, not one ratio of power pooled across streams - a pooled
@@ -201,8 +201,8 @@ with evidence to turn on, and only where the material and rate resemble what was
 5.1 is not in the table above: the mirror self-check proves the search's mechanism correct at
 `Acmod::k3_2` + LFE (same candidates, same settlement, same re-settle-on-mismatch path
 `tests/quality/test_search.cpp` exercises for stereo), but external-metric validation on real 5.1
-material hit a measurement-harness alignment problem this session ran out of time to resolve, not
-an encoder defect. Left for a follow-up.
+material hit an alignment problem in the measurement harness rather than an encoder defect.
+That is left for a follow-up.
 
 See `docs/library/quality.md` for
 the model and the reproduction commands.
@@ -212,7 +212,7 @@ cost or save a byte. E-AC-3 has the same search, through `eac3::FrameConfig::sea
 `bamode = 1` — which this encoder writes — states the allocation parameters in the frame's own
 `baie` element, so the codes are per-frame there too. Its second axis is not free the way AC-3's
 is: `baie` carries no `fgaincod` at all, so a non-default fast gain has to open the per-block
-`fgaincode` element (roadmap EQ7/EQ13), which is why the candidates are scored after a refit
+`fgaincode` element, which is why the candidates are scored after a refit
 against their own side-info cost. See [Encoding E-AC-3](encoding-eac3.md).
 
 ### Dither substitution

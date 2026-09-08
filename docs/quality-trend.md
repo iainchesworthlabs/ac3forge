@@ -240,7 +240,7 @@ that question — see [Landscape](landscape.md) and
   //
   // Records written before per-channel floors carry no thresholds_db. They
   // render "-" rather than a computed-from-a-scalar number: the old rows were
-  // genuinely gated on one floor for all channels, and inventing a per-channel
+  // gated on one floor for all channels, and inventing a per-channel
   // margin for them would make history look like it had a gate it did not.
   function hasPerChannelFloors(r) {
     return Array.isArray(r.thresholds_db) && r.thresholds_db.length === r.channels_db.length;
@@ -663,7 +663,7 @@ than a front channel does above its much higher one. Hovering shows every
 channel's margin.
 
 Rows written before per-channel floors show `—` here rather than a number.
-They were genuinely gated on one floor shared by all six channels, and
+They were gated on one floor shared by all six channels, and
 back-computing a per-channel margin for them would make the history look like
 it carried a gate it did not have. The `worst channel` column is directly
 comparable across that boundary; this one is not, by construction.

@@ -55,7 +55,7 @@ written in C++.
   (`out_bed51.ec3`). The 5.1 mix is identical; the second file exists for
   decoders that validate `emdf_protection` and refuse the whole stream
   rather than fall back — see the
-  [two honest limitations](../concepts/atmos-joc.md#two-honest-limitations).
+  [two limitations](../concepts/atmos-joc.md#two-limitations).
 - **The bed as a deliverable.** `encoder.bed()` — the thing a legacy decoder
   hears — is captured per frame and written as `out_bed.wav`, plus an Lo/Ro
   fold-down `out_stereo.wav` for headphones.
