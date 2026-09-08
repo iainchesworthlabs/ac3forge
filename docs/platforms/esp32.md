@@ -16,10 +16,10 @@ real time?" is a question worth asking rather than a foregone no.
 |---|---|
 | AC-3 5.1 decode | **Correct.** Six frames, all six channel levels exact against `apps/baremetal/fixture.hpp` |
 | E-AC-3 5.1 decode | **Correct.** Same, including AHT and spectral extension |
-| E-AC-3 §E3.5 enhanced coupling | **Has a fixture** (`cpl+ecpl` — `tools=all` does not select it). Costs 126 allocations/frame against 86, and its scratch is the retained 32 KB below |
-| E-AC-3 2/0, §7.5.4 rematrixing | **Has a fixture.** A layout no 5.1 stream reaches whatever its tools are |
+| E-AC-3 §E3.5 enhanced coupling | **Correct.** Its own fixture, since `tools=all` does not select it; costs 126 allocations/frame against 86 |
+| E-AC-3 2/0, §7.5.4 rematrixing | **Correct.** A layout no 5.1 stream reaches whatever its tools are |
 | JOC / Atmos objects | **Does not fit.** Decodes correctly; see [Objects](#objects-do-not-fit-in-internal-sram) |
-| Fits internal SRAM | **Yes**, no PSRAM: 202,860 bytes free against a peak of 179,064 (`arm-none-eabi`; was 171,558 before the two fixtures above, and this leg's own peak is whatever `build-esp32s3` reports) |
+| Fits internal SRAM | **Yes**, no PSRAM: 207,084 bytes free against a 179,064-byte peak |
 | Retained after teardown | 34,232 bytes of `thread_local` enhanced-coupling scratch, held for the life of the decoding task — see [Building](../building.md#gaps) |
 | Real time | **Not yet measured.** See [Timing](#timing-and-why-qemus-numbers-are-not-it) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
@@ -145,7 +145,13 @@ single-precision, so `double` is still soft-float there too.
   driven by a measurement from real silicon, not by the assumption that it is.
 - **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works
   but keeps both transform instantiations compiled.
-- **Audio output.** The probe decodes a baked-in fixture. Nothing reaches I2S.
+- **Audio output.** The probe decodes baked-in fixtures. Nothing reaches I2S.
+
+Adding fixtures does not move the internal-SRAM figure. The enhanced-coupling and 2/0 streams
+added 13,824 bytes and DIRAM stayed at 134,676: `fixture.hpp` is `constexpr` data, and on this
+part it lands in **Flash Data** (112,524 bytes) rather than DIRAM. The `arm-none-eabi` image
+ceiling is the one fixture size spends against; here it costs flash, of which the app partition
+has 66% free.
 
 ## Objects do not fit in internal SRAM
 

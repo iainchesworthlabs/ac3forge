@@ -51,12 +51,11 @@ fi
 : "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=140}"
 # Bytes still live when the probe finishes, after every decoder it made has been
 # destroyed: the library's process-lifetime scratch, which nothing releases
-# while the task that decoded is still running. The arm-none-eabi leg measures
-# 34,232 and this leg has not been measured (no qemu-system-xtensa or ESP-IDF on
-# the machine the fixtures were added on), so this ceiling is that number with
-# headroom rather than one derived from this target. It matters more here than
-# there: these are bytes of the 341,760 internal SRAM that the decode holds for
-# as long as the task lives.
+# while the task that decoded is still running. Measured 34,232 here, the same
+# number the arm-none-eabi leg reports - the allocations are the two thread_local
+# scratch buffers in eac3_tools.cpp, so neither target's toolchain changes them.
+# It matters more here than there: these are bytes of the 341,760 internal SRAM
+# that the decode holds for as long as the task lives.
 : "${AC3FORGE_ESP32S3_MAX_RETAINED_BYTES:=40000}"
 
 OUTPUT="$(mktemp)"

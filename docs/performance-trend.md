@@ -805,9 +805,13 @@ channel through three 512-point inverse transforms and a DFT per block and carri
 geometry against standard coupling's 18, so it allocates more per block for a reason that is in
 the tool. Holding it to the general ceiling would have meant either not covering §E3.5 or
 raising the bound on three fixtures that sit at 43–86. Its own ceiling is 140, the same ~11%
-margin the general 100 leaves over its worst fixture — enough to absorb the couple of
-allocations that `std::vector` growth differs by between the two legs' libstdc++ versions, and
-not enough to hide a regression.
+margin the general 100 leaves over its worst fixture.
+
+Both bare-metal legs report all four of these counts identically, on different libstdc++ versions
+(GCC 14.2 for `arm-none-eabi`, 15.2 for Xtensa under ESP-IDF 6.1), as they do the peak and the
+retained bytes. The counts come from the decoders' own per-block geometry rather than from
+anything the standard library is free to vary, so a divergence between the legs would itself be
+news.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
 made has been destroyed — so not per-frame growth and not a leak. All 34,232 of it is

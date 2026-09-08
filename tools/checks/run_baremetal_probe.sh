@@ -71,11 +71,12 @@ fi
 # global ceiling would have done here.
 #
 # 140 against a measured 126 is the same ~11% margin the general ceiling leaves
-# over its own worst fixture. The margin is not slack for growth: allocation
-# counts come from std::vector growth inside the decoders, and the two
-# bare-metal legs run different libstdc++ versions (GCC 14.2 for arm-none-eabi
-# here, 15.2 for Xtensa under IDF 6.1), so a couple of allocations of
-# cross-toolchain difference is expected and should not read as a regression.
+# over its own worst fixture, and for the same reason: a deliberate change should
+# be noticed here, not blocked. It is not slack for cross-toolchain drift. Both
+# bare-metal legs were measured and report 126 exactly, on different libstdc++
+# versions (GCC 14.2 for arm-none-eabi, 15.2 for Xtensa under IDF 6.1) - these
+# counts come from the decoders' own per-block geometry, not from anything the
+# standard library is free to vary.
 : "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=140}"
 # Bytes still live when the probe finishes, after every decoder it made has
 # been destroyed. Not a leak and not per-frame growth: it is process-lifetime
