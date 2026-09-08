@@ -144,7 +144,7 @@ RESULTS_JSON_DIR="${RESULTS_JSON_DIR:-}"
 TRANSFORM_MODE="${TRANSFORM_MODE:-}"
 CLI_MODE_ARGS=()
 LABEL_SUFFIX=""
-if [ -n "$TRANSFORM_MODE" ]; then
+if [[ -n "$TRANSFORM_MODE" ]]; then
     CLI_MODE_ARGS=("mode=$TRANSFORM_MODE")
     LABEL_SUFFIX="_$TRANSFORM_MODE"
 fi
@@ -163,7 +163,7 @@ fi
 # says the two builds AGREE - agreement is not correctness, and this is the
 # half that checks the other thing.
 EXTRA_LABEL_SUFFIX="${EXTRA_LABEL_SUFFIX:-}"
-if [ -n "$EXTRA_LABEL_SUFFIX" ]; then
+if [[ -n "$EXTRA_LABEL_SUFFIX" ]]; then
     LABEL_SUFFIX="${LABEL_SUFFIX}${EXTRA_LABEL_SUFFIX}"
 fi
 
@@ -173,7 +173,7 @@ fi
 # array is an unbound-variable error - see compare_and_gate's own note, which
 # explains why the same guard is NOT needed on its argument array.
 run_cli() {
-    if [ ${#CLI_MODE_ARGS[@]} -eq 0 ]; then
+    if [[ ${#CLI_MODE_ARGS[@]} -eq 0 ]]; then
         "$CLI" "$@"
     else
         "$CLI" "$@" "${CLI_MODE_ARGS[@]}"
@@ -187,7 +187,7 @@ for candidate in python3 python; do
         break
     fi
 done
-if [ -z "$PYTHON" ]; then
+if [[ -z "$PYTHON" ]]; then
     echo "::error::no python3/python on PATH" >&2
     exit 1
 fi
@@ -195,7 +195,7 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "::error::ffmpeg not on PATH" >&2
     exit 1
 fi
-if [ ! -f "$GOLD_WAV" ]; then
+if [[ ! -f "$GOLD_WAV" ]]; then
     echo "::error::gold reference WAV missing: $GOLD_WAV" >&2
     exit 1
 fi
@@ -212,7 +212,7 @@ ffmpeg_strict_decode() {
     local stderr_out
     stderr_out="$(ffmpeg -y -v error -err_detect crccheck+bitstream+buffer+explode \
         -drc_scale 0 -i "$in" -f wav "$out" 2>&1 >/dev/null)"
-    if [ -n "$stderr_out" ]; then
+    if [[ -n "$stderr_out" ]]; then
         echo "::error::ffmpeg strict decode of $in reported errors:" >&2
         echo "$stderr_out" >&2
         exit 1
@@ -234,12 +234,12 @@ compare_and_gate() {
     local min_snr_db="$6" per_channel="$7"
     local compare_args=()
 
-    if [ -n "$per_channel" ]; then
+    if [[ -n "$per_channel" ]]; then
         compare_args+=(--min-snr-db-per-channel "$per_channel")
     else
         compare_args+=(--min-snr-db "$min_snr_db")
     fi
-    if [ -n "$RESULTS_JSON_DIR" ]; then
+    if [[ -n "$RESULTS_JSON_DIR" ]]; then
         mkdir -p "$RESULTS_JSON_DIR"
         compare_args+=(--json-out "$RESULTS_JSON_DIR/${label}.json"
                        --codec-label "$codec" --bitrate-kbps "$bitrate_kbps")
@@ -275,7 +275,7 @@ check_one() {
     run_cli decode "$encoded" "$our_wav" >/dev/null
 
     count=$((count + 1))
-    if [ -n "$per_channel" ]; then
+    if [[ -n "$per_channel" ]]; then
         echo "[$count] $label: SNR vs. FFmpeg's decode (L4-lite, per channel >= ${per_channel})"
     else
         echo "[$count] $label: SNR vs. FFmpeg's decode (L4-lite, >= ${min_snr_db} dB)"
@@ -307,7 +307,7 @@ check_against_source() {
     run_cli decode "$encoded" "$our_wav" >/dev/null
 
     count=$((count + 1))
-    if [ -n "$per_channel" ]; then
+    if [[ -n "$per_channel" ]]; then
         echo "[$count] $label: SNR vs. the source WAV (per channel >= ${per_channel})"
     else
         echo "[$count] $label: SNR vs. the source WAV (>= ${min_snr_db} dB)"
@@ -409,7 +409,7 @@ check_one "eac3_cpl" "$WORKDIR/gold_cpl.ec3" "eac3" 256 "$MIN_SNR_DB" "$EAC3_CPL
 CPLBNDSTRCE0_MIN_SNR_DB=15
 CPLBNDSTRCE0_FLOORS="50,65,56,81,21,21"
 CPLBNDSTRCE0_EC3="$REPO_ROOT/tests/golden/audio/reference_51_eac3_448k_cplbndstrce0.ec3"
-if [ ! -f "$CPLBNDSTRCE0_EC3" ]; then
+if [[ ! -f "$CPLBNDSTRCE0_EC3" ]]; then
     echo "::error::fixture missing: $CPLBNDSTRCE0_EC3" >&2
     exit 1
 fi
@@ -472,7 +472,7 @@ check_one "eac3_cplbndstrce0" "$CPLBNDSTRCE0_EC3" "eac3" 448 \
 # 50-90 dB band. A single floor low enough for the former left the latter
 # ungated by 30-70 dB - see "Per-channel floors" at the top of this file.
 EXTERNAL_BASELINE_DIR="$REPO_ROOT/tests/golden/external-baseline"
-if [ ! -d "$EXTERNAL_BASELINE_DIR" ]; then
+if [[ ! -d "$EXTERNAL_BASELINE_DIR" ]]; then
     echo "::error::external-baseline fixtures missing: $EXTERNAL_BASELINE_DIR" >&2
     exit 1
 fi
@@ -509,7 +509,7 @@ for entry in \
     IFS=: read -r ext_label ext_path ext_codec ext_kbps ext_floor ext_channel_floors <<EOF
 $entry
 EOF
-    if [ ! -f "$EXTERNAL_BASELINE_DIR/$ext_path" ]; then
+    if [[ ! -f "$EXTERNAL_BASELINE_DIR/$ext_path" ]]; then
         echo "::error::fixture missing: $EXTERNAL_BASELINE_DIR/$ext_path" >&2
         exit 1
     fi
@@ -543,7 +543,7 @@ done
 DEE_STEREO_EC3="$EXTERNAL_BASELINE_DIR/eac3-stereo-192/dee.ec3"
 STEREO_WAV="$REPO_ROOT/tests/golden/audio/reference_stereo.wav"
 for required in "$DEE_STEREO_EC3" "$STEREO_WAV"; do
-    if [ ! -f "$required" ]; then
+    if [[ ! -f "$required" ]]; then
         echo "::error::fixture missing: $required" >&2
         exit 1
     fi
