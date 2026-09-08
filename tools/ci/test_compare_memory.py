@@ -21,11 +21,20 @@ generator and classify_churn's returns) and could.
 THE LEAK CHECK IS ATTRIBUTED, NOT ABSOLUTE. append_memory_history.py judges
 steady_live_growth against fixed thresholds with no baseline, which is right
 for a series on main. Copied unchanged into a per-PR job it would annotate
-every pull request for bytes no pull request retained: measured on this tree,
-eac3_51_encode holds 4,963 bytes and atmos_4obj_encode 5,322 across their
-steady state, both already past the 4 KiB warn line. LeakAttributionTests pins
-those two real numbers as the case that must stay quiet, alongside the
-crossings and growths that must not.
+every pull request for bytes no pull request retained. Three of the six
+workloads retain bytes across their steady state and two are already past the
+4 KiB warn line, on both platforms that build ac3membench:
+
+    workload             linux-gcc   windows-msvc
+    ac3_51_encode            1,456          1,367
+    eac3_51_encode           5,296          4,963
+    atmos_4obj_encode        5,568          5,322
+
+linux-gcc is the leg the gate runs on (job 101925279370); the Windows column
+is the same measurement taken locally, and is here because a property that
+holds on one platform's allocator by luck is worth distinguishing from one
+that holds generally. LeakAttributionTests pins both columns' figures as the
+case that must stay quiet, alongside the crossings and growths that must not.
 
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 """
@@ -132,11 +141,14 @@ class ChurnTierTests(unittest.TestCase):
 
 class LeakAttributionTests(unittest.TestCase):
     def test_preexisting_growth_unchanged_by_this_branch_is_quiet(self):
-        """The two real numbers on this tree, both already over the 4 KiB warn
-        line. A branch that does not touch them must not be annotated for
-        them, or the gate is red on every PR and nobody reads it."""
-        self.assertEqual((None, None), cm.classify_leak(4963, 4963))
-        self.assertEqual((None, None), cm.classify_leak(5322, 5322))
+        """Every real figure from the table in this module's docstring, all
+        four of the ones already over the 4 KiB warn line. A branch that does
+        not touch them must not be annotated for them, or the gate is red on
+        every PR and nobody reads it."""
+        for retained in (5296, 5568, 4963, 5322):
+            self.assertEqual((None, None), cm.classify_leak(retained, retained),
+                             f"{retained} bytes retained on both sides is the merge "
+                             "base's finding, not this branch's")
 
     def test_crossing_the_warn_line_is_a_soft_finding(self):
         hard, note = cm.classify_leak(0, 9000)
@@ -161,9 +173,10 @@ class LeakAttributionTests(unittest.TestCase):
         self.assertEqual((None, None), cm.classify_leak(base, base))
 
     def test_growth_past_the_warn_threshold_counts_without_crossing(self):
-        """5,322 -> 20,000 never crosses 4 KiB from below, and is still
-        15 KiB of retained bytes this branch added."""
-        hard, note = cm.classify_leak(5322, 20000)
+        """atmos_4obj_encode's real 5,568 climbing to 20,000 never crosses
+        4 KiB from below, and is still 14 KiB of retained bytes this branch
+        added - which is why crossing alone is not the only rule."""
+        hard, note = cm.classify_leak(5568, 20000)
         self.assertIs(False, hard)
         self.assertIn("20,000 bytes", note)
 

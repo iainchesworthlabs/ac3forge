@@ -56,9 +56,10 @@ steady_live_growth is an absolute signal - bytes still held after ~199
 steady-state frames - and needs no baseline to interpret, which is why
 append_memory_history.py checks it against fixed thresholds. Doing that here
 would annotate every pull request for a condition no pull request introduced:
-measured on this tree today, three of the six workloads retain bytes across
-their steady state and two of them (4,963 and 5,322 bytes on a Windows build)
-are already past the 4 KiB warn threshold. A gate that fires on 100% of PRs
+measured on linux-gcc, the leg this gate runs on, three of the six workloads
+retain bytes across their steady state and two of them (eac3_51_encode at
+5,296 bytes and atmos_4obj_encode at 5,568) are already past the 4 KiB warn
+threshold. A gate that fires on 100% of PRs
 teaches people to stop reading it. So the thresholds stay absolute and stay
 imported, and what is checked against them is what THIS branch did: crossing a
 threshold the merge base was under, or growing by more than a threshold's worth
