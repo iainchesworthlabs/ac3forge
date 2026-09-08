@@ -349,7 +349,7 @@ LoudnessMeter::LoudnessMeter(SampleRate rate, const eac3::chanmap::Layout& layou
         // std::nullopt is an LFE-type location, which is not a term in the
         // sum at all - it simply never joins either array, while still
         // counting towards channels_ so true peak keeps reading it.
-        if (const auto weight = position_weight(layout[slot])) {
+        if (const auto weight = position_weight(layout[slot]); weight.has_value()) {
             slots.push_back(slot);
             weights.push_back(*weight);
         }

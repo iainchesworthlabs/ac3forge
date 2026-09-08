@@ -38,7 +38,7 @@ ac3forge_status_t ac3forge_eac3_decoder_decode_substream(
     return guard([&]() -> ac3forge_status_t {
         auto result = decoder->impl.decode_substream(
             std::as_bytes(std::span<const uint8_t>(frame, frame_size)));
-        if (!result) {
+        if (!result.has_value()) {
             return ac3forge_c::from_cpp(result.error());
         }
         if (!result->has_value()) {
@@ -61,7 +61,7 @@ ac3forge_status_t ac3forge_eac3_decoder_decode_access_unit(
     return guard([&]() -> ac3forge_status_t {
         auto result = decoder->impl.decode_access_unit(
             std::as_bytes(std::span<const uint8_t>(unit, unit_size)));
-        if (!result) {
+        if (!result.has_value()) {
             return ac3forge_c::from_cpp(result.error());
         }
         if (!result->has_value()) {
@@ -97,7 +97,7 @@ ac3forge_status_t ac3forge_eac3_decoder_decode_access_unit_into(
         }
         auto result = decoder->impl.decode_access_unit_into(
             std::as_bytes(std::span<const uint8_t>(unit, unit_size)), spans);
-        if (!result) {
+        if (!result.has_value()) {
             return ac3forge_c::from_cpp(result.error());
         }
         if (!result->has_value()) {
@@ -493,7 +493,7 @@ ac3forge_status_t split_into_spans(const uint8_t* stream, size_t stream_size,
     return guard([&]() -> ac3forge_status_t {
         const auto bytes = std::as_bytes(std::span<const uint8_t>(stream, stream_size));
         auto result = access_units ? ac3::split_access_units(bytes) : ac3::split_frames(bytes);
-        if (!result) {
+        if (!result.has_value()) {
             return ac3forge_c::from_cpp(result.error());
         }
         auto owned = std::make_unique<ac3forge_spans>();
@@ -526,7 +526,7 @@ ac3forge_status_t ac3forge_stream_bsid(const uint8_t* frame, size_t frame_size, 
     }
     return guard([&]() -> ac3forge_status_t {
         auto result = ac3::stream_bsid(std::as_bytes(std::span<const uint8_t>(frame, frame_size)));
-        if (!result) {
+        if (!result.has_value()) {
             return ac3forge_c::from_cpp(result.error());
         }
         *out_bsid = *result;

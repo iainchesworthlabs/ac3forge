@@ -679,11 +679,11 @@ std::expected<Demuxed, DemuxError> demux(std::span<const std::byte> file,
     const auto collect = [&out](std::span<const std::byte> frame) { out.frames.push_back(frame); };
 
     const auto consumed = walk(s, file, collect);
-    if (!consumed) {
+    if (!consumed.has_value()) {
         return std::unexpected(consumed.error());
     }
     const auto verdict = finish_verdict(s);
-    if (!verdict) {
+    if (!verdict.has_value()) {
         return std::unexpected(verdict.error());
     }
     out.track = s.track;
@@ -708,7 +708,7 @@ std::expected<void, DemuxError> Reader::push(std::span<const std::byte> chunk,
     auto& s = *state_;
     s.buffer.insert(s.buffer.end(), chunk.begin(), chunk.end());
     const auto consumed = walk(s, s.buffer, on_frame);
-    if (!consumed) {
+    if (!consumed.has_value()) {
         return std::unexpected(consumed.error());
     }
     // Drop what the walker finished with. What is left is the head of an
