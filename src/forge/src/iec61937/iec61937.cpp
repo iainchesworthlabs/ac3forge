@@ -129,10 +129,10 @@ std::expected<std::vector<std::byte>, WrapError> wrap_stream(
         Eac3BurstPacker packer;
         for (const auto& unit : units) {
             const auto burst = packer.push(unit);
-            if (!burst) {
+            if (!burst.has_value()) {
                 return std::unexpected(burst.error());
             }
-            if (*burst) {
+            if (burst->has_value()) {
                 payload.insert(payload.end(), (**burst).begin(), (**burst).end());
             }
         }
@@ -141,7 +141,7 @@ std::expected<std::vector<std::byte>, WrapError> wrap_stream(
     payload.reserve(units.size() * kBurstBytes);
     for (const auto& unit : units) {
         const auto burst = wrap_frame(unit);
-        if (!burst) {
+        if (!burst.has_value()) {
             return std::unexpected(burst.error());
         }
         payload.insert(payload.end(), burst->begin(), burst->end());
@@ -293,7 +293,7 @@ std::expected<void, UnwrapError> BurstReader::push(std::span<const std::byte> ca
         }
 
         const auto found = find_preamble(buffer_, pos_, order_);
-        if (!found) {
+        if (!found.has_value()) {
             // Keep only what a preamble could still straddle into the next
             // chunk: three bytes, one short of the pattern. std::max, because
             // a burst that ended within those last three bytes has already
@@ -314,7 +314,7 @@ std::expected<void, UnwrapError> BurstReader::push(std::span<const std::byte> ca
         const auto type = known_data_type(pc);
         const auto payload_bytes = payload_bytes_from_pd(pd, type);
 
-        if (!type) {
+        if (!type.has_value()) {
             // Another codec's passthrough, or a null/pause burst. Its length
             // is still readable under the general bits rule, so step over the
             // payload rather than rescanning through it - a false preamble
@@ -373,10 +373,10 @@ std::expected<std::vector<std::byte>, UnwrapError> unwrap_stream(
     std::span<const std::byte> carrier) {
     BurstReader reader;
     std::vector<std::byte> out;
-    if (const auto pushed = reader.push(carrier, out); !pushed) {
+    if (const auto pushed = reader.push(carrier, out); !pushed.has_value()) {
         return std::unexpected(pushed.error());
     }
-    if (const auto done = reader.finish(); !done) {
+    if (const auto done = reader.finish(); !done.has_value()) {
         return std::unexpected(done.error());
     }
     if (reader.bursts() == 0) {
@@ -431,7 +431,11 @@ void PassthroughDetector::push(std::span<const float> interleaved, std::uint16_t
     // often enough that it cannot be the whole answer.
     const std::span<const std::byte> view{buffered_};
     std::size_t from = 0;
-    while (const auto found = find_preamble(view, from, std::nullopt)) {
+    for (;;) {
+        const auto found = find_preamble(view, from, std::nullopt);
+        if (!found.has_value()) {
+            break;
+        }
         if (found->offset + kPreambleBytes + 2 > view.size()) {
             break;
         }
@@ -439,7 +443,7 @@ void PassthroughDetector::push(std::span<const float> interleaved, std::uint16_t
         const auto type = known_data_type(pc);
         const auto pd = read_word(view, found->offset + 6, found->order);
         const auto payload_bytes = payload_bytes_from_pd(pd, type);
-        if (type && payload_bytes >= 2 &&
+        if (type.has_value() && payload_bytes >= 2 &&
             payload_bytes <= repetition_period(*type) - kPreambleBytes &&
             read_word(view, found->offset + kPreambleBytes, found->order) == kSyncword) {
             detected_ = type;

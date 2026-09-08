@@ -66,6 +66,22 @@ LIVE_GROWTH_HARD_BYTES = 1024 * 1024
 # describing a series rather than a point.
 MIN_TRAILING_RECORDS = 3
 
+
+def branch_slug(branch: str) -> str:
+    """A single flat filename component for `branch`.
+
+    Every branch in this repo is feature/* or bugfix/* (CONTRIBUTING.md's
+    branch-name convention), so `branch` always contains at least one '/' -
+    and '/' inside an f-string interpolated straight into a Path joins as an
+    extra path component, not a literal character. Left unsanitised,
+    `history_dir / f"memory-{branch}.jsonl"` would silently scatter every
+    real branch's own history file into a same-named SUBDIRECTORY instead of
+    a flat sibling next to the others baseline_for()'s own glob() expects to
+    see there, defeating the cross-branch widening this script exists for.
+    """
+    return branch.replace("/", "_").replace("\\", "_")
+
+
 CHURN_METRICS = (
     ("allocs_per_frame", "allocs/frame", ALLOCS_ABSOLUTE_FLOOR),
     ("bytes_per_frame", "bytes/frame", BYTES_ABSOLUTE_FLOOR),
@@ -136,14 +152,14 @@ def baseline_for(history_dir: Path, branch: str, leg: str, config: str,
     FROM is a sound baseline for the branch being merged INTO; the two are
     measuring the same code on the same leg.
     """
-    own = series_samples(history_dir / f"memory-{branch}.jsonl", leg, config, metric)
+    own = series_samples(history_dir / f"memory-{branch_slug(branch)}.jsonl", leg, config, metric)
     if len(own) >= MIN_TRAILING_RECORDS:
         tail = [value for _, value in own[-window:]]
         return sum(tail) / len(tail), len(tail), False
 
     merged = list(own)
     for sibling in sorted(history_dir.glob("memory-*.jsonl")):
-        if sibling.name == f"memory-{branch}.jsonl":
+        if sibling.name == f"memory-{branch_slug(branch)}.jsonl":
             continue
         merged.extend(series_samples(sibling, leg, config, metric))
     if not merged:
@@ -242,7 +258,7 @@ def main() -> int:
                         help="Committer date, ISO 8601 (from `git show -s --format=%%cI`).")
     args = parser.parse_args()
 
-    history_path = args.history_dir / f"memory-{args.branch}.jsonl"
+    history_path = args.history_dir / f"memory-{branch_slug(args.branch)}.jsonl"
     records = list(load_leg_results(args.results_dir))
     if not records:
         print("::warning::no memory JSON results found under "

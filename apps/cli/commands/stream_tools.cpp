@@ -628,11 +628,11 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
 
     const auto stats = decode_and_render(
         in_path, *loaded, *routing, coded_channels,
-        [&](std::span<const std::span<const float>> views) {
+        [&meter, &encoder](std::span<const std::span<const float>> views) {
             meter.process(views);
             return encoder.encode(views);
         },
-        [&] { encoder.abort(); });
+        [&encoder] { encoder.abort(); });
     if (!stats.has_value()) {
         return 1;
     }

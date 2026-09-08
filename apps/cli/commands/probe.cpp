@@ -1117,7 +1117,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
         return ac3::signing::has_authenticity_tag(frame);
     };
     if (detail != Detail::kNone) {
-        options.on_access_unit = [&](const io::ProbeAccessUnit& unit) {
+        options.on_access_unit = [&meta, &json, &detail](const io::ProbeAccessUnit& unit) {
             if (meta.json) {
                 write_access_unit(json, unit, detail);
             } else {

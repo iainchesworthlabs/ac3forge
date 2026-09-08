@@ -30,7 +30,7 @@ ac3forge_status_t ac3forge_decoder_create(const ac3forge_decoder_config_t* confi
     if (config == nullptr || out_decoder == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&] {
+    return guard([&config, &out_decoder] {
         *out_decoder = new ac3forge_decoder(decoder_config_to_cpp(*config));
         return AC3FORGE_OK;
     });
@@ -44,7 +44,7 @@ ac3forge_status_t ac3forge_decoder_decode_frame(ac3forge_decoder_t* decoder, con
     if (decoder == nullptr || frame == nullptr || out_frame == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&decoder, &frame, &frame_size, &out_frame]() -> ac3forge_status_t {
         auto result = decoder->impl.decode_frame(
             std::as_bytes(std::span<const uint8_t>(frame, frame_size)));
         if (!result) {
@@ -69,7 +69,8 @@ ac3forge_status_t ac3forge_decoder_decode_frame_into(ac3forge_decoder_t* decoder
         samples_per_channel != AC3FORGE_SAMPLES_PER_FRAME) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&decoder, &frame, &frame_size, &channels, &channel_count, &samples_per_channel,
+                  &out_frame]() -> ac3forge_status_t {
         std::vector<std::span<float>> spans;
         spans.reserve(channel_count);
         for (size_t i = 0; i < channel_count; ++i) {
