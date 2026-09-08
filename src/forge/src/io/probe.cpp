@@ -189,7 +189,7 @@ struct Prober::Impl {
         ++report.syncframes;
         auto& sub = slot_for(header);
         ++sub.syncframes;
-        if (header.chanmap && !sub.chanmap) {
+        if (header.chanmap.has_value() && !sub.chanmap.has_value()) {
             sub.chanmap = header.chanmap;
         }
         // A dependent's own dialnorm is part of the same program's metadata
@@ -197,19 +197,19 @@ struct Prober::Impl {
         // entirely (§E3.8.5) and read_frame_header already declines to
         // report that as a word.
         report.dialnorm.add(header.dialnorm);
-        if (header.dialnorm2) {
+        if (header.dialnorm2.has_value()) {
             report.dialnorm2.add(*header.dialnorm2);
         }
-        if (header.compr) {
+        if (header.compr.has_value()) {
             report.compr.add(*header.compr);
         }
-        if (header.compr2) {
+        if (header.compr2.has_value()) {
             report.compr2.add(*header.compr2);
         }
-        if (header.oba_complexity_index && !report.oba_complexity_index) {
+        if (header.oba_complexity_index.has_value() && !report.oba_complexity_index.has_value()) {
             report.oba_complexity_index = header.oba_complexity_index;
         }
-        if (first_unit && header.strmtyp == eac3::StreamType::kDependent && header.chanmap) {
+        if (first_unit && header.strmtyp == eac3::StreamType::kDependent && header.chanmap.has_value()) {
             locations = static_cast<std::uint16_t>(locations | *header.chanmap);
         }
     }
@@ -242,7 +242,7 @@ std::expected<void, ScanError> Prober::push(std::span<const std::byte> unit) {
             return std::unexpected(ScanError::kLostSync);
         }
         const auto header = read_frame_header(unit.subspan(offset));
-        if (!header) {
+        if (!header.has_value()) {
             return std::unexpected(header.error());
         }
         if (offset + header->bytes > unit.size()) {
@@ -288,7 +288,7 @@ std::expected<void, ScanError> Prober::push(std::span<const std::byte> unit) {
         impl.syntax.reset();
         if (header->kind == StreamKind::kAc3) {
             const auto decoded = impl.ac3.decode_frame(frame);
-            if (decoded) {
+            if (decoded.has_value()) {
                 impl.accumulate_dynrng(decoded->dynrng, kBlocksPerFrame, impl.report.dynrng);
                 impl.accumulate_dynrng(decoded->dynrng2, kBlocksPerFrame, impl.report.dynrng2);
                 std::ranges::copy(decoded->dynrng, reported.dynrng.begin());
@@ -297,20 +297,20 @@ std::expected<void, ScanError> Prober::push(std::span<const std::byte> unit) {
             }
         } else {
             const auto decoded = impl.eac3.decode_substream(frame);
-            if (decoded && decoded->has_value()) {
+            if (decoded.has_value() && decoded->has_value()) {
                 const auto& sub = **decoded;
                 const int blocks = eac3::blocks_per_syncframe(sub.numblkscod);
                 impl.accumulate_dynrng(sub.dynrng, blocks, impl.report.dynrng);
                 impl.accumulate_dynrng(sub.dynrng2, blocks, impl.report.dynrng2);
                 std::ranges::copy(sub.dynrng, reported.dynrng.begin());
-                if (sub.object_metadata) {
+                if (sub.object_metadata.has_value()) {
                     ++impl.report.object_frames;
-                    if (!impl.report.program) {
+                    if (!impl.report.program.has_value()) {
                         impl.report.program = sub.object_metadata->program;
                     }
                     reported.objects = sub.object_metadata;
                 }
-            } else if (!decoded) {
+            } else if (!decoded.has_value()) {
                 reported.parse_error = decoded.error();
             }
             // decoded && !decoded->has_value() is the transient pre-noise
@@ -318,9 +318,9 @@ std::expected<void, ScanError> Prober::push(std::span<const std::byte> unit) {
             // cannot happen here, and a frame that somehow produced it is
             // simply one with no parse-tier answers rather than a failure.
         }
-        if (reported.parse_error) {
+        if (reported.parse_error.has_value()) {
             ++impl.report.parse_failures;
-            if (!impl.report.first_parse_error) {
+            if (!impl.report.first_parse_error.has_value()) {
                 impl.report.first_parse_error = reported.parse_error;
             }
         }
@@ -394,7 +394,7 @@ std::expected<ProbeReport, ScanError> probe(std::span<const std::byte> stream,
     // The unit boundaries themselves come from the same walk scan() uses, so
     // a probe and a mux can never disagree about where a packet begins.
     const auto scanned = scan(stream);
-    if (!scanned) {
+    if (!scanned.has_value()) {
         return std::unexpected(scanned.error());
     }
     Prober prober{options};
@@ -478,7 +478,7 @@ std::expected<std::span<const std::byte>, ScanError> AccessUnitReader::next() {
             return std::unexpected(ScanError::kLostSync);
         }
         const auto header = read_frame_header(at);
-        if (!header) {
+        if (!header.has_value()) {
             return std::unexpected(header.error());
         }
         if (header->bytes > available) {

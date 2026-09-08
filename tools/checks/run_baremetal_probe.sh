@@ -26,9 +26,18 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO"
 
 HOST=0
-if [[ "${1:-}" == "--host" ]]; then
-    HOST=1
-fi
+# Which direction. The two profiles are mutually exclusive (no two of decode /
+# AC-3 encode / E-AC-3 encode fit in an ESP32-S3's internal SRAM at once), so
+# this picks a preset rather than adding a fixture.
+DIRECTION=decoder
+for arg in "$@"; do
+    case "$arg" in
+        --host) HOST=1 ;;
+        --encoder) DIRECTION=encoder ;;
+        --decoder) DIRECTION=decoder ;;
+        *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder]" >&2; exit 2 ;;
+    esac
+done
 
 # --- ceilings --------------------------------------------------------------
 # Bytes. text+data+bss of the linked probe on the bare-metal target, and the
@@ -54,37 +63,46 @@ fi
 # margin only ever has to absorb a deliberate change, never run-to-run noise.
 # See docs/performance-trend.md's footprint table.
 : "${AC3FORGE_MAX_HEAP_BYTES:=300000}"
-# Allocations per frame in the steady state, whichever codec is worse. The
+# Allocations per frame in the steady state, whichever fixture is worst. The
 # requirement PF7 states is ZERO and this is not it - see docs/building.md's
 # gap note. The ceiling exists so the distance from zero cannot quietly grow
-# while that gap is open: today's numbers are 47 (AC-3), 86 (E-AC-3 tools=all)
-# and 43 (E-AC-3 2/0).
-: "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
-# Enhanced coupling's own ceiling, because 126 per frame under it is not the
-# same news as 126 under any of the three above. §E3.5 reconstructs each
-# coupled channel through three 512-point inverse transforms and a DFT per
-# block (ecpl_channel_spectrum), and carries a 22-sub-band geometry instead of
-# standard coupling's 18 - so it allocates more per block for reasons that are
-# in the tool, not in a regression. Holding it to the general 100 would mean
-# either not covering §E3.5 at all or raising the ceiling for the other three
-# fixtures to a number none of them is anywhere near, which is what a single
-# global ceiling would have done here.
+# while that gap is open. Today's numbers, all eight fixtures:
 #
-# 140 against a measured 126 is the same ~11% margin the general ceiling leaves
-# over its own worst fixture, and for the same reason: a deliberate change should
-# be noticed here, not blocked. It is not slack for cross-toolchain drift. Both
-# bare-metal legs were measured and report 126 exactly, on different libstdc++
-# versions (GCC 14.2 for arm-none-eabi, 15.2 for Xtensa under IDF 6.1) - these
-# counts come from the decoders' own per-block geometry, not from anything the
-# standard library is free to vary.
-: "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ECPL:=140}"
-# Bytes still live when the probe finishes, after every decoder it made has
-# been destroyed. Not a leak and not per-frame growth: it is process-lifetime
-# scratch inside the library, and on this target nothing ever releases it
-# because the only thread never exits. Measured 34,232 - see the
-# heap.retained_bucket lines for the breakdown and docs/building.md's gap note
-# for what the three contributors are.
-: "${AC3FORGE_MAX_RETAINED_BYTES:=40000}"
+#   16 ac3_mono   19 ac3_stereo   43 eac3_stereo   47 ac3
+#   61 eac3_atmos_bed   66 eac3_ecpl   79 eac3_atmos_objects   86 eac3
+#
+# ONE ceiling, where there used to be a second one of 140 for enhanced coupling
+# alone. That exemption was real while it lasted: §E3.5 reconstructs each
+# coupled channel through three 512-point inverse transforms and a DFT per
+# block, carries a 22-sub-band geometry against standard coupling's 18, and
+# measured 126 per frame - so holding it to 100 would have meant either not
+# covering §E3.5 or lifting the ceiling for every other fixture to a number
+# none of them was near.
+#
+# It is gone because the 126 was not the tool's geometry after all. Sixty of it
+# were two std::vector<double> constructed per coupled channel per block in
+# eac3_decoder.cpp's reconstruction loop - hoisted into decoder scratch, ecpl
+# now measures 66 and sits below eac3's own 86. A ceiling of 140 over a
+# measurement of 66 would be dead slack, and the exemption would go on implying
+# that enhanced coupling is inherently the expensive one.
+: "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
+# Bytes still live when the probe finishes, after every decoder it made has been
+# destroyed. 24 - two __cxa_thread_atexit registration records, one per
+# thread_local the library declares.
+#
+# It was 34,232 until the probe started calling ac3::eac3::release_ecpl_scratch()
+# between fixtures. That difference is enhanced coupling's 32,768-byte spectrum
+# scratch and its 1,440-byte bin-angle vector, which are thread_local and so
+# were resident for the life of a task that never exits. Not a leak - bounded,
+# paid once, and the point of caching them - but enough to decide whether
+# something else fits: object reconstruction did not, on an ESP32-S3, whenever
+# it ran after an enhanced-coupling decode.
+#
+# 1,024 against a measured 24 is deliberately tight. There is nothing here that
+# grows a little; either the scratch is being handed back or it is not, and the
+# difference is five figures. A ceiling with room for half of it would report
+# nothing useful.
+: "${AC3FORGE_MAX_RETAINED_BYTES:=1024}"
 
 if [[ "$HOST" == "1" ]]; then
     PRESET=config-linux-gcc-minimal
@@ -92,6 +110,23 @@ if [[ "$HOST" == "1" ]]; then
 else
     PRESET=config-arm-none-eabi-minimal
     BUILD_PRESET=build-arm-none-eabi-minimal
+fi
+if [[ "$DIRECTION" == "encoder" ]]; then
+    PRESET="${PRESET}-encoder"
+    BUILD_PRESET="${BUILD_PRESET}-encoder"
+    # The encode probe reports no per-fixture churn lines and no image ceiling
+    # of its own yet - it has no linked-in fixture, so its image is a different
+    # kind of number. What it does report, and what is gated below, is the peak
+    # and the retained bytes.
+    #
+    # PLAIN ASSIGNMENT, not `: "${VAR:=250000}"`. This read as the latter until
+    # tools/checks/run_esp32s3_probe.sh grew the same block and the pattern was
+    # looked at twice: the ceilings section above has ALREADY set this variable
+    # to 300,000, so a := here did nothing at all and every encode run has been
+    # gating against the decode ceiling. Nothing failed as a result - the
+    # measured peak is 218,560 - but the number in this file was not the number
+    # being enforced, which is the part worth not repeating.
+    AC3FORGE_MAX_HEAP_BYTES=${AC3FORGE_MAX_HEAP_BYTES_ENCODE:-250000}
 fi
 
 cmake --preset "$PRESET"
@@ -132,7 +167,7 @@ else
 fi
 
 if ! grep -q '^result=pass$' "$OUTPUT"; then
-    echo "::error title=Minimum-footprint decoder probe failed::the probe did not report result=pass" >&2
+    echo "::error title=Minimum-footprint ${DIRECTION} probe failed::the probe did not report result=pass" >&2
     exit 1
 fi
 
@@ -170,15 +205,22 @@ fi
 # one line, and a leading `.*` in a substitution is greedy enough to swallow the
 # fixture name and leave the capture empty.
 CHURN=$(grep -o '[a-z0-9_]*\.steady_allocs_per_frame=[0-9]*' "$OUTPUT" | sed 's/\.steady_allocs_per_frame=/ /')
+if [[ "$DIRECTION" == "encoder" ]]; then
+    # 260 rather than 100. E-AC-3 encode measures 249 allocations per frame and
+    # AC-3 78, against the decoders' 43-126 - and the reason is in the API, not
+    # the implementation: both encoders return std::vector<std::byte> from
+    # encode_frame, with no encode_frame_into to match decode_frame_into. That
+    # is PF7's zero-heap gap seen from the encode side, and it is wider here.
+    # Holding this to the decoder's number would gate a difference nothing in
+    # this profile can currently close.
+    AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME=${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ENCODE:-260}
+fi
 if [[ -z "$CHURN" ]]; then
     echo "error: the probe reported no <fixture>.steady_allocs_per_frame line" >&2
     exit 1
 fi
 while read -r codec per_frame; do
-    case "$codec" in
-        *ecpl*) ceiling=$AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME_ECPL ;;
-        *) ceiling=$AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME ;;
-    esac
+    ceiling=$AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME
     echo "churn: ${codec} = ${per_frame} allocations/frame (ceiling ${ceiling})"
     if (( per_frame > ceiling )); then
         echo "::error title=Footprint regression::${codec} steady-state allocations are $per_frame per frame, ceiling is $ceiling" >&2
@@ -190,4 +232,4 @@ if [[ -n "${AC3FORGE_FOOTPRINT_SUMMARY:-}" ]]; then
     cp "$OUTPUT" "$AC3FORGE_FOOTPRINT_SUMMARY"
 fi
 
-echo "minimum-footprint decoder probe: pass"
+echo "minimum-footprint ${DIRECTION} probe: pass"

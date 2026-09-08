@@ -70,7 +70,10 @@ std::vector<std::byte> build_elementary_iabitstream(unsigned frame_count) {
 }
 
 bool write_file(const std::string& path, const std::vector<std::byte>& bytes) {
-    std::ofstream out(path, std::ios::binary);
+    // path is always a scratch_path() result (never a caller-chosen path), and the system temp
+    // directory is shared/world-writable - noreplace fails instead of writing through a symlink
+    // another local user pre-planted at this exact (astronomically unlikely to guess) name.
+    std::ofstream out(path, std::ios::binary | std::ios::noreplace);
     if (!out) {
         return false;
     }

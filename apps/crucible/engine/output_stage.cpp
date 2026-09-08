@@ -185,7 +185,7 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
         case OutputMode::kDdPlus51: {
             impl_->passthrough = impl_->devices->burst_sink();
             const auto started = impl_->passthrough->start(choice.endpoint_id, config_.sample_rate, true);
-            if (!started) {
+            if (!started.has_value()) {
                 return refuse(started.error());
             }
             impl_->packer = std::make_unique<ac3::iec61937::Eac3BurstPacker>();
@@ -194,7 +194,7 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
         case OutputMode::kDd51: {
             impl_->passthrough = impl_->devices->burst_sink();
             const auto started = impl_->passthrough->start(choice.endpoint_id, config_.sample_rate, false);
-            if (!started) {
+            if (!started.has_value()) {
                 return refuse(started.error());
             }
             impl_->ac3_encoder = std::make_unique<ac3::FrameEncoder>(ac3::EncoderConfig{
@@ -209,7 +209,7 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             impl_->monitor = impl_->devices->pcm_sink();
             const auto started =
                 impl_->monitor->start(choice.endpoint_id, config_.sample_rate, 6, kMask51, config_.low_latency);
-            if (!started) {
+            if (!started.has_value()) {
                 return refuse(started.error());
             }
             impl_->decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{});
@@ -219,7 +219,7 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             impl_->monitor = impl_->devices->pcm_sink();
             const auto started =
                 impl_->monitor->start(choice.endpoint_id, config_.sample_rate, 2, kMaskStereo, config_.low_latency);
-            if (!started) {
+            if (!started.has_value()) {
                 return refuse(started.error());
             }
             impl_->decoder = std::make_unique<ac3::Eac3Decoder>(
@@ -251,7 +251,7 @@ bool OutputStage::ensure_spatial(bool has_lfe, std::size_t objects) {
     const auto started = impl.spatial->start(
         status_.endpoint_id, config_.sample_rate, has_lfe ? kSpeakerLowFrequency : 0U,
         static_cast<std::uint32_t>(std::max<std::size_t>(objects, 1)));
-    if (!started) {
+    if (!started.has_value()) {
         status_.reason += "; spatial sink refused: " + started.error();
         impl.teardown();
         status_.running = false;
@@ -338,7 +338,7 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
         }
         case OutputMode::kDd51: {
             const auto frame = impl.ac3_encoder->encode_frame(raw.bed);
-            if (!frame) {
+            if (!frame.has_value()) {
                 return;
             }
             if (const auto wrapped = ac3::iec61937::wrap_frame(*frame)) {
@@ -371,7 +371,7 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
             return;
         }
         impl.dynamic_updates.clear();
-        if (out.object_metadata) {
+        if (out.object_metadata.has_value()) {
             const auto positions = ac3::oba::describe_objects(*out.object_metadata);
             for (std::size_t i = 0; i < out.object_audio.size() && i < positions.size(); ++i) {
                 const auto xyz = to_windows_spatial(positions[i].position);

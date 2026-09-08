@@ -11,7 +11,7 @@ cmake --preset config-windows-msvc-debug && cmake --build --preset build-windows
 There is no bare `debug` preset — swap `windows-msvc` for whichever platform/compiler fragment matches your machine (`windows-llvm`, `linux-gcc`, `linux-llvm`, `linux-gcc-arm64`, `linux-llvm-arm64`, `macos-llvm`).
 
 Everything must pass before you push. There are no known-failing tests and no skips; if
-something fails, that is your change or a genuine regression, not noise.
+something fails, that is your change or a regression, not noise.
 
 ## Branches and pull requests
 
@@ -56,15 +56,15 @@ the codec itself; `apps/{cli,gui,crucible,android,wasm,baremetal}` are its consu
 `apps/windows` holds only Crucible's separately licensed null-sink driver and the guest VM it is
 verified in. Nothing under `src/` may depend on anything under `apps/`.
 
-**The tree holds three members of one family, and the directories say which is which.** `src/`
+**The tree holds three products, and the directories say which is which.** `src/`
 other than `src/audio`, the bindings under `python/`, `js/` and `rust/`, and `examples/`,
 `fuzz/` and `apps/baremetal` are **the library** — `ac3forge` and `ac3::forge` name it, and
-those identifiers name the family's packages too. `apps/cli`, `apps/gui` and `apps/common` are
+those identifiers name its packages too. `apps/cli`, `apps/gui` and `apps/common` are
 **Forge**, the tooling pair, built and packaged as one thing. `apps/crucible`, with the driver
 in `apps/windows`, is **Crucible**. `apps/android` and `apps/wasm` are demonstrations of the
-library rather than members of their own. `src/audio`, `tests/`, `tools/`, `cmake/`, `packaging/`
-and the version line belong to the family and to no one member.
-[The family recasting](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/family/recasting.md)
+library rather than products of their own. `src/audio`, `tests/`, `tools/`, `cmake/`,
+`packaging/` and the version line are shared by all three and owned by none of them.
+[The naming and scope plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/recasting.md)
 records what each member owns, down to the targets, packages and CI legs.
 
 **Three naming rules follow, and they govern prose as much as code.** `ac3forge` and

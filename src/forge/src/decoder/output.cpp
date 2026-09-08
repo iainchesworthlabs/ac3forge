@@ -171,10 +171,10 @@ Acmod reduced_acmod(bool centre, bool mains, bool surrounds) {
 MixLevels mix_levels(std::optional<meta::CentreMixLevel> cmixlev,
                      std::optional<meta::SurroundMixLevel> surmixlev) {
     MixLevels out;
-    if (cmixlev) {
+    if (cmixlev.has_value()) {
         out.loro_clev = meta::coefficient(*cmixlev);
     }
-    if (surmixlev) {
+    if (surmixlev.has_value()) {
         out.loro_slev = meta::coefficient(*surmixlev);
     }
     // AC-3 has no separate Lt/Rt levels. §7.8.2's own -3 dB is the right
@@ -182,7 +182,7 @@ MixLevels mix_levels(std::optional<meta::CentreMixLevel> cmixlev,
     // surrounds from the downmix (§5.4.2.5's '10') meant that for any fold and
     // not only the plain one - carrying it across is the only reading that
     // does not put back channels the operator deliberately removed.
-    if (surmixlev && *surmixlev == meta::SurroundMixLevel::kSilent) {
+    if (surmixlev.has_value() && *surmixlev == meta::SurroundMixLevel::kSilent) {
         out.ltrt_slev = meta::level::kSilent;
     }
     return out;
@@ -190,7 +190,7 @@ MixLevels mix_levels(std::optional<meta::CentreMixLevel> cmixlev,
 
 MixLevels mix_levels(const std::optional<meta::MixMetadata>& mix) {
     MixLevels out;
-    if (!mix) {
+    if (!mix.has_value()) {
         return out;
     }
     out.loro_clev = meta::coefficient(mix->lorocmixlev);

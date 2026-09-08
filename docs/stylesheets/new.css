@@ -130,8 +130,10 @@
 .ac3f-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; flex: none; }
 .ac3f-dot-good { background: #1f7a4d; }
 .ac3f-dot-mid { background: #946a12; }
+.ac3f-dot-low { background: #6b6b6b; }
 [data-md-color-scheme="slate"] .ac3f-dot-good { background: #57bb87; }
 [data-md-color-scheme="slate"] .ac3f-dot-mid { background: #e0ae4b; }
+[data-md-color-scheme="slate"] .ac3f-dot-low { background: #9a9a9a; }
 .ac3f-status-legend { font-size: 0.68rem; color: var(--md-default-fg-color--light); margin: 0; }
 
 /* Stat tiles: same semantic ok/watch colors as performance-quality.md's own

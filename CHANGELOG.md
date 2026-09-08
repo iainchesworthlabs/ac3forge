@@ -26,6 +26,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
+  there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
+  `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has
+  needed the declarations since. Every `ac3::eac3` name `decoder.hpp` still uses —
+  `StreamType`, `kBsid`, `chanmap::acmod_map`, `chanmap::Layout` — comes from
+  `ac3/core/eac3_tables.hpp`, which it includes directly; the remaining mentions of
+  `ecpl_channel_spectrum` and `BandLayout` are in prose comments. Source-breaking only for a
+  consumer that was relying on `decoder.hpp` to pull `eac3_tools.hpp` in transitively: such a
+  caller adds `#include "ac3/core/eac3_tools.hpp"` itself. No in-repo consumer did. The ABI is
+  unchanged — no declaration moved, and nothing about the exported surface depends on which
+  header a caller reaches it through.
+
 - **Two coding-tool headers moved out of `ac3/encoder/` into `ac3/core/`**, where the code
   shared by both generations already lives: `ac3/encoder/coupling.hpp` is now
   `ac3/core/coupling.hpp` and `ac3/encoder/eac3_tools.hpp` is now `ac3/core/eac3_tools.hpp`.
