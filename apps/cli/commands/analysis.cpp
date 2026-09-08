@@ -1213,7 +1213,8 @@ int run_spdif(std::string_view in_path, std::string_view out_path) {
     std::uint32_t content_rate = 0;
     Pcm16RawWavSink sink;
     bool sink_failed = false;
-    const auto push = [&](std::span<const std::byte> burst) {
+    const auto push = [&sink, &content_rate, &eac3, &sink_failed,
+                       &out_path](std::span<const std::byte> burst) {
         if (!sink.is_open() &&
             !sink.open(out_path, eac3 ? content_rate * 4 : content_rate, 2)) {
             sink_failed = true;

@@ -465,7 +465,7 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
     for (int band = bndstrt; band < bndend; ++band) {
         const auto b = static_cast<std::size_t>(band);
         const auto code = delta_code_for(real_bndpsd[b] - bndpsd[b]);
-        if (!code) {
+        if (!code.has_value()) {
             continue;
         }
         if (!runs.empty() && runs.back().band + runs.back().length == band &&

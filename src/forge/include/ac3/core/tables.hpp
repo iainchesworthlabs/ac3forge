@@ -213,7 +213,7 @@ static_assert(frame_table_matches_closed_form());
         return std::nullopt;
     }
     const auto idx = bitrate_index(bitrate_kbps);
-    if (!idx) {
+    if (!idx.has_value()) {
         return std::nullopt;
     }
     std::uint32_t words = kFrameSizeWords[static_cast<std::size_t>(*idx)]
@@ -228,7 +228,7 @@ static_assert(frame_table_matches_closed_form());
                                                                       std::uint32_t bitrate_kbps,
                                                                       bool pad441 = false) {
     const auto words = frame_size_words(sr, bitrate_kbps, pad441);
-    if (!words) {
+    if (!words.has_value()) {
         return std::nullopt;
     }
     return *words * 2;

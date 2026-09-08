@@ -95,7 +95,7 @@ ac3forge_status_t ac3forge_eac3_encoder_create(const ac3forge_eac3_frame_config_
     if (config == nullptr || out_encoder == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&] {
+    return guard([&config, &out_encoder] {
         *out_encoder = new ac3forge_eac3_encoder(eac3_frame_config_to_cpp(*config));
         return AC3FORGE_OK;
     });
@@ -135,7 +135,8 @@ ac3forge_status_t ac3forge_eac3_encoder_encode_frame(
         samples_per_channel != ac3forge_eac3_encoder_samples_per_frame(encoder)) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&encoder, &channels, &channel_count, &samples_per_channel, &metadata, &aux,
+                  &aux_size, &out_frame]() -> ac3forge_status_t {
         std::vector<std::span<const float>> spans;
         spans.reserve(channel_count);
         for (size_t i = 0; i < channel_count; ++i) {
@@ -166,7 +167,7 @@ ac3forge_status_t ac3forge_eac3_access_unit_encoder_create(
         (dependent_count > 0 && dependents == nullptr)) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&] {
+    return guard([&independent, &dependents, &dependent_count, &out_encoder] {
         ac3::eac3::AccessUnitConfig config;
         config.independent = eac3_frame_config_to_cpp(*independent);
         config.dependents.reserve(dependent_count);
@@ -217,7 +218,8 @@ ac3forge_status_t ac3forge_eac3_access_unit_encoder_encode(
         samples_per_channel != AC3FORGE_SAMPLES_PER_FRAME) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&encoder, &channels, &channel_count, &samples_per_channel, &aux, &aux_size,
+                  &out_unit]() -> ac3forge_status_t {
         std::vector<std::span<const float>> spans;
         spans.reserve(channel_count);
         for (size_t i = 0; i < channel_count; ++i) {
