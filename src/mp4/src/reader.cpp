@@ -948,11 +948,11 @@ std::expected<Demuxed, DemuxError> demux(std::span<const std::byte> file,
     s.options = options;
 
     const auto walked = walk(s, file, 0);
-    if (!walked) {
+    if (!walked.has_value()) {
         return std::unexpected(walked.error());
     }
     const auto verdict = finish_verdict(s);
-    if (!verdict) {
+    if (!verdict.has_value()) {
         return std::unexpected(verdict.error());
     }
 
@@ -967,7 +967,7 @@ std::expected<Demuxed, DemuxError> demux(std::span<const std::byte> file,
         out.samples.push_back(sample);
     };
     const auto drained = drain_samples(s, file, 0, collect);
-    if (!drained) {
+    if (!drained.has_value()) {
         return std::unexpected(drained.error());
     }
     out.track = s.track;
@@ -992,11 +992,11 @@ std::expected<void, DemuxError> Reader::push(std::span<const std::byte> chunk,
     s.buffer.insert(s.buffer.end(), chunk.begin(), chunk.end());
 
     const auto walked = walk(s, s.buffer, s.window_pos);
-    if (!walked) {
+    if (!walked.has_value()) {
         return std::unexpected(walked.error());
     }
     const auto drained = drain_samples(s, s.buffer, s.window_pos, on_sample);
-    if (!drained) {
+    if (!drained.has_value()) {
         return std::unexpected(drained.error());
     }
 
