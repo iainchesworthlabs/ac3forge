@@ -580,22 +580,43 @@ including the decode paths the timing benches don't cover. The Δ column is
 bytes/frame against the series' trailing 10-run mean, the same window and
 thresholds `append_memory_history.py` gates with (≥ +20% soft, ≥ +100% hard on
 *either* churn metric); a non-zero **live growth** is its own signal (bytes
-still held after ~200 steady-state frames - the leak check is absolute, not
-trend-relative). These counts are near-deterministic for a fixed workload: a
+still held after ~200 steady-state frames - on the trunk that check is
+absolute rather than trend-relative; see below for how it is scoped before a
+merge). These counts are near-deterministic for a fixed workload: a
 flagged row is a real change in allocation behaviour, not runner noise. The
 memory-usage optimization programme's phases land as visible downward steps in
 these series - that is what this table exists to show.
 
-Two limits on that gate are worth knowing when reading these series. It runs
-in `persist-performance-trend`, which is `push` to `main` only, so it reports
-a step on the trunk after the merge rather than on the pull request that
-caused it; `ac3membench` has no pre-merge counterpart to the
-`Performance vs merge base` job that covers `ac3bench` and `ac3kernelbench`.
-And the series it compares against is per branch, so a branch rename or a
-gitflow-to-trunk switch starts one from empty - the trailing window now widens
-to the sibling branch series when a branch's own file holds fewer than three
-records, and a workload with no history anywhere is annotated as ungated
-rather than passing quietly.
+The same question is now asked before the merge as well. These series are
+written by `persist-performance-trend`, which is `push` to `main` only, so for
+a while a step was reported on the trunk *after* it landed - a red check on an
+already-merged commit, blocking nothing and belonging to whoever pushed next.
+The 67 → 199 allocs/frame step below is exactly how it was found. The
+`Memory vs merge base` job (`tools/ci/compare_memory.py`) closes that: it
+builds `ac3membench` at the pull request's head and at its merge base and runs
+each once, comparing the same two churn metrics against the same thresholds,
+imported from `append_memory_history.py` so the two gates cannot disagree. One
+run per side is the whole measurement - these counts do not move between runs
+of a fixed binary, which is why this gate needs none of the repetition and
+interleaving the `Performance vs merge base` job uses to see past timing
+noise. Its hard tier fails the `Memory gate` check;
+`memory-regression-approved` on the pull request turns that back into an
+annotation, the way `perf-regression-approved` does for speed.
+
+The leak check keeps its absolute thresholds there but applies them to what
+the branch changed - crossing a threshold the merge base was under, or growing
+by more than one. Three of the six workloads already retain bytes across their
+steady state and two of them sit past the 4 KiB warn line, so a per-PR check
+copied over unchanged would annotate every pull request for the merge base's
+own findings. `persist-performance-trend` keeps the unconditional absolute
+view on the trunk, where it belongs.
+
+One limit still worth knowing when reading these series: the history a trunk
+run compares against is per branch, so a branch rename or a gitflow-to-trunk
+switch starts one from empty - the trailing window now widens to the sibling
+branch series when a branch's own file holds fewer than three records, and a
+workload with no history anywhere is annotated as ungated rather than passing
+quietly.
 
 Two landed programmes are the biggest steps in these series. The 2026-08
 memory-usage programme cut steady-state allocator traffic per frame by 85-88%

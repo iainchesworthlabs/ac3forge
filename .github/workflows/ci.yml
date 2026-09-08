@@ -1454,6 +1454,222 @@ jobs:
           echo "::error title=Hard performance regression::A workload takes at least twice as long as at the merge base. See the 'Performance vs merge base' job summary for which one and by how much. This is the same 100% threshold that fails the trend job on main once merged. If the slowdown is deliberate, label this PR 'perf-regression-approved' and re-run this job."
           exit 1
 
+  # Heap churn, this PR against its own merge base, on one runner. The memory
+  # counterpart to performance-compare above, closing the identical hole one
+  # resource over.
+  #
+  # The gap this closes: persist-performance-trend is the ONLY job that builds
+  # or runs ac3membench, and it is gated to pushes on main. So the relative
+  # "does this allocate more than it did" question was not asked until after a
+  # PR had merged - and unlike throughput, there is no absolute per-PR gate
+  # underneath it at all. tests/performance/test_performance.cpp's ac3perf
+  # keeps a real-time budget on every PR; nothing anywhere kept an allocation
+  # budget.
+  #
+  # That has already cost this repository a regression. E-AC-3 encode churn
+  # stepped 67 -> 199 allocs/frame and Atmos 106 -> 219 at PR #352's
+  # per-channel exponent-run planner. The trend gate fired correctly, and late:
+  #
+  #   ##[error] linux-gcc/eac3_51_encode: 199.1 allocs/frame is 197% above the
+  #            trailing 10-run mean (67.0)
+  #
+  # on run 32823518403, event `push`, branch `main`, 2026-08-25 - a red check
+  # on a commit that had already merged, blocking nothing and belonging to
+  # whoever pushed next. The regression is still in the tree as issue #544.
+  #
+  # WHY MEMORY MAKES AN EASIER PRE-MERGE GATE THAN SPEED. performance-compare
+  # needs PERF_RUNS repetitions per side, an interleaved run order and a
+  # minimum-of-N reduction, all of it to see past a shared runner's timing
+  # noise. ac3membench's counts carry no such noise: for a fixed workload and a
+  # fixed binary they are the same every run. One run per side is the whole
+  # measurement, which makes this job cheaper than the speed comparison at the
+  # same two builds, and leaves its hard tier with no noise argument to answer.
+  #
+  # Its INFRASTRUCTURE is non-blocking; its HARD VERDICT is not. Same split as
+  # performance-compare, for the same reasons: continue-on-error stays, because
+  # this builds twice and a container or vcpkg flake in a job nobody asked for
+  # must not block a PR; and because continue-on-error swallows exit codes, the
+  # hard verdict travels as an output to the one-step memory-gate job below.
+  #
+  # Runner budget. Kept as narrow as it can be and still answer the question:
+  #   - `--target ac3membench` only. Not the tests, not the CLI, not the other
+  #     two benchmarks.
+  #   - One container, one GCC install, one vcpkg setup, two builds inside
+  #     them. The second configure reuses the first's vcpkg binary cache, so it
+  #     costs a compile of this repository's own sources and not of its
+  #     dependencies.
+  #   - One benchmark run per side, for the determinism reason above.
+  #   - Gated on `changes` like every other heavy job, so a docs-only PR never
+  #     starts it.
+  # This is deliberately a separate job from performance-compare rather than
+  # two more steps inside it, matching how every other gate here is shaped: the
+  # two verdicts stay independent, so a flake while timing the speed benches
+  # cannot take the memory verdict with it. The cost of that independence is a
+  # second container bootstrap and vcpkg setup on each code PR.
+  memory-compare:
+    name: Memory vs merge base
+    needs: [changes, toolchain-versions, check-runner]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
+    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+    container: ubuntu:26.04
+    continue-on-error: true
+    outputs:
+      # Read by memory-gate below. Empty when this job was skipped or died
+      # before the compare step, both of which that job treats as "no verdict".
+      hard_regression: ${{ steps.compare.outputs.hard_regression }}
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+
+      # fetch-depth: 0 so the base commit and its history are in the object
+      # store for `git merge-base` and the worktree below - the default shallow
+      # clone has neither.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+
+      - name: Resolve the merge base
+        id: base
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          # On a pull_request event the checked-out HEAD is the merge commit,
+          # so BASE_SHA is already an ancestor of it and this returns BASE_SHA
+          # itself. Asking git rather than trusting that keeps the answer right
+          # if GitHub ever hands over a base tip that has moved on.
+          merge_base="$(git merge-base "$BASE_SHA" HEAD)"
+          echo "sha=$merge_base" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short "$merge_base")" >> "$GITHUB_OUTPUT"
+          echo "Merge base: $merge_base"
+
+      - name: Build ac3membench at this PR's head
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3membench -- -k 0
+
+      # A worktree rather than `git checkout <sha>`: it leaves this checkout
+      # (and its build tree, and tools/ci/compare_memory.py, which the base
+      # commit may not even have) exactly where they are, and gives the base
+      # its own source dir - so CMakePresets.json's
+      # ${sourceDir}/build/${presetName} puts the two builds in separate
+      # directories with no cache to invalidate between them.
+      #
+      # A base that cannot build the target is reported rather than fatal. A
+      # merge base predating ac3membench has no such target to build, and that
+      # is a comparison with nothing to say, not a broken job -
+      # compare_memory.py sees one empty side and prints its skip warning.
+      - name: Build ac3membench at the merge base
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../base-mem "$BASE_SHA"
+          pushd ../base-mem >/dev/null
+          cmake --preset config-linux-gcc
+          if ! cmake --build --preset build-linux-gcc --target ac3membench -- -k 0; then
+            echo "::warning title=Memory comparison baseline unavailable::the merge base does not build ac3membench; the comparison will report a skip."
+          fi
+          popd >/dev/null
+
+      # One run per side, no interleaving and no repetitions - the whole point
+      # of gating on this metric rather than on time. See compare_memory.py's
+      # module docstring.
+      #
+      # The memory-<leg> subdirectory layout, and the leg name `linux-gcc`, are
+      # append_memory_history.py's - the two gates share that reader, so the
+      # workload names in this PR's table read identically to the ones on
+      # docs/performance-trend.md's memory tables.
+      - name: Run ac3membench on both sides
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p mem-results/head/memory-linux-gcc mem-results/base/memory-linux-gcc
+          build/config-linux-gcc/bin/ac3membench \
+            --json-out mem-results/head/memory-linux-gcc/membench.json
+          base_bin=../base-mem/build/config-linux-gcc/bin/ac3membench
+          if [ -x "$base_bin" ]; then
+            "$base_bin" --json-out mem-results/base/memory-linux-gcc/membench.json
+          fi
+
+      - name: Compare and publish the job summary
+        id: compare
+        shell: bash
+        env:
+          BASE_SHORT: ${{ steps.base.outputs.short }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/compare_memory.py \
+            --base-dir mem-results/base \
+            --head-dir mem-results/head \
+            --base-ref "merge base $BASE_SHORT"
+
+  # The blocking half of memory-compare, split out so that job can keep
+  # continue-on-error for its builds while its VERDICT still fails a check.
+  # Builds nothing, checks out nothing, runs one bash step - there is no
+  # infrastructure here to flake and produce a false red. Same shape as
+  # performance-gate above.
+  #
+  # `always()` so a verdict is still enforced when some unrelated job failed;
+  # the step itself is what decides, and it passes on anything that is not an
+  # explicit `true`. That covers a skipped memory-compare (docs-only PR), a
+  # cancelled one, and one that died before the compare step ran - a job that
+  # produced no measurement must not fail a PR on a measurement it does not
+  # have.
+  #
+  # The label escape hatch is checked HERE rather than in compare_memory.py so
+  # the summary tables keep saying what they measured either way: with the
+  # label the hard row is still rendered, still annotated and still visible to
+  # a reviewer, it just stops failing the check. A deliberate doubling of heap
+  # churn is a legitimate thing to merge - a buffer sized for the worst case, a
+  # cache that buys back real work - and this is the same escape hatch, with
+  # its own label, that perf-regression-approved gives the speed gate. Labels
+  # are live: adding one and re-running this seconds-long job is the whole
+  # loop, with no rebuild and no new commit.
+  memory-gate:
+    name: Memory gate
+    needs: [memory-compare]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    steps:
+      - name: Gate on the hard-tier verdict
+        shell: bash
+        env:
+          VERDICT: ${{ needs.memory-compare.outputs.hard_regression }}
+          APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'memory-regression-approved') }}
+        run: |
+          set -euo pipefail
+          echo "hard_regression=${VERDICT:-<none>}  memory-regression-approved=$APPROVED"
+          if [ "${VERDICT:-}" != "true" ]; then
+            echo "No hard memory regression to gate on."
+            exit 0
+          fi
+          if [ "$APPROVED" = "true" ]; then
+            echo "::warning title=Hard memory regression (approved)::A workload's heap churn at least doubled against the merge base, or it started retaining megabytes it did not before. Allowed through by the 'memory-regression-approved' label - see the Memory vs merge base summary for which workload and by how much."
+            exit 0
+          fi
+          echo "::error title=Hard memory regression::A workload's heap churn at least doubled against the merge base, or it started retaining megabytes it did not before. See the 'Memory vs merge base' job summary for which one and by how much. This is the same 100% threshold that fails the trend job on main once merged - see docs/performance-trend.md. If the increase is deliberate, label this PR 'memory-regression-approved' and re-run this job."
+          exit 1
+
   # Roadmap AP4: an ABI gate for the shared libraries, over the
   # linux-llvm-shared build. Two independent checks, both against
   # config-linux-llvm-shared (already Debug - has DWARF - and
@@ -2339,7 +2555,7 @@ jobs:
   ci-status:
     name: CI Status
     if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, coverage, adm-validate, build-and-test, ffmpeg-validate, performance-gate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
+    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, coverage, adm-validate, build-and-test, ffmpeg-validate, performance-gate, memory-gate, persist-performance-trend, persist-external-comparison-trend, persist-object-quality-trend ]
     # Control-plane job, same vars.CONTROL_RUNNER_JSON routing and kill
     # switch as check-runner above. This is the required check every PR
     # waits on LAST - when the hosted pool is saturated, a run whose every
@@ -2368,6 +2584,11 @@ jobs:
           # 'skipped' on a push and on a docs-only PR (performance-compare
           # itself is gated on `changes`), which is a pass.
           R_PERF_GATE: ${{ needs.performance-gate.result }}
+          # Same, for heap churn (memory-compare is gated on `changes` too).
+          # Being named here is what makes the gate required: a job this
+          # aggregate does not list can go red while blocking nothing, which
+          # is precisely the state the memory series was in before it.
+          R_MEM_GATE: ${{ needs.memory-gate.result }}
           # 'skipped' on every PR and every push off main (its own
           # `if`) - a pass, not a failure, same as R_COVERAGE above.
           R_PERF_TREND: ${{ needs.persist-performance-trend.result }}
@@ -2385,6 +2606,7 @@ jobs:
                       "adm-validate:$R_ADM" \
                       "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \
                       "performance-gate:$R_PERF_GATE" \
+                      "memory-gate:$R_MEM_GATE" \
                       "persist-performance-trend:$R_PERF_TREND" \
                       "persist-external-comparison-trend:$R_EXT_TREND" \
                       "persist-object-quality-trend:$R_OBJ_TREND"; do

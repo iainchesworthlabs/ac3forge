@@ -157,6 +157,25 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **Heap churn is now gated before a merge, not only after one** (`Memory vs merge base` and
+  `Memory gate` in `ci.yml`, `tools/ci/compare_memory.py`). `ac3membench` was built and run
+  by exactly one job, `persist-performance-trend`, which is `push` to `main` only - so an
+  allocation regression turned the check red on a commit that had already landed, where it
+  blocked nothing. That is how E-AC-3 encode churn stepping 67 → 199 allocs/frame (and Atmos
+  106 → 219) was found at PR #352, and the regression is still open as #544. The new job
+  builds `ac3membench` at the pull request's head and at its merge base and compares
+  `allocs_per_frame` and `bytes_per_frame` per leg and config, reusing
+  `append_memory_history.py`'s tiers by import so the pre-merge and post-merge gates cannot
+  disagree about what a regression is. One run per side is the whole measurement - these
+  counts do not move between runs of a fixed binary - so it needs none of the repetition and
+  interleaving the speed comparison uses against timing noise, and costs less than it. The
+  hard tier (churn at least doubled) fails `Memory gate`; `memory-regression-approved` on the
+  pull request turns it back into an annotation. The `steady_live_growth` leak check keeps
+  its absolute thresholds but applies them to what the branch changed, because three of the
+  six workloads already retain bytes across their steady state and two sit past the 4 KiB
+  warn line - checking the head alone would have annotated every pull request for the merge
+  base's own findings.
+
 - **CI now asserts that Linux and macOS packages carry the `ac3cli` man page and the four
   shell completions** (`tools/ci/check_cli_docs_package.py`, run from `_build.yml`), so the
   packaging bug in Fixed below cannot come back unseen. Nothing checked these five files
