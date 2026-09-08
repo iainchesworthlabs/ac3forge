@@ -12,6 +12,7 @@ exclude_docs: |
 
 theme:
   name: material
+  custom_dir: overrides
   font:
     text: IBM Plex Sans
     code: IBM Plex Mono
@@ -43,9 +44,11 @@ theme:
 
 extra_css:
   - stylesheets/extra.css
+  - stylesheets/new.css
 
 extra_javascript:
   - javascripts/enhancements.js
+  - javascripts/hero-stats.js
 
 markdown_extensions:
   - admonition
