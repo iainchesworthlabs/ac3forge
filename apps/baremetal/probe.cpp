@@ -52,6 +52,10 @@ std::size_t g_alloc_calls = 0;
 std::size_t g_free_calls = 0;
 std::size_t g_live_bytes = 0;
 std::size_t g_peak_bytes = 0;
+// The same high-water mark, restarted at the head of each fixture's decode:
+// the run's peak says what the whole probe needed, this says which fixture
+// needed it, which is the question a part with a different budget asks.
+std::size_t g_fixture_peak_bytes = 0;
 
 // --- where the peak actually is --------------------------------------------
 // A peak-heap number says how much, never what. That is fine while the number
@@ -168,6 +172,9 @@ void* operator new(std::size_t size) {
         g_peak_by_bucket = g_live_by_bucket;
         g_peak_count_by_bucket = g_live_count_by_bucket;
     }
+    if (g_live_bytes > g_fixture_peak_bytes) {
+        g_fixture_peak_bytes = g_live_bytes;
+    }
     return static_cast<std::byte*>(raw) + kHeaderBytes;
 }
 
@@ -202,13 +209,16 @@ namespace {
 // Eight channels, not §E3.8.2's cap of sixteen. This block is the CALLER's, not
 // the library's, and an integrator decoding 5.1 allocates six - so provisioning
 // for a stream the fixture does not contain was inflating the probe's own .bss
-// by 49,152 bytes and making the profile look more expensive than it is. Eight
-// still covers 7.1, which is a layout that exists.
+// by 49,152 bytes and making the profile look more expensive than it is.
+// Twelve covers 7.1.4 - the widest programme the encoder makes, and what the
+// eac3_714 row below decodes - at 73,728 bytes, which is also what an
+// ESP32-S3 feeding a TDM DAC with 7.1.4 has to find for its output; the
+// format's own cap of sixteen would be 98,304.
 //
 // The static_assert below is what keeps this honest rather than merely smaller:
 // regenerate fixture.hpp with a wider layout and the build stops here, instead
 // of the decode writing past the end of a span.
-constexpr std::size_t kMaxChannels = 8;
+constexpr std::size_t kMaxChannels = 12;
 std::array<std::array<float, ac3::kSamplesPerFrame>, kMaxChannels> g_pcm{};
 std::array<std::span<float>, kMaxChannels> g_pcm_spans{};
 
@@ -345,6 +355,11 @@ void report_churn(const char* codec, const Churn& churn) {
                                                ? churn.steady_allocs /
                                                      static_cast<std::size_t>(steady_frames)
                                                : 0));
+    // Its own line rather than a field of the summary above, which the runner
+    // scripts parse one key at a time and which should stay one line per
+    // fixture. Bytes live at the highest point of this fixture's decode,
+    // whatever earlier fixtures left resident.
+    std::printf("%s.peak_bytes=%lu\n", codec, static_cast<unsigned long>(g_fixture_peak_bytes));
 }
 
 // A frame is 1536 samples at 48 kHz - 32 ms of audio. Real time means decoding
@@ -389,6 +404,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
     LevelAccumulator levels;
     Churn churn;
     churn.frames = static_cast<int>(frames->size());
+    g_fixture_peak_bytes = g_live_bytes;
     ac3probe::reset_stages();
     std::size_t before = g_alloc_calls;
     int index = 0;
@@ -458,6 +474,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     LevelAccumulator levels;
     Churn churn;
     churn.frames = static_cast<int>(units->size());
+    g_fixture_peak_bytes = g_live_bytes;
     ac3probe::reset_stages();
     std::size_t before = g_alloc_calls;
     int index = 0;
@@ -558,7 +575,7 @@ struct Eac3Fixture {
     ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
 };
 
-constexpr std::array<Eac3Fixture, 5> kEac3Fixtures{{
+constexpr std::array<Eac3Fixture, 6> kEac3Fixtures{{
     {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
@@ -598,6 +615,14 @@ constexpr std::array<Eac3Fixture, 5> kEac3Fixtures{{
     // channel count is not six, so the layout-driven half of the level check is
     // exercised rather than merely written.
     {"eac3_stereo", ac3probe::kEac3StereoStream, ac3probe::kEac3StereoRms},
+    // 7.1.4: a 5.1 bed and two dependent substreams (k71Rear and kTopQuad),
+    // the widest programme the encoder makes and the first fixture with more
+    // channels than one substream can carry. The access unit's assembly -
+    // locations unioned across substreams, a dependent's surrounds replacing
+    // the bed's - runs here and nowhere else in this table, and twelve
+    // channels of output is what a part driving a 7.1.4 DAC over TDM pays
+    // for, in this probe's own PCM block as on the part.
+    {"eac3_714", ac3probe::kEac3714Stream, ac3probe::kEac3714Rms},
 }};
 
 // What the per-fixture static_asserts above used to say, said once. Regenerate
