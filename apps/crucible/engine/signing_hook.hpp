@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -51,7 +52,7 @@ public:
 
 private:
     struct Impl;
-    Impl* impl_;  // the key, zeroised on clear() and destruction
+    std::unique_ptr<Impl> impl_;  // the key, zeroised on clear() and destruction
     std::string source_;
     Source kind_ = Source::kNone;
     std::optional<ac3::signing::KeyErrorKind> failure_;

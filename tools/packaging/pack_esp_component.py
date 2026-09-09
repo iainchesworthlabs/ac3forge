@@ -61,14 +61,19 @@ STAGED_FILES = (
     "README.md",
 )
 
-# Dropped from the staged copy of src/forge. Every one of these is excluded from
-# the minimum-footprint profile already (src/forge/minimal.cmake), so removing
-# them changes nothing that builds - they are here because an archive that
-# carries the AVX2 kernels and the Tracy shims for a part that has neither is
-# just bigger.
-PRUNE_FROM_FORGE = (
-    "src/internal/avx2/mdct_avx2.cpp",
-    "src/internal/avx2/avx2_probe.cpp",
+# Dropped from the staged copy. Both are excluded from the minimum-footprint
+# profile already (src/forge/minimal.cmake), so removing them changes nothing
+# that builds - they are here because an archive carrying AVX2 kernels for a
+# part with no AVX2 is just bigger.
+#
+# Repo-relative, and applied against the staged tree unchanged, because the
+# staging preserves the layout. Written the other way - relative to src/forge -
+# they still worked, and tools/checks/check_doc_paths.py rightly called them
+# paths that do not exist: a reader cannot tell a wrong path from one that is
+# merely relative to something else.
+PRUNE = (
+    "src/forge/src/internal/avx2/mdct_avx2.cpp",
+    "src/forge/src/internal/avx2/avx2_probe.cpp",
 )
 
 
@@ -99,8 +104,14 @@ def stage(destination: pathlib.Path) -> None:
         (library).mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, library / name)
 
-    for relative in PRUNE_FROM_FORGE:
-        (library / "src" / "forge" / relative).unlink(missing_ok=True)
+    for relative in PRUNE:
+        target = library / relative
+        if not target.is_file():
+            # Not missing_ok: a path that stopped resolving is how a prune list
+            # goes quietly stale, and the whole point of these entries is that
+            # they are NOT in the archive.
+            raise SystemExit(f"prune list is stale, no such file: {relative}")
+        target.unlink()
 
     # Generated build output that copytree would otherwise carry along.
     for junk in ("build", "dist", "managed_components"):
