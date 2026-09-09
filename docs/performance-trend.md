@@ -846,7 +846,7 @@ enhanced-coupling scratch between decodes took it to 233,546. Moving the decoder
 buffers onto the decoder — what closed the per-frame churn above — added 2,845 back, because a
 buffer's high-water capacity is now held for the decoder's lifetime rather than released each
 frame. 236,391 fits the 280,792 bytes an ESP32-S3 has free with 44,401 to spare. [The ESP32-S3
-page](platforms/esp32.md#objects-and-what-it-took-to-fit-them) has what each step was worth.
+page](platforms/esp32.md#objects) has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
 made has been destroyed — so not per-frame growth and not a leak. It is 24 bytes now: two

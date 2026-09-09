@@ -54,8 +54,9 @@ done
 # reached 412,516 bytes at that point; nobody re-measured before merging.
 # See docs/performance-trend.md's footprint table for the current breakdown.
 : "${AC3FORGE_MAX_IMAGE_BYTES:=465000}"
-# Measured against main at e982712b: image 418,244 of 465,000 (11% headroom)
-# and peak heap 270,886 of 300,000 (11%). The heap figure moved up from 243,470
+# Measured on main 2026-09-09: image 310,748 of 465,000 (33% headroom) and peak
+# heap 236,391 of 300,000 (21%). Both fell after the float32 decode path and the
+# thread_local move; the heap figure had earlier moved up from 243,470
 # - and its headroom from 23% to 11% - when AP3's pimpl sweep put both decoders'
 # state on the heap instead of in the caller's frame: a relocation out of
 # automatic storage rather than new consumption. The ceiling is deliberately
