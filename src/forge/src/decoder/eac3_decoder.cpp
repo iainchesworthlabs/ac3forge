@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <expected>
 #include <memory>
 #include <optional>
@@ -3621,11 +3622,14 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // in a dependent. Taking the first substream that has any keeps the bed's
     // own the winner wherever there is one, which is every stream this
     // project produces, so nothing about those changes.
-    for (const auto& sub : substreams) {
+    // Moved rather than copied: `substreams` is consumed by this function,
+    // and a copy here was the object description - its vectors and the
+    // object PCM behind them - duplicated once per frame for nothing.
+    for (auto& sub : substreams) {
         if (sub.object_metadata.has_value()) {
-            out.object_metadata = sub.object_metadata;
-            out.object_audio = sub.object_audio;
-            out.object_indices = sub.object_indices;
+            out.object_metadata = std::move(sub.object_metadata);
+            out.object_audio = std::move(sub.object_audio);
+            out.object_indices = std::move(sub.object_indices);
             break;
         }
     }
@@ -3655,14 +3659,26 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // copied in full below, so external storage needs no pre-clearing),
     // otherwise a vector allocated into the result exactly as before -
     // decode_frame_core's own split, at access-unit granularity.
+    //
+    // std::memcpy rather than std::copy, on purpose. The two ranges never
+    // overlap - a substream's own vector against the caller's spans or the
+    // result's vectors - and std::copy lowers to memmove, which on the
+    // ESP32-S3 is a mask-ROM routine that measured some twelve cycles a byte:
+    // 1.9 ms of a 5.1 frame went into this loop's 36 KB, against 0.12 ms for
+    // the same bytes through the ROM's memcpy. On every other target the two
+    // are the same call.
     const auto write_slot = [&](std::size_t slot, const std::vector<float>& src) {
         if (external.empty()) {
-            out.channels[slot] = src;
+            out.channels[slot].resize(src.size());
+        } else {
+            assert(external.size() > slot);
+            assert(external[slot].size() >= src.size());
+        }
+        if (src.empty()) {
             return;
         }
-        assert(external.size() > slot);
-        assert(external[slot].size() >= src.size());
-        std::copy(src.begin(), src.end(), external[slot].begin());
+        float* const dst = external.empty() ? out.channels[slot].data() : external[slot].data();
+        std::memcpy(dst, src.data(), src.size() * sizeof(float));
     };
 
     // Dual mono has no Table E2.5 location - Ch1 and Ch2 are unrelated
@@ -3718,17 +3734,21 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // out.layout comes from some substream's location_map() (the union
     // above), so every slot is written in full here - which is what lets
     // write_slot skip pre-clearing external storage.
-    for (const auto& sub : substreams) {
-        const auto locations = eac3::chanmap::expand(sub.location_map());
-        if (static_cast<std::size_t>(locations.count) != sub.channels.size()) {
-            return std::unexpected(DecodeError::kInvalidStream);
-        }
-        for (int i = 0; i < locations.count; ++i) {
-            const int slot = out.layout.index_of(locations[i]);
-            if (slot < 0) {
+    {
+        AC3_ZONE_SCOPED_N("eac3_au_pcm");
+        for (const auto& sub : substreams) {
+            const auto locations = eac3::chanmap::expand(sub.location_map());
+            if (static_cast<std::size_t>(locations.count) != sub.channels.size()) {
                 return std::unexpected(DecodeError::kInvalidStream);
             }
-            write_slot(static_cast<std::size_t>(slot), sub.channels[static_cast<std::size_t>(i)]);
+            for (int i = 0; i < locations.count; ++i) {
+                const int slot = out.layout.index_of(locations[i]);
+                if (slot < 0) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+                write_slot(static_cast<std::size_t>(slot),
+                           sub.channels[static_cast<std::size_t>(i)]);
+            }
         }
     }
     AC3_ZONE_END(assemble_zone);
