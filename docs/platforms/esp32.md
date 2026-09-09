@@ -17,11 +17,11 @@ it is the first target where real-time decode is worth measuring.
 | E-AC-3 5.1 decode | Correct. Same, including AHT and spectral extension |
 | E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture, since `tools=all` does not select it; 12 allocations/frame, level with plain E-AC-3 |
 | E-AC-3 2/0, §7.5.4 rematrixing | Correct. A layout no 5.1 stream reaches whatever its tools are |
-| Atmos, bed | Correct. Its own fixture, decoded bed-only; 23 allocations/frame |
-| Atmos, objects | Correct, and it fits: a 234,803-byte peak against 280,792 free, 41 allocations/frame — see [Objects](#objects-and-what-it-took-to-fit-them) |
-| Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 234,803-byte peak — see [Memory](#how-much-memory-there-actually-is) |
+| Atmos, bed | Correct. Its own fixture, decoded bed-only; 20 allocations/frame |
+| Atmos, objects | Correct, and it fits: a 210,203-byte peak against 280,792 free, 31 allocations/frame — see [Objects](#objects-and-what-it-took-to-fit-them) |
+| Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 210,203-byte peak — see [Memory](#how-much-memory-there-actually-is) |
 | Retained after teardown | 12 bytes once the probe hands back the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) — see [Building](../building.md#gaps) |
-| Real time | **Yes, on a board**, at 240 MHz, every fixture: from 0.07x for AC-3 mono to 0.72x for Atmos objects — see [Timing](#timing) |
+| Real time | **Yes, on a board**, at 240 MHz, every fixture: from 0.07x for AC-3 mono to 0.66x for Atmos objects — see [Timing](#timing) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
 
 ## Building
@@ -360,12 +360,41 @@ level, which the earlier profile could only report as 2.3 ms outside every
 marker, is now four zones: 2.0 ms assembling the unit from its queued
 substreams (`eac3_au_assemble`), 0.1 keying them (`eac3_au_key`), and
 splitting and queueing under 0.05 between them. The assembly is the largest
-cost the profile now names outside the decoders - at 36 KB of output PCM a
-frame it is some 50 cycles a sample - and is the next thing to read.
+cost the profile then named outside the decoders - at 36 KB of output PCM a
+frame it was some 50 cycles a sample - and was the next thing read.
+
+Reading it found a copy. `std::copy` of each channel's samples into the
+caller's spans lowers to `memmove`, and on this part that is a mask-ROM
+routine which measured some twelve cycles a byte, where the ROM's `memcpy` -
+the call every fixed-size copy in the decoders already reaches - moves the
+same 36 KB in 0.12 ms. The two ranges never overlap, so it is `memcpy` now,
+and `eac3_au_assemble` is 0.25 ms, of which the copy (`eac3_au_pcm`) is
+0.12. The same pass stopped copying a substream's object description into
+the access unit - the substream is consumed there, so it is moved - which is
+where the objects fixture's peak heap fell from 234,803 bytes to 210,203 and
+its allocations a frame from 41 to 31, the bed's from 23 to 20. Every level
+is unchanged to the digit, on the board and on the host suite.
+
+Same board, same clock, plain build:
+
+| Fixture | us/frame | x real time | was |
+|---|---:|---:|---:|
+| `ac3_mono` | 2,229 | 0.07 | 2,188 |
+| `ac3_stereo` | 3,476 | 0.11 | 3,420 |
+| `eac3_stereo` | 5,550 | 0.17 | 6,171 |
+| `ac3` 5.1 | 9,963 | 0.31 | 9,939 |
+| `eac3_atmos_bed` | 9,066 | 0.28 | 10,914 |
+| `eac3` 5.1 | 10,988 | 0.34 | 12,775 |
+| `eac3_atmos_objects` | 21,199 | 0.66 | 23,191 |
+| `eac3_ecpl` | 19,768 | 0.62 | 21,547 |
+
+A 5.1 frame, stage-timed, is 11.3 ms: the IMDCT 3.5, the AHT
+2.7, spectral extension 1.5, bit allocation 0.4, mantissas 0.4,
+and the access-unit level 0.4 in all.
 
 ### What is left, and what would move it
 
-- **Objects.** JOC reconstruction is 12.3 ms of the objects fixture's 23.6:
+- **Objects.** JOC reconstruction is 12.3 ms of the objects fixture's 21.7:
   4.2 ms mixing, 3.5 ms re-analysing the bed with thirty forward transforms a
   frame, 2.8 ms synthesising six objects. The bed analysis exists because
   `oba::joc::reconstruct` takes the bed as PCM; the decoder holds that bed's
@@ -375,7 +404,7 @@ frame it is some 50 cycles a sample - and is the next thing to read.
   independent of the bed decode of frame N+1, so a second task can run it a
   frame behind, at the cost of one frame of latency, and throughput becomes
   the larger of the two halves rather than their sum. Neither is done.
-- **Enhanced coupling** is at 0.67x and has one cheap step left. Each block's
+- **Enhanced coupling** is at 0.62x and has one cheap step left. Each block's
   spectrum runs three inverse transforms, and two of them are the neighbouring
   blocks' - the same transforms the previous and next block run for
   themselves, so eighteen a frame where eight are distinct; a cache keyed by
@@ -395,7 +424,7 @@ frame it is some 50 cycles a sample - and is the next thing to read.
   per coupled channel per block is gone as a side effect, but the count the
   runner gates did not move on any fixture, since no fixture couples.
 - **A hand-written kernel tier** (`madd.s`, which `-ffp-contract=off` forbids
-  project-wide) would apply to the IMDCT, which is 3.5 ms of a 13.0 ms 5.1
+  project-wide) would apply to the IMDCT, which is 3.5 ms of a 11.3 ms 5.1
   frame. That bounds what the tier could return at under a quarter of the
   remaining time, and it is not needed for anything that now fits.
 
@@ -446,7 +475,7 @@ all of them rather than only here.
 ### The ESP32-P4, and why it is not a target
 
 Assessed 2026-09-08 and declined. The P4 is dual-core RISC-V at 400 MHz with
-768 KB of SRAM, and it holds the 234,803-byte peak heap without the float32
+768 KB of SRAM, and it holds the 210,203-byte peak heap without the float32
 work this port needed, so it reads as the answer if the S3 turns out not to
 be real time. Three things were checked before writing any of it, and two of
 them settle it.
@@ -493,7 +522,7 @@ What the P4 does buy over the S3 is clock and memory. A frame is 1536 samples,
 32 ms at 48 kHz, which is 7.68 M cycles of budget at 240 MHz against 12.8 M at
 400 MHz: **1.67×**, and it is per-core in both cases. The memory advantage is
 already spent: this port fits internal SRAM on the S3 with 280,792 bytes free
-against a 234,803-byte peak.
+against a 210,203-byte peak.
 
 **It has no radio, and the plan it would serve is a Wi-Fi plan.** The P4 has
 neither Wi-Fi nor Bluetooth and needs a companion ESP32-C6 or -H2 for either,

@@ -691,7 +691,7 @@ for what the profile changes and why.
 coupling), 5.1 E-AC-3 (384 kbit/s, AHT + spx + standard coupling), 5.1 E-AC-3 with §E3.5
 enhanced coupling (384 kbit/s, `cpl+ecpl`) and 2/0 E-AC-3 (192 kbit/s, which is the only layout
 §7.5.4 rematrixing exists in) — and reports what it cost. Numbers below are from a run
-against `feature/esp32-hotpath-sweep` at `4dfb967c`; `build-footprint` in
+against `feature/esp32-hotpath-sweep` at `66349b3e`; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
@@ -721,10 +721,10 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 224,076 |
+| `.text` (code + read-only data) | 224,156 |
 | `.data` (initialised) | 400 |
 | `.bss` (zero-initialised) | 96,045 |
-| **Image total** | **320,521** (313.0 KiB) |
+| **Image total** | **320,601** (313.1 KiB) |
 
 `.bss` fell 140,440 bytes from the 237,592 this table carried before, in two steps. Moving
 `ecpl_channel_spectrum`'s 32 KB scratch off thread-local storage — it made the library
@@ -759,7 +759,8 @@ from 9,204 to 5,116 of `.bss`, the float twiddles being half the size — and
 
 The hot-path sweep's `BitReader` cache and bit-allocation memos cost 2,520 bytes of `.text` and
 no `.bss`, for an image of 320,521. 1,686 of it is `decoder.cpp.obj`, whose read sites are the
-most numerous; 716 is `eac3_decoder.cpp.obj`.
+most numerous; 716 is `eac3_decoder.cpp.obj`. The access unit's `memcpy` and its moved object
+description are 80 bytes more: 320,601.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
@@ -767,7 +768,7 @@ attribution from the linker map):
 | Object | `.text` | `.bss` |
 |---|---|---|
 | `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks) | 55.8 KiB | 48.8 KiB |
-| `eac3_decoder.cpp.obj` (all of Annex E) | 37.1 KiB | 0 B |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 37.2 KiB | 0 B |
 | `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 19.8 KiB | 11.2 KiB |
 | `mdct.cpp.obj` (inverse transform, fast path only) | 15.9 KiB | 14.6 KiB |
 | `decoder.cpp.obj` (AC-3) | 20.4 KiB | 0 B |
@@ -825,7 +826,7 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 234,803 bytes (229.3 KiB) |
+| Peak heap | 210,203 bytes (205.3 KiB) |
 | Retained after teardown | 12 bytes |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
@@ -835,11 +836,11 @@ a silent fast-path substitution — see the building doc for why.
 | E-AC-3 allocations per frame, steady state | 12 |
 | E-AC-3 enhanced coupling allocations per frame, steady state | 12 |
 | E-AC-3 2/0 allocations per frame, steady state | 10 |
-| Atmos bed allocations per frame, steady state | 23 |
-| Atmos with objects allocations per frame, steady state | 41 |
+| Atmos bed allocations per frame, steady state | 20 |
+| Atmos with objects allocations per frame, steady state | 31 |
 
 The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
-for zero, and this is 1–41. What is left is no longer the per-block geometry vectors inside the
+for zero, and this is 1–31. What is left is no longer the per-block geometry vectors inside the
 decoders — those are `Impl` members now, reused frame to frame — but the `std::vector` members
 of the returned `DecodedFrame`/`DecodedSubstream`, which the memory programme's [`_into`
 forms](#whole-frame-trend) could not remove because they are inherent to those two return types
@@ -871,7 +872,8 @@ the decoder's own §E3.5 state, then gave 4,108 back, and the bit-allocation mem
 stream's last exponent set and allocation parameters, kept so an unchanged block reuses its
 allocation — hold 1,608 across a frame; they are built on a stream's first block, so a run's
 allocation total rises by 41 while every fixture's steady-state count above is unchanged.
-234,803 fits the 280,792 bytes an ESP32-S3 has free with 45,989 to spare. [The ESP32-S3 page](platforms/esp32.md#objects-and-what-it-took-to-fit-them)
+Moving a substream's object description into the access unit rather than copying it then gave
+24,600 back. 210,203 fits the 280,792 bytes an ESP32-S3 has free with 70,589 to spare. [The ESP32-S3 page](platforms/esp32.md#objects-and-what-it-took-to-fit-them)
 has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it

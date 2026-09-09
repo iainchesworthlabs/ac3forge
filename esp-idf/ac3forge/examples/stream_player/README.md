@@ -93,7 +93,7 @@ until the DAC has taken the samples, and that back-pressure is what makes the
 loop run at real time; the null sink runs flat out. Under QEMU it means less than
 nothing — the emulator is not cycle-accurate and reports a CPU clock that
 disagrees with its own boot log. Real-time decode on this part is measured on a
-board, not here: an E-AC-3 5.1 frame decodes in 12.8 ms of its 32 at 240 MHz — see
+board, not here: an E-AC-3 5.1 frame decodes in 11.0 ms of its 32 at 240 MHz — see
 [`docs/platforms/esp32.md`](../../../../docs/platforms/esp32.md#timing).
 
 ## The sources

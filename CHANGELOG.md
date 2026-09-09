@@ -58,6 +58,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `eac3_au_*` timer zones cover the access-unit level. On the board, E-AC-3 5.1 went from 14.2 ms
   a frame to 12.8, 2/0 from 6.8 to 6.2, Atmos objects from 29.4 to 23.2 and enhanced
   coupling from 23.8 to 21.5.
+- **An access unit's PCM reaches the caller through `memcpy`, and its object description is
+  moved, not copied.** `std::copy` into the caller's spans lowered to the ESP32-S3 mask ROM's
+  `memmove`, which measured some twelve cycles a byte: 1.9 ms of a 5.1 frame for 36 KB the ROM's
+  `memcpy` moves in 0.12. A consumed substream's object description was copied into the unit,
+  vectors and all, once per frame. On the board, E-AC-3 5.1 is now 11.0 ms a frame, 2/0 5.5,
+  the Atmos bed 9.1, objects 21.2 and enhanced coupling 19.8; the objects fixture's
+  peak heap is 210,203 bytes (was 234,803) and its allocations a frame 31 (was 41), the bed's 20
+  (was 23). Every level unchanged to the digit.
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has
