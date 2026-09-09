@@ -869,8 +869,9 @@ frame. JOC's mixing then began narrowing the frame's matrix once into a scratch 
 than at every read, 912 bytes more. The float form of the enhanced-coupling scratch, and of
 the decoder's own §E3.5 state, then gave 4,108 back, and the bit-allocation memos — each
 stream's last exponent set and allocation parameters, kept so an unchanged block reuses its
-allocation — hold 1,608 across a frame. 234,803 fits the 280,792 bytes an ESP32-S3 has free
-with 45,989 to spare. [The ESP32-S3 page](platforms/esp32.md#objects-and-what-it-took-to-fit-them)
+allocation — hold 1,608 across a frame; they are built on a stream's first block, so a run's
+allocation total rises by 41 while every fixture's steady-state count above is unchanged.
+234,803 fits the 280,792 bytes an ESP32-S3 has free with 45,989 to spare. [The ESP32-S3 page](platforms/esp32.md#objects-and-what-it-took-to-fit-them)
 has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
