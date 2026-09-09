@@ -453,18 +453,19 @@ same on both legs:
   `ecpl_channel_spectrum` went from 6.9 ms to 6.7 and the reconstruction
   stayed at 4.7. The pass's gain on this fixture came from the bitstream
   side instead - its mantissas 2.4 ms to 1.6.
-- **7.1.4 to a DAC.** The decode is in real time on one core at 0.90x and in
-  internal SRAM with 27 KB to spare, and neither number leaves room for a
-  player around it: a TDM16 sink's DMA ring is 16 KB a 256-sample block, WiFi
-  wants 50 KB, and a full frame of twelve output channels is 73 KB whether
-  the probe holds it or a player does. What would move it is structural
-  rather than arithmetic - writing the decoder's output a block at a time
-  into the sink's ring instead of a frame at a time (twelve kilobytes rather
-  than seventy-three), and a dependent's channels going straight into their
-  output slots instead of through the access unit (another 73 KB at the
-  peak) - or PSRAM for the staging, with its own I2S-DMA constraints and a
-  speed cost to measure. At 0.90x the second core stops being optional
-  for anything that decodes 7.1.4 and does something else.
+- **7.1.4 to a DAC.** The decode is in real time on one core at 0.90x, and
+  the frame of output a player used to have to hold - 73 KB for twelve
+  channels, whether the probe held it or a player did - is gone: the
+  `_by_block` forms (`decode_access_unit_by_block`, see
+  [Decoding](../library/decoding.md#block-granular-output)) hand the
+  programme over a 256-sample block at a time from the decoder's own
+  storage, copying nothing, and the probe now holds no PCM at all. What is
+  still structural: a dependent's channels go through the access unit's
+  own vectors, 73 KB at the peak, where writing them straight into their
+  output slots would remove them; PSRAM for the staging remains the blunt
+  alternative. A TDM16 sink's DMA ring is 16 KB a block and WiFi wants
+  50 KB, and at 0.90x the second core stops being optional for anything
+  that decodes 7.1.4 and does something else.
 - **The second core** was the lever the earlier estimates ranked first. It was
   not needed for stereo or 5.1, and the breakdown says why it would have
   disappointed: the stages that dominated were serial software floating point,
