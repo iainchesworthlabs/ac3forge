@@ -53,3 +53,13 @@ idf_component_register(
 # probe.hpp and the two fixture headers all sit beside the probes.
 target_include_directories(${COMPONENT_LIB} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
+# The encode probe's 7.1 measurement switch, the same option and default as
+# apps/baremetal/CMakeLists.txt gives the hosted shapes - see the comment
+# there. Measured 2026-09-10 under QEMU with this part's memory map: the
+# fixture dies on a 73,728-byte request, so a build with it ON is a
+# measurement and never what CI runs. idf.py -DAC3FORGE_PROBE_SEVEN_ONE=ON build
+set(AC3FORGE_PROBE_SEVEN_ONE OFF CACHE BOOL
+    "Encode probe: add the 7.1 access-unit fixture (a footprint measurement; does not fit)")
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    "AC3FORGE_PROBE_SEVEN_ONE=$<BOOL:${AC3FORGE_PROBE_SEVEN_ONE}>")

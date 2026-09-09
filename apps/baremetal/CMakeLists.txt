@@ -92,6 +92,21 @@ endif()
 
 target_link_libraries(ac3probe PRIVATE ac3::forge_minimal ac3::warnings)
 
+# A measurement switch for the ENCODE probe, off by default: adds a 7.1
+# access-unit fixture (an independent 5.1 substream plus a dependent, two
+# FrameEncoders alive at once). Measured 2026-09-10: the host run's peak heap
+# goes from 220,608 bytes to 435,263, and an ESP32-S3 dies on a 73,728-byte
+# request - a 7.1 E-AC-3 encode does not fit that part's internal SRAM. So it
+# is not a default fixture, whose ceilings say what fits, but it stays
+# buildable so the number can be re-taken when something changes (PSRAM, a
+# smaller encoder). See encode_probe.cpp and encode_fixture.hpp. The ESP-IDF
+# application under platform/esp32s3/ takes the same option.
+option(AC3FORGE_PROBE_SEVEN_ONE
+       "Encode probe: add the 7.1 access-unit fixture (a footprint measurement; does not fit an ESP32-S3)"
+       OFF)
+target_compile_definitions(ac3probe PRIVATE
+    "AC3FORGE_PROBE_SEVEN_ONE=$<BOOL:${AC3FORGE_PROBE_SEVEN_ONE}>")
+
 # fixture.hpp sits beside probe.cpp; the generated ac3/export.hpp comes with
 # the library target.
 target_include_directories(ac3probe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

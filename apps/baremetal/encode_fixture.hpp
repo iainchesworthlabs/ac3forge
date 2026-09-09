@@ -70,4 +70,15 @@ inline constexpr std::uint64_t kEac3Hash = 1012121234525177924ULL;
 inline constexpr std::size_t kEac3EcplBytes = 4608;
 inline constexpr std::uint64_t kEac3EcplHash = 4460190987537266377ULL;
 
+// 7.1 as an access unit: a 5.1 independent substream at 448 kbit/s (1,792
+// bytes) with a four-channel dependent at 224 kbit/s (896 bytes) carrying
+// Ls, Rs, Lrs and Rrs - 2,688 bytes a unit, 16,128 for six. The fixture that
+// holds two E-AC-3 FrameEncoders alive at once, which is what a layout wider
+// than 5.1 costs - and, measured, more than an ESP32-S3 has: OPT-IN through
+// AC3FORGE_PROBE_SEVEN_ONE, see encode_probe.cpp for the numbers. The hash is
+// the host's (Linux GCC 15, x86_64, 2026-09-10), taken the way the header
+// above describes.
+inline constexpr std::size_t kEac3SevenOneBytes = 16128;
+inline constexpr std::uint64_t kEac3SevenOneHash = 0xbe1aad39df30dc74ULL;
+
 }  // namespace ac3probe

@@ -1,9 +1,14 @@
 # The ESP32-S3 player: from two examples to a component and an ESPHome media player
 
-!!! note "Status as of 2026-09-10: Phase 0 in progress"
-    Written 2026-09-10, against a second `ESP32-S3-DevKitC-1-N16R8` on the desk. Phase 0 is the
-    hardware run itself: the I2S player and the streaming player on a board, measured, with what
-    each took recorded in its README. Nothing from Phase 1 onward exists in the tree.
+!!! note "Status as of 2026-09-10: Phase 0 in progress - QEMU done, the board next"
+    Written 2026-09-10, for a second `ESP32-S3-DevKitC-1-N16R8`. Phase 0 is the hardware run
+    itself: the I2S player and the streaming player on a board, measured, with what each took
+    recorded in its README. What QEMU could establish first, it has: both probe directions pass
+    with their documented footprints, the streaming player decodes E-AC-3 through the
+    `Eac3Decoder`, its `http` source fetches and decodes the demo stream over the emulated
+    Ethernet with levels matching the host's, and the 7.1 encode question is answered (it does
+    not fit internal SRAM). The board supplies what QEMU cannot, which is time and the radio.
+    Nothing from Phase 1 onward exists in the tree.
 
     Shape follows [the topology](topology.md) and [the appliance plan](player-appliance.md):
     design sections say what changes and why, phases carry exit criteria and how each is
@@ -256,9 +261,14 @@ exercises three of these shapes today (AC-3 5.1, E-AC-3 5.1, E-AC-3 2/0 with enh
 and checks each against the host's bytes. Out: `AtmosEncoder` and everything under it, so no
 object layer and no height channels. A "7.1.4" encode in this library's terms is a 5.1 bed with
 the rears and the four heights carried as objects at fixed positions, JOC-coded; that is the
-Atmos encoder, below. What a 7.1 access unit costs this part is unmeasured: two `FrameEncoder`s
-at once against peaks of 201,770 and 243,770 bytes for one, so it may not fit internal SRAM,
-which PSRAM would answer and QEMU cannot.
+Atmos encoder, below. What a 7.1 access unit costs this part was measured on 2026-09-10 with a
+fixture added to the encode probe (`-DAC3FORGE_PROBE_SEVEN_ONE=ON`): on the host the run's peak
+heap goes from 220,608 bytes to 435,263, and under QEMU with the S3's memory map the fixture
+dies on a 73,728-byte request, with 303,656 bytes free and a largest block of 241,664 before the
+run began. **A 7.1 E-AC-3 encode does not fit this part's internal SRAM.** Two encoders at once
+is the cost, and the question that remains is PSRAM, which the N16R8 has 8 MB of and QEMU cannot
+emulate; the fixture stays in the probe as an opt-in so the number can be re-taken on a board
+with PSRAM enabled, or after the encoder core shrinks.
 
 **Audio in.** The mirror of the sink seams: an I2S or TDM receive channel, the S3's I2S being
 full duplex and a SigmaDSP's serial outputs carrying TDM8, filling caller-owned planar float one
