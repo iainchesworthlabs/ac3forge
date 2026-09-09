@@ -73,6 +73,7 @@ add_executable(ac3tests
     decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
     io/test_stream_accumulator.cpp
+    io/test_interleave.cpp
     io/test_metadata_edit.cpp
     io/test_probe.cpp
     emdf/test_emdf.cpp
@@ -172,6 +173,15 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/e
 # one - same white-box arrangement as src/signing/src just above and the ALSA
 # backend's internal header below.
 target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
+
+# The TDM interleave from the ESP-IDF streaming example. Reaching into an
+# example is unusual and deliberate: that header is the only part of a TDM sink
+# that can be checked without a DAC on the other end - the rest is peripheral
+# setup and a blocking write - and it is the part with the indexing in it. The
+# header includes nothing from ESP-IDF, which is what makes building it here
+# possible and is worth keeping true.
+target_include_directories(ac3tests PRIVATE
+    "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/examples/stream_player/main")
 
 # test_simd_kernels.cpp's CPU-feature-detection cases (ROADMAP PF5's
 # dynamic-dispatch follow-on) need cpu_features.cpp compiled a SECOND time,

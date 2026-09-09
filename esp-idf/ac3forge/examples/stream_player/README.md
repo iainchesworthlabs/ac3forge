@@ -21,9 +21,19 @@ independent substream together with the dependents that extend it (§E3.8.2). A
 reader that handed over one syncframe at a time would give the decoder a
 dependent with nothing to extend.
 
-**A sink seam.** Where audio goes is a directory CMake picks, not a flag the
-player branches on — the same rule the library uses for its own platform
-choices. See [`main/audio_sink.hpp`](main/audio_sink.hpp).
+**Two seams.** Where bytes come from and where audio goes are both directories
+CMake picks, not flags the player branches on — the same rule the library uses
+for its own platform choices. The player mentions neither a partition nor I2S.
+See [`main/byte_source.hpp`](main/byte_source.hpp) and
+[`main/audio_sink.hpp`](main/audio_sink.hpp).
+
+| Source | Sink |
+| --- | --- |
+| `partition` — flash (default) | `i2s` — stereo DAC (default) |
+| `sd` — SD card over SDMMC | `tdm` — multi-channel on one data line |
+| `http` — an HTTP body over WiFi | `null` — counts frames; what CI runs |
+
+Chosen in `idf.py menuconfig` under *ac3forge stream player*.
 
 ## Running it
 
@@ -71,29 +81,45 @@ nothing — the emulator is not cycle-accurate and reports a CPU clock that
 disagrees with its own boot log. Real-time decode on this part is still
 unmeasured; see [`docs/platforms/esp32.md`](../../../../docs/platforms/esp32.md).
 
-## Changing the source
+## The sources
 
-`read_block()` in [`main/stream_player.cpp`](main/stream_player.cpp) is the only
-function that knows where bytes come from. An SD card is the same function over
-`f_read()`; HTTP is the same function over `esp_http_client_read()`. Nothing
-else changes.
+Only `partition` can be **run** without hardware, which is why it is the default
+and the one CI exercises end to end. `sd` and `http` are compiled by CI and no
+further — QEMU has no SD host and no network — so both are deliberately small:
+the less that lives behind an unrunnable seam, the less can be wrong in it.
 
-One thing a partition does not give you is a length, which every other source
-does — `Content-Length`, a file size, a directory entry. The build supplies it
-from the file's own size, because without it the player reads a quarter of a
-megabyte of erased flash on every lap.
+Two things differ between them and are worth knowing before writing a third:
+
+**Length.** A partition is the only source with none. Every other kind has one —
+`Content-Length`, a file size — and without it the player reads the whole 256 KB
+partition while the framer skips a quarter of a megabyte of erased flash looking
+for a sync word, on every lap. The build supplies it from the file's own size.
+
+**Rewind.** `http` cannot. A socket has delivered what it delivered;
+re-requesting the URL would be a new stream, not a rewind, and the decoder's
+overlap-add state would carry across the seam as a click. `source_rewind()`
+returns false and the player stops rather than pretending.
 
 ## More than two channels
 
-Standard I2S carries two slots, so 5.1 and 7.1 need TDM
-(`driver/i2s_tdm.h`) — the S3 packs up to 16 slots onto one data line, so eight
-channels needs three pins rather than four data lines, and a DAC that speaks it
-(a PCM3168A does; the common MAX98357A and PCM5102 breakouts do not).
+`tdm` puts up to eight channels on one data line: three pins (BCLK, WS, DATA)
+instead of four data lines, at a 12.3 MHz bit clock for 8 slots × 32 bits ×
+48 kHz. It needs a DAC that speaks TDM — a PCM3168A does, the common MAX98357A
+and PCM5102 breakouts do not.
 
-No TDM sink exists yet. The seam is shaped for one — sinks are handed the
-decoder's planar float and own their own interleave and sample format — and
-`main/audio_sink.hpp` records what is known about writing it, including the slot
-zeroing a 5.1 programme on an 8-slot stream needs.
+**It has never run on hardware.** There is no TDM DAC here and QEMU has no I2S,
+so what CI establishes is that it compiles and links. The exception is the part
+worth testing: [`main/interleave.hpp`](main/interleave.hpp) is free of ESP-IDF
+and is unit-tested on the host (`tests/io/test_interleave.cpp`), because
+planar-to-interleaved indexing with slot padding is where the bugs are and the
+rest of that sink is peripheral setup that either works on a board or does not.
+
+The padding is the part that bites. A TDM frame is a fixed shape, so a 5.1
+programme on an 8-slot bus leaves two slots with nothing to carry — and they
+must be **written as zeros, not skipped**. The DMA buffer is reused, so whatever
+the previous frame left there is what the DAC clocks out: two channels of stale
+audio nobody is listening for and everybody can hear. There is a test for
+exactly that.
 
 ## What it costs
 

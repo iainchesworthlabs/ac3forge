@@ -37,10 +37,101 @@ choice AC3FORGE_EXAMPLE_SINK
 config AC3FORGE_EXAMPLE_SINK_I2S
     bool "I2S DAC"
 
+config AC3FORGE_EXAMPLE_SINK_TDM
+    bool "TDM DAC (multi-channel on one data line)"
+
 config AC3FORGE_EXAMPLE_SINK_NULL
     bool "None (count frames only)"
 
 endchoice
+
+config AC3FORGE_EXAMPLE_TDM_SLOTS
+    int "TDM slots on the bus"
+    depends on AC3FORGE_EXAMPLE_SINK_TDM
+    default 8
+    range 2 8
+    help
+        How many slots the TDM frame carries - a property of the BOARD, not of
+        the audio. A DAC is wired for a fixed number and does not renegotiate
+        because a stream happens to be 5.1, so slots that the programme does not
+        fill are written as zeros rather than skipped. Eight slots of 32 bits at
+        48 kHz is a 12.3 MHz bit clock, which is the comfortable ceiling rather
+        than the 16 slots the peripheral can address.
+
+# WHERE THE BYTES COME FROM. A directory CMake picks, the mirror of the sink
+# choice above; see main/byte_source.hpp.
+choice AC3FORGE_EXAMPLE_SOURCE
+    prompt "Bitstream source"
+    default AC3FORGE_EXAMPLE_SOURCE_PARTITION
+    help
+        Only the partition source can be RUN without hardware, which is why it
+        is the default and the one CI exercises end to end. The other two are
+        compiled by CI and no further: QEMU has no SD host and no network.
+
+config AC3FORGE_EXAMPLE_SOURCE_PARTITION
+    bool "Flash partition"
+
+config AC3FORGE_EXAMPLE_SOURCE_SD
+    bool "SD card (SDMMC + FATFS)"
+
+config AC3FORGE_EXAMPLE_SOURCE_HTTP
+    bool "HTTP over WiFi"
+
+endchoice
+
+config AC3FORGE_EXAMPLE_SD_PATH
+    string "Path to the bitstream on the card"
+    depends on AC3FORGE_EXAMPLE_SOURCE_SD
+    default "/sdcard/sample.ac3"
+
+config AC3FORGE_EXAMPLE_SD_BUS_WIDTH
+    int "SDMMC bus width"
+    depends on AC3FORGE_EXAMPLE_SOURCE_SD
+    default 4
+    range 1 4
+    help
+        4-bit if the card is wired for it. 1-bit works on any wiring and is
+        several times slower, which matters less for the bitrate (448 kbit/s is
+        nothing) than for the CPU time the transfer costs.
+
+config AC3FORGE_EXAMPLE_SD_CLK_GPIO
+    int "SDMMC CLK GPIO"
+    depends on AC3FORGE_EXAMPLE_SOURCE_SD
+    default 14
+
+config AC3FORGE_EXAMPLE_SD_CMD_GPIO
+    int "SDMMC CMD GPIO"
+    depends on AC3FORGE_EXAMPLE_SOURCE_SD
+    default 15
+
+config AC3FORGE_EXAMPLE_SD_D0_GPIO
+    int "SDMMC D0 GPIO"
+    depends on AC3FORGE_EXAMPLE_SOURCE_SD
+    default 2
+
+config AC3FORGE_EXAMPLE_WIFI_SSID
+    string "WiFi SSID"
+    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    default "my-network"
+
+config AC3FORGE_EXAMPLE_WIFI_PASSWORD
+    string "WiFi password"
+    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    default ""
+
+config AC3FORGE_EXAMPLE_WIFI_RETRIES
+    int "Association attempts before giving up"
+    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    default 5
+    help
+        Bounded, so a wrong password fails and says so instead of retrying
+        forever. A player that silently never starts is harder to diagnose than
+        one that reports it could not associate.
+
+config AC3FORGE_EXAMPLE_HTTP_URL
+    string "URL of the bitstream"
+    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    default "http://example.invalid/sample.ac3"
 
 config AC3FORGE_EXAMPLE_MAX_LAPS
     int "Stop after this many passes through the stream (0 = never stop)"

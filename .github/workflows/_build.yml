@@ -3698,6 +3698,47 @@ jobs:
             exit 1
           fi
 
+      # BUILD ONLY, and that is the whole point of the step.
+      #
+      # Three of the example's four sink/source combinations cannot RUN without
+      # hardware: QEMU has no I2S, no TDM, no SD host and no network. What can
+      # go wrong in them anyway is that they stop compiling - an IDF component
+      # gets renamed, a driver API changes shape - and an integrator finding
+      # that out is strictly worse than CI finding it.
+      #
+      # It has already paid for itself: the SD and HTTP sources compiled their
+      # own sources against a REQUIRES list that had silently resolved to the
+      # partition branch, because IDF expands REQUIRES in an earlier pass than
+      # the source list and CONFIG_ is not reliably set in it.
+      #
+      # The interleave inside the TDM sink is the one part of this that gets a
+      # real test rather than a compile - it is free of ESP-IDF and unit-tested
+      # on the host (tests/io/test_interleave.cpp), because slot padding and
+      # planar-to-interleaved indexing are where the bugs are.
+      - name: Build every sink and source combination
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/stream_player
+          for combo in \
+            "tdm:CONFIG_AC3FORGE_EXAMPLE_SINK_TDM=y" \
+            "i2s:CONFIG_AC3FORGE_EXAMPLE_SINK_I2S=y" \
+            "sd:CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD=y" \
+            "http:CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP=y"; do
+            name="${combo%%:*}"
+            setting="${combo#*:}"
+            echo "--- $name ---"
+            rm -rf build sdkconfig
+            printf '%s\n' "$setting" > sdkconfig.probe
+            SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.probe" idf.py set-target esp32s3 >/dev/null
+            SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.probe" idf.py build >/dev/null
+            echo "$name: built"
+          done
+          rm -f sdkconfig.probe
+          # Leave the tree as CI's runnable configuration found it, so a later
+          # step or a re-run does not inherit a probe build.
+          rm -rf build sdkconfig
+
       - name: Upload the ESP32-S3 map and console output
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

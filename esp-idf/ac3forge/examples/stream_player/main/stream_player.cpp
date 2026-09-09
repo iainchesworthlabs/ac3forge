@@ -15,13 +15,18 @@
 // is the same boundary rule applied incrementally, over a buffer this file owns
 // - so the decode allocates nothing for framing.
 //
-// SWAPPING THE SOURCE. read_block() below is the only function that knows where
-// the bytes come from. An SD card is the same function over f_read(); HTTP is
-// the same function over esp_http_client_read(). Nothing else in this file
-// changes, which is the shape worth copying.
+// BOTH ENDS ARE SEAMS, and CMake resolves both - see byte_source.hpp and
+// audio_sink.hpp. This file mentions neither a partition nor I2S: it reads
+// bytes, frames them, decodes them and writes audio, and every question about
+// WHERE is answered somewhere else.
 //
-// SWAPPING THE SINK is the same idea at the other end, except CMake does it -
-// see audio_sink.hpp. This file never mentions I2S.
+//   source/partition/  flash. The default, and the only one CI can run.
+//   source/sd/         an SD card over SDMMC.
+//   source/http/       an HTTP body over WiFi.
+//
+//   sink/i2s/          a stereo DAC.
+//   sink/tdm/          multi-channel on one data line.
+//   sink/null/         counts frames; what CI builds.
 
 #include <algorithm>
 #include <array>
@@ -31,7 +36,6 @@
 #include <span>
 
 #include "esp_heap_caps.h"
-#include "esp_partition.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -41,6 +45,7 @@
 #include "ac3/io/stream_accumulator.hpp"
 
 #include "audio_sink.hpp"
+#include "byte_source.hpp"
 
 namespace {
 
@@ -48,34 +53,23 @@ constexpr std::uint32_t kSampleRate = 48000;
 constexpr std::uint64_t kFrameDurationUs = 32000;  // §5.3.2: 1,536 samples at 48 kHz
 constexpr std::size_t kOutputChannels = 2;
 
-// How much is read from the partition per call. 2 KB is deliberately smaller
-// than a syncframe (1,792 bytes at 448 kbit/s is close, and E-AC-3 can reach
-// 4,096) so the accumulator's "need more input" path is exercised on a real
-// device rather than only in its unit tests - a block size that always happened
-// to contain a whole frame would hide every framing bug there is.
-constexpr std::size_t kReadBlock = 2048;
+// The accumulator's working buffer. kRecommendedBuffer is 16 KB, which holds an
+// independent substream plus three dependents; a plain AC-3 stream would fit in
+// kMinimumBuffer, but an example should show the size that copes with a stream
+// whose shape is not known in advance.
+//
+// How much is read into it per call is the SOURCE's business - see
+// byte_source.hpp. It is deliberately less than the buffer everywhere, so the
+// accumulator's "need more input" path runs on a real device and not only in
+// its unit tests: a read size that always happened to contain a whole frame
+// would hide every framing bug there is.
+alignas(4) std::array<std::byte, ac3::io::kRecommendedBuffer> g_stream_buffer{};
 
 // From Kconfig, an int so it arrives as a plain constant rather than through a
 // preprocessor conditional - see main/Kconfig.projbuild. 0 plays forever, which
 // is what a demo on a board should do; CI sets a small number so the run ends
 // with a verdict.
 constexpr std::uint32_t kMaxLaps = CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS;
-
-// How many bytes of the partition are actually audio. Supplied by the build
-// from the file's own size (see main/CMakeLists.txt): the partition is 256 KB
-// and the sample is a fraction of that, and without a length the player would
-// read a quarter of a megabyte of erased flash every lap while the accumulator
-// skipped all of it looking for a sync word.
-//
-// A real source knows this - Content-Length, a file size, a directory entry. A
-// raw partition does not, so the build says.
-constexpr std::size_t kStreamBytes = AC3FORGE_STREAM_BYTES;
-
-// The accumulator's working buffer. kRecommendedBuffer is 16 KB, which holds an
-// independent substream plus three dependents; this sample is plain AC-3 and
-// would fit in kMinimumBuffer, but an example should show the size that copes
-// with a stream whose shape is not known in advance.
-alignas(4) std::array<std::byte, ac3::io::kRecommendedBuffer> g_stream_buffer{};
 
 // Caller-owned PCM, the shape an embedded integrator has: one block, sized
 // once, reused every frame. Six channels because the fixture is 5.1 - the fold
@@ -89,32 +83,6 @@ std::array<std::span<float>, kCodedChannels> g_pcm_spans{};
 // decoder folded to.
 std::array<std::span<const float>, kCodedChannels> g_out_views{};
 
-const esp_partition_t* g_audio = nullptr;
-std::size_t g_read_offset = 0;
-
-// The ONLY function that knows where bytes come from. Returns 0 at end of
-// stream. Replace its body to read from anywhere else.
-std::size_t read_block(std::span<std::byte> dst) {
-    // Bounded by the AUDIO length, not the partition's - see kStreamBytes.
-    const std::size_t limit = std::min(kStreamBytes, static_cast<std::size_t>(g_audio->size));
-    if (g_audio == nullptr || g_read_offset >= limit) {
-        return 0;
-    }
-    // Every term cast to std::size_t first: esp_partition_t::size is a uint32_t
-    // and mixing it into a braced std::min with size_t values is a deduction
-    // failure rather than a promotion.
-    const std::size_t remaining = limit - g_read_offset;
-    const std::size_t want = std::min({dst.size(), kReadBlock, remaining});
-    if (esp_partition_read(g_audio, g_read_offset, dst.data(), want) != ESP_OK) {
-        return 0;
-    }
-    g_read_offset += want;
-    return want;
-}
-
-// Hands the decoder's own planar channels straight to the sink, which owns the
-// interleave and the sample format - see audio_sink.hpp for why that split is
-// where it is.
 void play_frame(int channels) {
     for (int ch = 0; ch < channels; ++ch) {
         g_out_views[static_cast<std::size_t>(ch)] = g_pcm[static_cast<std::size_t>(ch)];
@@ -132,16 +100,10 @@ extern "C" void app_main() {
         g_pcm_spans[ch] = std::span<float>(g_pcm[ch]);
     }
 
-    g_audio = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
-                                       static_cast<esp_partition_subtype_t>(0x40), "audio");
-    if (g_audio == nullptr) {
-        std::printf("error: no 'audio' partition - check partitions.csv is the table in use\n");
+    if (!player::source_open()) {
+        std::printf("result=fail\n");
         return;
     }
-    std::printf("stream: partition '%s' at 0x%lx, %lu bytes of audio in %lu\n", g_audio->label,
-                static_cast<unsigned long>(g_audio->address),
-                static_cast<unsigned long>(kStreamBytes),
-                static_cast<unsigned long>(g_audio->size));
 
     // kOutputChannels, not the coded count: the decoder folds to stereo before
     // it returns (see the OutputConfig below). A player that wanted 5.1 out
@@ -167,8 +129,11 @@ extern "C" void app_main() {
         const auto unit = accumulator.next();
 
         if (unit.status == ac3::io::AccessUnitAccumulator::Status::kNeedMoreInput) {
-            const auto got = read_block(accumulator.writable());
+            const auto got = player::source_read(accumulator.writable());
             if (got == 0) {
+                // Not "wait" - there will never be more. finish() is what closes
+                // the last access unit, whose end is otherwise only found by
+                // reading the start of a successor that is not coming.
                 accumulator.finish();
             } else {
                 accumulator.commit(got);
@@ -197,16 +162,26 @@ extern "C" void app_main() {
                 // decoded, and it produced them by reading the partition a
                 // block at a time - which is the whole claim.
                 std::printf("stream.units=%lu stream.resync_bytes=%lu stream.sink=%s "
-                            "stream.sink_frames=%lu\n",
+                            "stream.sink_frames=%lu stream.source=%s\n",
                             static_cast<unsigned long>(played),
                             static_cast<unsigned long>(accumulator.resynchronised_bytes()),
                             player::sink_name(),
-                            static_cast<unsigned long>(player::sink_frames_written()));
+                            static_cast<unsigned long>(player::sink_frames_written()),
+                            player::source_name());
                 std::printf("result=%s\n", played > 0 ? "pass" : "fail");
                 vTaskDelay(pdMS_TO_TICKS(200));
                 return;
             }
-            g_read_offset = 0;
+            // Some sources cannot go back. A socket has delivered what it
+            // delivered; re-requesting the URL would be a new stream, not a
+            // rewind, and the decoder's overlap-add state would carry across
+            // the seam as a click. Stopping is the honest answer.
+            if (!player::source_rewind()) {
+                std::printf("stream: %s cannot rewind, stopping\n", player::source_name());
+                std::printf("result=%s\n", played > 0 ? "pass" : "fail");
+                vTaskDelay(pdMS_TO_TICKS(200));
+                return;
+            }
             accumulator = ac3::io::AccessUnitAccumulator{g_stream_buffer};
             continue;
         }
