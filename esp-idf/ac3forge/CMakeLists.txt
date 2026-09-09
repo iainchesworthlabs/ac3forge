@@ -37,8 +37,35 @@
 # PUBLIC, which CMake refuses on an interface target.
 idf_component_register()
 
-# esp-idf/ac3forge -> repo root is two up: ac3forge -> esp-idf -> root.
-get_filename_component(AC3FORGE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+# Where the library's own CMake lives, which depends on how this component was
+# obtained.
+#
+#   IN THE REPO, at esp-idf/ac3forge/, the root is two up: ac3forge -> esp-idf
+#   -> root. This is the case the probe app and both examples build.
+#
+#   PACKED, as an archive from the component registry, the library sits in lib/
+#   INSIDE this directory: a component tarball is rooted here and cannot
+#   reference anything above itself, so tools/packaging/pack_esp_component.py
+#   stages a copy of what the profile needs there before packing.
+#
+#   lib/ rather than beside this file, because both trees have a CMakeLists.txt
+#   at their root - this wrapper and the library's own project - and staging
+#   them into one directory replaces the first with the second.
+#
+# Tested for rather than configured, because the answer is a property of the
+# tree this file finds itself in and a consumer should not have to know which
+# kind they have.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib/src/forge/CMakeLists.txt")
+    set(AC3FORGE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/lib")
+else()
+    get_filename_component(AC3FORGE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+endif()
+if(NOT EXISTS "${AC3FORGE_ROOT}/src/forge/CMakeLists.txt")
+    message(FATAL_ERROR
+        "ac3forge: no library sources at '${AC3FORGE_ROOT}'. In a checkout this component "
+        "lives at esp-idf/ac3forge/; packed, it carries its own lib/ - see "
+        "tools/packaging/pack_esp_component.py.")
+endif()
 
 # WHICH DIRECTION. Decode by default - that is what a player wants, and what
 # most of this port has been about; AC3FORGE_ESP_PROFILE=encoder builds the
