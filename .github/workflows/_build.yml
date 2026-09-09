@@ -3919,6 +3919,13 @@ jobs:
       - name: Build and run the ENCODE probe under QEMU
         run: ./tools/checks/run_baremetal_probe.sh --encoder
 
+      # The leg's one timing figure that reproduces: under QEMU -icount the
+      # probe's clock (its own preset, AC3FORGE_BAREMETAL_CLOCK=timer) counts
+      # instructions, deterministically, and the runner gates each fixture's
+      # count against docs/performance-trend.md's instructions-per-frame table.
+      - name: Instructions per frame under QEMU -icount
+        run: ./tools/checks/run_baremetal_probe.sh --icount | tee "${{ runner.temp }}/icount.txt"
+
       # The footprint table in docs/performance-trend.md is written by hand
       # from these numbers, so keep the run's own copy: a table nobody can
       # check against the run that produced it is a claim, not a measurement.
@@ -3927,6 +3934,15 @@ jobs:
         run: |
           set -eu
           python3 tools/checks/footprint_report.py             --probe "${{ runner.temp }}/footprint.txt"             --elf build/config-arm-none-eabi-minimal/bin/ac3probe             --map build/config-arm-none-eabi-minimal/apps/baremetal/ac3probe.map             --markdown >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "${{ runner.temp }}/icount.txt" ]; then
+            {
+              echo '### Instructions per frame (QEMU -icount)'
+              echo
+              echo '| Fixture | Instructions per frame |'
+              echo '| --- | --- |'
+              sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "${{ runner.temp }}/icount.txt"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload footprint artifacts
         if: always()

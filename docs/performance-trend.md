@@ -907,6 +907,31 @@ every fixture's allocation count at ceilings above these measured values, so a r
 the build instead of drifting the table silently. The fixture names come from the probe's own
 output rather than a list in the script, so a fixture added and forgotten cannot pass unnoticed.
 
+### Instructions per frame
+
+`tools/checks/run_baremetal_probe.sh --icount` builds the probe with its clock on the
+mps2-an385's 25 MHz timer and runs QEMU under `-icount shift=0`, where the guest clock advances
+one nanosecond per executed instruction; the probe's microseconds are then thousands of Thumb-2
+instructions, the same on every host. Measured on the arm-none-eabi leg at `66349b3e`, `-Os`,
+soft float throughout (the leg has no FPU, so this is what a part without one pays):
+
+| Fixture | Instructions per frame | Ceiling |
+|---|---:|---:|
+| `ac3_mono` | 1,618,000 | 2,000,000 |
+| `ac3_stereo` | 3,542,000 | 4,500,000 |
+| `eac3_stereo` | 4,858,000 | 6,000,000 |
+| `eac3_atmos_bed` | 8,959,000 | 11,000,000 |
+| `ac3` 5.1 | 10,218,000 | 13,000,000 |
+| `eac3` 5.1 | 12,948,000 | 16,000,000 |
+| `eac3_atmos_objects` | 28,232,000 | 35,000,000 |
+| `eac3_ecpl` | 28,881,000 | 36,000,000 |
+
+Not cycles on any real part: a Cortex-M3 would take more, an ESP32-S3 with its FPU takes a fifth
+of a 5.1 frame's count in cycles. What the column is for is that it is deterministic — two runs
+agree to the instruction — so a change that adds one per cent of work to a fixture shows in the
+run's own lines, and the ceilings above hold the same headroom the other gates do. The
+[ESP32-S3 page](platforms/esp32.md#other-esp32-variants) reads the ESP32-C3's prospects off it.
+
 <div id="memory-trend-app">
   <p class="performance-trend-status">Loading memory trend data…</p>
 </div>

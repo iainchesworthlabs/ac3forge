@@ -4,6 +4,7 @@
 #
 #   tools/checks/run_baremetal_probe.sh                  # arm-none-eabi under QEMU
 #   tools/checks/run_baremetal_probe.sh --host           # natively, no emulator
+#   tools/checks/run_baremetal_probe.sh --icount         # QEMU, clock = instruction count, gated
 #
 # Two things are checked, and they fail for different reasons:
 #
@@ -37,15 +38,49 @@ DIRECTION=decoder
 # is where it is proven to build and run. Passed to CMake in both states, so
 # a cached ON from an earlier run cannot leak into a plain one.
 STAGE_TIMERS=OFF
+# --icount: the one timing figure on this leg that means anything. The probe
+# is built with its clock on the mps2-an385's 25 MHz CMSDK timer
+# (AC3FORGE_BAREMETAL_CLOCK=timer, apps/baremetal/platform/baremetal/
+# clock_timer.cpp) and QEMU runs with -icount shift=0, under which the guest
+# clock advances one nanosecond per executed instruction. Every microsecond
+# the probe prints is then a thousand Thumb-2 instructions, deterministic on
+# any host, and the per-fixture ceilings below gate it. With --stage-timers
+# the per-stage lines count instructions per stage the same way. Decoder
+# direction only, and QEMU only: it has no meaning natively.
+ICOUNT=0
 for arg in "$@"; do
     case "$arg" in
         --host) HOST=1 ;;
         --encoder) DIRECTION=encoder ;;
         --decoder) DIRECTION=decoder ;;
         --stage-timers) STAGE_TIMERS=ON ;;
-        *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder] [--stage-timers]" >&2; exit 2 ;;
+        --icount) ICOUNT=1 ;;
+        *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder] [--stage-timers] [--icount]" >&2; exit 2 ;;
     esac
 done
+if [[ "$ICOUNT" == "1" && ( "$HOST" == "1" || "$DIRECTION" == "encoder" ) ]]; then
+    echo "error: --icount is a QEMU mode of the decoder probe; it cannot be combined with --host or --encoder" >&2
+    exit 2
+fi
+
+# --- instruction ceilings (--icount) ---------------------------------------
+# Thumb-2 instructions per frame on the soft-float Cortex-M3 leg, measured
+# 2026-09-10 at the values docs/performance-trend.md's "Instructions per
+# frame" table records, with the same headroom rule as every ceiling above:
+# a change that pushes past one stops here and is explained in that table.
+# Counts are deterministic, so a move of one per cent is visible in the run's
+# own lines long before a ceiling is; the ceilings catch the silent ones.
+# Override one for a run with AC3FORGE_MAX_INSTRUCTIONS_PER_FRAME_<fixture>.
+declare -A ICOUNT_CEILING=(
+    [ac3_mono]=2000000
+    [ac3_stereo]=4500000
+    [eac3_stereo]=6000000
+    [eac3_atmos_bed]=11000000
+    [ac3]=13000000
+    [eac3]=16000000
+    [eac3_atmos_objects]=35000000
+    [eac3_ecpl]=36000000
+)
 
 # --- ceilings --------------------------------------------------------------
 # Bytes. text+data+bss of the linked probe on the bare-metal target, and the
@@ -147,6 +182,14 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     # being enforced, which is the part worth not repeating.
     AC3FORGE_MAX_HEAP_BYTES=${AC3FORGE_MAX_HEAP_BYTES_ENCODE:-250000}
 fi
+# Its own preset and build directory, so a plain run and an --icount run
+# never share a CMake cache (the clock is a cache variable).
+QEMU_ICOUNT=()
+if [[ "$ICOUNT" == "1" ]]; then
+    PRESET="${PRESET}-icount"
+    BUILD_PRESET="${BUILD_PRESET}-icount"
+    QEMU_ICOUNT=(-icount shift=0,sleep=off)
+fi
 
 cmake --preset "$PRESET" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS"
 cmake --build --preset "$BUILD_PRESET"
@@ -168,10 +211,14 @@ else
     # -semihosting is what gives the probe stdout and an exit code at all; the
     # newlib rdimon specs the toolchain file links against are its other half.
     # A timeout because a probe that faults early would otherwise hang the leg
-    # rather than fail it.
-    timeout 300 qemu-system-arm \
+    # rather than fail it; longer under -icount, which runs the guest at a
+    # deterministic pace rather than as fast as the host allows.
+    if [[ "$ICOUNT" == "1" ]]; then
+        echo "   (-icount shift=0: every microsecond the probe prints is a thousand instructions)"
+    fi
+    timeout $(( ICOUNT == 1 ? 900 : 300 )) qemu-system-arm \
         -M mps2-an385 -cpu cortex-m3 \
-        -monitor none -nographic -semihosting \
+        -monitor none -nographic -semihosting "${QEMU_ICOUNT[@]}" \
         -kernel "$BIN" | tee "$OUTPUT"
 
     echo
@@ -246,6 +293,34 @@ while read -r codec per_frame; do
         exit 1
     fi
 done <<< "$CHURN"
+
+# --icount: every fixture's instructions per frame, from the probe's own
+# us_per_frame under the instruction-counting clock, held to the per-fixture
+# ceilings above. The fixture names come from the probe's output, as for the
+# churn gate; a fixture with no ceiling in the table is an error rather than
+# a pass, for the same reason a forgotten fixture must not pass the churn gate.
+if [[ "$ICOUNT" == "1" ]]; then
+    INSTR=$(grep -o '[a-z0-9_]*\.us_per_frame=[0-9]*' "$OUTPUT" | sed 's/\.us_per_frame=/ /')
+    if [[ -z "$INSTR" ]]; then
+        echo "error: the probe reported no <fixture>.us_per_frame line" >&2
+        exit 1
+    fi
+    while read -r codec us; do
+        instr=$(( us * 1000 ))
+        override="AC3FORGE_MAX_INSTRUCTIONS_PER_FRAME_${codec}"
+        ceiling=${!override:-${ICOUNT_CEILING[$codec]:-}}
+        echo "${codec}.instructions_per_frame=${instr}" | tee -a "$OUTPUT"
+        if [[ -z "$ceiling" ]]; then
+            echo "::error title=No instruction ceiling::${codec} has no entry in run_baremetal_probe.sh's ICOUNT_CEILING table - add one from a measured run" >&2
+            exit 1
+        fi
+        echo "instructions: ${codec} = ${instr} per frame (ceiling ${ceiling})"
+        if (( instr > ceiling )); then
+            echo "::error title=Instruction-count regression::${codec} executes ${instr} instructions per frame, ceiling is ${ceiling} (see docs/performance-trend.md's instructions-per-frame table)" >&2
+            exit 1
+        fi
+    done <<< "$INSTR"
+fi
 
 if [[ -n "${AC3FORGE_FOOTPRINT_SUMMARY:-}" ]]; then
     cp "$OUTPUT" "$AC3FORGE_FOOTPRINT_SUMMARY"
