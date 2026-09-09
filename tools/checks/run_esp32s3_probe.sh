@@ -55,11 +55,15 @@ fi
 # past one should stop here and be explained rather than land silently.
 #
 # DIRAM is the interesting one. The ESP32-S3's internal SRAM is 341,760 bytes
-# and the linked app currently uses 134,676 of it. That leaves 207,084 by the
+# and the linked app currently uses 134,804 of it. That leaves 206,956 by the
 # linker's estimate, though the allocator reports 280,792 free at runtime,
-# against a 179,064-byte peak heap. The ceiling is on what the IMAGE uses, because that
-# is what squeezes the heap: every byte of static data here is a byte the
-# decode cannot allocate.
+# against a 236,391-byte peak heap. The ceiling is on what the IMAGE uses,
+# because that is what squeezes the heap: every byte of static data here is a
+# byte the decode cannot allocate.
+#
+# Not 179,064: that is what the peak was BEFORE the probe reconstructed Atmos
+# objects, and docs/performance-trend.md quotes it as the start of the sequence
+# that ends at today's number rather than as today's number.
 : "${AC3FORGE_ESP32S3_MAX_DIRAM_BYTES:=170000}"
 # 245,000, raised from 200,000 when the probe started reconstructing Atmos
 # objects rather than only decoding their bed. oba::joc::reconstruct now runs on
@@ -82,8 +86,10 @@ fi
 # One ceiling for all eight fixtures. Enhanced coupling had its own of 140
 # until the 60 allocations per frame behind that exemption turned out to be two
 # std::vector<double> in the reconstruction loop rather than anything §E3.5
-# asks for; it now measures 66, below eac3's 86. See run_baremetal_probe.sh's
-# own copy of this ceiling for the fixture-by-fixture numbers.
+# asks for; it now measures 12, level with plain eac3. See
+# run_baremetal_probe.sh's own copy of this ceiling for the fixture-by-fixture
+# numbers - this leg reports every one of them identically, which is the check
+# that section is really there for.
 : "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 # Bytes still live when the probe finishes, after every decoder it made has been
 # destroyed. 24 - two __cxa_thread_atexit registration records, one per
