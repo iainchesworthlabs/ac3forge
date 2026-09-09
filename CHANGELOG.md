@@ -66,6 +66,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   the Atmos bed 9.1, objects 21.2 and enhanced coupling 19.8; the objects fixture's
   peak heap is 210,203 bytes (was 234,803) and its allocations a frame 31 (was 41), the bed's 20
   (was 23). Every level unchanged to the digit.
+- **A 7.1.4 fixture in the footprint probe, and the peak heap per fixture.** E-AC-3 7.1.4 at
+  640 kbit/s - a 5.1 bed and two dependent substreams, the widest programme the encoder makes -
+  decodes on the target with every level exact, the first fixture to exercise the access unit's
+  assembly there. On the ESP32-S3 a frame takes 28.8 ms of its 32 (0.90x) and peaks at
+  229,630 bytes; on the Cortex-M3 leg it is 33.8 M instructions, 2.6 times a 5.1 frame on
+  both. Each fixture now prints `<fixture>.peak_bytes=`, so a part with another budget can read
+  which fixture needs what. The probe's PCM block is twelve channels (73,728 bytes) rather than
+  eight.
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has
