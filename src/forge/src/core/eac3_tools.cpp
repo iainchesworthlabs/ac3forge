@@ -554,12 +554,13 @@ struct EcplSpectrumScratch {
 // thread that actually decodes enhanced coupling. std::unique_ptr rather than a
 // raw pointer so it is released at thread exit where there is one.
 //
-// On a bare-metal target there is not one. apps/baremetal's probe measures
-// 34,232 bytes still live when it finishes - this 32,768, the 1,440-byte
-// ecpl_bin_angle_scratch vector above, and 24 bytes of __cxa_thread_atexit
-// registration for the two of them - because the only thread never exits, so
-// the destructor that would release them never runs. That is retention, not a
-// leak: it is bounded, paid once, and the point of caching it. It is still 32 KB
+// On a bare-metal target there is not one. Left alone, this and the 1,440-byte
+// ecpl_bin_angle_scratch vector above would stay live for the whole run -
+// 34,232 bytes with the 24 of __cxa_thread_atexit registration for the two of
+// them - because the only thread never exits, so the destructor that would
+// release them never runs. apps/baremetal's probe calls release_ecpl_scratch()
+// between fixtures and so reports 24. That is retention, not a leak: it is
+// bounded, paid once, and the point of caching it. It is still 32 KB
 // of an ESP32-S3's 341,760 bytes of internal SRAM held for the life of the task,
 // which is why the probe reports it as its own number (heap.retained_bytes)
 // against its own ceiling rather than folding it into the peak.
@@ -588,9 +589,9 @@ EcplSpectrumScratch& ecpl_spectrum_scratch() {
 
 void release_ecpl_scratch() {
     ecpl_spectrum_scratch_slot().reset();
-    // The bin-angle vector is the other half of the 34,232 bytes the probe
-    // reports retained. Clearing it is not enough - a vector that has been
-    // resized keeps its buffer - so this swaps against an empty one, which is
+    // The bin-angle vector is the other half of the 34,232 bytes that would
+    // otherwise stay retained. Clearing it is not enough - a vector that has
+    // been resized keeps its buffer - so this swaps against an empty one, which is
     // the idiom that actually returns the storage.
     std::vector<double>().swap(ecpl_bin_angle_scratch());
 }
