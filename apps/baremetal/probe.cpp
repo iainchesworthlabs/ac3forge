@@ -24,6 +24,7 @@
 // The output is machine-readable (`key=value` lines) so the CI leg can gate on
 // it; tools/checks/footprint_report.py parses the same lines.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -31,13 +32,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <span>
+#include <vector>
 
 #include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/oba/oamd.hpp"
+#include "ac3/spatial/spatial.hpp"
 
 #include "fixture.hpp"
 #include "probe.hpp"
+#include "render_fixture.hpp"
 #include "stage_timers.hpp"
 
 namespace {
@@ -541,6 +546,207 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     return 0;
 }
 
+// --- objects onto loudspeakers ---------------------------------------------
+// The objects row proves the objects come back; this proves they can be
+// PLACED, on the target, which is what a part driving a 7.1.4 DAC has to do
+// with them. The layout is 7.1.4 - the twelve the eac3_714 fixture decodes
+// for - and the render is the one ac3cli's `qc objects=714` performs: every
+// full-bandwidth target starts silent and each object's own recovered audio
+// is summed into it by the object's own OAMD position, through
+// ac3::spatial::pan_direction, the same height-aware geometry the encoder
+// panned with; the bed's LFE passes through as the twelfth slot. The bed's
+// other five channels are NOT added: for a dynamic-object-only programme the
+// bed IS the objects' 5.1 fold, and adding it would render every object
+// twice.
+//
+// Through the block form, decode_access_unit_by_block, whose PcmBlock carries
+// the objects beside the bed: a view per object onto the unit's own
+// reconstruction, cut to the block, with the metadata that places them. So
+// nothing is copied - not the bed, not the objects - and the output is a
+// block per target (g_render_block, static: twelve channels of one
+// 256-sample block), which is what a player holds too. The pan is
+// trigonometry in double, once per object per unit, on the unit's first
+// block; the per-sample sums are float, on the FPU.
+//
+// The reference levels are the host shape's own - see render_fixture.hpp for
+// why this row, alone among the decode rows, is a regression reference.
+constexpr std::size_t kRenderBlock = 256;
+constexpr std::size_t kRenderSlots = 12;
+constexpr std::size_t kMaxObjects = 16;
+std::array<std::array<float, kRenderBlock>, kRenderSlots> g_render_block{};
+// Each object's gain onto each slot, refreshed on a unit's first block. Static
+// rather than a local of render_eac3 for the reason the PCM block used to be:
+// 1,536 bytes of it on the main task's stack left the ESP32-S3 48 bytes above
+// the runner's floor.
+std::array<std::array<double, kRenderSlots>, kMaxObjects> g_render_gains{};
+
+int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
+                std::span<const std::int32_t> expected, ac3::oba::joc::Domain domain) {
+    using ac3::eac3::chanmap::Location;
+    const std::span<const std::byte> stream{
+        reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
+    const auto units = ac3::split_access_units(stream);
+    if (!units) {
+        std::printf("check=%s.split status=fail error=%d\n", codec,
+                    static_cast<int>(units.error()));
+        return 1;
+    }
+
+    // 7.1.4 in Table E2.5 order. pan_targets drops the LFE from the panned
+    // set; it is carried as the last slot below.
+    constexpr auto kTargetMap = static_cast<std::uint16_t>(
+        ac3::eac3::chanmap::acmod_map(ac3::Acmod::k3_2, true) | ac3::eac3::chanmap::k71Rear |
+        ac3::eac3::chanmap::kTopQuad);
+    constexpr auto kTargetLayout = ac3::eac3::chanmap::expand(kTargetMap);
+    std::array<Location, kRenderSlots> target_locations{};
+    std::size_t target_count = 0;
+    for (const Location location : kTargetLayout) {
+        if (target_count < target_locations.size()) {
+            target_locations[target_count++] = location;
+        }
+    }
+    const auto targets = ac3::spatial::pan_targets(
+        std::span<const Location>(target_locations.data(), target_count));
+    const std::size_t panned = targets.directions.size();
+    if (panned + 1 != kRenderSlots) {
+        fail(codec, "targets", static_cast<long>(panned + 1), static_cast<long>(kRenderSlots));
+        return 1;
+    }
+
+    ac3::DecoderConfig config;
+    config.joc_domain = domain;
+    ac3::Eac3Decoder decoder{config};
+    LevelAccumulator levels;
+    // The bed's own slots, so the LFE can be picked out of them once the
+    // layout is known - the block carries the samples in the layout's order
+    // but not the layout, which the call returns afterwards.
+    LevelAccumulator bed_levels;
+    ac3::eac3::chanmap::Layout layout{};
+    Churn churn;
+    churn.frames = static_cast<int>(units->size());
+    g_fixture_peak_bytes = g_live_bytes;
+    ac3probe::reset_stages();
+    std::size_t before = g_alloc_calls;
+    std::uint64_t render_us = 0;
+    int index = 0;
+    int channels = 0;
+    auto& gains = g_render_gains;
+    std::size_t object_count = 0;
+    for (const auto unit : *units) {
+        std::uint64_t sink_us = 0;
+        std::uint64_t levels_us = 0;
+        bool delivered = false;
+        const auto sink = [&](const ac3::PcmBlock& block) {
+            const std::uint64_t entered_us = ac3probe::now_us();
+            if (block.index == 0) {
+                // Each object's gains onto the panned targets, once per unit.
+                const auto objects = block.object_metadata != nullptr
+                                         ? ac3::oba::describe_objects(*block.object_metadata)
+                                         : std::vector<ac3::oba::DisplayObject>{};
+                object_count = std::min({objects.size(), block.objects.size(), kMaxObjects});
+                for (std::size_t i = 0; i < object_count; ++i) {
+                    gains[i].fill(0.0);
+                    if (!objects[i].active) {
+                        continue;
+                    }
+                    const auto direction = ac3::spatial::position_direction(
+                        objects[i].position.x, objects[i].position.y, objects[i].position.z);
+                    ac3::spatial::pan_direction(direction, targets.directions,
+                                                std::span<double>(gains[i].data(), panned));
+                    const double linear = std::pow(10.0, objects[i].gain_db / 20.0);
+                    for (std::size_t t = 0; t < panned; ++t) {
+                        gains[i][t] *= linear;
+                    }
+                }
+            }
+            const std::size_t n =
+                block.channels.empty() ? 0 : std::min(block.channels.front().size(), kRenderBlock);
+            for (std::size_t t = 0; t < panned; ++t) {
+                g_render_block[t].fill(0.0F);
+            }
+            for (std::size_t i = 0; i < object_count && i < block.objects.size(); ++i) {
+                const auto audio = block.objects[i];
+                if (audio.size() < n) {
+                    continue;
+                }
+                for (std::size_t t = 0; t < panned; ++t) {
+                    if (gains[i][t] <= 0.0) {
+                        continue;
+                    }
+                    const auto g = static_cast<float>(gains[i][t]);
+                    auto& slot = g_render_block[t];
+                    for (std::size_t k = 0; k < n; ++k) {
+                        slot[k] += g * audio[k];
+                    }
+                }
+            }
+            delivered = true;
+            // The probe's own level sums are double arithmetic - software on
+            // the part - and no part of the render; taken back out of both
+            // times, as the sinks' time is in the rows above.
+            const std::uint64_t levels_started_us = ac3probe::now_us();
+            for (std::size_t t = 0; t < panned; ++t) {
+                levels.add(t, std::span<const float>(g_render_block[t].data(), n));
+            }
+            for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
+                bed_levels.add(ch, block.channels[ch]);
+            }
+            levels_us += ac3probe::now_us() - levels_started_us;
+            sink_us += ac3probe::now_us() - entered_us;
+        };
+        const std::uint64_t started_us = ac3probe::now_us();
+        const auto decoded = decoder.decode_access_unit_by_block(unit, sink);
+        const std::uint64_t elapsed_us = ac3probe::now_us() - started_us;
+        if (!decoded) {
+            std::printf("check=%s.decode status=fail unit=%d error=%d\n", codec, index,
+                        static_cast<int>(decoded.error()));
+            return 1;
+        }
+        // The row's time is decode AND render, less the level sums; the
+        // render's own share is kept apart for its own line.
+        churn.decode_us += elapsed_us > levels_us ? elapsed_us - levels_us : 0;
+        render_us += sink_us > levels_us ? sink_us - levels_us : 0;
+        // std::nullopt is the §3.7 hold-back, as in decode_eac3 above.
+        if (decoded->has_value() && delivered) {
+            layout = (*decoded)->layout;
+            channels = static_cast<int>(kRenderSlots);
+        }
+        if (index == 0) {
+            churn.first_frame_allocs = g_alloc_calls - before;
+            churn.bucket_at_first = g_churn_count_by_bucket;
+        } else {
+            churn.steady_allocs += g_alloc_calls - before;
+        }
+        churn.bucket_at_last = g_churn_count_by_bucket;
+        before = g_alloc_calls;
+        ++index;
+    }
+
+    // The bed's LFE, passed through as the twelfth slot.
+    const int lfe = layout.index_of(Location::kLfe);
+    if (lfe >= 0 && static_cast<std::size_t>(lfe) < kMaxChannels) {
+        levels.sum_squares[panned] = bed_levels.sum_squares[static_cast<std::size_t>(lfe)];
+        levels.counts[panned] = bed_levels.counts[static_cast<std::size_t>(lfe)];
+    }
+
+    if (churn.frames != ac3probe::kFrames) {
+        fail(codec, "frames", churn.frames, ac3probe::kFrames);
+    }
+    if (channels != static_cast<int>(expected.size())) {
+        fail(codec, "channels", channels, static_cast<long>(expected.size()));
+    }
+    report_levels(codec, levels, expected);
+    report_churn(codec, churn);
+    report_churn_buckets(codec, churn);
+    report_timing(codec, churn);
+    const auto frames = static_cast<std::uint64_t>(churn.frames > 0 ? churn.frames : 1);
+    std::printf("%s.render_us=%lu %s.render_us_per_frame=%lu\n", codec,
+                static_cast<unsigned long>(render_us), codec,
+                static_cast<unsigned long>(render_us / frames));
+    ac3probe::report_stages(codec, churn.frames);
+    return 0;
+}
+
 // The AC-3 fixtures, in the order the probe decodes them. A table for the same
 // reason the E-AC-3 one below is: adding a configuration should be a row here
 // and a stream in tools/generators/gen_baremetal_fixture.py, not a fourth copy
@@ -600,9 +806,12 @@ struct Eac3Fixture {
     ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
     // DecoderConfig::output. As coded for every row but the fold.
     ac3::OutputConfig output{};
+    // Render the objects onto 7.1.4 (render_eac3) instead of accumulating
+    // the decoded channels' levels. Only the render row sets it.
+    bool render = false;
 };
 
-constexpr std::array<Eac3Fixture, 7> kEac3Fixtures{{
+constexpr std::array<Eac3Fixture, 8> kEac3Fixtures{{
     {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
@@ -655,6 +864,15 @@ constexpr std::array<Eac3Fixture, 7> kEac3Fixtures{{
     {"eac3_fold", ac3probe::kEac3Stream, ac3probe::kEac3FoldRms, false,
      ac3::oba::joc::Domain::kQmf,
      {.target = ac3::DownmixTarget::kLoRo, .mode = ac3::OperatingMode::kLine}},
+    // Objects reconstructed (kMdctBand, as the objects row) and then PLACED
+    // onto 7.1.4 by their own positions - see render_eac3, and
+    // render_fixture.hpp for what the levels are worth. Its own stream: the
+    // same source as the Atmos rows with three objects raised to the ceiling
+    // and one half way (tools/generators/atmos_height_scene.txt), because the
+    // Atmos rows' objects all sit on the listener plane and a render of them
+    // would leave the four height targets silent and untested.
+    {"eac3_atmos_render", ac3probe::kEac3AtmosHeightStream, ac3probe::kEac3AtmosRenderRms,
+     false, ac3::oba::joc::Domain::kMdctBand, {}, true},
 }};
 
 // What the per-fixture static_asserts above used to say, said once. Regenerate
@@ -739,8 +957,12 @@ int ac3probe::run() {
         }
     }
     for (const auto& fixture : kEac3Fixtures) {
-        if (decode_eac3(fixture.codec, fixture.stream, fixture.rms,
-                        fixture.bed_only, fixture.joc_domain, fixture.output) != 0) {
+        const int status =
+            fixture.render
+                ? render_eac3(fixture.codec, fixture.stream, fixture.rms, fixture.joc_domain)
+                : decode_eac3(fixture.codec, fixture.stream, fixture.rms, fixture.bed_only,
+                              fixture.joc_domain, fixture.output);
+        if (status != 0) {
             std::printf("result=fail\n");
             return 1;
         }
