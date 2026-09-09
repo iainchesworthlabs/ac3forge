@@ -694,7 +694,7 @@ Atmos (448 kbit/s, six objects over a 5.1 bed) and 2/0 E-AC-3 (192 kbit/s, which
 layout §7.5.4 rematrixing exists in) and E-AC-3 7.1.4 (640 kbit/s, a bed and two dependent
 substreams) — and reports what it cost. That is nine fixtures: the
 Atmos stream is decoded twice, bed-only and with its objects reconstructed. Numbers below are
-from a run against `feature/esp32-hotpath-sweep` at `66349b3e` on 2026-09-09, `arm-none-eabi`
+from a run against `feature/decoder-block-form` at `b28e4869` on 2026-09-09, `arm-none-eabi`
 GCC 14.2.1 under QEMU 10.2.1's `mps2-an385`; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
@@ -725,10 +725,10 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 255,044 |
+| `.text` (code + read-only data) | 255,916 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 120,653 |
-| **Image total** | **376,097** (367.3 KiB) |
+| `.bss` (zero-initialised) | 46,829 |
+| **Image total** | **303,145** (296.0 KiB) |
 
 These are `arm-none-eabi-size`'s own columns, which is what `AC3FORGE_MAX_IMAGE_BYTES` gates, so
 they group sections rather than list them: `.text` here includes `.init`, `.fini` and
@@ -772,18 +772,21 @@ no `.bss`, for an image of 320,521. 1,686 of it is `decoder.cpp.obj`, whose read
 most numerous; 716 is `eac3_decoder.cpp.obj`. The access unit's `memcpy` and its moved object
 description are 80 bytes more: 320,601. The 7.1.4 fixture is 55,496 more, and nearly all of it
 is what it says: 30,720 bytes of stream in `.text` and 24,576 of `.bss` for the four channels the
-probe's PCM block grew by, against 168 bytes of code. 376,097.
+probe's PCM block grew by, against 168 bytes of code. 376,097. The block-granular output forms then
+took that block out altogether - the probe reads the decoders' blocks in place and holds no PCM -
+and `.bss` fell 73,824 bytes to 46,829, against 872 bytes of `.text` for the forms themselves:
+303,145, the smallest image the probe has had since its fixtures were four.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
 
 | Object | `.text` | `.bss` |
 |---|---|---|
-| `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks; the PCM block is its `.bss`) | 85.9 KiB | 72.9 KiB |
-| `eac3_decoder.cpp.obj` (all of Annex E) | 37.2 KiB | 0 B |
+| `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks) | 86.0 KiB | 809 B |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 37.5 KiB | 0 B |
 | `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 19.8 KiB | 11.2 KiB |
 | `mdct.cpp.obj` (inverse transform, fast path only) | 15.9 KiB | 14.6 KiB |
-| `decoder.cpp.obj` (AC-3) | 20.4 KiB | 0 B |
+| `decoder.cpp.obj` (AC-3) | 20.8 KiB | 0 B |
 | `joc.cpp.obj` (§6 object reconstruction from the bed) | 14.0 KiB | 0 B |
 | `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction) | 6.0 KiB | 4.2 KiB |
 | `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 2.9 KiB | 5.0 KiB |
@@ -842,7 +845,7 @@ a silent fast-path substitution — see the building doc for why.
 | Retained after teardown | 12 bytes |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
-| Caller-owned PCM buffer (12 × 1536 `float`, via `decode_*_into`) | 73,728 bytes |
+| Caller-owned PCM buffer | none: the probe decodes through the `_by_block` forms and reads the decoders' blocks in place |
 | AC-3 allocations per frame, steady state | 3 |
 | AC-3 2/0 and 1/0 allocations per frame, steady state | 1 |
 | E-AC-3 allocations per frame, steady state | 12 |
@@ -895,15 +898,20 @@ The peak by fixture, identical on both legs:
 
 | Fixture | Peak heap | Allocations per frame |
 |---|---:|---:|
-| `ac3_mono` | 10,652 | 1 |
-| `ac3_stereo` | 12,356 | 1 |
-| `ac3` 5.1 | 19,457 | 3 |
+| `ac3_mono` | 47,524 | 1 |
+| `ac3_stereo` | 49,228 | 1 |
+| `ac3` 5.1 | 56,329 | 3 |
 | `eac3_atmos_bed` | 123,735 | 20 |
 | `eac3_stereo` | 140,534 | 10 |
 | `eac3_ecpl` | 157,493 | 12 |
 | `eac3` 5.1 | 167,042 | 12 |
 | `eac3_atmos_objects` | 210,203 | 31 |
 | `eac3_714` | 229,630 | 35 |
+
+The AC-3 rows carry the 36,872 bytes of the block form's own frame (`decode_frame_by_block`: AC-3 has
+no substream vectors to hand out views of, so it keeps one frame, sized once); the E-AC-3 rows did
+not move, since that form copies nothing. Before the block forms the AC-3 rows were 10,652, 12,356
+and 19,457.
  [The ESP32-S3 page](platforms/esp32.md#objects) has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
@@ -932,20 +940,20 @@ output rather than a list in the script, so a fixture added and forgotten cannot
 `tools/checks/run_baremetal_probe.sh --icount` builds the probe with its clock on the
 mps2-an385's 25 MHz timer and runs QEMU under `-icount shift=0`, where the guest clock advances
 one nanosecond per executed instruction; the probe's microseconds are then thousands of Thumb-2
-instructions, the same on every host. Measured on the arm-none-eabi leg at `66349b3e`, `-Os`,
+instructions, the same on every host. Measured on the arm-none-eabi leg at `b28e4869`, `-Os`,
 soft float throughout (the leg has no FPU, so this is what a part without one pays):
 
 | Fixture | Instructions per frame | Ceiling |
 |---|---:|---:|
-| `ac3_mono` | 1,618,000 | 2,000,000 |
-| `ac3_stereo` | 3,542,000 | 4,500,000 |
-| `eac3_stereo` | 4,858,000 | 6,000,000 |
-| `eac3_atmos_bed` | 8,959,000 | 11,000,000 |
-| `ac3` 5.1 | 10,218,000 | 13,000,000 |
-| `eac3` 5.1 | 12,948,000 | 16,000,000 |
-| `eac3_atmos_objects` | 28,232,000 | 35,000,000 |
-| `eac3_ecpl` | 28,881,000 | 36,000,000 |
-| `eac3_714` | 33,841,000 | 42,000,000 |
+| `ac3_mono` | 1,625,000 | 2,000,000 |
+| `ac3_stereo` | 3,548,000 | 4,500,000 |
+| `eac3_stereo` | 4,851,000 | 6,000,000 |
+| `eac3_atmos_bed` | 8,940,000 | 11,000,000 |
+| `ac3` 5.1 | 10,224,000 | 13,000,000 |
+| `eac3` 5.1 | 12,928,000 | 16,000,000 |
+| `eac3_atmos_objects` | 28,213,000 | 35,000,000 |
+| `eac3_ecpl` | 28,861,000 | 36,000,000 |
+| `eac3_714` | 33,793,000 | 42,000,000 |
 
 Not cycles on any real part: a Cortex-M3 would take more, an ESP32-S3 with its FPU takes a fifth
 of a 5.1 frame's count in cycles. What the column is for is that it is deterministic — two runs

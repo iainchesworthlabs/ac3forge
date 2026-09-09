@@ -18,7 +18,7 @@ target and the first with hardware floating point.
 | E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture |
 | Atmos bed and objects | Correct. Objects reconstruct here; the flat newlib heap makes it easier than on the [ESP32-S3](esp32.md#objects) |
 | Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER` |
-| Image size | 376,097 bytes — 255,044 `.text`, 400 `.data`, 120,653 `.bss` |
+| Image size | 303,145 bytes — 255,916 `.text`, 400 `.data`, 46,829 `.bss` |
 | Peak heap | 229,630 bytes, the 7.1.4 fixture (210,203 with Atmos objects) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
 | Allocations per frame | 1 to 35, by fixture — see [the footprint table](../performance-trend.md#minimum-footprint-decoder) |
