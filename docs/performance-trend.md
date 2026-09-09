@@ -882,7 +882,9 @@ stream's last exponent set and allocation parameters, kept so an unchanged block
 allocation — hold 1,608 across a frame; they are built on a stream's first block, so a run's
 allocation total rises by 41 while every fixture's steady-state count above is unchanged.
 Moving a substream's object description into the access unit rather than copying it then gave
-24,600 back. 210,203 fits the 280,792 bytes an ESP32-S3 has free with 70,589 to spare. [The ESP32-S3 page](platforms/esp32.md#objects) has what each step was worth.
+24,600 back. 210,203 fits the 280,792 bytes an ESP32-S3 has free with 70,589 to spare - 26,188
+below the 236,391 `main` carried before this stack, and the lowest peak the probe has reported
+since objects were first reconstructed, with a quarter of the part's free SRAM unused at it. [The ESP32-S3 page](platforms/esp32.md#objects) has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
 made has been destroyed — so not per-frame growth and not a leak. It is 12 bytes now: one
