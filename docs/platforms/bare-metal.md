@@ -57,7 +57,7 @@ list if any component needing the full library is still switched on.
 | The direct-form transform tables | 1,900,544 bytes of `.bss` that are absent from the image rather than merely unused. `DecoderConfig::fast_imdct = false` returns `DecodeError::kUnsupported` here instead of being served quietly by the fast path. |
 
 Object reconstruction compiles and links, and decodes correctly, but does not fit on a part this
-size — [the ESP32-S3 page](esp32.md#objects-do-not-fit-in-internal-sram) has the measurement and
+size — [the ESP32-S3 page](esp32.md#objects-and-what-it-took-to-fit-them) has the measurement and
 what it would take. An Atmos stream's 5.1 bed decodes normally via
 `DecoderConfig::skip_object_reconstruction`.
 

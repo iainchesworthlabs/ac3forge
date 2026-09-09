@@ -1069,7 +1069,7 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   in-tree comment previously cited 14.4) and now carries a pure, CI-verified OS-version capability
   check (`ac3::coreaudio::system_audio_tap_api_available()`) a future implementation should refuse
   on. Capture there is still input-only; the tap itself needs real Mac hardware to build and
-  verify. See [macOS](docs/platforms/macos.md#loopback-capture-not-yet-implemented).
+  verify. See [macOS](docs/platforms/macos.md#per-application-capture-the-core-audio-process-tap).
 
 ### Fixed
 

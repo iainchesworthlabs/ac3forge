@@ -18,7 +18,7 @@ it is the first target where real-time decode is worth measuring.
 | E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture, since `tools=all` does not select it; costs 126 allocations/frame against 86 |
 | E-AC-3 2/0, §7.5.4 rematrixing | Correct. A layout no 5.1 stream reaches whatever its tools are |
 | Atmos, bed | Correct. Its own fixture, decoded bed-only; costs 61 allocations/frame and nothing extra in peak heap |
-| Atmos, objects | Does not fit. Decodes correctly on a host; see [Objects](#objects-do-not-fit-in-internal-sram) |
+| Atmos, objects | Does not fit. Decodes correctly on a host; see [Objects](#objects-and-what-it-took-to-fit-them) |
 | Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 179,064-byte peak — see [Memory](#how-much-memory-there-actually-is) |
 | Retained after teardown | 34,232 bytes of `thread_local` enhanced-coupling scratch, held for the life of the decoding task — see [Building](../building.md#gaps) |
 | Real time | Not measured. See [Timing](#timing) |
