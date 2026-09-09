@@ -181,7 +181,15 @@ struct EncodeResult {
     std::uint64_t hash = kFnvOffset;
     std::size_t first_frame_allocs = 0;
     std::size_t steady_allocs = 0;
+    // Time inside encode_frame only, summed over every frame - the same
+    // measurement probe.cpp makes of decode_frame_into, for the same reason:
+    // on a board, against the 32,000 microseconds a frame lasts, this is
+    // whether the encoder keeps up. Under QEMU it is shape, not evidence.
+    std::uint64_t encode_us = 0;
 };
+
+// §5.3.2: 1,536 samples at 48 kHz. Every fixture here is six blocks at 48 kHz.
+constexpr std::uint64_t kFrameDurationUs = 32000;
 
 void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes,
             std::uint64_t expected_hash) {
@@ -194,6 +202,15 @@ void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes
                 static_cast<unsigned long>(r.first_frame_allocs), codec,
                 static_cast<unsigned long>(steady_frames > 0 ? r.steady_allocs / steady_frames
                                                              : 0));
+    // The same three figures the decode probe prints, so the two directions
+    // read the same way: realtime_permille is encode time against the audio
+    // time it coded, 1000 being exactly real time.
+    const std::uint64_t frames = static_cast<std::uint64_t>(ac3probe::kEncodeFrames);
+    std::printf("%s.encode_us=%lu %s.us_per_frame=%lu %s.realtime_permille=%lu\n", codec,
+                static_cast<unsigned long>(r.encode_us), codec,
+                static_cast<unsigned long>(frames > 0 ? r.encode_us / frames : 0), codec,
+                static_cast<unsigned long>(
+                    frames > 0 ? (r.encode_us * 1000) / (kFrameDurationUs * frames) : 0));
     if (r.bytes != expected_bytes) {
         fail("bytes", r.bytes, expected_bytes);
     }
@@ -216,7 +233,9 @@ EncodeResult encode_all(Encoder& encoder,
     std::size_t before = g_alloc_calls;
     for (int frame = 0; frame < ac3probe::kEncodeFrames; ++frame) {
         fill_signal(pcm, frame);
+        const std::uint64_t started_us = ac3probe::now_us();
         const auto encoded = encoder.encode_frame(views);
+        result.encode_us += ac3probe::now_us() - started_us;
         if (!encoded) {
             std::printf("check=encode status=fail frame=%d error=%d\n", frame,
                         static_cast<int>(encoded.error()));

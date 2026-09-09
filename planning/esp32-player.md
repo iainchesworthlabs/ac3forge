@@ -230,6 +230,49 @@ Hearth, with Home Assistant sending commands to an entity.
   above, because a speaker set is a property of the installation and the entity should not have
   to carry it.
 
+## The encode direction
+
+The component builds the other profile too (`AC3FORGE_ESP_PROFILE=encoder`): the AC-3 and
+E-AC-3 `FrameEncoder`s and the `AccessUnitEncoder`, in an image of 110,900 bytes of DIRAM with a
+218,560-byte peak heap on this part, checked by the encode probe against the host's bytes for six
+frames of synthesised 5.1. Never in the same image as the decoder: no two of decode, AC-3 encode
+and E-AC-3 encode fit internal SRAM together, so one part is a source or a sink, and two boards
+make the pair [the topology](topology.md) describes and has never had, our encoder to a network
+to our decoder.
+
+What the probe did not report until this page is time. Its lines were bytes, hashes and
+allocations; Phase 0 adds `encode_us`, `us_per_frame` and `realtime_permille` per encoder, in the
+form the decode side already prints, and the board answers whether a 5.1 E-AC-3 encode fits its
+32 ms frame at 240 MHz. Everything below is conditional on that number.
+
+**Audio in.** The mirror of the sink seams: an I2S or TDM receive channel, the S3's I2S being
+full duplex and a SigmaDSP's serial outputs carrying TDM8, filling caller-owned planar float one
+frame at a time. A `PcmSource` beside `ByteSource` in the component.
+
+**The encoder.** `ac3::eac3::FrameEncoder` for 5.1, `AccessUnitEncoder` for 7.1, and
+`ac3::FrameEncoder` where the sink is S/PDIF: IEC 61937 carries AC-3 at 48 kHz but E-AC-3 only at
+four times that, which optical receivers mostly do not accept. Both return a `std::vector` per
+frame, there being no `encode_frame_into`, at 249 allocations a frame for E-AC-3, the same PF7
+gap the probe already gates at 260. A source tolerates it; a fixed-storage form is a hand-over.
+
+**Bitstream out.** Three sinks, in the order they are useful here: an HTTP server on
+`esp_http_server`, one chunked `GET /stream.ec3` that a sink pulls from, so the second board's
+`http` source is the consumer and the HLS origin of the topology's Phase 2 is the same bytes in
+segments; an SD card; and S/PDIF for AC-3 through the I2S peripheral, which ESPHome's own I2S
+speaker already does in its `spdif_mode`, so the technique is proven on this silicon.
+
+**Atmos.** "Audio to Atmos" is `ac3::oba::AtmosEncoder`: a 5.1 bed and mono objects with
+positions, JOC-coded into one E-AC-3 access unit. It is not in the minimum-footprint profile.
+`src/forge/minimal.cmake`'s encoder list carries neither `oba/atmos.cpp` nor the QMF bank the
+JOC solve estimates in, so it has never been built for Xtensa and there is no footprint or timing
+for it. On the host the object layer adds 0.80 ms a frame for four objects over the bed's encode;
+this part decodes about fifty times slower than a desktop core, so the object layer alone would
+be of the order of a whole frame before the bed's encode is counted. It also needs an object
+source: positions from the control surface, or a fixed scene. Worth attempting as a measurement,
+which means adding those files to the encoder profile, a hand-over, and not something to promise
+from here. The realistic first result is audio in, E-AC-3 5.1 out, in real time or a measured
+statement of how far short it falls.
+
 ## What the sink hardware asks for
 
 The examples were written against a MAX98357A and a PCM5102: 16-bit slots, the ESP32-S3 as I2S
@@ -324,6 +367,22 @@ Propose `AudioFileType::EAC3` to ESPHome with Phase 3 as the argument.
 
 **Verified by:** the thread. Not schedulable.
 
+### Phase 5: the encode direction
+
+Conditional on the encode probe's timing from Phase 0. A `PcmSource` over I2S or TDM receive,
+`ac3::eac3::FrameEncoder` at 5.1, and an HTTP server serving the stream as it is made; AC-3 over
+S/PDIF where a receiver is the sink. The Atmos encoder as a measurement first: added to the
+encoder profile (a hand-over), its footprint and per-frame time recorded before anything is built
+on it.
+
+**Exit:** audio into one board comes out of another, or the host, as E-AC-3 5.1 with per-channel
+levels matching a host encode of the same signal, and the encode's `realtime_permille` is
+recorded beside the decode's.
+
+**Verified by:** the encode probe on silicon for the timing; a loopback of two boards, or one
+board and the host's decoder, for the levels; a host test of the source seam against a fake
+receive channel.
+
 ### Hand-over to the decoder core
 
 Three items for the session that owns `src/forge`; this page describes them and does not touch
@@ -402,3 +461,14 @@ that tree.
    entity only, no REST on ESP-IDF. **Recommend (a)**: each platform's users already have the
    surface named, and ESPHome's `web_server` gives the entity a REST face for free. Cost: two
    thin surfaces over one player rather than one, and a `/status` schema to keep stable.
+
+9. **Which encoder first.** (a) **E-AC-3 5.1 over HTTP**, decoded by the second board; (b) AC-3
+   over S/PDIF into a receiver. **Recommend (a)**: it is the pair the topology has never had, and
+   the sink already exists. Cost: S/PDIF, the one output an ordinary receiver takes from this
+   board, waits a phase.
+
+10. **The Atmos encoder on this part.** (a) **attempt it as a measurement**, adding it to the
+    encoder profile and recording footprint and time before deciding; (b) decline it, on the
+    host-to-board scaling above. **Recommend (a)**, because the scaling is an estimate and the
+    measurement is a day's work. Cost: a profile change in the decoder core's tree, and possibly
+    a number that closes the question the way the ESP32-P4 was closed.
