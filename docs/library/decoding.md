@@ -258,41 +258,6 @@ a concealed frame is delivered through it like any other. The
 [bare-metal probe](../platforms/bare-metal.md) decodes every fixture through these forms and holds
 no PCM at all.
 
-### Block-granular output
-
-Both decoders have three output forms. `decode_frame` / `decode_access_unit` return the PCM in
-vectors of their own; `decode_frame_into` / `decode_access_unit_into` write it through spans the
-caller owns, a frame per channel; and `decode_frame_by_block` / `decode_access_unit_by_block` hand
-it to a `BlockSink` — a non-owning reference to any callable, so passing one allocates nothing —
-one `PcmBlock` at a time: `kSamplesPerBlock` (256) samples of every output slot, in the order the
-`_into` form writes, delivered once the whole frame or unit has decoded and the output stage has
-run. The samples are the `_into` form's exactly, and a downmix arrives as one or two slots. The
-spans view the decoder's own storage and are valid only inside the call that hands them over.
-
-```cpp
-ac3::Eac3Decoder decoder;
-const auto sink = [&](const ac3::PcmBlock& block) {
-    // block.index of block.blocks; block.channels[slot] is 256 samples of
-    // the rendered layout's slot. Interleave it into a DMA ring one block deep.
-    ring.push(block.channels);
-};
-for (const auto unit : scanned->access_units) {
-    const auto decoded = decoder.decode_access_unit_by_block(unit, sink);
-    if (!decoded) { /* as above */ }
-}
-```
-
-What the form is for is a caller that cannot afford a frame: on an ESP32-S3 a 7.1.4 programme's
-frame is 73,728 bytes of the part's free SRAM, and a DMA ring needs a block. For E-AC-3 nothing
-is copied on the way out — each slot is a view onto the substream vector that supplies it, a
-dependent's over the bed's where §E3.8.2 says it replaces it — so the assembly copy the `_into`
-form pays goes as well. AC-3 has no per-substream storage to hand out views of, so its form keeps
-one frame of its own (six channels, sized once); the saving there is the caller's. The §3.7
-hold-back's `std::nullopt`, a skipped programme and `skip_reconstruction` leave the sink uncalled;
-a concealed frame is delivered through it like any other. The
-[bare-metal probe](../platforms/bare-metal.md) decodes every fixture through these forms and holds
-no PCM at all.
-
 ## The output stage
 
 `ac3/decoder/output.hpp`. Everything between "the coded channels have been reconstructed" and
