@@ -33,8 +33,9 @@ manager wants for a component living in a subdirectory of a repository.
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import esp32
 from esphome.const import CONF_ID
+
+from esphome.components import esp32
 
 CODEOWNERS = ["@iainchesworth"]
 # esp32 for add_idf_component, and because this is an ESP-IDF-only library:

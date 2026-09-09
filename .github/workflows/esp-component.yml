@@ -57,6 +57,24 @@ jobs:
         with:
           persist-credentials: false
 
+      # The component manager the image ships is older than the one this was
+      # written against, and old enough that `compote manifest lint` does not
+      # exist in it - which failed the job outright, and took the pack step
+      # below with it as a skipped dependency. Pinning it makes both steps
+      # depend on a version rather than on whatever a base image happened to
+      # carry that week.
+      #
+      # ~=3.1 rather than an exact pin: `lint` and the `component pack` flags
+      # used below are stable across that minor series, and a hard pin here
+      # would need bumping for its own sake. 3.1.2 is what this was developed
+      # and verified against.
+      - name: Pin the component manager
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          pip install --disable-pip-version-check --upgrade "idf-component-manager~=3.1"
+          compote version
+
       # The manifest's own schema. Cheap, and it fails on things the pack below
       # would happily accept - a bad SPDX licence string, an unknown key.
       - name: Lint the manifest
@@ -166,6 +184,10 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
+          # Same pin as the pack job above, and for the same reason - this one
+          # also runs `compote component pack`, and an upload is a worse place
+          # to discover a flag has moved.
+          pip install --disable-pip-version-check --upgrade "idf-component-manager~=3.1"
           version="${GITHUB_REF_NAME#v}"
           python tools/packaging/pack_esp_component.py --version "$version" --verify
           echo "version=$version" >> "$GITHUB_OUTPUT"
