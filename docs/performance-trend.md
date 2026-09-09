@@ -691,7 +691,7 @@ for what the profile changes and why.
 coupling), 5.1 E-AC-3 (384 kbit/s, AHT + spx + standard coupling), 5.1 E-AC-3 with §E3.5
 enhanced coupling (384 kbit/s, `cpl+ecpl`) and 2/0 E-AC-3 (192 kbit/s, which is the only layout
 §7.5.4 rematrixing exists in) — and reports what it cost. Numbers below are from a run
-against `main` at `a2330dae` plus the two fixtures above; `build-footprint` in
+against `feature/esp32-realtime-decode` at `7944c8f5`; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
@@ -721,10 +721,10 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 213,196 |
+| `.text` (code + read-only data) | 224,524 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 97,152 |
-| **Image total** | **310,748** (303.5 KiB) |
+| `.bss` (zero-initialised) | 100,144 |
+| **Image total** | **325,068** (317.4 KiB) |
 
 `.bss` fell 140,440 bytes from the 237,592 this table carried before, in two steps. Moving
 `ecpl_channel_spectrum`'s 32 KB scratch off thread-local storage — it made the library
@@ -741,29 +741,40 @@ of stream to 33,792. Neither §E3.5 nor §7.5.4 added code — `eac3_tools.cpp` 
 already in `src/forge/minimal.cmake`'s source list and already linked, which is the point: what
 the fixtures added was execution, not size.
 
+The float decode path moved it again, by less than the size of the conversion suggests. Against
+the 320,940 bytes `main` measured before it (223,260 of `.text`, 97,280 of `.bss`), `.text` is
+1,264 bytes larger and `.bss` 2,864. The `<double>` instantiations this profile no longer
+references left the image as their float forms came in, so most of the conversion was a swap:
+`eac3_decoder.cpp.obj` is 912 bytes smaller, `joc.cpp.obj` 590 larger. The `.bss` is two
+things. 1,949 bytes are the stage timers' tables, `stage_timers.cpp.obj`, linked into every
+shape of the probe so that a timed build and a plain one differ only in the library's include
+path; 912 are two tables `eac3_tools.cpp` now fills once at start-up rather than computing per
+call, spectral extension's attenuation (32 codes by 3 taps) and the AHT's inverse kernel in
+float.
+
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
 
 | Object | `.text` | `.bss` |
 |---|---|---|
-| `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks) | 37.0 KiB | 48.7 KiB |
-| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 4.0 KiB |
-| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 8.6 KiB | 10.3 KiB |
-| `eac3_decoder.cpp.obj` (all of Annex E) | 48.5 KiB | 0 |
-| `mdct.cpp.obj` (inverse transform, fast path only) | 14.9 KiB | 14.6 KiB |
-| `decoder.cpp.obj` (AC-3) | 17.2 KiB | 0 |
-| `joc.cpp.obj` (§6 object reconstruction from the bed) | 13.0 KiB | 0 |
-| `oamd.cpp.obj` (§H.1 object metadata) | 6.8 KiB | 0 |
+| `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks) | 55.8 KiB | 48.8 KiB |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 37.5 KiB | 0 B |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 19.9 KiB | 11.2 KiB |
+| `mdct.cpp.obj` (inverse transform, fast path only) | 15.9 KiB | 14.6 KiB |
+| `decoder.cpp.obj` (AC-3) | 18.9 KiB | 0 B |
+| `joc.cpp.obj` (§6 object reconstruction from the bed) | 14.0 KiB | 0 B |
+| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
 | `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction) | 6.0 KiB | 4.2 KiB |
-| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
-| `output.cpp.obj` (`OutputStage::apply`/`mix_levels`, both decoders') | 5.0 KiB | 16 B |
-| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
-| `bitalloc.cpp.obj` (§7.2 bit allocation, both generations) | 3.9 KiB | 0 |
+| `oamd.cpp.obj` (§H.1 object metadata) | 6.8 KiB | 0 B |
+| `output.cpp.obj` (`OutputStage::apply`/`mix_levels`, both decoders') | 4.5 KiB | 16 B |
+| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 4.0 KiB |
+| `bitalloc.cpp.obj` (§7.2 bit allocation, both generations) | 3.9 KiB | 0 B |
 | `transient_prenoise.cpp.obj` (§3.7 post-IMDCT correction) | 744 B | 3.0 KiB |
-| `libm_a-e_pow.o` (newlib's `pow`) | 2.9 KiB | 0 |
+| `libm_a-e_pow.o` (newlib's `pow`) | 2.9 KiB | 0 B |
+| `stage_timers.cpp.obj` (the stage timers' tables, linked into every shape of the probe so that a timed build and a plain one differ only in the library's include path) | 918 B | 1.9 KiB |
 | `arm_librdimon_a-syscalls.o` (newlib's semihosting syscalls) | 2.5 KiB | 176 B |
-| `libm_a-k_rem_pio2.o` (newlib's trig argument reduction) | 2.2 KiB | 0 |
-| everything else, summed | 20.7 KiB | 769 B |
+| `libm_a-k_rem_pio2.o` (newlib's trig argument reduction) | 2.2 KiB | 0 B |
+| everything else, summed | 22.3 KiB | 769 B |
 
 Several rows are *smaller* than in the previous table without any code having been removed. That
 attribution was reading GNU ld's "Discarded input sections" block as though it were part of the

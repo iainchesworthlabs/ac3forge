@@ -17,7 +17,7 @@ It is the target CI measures the profile on. The
 |---|---|
 | AC-3 5.1 decode | Correct. Six frames, every channel level exact against `apps/baremetal/fixture.hpp` |
 | E-AC-3 5.1 decode | Correct. Same, including AHT and spectral extension |
-| E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture; costs 126 allocations per frame against 86 |
+| E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture; 12 allocations per frame, level with plain E-AC-3 |
 | E-AC-3 2/0, §7.5.4 rematrixing | Correct. The only layout that tool exists in |
 | Image size | 297,612 bytes total — 200,060 `.text`, 400 `.data`, 97,152 `.bss` |
 | Peak heap | 179,064 bytes |
@@ -56,10 +56,10 @@ list if any component needing the full library is still switched on.
 | Under `AC3FORGE_MINIMAL_DECODER`: the encoder, container writers, WAV I/O, analysis and QC layers, the object encoder | Decode only. `src/forge/minimal.cmake` lists what is compiled, with a line on why each file is reachable from a decode. `AC3FORGE_MINIMAL_ENCODER` is the same profile pointed the other way. |
 | The direct-form transform tables | 1,900,544 bytes of `.bss` that are absent from the image rather than merely unused. `DecoderConfig::fast_imdct = false` returns `DecodeError::kUnsupported` here instead of being served quietly by the fast path. |
 
-Object reconstruction compiles and links, and decodes correctly, but does not fit on a part this
-size — [the ESP32-S3 page](esp32.md#objects-do-not-fit-in-internal-sram) has the measurement and
-what it would take. An Atmos stream's 5.1 bed decodes normally via
-`DecoderConfig::skip_object_reconstruction`.
+Object reconstruction compiles, links and decodes correctly, and it fits: the peak heap above is
+the Atmos fixture decoded with its objects, and
+[the ESP32-S3 page](esp32.md#objects-and-what-it-took-to-fit-them) has what it took. An Atmos
+stream's 5.1 bed alone decodes via `DecoderConfig::skip_object_reconstruction`.
 
 ## Porting to another part
 
