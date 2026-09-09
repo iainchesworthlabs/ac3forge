@@ -15,12 +15,12 @@ it is the first target where real-time decode is worth measuring.
 |---|---|
 | AC-3 5.1 decode | Correct. Six frames, all six channel levels exact against `apps/baremetal/fixture.hpp` |
 | E-AC-3 5.1 decode | Correct. Same, including AHT and spectral extension |
-| E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture, since `tools=all` does not select it; costs 126 allocations/frame against 86 |
+| E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture, since `tools=all` does not select it; 12 allocations/frame, level with plain E-AC-3 |
 | E-AC-3 2/0, §7.5.4 rematrixing | Correct. A layout no 5.1 stream reaches whatever its tools are |
-| Atmos, bed | Correct. Its own fixture, decoded bed-only; costs 61 allocations/frame and nothing extra in peak heap |
-| Atmos, objects | Does not fit. Decodes correctly on a host; see [Objects](#objects-do-not-fit-in-internal-sram) |
-| Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 179,064-byte peak — see [Memory](#how-much-memory-there-actually-is) |
-| Retained after teardown | 34,232 bytes of `thread_local` enhanced-coupling scratch, held for the life of the decoding task — see [Building](../building.md#gaps) |
+| Atmos, bed | Correct. Its own fixture, decoded bed-only; 23 allocations/frame |
+| Atmos, objects | Correct, and it fits: a 237,303-byte peak against 280,792 free, 41 allocations/frame — see [Objects](#objects-and-what-it-took-to-fit-them) |
+| Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 237,303-byte peak — see [Memory](#how-much-memory-there-actually-is) |
+| Retained after teardown | 24 bytes, two `__cxa_thread_atexit` registration records, once the probe hands back the enhanced-coupling scratch (34,232 bytes while §E3.5 is in use) — see [Building](../building.md#gaps) |
 | Real time | Not measured. See [Timing](#timing) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
 
@@ -386,7 +386,7 @@ all of them rather than only here.
 ### The ESP32-P4, and why it is not a target
 
 Assessed 2026-09-08 and declined. The P4 is dual-core RISC-V at 400 MHz with
-768 KB of SRAM, and it holds the 179,064-byte peak heap without the float32
+768 KB of SRAM, and it holds the 237,303-byte peak heap without the float32
 work this port needed, so it reads as the answer if the S3 turns out not to
 be real time. Three things were checked before writing any of it, and two of
 them settle it.
@@ -433,7 +433,7 @@ What the P4 does buy over the S3 is clock and memory. A frame is 1536 samples,
 32 ms at 48 kHz, which is 7.68 M cycles of budget at 240 MHz against 12.8 M at
 400 MHz: **1.67×**, and it is per-core in both cases. The memory advantage is
 already spent: this port fits internal SRAM on the S3 with 280,792 bytes free
-against a 179,064-byte peak.
+against a 237,303-byte peak.
 
 **It has no radio, and the plan it would serve is a Wi-Fi plan.** The P4 has
 neither Wi-Fi nor Bluetooth and needs a companion ESP32-C6 or -H2 for either,

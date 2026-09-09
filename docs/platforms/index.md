@@ -18,7 +18,7 @@ levels that appear.
 | **A Raspberry Pi 4B** | [Raspberry Pi](raspberry-pi.md) | Everything Linux arm64 runs — there is no Pi-specific code | Run for real on a Pi 4B: 440/440 tests on both compilers, including the hard real-time encode gate, and Atmos out over HDMI to a powered AVR. The Pi 5 is expected to behave the same and is **not** validated; the Pi 3 is not a supported target. |
 | **An NVIDIA Shield** (Android TV) | [Android](android.md) | Shield Atmos Demo, a demo app — not `ac3cli`/`ac3gui` ported | Encodes Atmos/JOC live and plays it out the Shield's HDMI passthrough to a receiver, with a controller moving objects; confirmed on real 2017 Shield hardware. Sideload only, never the Play Store. It captures nothing. |
 | **A browser** | [WebAssembly](wasm.md) | Decode and encode modules over the same library, and an Atmos object-authoring page | The demo pages are built and [published live](../wasm-demo.md). The `ac3forge-wasm-decoder` npm package is decode-only and **has never been released to npm** — building it from `js/` is the only way to get it. |
-| **An ESP32-S3** (ESP-IDF, FreeRTOS) | [ESP32-S3](esp32.md) | `ac3::forge_minimal` as a reusable ESP-IDF component, decode-only or encode-only | AC-3 and E-AC-3 5.1 both decode **correctly**, every channel level exact against a baked-in fixture, inside internal SRAM with no PSRAM. CI runs the footprint probe under QEMU, which is not cycle-accurate and cannot answer the timing question. An [I2S player example](esp32.md#audio-output) drives a DAC and is instrumented for per-frame timing against a real DMA clock. |
+| **An ESP32-S3** (ESP-IDF, FreeRTOS) | [ESP32-S3](esp32.md) | `ac3::forge_minimal` as a reusable ESP-IDF component, decode-only or encode-only | AC-3 and E-AC-3 5.1 both decode **correctly**, every channel level exact against a baked-in fixture, inside internal SRAM with no PSRAM. Real time on the board: a 5.1 E-AC-3 frame decodes in 14.2 ms of its 32 at 240 MHz and every fixture is under budget, measured on an ESP32-S3-DevKitC-1 — see [Timing](esp32.md#timing); CI runs the probe under QEMU for correctness. An [I2S player example](esp32.md#audio-output) drives a DAC. |
 | **A board with no operating system at all** | [Bare metal](bare-metal.md) | `ac3::forge_minimal`: one decode-only static library, no exceptions, no RTTI | Cross-compiled `arm-none-eabi` and run on QEMU's `mps2-an385` (Cortex-M3, no FPU). A probe decodes six frames each of four streams and gates on exact per-channel levels, image size, heap peak and allocation counts. Correctness under emulation; no real silicon. |
 
 **The Windows kernel driver is a component, not a target**, so it is not in that table.
@@ -55,7 +55,8 @@ Four strengths of claim appear in that column, and the distance between them mat
   that does not touch sound hardware.
 - **Built, run under emulation.** The [bare-metal profile](bare-metal.md) decodes correctly on
   QEMU, and so does the ESP32-S3 build. Correct output; nothing about timing on real silicon,
-  which for the ESP32-S3 is the open question.
+  which emulation cannot answer — the ESP32-S3's timing comes from a board, see
+  [Timing](esp32.md#timing).
 - **Written, never exercised.** The macOS process tap, and the macOS half of Crucible. The code
   compiles and one test checks a version gate. Nothing more than that.
 
