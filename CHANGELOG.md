@@ -94,6 +94,34 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   leg, 0.56 M and 1.35 M over the plain 5.1 rows; `run_baremetal_probe.sh --icount` gates
   both. `tools/generators/gen_baremetal_fixture.py` can now emit a fixture that decodes an
   existing stream under a decoder setting rather than encoding a new one.
+- **The encode probe times its frames, and three more rows.** `apps/baremetal/encode_probe.cpp`
+  prints `<row>.us_per_frame` and `realtime_permille` on the decode probe's terms and a peak
+  heap per row; `run_baremetal_probe.sh --encoder --icount` counts instructions per encoded
+  frame under QEMU against its own `ICOUNT_CEILING_ENCODE` table, and CI runs it. AC-3 2/0 and
+  E-AC-3 2/0 join the two 5.1 rows, and `eac3_tools` - 2/0 with coupling, spectral extension
+  and AHT all live, its band edges pinned so §E3.3.1 does not drop the coupling - is the first
+  row to reach those three encoders on the target. On the Cortex-M3 leg an E-AC-3 5.1 frame
+  encodes in 62.6 M instructions against 12.9 M to decode it, both directions soft float
+  there; the encoders are `double` throughout. Measured and documented as not fitting an
+  ESP32-S3: 5.1 with AHT or coupling, any dependent-substream layout (7.1.4 peaks at 601,954
+  bytes), and the Atmos object encoder.
+- **The block form carries the objects.** `PcmBlock` gains `objects`, `object_indices` and
+  `object_metadata`: a view per JOC output onto the unit's own reconstruction, cut to the block,
+  with what places it - so a sink rendering objects to loudspeakers needs no frame of anything,
+  where the value form's `object_audio` is a frame of copies per object. Empty for AC-3, for a
+  bed-only decode and for a unit with no object layer. Pinned against the value form sample for
+  sample in `tests/oba/test_atmos.cpp`.
+- **Objects placed on loudspeakers on the minimum-footprint targets.** `spatial.cpp` joins the
+  decoder profile, and the probe's `eac3_atmos_render` row pans a new height-object stream
+  (`tools/generators/atmos_height_scene.txt`, three objects at the ceiling and one half way) onto
+  7.1.4 by each object's OAMD position through `ac3::spatial::pan_direction`, every level the
+  host's to the digit on both emulated legs. The render is 5% of the row's
+  28,938,000 instructions a frame on the Cortex-M3 leg, at 210,573
+  bytes of peak. `pan_ring` and `pan_direction` no longer allocate - eight vectors per object per
+  call, on the stack now - which took the row from 129 allocations a frame to 36.
+- **The ESP32-S3 page has a capability table**: everything the library does against what the
+  part has been shown to do with it, with how each row is known - board, emulation, or a host
+  measurement of what does not fit.
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has

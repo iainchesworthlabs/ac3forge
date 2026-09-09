@@ -5,6 +5,7 @@
 #   tools/checks/run_baremetal_probe.sh                  # arm-none-eabi under QEMU
 #   tools/checks/run_baremetal_probe.sh --host           # natively, no emulator
 #   tools/checks/run_baremetal_probe.sh --icount         # QEMU, clock = instruction count, gated
+#   tools/checks/run_baremetal_probe.sh --encoder --icount   # the same for the encode probe
 #
 # Two things are checked, and they fail for different reasons:
 #
@@ -45,8 +46,9 @@ STAGE_TIMERS=OFF
 # clock advances one nanosecond per executed instruction. Every microsecond
 # the probe prints is then a thousand Thumb-2 instructions, deterministic on
 # any host, and the per-fixture ceilings below gate it. With --stage-timers
-# the per-stage lines count instructions per stage the same way. Decoder
-# direction only, and QEMU only: it has no meaning natively.
+# the per-stage lines count instructions per stage the same way. Either
+# direction (--encoder --icount reads the encode probe's own us_per_frame
+# lines against a second table), and QEMU only: it has no meaning natively.
 ICOUNT=0
 for arg in "$@"; do
     case "$arg" in
@@ -58,8 +60,8 @@ for arg in "$@"; do
         *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder] [--stage-timers] [--icount]" >&2; exit 2 ;;
     esac
 done
-if [[ "$ICOUNT" == "1" && ( "$HOST" == "1" || "$DIRECTION" == "encoder" ) ]]; then
-    echo "error: --icount is a QEMU mode of the decoder probe; it cannot be combined with --host or --encoder" >&2
+if [[ "$ICOUNT" == "1" && "$HOST" == "1" ]]; then
+    echo "error: --icount is a QEMU mode; it cannot be combined with --host" >&2
     exit 2
 fi
 
@@ -83,6 +85,21 @@ declare -A ICOUNT_CEILING=(
     [eac3_714]=42000000
     [ac3_fold]=13500000
     [eac3_fold]=17000000
+    [eac3_atmos_render]=36000000
+)
+# The encode direction's, from --encoder --icount: Thumb-2 instructions per
+# ENCODED frame, measured 2026-09-10 on the same leg with the same headroom
+# rule. Both encoders are double throughout - the arithmetic is the
+# bitstream's own, and the E-AC-3 encoder's tools are the decoder's double
+# instantiations - so on a part with no FPU every operation is a software
+# call, which is the whole of the gap between these and the decode rows.
+declare -A ICOUNT_CEILING_ENCODE=(
+    [ac3_stereo]=16000000
+    [eac3_stereo]=30000000
+    [eac3_tools]=31000000
+    [ac3]=43000000
+    [eac3]=78000000
+    [eac3_ecpl]=104000000
 )
 
 # --- ceilings --------------------------------------------------------------
@@ -313,10 +330,17 @@ if [[ "$ICOUNT" == "1" ]]; then
     while read -r codec us; do
         instr=$(( us * 1000 ))
         override="AC3FORGE_MAX_INSTRUCTIONS_PER_FRAME_${codec}"
-        ceiling=${!override:-${ICOUNT_CEILING[$codec]:-}}
+        if [[ "$DIRECTION" == "encoder" ]]; then
+            table_ceiling=${ICOUNT_CEILING_ENCODE[$codec]:-}
+            table_name=ICOUNT_CEILING_ENCODE
+        else
+            table_ceiling=${ICOUNT_CEILING[$codec]:-}
+            table_name=ICOUNT_CEILING
+        fi
+        ceiling=${!override:-$table_ceiling}
         echo "${codec}.instructions_per_frame=${instr}" | tee -a "$OUTPUT"
         if [[ -z "$ceiling" ]]; then
-            echo "::error title=No instruction ceiling::${codec} has no entry in run_baremetal_probe.sh's ICOUNT_CEILING table - add one from a measured run" >&2
+            echo "::error title=No instruction ceiling::${codec} has no entry in run_baremetal_probe.sh's ${table_name} table - add one from a measured run" >&2
             exit 1
         fi
         echo "instructions: ${codec} = ${instr} per frame (ceiling ${ceiling})"

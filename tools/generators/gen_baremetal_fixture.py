@@ -262,6 +262,14 @@ STREAMS = (
         encode=("atmos-encode", "448"),
     ),
     Stream(
+        cxx="Eac3AtmosHeight",
+        key="eac3_atmos_height",
+        label="E-AC-3 Atmos 448 kbit/s, the objects source with three objects raised to the ceiling and one half way (atmos_height_scene.txt) - the render row's stream; levels are the BED's",
+        layout="objects",
+        # The scene file is named relative to the repository; see run_stream.
+        encode=("atmos-encode", "448", "5", "tools/generators/atmos_height_scene.txt"),
+    ),
+    Stream(
         cxx="Eac3Stereo",
         key="eac3_stereo",
         label="E-AC-3 2/0 192 kbit/s, tools=all (§7.5.4 rematrixing)",
@@ -436,6 +444,10 @@ def main() -> int:
                 continue
             layout = LAYOUTS[stream.layout]
             command, *tail = stream.encode
+            # An argument naming a file in the repository (a scene file for
+            # atmos-encode) is passed by its absolute path, so the generator
+            # can be run from any directory.
+            tail = [str(REPO / arg) if (REPO / arg).is_file() else arg for arg in tail]
             suffix = "ac3" if command == "encode" else "ec3"
             coded = work / f"{stream.key}.{suffix}"
             run([str(ac3cli), command, str(sources[stream.layout]), str(coded), *tail])

@@ -3706,19 +3706,47 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         const std::size_t samples = views.empty() ? 0 : views.front().size();
         const int blocks = static_cast<int>(samples / static_cast<std::size_t>(kSamplesPerBlock));
         std::array<std::span<const float>, kMaxSlots> block_views{};
+        // The objects the same way: a view per JOC output onto the frame of
+        // audio §6 reconstructed, cut to this block. object_audio has moved
+        // into `out` by now (from whichever substream carried the container),
+        // so these are views onto the unit's own vectors, alive until it is
+        // returned. A unit reconstructs at most oba::joc::kMaxObjects outputs,
+        // and a longer object_audio is a decoder fault this would rather
+        // bound than overrun.
+        constexpr auto kMaxObjectViews = static_cast<std::size_t>(oba::joc::kMaxObjects);
+        std::array<std::span<const float>, kMaxObjectViews> object_views{};
+        const std::size_t objects = std::min(out.object_audio.size(), kMaxObjectViews);
+        const oba::DecodedProgram* const metadata =
+            out.object_metadata.has_value() ? &*out.object_metadata : nullptr;
         // Its own zone, so the time a caller's sink spends in here reads as
         // the caller's rather than as the access unit's.
         AC3_ZONE_SCOPED_N("eac3_au_emit");
         for (int b = 0; b < blocks; ++b) {
+            const auto offset =
+                static_cast<std::size_t>(b) * static_cast<std::size_t>(kSamplesPerBlock);
             for (std::size_t s = 0; s < slots; ++s) {
-                block_views[s] = views[s].subspan(
-                    static_cast<std::size_t>(b) * static_cast<std::size_t>(kSamplesPerBlock),
-                    static_cast<std::size_t>(kSamplesPerBlock));
+                block_views[s] =
+                    views[s].subspan(offset, static_cast<std::size_t>(kSamplesPerBlock));
+            }
+            std::size_t delivered = 0;
+            for (std::size_t o = 0; o < objects; ++o) {
+                const auto& audio = out.object_audio[o];
+                if (audio.size() < offset + static_cast<std::size_t>(kSamplesPerBlock)) {
+                    break;  // shorter than the frame: not this unit's objects
+                }
+                object_views[o] = std::span<const float>(audio).subspan(
+                    offset, static_cast<std::size_t>(kSamplesPerBlock));
+                ++delivered;
             }
             (*sink)(PcmBlock{.index = b,
                              .blocks = blocks,
                              .channels = std::span<const std::span<const float>>(block_views)
-                                             .first(slots)});
+                                             .first(slots),
+                             .objects = std::span<const std::span<const float>>(object_views)
+                                            .first(delivered),
+                             .object_indices = delivered > 0 ? std::span<const int>(out.object_indices)
+                                                             : std::span<const int>{},
+                             .object_metadata = delivered > 0 ? metadata : nullptr});
         }
     };
 

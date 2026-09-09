@@ -323,6 +323,22 @@ struct PcmBlock {
     int index = 0;   // 0 .. blocks-1, in order
     int blocks = 0;  // six for AC-3; numblkscod's count for an E-AC-3 unit
     std::span<const std::span<const float>> channels;
+    // The programme's reconstructed objects for the same block, when the unit
+    // carried an object layer and the decoder reconstructed it: one span per
+    // JOC output, kSamplesPerBlock samples each, the block of
+    // DecodedAccessUnit::object_audio `channels` is the block of. Parallel to
+    // `object_indices`, whose entries mean what DecodedAccessUnit::object_indices'
+    // do, and described by `object_metadata` (DecodedAccessUnit::object_metadata,
+    // the same optional's contents, or null when it is unset). All three are
+    // empty for an AC-3 frame, for a bed-only decode
+    // (DecoderConfig::skip_object_reconstruction) and for a unit with no object
+    // layer, and view the decoder's own storage for the duration of the call
+    // exactly as `channels` does. What they are for: a sink placing objects on
+    // loudspeakers gets everything it needs a block at a time, with nothing
+    // copied - the value form's object_audio is a frame of copies per object.
+    std::span<const std::span<const float>> objects;
+    std::span<const int> object_indices;
+    const oba::DecodedProgram* object_metadata = nullptr;
 };
 
 // A caller's receiver for PcmBlocks. A non-owning reference to any callable,

@@ -436,10 +436,17 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_by_block(
                     static_cast<std::size_t>(b) * static_cast<std::size_t>(kSamplesPerBlock),
                     static_cast<std::size_t>(kSamplesPerBlock));
             }
+            // No objects: AC-3 has no object layer, so the three object
+            // members stay empty - spelled out, since a designated
+            // initializer that omits them is a -Wmissing-field-initializers
+            // error on the profile's toolchain.
             sink(PcmBlock{.index = b,
                           .blocks = kBlocksPerFrame,
                           .channels = std::span<const std::span<const float>>(block_views)
-                                          .first(slots)});
+                                          .first(slots),
+                          .objects = {},
+                          .object_indices = {},
+                          .object_metadata = nullptr});
         }
     }
     return decoded;

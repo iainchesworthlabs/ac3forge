@@ -3926,6 +3926,13 @@ jobs:
       - name: Instructions per frame under QEMU -icount
         run: ./tools/checks/run_baremetal_probe.sh --icount | tee "${{ runner.temp }}/icount.txt"
 
+      # The encode direction on the same terms. Both encoders are double
+      # throughout, so on this FPU-less leg every operation is a software call
+      # and the counts are several times the decode rows' - the figure an
+      # integrator sizing an encoder for a part without an FPU actually needs.
+      - name: Instructions per ENCODED frame under QEMU -icount
+        run: ./tools/checks/run_baremetal_probe.sh --encoder --icount | tee "${{ runner.temp }}/icount-encode.txt"
+
       # The footprint table in docs/performance-trend.md is written by hand
       # from these numbers, so keep the run's own copy: a table nobody can
       # check against the run that produced it is a claim, not a measurement.
@@ -3941,6 +3948,15 @@ jobs:
               echo '| Fixture | Instructions per frame |'
               echo '| --- | --- |'
               sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "${{ runner.temp }}/icount.txt"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f "${{ runner.temp }}/icount-encode.txt" ]; then
+            {
+              echo '### Instructions per encoded frame (QEMU -icount)'
+              echo
+              echo '| Fixture | Instructions per frame |'
+              echo '| --- | --- |'
+              sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "${{ runner.temp }}/icount-encode.txt"
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
