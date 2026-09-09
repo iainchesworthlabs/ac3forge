@@ -116,6 +116,7 @@ public:
     QuietErrors& operator=(const QuietErrors&) = delete;
 
 private:
+    // Discards every argument: this IS the silence QuietErrors installs.
     static void silent(const char*, int, const char*, int, const char*, ...) {}
 
     snd_lib_error_handler_t saved_;

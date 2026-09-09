@@ -9,6 +9,8 @@
 
 namespace ac3::cli::platform {
 
-void set_stdio_binary() {}
+void set_stdio_binary() {
+    // No-op: see the file comment above.
+}
 
 }  // namespace ac3::cli::platform

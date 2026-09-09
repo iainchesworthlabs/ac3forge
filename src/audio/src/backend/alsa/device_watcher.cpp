@@ -26,7 +26,9 @@ std::expected<void, DeviceWatchError> DeviceWatcher::start(Callback) {
     return std::unexpected(DeviceWatchError::kNoBackend);
 }
 
-void DeviceWatcher::stop() {}
+void DeviceWatcher::stop() {
+    // No-op: start() above always fails, so nothing is ever running to stop.
+}
 bool DeviceWatcher::running() const { return false; }
 DeviceWatchStats DeviceWatcher::stats() const { return {}; }
 
