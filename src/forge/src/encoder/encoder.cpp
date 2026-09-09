@@ -23,6 +23,7 @@
 #include "ac3/encoder/bandwidth.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/encoder/transient.hpp"
+#include "ac3/internal/encode_scalar.hpp"
 #include "ac3/internal/profiling.hpp"
 
 #include "ac3/meta/bsi.hpp"
@@ -31,6 +32,8 @@
 #include "ac3/quality/distortion.hpp"
 #include "ac3/quality/perceptual.hpp"
 #include "ac3/verify/mirror.hpp"
+
+#include "scalar_transform.hpp"
 #include "dither.hpp"
 #include "exp_strategy.hpp"
 #include "snr_search.hpp"
@@ -206,10 +209,10 @@ struct FrameEncoder::Impl {
     };
 
     EncoderConfig config_;
-    std::array<std::array<double, 256>, 6> history_{};  // MDCT overlap per channel
+    std::array<std::array<internal::encode_scalar_t, 256>, 6> history_{};  // MDCT overlap per channel
     // One per full-bandwidth channel (§8.2.2 excludes the LFE): stateful
     // across frames, like history_ above.
-    std::vector<TransientDetector> transient_detectors_;
+    std::vector<BasicTransientDetector<internal::encode_scalar_t>> transient_detectors_;
     // Per-(channel, block) scratch for the MDCT pass, reused rather than
     // stack-declared inside encode_frame (PREfast's C6262 flagged the
     // function's stack frame). Each is always fully overwritten before being
@@ -218,16 +221,16 @@ struct FrameEncoder::Impl {
     // reuse across iterations, and across calls on this instance, changes
     // nothing observable. Not thread-safe for concurrent calls on the same
     // instance, same as history_ and the other per-frame state above.
-    std::array<double, 512> time_scratch_{};
+    std::array<internal::encode_scalar_t, 512> time_scratch_{};
     // Four windowed blocks, not one (ROADMAP PF5 phase 4c): step 1's
     // per-channel loop batches four BLOCKS' forward transforms into one
     // ac3::mdct512_forward_batch4 call, which needs all four to coexist.
     // Six blocks a frame, so a channel whose first four blocks are all long
     // runs one batch plus two ordinary calls; lane 0 doubles as the
     // one-at-a-time path's own buffer.
-    std::array<std::array<double, 512>, 4> windowed_scratch_{};
-    std::array<double, 128> half1_scratch_{};
-    std::array<double, 128> half2_scratch_{};
+    std::array<std::array<internal::encode_scalar_t, 512>, 4> windowed_scratch_{};
+    std::array<internal::encode_scalar_t, 128> half1_scratch_{};
+    std::array<internal::encode_scalar_t, 128> half2_scratch_{};
     // Frame-lifetime work buffers, reused across encode_frame calls under
     // the same reasoning (and the same single-instance contract) as the
     // scratch arrays above: each is re-sized via assign()/resize() and fully
@@ -553,7 +556,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 time[static_cast<std::size_t>(n)] =
                     pos < 0 ? impl_->history_[static_cast<std::size_t>(ch)]
                                       [static_cast<std::size_t>(pos + 256)]
-                            : static_cast<double>(
+                            : static_cast<internal::encode_scalar_t>(
                                   channels[static_cast<std::size_t>(ch)]
                                           [static_cast<std::size_t>(pos)]);
             }
@@ -580,9 +583,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 for (std::size_t lane = 0; lane < 4; ++lane) {
                     gather_and_window(block + static_cast<int>(lane), lane);
                 }
-                mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3],
-                                       coeffs_at(ch, block), coeffs_at(ch, block + 1),
-                                       coeffs_at(ch, block + 2), coeffs_at(ch, block + 3));
+                encoder_detail::forward_long_batch4(
+                    windowed[0], windowed[1], windowed[2], windowed[3], coeffs_at(ch, block),
+                    coeffs_at(ch, block + 1), coeffs_at(ch, block + 2),
+                    coeffs_at(ch, block + 3));
                 block += 4;
                 continue;
             }
@@ -592,24 +596,24 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 // bin-by-bin into one ordinary 256-coefficient set - from
                 // here on, exponent/bitalloc/mantissa code cannot tell this
                 // block apart from a long one.
-                const std::span<const double, 512> full(windowed[0]);
                 auto& first = impl_->half1_scratch_;
                 auto& second = impl_->half2_scratch_;
-                mdct256_forward_first(full.first<256>(), first, impl_->config_.fast_mdct);
-                mdct256_forward_second(full.last<256>(), second, impl_->config_.fast_mdct);
+                encoder_detail::forward_short(windowed[0], first, second,
+                                              impl_->config_.fast_mdct);
                 auto& out = coeffs_at(ch, block);
                 for (int k = 0; k < 128; ++k) {
                     out[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
                     out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
                 }
             } else {
-                mdct512_forward(windowed[0], coeffs_at(ch, block), impl_->config_.fast_mdct);
+                encoder_detail::forward_long(windowed[0], coeffs_at(ch, block),
+                                             impl_->config_.fast_mdct);
             }
             ++block;
         }
         for (int n = 0; n < 256; ++n) {
             impl_->history_[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
-                static_cast<double>(
+                static_cast<internal::encode_scalar_t>(
                     channels[static_cast<std::size_t>(ch)][static_cast<std::size_t>(1280 + n)]);
         }
     }

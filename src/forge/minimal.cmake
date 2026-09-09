@@ -179,6 +179,10 @@ target_include_directories(forge_minimal
         # moved. Not an option here, so a caller cannot configure the profile
         # into a shape it was measured never to fit in.
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/float32"
+        # And the encoders' front end in float32 too (encode_scalar_t), for
+        # the same part's sake: in double, transient detection and the
+        # forward transform were 64% of an AC-3 5.1 frame on an ESP32-S3.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/encode/float32"
         # Tracy is never part of this profile - the disabled variant's macros
         # expand to nothing, which is what a footprint build wants. What CAN
         # answer the same markers here is the stage-timer backend, resolved
@@ -259,6 +263,7 @@ target_link_libraries(forge_minimal
 include(GenerateExportHeader)
 generate_export_header(forge_minimal
     BASE_NAME AC3FORGE
+    CUSTOM_CONTENT_FROM_VARIABLE _ac3_export_custom_content
     EXPORT_MACRO_NAME AC3FORGE_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3/export.hpp"
     DEFINE_NO_DEPRECATED

@@ -436,3 +436,43 @@ TEST_CASE("float32 short-block inverse agrees with the double one", "[mdct][floa
     CHECK(worst < 1e-5);
     CHECK(worst > 1e-9);
 }
+
+TEST_CASE("float32 short-block forward transforms agree with the double ones",
+          "[mdct][float32]") {
+    // The encoders' analysis front end under the minimum-footprint profile
+    // runs the block-switched pair in float too (ac3/internal/encode_scalar.hpp),
+    // through these forms; each is its double sibling's own fold in float.
+    std::mt19937 rng(20260910);
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    double worst = 0.0;
+    for (int trial = 0; trial < 32; ++trial) {
+        std::array<double, 512> win_d{};
+        std::array<float, 512> win_f{};
+        for (std::size_t i = 0; i < win_d.size(); ++i) {
+            win_d[i] = dist(rng);
+            win_f[i] = static_cast<float>(win_d[i]);
+        }
+        const std::span<const double, 512> full_d(win_d);
+        const std::span<const float, 512> full_f(win_f);
+        std::array<double, 128> first_d{};
+        std::array<double, 128> second_d{};
+        std::array<float, 128> first_f{};
+        std::array<float, 128> second_f{};
+        ac3::mdct256_forward_first(full_d.first<256>(), first_d, /*fast=*/true);
+        ac3::mdct256_forward_second(full_d.last<256>(), second_d, /*fast=*/true);
+        ac3::mdct256_forward_first(full_f.first<256>(), first_f);
+        ac3::mdct256_forward_second(full_f.last<256>(), second_f);
+        std::array<double, 128> widened{};
+        for (std::size_t i = 0; i < widened.size(); ++i) {
+            widened[i] = static_cast<double>(first_f[i]);
+        }
+        worst = std::max(worst, max_rel_error(widened, first_d));
+        for (std::size_t i = 0; i < widened.size(); ++i) {
+            widened[i] = static_cast<double>(second_f[i]);
+        }
+        worst = std::max(worst, max_rel_error(widened, second_d));
+    }
+    INFO("worst peak-normalised float32-vs-double short-block error: " << worst);
+    CHECK(worst < 1e-5);
+    CHECK(worst > 1e-9);
+}

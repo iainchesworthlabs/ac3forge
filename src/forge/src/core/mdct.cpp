@@ -423,6 +423,27 @@ void mdct256_forward_second(std::span<const double, 256> windowed, std::span<dou
     internal::reference_mdct256_forward_second(windowed, coeffs);
 }
 
+// The float32 short-block pair: the two double forms' own folds above, in
+// float, on the float tables the short-block inverse already builds. Fast
+// only - see mdct.hpp.
+void mdct256_forward_first(std::span<const float, 256> windowed, std::span<float, 128> coeffs) {
+    std::array<float, 128> v{};
+    for (std::size_t n = 0; n < 128; ++n) {
+        v[n] = windowed[n] - windowed[255 - n];
+    }
+    dct4_scaled<256, float>(fast_mdct_tables<256, float>(), v, coeffs,
+                            static_cast<float>(-2.0 / 256));
+}
+
+void mdct256_forward_second(std::span<const float, 256> windowed, std::span<float, 128> coeffs) {
+    std::array<float, 128> w_r{};
+    for (std::size_t n = 0; n < 128; ++n) {
+        w_r[n] = windowed[127 - n] + windowed[128 + n];
+    }
+    dct4_scaled<256, float>(fast_mdct_tables<256, float>(), w_r, coeffs,
+                            static_cast<float>(2.0 / 256));
+}
+
 // Templated on the coefficient type (roadmap PF7). Each vectorised section
 // below has three branches: f32x4 for a float instantiation, the AVX2 tier's
 // four-wide double kernels where the CPU has them, and f64x2 otherwise. The
