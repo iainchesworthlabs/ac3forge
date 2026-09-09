@@ -84,14 +84,14 @@ LITERAL_PREFIXES = ("docs", "apps", "src", "tools")
 # Tokens that read as repo-relative paths but are not. Each is a deliberate
 # exception with its reason, printed on every run so the list stays under the
 # same scrutiny as the checks themselves.
+_LINUXDEPLOY_PLUGIN_QT_SOURCE = "linuxdeploy-plugin-qt's own source, cited by _build.yml"
 FOREIGN_PATHS = {
     "src/main.ts": "actions/setup-python's own source, cited by _build.yml",
     "src/main.cpp": "linuxdeploy's own source, cited by _build.yml",
     "src/core/generate-excludelist.sh": "linuxdeploy's own source, cited by _build.yml",
-    "src/deployers/PlatformPluginsDeployer.cpp":
-        "linuxdeploy-plugin-qt's own source, cited by _build.yml",
-    "src/qml.cpp": "linuxdeploy-plugin-qt's own source, cited by _build.yml",
-    "src/qml.h": "linuxdeploy-plugin-qt's own source, cited by _build.yml",
+    "src/deployers/PlatformPluginsDeployer.cpp": _LINUXDEPLOY_PLUGIN_QT_SOURCE,
+    "src/qml.cpp": _LINUXDEPLOY_PLUGIN_QT_SOURCE,
+    "src/qml.h": _LINUXDEPLOY_PLUGIN_QT_SOURCE,
     "src/main/assets": "relative to the Android app module, not the repo root",
     "src/main/assets/signing.key": "relative to the Android app module, not the repo root",
 }
