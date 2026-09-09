@@ -40,6 +40,14 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `AC3FORGE_MINIMAL_HOT_O2` compiles five decode-critical files at `-O2` under the `-Os`
   profile (on in the ESP32-S3 project, off by default; flash, not SRAM). `aht_inverse` gains a
   `float` overload. [The ESP32-S3 page](docs/platforms/esp32.md#timing) has the stage tables.
+- **Enhanced coupling too** (§E3.5), in a second pass: 217 ms a frame to 23.8 ms on the same
+  board, so every E-AC-3 configuration the profile decodes is in real time there. The §3.5.5
+  routines - `ecpl_channel_spectrum`, `ecpl_amplitudes`, `ecpl_angles`,
+  `ecpl_channel_coefficients` - and `dft512` gain `float` overloads beside their `double` forms,
+  which are unchanged and remain the encoder's; `EcplNoise::next_as` and
+  `ecpl_rand_notrans_as` are the noise sources in the caller's scalar. The float spectrum
+  scratch is 23,552 bytes against the double one's 32,768, the bin-angle buffer that was a
+  second `thread_local` is a stack array, and every `Eac3Decoder` is 4 KB smaller on the profile.
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has

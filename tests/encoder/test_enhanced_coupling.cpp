@@ -4,10 +4,14 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <numeric>
+#include <span>
 #include <vector>
 
 #include "ac3/core/eac3_tools.hpp"
+#include "ac3/core/fft.hpp"
 
 using namespace ac3::eac3;
 
@@ -343,5 +347,176 @@ TEST_CASE("ecpl_channel_coefficients: unity amplitude and zero angle is a plain 
         }
         CAPTURE(bin);
         CHECK(mant_out[static_cast<std::size_t>(bin)] == 0.0);
+    }
+}
+
+// --- the float32 forms -------------------------------------------------------
+// Each §3.5.5 routine exists at float as well as at double (the decoder's
+// minimum-footprint profile carries its coefficients in float). The double
+// forms are the ones every case above pins; these check that the float forms
+// are the same computation to float precision - not bit-identical, since the
+// transforms and the per-bin trigonometry round in float, but within the
+// rounding a float pipeline is entitled to.
+
+namespace {
+
+// A small deterministic source for the cases below: the same numbers on every
+// platform, without <random>'s distribution differences.
+struct FloatAgreementSource {
+    std::uint32_t state = 0x12345678U;
+    double uniform() {  // [-1, 1)
+        state = state * 1664525U + 1013904223U;
+        return static_cast<double>(state >> 8) / 8388608.0 - 1.0;
+    }
+};
+
+double peak_magnitude(std::span<const double> a, std::span<const double> b) {
+    double peak = 0.0;
+    for (const double v : a) {
+        peak = std::max(peak, std::abs(v));
+    }
+    for (const double v : b) {
+        peak = std::max(peak, std::abs(v));
+    }
+    return peak;
+}
+
+}  // namespace
+
+TEST_CASE("dft512's float form agrees with the double one to float precision",
+          "[enhanced_coupling]") {
+    FloatAgreementSource source;
+    std::array<double, 512> re{}, im{};
+    std::array<float, 512> ref{}, imf{};
+    for (std::size_t i = 0; i < 512; ++i) {
+        re[i] = source.uniform();
+        im[i] = source.uniform();
+        ref[i] = static_cast<float>(re[i]);
+        imf[i] = static_cast<float>(im[i]);
+    }
+    std::array<double, 512> out_re{}, out_im{};
+    std::array<float, 512> out_ref{}, out_imf{};
+    ac3::dft512(re, im, out_re, out_im);
+    ac3::dft512(ref, imf, out_ref, out_imf);
+    const double peak = peak_magnitude(out_re, out_im);
+    REQUIRE(peak > 0.0);
+    for (std::size_t k = 0; k < 512; ++k) {
+        CAPTURE(k);
+        CHECK(std::abs(static_cast<double>(out_ref[k]) - out_re[k]) <= 1e-5 * peak);
+        CHECK(std::abs(static_cast<double>(out_imf[k]) - out_im[k]) <= 1e-5 * peak);
+    }
+}
+
+TEST_CASE("ecpl_channel_spectrum's float form agrees with the double fast path",
+          "[enhanced_coupling]") {
+    FloatAgreementSource source;
+    std::array<double, 256> prev{}, curr{}, next{};
+    std::array<float, 256> prevf{}, currf{}, nextf{};
+    // Coefficients only inside the coupled range, as a real block has.
+    for (int bin = kEcplFirstBin; bin < 253; ++bin) {
+        const auto i = static_cast<std::size_t>(bin);
+        prev[i] = 0.5 * source.uniform();
+        curr[i] = 0.5 * source.uniform();
+        next[i] = 0.5 * source.uniform();
+        prevf[i] = static_cast<float>(prev[i]);
+        currf[i] = static_cast<float>(curr[i]);
+        nextf[i] = static_cast<float>(next[i]);
+    }
+    std::array<double, 256> re{}, im{};
+    std::array<float, 256> ref{}, imf{};
+    ecpl_channel_spectrum(prev, curr, next, re, im, /*fast=*/true);
+    ecpl_channel_spectrum(prevf, currf, nextf, ref, imf);
+    const double peak = peak_magnitude(re, im);
+    REQUIRE(peak > 0.0);
+    for (std::size_t k = 0; k < 256; ++k) {
+        CAPTURE(k);
+        CHECK(std::abs(static_cast<double>(ref[k]) - re[k]) <= 1e-4 * peak);
+        CHECK(std::abs(static_cast<double>(imf[k]) - im[k]) <= 1e-4 * peak);
+    }
+}
+
+TEST_CASE("ecpl_channel_coefficients' float form agrees with the double one",
+          "[enhanced_coupling]") {
+    // Every angle in (-1, 1] and every amplitude in [0, 1], over the whole
+    // coupled range: the float form's sine and cosine come from a series
+    // rather than libm, and this is where that series is held to the answer.
+    FloatAgreementSource source;
+    constexpr int kBegin = kEcplFirstBin;
+    constexpr int kEnd = 253;
+    constexpr std::size_t kBins = static_cast<std::size_t>(kEnd - kBegin);
+    std::array<double, 256> re{}, im{};
+    std::array<float, 256> ref{}, imf{};
+    std::vector<double> amp(kBins), angle(kBins);
+    std::vector<float> ampf(kBins), anglef(kBins);
+    for (std::size_t i = 0; i < 256; ++i) {
+        re[i] = source.uniform();
+        im[i] = source.uniform();
+        ref[i] = static_cast<float>(re[i]);
+        imf[i] = static_cast<float>(im[i]);
+    }
+    for (std::size_t i = 0; i < kBins; ++i) {
+        amp[i] = 0.5 * (source.uniform() + 1.0);
+        angle[i] = source.uniform();
+        ampf[i] = static_cast<float>(amp[i]);
+        anglef[i] = static_cast<float>(angle[i]);
+    }
+    std::array<double, 256> out{};
+    std::array<float, 256> outf{};
+    ecpl_channel_coefficients(re, im, amp, angle, kBegin, kEnd, out);
+    ecpl_channel_coefficients(ref, imf, ampf, anglef, kBegin, kEnd, outf);
+    const double peak = peak_magnitude(out, out);
+    REQUIRE(peak > 0.0);
+    for (int bin = kBegin; bin < kEnd; ++bin) {
+        const auto i = static_cast<std::size_t>(bin);
+        CAPTURE(bin);
+        CHECK(std::abs(static_cast<double>(outf[i]) - out[i]) <= 2e-5 * peak);
+    }
+    // And the bins outside the range are untouched in both forms.
+    CHECK(out[0] == 0.0);
+    CHECK(outf[0] == 0.0F);
+    CHECK(out[255] == 0.0);
+    CHECK(outf[255] == 0.0F);
+}
+
+TEST_CASE("ecpl_angles' float form agrees with the double one up to a whole turn",
+          "[enhanced_coupling]") {
+    // Compared through cos and sin of the angle rather than the angle
+    // itself: a value at the wrap can legitimately come out a whole turn
+    // apart between the two, and only the rotation it names matters.
+    const int begin = 0;
+    const int end = kEcplSubBands;
+    const auto layout = ecpl_group_bands(begin, end, kDefaultEcplBandStructure);
+    REQUIRE(layout.count > 1);
+    const auto bands = static_cast<std::size_t>(layout.count);
+    std::vector<int> angle_codes(bands), chaos_codes(bands);
+    FloatAgreementSource source;
+    for (std::size_t b = 0; b < bands; ++b) {
+        angle_codes[b] = static_cast<int>((source.uniform() + 1.0) * 31.99);
+        chaos_codes[b] = static_cast<int>((source.uniform() + 1.0) * 3.99);
+    }
+    const auto bins = static_cast<std::size_t>(kEcplSubBandTab[static_cast<std::size_t>(end)] -
+                                               kEcplSubBandTab[static_cast<std::size_t>(begin)]);
+    for (const bool interpolate : {false, true}) {
+        for (const bool transient : {false, true}) {
+            CAPTURE(interpolate, transient);
+            EcplNoise noise_double;
+            EcplNoise noise_float;
+            std::vector<double> angles(bins);
+            std::vector<float> anglesf(bins);
+            ecpl_angles(/*channel=*/2, angle_codes, chaos_codes, transient,
+                        /*is_first_channel=*/false, begin, end, kDefaultEcplBandStructure,
+                        noise_double, angles, interpolate);
+            ecpl_angles(/*channel=*/2, angle_codes, chaos_codes, transient,
+                        /*is_first_channel=*/false, begin, end, kDefaultEcplBandStructure,
+                        noise_float, anglesf, interpolate);
+            constexpr double kPi = 3.14159265358979323846;
+            for (std::size_t i = 0; i < bins; ++i) {
+                CAPTURE(i);
+                const double a = angles[i];
+                const double b = static_cast<double>(anglesf[i]);
+                CHECK(std::abs(std::cos(kPi * a) - std::cos(kPi * b)) <= 1e-5);
+                CHECK(std::abs(std::sin(kPi * a) - std::sin(kPi * b)) <= 1e-5);
+            }
+        }
     }
 }

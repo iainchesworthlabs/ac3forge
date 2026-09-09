@@ -12,6 +12,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -730,13 +731,12 @@ struct Eac3Decoder::Impl {
     // decode_substream call - unlike delay_ above, these don't need to be
     // keyed by substream identity.
     std::array<internal::decode_scalar_t, 512> imdct_scratch_{};
-    std::array<double, 256> ecpl_spectrum_real_{};
-    std::array<double, 256> ecpl_spectrum_imag_{};
-    // Enhanced coupling's coefficients are produced by an eac3_tools entry
-    // point the ENCODER shares, so that API stays double. Round-tripping a
-    // channel through here keeps the decoder's own store in decode_scalar_t
-    // without pushing a float overload onto the encoder's side of the wall.
-    std::array<double, 256> ecpl_coeff_scratch_{};
+    // Enhanced coupling's spectrum, in the store's own type: eac3_tools
+    // carries the §3.5.5 routines in both scalars (the double forms are the
+    // encoder's), so nothing round-trips through double on the way to
+    // `coeffs` - the coefficients are written into the store directly.
+    std::array<internal::decode_scalar_t, 256> ecpl_spectrum_real_{};
+    std::array<internal::decode_scalar_t, 256> ecpl_spectrum_imag_{};
     // §3.5.5.2/.3's per-bin amplitude and angle, for one channel of one block.
     //
     // Members rather than locals in the reconstruction loop, which is where
@@ -748,19 +748,19 @@ struct Eac3Decoder::Impl {
     // there for any usual coupling range). It was 48% of enhanced coupling's
     // whole per-frame churn.
     //
-    // std::vector grown on first use, NOT std::array<double, 256> like the
-    // three ecpl scratches above it. Those are unconditional members and cost
-    // their 6,144 bytes on every Eac3Decoder ever built; two more arrays would
-    // have added 4,096 to that, and the probe measured exactly that - peak heap
-    // 233,546 to 237,642, a third of the remaining margin under a ceiling this
-    // port has spent a lot of effort getting under.
+    // std::vector grown on first use, NOT std::array like the two ecpl
+    // scratches above it. Those are unconditional members and cost their
+    // 4,096 bytes (2,048 at float) on every Eac3Decoder ever built; two more
+    // arrays would have added as much again, and the probe measured exactly
+    // that - peak heap 233,546 to 237,642, a third of the remaining margin
+    // under a ceiling this port has spent a lot of effort getting under.
     //
     // Grown once, at the coupling range's width, and never shrunk, so the
     // steady state still allocates nothing. A stream that never uses enhanced
     // coupling - which is most streams, and notably the object fixture that
     // SETS that peak - pays nothing at all rather than 4 KB it never reads.
-    std::vector<double> ecpl_amp_scratch_;
-    std::vector<double> ecpl_angle_scratch_;
+    std::vector<internal::decode_scalar_t> ecpl_amp_scratch_;
+    std::vector<internal::decode_scalar_t> ecpl_angle_scratch_;
     // decode_substream's frame-lifetime coefficient buffers - the AHT
     // stream store (§3.4: all six blocks decoded at block 0) and the
     // enhanced-coupling channel store (§3.5.5.1: a block's reconstruction
@@ -777,7 +777,7 @@ struct Eac3Decoder::Impl {
     // ecpl_active flags, so a previous frame's contents are never visible.
     std::vector<std::array<std::array<internal::decode_scalar_t, 256>, kBlocksPerFrame>>
         aht_coeffs_;
-    std::vector<std::array<double, 256>> ecpl_all_coeffs_;
+    std::vector<std::array<internal::decode_scalar_t, 256>> ecpl_all_coeffs_;
     // §7.1.3's packed exponent groups, for one stream of one block.
     //
     // A member, reused by assign(), because the two sites that read it are
@@ -952,6 +952,23 @@ template <typename T, std::size_t N>
 void reset_nested(std::array<std::vector<T>, N>& a) {
     for (auto& inner : a) {
         inner.clear();
+    }
+}
+
+// §3.5.5.1's spectrum in the coefficient store's scalar - a template for the
+// reason scalar_inverse.hpp's inverse_transform_into is one: the float form
+// of ecpl_channel_spectrum takes no `fast` (the direct form is double-only),
+// and only a template's `if constexpr` discards the call that would not
+// compile for the other scalar.
+template <typename Scalar>
+void ecpl_spectrum_into(const std::array<Scalar, 256>& prev, const std::array<Scalar, 256>& curr,
+                        const std::array<Scalar, 256>& next, std::array<Scalar, 256>& zr,
+                        std::array<Scalar, 256>& zi, bool fast) {
+    if constexpr (std::is_same_v<Scalar, float>) {
+        (void)fast;
+        eac3::ecpl_channel_spectrum(prev, curr, next, zr, zi);
+    } else {
+        eac3::ecpl_channel_spectrum(prev, curr, next, zr, zi, fast);
     }
 }
 
@@ -2804,16 +2821,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             if (ecpl_all_coeffs.empty()) {
                 ecpl_all_coeffs.resize(static_cast<std::size_t>(kBlocksPerFrame));
             }
-            // ecpl_all_coeffs_ stays double - ecpl_channel_spectrum takes
-            // double spans and is shared with the encoder - so this widens on
-            // the way in rather than being a whole-array assignment.
-            {
-                const auto& cpl_src = coeffs[static_cast<std::size_t>(kCplStream)];
-                auto& cpl_dst = ecpl_all_coeffs[static_cast<std::size_t>(blk)];
-                for (std::size_t i = 0; i < cpl_dst.size(); ++i) {
-                    cpl_dst[i] = static_cast<double>(cpl_src[i]);
-                }
-            }
+            // A whole-array assignment in the store's own type: the spectrum
+            // routine it feeds exists in both scalars now.
+            ecpl_all_coeffs[static_cast<std::size_t>(blk)] =
+                coeffs[static_cast<std::size_t>(kCplStream)];
             ecpl_active[static_cast<std::size_t>(blk)] = true;
         }
 
@@ -2906,7 +2917,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             // and last block, whose true neighbor lives in an adjacent
             // syncframe this call was not given (see this function's
             // comment on `prev_ecpl_coeffs` above).
-            static constexpr std::array<double, 256> kZero{};
+            static constexpr std::array<internal::decode_scalar_t, 256> kZero{};
             const auto& prev = (blk > 0 && ecpl_active[static_cast<std::size_t>(blk - 1)])
                                    ? ecpl_all_coeffs[static_cast<std::size_t>(blk - 1)]
                                    : kZero;
@@ -2915,8 +2926,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                    : kZero;
             auto& zr = impl_->ecpl_spectrum_real_;
             auto& zi = impl_->ecpl_spectrum_imag_;
-            eac3::ecpl_channel_spectrum(prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)], next,
-                                        zr, zi, impl_->config_.fast_imdct);
+            ecpl_spectrum_into(prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)], next, zr, zi,
+                               impl_->config_.fast_imdct);
 
             const int bins = tail.cplendmant - tail.cplstrtmant;
             for (int ch = 0; ch < nfchans; ++ch) {
@@ -2940,10 +2951,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // storage means that is no longer implied by the construction,
                 // so it is done here - a few hundred stores against an
                 // allocation and a free.
-                const std::span<double> amp_bin{impl_->ecpl_amp_scratch_.data(), ubins};
-                const std::span<double> angle_bin{impl_->ecpl_angle_scratch_.data(), ubins};
-                std::fill(amp_bin.begin(), amp_bin.end(), 0.0);
-                std::fill(angle_bin.begin(), angle_bin.end(), 0.0);
+                const std::span<internal::decode_scalar_t> amp_bin{
+                    impl_->ecpl_amp_scratch_.data(), ubins};
+                const std::span<internal::decode_scalar_t> angle_bin{
+                    impl_->ecpl_angle_scratch_.data(), ubins};
+                std::fill(amp_bin.begin(), amp_bin.end(), internal::decode_scalar_t{0});
+                std::fill(angle_bin.begin(), angle_bin.end(), internal::decode_scalar_t{0});
                 eac3::ecpl_amplitudes(tail.ecplamp_raw[uch], tail.ecplchaos_raw[uch],
                                       tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
                                       tail.ecpl_end_subbnd, tail.ecpl_structure, amp_bin);
@@ -2951,22 +2964,14 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                   tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
                                   tail.ecpl_end_subbnd, tail.ecpl_structure, ecpl_noise, angle_bin,
                                   tail.ecplangleintrp);
-                // Round-tripped through a double scratch rather than given a
-                // float overload: ecpl_channel_coefficients is one of the
-                // eac3_tools entry points the ENCODER shares, and pushing the
-                // decoder's storage choice across that wall would put a float
-                // path into the encoder for no one's benefit. Copied in as well
-                // as out because the callee writes only [cplstrtmant,
-                // cplendmant) and the bins outside it must survive untouched.
-                auto& ecpl_scratch = impl_->ecpl_coeff_scratch_;
-                for (std::size_t i = 0; i < ecpl_scratch.size(); ++i) {
-                    ecpl_scratch[i] = static_cast<double>(coeffs[uch][i]);
-                }
+                // Straight into the store: the callee writes only
+                // [cplstrtmant, cplendmant), so the bins outside it stand as
+                // decoded. This used to round-trip through a double scratch,
+                // because the routine existed only at double; on an ESP32-S3
+                // that copy alone was 512 software conversions per coupled
+                // channel per block.
                 eac3::ecpl_channel_coefficients(zr, zi, amp_bin, angle_bin, tail.cplstrtmant,
-                                                tail.cplendmant, ecpl_scratch);
-                for (std::size_t i = 0; i < ecpl_scratch.size(); ++i) {
-                    coeffs[uch][i] = static_cast<internal::decode_scalar_t>(ecpl_scratch[i]);
-                }
+                                                tail.cplendmant, coeffs[uch]);
             }
         }
 

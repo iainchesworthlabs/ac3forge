@@ -1894,9 +1894,11 @@ float32 store, each operation a call into the ROM's software routines on that FP
 arithmetic to `decode_scalar_t` (templates whose `<double>` instantiations are the functions the
 ordinary build always called, so nothing moved there) and compiling five decode-critical files at
 `-O2` took 5.1 to 0.44x, 2/0 to 0.21x and the Atmos objects fixture from 2.58x to 0.92x, with
-every fixture's RMS unchanged to the digit. The second core was not needed. `docs/platforms/esp32.md`'s
-Timing section has the stage tables, what is still `double` (enhanced coupling, which stayed
-6.3x over) and what would move the objects fixture further.
+every fixture's RMS unchanged to the digit. The second core was not needed. Enhanced coupling
+followed in a second pass, its shared-with-the-encoder routines given float forms beside the double
+ones: 217 ms to 23.8 ms, so every E-AC-3 configuration this profile decodes now runs in real
+time on the part. `docs/platforms/esp32.md`'s Timing section has the stage tables and what would
+move the objects and enhanced-coupling fixtures further.
 
 See `docs/building.md`'s Gaps section, `docs/performance-trend.md` for the current table, and
 `docs/platforms/esp32.md`.

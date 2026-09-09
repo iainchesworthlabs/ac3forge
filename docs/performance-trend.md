@@ -693,7 +693,7 @@ standard coupling), 5.1 E-AC-3 with §E3.5 enhanced coupling (384 kbit/s, `cpl+e
 Atmos (448 kbit/s, six objects over a 5.1 bed) and 2/0 E-AC-3 (192 kbit/s, which is the only
 layout §7.5.4 rematrixing exists in) — and reports what it cost. That is eight fixtures: the
 Atmos stream is decoded twice, bed-only and with its objects reconstructed. Numbers below are
-from a run against `feature/esp32-realtime-decode` at `7944c8f5` on 2026-09-09, `arm-none-eabi`
+from a run against `feature/esp32-ecpl-float` at `b8d87792` on 2026-09-09, `arm-none-eabi`
 GCC 14.2.1 under QEMU 10.2.1's `mps2-an385`; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
@@ -724,10 +724,10 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 224,524 |
+| `.text` (code + read-only data) | 221,556 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 100,144 |
-| **Image total** | **325,068** (317.4 KiB) |
+| `.bss` (zero-initialised) | 96,045 |
+| **Image total** | **318,001** (310.5 KiB) |
 
 These are `arm-none-eabi-size`'s own columns, which is what `AC3FORGE_MAX_IMAGE_BYTES` gates, so
 they group sections rather than list them: `.text` here includes `.init`, `.fini` and
@@ -761,19 +761,24 @@ path; 912 are two tables `eac3_tools.cpp` now fills once at start-up rather than
 call, spectral extension's attenuation (32 codes by 3 taps) and the AHT's inverse kernel in
 float.
 
+Enhanced coupling's float forms then took 7,067 bytes back off, to 318,001. The double `dft512`
+and its tables left the image — `fft.cpp.obj` went from 4,444 to 3,004 bytes of `.text` and
+from 9,204 to 5,116 of `.bss`, the float twiddles being half the size — and
+`eac3_decoder.cpp.obj` lost 1,150 bytes of `.text` with its double §E3.5 path.
+
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
 
 | Object | `.text` | `.bss` |
 |---|---|---|
 | `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks) | 55.8 KiB | 48.8 KiB |
-| `eac3_decoder.cpp.obj` (all of Annex E) | 37.5 KiB | 0 B |
-| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 19.9 KiB | 11.2 KiB |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 36.4 KiB | 0 B |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 19.8 KiB | 11.2 KiB |
 | `mdct.cpp.obj` (inverse transform, fast path only) | 15.9 KiB | 14.6 KiB |
-| `decoder.cpp.obj` (AC-3) | 18.9 KiB | 0 B |
-| `joc.cpp.obj` (§6 object reconstruction from the bed) | 14.0 KiB | 0 B |
-| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
+| `decoder.cpp.obj` (AC-3) | 18.8 KiB | 0 B |
+| `joc.cpp.obj` (§6 object reconstruction from the bed) | 13.9 KiB | 0 B |
 | `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction) | 6.0 KiB | 4.2 KiB |
+| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 2.9 KiB | 5.0 KiB |
 | `oamd.cpp.obj` (§H.1 object metadata) | 6.8 KiB | 0 B |
 | `output.cpp.obj` (`OutputStage::apply`/`mix_levels`, both decoders') | 4.5 KiB | 16 B |
 | `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 4.0 KiB |
@@ -825,8 +830,8 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 237,303 bytes (231.7 KiB) |
-| Retained after teardown | 24 bytes |
+| Peak heap | 233,195 bytes (227.7 KiB) |
+| Retained after teardown | 12 bytes |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
 | Caller-owned PCM buffer (8 × 1536 `float`, via `decode_*_into`) | 49,152 bytes |
@@ -866,20 +871,25 @@ enhanced-coupling scratch between decodes took it to 233,546. Moving the decoder
 buffers onto the decoder — what closed the per-frame churn above — added 2,845 back, because a
 buffer's high-water capacity is now held for the decoder's lifetime rather than released each
 frame. JOC's mixing then began narrowing the frame's matrix once into a scratch of its own rather
-than at every read, 912 bytes more. 237,303 fits the 280,792 bytes an ESP32-S3 has free with
-43,489 to spare. [The ESP32-S3 page](platforms/esp32.md#objects) has what each step was worth.
+than at every read, 912 bytes more. The float form of the enhanced-coupling scratch, and of
+the decoder's own §E3.5 state, then gave 4,108 back. 233,195 fits the 280,792 bytes an
+ESP32-S3 has free with 47,597 to spare. [The ESP32-S3 page](platforms/esp32.md#objects) has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
-made has been destroyed — so not per-frame growth and not a leak. It is 24 bytes now: two
-`__cxa_thread_atexit` registration records, one per `thread_local` the library declares.
+made has been destroyed — so not per-frame growth and not a leak. It is 12 bytes now: one
+`__cxa_thread_atexit` registration record, for the pointer to enhanced coupling's spectrum scratch,
+the one `thread_local` the library still declares.
 
-It was 34,232 until the probe began calling `ac3::eac3::release_ecpl_scratch()` between fixtures.
-That difference is enhanced coupling's 32,768-byte spectrum scratch and its 1,440-byte bin-angle
-vector, `thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack, and
-therefore resident for the life of a task that never exits. Bounded and paid once — but enough to
-decide whether something else fits, and it decided: object reconstruction failed on an ESP32-S3
-whenever it ran after an enhanced-coupling decode, on a 6,144-byte request, and succeeds now that
-the scratch goes back. Nothing could measure any of it until a fixture reached §E3.5.
+It was 34,232 until the probe began calling `ac3::eac3::release_ecpl_scratch()` between fixtures,
+and 24 until the per-bin angle buffer stopped being a second `thread_local`. The 34,232 was
+enhanced coupling's 32,768-byte spectrum scratch and its 1,440-byte bin-angle vector, both
+`thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack, and therefore
+resident for the life of a task that never exits. Bounded and paid once — but enough to decide
+whether something else fits, and it decided: object reconstruction failed on an ESP32-S3 whenever
+it ran after an enhanced-coupling decode, on a 6,144-byte request, and succeeds now that the
+scratch goes back. The scratch is 23,552 bytes on this profile now (its float form, tables
+included) and the angle buffer a stack array. Nothing could measure any of it until a fixture
+reached §E3.5.
 
 `tools/checks/run_baremetal_probe.sh` gates the image, the heap peak, the retained bytes and
 every fixture's allocation count at ceilings above these measured values, so a regression stops
