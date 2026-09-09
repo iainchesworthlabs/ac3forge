@@ -128,6 +128,19 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 - **The ESP32-S3 page has a capability table**: everything the library does against what the
   part has been shown to do with it, with how each row is known - board, emulation, or a host
   measurement of what does not fit.
+- **The encoders' analysis front end in the profile's scalar** (roadmap PF7). A second axis
+  beside `decode_scalar_t`: `src/forge/src/internal/scalar/encode/` carries `encode_scalar_t`,
+  `double` by default and in every ordinary build, `float` under the minimum-footprint profile,
+  selectable with `-DAC3FORGE_ENCODE_SCALAR=float`. Transient detection
+  (`BasicTransientDetector<Scalar>`, of which `TransientDetector` is the `double` instantiation),
+  the block gather, the analysis window and the forward transform - the short-block pair gains
+  `float` forms - run in it, and the coefficients are widened to `double` for the rest of the
+  encoder, which is unchanged; every `<double>` instantiation is the function the ordinary build
+  always called, so the golden bitstream hashes hold. On the ESP32-S3, where the two stages were
+  64% of an AC-3 5.1 frame, AC-3 2/0 encode went from 75.0 ms a frame to 28.3 - real time, at
+  0.88x - AC-3 5.1 from 199.9 to 71.0, E-AC-3 5.1 from 348.9 to 219.7 and 2/0 from 137.2 to 90.4;
+  the peaks fell with the halved scratch, and the profile's encode fixtures are the float front
+  end's streams, identical on host, Cortex-M3 and ESP32-S3.
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has
