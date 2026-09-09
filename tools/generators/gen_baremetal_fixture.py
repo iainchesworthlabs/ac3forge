@@ -41,6 +41,11 @@ channel layout is a row in the second. What each row is for:
     access unit's assembly - locations unioned, a dependent's surrounds
     replacing the bed's - runs here alone; and twelve channels of output is
     what a part driving a 7.1.4 DAC has to find room and time for.
+  - The two 5.1 streams decoded AGAIN through the §7.8 output stage - a Lo/Ro
+    fold in line mode, the options the ESP32-S3 examples' CI comparison uses -
+    as levels-only rows that reuse the bitstreams above. A player feeding a
+    stereo DAC runs that fold every frame, and until these rows it ran
+    nowhere the target measures.
 
 The profile's library contains two decoders, and a probe that exercised only
 one would leave the other unproven at link time as well as at run time - which
@@ -189,6 +194,14 @@ class Stream(typing.NamedTuple):
     label: str  # the emitted comment
     layout: str  # a key into LAYOUTS
     encode: tuple[str, ...]  # ac3cli's argv after <in> <out>
+    # A decode VARIANT of a stream above: no bitstream of its own (the probe
+    # reuses k<reuse>Stream), only a levels array from `ac3cli decode` run with
+    # these extra arguments, in decoded_layout's channel order. This is how
+    # the §7.8 output stage - a fold, a mode - gets a row without a second
+    # copy of a bitstream in flash.
+    reuse: str = ""
+    decode: tuple[str, ...] = ()
+    decoded_layout: str = ""
 
 
 STREAMS = (
@@ -261,6 +274,30 @@ STREAMS = (
         label="E-AC-3 7.1.4 640 kbit/s, tools=all: a 5.1 bed and two dependent substreams (k71Rear, kTopQuad)",
         layout="714",
         encode=("eac3-encode", "640", "all", "714"),
+    ),
+    # The §7.8 output stage, which a player folding 5.1 to a stereo DAC runs
+    # every frame: the two 5.1 streams above decoded again through a Lo/Ro fold
+    # in line mode (dialnorm normalised), the same ac3cli options the ESP32-S3
+    # examples' CI comparison uses. No new bitstream; two stereo levels arrays.
+    Stream(
+        cxx="Ac3Fold",
+        key="ac3_fold",
+        label="the AC-3 5.1 stream folded to Lo/Ro in line mode (§7.8.1 + §5.4.2.8)",
+        layout="51",
+        encode=(),
+        reuse="ac3",
+        decode=("downmix=loro", "drcmode=line"),
+        decoded_layout="stereo",
+    ),
+    Stream(
+        cxx="Eac3Fold",
+        key="eac3_fold",
+        label="the E-AC-3 5.1 stream folded to Lo/Ro in line mode (§7.8.1 + §5.4.2.8)",
+        layout="51",
+        encode=(),
+        reuse="eac3",
+        decode=("downmix=loro", "drcmode=line"),
+        decoded_layout="stereo",
     ),
 )
 
@@ -345,6 +382,14 @@ def to_coded_order(layout: Layout, wav_values: list[float]) -> list[float]:
     return [wav_values[position] for position in layout.wav_position]
 
 
+def by_key_cxx(key: str) -> str:
+    """The generated array name (minus its k prefix) of the stream with this key."""
+    for stream in STREAMS:
+        if stream.key == key:
+            return stream.cxx
+    raise SystemExit(f"no stream with key {key}")
+
+
 def hex_array(data: bytes, indent: str = "    ") -> str:
     lines = []
     for offset in range(0, len(data), 12):
@@ -374,12 +419,25 @@ def main() -> int:
             (layout.derive or trim_wav)(AUDIO / layout.source, sources[name], FRAMES)
 
         streams = []
+        by_key = {stream.key: stream for stream in STREAMS}
         for stream in STREAMS:
+            decoded = work / f"{stream.key}.wav"
+            if stream.reuse:
+                # A decode variant: the reused stream must precede it in STREAMS,
+                # so its bitstream is already in `work`.
+                source_stream = by_key[stream.reuse]
+                suffix = "ac3" if source_stream.encode[0] == "encode" else "ec3"
+                coded = work / f"{stream.reuse}.{suffix}"
+                if not coded.exists():
+                    raise SystemExit(f"{stream.key}: reuses {stream.reuse}, which has not been encoded yet")
+                run([str(ac3cli), "decode", str(coded), str(decoded), *stream.decode])
+                layout = LAYOUTS[stream.decoded_layout or stream.layout]
+                streams.append((stream, None, to_coded_order(layout, channel_rms(decoded))))
+                continue
             layout = LAYOUTS[stream.layout]
             command, *tail = stream.encode
             suffix = "ac3" if command == "encode" else "ec3"
             coded = work / f"{stream.key}.{suffix}"
-            decoded = work / f"{stream.key}.wav"
             run([str(ac3cli), command, str(sources[stream.layout]), str(coded), *tail])
             run([str(ac3cli), "decode", str(coded), str(decoded)])
             streams.append(
@@ -416,6 +474,19 @@ def main() -> int:
     ]
 
     for stream, data, rms in streams:
+        if data is None:
+            layout = LAYOUTS[stream.decoded_layout or stream.layout]
+            body += [
+                f"// {stream.label}: k{by_key_cxx(stream.reuse)}Stream decoded with",
+                f"// `ac3cli decode {' '.join(stream.decode)}`, {FRAMES} frames. No bitstream of its own.",
+                "// Per-channel RMS x 1e6, in the decoder's own output order",
+                f"// ({layout.coded_order}) - see LAYOUTS in the generator.",
+                f"inline constexpr std::array<std::int32_t, {len(rms)}> k{stream.cxx}Rms{{{{",
+                "    " + ", ".join(str(round(value * 1e6)) for value in rms),
+                "}};",
+                "",
+            ]
+            continue
         layout = LAYOUTS[stream.layout]
         body += [
             f"// {stream.label} - {len(data)} bytes, {FRAMES} frames.",
@@ -437,7 +508,7 @@ def main() -> int:
     ]
 
     OUTPUT.write_text("\n".join(body), encoding="utf-8", newline="\n")
-    total = sum(len(data) for _, data, _ in streams)
+    total = sum(len(data) for _, data, _ in streams if data is not None)
     print(f"wrote {OUTPUT.relative_to(REPO)} ({total} bitstream bytes)")
     return 0
 

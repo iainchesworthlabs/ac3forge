@@ -7014,4 +7014,20 @@ inline constexpr std::array<std::int32_t, 12> kEac3714Rms{{
     53531, 33202, 53529, 21703, 36512, 12994, 21936, 104846, 104831, 8681, 14609, 58495
 }};
 
+// the AC-3 5.1 stream folded to Lo/Ro in line mode (§7.8.1 + §5.4.2.8): kAc3Stream decoded with
+// `ac3cli decode downmix=loro drcmode=line`, 6 frames. No bitstream of its own.
+// Per-channel RMS x 1e6, in the decoder's own output order
+// (Table 5.8 acmod 2: L, R) - see LAYOUTS in the generator.
+inline constexpr std::array<std::int32_t, 2> kAc3FoldRms{{
+    107370, 106234
+}};
+
+// the E-AC-3 5.1 stream folded to Lo/Ro in line mode (§7.8.1 + §5.4.2.8): kEac3Stream decoded with
+// `ac3cli decode downmix=loro drcmode=line`, 6 frames. No bitstream of its own.
+// Per-channel RMS x 1e6, in the decoder's own output order
+// (Table 5.8 acmod 2: L, R) - see LAYOUTS in the generator.
+inline constexpr std::array<std::int32_t, 2> kEac3FoldRms{{
+    107353, 106212
+}};
+
 }  // namespace ac3probe

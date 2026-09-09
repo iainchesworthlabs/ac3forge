@@ -377,7 +377,7 @@ void report_timing(const char* codec, const Churn& churn) {
 // them, and a per-fixture copy of this loop would only give three places for a
 // check to be dropped from.
 int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
-               std::span<const std::int32_t> expected) {
+               std::span<const std::int32_t> expected, const ac3::OutputConfig& output) {
     const std::span<const std::byte> stream{
         reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
     const auto frames = ac3::split_frames(stream);
@@ -387,7 +387,9 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
         return 1;
     }
 
-    ac3::FrameDecoder decoder;
+    ac3::DecoderConfig config;
+    config.output = output;
+    ac3::FrameDecoder decoder{config};
     LevelAccumulator levels;
     Churn churn;
     churn.frames = static_cast<int>(frames->size());
@@ -459,7 +461,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
 // timing stay separable in the output the runner scripts gate on.
 int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
                 std::span<const std::int32_t> expected, bool bed_only,
-                ac3::oba::joc::Domain domain) {
+                ac3::oba::joc::Domain domain, const ac3::OutputConfig& output) {
     const std::span<const std::byte> stream{
         reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()};
     const auto units = ac3::split_access_units(stream);
@@ -469,8 +471,11 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         return 1;
     }
 
-    ac3::Eac3Decoder decoder{{.joc_domain = domain,
-                             .skip_object_reconstruction = bed_only}};
+    ac3::DecoderConfig config;
+    config.output = output;
+    config.joc_domain = domain;
+    config.skip_object_reconstruction = bed_only;
+    ac3::Eac3Decoder decoder{config};
     LevelAccumulator levels;
     Churn churn;
     churn.frames = static_cast<int>(units->size());
@@ -552,10 +557,20 @@ struct Ac3Fixture {
     const char* codec;
     std::span<const std::uint8_t> stream;
     std::span<const std::int32_t> rms;
+    // DecoderConfig::output. As coded for every row but the fold, which is
+    // the §7.8 stage a stereo player runs every frame.
+    ac3::OutputConfig output{};
 };
 
-constexpr std::array<Ac3Fixture, 3> kAc3Fixtures{{
+constexpr std::array<Ac3Fixture, 4> kAc3Fixtures{{
     {"ac3", ac3probe::kAc3Stream, ac3probe::kAc3Rms},
+    // The same stream folded to Lo/Ro in line mode (§7.8.1 with §5.4.2.8's
+    // dialnorm normalisation): what i2s_player does to every frame on the
+    // way to a stereo DAC, and the output stage's first row on any target.
+    // Levels are ac3cli's for the same options (tools/generators/
+    // gen_baremetal_fixture.py's decode-variant rows), two channels.
+    {"ac3_fold", ac3probe::kAc3Stream, ac3probe::kAc3FoldRms,
+     {.target = ac3::DownmixTarget::kLoRo, .mode = ac3::OperatingMode::kLine}},
     // 2/0. §7.5.4 rematrixing lives in this layout alone, and it is a different
     // code path from the eac3_stereo row's - Annex E carries its own
     // rematrixing syntax - so that fixture does not stand in for this one.
@@ -583,9 +598,11 @@ struct Eac3Fixture {
     bool bed_only = false;
     // DecoderConfig::joc_domain. Only the object row sets it; see there.
     ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
+    // DecoderConfig::output. As coded for every row but the fold.
+    ac3::OutputConfig output{};
 };
 
-constexpr std::array<Eac3Fixture, 6> kEac3Fixtures{{
+constexpr std::array<Eac3Fixture, 7> kEac3Fixtures{{
     {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
@@ -633,6 +650,11 @@ constexpr std::array<Eac3Fixture, 6> kEac3Fixtures{{
     // channels of output is what a part driving a 7.1.4 DAC over TDM pays
     // for, in this probe's own PCM block as on the part.
     {"eac3_714", ac3probe::kEac3714Stream, ac3probe::kEac3714Rms},
+    // The 5.1 stream folded to Lo/Ro in line mode - the E-AC-3 half of the
+    // ac3_fold row, through the access-unit form's own output path.
+    {"eac3_fold", ac3probe::kEac3Stream, ac3probe::kEac3FoldRms, false,
+     ac3::oba::joc::Domain::kQmf,
+     {.target = ac3::DownmixTarget::kLoRo, .mode = ac3::OperatingMode::kLine}},
 }};
 
 // What the per-fixture static_asserts above used to say, said once. Regenerate
@@ -711,14 +733,14 @@ int ac3probe::run() {
                 static_cast<unsigned long>(ac3probe::stage_pair_cost_ns()));
 
     for (const auto& fixture : kAc3Fixtures) {
-        if (decode_ac3(fixture.codec, fixture.stream, fixture.rms) != 0) {
+        if (decode_ac3(fixture.codec, fixture.stream, fixture.rms, fixture.output) != 0) {
             std::printf("result=fail\n");
             return 1;
         }
     }
     for (const auto& fixture : kEac3Fixtures) {
         if (decode_eac3(fixture.codec, fixture.stream, fixture.rms,
-                        fixture.bed_only, fixture.joc_domain) != 0) {
+                        fixture.bed_only, fixture.joc_domain, fixture.output) != 0) {
             std::printf("result=fail\n");
             return 1;
         }
