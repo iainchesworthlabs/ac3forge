@@ -38,6 +38,7 @@
 
 #include "fixture.hpp"
 #include "probe.hpp"
+#include "stage_timers.hpp"
 
 namespace {
 
@@ -388,6 +389,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
     LevelAccumulator levels;
     Churn churn;
     churn.frames = static_cast<int>(frames->size());
+    ac3probe::reset_stages();
     std::size_t before = g_alloc_calls;
     int index = 0;
     int channels = 0;
@@ -425,6 +427,9 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
     report_churn(codec, churn);
     report_churn_buckets(codec, churn);
     report_timing(codec, churn);
+    // Where the time above went, when the library was built to say
+    // (AC3FORGE_STAGE_TIMERS); silent otherwise.
+    ac3probe::report_stages(codec, churn.frames);
     return 0;
 }
 
@@ -453,6 +458,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     LevelAccumulator levels;
     Churn churn;
     churn.frames = static_cast<int>(units->size());
+    ac3probe::reset_stages();
     std::size_t before = g_alloc_calls;
     int index = 0;
     int channels = 0;
@@ -497,6 +503,9 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     report_churn(codec, churn);
     report_churn_buckets(codec, churn);
     report_timing(codec, churn);
+    // Where the time above went, when the library was built to say
+    // (AC3FORGE_STAGE_TIMERS); silent otherwise.
+    ac3probe::report_stages(codec, churn.frames);
     return 0;
 }
 
@@ -655,6 +664,13 @@ int ac3probe::run() {
 
     bind_pcm_spans();
 
+    // Measured before any fixture so it cannot be confused with one, and
+    // printed either way: a reader of the log then knows whether the
+    // stage[...] lines that follow are missing because nothing was timed or
+    // because the build could not time anything.
+    std::printf("stage.pair_cost_ns=%lu\n",
+                static_cast<unsigned long>(ac3probe::stage_pair_cost_ns()));
+
     for (const auto& fixture : kAc3Fixtures) {
         if (decode_ac3(fixture.codec, fixture.stream, fixture.rms) != 0) {
             std::printf("result=fail\n");
@@ -681,6 +697,11 @@ int ac3probe::run() {
         ac3::eac3::release_ecpl_scratch();
     }
     check_reference_transform_refused();
+
+    // Whether this build's library called the stage timers at all - see
+    // stage_timers.hpp. A plain build says "off" here and prints no stage
+    // lines; it is not an error, it is the ordinary footprint measurement.
+    std::printf("stage_timers=%s\n", ac3probe::stages_active() ? "on" : "off");
 
     // Every decoder this run made is out of scope by now, so whatever is still
     // live is held by something with process lifetime inside the library rather

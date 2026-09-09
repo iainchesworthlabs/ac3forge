@@ -34,25 +34,15 @@ std::uint32_t quantize_mantissa(std::int32_t mantissa, int bap) {
 
 double dequantize_mantissa(std::uint32_t code, int bap) {
     assert(bap >= 1 && bap <= 15);
-    if (bap <= 5) {
-        const int levels = kSymmetricLevels[static_cast<std::size_t>(bap)];
-        return (2.0 * static_cast<int>(code) - (levels - 1)) / levels;
-    }
-    const int bits = kBapBits[static_cast<std::size_t>(bap)];
-    auto value = static_cast<std::int32_t>(code << (32 - bits)) >> (32 - bits);  // sign extend
-    return static_cast<double>(value) / static_cast<double>(1u << (bits - 1));
+    // The header's template at double, operation for operation what this
+    // function computed before it existed.
+    return dequantize_mantissa_as<double>(code, bap);
 }
 
-double DitherGenerator::next() {
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    // §7.3.4's own "optimum scaling": a uniform distribution on [-1, 1]
-    // scaled by 0.707, giving +0.707..-0.707.
-    constexpr double kScale = 0.707;
-    const double unit = static_cast<double>(state) / static_cast<double>(0xFFFFFFFFU);  // [0,1]
-    return (unit * 2.0 - 1.0) * kScale;
-}
+// §7.3.4's own "optimum scaling": a uniform distribution on [-1, 1] scaled by
+// 0.707, giving +0.707..-0.707 - see next_as() in the header, which this is
+// at double.
+double DitherGenerator::next() { return next_as<double>(); }
 
 std::uint32_t MantissaBlockWriter::pack_group(const PendingGroup& group, int members) {
     if (members == 3) {

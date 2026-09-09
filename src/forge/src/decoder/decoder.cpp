@@ -282,9 +282,9 @@ struct FrameDecoder::Impl {
     std::vector<DeltaSegments> delta_;
     std::vector<bool> chincpl_;
     std::vector<int> subband_band_;
-    std::vector<std::vector<double>> cplco_;
+    std::vector<std::vector<internal::decode_scalar_t>> cplco_;
     std::vector<bool> phsflg_;
-    std::vector<double> band_values_;
+    std::vector<internal::decode_scalar_t> band_values_;
     std::vector<ExpStrategy> strategy_;
     std::vector<std::uint8_t> groups_;
     std::vector<std::vector<std::uint8_t>> bap_;
@@ -954,12 +954,13 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 }
                 any_new = true;
                 const int master = static_cast<int>(r.read(2));
-                band_values.assign(static_cast<std::size_t>(ncplbnd), 0.0);
+                band_values.assign(static_cast<std::size_t>(ncplbnd), internal::decode_scalar_t{0});
                 for (int bnd = 0; bnd < ncplbnd; ++bnd) {
                     const auto exp = static_cast<std::uint8_t>(r.read(4));
                     const auto mant = static_cast<std::uint8_t>(r.read(4));
                     band_values[static_cast<std::size_t>(bnd)] =
-                        coupling::decode_coordinate({.exp = exp, .mant = mant}, master);
+                        coupling::decode_coordinate_as<internal::decode_scalar_t>(
+                            {.exp = exp, .mant = mant}, master);
                 }
                 for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
                     cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)] =
@@ -1327,7 +1328,11 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         // individual channels are extracted from the coupling channel" so
         // that "the dither applied to each channel's upper frequencies is
         // uncorrelated" - see the decoupling loop below for that half.
+        // Dequantised and scaled in the coefficient store's own type rather
+        // than in double and narrowed - eac3_decoder.cpp's read_stream has the
+        // measurement and the argument that the value is the same.
         const auto read_stream = [&](int s) {
+            using Scalar = internal::decode_scalar_t;
             const int begin = s == cpl_stream ? cplstrtmant : 0;
             const int end = endmant[static_cast<std::size_t>(s)];
             const bool dither_eligible =
@@ -1339,16 +1344,14 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                     exps[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)];
                 if (bap_value == 0) {
                     coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
-                        static_cast<internal::decode_scalar_t>(dither_eligible
-                                             ? impl_->dither_.next() /
-                                                   static_cast<double>(1u << exp)
-                                             : 0.0);
+                        dither_eligible
+                            ? impl_->dither_.next_as<Scalar>() * exponent_scale<Scalar>(exp)
+                            : Scalar{0};
                     continue;
                 }
                 const auto code = mantissa_reader.read(r, bap_value);
                 coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
-                    static_cast<internal::decode_scalar_t>(dequantize_mantissa(code, bap_value) /
-                                     static_cast<double>(1u << exp));
+                    dequantize_mantissa_as<Scalar>(code, bap_value) * exponent_scale<Scalar>(exp);
             }
         };
         // Every stream's quantized mantissas off the wire, in the order
@@ -1384,18 +1387,21 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                     }
                     auto& target = coeffs[static_cast<std::size_t>(ch)];
                     const bool ch_dither = dithflag[static_cast<std::size_t>(ch)];
+                    // In the coefficient store's type, as eac3_decoder.cpp's
+                    // decoupling is, and for the same reason.
+                    using Scalar = internal::decode_scalar_t;
                     for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
-                        const double coordinate =
+                        const Scalar coordinate =
                             cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)];
                         // §7.4.1: a set phase flag negates the right channel of a
                         // 2/0 pair across that band, restoring the phase the
                         // coupling sum discarded.
-                        const double sign =
+                        const Scalar sign =
                             (phsflginu && ch == 1 &&
                              phsflg[static_cast<std::size_t>(
                                  subband_band[static_cast<std::size_t>(bnd)])])
-                                ? -1.0
-                                : 1.0;
+                                ? Scalar{-1}
+                                : Scalar{1};
                         const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
                         const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
                         for (int bin = low; bin < high; ++bin) {
@@ -1409,13 +1415,12 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                             // uncorrelated" rules out. Each channel draws its own
                             // sample and runs it through the same extraction
                             // formula a real coupling coefficient would use.
-                            const double coeff =
+                            const Scalar coeff =
                                 (cpl_bap[ubin] == 0 && ch_dither)
-                                    ? impl_->dither_.next() /
-                                          static_cast<double>(1u << cpl_exps[ubin])
-                                    : static_cast<double>(shared[ubin]);
-                            target[ubin] =
-                                static_cast<internal::decode_scalar_t>(coeff * coordinate * 8.0 * sign);
+                                    ? impl_->dither_.next_as<Scalar>() *
+                                          exponent_scale<Scalar>(cpl_exps[ubin])
+                                    : shared[ubin];
+                            target[ubin] = coeff * coordinate * Scalar{8} * sign;
                         }
                     }
                 }
@@ -1536,6 +1541,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // would read - and, for a caller who also asked for a downmix, silently
     // rewrite - buffers this call promised to leave untouched.
     if (!impl_->config_.skip_reconstruction) {
+        AC3_ZONE_SCOPED_N("ac3_output");
         const auto levels = mix_levels(cmixlev, surmixlev);
         if (external.empty()) {
             impl_->output_.apply(out.channels, acmod, lfe, levels, dialnorm);

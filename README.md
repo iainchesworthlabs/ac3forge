@@ -113,7 +113,7 @@ and what has and has not been confirmed against hardware.
 | macOS arm64 / Intel | Library, `ac3cli`, `ac3gui`; Crucible compiles | Green CI; nothing has captured or played a sound |
 | Android (NVIDIA Shield) | Shield Atmos Demo only | Live objects out HDMI to a receiver, on the device |
 | WebAssembly | Decode and encode in a browser page | Demos published and running |
-| ESP32-S3 | Decode or encode, reusable ESP-IDF component | Correct under QEMU; an I2S player example drives a DAC |
+| ESP32-S3 | Decode or encode, incl. Atmos objects; reusable ESP-IDF component | Correct under QEMU and real time on the board (E-AC-3 5.1 in 14.2 ms of its 32 at 240 MHz); two example players drive I2S |
 | Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal` | Correct under QEMU; no real silicon |
 
 What each can encode and decode is the same everywhere — see

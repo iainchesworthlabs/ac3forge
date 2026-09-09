@@ -34,9 +34,19 @@ endif()
 #
 # - and removing any one of them should break the build rather than silently
 # widen it.
+# stage_timers.cpp is the application half of the AC3FORGE_STAGE_TIMERS zone
+# backend, present in every build for the reason apps/baremetal/CMakeLists.txt
+# gives beside its own copy of this line: without the option the library
+# never calls it and the linker drops it, so a timed build and a plain one
+# differ only in the library's include path. Build one with
+#
+#   idf.py -DAC3FORGE_STAGE_TIMERS=ON build
+#
+# and the probe prints a <fixture>.stage[...] line per decoder stage.
 idf_component_register(
     SRCS "main.cpp"
          "${AC3FORGE_ESP_PROBE_SRC}"
+         "../../../stage_timers.cpp"
     INCLUDE_DIRS ""
     REQUIRES ac3forge esp_timer esp_hw_support esp_rom freertos)
 

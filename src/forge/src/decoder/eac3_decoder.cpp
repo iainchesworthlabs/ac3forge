@@ -833,7 +833,7 @@ struct Eac3Decoder::Impl {
         bool spxinu = false;
         std::vector<bool> chinspx;
         eac3::BandLayout spx_bands{};
-        std::vector<std::vector<double>> spxco;
+        std::vector<std::vector<internal::decode_scalar_t>> spxco;
         std::vector<int> spxblnd;
         int spx_startmant = 0;
         int spx_endmant = 0;
@@ -898,12 +898,12 @@ struct Eac3Decoder::Impl {
     std::vector<bool> chincpl_;
     std::vector<int> subband_band_;
     std::vector<bool> cpl_structure_;
-    std::vector<std::vector<double>> cplco_;
+    std::vector<std::vector<internal::decode_scalar_t>> cplco_;
     std::vector<bool> phsflg_;
     std::vector<bool> chinspx_;
     std::vector<bool> firstspxcos_;
     std::vector<bool> firstcplcos_;
-    std::vector<std::vector<double>> spxco_;
+    std::vector<std::vector<internal::decode_scalar_t>> spxco_;
     std::vector<int> spxblnd_;
     std::vector<std::vector<int>> ecplamp_raw_;
     std::vector<std::vector<int>> ecplangle_raw_;
@@ -1665,7 +1665,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     spx_startmant, subband_count, eac3::kSpxBinsPerSubBand,
                     std::span{spx_structure}.first(static_cast<std::size_t>(subband_count)));
                 for (auto& channel : spxco) {
-                    channel.assign(static_cast<std::size_t>(spx_bands.count), 0.0);
+                    channel.assign(static_cast<std::size_t>(spx_bands.count),
+                                   internal::decode_scalar_t{0});
                 }
             }
         }
@@ -1695,8 +1696,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 for (int bnd = 0; bnd < spx_bands.count; ++bnd) {
                     const auto exp = static_cast<std::uint8_t>(r.read(4));
                     const auto mant = static_cast<std::uint8_t>(r.read(2));
-                    co[static_cast<std::size_t>(bnd)] = coupling::decode_coordinate(
-                        {.exp = exp, .mant = mant}, master, coupling::kSpxMantissaBits);
+                    co[static_cast<std::size_t>(bnd)] =
+                        coupling::decode_coordinate_as<internal::decode_scalar_t>(
+                            {.exp = exp, .mant = mant}, master, coupling::kSpxMantissaBits);
                 }
             }
         }
@@ -1881,12 +1883,17 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 }
                 any_new = true;
                 const int master = static_cast<int>(r.read(2));
-                std::vector<double> band_values(static_cast<std::size_t>(ncplbnd));
+                // One value per band, at most kMaxSubBands of them (standard
+                // coupling has 18 sub-bands, so never more bands than that):
+                // a fixed array rather than the std::vector this was, which
+                // allocated once per coupled channel per block.
+                std::array<internal::decode_scalar_t, eac3::kMaxSubBands> band_values{};
                 for (int bnd = 0; bnd < ncplbnd; ++bnd) {
                     const auto exp = static_cast<std::uint8_t>(r.read(4));
                     const auto mant = static_cast<std::uint8_t>(r.read(4));
                     band_values[static_cast<std::size_t>(bnd)] =
-                        coupling::decode_coordinate({.exp = exp, .mant = mant}, master);
+                        coupling::decode_coordinate_as<internal::decode_scalar_t>(
+                            {.exp = exp, .mant = mant}, master);
                 }
                 auto& channel = cplco[static_cast<std::size_t>(ch)];
                 for (std::size_t bnd = 0; bnd < channel.size(); ++bnd) {
@@ -2484,7 +2491,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 channel.ecplchaos.clear();
                 channel.ecpltrans = false;
                 if (channel.in_coupling && !ecplinu_now) {
-                    channel.cplco = cplco[uch];
+                    // The trace keeps its coordinates in double whatever the
+                    // decoder's own store is; a range assign widens.
+                    channel.cplco.assign(cplco[uch].begin(), cplco[uch].end());
                 } else if (channel.in_coupling) {
                     channel.ecplamp = ecplamp_raw[uch];
                     channel.ecplangle = ecplangle_raw[uch];
@@ -2496,7 +2505,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 channel.spxco.clear();
                 if (channel.in_spx) {
                     channel.spxblnd = spxblnd[uch];
-                    channel.spxco = spxco[uch];
+                    channel.spxco.assign(spxco[uch].begin(), spxco[uch].end());
                 }
             }
             block_trace->allocated = true;
@@ -2530,21 +2539,30 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // dithered per receiving channel in the decoupling loop below
         // instead, per §7.3.4's "applied after the individual channels are
         // extracted ... uncorrelated" requirement.
+        // Dequantised and scaled in the coefficient store's own type, not in
+        // double and narrowed: on the single-precision FPU the
+        // minimum-footprint profile targets, the double divide per mantissa
+        // this used to do was a software routine, and this loop was costing
+        // more than the inverse transform (docs/platforms/esp32.md). The
+        // value is the same - dequantize_mantissa_as says why - and the
+        // exponent's 2^-exp is an exact scale in either type.
         const auto read_stream = [&](int s, int begin) {
+            using Scalar = internal::decode_scalar_t;
             const auto index = static_cast<std::size_t>(s);
             const bool dither_eligible = s < nfchans && dithflag[static_cast<std::size_t>(s)];
             for (int bin = begin; bin < endmant[index]; ++bin) {
                 const int bap_value = bap[index][static_cast<std::size_t>(bin)];
                 const int exp = exps[index][static_cast<std::size_t>(bin)];
                 if (bap_value == 0) {
-                    coeffs[index][static_cast<std::size_t>(bin)] = static_cast<internal::decode_scalar_t>(
-                        dither_eligible ? impl_->dither_.next() / static_cast<double>(1u << exp)
-                                        : 0.0);
+                    coeffs[index][static_cast<std::size_t>(bin)] =
+                        dither_eligible
+                            ? impl_->dither_.next_as<Scalar>() * exponent_scale<Scalar>(exp)
+                            : Scalar{0};
                     continue;
                 }
                 const auto code = mantissa_reader.read(r, bap_value);
-                coeffs[index][static_cast<std::size_t>(bin)] = static_cast<internal::decode_scalar_t>(
-                    dequantize_mantissa(code, bap_value) / static_cast<double>(1u << exp));
+                coeffs[index][static_cast<std::size_t>(bin)] =
+                    dequantize_mantissa_as<Scalar>(code, bap_value) * exponent_scale<Scalar>(exp);
             }
         };
 
@@ -2618,7 +2636,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             for (int bin = begin; bin < end; ++bin) {
                 const auto ubin = static_cast<std::size_t>(bin);
                 const int hb = hebap[ubin];
-                std::array<double, kBlocksPerFrame> mantissas{};
+                // Six mantissas, the six-point inverse and the exponent scale
+                // all in the coefficient store's type - see read_stream above
+                // for why, and eac3_tools.hpp's float aht_inverse for what the
+                // float form of the inverse is and is not.
+                using Scalar = internal::decode_scalar_t;
+                std::array<Scalar, kBlocksPerFrame> mantissas{};
                 if (hb >= 1 && hb <= 7) {
                     const auto book = tables::aht_vq_table(hb);
                     const auto index = r.read(eac3::aht_bin_bits(hb));
@@ -2626,7 +2649,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         return std::unexpected(DecodeError::kInvalidStream);
                     }
                     for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
-                        mantissas[j] = static_cast<double>(book[index][j]) / 32768.0;
+                        mantissas[j] = static_cast<Scalar>(book[index][j]) / Scalar{32768};
                     }
                 } else if (hb >= 8) {
                     const int mantissa_bits = eac3::aht_mantissa_bits(hb);
@@ -2652,17 +2675,16 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                             has_escape = true;
                             escape = r.read(large_bits);
                         }
-                        mantissas[j] = eac3::aht_dequantize_mantissa(raw, escape, has_escape,
-                                                                     mantissa_bits, g);
+                        mantissas[j] = eac3::aht_dequantize_mantissa_as<Scalar>(
+                            raw, escape, has_escape, mantissa_bits, g);
                     }
                 }
                 // hb == 0: mantissas stays all-zero.
-                std::array<double, kBlocksPerFrame> blocks{};
+                std::array<Scalar, kBlocksPerFrame> blocks{};
                 eac3::aht_inverse(mantissas, blocks);
                 const int exp = exps[us][ubin];
                 for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
-                    aht_coeffs[us][j][ubin] =
-                        static_cast<internal::decode_scalar_t>(std::ldexp(blocks[j], -exp));
+                    aht_coeffs[us][j][ubin] = blocks[j] * exponent_scale<Scalar>(exp);
                 }
             }
             return {};
@@ -2672,6 +2694,11 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             const auto us = static_cast<std::size_t>(s);
             if (frm->ahtinu[us]) {
                 if (blk == 0) {
+                    // Its own zone inside eac3_mantissas: an AHT stream's
+                    // six blocks of mantissas arrive here at once, and the
+                    // inverse transform behind them is the part of a
+                    // mantissa read that is not a bitstream read.
+                    AC3_ZONE_SCOPED_N("eac3_aht");
                     if (const auto result = decode_aht_stream(s, begin); !result) {
                         return result;
                     }
@@ -2721,6 +2748,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // strict block order (IMDCT's overlap-add delay line requires that
         // regardless of coupling mode).
         if (frm->cplinu[static_cast<std::size_t>(blk)] && !ecplinu_now) {
+            AC3_ZONE_SCOPED_N("eac3_decoupling");
             const auto& shared = coeffs[static_cast<std::size_t>(kCplStream)];
             const auto& cpl_bap = bap[static_cast<std::size_t>(kCplStream)];
             const auto& cpl_exps = exps[static_cast<std::size_t>(kCplStream)];
@@ -2730,17 +2758,23 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 }
                 auto& target = coeffs[static_cast<std::size_t>(ch)];
                 const bool ch_dither = dithflag[static_cast<std::size_t>(ch)];
+                // In the coefficient store's type throughout, for the reason
+                // read_stream gives. Same value: the coordinate has at most
+                // five significant bits, so the product with a stored
+                // coefficient rounds once in either type, and 8 and the sign
+                // are exact.
+                using Scalar = internal::decode_scalar_t;
                 for (int bnd = 0; bnd < static_cast<int>(subband_band.size()); ++bnd) {
-                    const double coordinate =
+                    const Scalar coordinate =
                         cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)];
                     // §7.4.1: a set phase flag negates the right channel of a
                     // 2/0 pair across that band, restoring the phase the
                     // coupling sum discarded.
-                    const double sign = (phsflginu && ch == 1 &&
+                    const Scalar sign = (phsflginu && ch == 1 &&
                                          phsflg[static_cast<std::size_t>(
                                              subband_band[static_cast<std::size_t>(bnd)])])
-                                            ? -1.0
-                                            : 1.0;
+                                            ? Scalar{-1}
+                                            : Scalar{1};
                     const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
                     const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
                     for (int bin = low; bin < high; ++bin) {
@@ -2751,11 +2785,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         // uses - see decoder.cpp's own copy of this comment
                         // for why reusing one dithered coupling-domain
                         // sample across channels would be wrong.
-                        const double coeff =
+                        const Scalar coeff =
                             (cpl_bap[ubin] == 0 && ch_dither)
-                                ? impl_->dither_.next() / static_cast<double>(1u << cpl_exps[ubin])
-                                : static_cast<double>(shared[ubin]);
-                        target[ubin] = static_cast<internal::decode_scalar_t>(coeff * coordinate * 8.0 * sign);
+                                ? impl_->dither_.next_as<Scalar>() *
+                                      exponent_scale<Scalar>(cpl_exps[ubin])
+                                : shared[ubin];
+                        target[ubin] = coeff * coordinate * Scalar{8} * sign;
                     }
                 }
             }
@@ -2863,6 +2898,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         auto& coeffs = tail.coeffs;
 
         if (tail.cplinu && tail.ecplinu_now) {
+            AC3_ZONE_SCOPED_N("eac3_ecpl_reconstruct");
             // §3.5.5: reconstruct each coupled channel from the enhanced
             // coupling channel, using this block's neighbors. A neighbor is
             // zero when the adjacent block did not use enhanced coupling
@@ -2942,6 +2978,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // spx_startmant to copy from - coupling always ends exactly where
         // spx begins (§E3.3.1), so there is no gap and nothing to reconcile.
         if (tail.spxinu) {
+            AC3_ZONE_SCOPED_N("eac3_spx");
             for (int ch = 0; ch < nfchans; ++ch) {
                 if (!tail.chinspx[static_cast<std::size_t>(ch)]) {
                     continue;
@@ -2954,8 +2991,16 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // run past spx_startmant. copyindex never leaves
                 // [spx_copystart, spx_startmant) - strictly below the region
                 // this loop writes into - so mutating tc in place is safe.
+                // The whole synthesis in the coefficient store's type. At
+                // double this stage was 57% of a 5.1 decode on an ESP32-S3 -
+                // the blend below, the noise draw and the band arithmetic
+                // were each software routines there - and the float form
+                // differs from it by the rounding of sums and products, the
+                // same class of difference the float store already accepted
+                // at the transform.
+                using Scalar = internal::decode_scalar_t;
                 std::array<bool, eac3::kMaxSubBands> wrapflag{};
-                std::array<double, eac3::kMaxSubBands> band_rms{};
+                std::array<Scalar, eac3::kMaxSubBands> band_rms{};
                 int copyindex = tail.spx_copystart;
                 for (int bnd = 0; bnd < tail.spx_bands.count; ++bnd) {
                     const auto ubnd = static_cast<std::size_t>(bnd);
@@ -2965,19 +3010,18 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         copyindex = tail.spx_copystart;
                         wrapflag[ubnd] = true;
                     }
-                    double accum = 0.0;
+                    Scalar accum{0};
                     for (int i = 0; i < size; ++i) {
                         if (copyindex == tail.spx_startmant) {
                             copyindex = tail.spx_copystart;
                         }
-                        // The copy is coefficient-to-coefficient and stays in
-                        // their type; only the energy accumulator wants double,
-                        // because it sums hundreds of squares.
+                        // A band is at most a few dozen bins, so the energy
+                        // accumulator follows the coefficients' type too.
                         const auto value = tc[static_cast<std::size_t>(copyindex++)];
                         tc[static_cast<std::size_t>(low + i)] = value;
-                        accum += static_cast<double>(value) * static_cast<double>(value);
+                        accum += value * value;
                     }
-                    band_rms[ubnd] = std::sqrt(accum / size);
+                    band_rms[ubnd] = std::sqrt(accum / static_cast<Scalar>(size));
                 }
 
                 // §3.6.4.2.3 Band Border Filtering: the notch runs on the
@@ -2997,15 +3041,16 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     const auto ubnd = static_cast<std::size_t>(bnd);
                     const int size = tail.spx_bands.size[ubnd];
                     const int low = tail.spx_bands.start[ubnd];
-                    const double nratio = eac3::spx_noise_ratio(low, size, tail.spx_endmant, blend);
-                    const double nscale = band_rms[ubnd] * std::sqrt(nratio);
-                    const double sscale = std::sqrt(1.0 - nratio);
-                    const double coordinate = tail.spxco[static_cast<std::size_t>(ch)][ubnd] * 32.0;
+                    const Scalar nratio =
+                        eac3::spx_noise_ratio_as<Scalar>(low, size, tail.spx_endmant, blend);
+                    const Scalar nscale = band_rms[ubnd] * std::sqrt(nratio);
+                    const Scalar sscale = std::sqrt(Scalar{1} - nratio);
+                    const Scalar coordinate =
+                        tail.spxco[static_cast<std::size_t>(ch)][ubnd] * Scalar{32};
                     for (int i = 0; i < size; ++i) {
                         const auto at = static_cast<std::size_t>(low + i);
-                        tc[at] = static_cast<internal::decode_scalar_t>(
-                            (static_cast<double>(tc[at]) * sscale + spx_noise.next() * nscale) *
-                            coordinate);
+                        tc[at] = (tc[at] * sscale + spx_noise.next_as<Scalar>() * nscale) *
+                                 coordinate;
                     }
                 }
             }
@@ -3351,8 +3396,14 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span
     // seats the layout filled), but passing the rendered answer keeps the two
     // in agreement.
     const bool rendered_lfe = out.layout.index_of(eac3::chanmap::Location::kLfe) >= 0;
-    impl_->output_.apply(impl_->au_views_, out.layout, out.acmod, rendered_lfe,
-                         mix_levels(out.mixing), out.dialnorm);
+    {
+        // Outside eac3_decode_access_unit, so it reports as its own root
+        // zone: this is the fold the caller's config asked for, applied to a
+        // finished program, not part of decoding one.
+        AC3_ZONE_SCOPED_N("eac3_output");
+        impl_->output_.apply(impl_->au_views_, out.layout, out.acmod, rendered_lfe,
+                             mix_levels(out.mixing), out.dialnorm);
+    }
     if (!external.empty()) {
         return;
     }

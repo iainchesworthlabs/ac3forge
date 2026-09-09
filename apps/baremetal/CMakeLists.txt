@@ -72,6 +72,14 @@ else()
     add_executable(ac3probe probe.cpp main.cpp)
 endif()
 
+# The stage-timer backend's application half, in EVERY build of the probe and
+# not only the ones configured with AC3FORGE_STAGE_TIMERS: a library built
+# without the option never calls it, --gc-sections drops it, and the probe
+# then prints stage_timers=off instead of a breakdown. Keeping it
+# unconditional means the two builds differ in nothing but the library's
+# include path, which is what makes their timings comparable.
+target_sources(ac3probe PRIVATE stage_timers.cpp)
+
 # ac3probe::now_us(). One implementation per platform, chosen here rather than
 # by a conditional in probe.cpp - the host has std::chrono, newlib on the
 # mps2-an385 has semihosting's std::clock, and ESP-IDF has esp_timer (that third

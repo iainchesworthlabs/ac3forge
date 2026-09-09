@@ -687,11 +687,14 @@ soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`
 [Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
 for what the profile changes and why.
 
-`apps/baremetal/probe.cpp` decodes six frames each of four real streams — 5.1 AC-3 (448 kbit/s,
-coupling), 5.1 E-AC-3 (384 kbit/s, AHT + spx + standard coupling), 5.1 E-AC-3 with §E3.5
-enhanced coupling (384 kbit/s, `cpl+ecpl`) and 2/0 E-AC-3 (192 kbit/s, which is the only layout
-§7.5.4 rematrixing exists in) — and reports what it cost. Numbers below are from a run
-against `main` at `a2330dae` plus the two fixtures above; `build-footprint` in
+`apps/baremetal/probe.cpp` decodes six frames each of seven real streams — 5.1 AC-3 (448 kbit/s,
+coupling), 2/0 AC-3 (192 kbit/s) and 1/0 AC-3 (128 kbit/s); 5.1 E-AC-3 (384 kbit/s, AHT + spx +
+standard coupling), 5.1 E-AC-3 with §E3.5 enhanced coupling (384 kbit/s, `cpl+ecpl`), E-AC-3
+Atmos (448 kbit/s, six objects over a 5.1 bed) and 2/0 E-AC-3 (192 kbit/s, which is the only
+layout §7.5.4 rematrixing exists in) — and reports what it cost. That is eight fixtures: the
+Atmos stream is decoded twice, bed-only and with its objects reconstructed. Numbers below are
+from a run against `feature/esp32-realtime-decode` at `7944c8f5` on 2026-09-09, `arm-none-eabi`
+GCC 14.2.1 under QEMU 10.2.1's `mps2-an385`; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
@@ -703,9 +706,9 @@ significantly DC10's QMF-domain JOC reconstruction, which the decode path needs
 the PF3/PF4 FFT/IMDCT rewrite and DC1's decoder output stage — and nobody re-measured the table
 or the ceiling before merging. The image had already reached 412,516 bytes by then.
 
-The same thing happened a second time, and the numbers below are that second re-measurement. The
-largest movement in them is a relocation rather than growth. AP3's Pimpl sweep (`ee5ff91e`) gave
-both decoders a `struct Impl; std::unique_ptr<Impl> impl_;`
+The same thing happened a second time. The largest movement in that re-measurement was a
+relocation rather than growth. AP3's Pimpl sweep (`ee5ff91e`) gave both decoders a
+`struct Impl; std::unique_ptr<Impl> impl_;`
 (`src/forge/include/ac3/decoder/decoder.hpp:435` and `:758`), so `sizeof(ac3::FrameDecoder)` and
 `sizeof(ac3::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
 the state they used to hold in place now lives on the heap. That state came out of automatic
@@ -721,56 +724,73 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 213,196 |
+| `.text` (code + read-only data) | 224,524 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 97,152 |
-| **Image total** | **310,748** (303.5 KiB) |
+| `.bss` (zero-initialised) | 100,144 |
+| **Image total** | **325,068** (317.4 KiB) |
 
-`.bss` fell 140,440 bytes from the 237,592 this table carried before, in two steps. Moving
-`ecpl_channel_spectrum`'s 32 KB scratch off thread-local storage — it made the library
-unlinkable into any FreeRTOS application, see [the ESP32-S3 page](platforms/esp32.md) — took
+These are `arm-none-eabi-size`'s own columns, which is what `AC3FORGE_MAX_IMAGE_BYTES` gates, so
+they group sections rather than list them: `.text` here includes `.init`, `.fini` and
+`.ARM.exidx`, `.data` includes `.init_array` and `.fini_array`, and `.bss` includes `.tbss`. Read
+per-section with `arm-none-eabi-size -A`, `.text` is 223,228, `.data` 388 and `.bss` 97,256.
+
+`.bss` fell from 237,592 bytes in two steps. Moving `ecpl_channel_spectrum`'s 32 KB scratch off
+thread-local storage — it made the library unlinkable into any FreeRTOS application, see
+[the ESP32-S3 page](platforms/esp32.md) — took
 `.tbss` from 32,784 bytes to 24, and `tls.cpp`'s block was resized from 64 KiB to 4 KiB to
 match. The decode path then moved to float32 under this profile, halving every coefficient
 buffer. `.text` rose 5,680 bytes over the same span, which is the float32 transform
 instantiation.
 
-`.text` then rose a further 14,128 bytes when the enhanced-coupling and 2/0 fixtures were added.
-All but ~300 bytes of that is the two bitstreams themselves: `fixture.hpp` is `constexpr`
-`std::array` data linked into `probe.cpp.obj`'s read-only section, and it went from 19,968 bytes
-of stream to 33,792. Neither §E3.5 nor §7.5.4 added code — `eac3_tools.cpp` and `fft.cpp` were
-already in `src/forge/minimal.cmake`'s source list and already linked, which is the point: what
-the fixtures added was execution, not size.
+`.text` has risen as fixtures were added, and most of each rise is the bitstreams themselves:
+`fixture.hpp` is `constexpr` `std::array` data linked into `probe.cpp.obj`'s read-only section.
+It held 19,968 bytes of stream before the enhanced-coupling and 2/0 fixtures, 33,792 with them,
+and 52,224 now across seven streams. None of the tools those fixtures reach added code —
+`eac3_tools.cpp`, `fft.cpp`, `joc.cpp` and `oamd.cpp` were already in `src/forge/minimal.cmake`'s
+source list and already linked, which is the point: what the fixtures added was execution, not
+size.
+
+The float decode path moved it again, by less than the size of the conversion suggests. Against
+the 320,940 bytes `main` measured before it (223,260 of `.text`, 97,280 of `.bss`), `.text` is
+1,264 bytes larger and `.bss` 2,864. The `<double>` instantiations this profile no longer
+references left the image as their float forms came in, so most of the conversion was a swap:
+`eac3_decoder.cpp.obj` is 912 bytes smaller, `joc.cpp.obj` 590 larger. The `.bss` is two
+things. 1,949 bytes are the stage timers' tables, `stage_timers.cpp.obj`, linked into every
+shape of the probe so that a timed build and a plain one differ only in the library's include
+path; 912 are two tables `eac3_tools.cpp` now fills once at start-up rather than computing per
+call, spectral extension's attenuation (32 codes by 3 taps) and the AHT's inverse kernel in
+float.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
 
 | Object | `.text` | `.bss` |
 |---|---|---|
-| `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks) | 37.0 KiB | 48.7 KiB |
-| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 4.0 KiB |
-| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 8.6 KiB | 10.3 KiB |
-| `eac3_decoder.cpp.obj` (all of Annex E) | 48.5 KiB | 0 |
-| `mdct.cpp.obj` (inverse transform, fast path only) | 14.9 KiB | 14.6 KiB |
-| `decoder.cpp.obj` (AC-3) | 17.2 KiB | 0 |
-| `joc.cpp.obj` (§6 object reconstruction from the bed) | 13.0 KiB | 0 |
-| `oamd.cpp.obj` (§H.1 object metadata) | 6.8 KiB | 0 |
+| `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks) | 55.8 KiB | 48.8 KiB |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 37.5 KiB | 0 B |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 19.9 KiB | 11.2 KiB |
+| `mdct.cpp.obj` (inverse transform, fast path only) | 15.9 KiB | 14.6 KiB |
+| `decoder.cpp.obj` (AC-3) | 18.9 KiB | 0 B |
+| `joc.cpp.obj` (§6 object reconstruction from the bed) | 14.0 KiB | 0 B |
+| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
 | `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction) | 6.0 KiB | 4.2 KiB |
-| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
-| `output.cpp.obj` (`OutputStage::apply`/`mix_levels`, both decoders') | 5.0 KiB | 16 B |
-| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
-| `bitalloc.cpp.obj` (§7.2 bit allocation, both generations) | 3.9 KiB | 0 |
+| `oamd.cpp.obj` (§H.1 object metadata) | 6.8 KiB | 0 B |
+| `output.cpp.obj` (`OutputStage::apply`/`mix_levels`, both decoders') | 4.5 KiB | 16 B |
+| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 4.0 KiB |
+| `bitalloc.cpp.obj` (§7.2 bit allocation, both generations) | 3.9 KiB | 0 B |
 | `transient_prenoise.cpp.obj` (§3.7 post-IMDCT correction) | 744 B | 3.0 KiB |
-| `libm_a-e_pow.o` (newlib's `pow`) | 2.9 KiB | 0 |
+| `libm_a-e_pow.o` (newlib's `pow`) | 2.9 KiB | 0 B |
+| `stage_timers.cpp.obj` (the stage timers' tables, linked into every shape of the probe so that a timed build and a plain one differ only in the library's include path) | 918 B | 1.9 KiB |
 | `arm_librdimon_a-syscalls.o` (newlib's semihosting syscalls) | 2.5 KiB | 176 B |
-| `libm_a-k_rem_pio2.o` (newlib's trig argument reduction) | 2.2 KiB | 0 |
-| everything else, summed | 20.7 KiB | 769 B |
+| `libm_a-k_rem_pio2.o` (newlib's trig argument reduction) | 2.2 KiB | 0 B |
+| everything else, summed | 22.3 KiB | 769 B |
 
-Several rows are *smaller* than in the previous table without any code having been removed. That
-attribution was reading GNU ld's "Discarded input sections" block as though it were part of the
-map proper, so every `--gc-sections` casualty was credited to the object it came from; it
+One earlier correction is worth knowing when comparing this table against older versions of it.
+The attribution used to read GNU ld's "Discarded input sections" block as though it were part of
+the map proper, so every `--gc-sections` casualty was credited to the object it came from; it
 inflated the `.text` column by 63 KiB, `eac3_tools.cpp.obj` most of all (21.3 KiB reported
-against 8.4 KiB actually linked). `footprint_report.py` skips that block as of this
-re-measurement, and both columns now reconcile with `arm-none-eabi-size`'s own totals.
+against 8.4 KiB actually linked). `footprint_report.py` has skipped that block since, and both
+columns reconcile with `arm-none-eabi-size`'s own totals.
 
 `tls.cpp.obj`'s 4 KiB is the single-thread `__aeabi_read_tp` stub's static block
 (`apps/baremetal/platform/baremetal/tls.cpp`), checked by two `ASSERT()`s in the linker script
@@ -805,7 +825,7 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 236,391 bytes (230.9 KiB) |
+| Peak heap | 237,303 bytes (231.7 KiB) |
 | Retained after teardown | 24 bytes |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
@@ -845,8 +865,9 @@ float32 `ReconstructionState`, per-object scratches sized to the stream and hand
 enhanced-coupling scratch between decodes took it to 233,546. Moving the decoders' frame-scope
 buffers onto the decoder — what closed the per-frame churn above — added 2,845 back, because a
 buffer's high-water capacity is now held for the decoder's lifetime rather than released each
-frame. 236,391 fits the 280,792 bytes an ESP32-S3 has free with 44,401 to spare. [The ESP32-S3
-page](platforms/esp32.md#objects-and-what-it-took-to-fit-them) has what each step was worth.
+frame. JOC's mixing then began narrowing the frame's matrix once into a scratch of its own rather
+than at every read, 912 bytes more. 237,303 fits the 280,792 bytes an ESP32-S3 has free with
+43,489 to spare. [The ESP32-S3 page](platforms/esp32.md#objects) has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
 made has been destroyed — so not per-frame growth and not a leak. It is 24 bytes now: two

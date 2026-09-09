@@ -33,11 +33,10 @@ constexpr int band_width(int start_bin) {
 }  // namespace
 
 double decode_coordinate(Coordinate coordinate, int master, int mantissa_bits) {
-    const double one = static_cast<double>(1 << mantissa_bits);
-    const double mantissa = coordinate.exp == kMaxExp
-                                ? coordinate.mant / one
-                                : (coordinate.mant + one) / (2.0 * one);
-    return std::ldexp(mantissa, -(coordinate.exp + 3 * master));
+    // The header's template at double. Its multiply by 2^-(exp + 3 master)
+    // is the std::ldexp this used to call, value for value: scaling by a
+    // power of two is exact at every magnitude a coordinate reaches.
+    return decode_coordinate_as<double>(coordinate, master, mantissa_bits);
 }
 
 Coordinate quantize_coordinate(double value, int master, int mantissa_bits) {

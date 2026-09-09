@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -39,6 +40,33 @@ inline constexpr std::array<int, 6> kSymmetricLevels = {0, 3, 5, 7, 11, 15};
 // Reconstruction value in [-1, 1) for a code (test/decoder use).
 [[nodiscard]] AC3FORGE_EXPORT double dequantize_mantissa(std::uint32_t code, int bap);
 
+// The same reconstruction in the caller's own scalar. dequantize_mantissa()
+// above is this at double, and the decoders call this at whichever type
+// their coefficient store is (ac3::internal::decode_scalar_t - float on the
+// minimum-footprint profile), because on a single-precision FPU every double
+// operation is a software routine: measured on an ESP32-S3, the dequantise
+// below and the exponent scale after it were costing more than the inverse
+// transform (docs/platforms/esp32.md's Timing section).
+//
+// Bit-for-bit the same value either way. The symmetric case is one division
+// of two small integers, correctly rounded in whichever type performs it;
+// with these denominators (3..15) the exact quotient never sits close enough
+// to a float rounding boundary for the double result narrowed to float to
+// differ from the float division itself. The asymmetric case is a division by
+// a power of two, exact in both.
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar dequantize_mantissa_as(std::uint32_t code, int bap) {
+    if (bap <= 5) {
+        const int levels = kSymmetricLevels[static_cast<std::size_t>(bap)];
+        return (Scalar{2} * static_cast<Scalar>(static_cast<int>(code)) -
+                static_cast<Scalar>(levels - 1)) /
+               static_cast<Scalar>(levels);
+    }
+    const int bits = kBapBits[static_cast<std::size_t>(bap)];
+    const auto value = static_cast<std::int32_t>(code << (32 - bits)) >> (32 - bits);  // sign extend
+    return static_cast<Scalar>(value) / static_cast<Scalar>(1u << (bits - 1));
+}
+
 // §7.3.4: dither for zero-bit mantissas (bap == 0), substituted only where
 // the bitstream's dithflag says to - a decoder must reproduce a TRUE zero
 // when it is clear. "Any reasonably random sequence may be used to generate
@@ -54,6 +82,25 @@ inline constexpr std::array<int, 6> kSymmetricLevels = {0, 3, 5, 7, 11, 15};
 struct AC3FORGE_EXPORT DitherGenerator {
     std::uint32_t state = 0x6C8E9CF7U;  // never zero, or xorshift sticks at 0
     [[nodiscard]] double next();
+
+    // The same sequence mapped in the caller's scalar - next() is this at
+    // double. A float decoder draws its dither here rather than narrowing
+    // next()'s result: the mapping is a divide and two multiplies, which on
+    // a single-precision FPU are three software routines per zero-bit
+    // mantissa when done in double. The float mapping rounds the 32-bit state
+    // to 24 bits first, so its values are not the double ones narrowed - but
+    // §7.3.4 leaves the sequence itself to the decoder, and this is still
+    // one, deterministic per instance.
+    template <typename Scalar>
+    [[nodiscard]] Scalar next_as() {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        constexpr auto kScale = static_cast<Scalar>(0.707);
+        const Scalar unit =
+            static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
+        return (unit * Scalar{2} - Scalar{1}) * kScale;
+    }
 };
 
 // One bitstream write: `bits` bits of `value`.
