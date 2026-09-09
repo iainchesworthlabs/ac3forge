@@ -193,14 +193,24 @@ exactly that.
 
 ## What it costs
 
-`idf.py size`, IDF v6.1, `-Os`:
+`idf.py size`, IDF v6.1, `-Os`, the default shape (`partition` to `i2s`) with
+the console on USB-Serial-JTAG:
 
 | | Bytes |
 | --- | --- |
-| Internal SRAM (DIRAM) used by the image | 111,055 |
-| …leaving for the heap | 230,705 |
+| Internal SRAM (DIRAM) used by the image | 155,615 |
+| …of which `.bss` | 114,024 |
+| …leaving for the heap, by the linker's estimate | 186,145 |
+| Caller-owned PCM, eight channels of one frame (`kMaxChannels`) | 49,152 |
 | Accumulator buffer (`kRecommendedBuffer`) | 16,384 |
+| Interleave buffer (one frame, static) | 6,144 |
+| I2S DMA queue (4 × 240 frames, stereo, 16-bit) | 3,840 |
 | Partition read block | 2,048 |
 
-More than `i2s_player`'s 94,383, and the difference is mostly the accumulator
-buffer — which is the price of not having the whole stream in memory.
+More than `i2s_player`'s 93,967, and the difference is what a player that does
+not know its stream in advance carries: PCM storage wide enough for 7.1 rather
+than the fixture's 5.1, the framing buffer, and every source and sink's
+components linked whichever pair is selected (`main/CMakeLists.txt` says why
+the `REQUIRES` list cannot follow the choice). The `http` shape adds the WiFi
+and TCP/IP stacks on top: 163,546 bytes of DIRAM before either has allocated
+anything at run time.

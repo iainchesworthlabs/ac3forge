@@ -65,12 +65,13 @@ of them will not.
 
 ## What it costs
 
-Measured with `idf.py size` on IDF v6.1, `-Os`:
+Measured with `idf.py size` on IDF v6.1, `-Os`, with the console on
+USB-Serial-JTAG (`sdkconfig.hw`):
 
 | | Bytes |
 | --- | --- |
-| Internal SRAM (DIRAM) used by the image | 94,383 |
-| …leaving for the heap | 247,377 |
+| Internal SRAM (DIRAM) used by the image | 93,967 |
+| …leaving for the heap, by the linker's estimate | 247,793 |
 | I2S DMA buffers (4 × 240 frames, stereo, 16-bit) | 3,840 |
 | Interleave buffer (one frame, static) | 6,144 |
 
