@@ -14,6 +14,7 @@ What is on the site instead: [the documentation](../docs/index.md) describes wha
 | [player-appliance.md](player-appliance.md) | A playback appliance, "Hearth" | Not started — no `apps/hearth` in the tree |
 | [host-plugin.md](host-plugin.md) | Whether a DAW/NLE plugin is possible, and what shipping one takes | A study; nothing decided, no code |
 | [qc-report.md](qc-report.md) | A delivery-shaped QC report file | Not started — `ac3cli qc` writes no report file |
+| [esp32-player.md](esp32-player.md) | The ESP32-S3 player: a component layer under the examples, and an ESPHome media player | Phase 0 (the hardware run) in progress; nothing from Phase 1 on exists |
 
 Two phase records stayed on the site because the reference pages cite them as evidence rather
 than as plans: [the Crucible promotion record](../docs/crucible/promotion.md), which carries the

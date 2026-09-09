@@ -16,6 +16,31 @@ config AC3FORGE_EXAMPLE_I2S_DOUT_GPIO
     int "I2S data out (DOUT/SDIN) GPIO"
     default 7
 
+# THE I2S DMA QUEUE: how much audio the peripheral holds between the player's
+# writes, as descriptors of this many sample frames each. Four of 240 is 960
+# stereo 16-bit frames - 3,840 bytes, 20 ms at 48 kHz - which is LESS than one
+# coded frame (1,536 samples, 6,144 bytes). A write only completes as the DAC
+# drains, so once playback is under way the producer has the queue's depth, not
+# the frame's 32 ms, between one write returning and the DAC running dry.
+#
+# Small on purpose for the flash and SD sources: every millisecond here is a
+# millisecond of latency, and a deep queue would hide a decoder that cannot
+# keep up, which is one of the things this example exists to reveal. A network
+# source is a different case, and this is where its depth is set - the README
+# records what a board needed.
+config AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS
+    int "I2S DMA descriptors"
+    default 4
+    range 2 64
+
+config AC3FORGE_EXAMPLE_I2S_DMA_FRAMES
+    int "Sample frames per I2S DMA descriptor"
+    default 240
+    range 8 1023
+    help
+        1023 is the driver's ceiling for stereo 16-bit: a descriptor holds at
+        most 4,092 bytes.
+
 # WHICH SINK. Kconfig rather than a -D cache variable, because the component's
 # own CMakeLists is evaluated in IDF's separate requirements-expansion process,
 # which does not inherit cache variables set by the project above it - CONFIG_
@@ -160,5 +185,15 @@ config AC3FORGE_EXAMPLE_MAX_LAPS
         0 plays forever, which is what a demo on a board should do. CI sets a
         small number so the application finishes and prints a verdict something
         can gate on.
+
+config AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES
+    int "Print a progress line every this many frames (0 = only at the end of a pass)"
+    default 0
+    help
+        The timing line is printed at the end of each pass through the stream.
+        A source that cannot rewind - HTTP - makes exactly one pass, which for
+        a long stream means one line after minutes of silence on the console.
+        A non-zero value prints the same figures, cumulative, every N frames as
+        well; 125 is every four seconds at 48 kHz.
 
 endmenu

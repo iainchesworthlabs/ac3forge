@@ -1,0 +1,404 @@
+# The ESP32-S3 player: from two examples to a component and an ESPHome media player
+
+!!! note "Status as of 2026-09-10: Phase 0 in progress"
+    Written 2026-09-10, against a second `ESP32-S3-DevKitC-1-N16R8` on the desk. Phase 0 is the
+    hardware run itself: the I2S player and the streaming player on a board, measured, with what
+    each took recorded in its README. Nothing from Phase 1 onward exists in the tree.
+
+    Shape follows [the topology](topology.md) and [the appliance plan](player-appliance.md):
+    design sections say what changes and why, phases carry exit criteria and how each is
+    verified, [Decisions](#decisions) lists what is open with a recommendation and a cost, and
+    [What cannot be verified](#what-cannot-be-verified-and-why) says where the evidence stops.
+
+[The topology](topology.md) names the ESP32-S3 node as the sink role on a microcontroller, and
+its Phase 5 is "the HLS client on the device". This page is the layer underneath any transport:
+how bytes that have already arrived on the part become sound, and how that layer is packaged so
+the two consumers that exist today, an ESP-IDF integrator and an ESPHome configuration, and the
+one that comes later, the HLS client, all sit on the same code.
+
+## What exists, by path
+
+| Path | What it is | State |
+|---|---|---|
+| `esp-idf/ac3forge/` | The ESP-IDF component: a wrapper that `add_subdirectory()`s the repo root and links `ac3::forge_minimal`. No sources of its own. | Builds in CI under `espressif/idf:v6.1`; packs and verifies through `tools/packaging/pack_esp_component.py`. |
+| `esp-idf/ac3forge/examples/i2s_player/` | Decodes a flash-resident AC-3 fixture to an I2S DAC and prints per-lap timing. | Phase 0 measures it on a board. |
+| `esp-idf/ac3forge/examples/stream_player/` | Bytes from a `partition`, `sd`, `fatfs` or `http` source through `ac3::io::AccessUnitAccumulator` to an `i2s`, `tdm`, `capture` or `null` sink. One loop, on the main task. | CI runs `partition` and `fatfs` under QEMU with the `capture` sink. Phase 0 runs `http` to `i2s` on a board. |
+| `esphome/components/ac3forge/` | An ESPHome external component: a decoder and the framer, fed bytes by another component. | `esphome config` in CI. Never compiled into firmware by CI. |
+| `docs/platforms/esp32.md` | The platform page. | Being restructured by PR #603; player documentation stays in the example READMEs until it lands. |
+
+Two things about that table decide the shape of everything below.
+
+**The decode loop has been written three times.** `stream_player.cpp`, `esphome/components/ac3forge/ac3forge.cpp` and the probe's `decode_eac3()` each drive the accumulator, call a decoder into caller-owned storage and hand the result on. Two of the three used `ac3::FrameDecoder`, which reads AC-3 alone: bsid above 8 returns `DecodeError::kUnsupported`, so neither the streaming example nor the ESPHome component could ever have played an E-AC-3 stream, and CI did not notice because its only sample is AC-3. `ac3::Eac3Decoder::decode_access_unit_into` takes the access units the accumulator produces, decodes Annex E, and accepts a plain AC-3 syncframe as one access unit of one substream. Phase 0 moves the example onto it; Phase 3 moves the ESPHome component.
+
+**Nothing between the source and the decoder buffers.** The `http` source reads from the socket inside the decode loop. The I2S DMA queue holds 20 ms, less than the 32 ms one frame lasts, so from the moment playback is under way the loop has 20 ms to fetch and decode each frame before the DAC runs dry. The decode alone is 11 ms for 5.1 E-AC-3 at 240 MHz. What the network adds is what Phase 0 measures.
+
+## What the board showed
+
+Filled in from the Phase 0 runs; the READMEs carry the lines themselves.
+
+- [`i2s_player`](../esp-idf/ac3forge/examples/i2s_player/README.md): the per-lap timing line from silicon, in place of the conditional wording it had.
+- [`stream_player`](../esp-idf/ac3forge/examples/stream_player/README.md): the `http` source to the `i2s` sink, an E-AC-3 5.1 stream at 448 kbit/s, with `realtime_permille`, the sink's underrun count against the DAC's own clock, and the per-channel RMS against the host's decode of the same file.
+
+## The layers a player needs
+
+Seven, and five of them exist. The order is the order bytes take.
+
+1. **Framing.** `ac3::io::AccessUnitAccumulator` turns a byte stream into access units over a
+   caller-owned buffer, allocating nothing. Exists.
+2. **Decoding, both generations.** `ac3::Eac3Decoder::decode_access_unit_into`, into caller-owned
+   planar storage. Exists. The integrations used the wrong class; see above.
+3. **The output stage.** `ac3::OutputConfig`: the §7.8 fold and §7.7 operating mode, applied in the
+   decoder's own storage before it returns. Exists.
+4. **Sample format.** Planar float to interleaved 16-bit, or 24-in-32 with slot padding for TDM.
+   Exists as [`interleave.hpp`](../esp-idf/ac3forge/examples/stream_player/main/interleave.hpp)
+   inside the streaming example, free of ESP-IDF, and tested on the host by
+   `tests/io/test_interleave.cpp`. It is library code living in an example.
+5. **Bytes to PCM.** The loop over 1 to 4: feed bytes, take frames, with hold-back (§3.7) and
+   end-of-stream handled once. Written three times, as above. Library code with no home.
+6. **Buffering and tasks.** A fetch task filling a ring buffer, a decode task draining it and
+   writing to the sink, each pinned to a core: the fetch beside the WiFi and TCP/IP tasks on
+   core 0, the decode alone on core 1. FreeRTOS-specific, so it cannot live in the library. Does
+   not exist; the example's single loop is what stands in for it.
+7. **Sinks.** Standard I2S at two slots; TDM at up to eight; a null sink for CI. Exist in the
+   example. A SigmaDSP such as the ADAU1452 or ADAU1467 wants 32-bit slots and can be the clock
+   master, which needs an I2S slave role; neither is configurable yet.
+
+## Where each layer belongs
+
+Three homes, and the rule for choosing is the one the repository already uses: platform-free code
+in the library, platform-specific code in the platform's own directory, and an example shows how
+to use both.
+
+**The library, `src/forge`.** Layers 4 and 5. `ac3::io::interleave` is a move of code that already
+has host tests. A `StreamDecoder` over the accumulator, the E-AC-3 decoder and the output stage,
+with `feed()` and `next()` into caller-owned spans, is the loop written three times, written once.
+Both are hand-over items: the decoder core is owned by another session, so this page describes
+them and does not touch `src/forge`. Until they land, the component carries copies, marked as
+such, and the day they land is the day the copies are deleted.
+
+**The component, `esp-idf/ac3forge/`.** Layer 6, and the seams for 7. The component today registers
+no sources; it gains `include/ac3forge/player.hpp` and `src/player.cpp`, registered as component
+sources beside the interface link it already has. Two abstract seams, mirroring the example's
+`byte_source.hpp` and `audio_sink.hpp`, one pipeline:
+
+```cpp
+namespace ac3forge {
+
+struct ByteSource {           // an HTTP body, an SD file, a partition, a UART
+    virtual std::size_t read(std::span<std::byte> dst) = 0;   // 0 means end of stream
+    virtual bool rewind() = 0;                                 // false if this source cannot
+};
+
+struct PcmSink {              // an I2S channel, a TDM channel, ESPHome's speaker::Speaker
+    virtual bool open(std::uint32_t sample_rate, int channels) = 0;
+    virtual void write(std::span<const std::int16_t> interleaved) = 0;  // blocks; this paces the player
+};
+
+struct PlayerConfig {
+    std::size_t ring_bytes;          // between fetch and decode; seconds of stream at its bit rate
+    std::size_t framing_bytes;       // the accumulator's buffer; ac3::io::kRecommendedBuffer
+    int fetch_core, decode_core;     // 0 and 1
+    unsigned fetch_priority, decode_priority;
+    ac3::OutputConfig output;        // the fold and operating mode
+    bool skip_object_reconstruction; // true for a stereo sink; the bed is the complete mix
+};
+
+class Player {                // owns the two tasks and the ring; reports what the sink saw
+   public:
+    Player(const PlayerConfig&, ByteSource&, PcmSink&);
+    bool start();
+    void stop();
+    struct Stats { std::uint64_t frames, held, underruns, dry_us, decode_us, worst_frame_us; };
+    Stats stats() const;
+};
+
+}  // namespace ac3forge
+```
+
+The sketch is a shape, not a signature freeze. What it fixes is the division of labour: the
+player knows about tasks, cores, the ring and the decoder; the sink knows about a peripheral; the
+source knows about a transport. The example's four sources and four sinks become implementations
+of the two seams, and `stream_player.cpp` becomes the twenty lines that wire a configured pair
+into a `Player`.
+
+Registering sources changes how the component is consumed in one respect: it acquires
+`REQUIRES freertos esp_timer`, which every IDF project has. The packing script stages the
+component directory whole, so `include/` and `src/` travel with it.
+
+**The examples.** Stay, and get smaller. `i2s_player` is left as it is: it decodes a fixture linked
+into the image and is the measurement anyone can run with a board and a DAC, so its loop should
+stay visible rather than move behind a class. `stream_player` becomes a consumer of the component
+and the place its Kconfig lives: pins, DMA depth, slot width, role, source and sink choice.
+
+## ESPHome
+
+What the ESPHome side is, from its sources at `esphome/components/{speaker,audio,media_player}`
+on the `dev` branch as of 2026-09-10, and what that decides.
+
+**The pipeline ESPHome has.** `speaker` is an abstract `Speaker` with `play(const uint8_t*, size_t)`
+returning bytes taken, and `i2s_audio` implements it over a ring buffer and a task. Its
+`media_player` platform runs an `AudioPipeline` per purpose (media, announcement): a read task,
+`audio::AudioReader` over `esp_http_client` into a `ring_buffer::RingBuffer`, and a decode task,
+`audio::AudioDecoder` from that ring into the speaker. The decoder dispatches on
+`audio::AudioFileType`, a closed enum of `NONE, WAV, MP3, FLAC, OPUS`, each behind a
+`USE_AUDIO_*_SUPPORT` define that pulls a `micro-*` IDF component by git. The reader detects the
+type from `Content-Type` (`audio/mpeg`, `audio/wav`, `audio/flac`, `audio/ogg` with `opus`) and
+falls back to the URL's extension; a stream that matches neither fails to start with
+`ESP_ERR_NOT_SUPPORTED`.
+
+**How Home Assistant feeds it.** The device advertises `MediaPlayerSupportedFormat{format,
+sample_rate, num_channels, purpose, sample_bytes}` in its traits. Home Assistant picks one by
+purpose and builds a proxy URL ending in `.{format}`; its ffmpeg proxy runs
+`ffmpeg -i <media> -f <format> [-ar rate] [-ac channels] [-sample_fmt s16]` and streams the pipe.
+The format string is passed to ffmpeg unvalidated. ffmpeg has an `eac3` muxer and encoder, so a
+device advertising `format: eac3, sample_rate: 48000, num_channels: 6` would receive every piece
+of media in the house as E-AC-3 5.1, as a raw elementary stream, which is exactly what
+`AccessUnitAccumulator` takes. `sample_bytes` must be omitted for it, as ESPHome already omits it
+for MP3: `-sample_fmt s16` is not an option an E-AC-3 encoder accepts.
+
+**So the wire is open and the device is closed.** The closed enum means an external component
+cannot add a codec to ESPHome's own pipeline, and the reader refuses the stream before the
+decoder would see it. Two routes:
+
+- **(a) An `ac3forge` media player platform in the external component.** Its own pipeline, on the
+  component's `Player` from the previous section: a `ByteSource` over `esp_http_client` (the
+  streaming example's `http` source already is one), a `PcmSink` over any configured
+  `speaker::Speaker`, and a `media_player::MediaPlayer` entity that advertises `eac3` and turns
+  `control()` into `start`/`stop`. It reuses ESPHome's speaker and its entity model and copies
+  nothing from its pipeline. Cost: a second pipeline in the configuration for anyone who also
+  wants FLAC or MP3 on the same speaker, and a component that has to be compiled into firmware
+  to be tested at all, which CI does not do today.
+- **(b) Upstream.** Add `AudioFileType::EAC3` (and `AC3`) to `esphome/components/audio`, a
+  `request_eac3_support()` that adds this repository's component by git the way `micro-flac` is
+  added, a `decode_eac3_()` in `AudioDecoder` over the library's `StreamDecoder`, `audio/eac3` and
+  `.eac3`/`.ec3` in the type detection, and `"EAC3": "eac3"` in the media player's format map.
+  Then every `speaker` media player can advertise E-AC-3. ESPHome's C++ is GPLv3 and this library
+  is GPL-3.0-or-later, so the licence question does not arise. Cost: a proposal to another
+  project, on their timetable, with a decoder dependency of a size they may not want in the
+  default build; and it needs (a) to exist first, as the working implementation the proposal is
+  made from.
+
+The recommendation is (a) now, written so that the bytes-to-PCM glue in it is exactly what (b)
+would contribute, and (b) after (a) has played on a board. This is the same shape as the
+topology's Sendspin decision: build the thing, then propose it.
+
+**The plumbing component stays, and gets the decoder it should have had.** `Ac3ForgeComponent`
+is fed bytes by another component and hands back planar float; it is the ESPHome face of layer 5,
+and it moves onto `Eac3Decoder` in Phase 3 whatever happens to the media player. Its floor of
+4,160 bytes for `buffer_size` stays right for AC-3 and is wrong for any stream with a dependent
+substream, which the schema help text should say.
+
+## Output layouts
+
+A player is configured for the speakers it has, not for the stream it is sent. Three classes of
+layout, in increasing cost, and the configuration names one of them:
+
+| Layout | How it is made | State |
+|---|---|---|
+| **2.0** | The §7.8 fold of the bed, in the decoder (`DownmixTarget::kLoRo` or `kLtRt`). | Exists; what both examples play today. |
+| **As coded: 5.1, 7.1** | The bed's channels as decoded, one TDM slot each. An Atmos bed is the complete mix, so objects need not be reconstructed. | The `tdm` sink exists and has never run on hardware. |
+| **With height: 5.0.4, 5.1.4, 7.1.4, 9.2.4, …** | Objects reconstructed from the bed (`skip_object_reconstruction = false`), then each object panned onto the configured speaker set by `ac3::spatial::pan_ring` over two rings, horizontal and upper, with the bed's own channels placed at their nominal positions and the LFE sends summed. | The panner exists and is allocation-free; the renderer over a decoded access unit does not. Object reconstruction is measured at 21 ms of a 32 ms frame on the S3; the pan is small beside it. |
+
+The configuration takes a named layout (`5.1.4`) or a speaker list, each with an azimuth, an
+elevation and a slot number, which is what `pan_ring` wants anyway; named layouts are the ITU-R
+BS.2051 positions written out. The channel count decides the sink: two slots on standard I2S, up
+to eight on one TDM line, up to sixteen across the S3's two I2S peripherals at 12.3 MHz each, or
+a DSP's TDM inputs. Rendering block by block, 256 samples at a time, keeps the output storage at
+15 channels × 256 × 4 bytes rather than a frame's 92 KB, which matters on a part with 280 KB.
+
+What is measured and what is not: the bed-only decode and the object reconstruction both have
+figures from silicon; rendering to a height layout on the S3 has none, and the phase that adds
+it starts by taking one.
+
+## Control
+
+The device is driven by commands, never fed decoded audio: the same shape [the appliance
+plan](player-appliance.md#whole-house-audio-and-why-hearth-is-its-own-zone) settles on for
+Hearth, with Home Assistant sending commands to an entity.
+
+- **ESP-IDF.** A REST surface on `esp_http_server`, in the component beside the player so an
+  integrator's firmware gets it by linking: `POST /play` with a URL, `POST /stop`,
+  `POST /volume`, `GET /status` with the stream description, the decode timing and the sink's
+  underrun counters, `GET`/`PUT /layout`. The streaming example mounts it. mDNS advertisement
+  follows [the topology's Phase 4](topology.md#phase-4-discovery-and-more-than-one-sink) rather
+  than being invented here.
+- **ESPHome.** The `media_player` entity is the control surface Home Assistant already speaks:
+  play a URL, stop, volume, mute, state. The sink counters and the decode timing become
+  sensors, so a stalling network shows up on a dashboard rather than in a serial log. ESPHome's
+  own `web_server` component gives the same entity a REST face when a configuration enables it,
+  so nothing HTTP-shaped needs writing twice. The output layout is YAML on the component, as
+  above, because a speaker set is a property of the installation and the entity should not have
+  to carry it.
+
+## What the sink hardware asks for
+
+The examples were written against a MAX98357A and a PCM5102: 16-bit slots, the ESP32-S3 as I2S
+master. A SigmaDSP input port, ADAU1452 or ADAU1467, differs in two ways, both configuration
+rather than code:
+
+- **Slot width.** SigmaDSP serial ports expect 64 fs bit clocks, 32-bit slots. `i2s_std` separates
+  `slot_bit_width` from `data_bit_width`, so 16-bit data left-justified in 32-bit slots is one
+  field. Worth making the default: every DAC that accepts 16-bit slots accepts 32-bit ones.
+- **Who is master.** The DSP can generate BCLK and LRCLK from its own crystal, in which case the
+  ESP32-S3 runs I2S as slave (`I2S_ROLE_SLAVE`) with the same three wires reversed in direction,
+  and the DMA still paces the decode because it drains at the master's rate. Or the ESP32-S3 stays
+  master and the DSP's ASRC absorbs the drift between the two clocks. Either works; the first has
+  no rate conversion in the path.
+
+Both become Kconfig choices on the `i2s` sink in Phase 2 and fields of `PcmSink` implementations
+in the component. Neither can be verified without the DSP board; see below.
+
+## Memory, and the question PSRAM raises
+
+The probe keeps PSRAM off so the internal-SRAM budget is enforced on every build, and the
+examples inherit that. A player with WiFi up is a different sum: the WiFi and TCP/IP stacks take
+their share of the same internal heap the decoder's 210,203-byte peak needs, and the streaming
+image's static data is already 163,546 bytes of 341,760 before either runs. Phase 0 reports
+`heap_free` beside every timing line so this is a measurement rather than an argument. If the
+internal heap does not hold both, the answer is PSRAM for the WiFi and LwIP buffers
+(`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`) and the ring buffer, with the decoder's own allocations
+kept internal: the probe's policy was about the decoder, and the decoder still fits.
+
+## Phases
+
+### Phase 0: the board
+
+Both examples on a second `ESP32-S3-DevKitC-1-N16R8` over its native USB connector, at 240 MHz.
+The streaming example moved onto `Eac3Decoder`, its I2S sink counting underruns against the DAC's
+clock, its DMA depth in Kconfig. An E-AC-3 5.1 stream served over HTTP from the host.
+
+**Exit:** each README carries a timing line from silicon; the streaming README carries
+`realtime_permille`, the underrun count, the per-channel RMS against the host, and what the run
+needed.
+
+**Verified by:** the runs themselves, and the CI leg that still decodes the AC-3 sample under
+QEMU through the changed player.
+
+### Phase 1: the player in the component, and its control
+
+`ac3forge::Player`, `ByteSource` and `PcmSink` in `esp-idf/ac3forge/`; the streaming example's
+sources and sinks become implementations; `stream_player.cpp` becomes the wiring. The fetch task
+on core 0, the decode task on core 1, the ring sized in seconds of stream. The REST surface from
+[Control](#control) beside it, mounted by the example.
+
+**Exit:** the same E-AC-3 stream over HTTP plays for ten minutes with zero underruns, started by
+`POST /play` and read back by `GET /status`, and the example's own code is shorter than before.
+
+**Verified by:** the board, with the sink's counters; CI's QEMU leg through the `null` sink and
+the `partition` source, which exercises the tasks and the ring without a peripheral; the REST
+handlers against a fake player on the host.
+
+### Phase 2: sinks and layouts
+
+32-bit slots as the I2S default and the slave role as a Kconfig choice, carried by the
+component's I2S `PcmSink`. The as-coded layouts on the TDM sink, and the height renderer from
+[Output layouts](#output-layouts) over `ac3::spatial::pan_direction`, measured on the S3 before
+it is promised.
+
+**Exit:** the slot layout checked by the `capture` sink on the host, as the TDM layout is today;
+the slave role played against a SigmaDSP as master; a 5.1.4 render's per-frame cost recorded
+beside the object-reconstruction figure it adds to.
+
+**Verified by:** `tests/io/test_interleave.cpp` for the layout and a host test for the render
+against the panner's own gains; hardware for the role and the timing, which have no substitute.
+
+### Phase 3: ESPHome
+
+`Ac3ForgeComponent` onto `Eac3Decoder`; a `media_player` platform over `Player` and a configured
+`speaker::Speaker`, advertising `eac3` at 48 kHz, six channels; the layout as YAML on the
+component; the sink counters and decode timing as sensors.
+
+**Exit:** a Home Assistant instance plays a local media file to the device as E-AC-3 through its
+own ffmpeg proxy, and the device reports the same underrun counters as the example, on a
+dashboard.
+
+**Verified by:** `esphome config` in CI as today, over a configuration that includes the media
+player; a firmware compile is [decision 6](#decisions); the end-to-end run needs a Home
+Assistant instance and a board.
+
+### Phase 4, conditional: upstream
+
+Propose `AudioFileType::EAC3` to ESPHome with Phase 3 as the argument.
+
+**Exit:** a pull request or issue opened, and the answer recorded here whichever way it goes.
+
+**Verified by:** the thread. Not schedulable.
+
+### Hand-over to the decoder core
+
+Three items for the session that owns `src/forge`; this page describes them and does not touch
+that tree.
+
+1. **A defect, found by the streaming example's CI shape on 2026-09-10.**
+   `Eac3Decoder::decode_ac3_core` builds its inner `FrameDecoder` from the whole
+   `DecoderConfig`, output stage included. Under a fold, a §E2.3.1.2 AC-3 core therefore
+   reaches the §E3.8.2 assembly already folded to two channels, and the assembly's channel-count
+   check refuses it as `kInvalidStream`. The header's promise that a plain AC-3 syncframe is one
+   access unit of one substream holds only with `output` left at its default, which is what every
+   existing test does. The fix is to construct the core's decoder from a copy of the config with
+   `output` reset, since the assembled programme is folded once by `apply_output`; a test is a
+   plain AC-3 stream through `decode_access_unit_into` with `kLoRo` set. Until it lands, the
+   streaming example dispatches single-syncframe AC-3 units to `FrameDecoder` itself, and a legacy
+   core with dependents under a fold still fails.
+2. `ac3::io::interleave`, moved from the example with its host tests.
+3. `ac3::io::StreamDecoder` over the accumulator, both decoders and the output stage, with
+   `feed()` and `next()` into caller-owned spans, tested over both generations. The component's
+   copy goes when it lands.
+
+## What cannot be verified, and why
+
+- **TDM on hardware.** No TDM DAC. The layout is tested on the host; the peripheral is not.
+- **The I2S slave role.** Needs a bus master, which means the SigmaDSP board. Until it is
+  connected, the role compiles and nothing more.
+- **ESPHome firmware in CI.** The external component fetches the library by git reference, so a
+  CI compile builds whatever the reference points at, not the code under review. A local path
+  would fix it and ESPHome's `add_idf_component` does not take one. See decision 6.
+- **Home Assistant end to end.** Needs an instance on the same network as the board. The format
+  negotiation is read from Home Assistant's source rather than exercised until then.
+
+## Decisions
+
+1. **Where the player layer lives.** (a) **the component**, as sources it registers; (b) the
+   library, behind a FreeRTOS abstraction; (c) the example, as it is. **Recommend (a).** The
+   library is platform-free and stays so; the example is where an integrator copies from, and a
+   player they have to copy is one they will get wrong. Cost: the component stops being a
+   three-file wrapper, and the packing script's claim that everything real is in `src/forge`
+   becomes "and in the component's own `src/`".
+
+2. **The ESPHome route.** (a) **an `ac3forge` media player platform now, upstream after**; (b)
+   upstream first; (c) the plumbing component only, no media player. **Recommend (a).** (b) has
+   nothing to argue from until (a) exists; (c) leaves the component unable to do the one thing a
+   user of it wants. Cost: a second pipeline for configurations that also want FLAC, until (b).
+
+3. **The advertised format.** (a) **`eac3`, 48 kHz, six channels**, folded on the device; (b) two
+   channels, folded by ffmpeg before encoding. **Recommend (a).** The bandwidth argument for
+   carrying the codec at all is the 5.1 bed at 448 kbit/s against several megabits of PCM; a
+   stereo E-AC-3 stream has nothing over stereo FLAC but size. Cost: the device does the fold,
+   which it already does.
+
+4. **PSRAM in the player builds.** (a) **off, until Phase 0's `heap_free` says otherwise**; (b) on
+   for WiFi and LwIP from the start. **Recommend (a)**, because the answer is a measurement this
+   PR makes. Cost: possibly one rebuild.
+
+5. **Slot width default.** (a) **32-bit slots**; (b) 16-bit as now. **Recommend (a)**: a superset
+   of what the two tested DACs accept, and what a DSP requires. Cost: the CI capture check gains a
+   case.
+
+6. **A firmware compile in CI for the ESPHome component.** (a) **not yet: `esphome config` as
+   today, and a manual compile recorded in the README when Phase 3 lands**; (b) a compile job
+   that pins the library reference to the commit under test, which needs the commit pushed
+   before the job runs; (c) vendor the library into the ESPHome component directory for CI only.
+   **Recommend (a)** with (b) revisited when Phase 3 has something to compile. Cost: a component
+   that can break silently between manual compiles.
+
+7. **How a layout is configured.** (a) **named layouts plus an explicit speaker list**, each
+   speaker an azimuth, an elevation and a slot; (b) named layouts only; (c) a speaker list only.
+   **Recommend (a)**: names for the installations that have a standard name, the list for the
+   ones that do not, and the list is what the panner consumes either way. Cost: two schemas that
+   must agree, checked by expanding every name through the list form in a test.
+
+8. **The control surface.** (a) **REST in the component for ESP-IDF, the `media_player` entity
+   for ESPHome, sensors for the counters**; (b) REST everywhere, including under ESPHome; (c) the
+   entity only, no REST on ESP-IDF. **Recommend (a)**: each platform's users already have the
+   surface named, and ESPHome's `web_server` gives the entity a REST face for free. Cost: two
+   thin surfaces over one player rather than one, and a `/status` schema to keep stable.

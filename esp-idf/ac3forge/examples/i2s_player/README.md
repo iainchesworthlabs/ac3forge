@@ -34,6 +34,14 @@ idf.py set-target esp32s3
 idf.py -p <PORT> flash monitor
 ```
 
+On a DevKitC-1 reached through its **native USB connector** rather than the
+UART bridge, add `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw"` so the
+console comes out of the same cable — and then flash, press the board's RESET
+button, and attach with `idf.py monitor --no-reset`, because every
+host-initiated reset over USB-Serial-JTAG lands in `boot:0x0 (DOWNLOAD)` and the
+application never starts. The port also re-enumerates on every reset, so a
+terminal that does not reopen it misses the first lines.
+
 ## What it prints
 
 Once per lap of the fixture — 192 ms of audio:
