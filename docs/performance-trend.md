@@ -805,33 +805,35 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 233,546 bytes (228.1 KiB) |
+| Peak heap | 236,391 bytes (230.9 KiB) |
 | Retained after teardown | 24 bytes |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
 | Caller-owned PCM buffer (8 × 1536 `float`, via `decode_*_into`) | 49,152 bytes |
-| AC-3 allocations per frame, steady state | 47 |
-| E-AC-3 allocations per frame, steady state | 86 |
-| E-AC-3 enhanced coupling allocations per frame, steady state | 126 |
-| E-AC-3 2/0 allocations per frame, steady state | 43 |
-| Atmos bed allocations per frame, steady state | 61 |
-| Atmos with objects allocations per frame, steady state | 79 |
+| AC-3 allocations per frame, steady state | 3 |
+| AC-3 2/0 and 1/0 allocations per frame, steady state | 1 |
+| E-AC-3 allocations per frame, steady state | 12 |
+| E-AC-3 enhanced coupling allocations per frame, steady state | 12 |
+| E-AC-3 2/0 allocations per frame, steady state | 10 |
+| Atmos bed allocations per frame, steady state | 23 |
+| Atmos with objects allocations per frame, steady state | 41 |
 
 The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
-for zero, and this is 43–126 — from the per-block geometry vectors inside the decoders and the
-`std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`, none of which the
-memory programme's [`_into` forms](#whole-frame-trend) removed because they are inherent to
-those two return types, not to allocation *reuse*. Reaching zero means those becoming
-fixed-capacity, a public-type change tracked separately from this profile.
+for zero, and this is 1–41. What is left is no longer the per-block geometry vectors inside the
+decoders — those are `Impl` members now, reused frame to frame — but the `std::vector` members
+of the returned `DecodedFrame`/`DecodedSubstream`, which the memory programme's [`_into`
+forms](#whole-frame-trend) could not remove because they are inherent to those two return types
+rather than to allocation *reuse*. `DecodedFrame::blksw` is the whole of AC-3's remaining one
+per frame; `DecodedSubstream::channels` is 7 of E-AC-3's 12. Reaching zero means those becoming
+fixed-capacity or pooled, a public-type change tracked separately from this profile.
 
-Enhanced coupling's 126 is the outlier and has its own ceiling. §E3.5 reconstructs each coupled
-channel through three 512-point inverse transforms and a DFT per block and carries a 22-sub-band
-geometry against standard coupling's 18, so it allocates more per block for a reason that is in
-the tool. Holding it to the general ceiling would have meant either not covering §E3.5 or
-raising the bound on three fixtures that sit at 43–86. Its own ceiling is 140, about 11% over
-its own worst case, where the general 100 leaves about 16% over the 86 that is theirs.
+Enhanced coupling used to be the outlier here, at 126 against 43–86, and had its own ceiling of
+140. It measures 12 now, level with plain E-AC-3, because the gap was never §E3.5's geometry:
+sixty of it were two `std::vector<double>` built per coupled channel per block in the
+reconstruction loop, and the rest went when both decoders' frame-scope buffers moved onto the
+decoder. There is one ceiling, 100, and no exemption.
 
-Both bare-metal legs report all four of these counts identically, on different libstdc++ versions
+Both bare-metal legs report all of these counts identically, on different libstdc++ versions
 (GCC 14.2 for `arm-none-eabi`, 15.2 for Xtensa under ESP-IDF 6.1), as they do the peak and the
 retained bytes. The counts come from the decoders' own per-block geometry rather than from
 anything the standard library is free to vary, so a divergence between the legs would itself be
@@ -840,8 +842,10 @@ news.
 The peak is what an Atmos fixture decoded **with its objects** costs — it was 179,064 before that
 fixture existed, and 449,826 when the object path was first measured. `Domain::kMdctBand`, a
 float32 `ReconstructionState`, per-object scratches sized to the stream and handing back the
-enhanced-coupling scratch between decodes took it to 233,546, which fits the 280,792 bytes an
-ESP32-S3 has free with 47,246 to spare. [The ESP32-S3
+enhanced-coupling scratch between decodes took it to 233,546. Moving the decoders' frame-scope
+buffers onto the decoder — what closed the per-frame churn above — added 2,845 back, because a
+buffer's high-water capacity is now held for the decoder's lifetime rather than released each
+frame. 236,391 fits the 280,792 bytes an ESP32-S3 has free with 44,401 to spare. [The ESP32-S3
 page](platforms/esp32.md#objects-and-what-it-took-to-fit-them) has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it

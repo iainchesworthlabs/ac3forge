@@ -1,0 +1,183 @@
+# ac3forge as an ESP-IDF component (esp-idf/ac3forge/) - packing it, and one day
+# publishing it to the ESP Component Registry.
+#
+# The same shape as npm.yml: a validate job that runs continuously, and a
+# publish job that is deliberately not armed. See docs/platforms/esp32.md.
+#
+# WHY THE PACK IS NOT TRIVIAL, since a reader will otherwise wonder why this is
+# not three lines of `compote component upload`. `compote component pack` roots
+# its archive at the component directory and cannot reach above it; the
+# component is a thin wrapper that add_subdirectory()s the repo root, so packing
+# it directly yields an archive of THREE FILES that installs and then fails to
+# configure - and the pack succeeds, so nothing says so. Everything real is in
+# tools/packaging/pack_esp_component.py, which stages the library into the
+# component first and then builds a throwaway project against the result.
+name: ESP-IDF Component
+
+on:
+  pull_request:
+    paths:
+      - "esp-idf/**"
+      - "src/forge/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "tools/packaging/pack_esp_component.py"
+      - "esphome/**"
+      - ".github/workflows/esp-component.yml"
+  push:
+    branches: [main]
+    paths:
+      - "esp-idf/**"
+      - "src/forge/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "tools/packaging/pack_esp_component.py"
+      - "esphome/**"
+      - ".github/workflows/esp-component.yml"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: esp-component-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    name: Pack and verify
+    runs-on: ubuntu-latest
+    # Espressif's own image, for compote and the Xtensa toolchain - the same
+    # reason _build.yml's build-esp32s3 leg uses it.
+    container: espressif/idf:v6.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The manifest's own schema. Cheap, and it fails on things the pack below
+      # would happily accept - a bad SPDX licence string, an unknown key.
+      - name: Lint the manifest
+        working-directory: esp-idf/ac3forge
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          compote manifest lint
+
+      # The check that matters. --verify unpacks the archive into a throwaway
+      # ESP-IDF project, configures it for esp32s3 and builds an app_main that
+      # actually constructs a decoder and calls it - so a component whose
+      # headers do not resolve fails here rather than on a consumer's machine.
+      #
+      # The version is nominal: this job never uploads, and the archive's name
+      # is the only thing it affects.
+      - name: Pack and build against the archive
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python tools/packaging/pack_esp_component.py --version 0.0.0-ci --verify
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: esp-component
+          path: dist/esp-component/*.tgz
+          if-no-files-found: error
+
+  # The ESPHome external component (esphome/components/ac3forge/). Its own job
+  # rather than a step in the one above: it needs ESPHome from PyPI and nothing
+  # from ESP-IDF, so it runs on a plain runner while the pack job sits in
+  # Espressif's container.
+  #
+  # `esphome config` runs the config schema AND to_code, so this catches a
+  # component that fails to import, a schema that does not compose with the
+  # esp32 platform, and an add_idf_component call whose arguments ESPHome has
+  # changed under us - which is the failure most likely to happen quietly,
+  # since that signature is not part of any stability promise.
+  #
+  # It does NOT compile the firmware. That would clone ac3forge at the
+  # configured ref and build the whole IDF project - several minutes, a network
+  # dependency on this repository's own default branch, and a result that says
+  # nothing a PR can act on, because the ref it fetched is not the code under
+  # review.
+  esphome:
+    name: ESPHome external component
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@e9d6f990972a57673cdb72ec29e19d42ba28880f # v6.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install ESPHome
+        run: pip install --disable-pip-version-check esphome
+
+      # The test config uses a LOCAL source pointing at the working tree, not
+      # the git one the docs show - a git source would validate whatever is on
+      # the default branch and pass regardless of what this PR changed.
+      - name: Validate the component
+        run: esphome config esphome/tests/ac3forge-test.yaml
+
+      # The schema's bounds are only worth having if they reject. A buffer
+      # below one syncframe cannot ever assemble an access unit, so the
+      # decoder would stall reporting "buffer too small" forever - this asserts
+      # the config layer refuses it instead.
+      - name: Reject a buffer that cannot work
+        run: |
+          set -eu
+          sed 's/buffer_size: 16384/buffer_size: 512/' esphome/tests/ac3forge-test.yaml \
+            > esphome/tests/too-small.yaml
+          if esphome config esphome/tests/too-small.yaml > /dev/null 2>&1; then
+            echo "::error title=ESPHome schema::buffer_size: 512 was accepted, but no access unit fits in it" >&2
+            exit 1
+          fi
+          echo "rejected, as it should be"
+
+  # DELIBERATELY NOT ARMED, for the same reason npm.yml's publish job is not.
+  #
+  # ac3forge has never been published to the ESP Component Registry. A namespace
+  # there is claimed by first upload and a published version cannot be replaced
+  # - only yanked, which leaves the version number spent - so a v* tag must not
+  # create one as a side effect of cutting a release. It also needs an
+  # IDF_COMPONENT_API_TOKEN in the `esp-component` environment, which does not
+  # exist yet.
+  #
+  # When that setup is done: create the environment and its token, dispatch this
+  # once against a tag to claim the namespace, check the result, and then drop
+  # the event_name clause to restore publish-on-tag.
+  publish:
+    name: Publish to the ESP Component Registry
+    needs: pack
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    container: espressif/idf:v6.1
+    environment: esp-component
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pack at the tag's version
+        id: pack
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          version="${GITHUB_REF_NAME#v}"
+          python tools/packaging/pack_esp_component.py --version "$version" --verify
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Upload
+        env:
+          IDF_COMPONENT_API_TOKEN: ${{ secrets.IDF_COMPONENT_API_TOKEN }}
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          compote component upload \
+            --namespace iainchesworthlabs \
+            --name ac3forge \
+            --version "${{ steps.pack.outputs.version }}" \
+            --archive "dist/esp-component/ac3forge_${{ steps.pack.outputs.version }}.tgz"

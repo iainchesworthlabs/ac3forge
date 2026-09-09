@@ -183,6 +183,7 @@ from quality_race import (
 
 REPO = Path(__file__).resolve().parent.parent.parent
 AUDIO = REPO / "tests" / "golden" / "audio"
+REFERENCE_STEREO_WAV = AUDIO / "reference_stereo.wav"
 OUT = REPO / "tests" / "golden" / "external-baseline"
 SCRATCH = REPO / "build" / "external_baseline_scratch"
 
@@ -257,16 +258,16 @@ LEGS = [
      "wav": AUDIO / "reference_51.wav"},
     {"name": "eac3-stereo-192", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",
      "ffmpeg_codec": "eac3", "dee_layout": "stereo", "kbps": 192,
-     "wav": AUDIO / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "eac3-51-256", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",
      "ffmpeg_codec": "eac3", "dee_layout": "5.1", "kbps": 256,
      "wav": AUDIO / "reference_51.wav"},
     {"name": "eac3-stereo-96", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",
      "ffmpeg_codec": "eac3", "dee_layout": "stereo", "kbps": 96,
-     "wav": AUDIO / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "eac3-stereo-64", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",
      "ffmpeg_codec": "eac3", "dee_layout": "stereo", "kbps": 64,
-     "wav": AUDIO / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "ac3-music-stereo-192", "codec": "ac3", "ext": "ac3", "dee_codec": "dd",
      "ffmpeg_codec": "ac3", "dee_layout": "stereo", "kbps": 192, "wav": _MUSIC},
     {"name": "eac3-music-stereo-96", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",

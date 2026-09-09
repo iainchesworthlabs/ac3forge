@@ -401,15 +401,16 @@ third, a float32-only path, is met for the decode path; its scope is described b
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
 (`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
 the probe uses) and no frame leaks (what stays live after teardown is the bounded scratch below,
-not per-frame growth), but the steady state is **47 allocations per frame for
-AC-3, 86 for E-AC-3, 126 for E-AC-3 with §E3.5 enhanced coupling and 43 for 2/0**, from the
-per-block geometry vectors inside the decoders and the
-`std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`. Reaching zero means
-those becoming fixed-capacity storage, which changes the public types — a design change, not a
-build option. The runner gates the number at 100, and enhanced coupling at 140 for reasons that
-are in §E3.5 rather than in a regression ([the footprint
-table](performance-trend.md#minimum-footprint-decoder) has the detail), so the distance from
-zero cannot grow while the gap is open.
+not per-frame growth), but the steady state is **3 allocations per frame for AC-3, 12 for
+E-AC-3 and for E-AC-3 with §E3.5 enhanced coupling, 10 for 2/0, and 41 for Atmos with
+objects**. The per-block geometry vectors inside the decoders no longer account for any of it —
+they are `Impl` members, reused frame to frame. What is left is the `std::vector` members of
+the returned `DecodedFrame`/`DecodedSubstream` (`blksw` is AC-3's whole remainder, `channels`
+is 7 of E-AC-3's 12) and, on the Atmos fixtures, the EMDF payload chain. Reaching zero means
+the first of those becoming fixed-capacity or pooled storage, which changes the public types —
+a design change, not a build option. The runner gates the number at 100 for every fixture, with
+no exemption ([the footprint table](performance-trend.md#minimum-footprint-decoder) has the
+detail), so the distance from zero cannot grow while the gap is open.
 
 **Scratch that is never released — newly visible, and bounded.** 34,232 bytes are still live
 when the probe finishes, after every decoder it made has been destroyed: `eac3_tools.cpp`'s

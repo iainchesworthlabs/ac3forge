@@ -94,6 +94,20 @@ target_sources(forge_minimal
         # --- what the decoders call into ---------------------------------
         src/dsp/qmf.cpp            # the polyphase QMF bank JOC's reconstruction runs through
         src/emdf/emdf.cpp          # the TS 102 366 Annex H container the objects ride in
+        # --- getting a stream IN ------------------------------------------
+        # The profile had no input path at all until these: the probe decodes a
+        # fixture linked into its own image, which is fine for a measurement and
+        # useless for a player. An embedded decoder reads from somewhere - a
+        # flash partition, an SD card, a socket - and none of those can be
+        # spanned before the last byte arrives, which is what split_frames and
+        # split_access_units both require.
+        #
+        # elementary.cpp is here for read_frame_header alone. The rest of it -
+        # scan(), the timing helpers, describe() - is unreachable from this
+        # profile and --gc-sections drops it; the file carries no fmt, no
+        # exceptions and no std::string, which is why it can be here at all.
+        src/io/elementary.cpp
+        src/io/stream_accumulator.cpp
         src/meta/drc.cpp           # §7.7 dynrng/compr application
         src/meta/mixing.cpp        # §7.8 downmix coefficients - OutputStage::apply's own
         src/oba/joc.cpp            # §6 object reconstruction from the bed

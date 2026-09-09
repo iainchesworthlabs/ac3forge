@@ -3658,6 +3658,192 @@ jobs:
           idf.py build
           idf.py size | tee "$GITHUB_STEP_SUMMARY"
 
+      # RUN, not just build, and that is the difference between this step and
+      # the i2s_player one above it. The streaming path - reading a partition a
+      # block at a time, assembling access units across those block boundaries,
+      # decoding them - is all ordinary code with no peripheral behind it, so it
+      # runs under QEMU perfectly well. What it needs is a sink that is not
+      # I2S, because qemu-system-xtensa has none and the real sink's first write
+      # blocks on a DMA that never drains.
+      #
+      # sdkconfig.ci supplies exactly that: the null sink, and a two-lap limit
+      # so the application stops with a verdict instead of playing forever. Two
+      # laps rather than one so the rewind at end of stream is exercised.
+      - name: Build and run the streaming player example under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/stream_player
+          idf.py set-target esp32s3
+          idf.py build
+          idf.py size | tee -a "$GITHUB_STEP_SUMMARY"
+          # Same shape as the probe legs: QEMU is killed on a timeout and the
+          # verdict is read from what it printed, because an ESP-IDF app that
+          # returns from app_main goes on idling rather than exiting.
+          timeout 300 idf.py qemu 2>&1 | tee qemu-stream.txt || true
+          if ! grep -q '^result=pass' qemu-stream.txt; then
+            echo "::error title=ESP32-S3 streaming player failed::the example did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-stream.txt >&2 || true
+            exit 1
+          fi
+          # Nothing should ever be skipped looking for a sync word: the build
+          # tells the player exactly how many bytes of the partition are audio.
+          # A non-zero count means either that length is wrong or the framing is.
+          resync=$(sed -n 's/.*stream\.resync_bytes=\([0-9]*\).*/\1/p' qemu-stream.txt | tail -1)
+          echo "resynchronised bytes: ${resync:-unknown}"
+          if [ "${resync:-1}" != "0" ]; then
+            echo "::error title=ESP32-S3 streaming player::${resync} bytes were skipped looking for a sync word, expected 0" >&2
+            exit 1
+          fi
+
+          # AND THAT THE AUDIO IS RIGHT, which is the part result=pass does not
+          # cover: that verdict is "some units decoded without returning an
+          # error", which a stream decoding to silence or to full-scale noise
+          # satisfies completely.
+          #
+          # The reference is the HOST's answer for the same file through the
+          # same configuration, obtained independently of anything this leg
+          # builds:
+          #
+          #   ac3cli decode stream/sample.ac3 out.wav downmix=loro drcmode=line
+          #
+          # giving RMS x 1e6 of 107370 and 106234. The target reports 107811 and
+          # 106647 - 0.41% and 0.39% out, which is the float32 decode path
+          # against the host's float64 and not a defect.
+          #
+          # Tolerance is apps/baremetal/probe.cpp's own convention, expected/20
+          # + 200, for the same reason: it absorbs the scalar-width difference
+          # and nothing larger. A channel that came back silent, or at the wrong
+          # level, is several times outside it.
+          check_rms() {
+            local channel="$1" expected="$2"
+            local got
+            got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-stream.txt | tail -1)
+            if [ -z "$got" ]; then
+              echo "::error title=ESP32-S3 streaming player::no stream.rms[$channel] line" >&2
+              exit 1
+            fi
+            local slack=$(( expected / 20 + 200 ))
+            echo "rms[$channel] = $got (host $expected, tolerance +/-$slack)"
+            if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
+              echo "::error title=ESP32-S3 streaming player::channel $channel decoded to $got, host says $expected" >&2
+              exit 1
+            fi
+          }
+          check_rms 0 107370
+          check_rms 1 106234
+
+      # BUILD ONLY, and that is the whole point of the step.
+      #
+      # Three of the example's four sink/source combinations cannot RUN without
+      # hardware: QEMU has no I2S, no TDM, no SD host and no network. What can
+      # go wrong in them anyway is that they stop compiling - an IDF component
+      # gets renamed, a driver API changes shape - and an integrator finding
+      # that out is strictly worse than CI finding it.
+      #
+      # It has already paid for itself: the SD and HTTP sources compiled their
+      # own sources against a REQUIRES list that had silently resolved to the
+      # partition branch, because IDF expands REQUIRES in an earlier pass than
+      # the source list and CONFIG_ is not reliably set in it.
+      #
+      # The interleave inside the TDM sink is the one part of this that gets a
+      # real test rather than a compile - it is free of ESP-IDF and unit-tested
+      # on the host (tests/io/test_interleave.cpp), because slot padding and
+      # planar-to-interleaved indexing are where the bugs are.
+      # The second runnable configuration, and the one that covers the
+      # boundaries the first cannot.
+      #
+      #   * The TDM CONVERSION, checked as integers rather than as floats. A
+      #     sample scaled to 32 bits instead of shifted into the top 24 sounds
+      #     identical in a host test comparing floats and is wrong on the wire;
+      #     padding slots left unwritten play whatever the previous frame put in
+      #     the DMA buffer. Neither shows up in an RMS.
+      #
+      #   * The SD source's FILE LAYER. QEMU has no SD host, but FATFS does not
+      #     care what block device it sits on - so a FAT volume in flash runs
+      #     the identical VFS, FATFS and stdio path through
+      #     main/source/file_common.hpp. Only the SDMMC host stays untested.
+      #
+      # Neither is a stub standing in for the code: both run the real thing with
+      # the one unmockable piece - a peripheral, a card - replaced.
+      - name: Run the capture sink and flash-backed FAT source under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-tdm"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/stream_player
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          timeout 300 idf.py qemu 2>&1 | tee qemu-capture.txt || true
+
+          if ! grep -q '^result=pass' qemu-capture.txt; then
+            echo "::error title=ESP32-S3 capture run::did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-capture.txt >&2 || true
+            exit 1
+          fi
+
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-capture.txt | tail -1; }
+
+          # Every 24-in-32 slot is left-justified: the DAC takes the top 24 bits,
+          # so a low byte that is set means the sample was scaled to 32 rather
+          # than shifted.
+          low=$(value 'capture\.low_byte_set')
+          # The six slots a 2-channel programme leaves on an 8-slot bus, which
+          # must be WRITTEN as zeros - the DMA buffer is reused, and skipping
+          # them plays the previous frame's audio on channels nobody is watching.
+          pad=$(value 'capture\.padding_nonzero')
+          # And something must actually be in the carried slots, or the two
+          # checks above pass by everything being zero.
+          carried=$(value 'capture\.carried_nonzero')
+          echo "low_byte_set=$low padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${low:-1}" != "0" ] || [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            echo "::error title=ESP32-S3 capture run::TDM slot layout is wrong (low_byte_set=$low padding_nonzero=$pad carried_nonzero=$carried)" >&2
+            exit 1
+          fi
+
+          # And the level survived the conversion. 106803 is the host's combined
+          # RMS for this file through the same fold - sqrt((L^2 + R^2)/2) over
+          # the 107370 and 106234 the streaming step above uses - so a
+          # conversion that halved every sample would satisfy every structural
+          # check and fail here. Same tolerance as everywhere else.
+          rms=$(value 'capture\.rms')
+          expected=106803
+          slack=$(( expected / 20 + 200 ))
+          echo "capture rms=$rms (host $expected, tolerance +/-$slack)"
+          if [ -z "$rms" ] || [ "$rms" -lt $(( expected - slack )) ] || [ "$rms" -gt $(( expected + slack )) ]; then
+            echo "::error title=ESP32-S3 capture run::converted audio is at $rms, host says $expected" >&2
+            exit 1
+          fi
+
+      - name: Build every sink and source combination
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/stream_player
+          for combo in \
+            "tdm:CONFIG_AC3FORGE_EXAMPLE_SINK_TDM=y" \
+            "i2s:CONFIG_AC3FORGE_EXAMPLE_SINK_I2S=y" \
+            "sd:CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD=y" \
+            "http:CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP=y" \
+            "null:CONFIG_AC3FORGE_EXAMPLE_SINK_NULL=y"; do
+            name="${combo%%:*}"
+            setting="${combo#*:}"
+            echo "--- $name ---"
+            rm -rf build sdkconfig
+            printf '%s\n' "$setting" > sdkconfig.probe
+            SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.probe" idf.py set-target esp32s3 >/dev/null
+            SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.probe" idf.py build >/dev/null
+            echo "$name: built"
+          done
+          rm -f sdkconfig.probe
+          # Leave the tree as CI's runnable configuration found it, so a later
+          # step or a re-run does not inherit a probe build.
+          rm -rf build sdkconfig
+
       - name: Upload the ESP32-S3 map and console output
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -3667,6 +3853,8 @@ jobs:
             apps/baremetal/platform/esp32s3/build/ac3probe_esp32s3.map
             apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
+            esp-idf/ac3forge/examples/stream_player/qemu-stream.txt
+            esp-idf/ac3forge/examples/stream_player/qemu-capture.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.

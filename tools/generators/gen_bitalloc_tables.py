@@ -156,6 +156,10 @@ def parse_tables():
     }
 
 
+# The C++ element type most of the generated tables below share.
+CPP_INT32 = "std::int32_t"
+
+
 def _fmt(name, values, ctype, per_line=10, hexfmt=False):
     body = []
     fmt = (lambda v: f"0x{v:04x}") if hexfmt else str
@@ -180,25 +184,25 @@ def main():
         "namespace ac3::tables {",
         "",
         "// Table 7.6 / 7.7: slow & fast decay.",
-        _fmt("kSlowDec", t["slowdec"], "std::int32_t"),
-        _fmt("kFastDec", t["fastdec"], "std::int32_t"),
+        _fmt("kSlowDec", t["slowdec"], CPP_INT32),
+        _fmt("kFastDec", t["fastdec"], CPP_INT32),
         "// Table 7.8 / 7.9 / 7.10 / 7.11: slow gain, dB/bit knee, floor, fast gain.",
-        _fmt("kSlowGain", t["slowgain"], "std::int32_t", hexfmt=True),
-        _fmt("kDbPerBit", t["dbpbtab"], "std::int32_t", hexfmt=True),
-        _fmt("kFloor", t["floortab"], "std::int32_t", hexfmt=True),
-        _fmt("kFastGain", t["fastgain"], "std::int32_t", hexfmt=True),
+        _fmt("kSlowGain", t["slowgain"], CPP_INT32, hexfmt=True),
+        _fmt("kDbPerBit", t["dbpbtab"], CPP_INT32, hexfmt=True),
+        _fmt("kFloor", t["floortab"], CPP_INT32, hexfmt=True),
+        _fmt("kFastGain", t["fastgain"], CPP_INT32, hexfmt=True),
         "// Table 7.12: banding structure (50 ~1/6-octave bands over 253 bins).",
-        _fmt("kBandStart", t["bndtab"], "std::int32_t"),
-        _fmt("kBandSize", t["bndsz"], "std::int32_t"),
+        _fmt("kBandStart", t["bndtab"], CPP_INT32),
+        _fmt("kBandSize", t["bndsz"], CPP_INT32),
         "// Table 7.13: bin -> band (3 trailing pad zeros as printed).",
         _fmt("kMaskTab", t["masktab"], "std::uint8_t", per_line=16),
         "// Table 7.14: log-addition table.",
-        _fmt("kLogAdd", t["latab"], "std::int32_t", per_line=10, hexfmt=True),
+        _fmt("kLogAdd", t["latab"], CPP_INT32, per_line=10, hexfmt=True),
         "// Table 7.15: hearing threshold, indexed [fscod][band].",
     ]
     for fscod in range(3):
         parts.append(_fmt(f"kHearingThreshold{fscod}", [h[fscod] for h in t["hth"]],
-                          "std::int32_t", hexfmt=True))
+                          CPP_INT32, hexfmt=True))
     parts += [
         "inline constexpr std::array<const std::array<std::int32_t, 50>*, 3> kHearingThreshold = {",
         "    &kHearingThreshold0, &kHearingThreshold1, &kHearingThreshold2,",
