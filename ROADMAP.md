@@ -1884,8 +1884,14 @@ worse than the plain form, 73 or 99 instructions against 68, because the instruc
 consecutive quad of `f` registers that GCC's Xtensa port cannot model as one value and therefore
 spills. What is left for that part is a hand-written kernel tier shaped like
 `src/internal/avx2/`, which would need its own bit-exactness argument since reaching `esp-dsp`'s
-figures means the `madd.s` that `-ffp-contract=off` forbids project-wide. Whether any of it is
-warranted is still unmeasured: it wants one board, and QEMU cannot answer it.
+figures means the `madd.s` that `-ffp-contract=off` forbids project-wide. That tier is now
+measured against, though not settled: on hardware (2026-09-09, 240 MHz) AC-3 decodes in real
+time and E-AC-3 does not, missing by 8% at 2/0 and by 2.5x at 5.1, and the 1.44-1.49x scaling
+from 160 to 240 MHz says the decode is compute-bound rather than cache-stalled. So configuration
+is exhausted and the gap is real - but its SIZE argues against a kernel tier as the remedy for
+the 5.1 case, where no plausible scheduling or `madd.s` gain reaches 2.5x. The 2/0 gap is a
+different question and small enough to be worth one. What none of this establishes is where the
+time actually goes: that wants a profile on the board, not another estimate.
 
 See `docs/building.md`'s Gaps section, `docs/performance-trend.md` for the current table, and
 `docs/platforms/esp32.md`.

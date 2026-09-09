@@ -15,13 +15,14 @@ it is the first target where real-time decode is worth measuring.
 |---|---|
 | AC-3 5.1 decode | Correct. Six frames, all six channel levels exact against `apps/baremetal/fixture.hpp` |
 | E-AC-3 5.1 decode | Correct. Same, including AHT and spectral extension |
-| E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture, since `tools=all` does not select it; costs 126 allocations/frame against 86 |
+| E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture, since `tools=all` does not select it; 12 allocations/frame, the same as the plain E-AC-3 one |
+| AC-3 2/0 and 1/0 | Correct. Their own fixtures - §7.5.4 rematrixing lives in 2/0 alone, and the uncoupled path was reached by nothing before them |
 | E-AC-3 2/0, §7.5.4 rematrixing | Correct. A layout no 5.1 stream reaches whatever its tools are |
-| Atmos, bed | Correct. Its own fixture, decoded bed-only; costs 61 allocations/frame and nothing extra in peak heap |
-| Atmos, objects | Does not fit. Decodes correctly on a host; see [Objects](#objects-do-not-fit-in-internal-sram) |
-| Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 179,064-byte peak — see [Memory](#how-much-memory-there-actually-is) |
-| Retained after teardown | 34,232 bytes of `thread_local` enhanced-coupling scratch, held for the life of the decoding task — see [Building](../building.md#gaps) |
-| Real time | Not measured. See [Timing](#timing) |
+| Atmos, bed | Correct. Its own fixture, decoded bed-only; 23 allocations/frame and nothing extra in peak heap |
+| Atmos, objects | Correct, under `Domain::kMdctBand`. The reference `kQmf` domain does not fit; see [Objects](#objects-and-what-it-took-to-fit-them) |
+| Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 236,391-byte peak — see [Memory](#how-much-memory-there-actually-is) |
+| Retained after teardown | 24 bytes, two `__cxa_thread_atexit` records. It was 34,232 until the probe began handing back enhanced coupling's `thread_local` scratch between fixtures |
+| Real time | AC-3 yes, E-AC-3 no. Measured on hardware at 240 MHz; see [Timing](#timing) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
 
 ## Building
@@ -133,16 +134,28 @@ says 280,792. All three are true and they answer different questions.
 280,792, 73,708 bytes pessimistic. A footprint budget quoted from it is a budget nobody checked.
 `app_main` prints the runtime figures now, before and after the decode.
 
+The figures above are QEMU's. Silicon reports 280,884 free and the same 217,088 largest block,
+92 bytes apart on the total and exact on the block — which is the evidence for treating the QEMU
+leg as a footprint check while refusing to read its timings. Memory it models; a clock it does
+not.
+
 ### Contiguity, not just total
 
-| | Free | Largest block |
-|---|---|---|
-| Before the decode | 280,792 | 217,088 |
-| After it | 245,248 | 116,736 |
+| | Free | Largest block | |
+|---|---|---|---|
+| Before the decode | 280,792 | 217,088 | |
+| After it, once | 245,248 | 116,736 | when 34,232 bytes were retained |
+| After it, now | 280,884 | 217,088 | on hardware, all eight fixtures |
 
-The total falls 35,544 (the retained scratch, mostly). The largest contiguous run falls
-100,352. That gap is the number that decides whether a large allocation succeeds, and the probe
-cannot see it — its allocator hooks count bytes, not runs.
+It used to end 35,544 bytes down with its largest contiguous run 100,352 shorter, and that
+second figure was the one worth watching: a total says whether a byte count fits, a run says
+whether an allocation succeeds. Handing back the enhanced-coupling scratch closed both. The heap
+now comes back exactly as it started, block for block.
+
+That does not mean fragmentation stopped mattering — it means these two numbers stopped
+measuring it. They bracket the decode; the largest run *during* it is still unobserved, and the
+probe cannot see it either, because its allocator hooks count bytes rather than runs. What has
+gone is the part that outlived the decode.
 
 ### There is no IRAM to reclaim here
 
@@ -159,20 +172,74 @@ I2S rather than decoding flash-resident fixtures, the trade may look different.
 
 ### Stack
 
-The decode runs on the main task. `uxTaskGetStackHighWaterMark` leaves 14,000 bytes free of
-the 32,768 `sdkconfig.defaults` sets, so the decode uses about 18,800. That file's own comment
-told an integrator to measure this; now something does, and the runner holds a floor under it.
+The decode runs on the main task. `uxTaskGetStackHighWaterMark` leaves 11,236 bytes free of
+the 32,768 `sdkconfig.defaults` sets — measured on hardware across all eight fixtures, so it is
+the deepest of them and not an average. The decode uses about 21,500. That file's own comment
+told an integrator to measure this; now something does, and the runner holds an 8,192-byte floor
+under it (`AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES`).
 
 ## Timing
 
 The probe reports `decode_us`, `us_per_frame` and `realtime_permille` per codec.
+A frame is 1,536 samples at 48 kHz, so the budget is 32,000 microseconds and
+`realtime_permille` is 1000 at exactly real time.
 
 Under `idf.py qemu` these figures do not describe the hardware. QEMU is not a
 cycle-accurate emulator, and it reports `cpu_mhz=40` against its own boot log's
 160 MHz. Treat the QEMU leg as a correctness and footprint check only.
 
-Measuring real-time performance requires an ESP32-S3-DevKitC-1-N16R8 and
-`idf.py -p <PORT> flash monitor`. The instrumentation is already in place.
+### Measured, on an ESP32-S3-DevKitC-1-N16R8
+
+2026-09-09, chip revision v0.2, 240 MHz, PSRAM off, `-Os`. Every fixture
+decoded to its expected levels - `result=pass`, every channel's RMS matching its
+reference exactly - so what follows is about speed alone.
+
+| Fixture | us/frame | x real time | |
+|---|---:|---:|---|
+| `ac3_mono` | 5,180 | 0.16 | fits |
+| `ac3_stereo` | 14,290 | 0.45 | fits |
+| `eac3_atmos_bed` | 27,197 | 0.85 | fits |
+| `eac3_stereo` | 34,739 | 1.08 | misses by 8% |
+| `eac3` 5.1 | 78,824 | 2.46 | no |
+| `eac3_atmos_objects` | 82,711 | 2.58 | no |
+| `eac3_ecpl` | 217,493 | 6.80 | no |
+
+**AC-3 decodes in real time on this part. E-AC-3 does not.** An Atmos BED
+decode fits with 15% to spare, which is thin but real; reconstructing its
+objects does not. Enhanced coupling is nearly seven times over.
+
+The same build at 160 MHz - the clock this project inherited by never setting
+`CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ`, until 2026-09-09 - ran 1.44x to 1.49x slower
+across all eight fixtures, against an ideal ratio of 1.50. That near-linear
+scaling is worth as much as the absolute figures: the decode is compute-bound,
+not stalled waiting on the flash cache, so **no further speed is available from
+configuration.** Anything more has to come out of the code.
+
+`eac3_stereo` is the one worth chasing. 34,739 against 32,000 is a gap of 8%,
+which is the sort of distance PF7's remaining per-frame allocations and the
+algorithmic work in ROADMAP's performance theme could plausibly close. The 5.1
+and enhanced-coupling numbers are not tuning gaps and should not be described as
+if a profiler and an afternoon would fix them.
+
+Two things this does not cover. `ac3` 5.1 is missing - the console output's
+first lines are lost when the USB peripheral re-enumerates on reset, and that
+fixture prints before the monitor reconnects; it sits somewhere between
+`ac3_stereo` and `eac3`. And these are `-Os` with PSRAM off, which is this
+profile's deliberate shape rather than the fastest build available.
+
+### Running it yourself
+
+    idf.py -p <PORT> flash monitor
+
+with `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw"` if the board is
+reached through its native USB connector rather than the UART bridge - see
+`sdkconfig.hw` for what that changes and why.
+
+On a DevKitC-1 the host cannot reset the part into the application over
+USB-Serial-JTAG: both `esptool` and `idf.py monitor` assert IO0 during their
+reset sequence, so every host-initiated reset lands in `boot:0x0 (DOWNLOAD)` and
+the application never starts. Attach with `idf.py monitor --no-reset` and press
+the board's RESET button instead. Flashing over the same connector is unaffected.
 
 ## Other ESP32 variants
 
@@ -260,19 +327,22 @@ than a technical one, and it was decided on
 2026-09-08: the radio is disqualifying on its own, whatever the S3 measures.
 
 **Whether the S3 needs rescuing was the third thing checked, and it turns out
-not to bear on this.** It is still unmeasured — [Timing](#timing)
-has what that costs, which is one board. The decision does not wait on it. The
-radio disqualifies the P4 on its own, so a decode that misses real time on the
-S3 gets fixed in the decoder rather than by changing part: 46–87 heap
-allocations per frame remain PF7's other open gap, and the float path has a
-hand-written-kernel option this page now sizes. `src/forge/src/internal/arch/` does
-carry an `f32x4` since PF7's SIMD step, but it resolves to `generic/` here and
-buys this part nothing. Those are the levers, and they apply to every target
-at once instead of to one that cannot reach the network.
+not to bear on this.** It has since been measured — [Timing](#timing) — and the
+S3 *does* miss real time for E-AC-3, by 2.5x at 5.1 and 6.8x under enhanced
+coupling. That does not reopen the P4: the radio disqualifies it whatever the S3
+scores, and a part that fits a decode this port cannot yet afford to run is not
+an answer to being too slow. A decode that misses real time gets fixed in the
+decoder rather than by changing part - PF7's remaining per-frame allocations,
+and the algorithmic work in ROADMAP's performance theme.
+`src/forge/src/internal/arch/` does carry an `f32x4` since PF7's SIMD step, but
+it resolves to `generic/` here and buys this part nothing. Those are the levers,
+and they apply to every target at once instead of to one that cannot reach the
+network.
 
-The measurement is still worth taking, for the S3's own sake and for
-[the topology plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md)'s Phase 5. It is no longer a question about
-the P4.
+That measurement has now been taken, for the S3's own sake and for
+[the topology plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md)'s
+Phase 5. It was never a question about the P4, and the answer it returned does
+not make it one.
 
 ## Not done
 
@@ -310,10 +380,20 @@ the P4.
   twiddle stages in assembly, selected at build time. Reaching `esp-dsp`'s
   figures also means `madd.s`, a deliberate fused multiply-add of exactly the
   kind `-ffp-contract=off` forbids project-wide, so that tier would have to
-  carry its own bit-exactness argument rather than inherit the seam's. It
-  still wants a measurement from real silicon before any of it.
-- **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works
-  but keeps both transform instantiations compiled.
+  carry its own bit-exactness argument rather than inherit the seam's.
+
+  That measurement now exists — [Timing](#timing) — and it argues against this
+  tier for the case that needs the most: nothing a kernel rewrite plausibly buys
+  reaches the 2.5x that 5.1 is short. `eac3_stereo`'s 8% is the one gap the tier
+  is the right size for.
+- **Both transform instantiations are still compiled.** AC-3's `decoder.cpp`
+  follows the `decode_scalar_t` seam now, as E-AC-3 does, so on this part its
+  transform and overlap-add are float32. But `imdct256_pair_windowed` has a
+  `double` overload beside the `float` one in `src/forge/src/core/mdct.cpp`, and
+  both are ordinary functions rather than templates, so both land in the archive
+  whatever the profile selects. What is still `double` inside `decoder.cpp` is
+  the concealment decay, the coupling coordinates and the dequantisation
+  intermediates — none of them per-sample transform work.
 - **Audio output from the probe.** The footprint probe decodes built-in fixtures and
   reports levels; it drives no peripheral. Sound out of this part goes through the
   separate I2S example described in [Audio output](#audio-output) below.

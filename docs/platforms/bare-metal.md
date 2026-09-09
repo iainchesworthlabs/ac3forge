@@ -56,10 +56,12 @@ list if any component needing the full library is still switched on.
 | Under `AC3FORGE_MINIMAL_DECODER`: the encoder, container writers, WAV I/O, analysis and QC layers, the object encoder | Decode only. `src/forge/minimal.cmake` lists what is compiled, with a line on why each file is reachable from a decode. `AC3FORGE_MINIMAL_ENCODER` is the same profile pointed the other way. |
 | The direct-form transform tables | 1,900,544 bytes of `.bss` that are absent from the image rather than merely unused. `DecoderConfig::fast_imdct = false` returns `DecodeError::kUnsupported` here instead of being served quietly by the fast path. |
 
-Object reconstruction compiles and links, and decodes correctly, but does not fit on a part this
-size — [the ESP32-S3 page](esp32.md#objects-do-not-fit-in-internal-sram) has the measurement and
-what it would take. An Atmos stream's 5.1 bed decodes normally via
-`DecoderConfig::skip_object_reconstruction`.
+Object reconstruction compiles, links and decodes correctly, and it now fits: `eac3_atmos_objects`
+is one of the eight fixtures this leg runs, inside the same heap ceiling as the rest. It did not
+before — [the ESP32-S3 page](esp32.md#objects-and-what-it-took-to-fit-them) has what it took,
+which was `Domain::kMdctBand` in place of the reference QMF domain, float32 reconstruction state,
+and per-object scratches sized to the stream rather than to the maximum. An Atmos stream's 5.1 bed
+still decodes bed-only via `DecoderConfig::skip_object_reconstruction`.
 
 ## Porting to another part
 
