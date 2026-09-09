@@ -16,9 +16,9 @@ the float32 path worth having and real-time decode worth measuring.
 | E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing, and 5.1 folded to Lo/Ro stereo in line mode |
 | E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture. Costs 12 allocations per frame, level with plain E-AC-3 |
 | Atmos bed | Correct, decoded bed-only via `DecoderConfig::skip_object_reconstruction`. 20 allocations per frame |
-| Atmos objects | **Correct, reconstructed on target.** 31 allocations per frame — see [Objects](#objects) |
-| Encode | AC-3 and E-AC-3, six frames of synthesised 5.1 through each encoder, byte count and FNV-1a hash checked against `apps/baremetal/encode_fixture.hpp` |
-| Fits internal SRAM | Yes, without PSRAM. 229,630-byte peak heap (the 7.1.4 fixture; 210,203 with Atmos objects) against 257,572 free — see [Memory](#memory) |
+| Atmos objects | **Correct, reconstructed on target.** 31 allocations per frame — see [Objects](#objects). **And placed**: the `eac3_atmos_render` row pans a height-object stream onto 7.1.4 through the block form, every level the host's — see [Placed on loudspeakers](#placed-on-loudspeakers) |
+| Encode | AC-3 and E-AC-3, six rows: 5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, and 2/0 §E3.5 enhanced coupling - six frames of synthesised programme each, byte count and FNV-1a hash checked against `apps/baremetal/encode_fixture.hpp`, peak heap per row. One substream at a time; see [Encoding](#encoding) for what does not fit |
+| Fits internal SRAM | Yes, without PSRAM. 229,630-byte peak heap (the 7.1.4 fixture; 210,203 with Atmos objects, 210,573 placing them) against the 257,572 the board had free with the probe's PCM block still in it — the block forms have since removed that block, and the next hardware run re-measures — see [Memory](#memory) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record, the spectrum scratch's pointer; 23,552 bytes while §E3.5 is in use |
 | Audio output | Two examples drive real peripherals — see [Examples](#examples) |
 | Real time | **Yes, on a board**, at 240 MHz, every fixture: from 0.07x for AC-3 mono to 0.90x for E-AC-3 7.1.4 — see [Timing](#timing) |
@@ -27,6 +27,36 @@ the float32 path worth having and real-time decode worth measuring.
 
 Decode and encode are separate builds. They are mutually exclusive, and configure fails if both
 are asked for, because neither fits beside the other in this memory.
+
+## What the part can and cannot do
+
+Everything the library does, against what this part has been shown to do with it. "Board" is
+the ESP32-S3-DevKitC-1 at 240 MHz on 2026-09-09; "QEMU + Cortex-M3" is the two emulated legs,
+which agree with each other and with the host to the digit on levels and hashes but say nothing
+about time on this part; the rows the board has not yet run say so. The x figures are fractions
+of a 32 ms frame.
+
+| | On this part | How that is known |
+|---|---|---|
+| AC-3 decode, 1/0, 2/0, 3/2 + LFE, coupled and not, §7.5.4 rematrixing | Yes, real time: 0.07x, 0.11x, 0.31x | Board; `ac3_mono`, `ac3_stereo`, `ac3` |
+| E-AC-3 decode, 2/0 and 5.1, with AHT, spectral extension, standard coupling | Yes, real time: 0.17x, 0.34x | Board; `eac3_stereo`, `eac3` |
+| E-AC-3 §E3.5 enhanced coupling | Yes, real time: 0.62x | Board; `eac3_ecpl` |
+| E-AC-3 7.1.4, a bed and two dependent substreams | Yes, real time: 0.90x | Board; `eac3_714` |
+| The §7.8 output stage: dialnorm, Lo/Ro, Lt/Rt and mono folds, line and RF modes | Yes, levels exact; +5% and +10% of the 5.1 rows' instructions | QEMU + Cortex-M3; `ac3_fold`, `eac3_fold`. Board timing pending |
+| Atmos bed, objects skipped | Yes, real time: 0.28x | Board; `eac3_atmos_bed` |
+| Atmos objects reconstructed, JOC in the MDCT-band domain | Yes, real time: 0.66x | Board; `eac3_atmos_objects` |
+| Objects placed onto loudspeakers by their OAMD positions, 7.1.4 with heights, through the block form | Yes, levels the host's; the render is 5% of the row's instructions, 210,573 bytes of peak | QEMU + Cortex-M3; `eac3_atmos_render`. Board timing pending |
+| JOC in the QMF domain (`Domain::kQmf`, the licensed decoders' domain) | No: 449,826 bytes of peak | Host measurement, see [Objects](#objects) |
+| The full TS 103 420 §4.3 renderer (extents, zones, snap) | No: the pan is a point source per object | Not attempted; the extent metadata arrives and is not read |
+| §3.7 transient pre-noise processing, concealment | Compiled in; no fixture exercises either | Not measured |
+| The direct-form reference transform | No, by design: `DecodeError::kUnsupported` | Every leg checks the refusal |
+| AC-3 encode, 2/0 and 5.1 | Yes, byte-exact with the host; **not yet timed on the board**, and `double` throughout | QEMU + Cortex-M3; `ac3_stereo`, `ac3` |
+| E-AC-3 encode, 2/0 plain, 2/0 with coupling + spectral extension + AHT, 2/0 §E3.5, 5.1 with no tool | Yes, byte-exact; **not yet timed on the board**, `double` throughout | QEMU + Cortex-M3; `eac3_stereo`, `eac3_tools`, `eac3_ecpl`, `eac3` |
+| E-AC-3 5.1 encode with AHT or coupling, or §E3.5 at 5.1 | No: 289,202 to 369,790 bytes of peak | Host profile, see [Encoding](#encoding) |
+| Any dependent-substream encode (7.1, 5.1.2, 5.1.4, 7.1.4) | No: three encoders resident, 601,954 bytes for 7.1.4 | Host profile |
+| The Atmos object encoder | No: about 300 KB, `double`, and not in the profile | Bench estimate, see [Encoding](#encoding) |
+| Decode and encode in one image | No: mutually exclusive builds | Measured, above |
+| The second core, PSRAM | Not used by anything measured here | See [What is left](#what-is-left-and-what-would-move-it) |
 
 ## Building
 
@@ -433,11 +463,13 @@ re-measure). The peak by fixture, the same on both legs:
 | `eac3` 5.1 | 167,042 | 12 |
 | `eac3_atmos_objects` | 210,203 | 31 |
 | `eac3_fold` | 216,406 | 12 |
+| `eac3_atmos_render` | 210,573 | 36 |
 | `eac3_714` | 229,630 | 35 |
 
 The AC-3 rows carry the block form's own frame since the `_by_block`
-forms (10,652, 12,356 and 19,457 before them), and the two fold rows are
-[Folded to stereo](#folded-to-stereo)'s.
+forms (10,652, 12,356 and 19,457 before them), the two fold rows are
+[Folded to stereo](#folded-to-stereo)'s and the render row is
+[Placed on loudspeakers](#placed-on-loudspeakers)'.
 
 ### Folded to stereo
 
@@ -458,6 +490,45 @@ figures are the next hardware run's.
 |---|---:|---:|---:|
 | `ac3_fold` | 68,617 | 3 | 10,782,000 |
 | `eac3_fold` | 216,406 | 12 | 14,280,000 |
+
+### Encoding
+
+The encode direction has printed its time per frame since 2026-09-10, on the
+same terms as the decode rows, and the board has not yet run that build - so
+what this section has is what the other two legs can say. The peaks are the
+part's (identical under QEMU and on the Cortex-M3 leg), the instruction counts
+are the Cortex-M3 leg's under `--encoder --icount`, and the decode column is
+the same leg's count for the same layout:
+
+| Row | peak heap | allocations/frame | instructions/frame | the decode row's |
+|---|---:|---:|---:|---:|
+| `ac3_stereo` 2/0 | 82,367 | 34 | 12,623,000 | 3,548,000 |
+| `eac3_stereo` 2/0 | 118,962 | 84 | 24,200,000 | 4,851,000 |
+| `eac3_tools` 2/0, cpl + spx + AHT | 195,321 | 47 | 24,486,000 | - |
+| `eac3_ecpl` 2/0, §E3.5 | 192,573 | 91 | 82,975,000 | 28,861,000 |
+| `ac3` 5.1 | 162,602 | 67 | 34,286,000 | 10,224,000 |
+| `eac3` 5.1 | 220,608 | 180 | 62,590,000 | 12,928,000 |
+
+Three to five times the decode's count, and both directions are soft float on
+that leg. On this part they are not: the decode path is `float` on the FPU,
+and the encoders are `double` throughout - every operation a call into the
+mask ROM's software floating point, the arithmetic that had a 5.1 E-AC-3
+decode at 78.8 ms before its conversion. So the expectation for the next
+hardware run is that AC-3 2/0 encode is the only row near real time, and
+that E-AC-3 5.1 is several times over it; the measurement is what the
+[capability table](#what-the-part-can-and-cannot-do) will carry, and the
+fix, if the encode direction is wanted in real time here, is the same one
+the decoder had - a `float` path through the encoders' analysis, transform
+and allocation, which nothing has started.
+
+What the part cannot encode, measured on the host profile ([Building](../building.md#what-the-encode-direction-costs)
+has the table): 5.1 with AHT (312,744 bytes) or standard coupling (289,202)
+or both with spectral extension (369,790), any layout that needs a dependent
+substream (7.1.4 peaks at 601,954 with three encoders resident), and the
+Atmos object encoder (about 300,000, and not in the profile). 5.1 with
+spectral extension alone (205,718) does fit and has no row yet. The encode
+build leaves 303,656 bytes free in internal SRAM, 241,664 in its largest
+run, under QEMU.
 
 ### What is left, and what would move it
 
@@ -572,6 +643,31 @@ side data, so `DecoderConfig::skip_object_reconstruction` decodes the bed withou
 asserts the rendered channels are bit-for-bit what a full decode produces. `object_metadata`
 still arrives, parsed out of a block's skip field.
 
+### Placed on loudspeakers
+
+Reconstructed objects are mono signals with a position each; a part driving a 7.1.4 DAC has to
+pan them onto its loudspeakers, and since 2026-09-10 it can, on the target: `spatial.cpp` is in
+the profile's source list, and the block form's `PcmBlock` carries the objects beside the bed -
+a view per object onto the unit's own reconstruction, cut to the block, with the metadata that
+places them ([Decoding](../library/decoding.md#block-granular-output)). The probe's
+`eac3_atmos_render` row is the sink a player would write: `ac3::spatial::pan_direction` for
+each object's gains onto the eleven panned targets, once per unit, the bed's LFE passed through
+as the twelfth slot, and a block of float sums per target - twelve channels of one 256-sample
+block, static. Its stream is the Atmos rows' source with three objects raised to the ceiling and
+one half way (`tools/generators/atmos_height_scene.txt`), because the Atmos rows' objects all
+sit on the listener plane and a render of them would leave the four height targets silent.
+
+Every one of its twelve levels is the host's to the digit on both emulated legs, which is what
+the row can say: no `ac3cli` path writes a rendered layout to a WAV for the generator to
+measure, so `render_fixture.hpp` is the host shape's own numbers and the row is a regression
+reference, the standing the encode fixtures already have; `tests/spatial/` is what says the
+panner is right. What it costs, on the Cortex-M3 leg's count: 28,938,000
+instructions a frame for decode and render together, the render itself 5%
+of that; 210,573 bytes of peak - the objects row's plus the panner's target
+tables - and 36 allocations a frame, one of them `describe_objects`'
+description of the unit, the rest the objects row's own. The panner used to allocate eight
+vectors per object per call; it has stack storage now. The board has not yet run this build.
+
 ## Configuration
 
 `apps/baremetal/platform/esp32s3/sdkconfig.defaults` carries the settings and their reasoning. Two
@@ -632,6 +728,13 @@ followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
   the kind `-ffp-contract=off` forbids project-wide — and so its own bit-exactness argument.
 - **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works but keeps both
   transform instantiations compiled.
+- **The encoders are `double` throughout.** Every stage of both - analysis, the forward
+  transform, the masking model, bit allocation and its search, the coding tools - runs on this
+  part's software floating point. The Cortex-M3 leg's instruction counts put E-AC-3 5.1 encode
+  at 4.8 times the decode's count with both directions soft float, and the decode is `float` on
+  this part while the encode is not; see [Encoding](#encoding). Real-time encode here would
+  need what the decoder got, an encode path in the profile's scalar, which is a larger job than
+  the decoder's was because the encoder's arithmetic is the bitstream's own.
 
 ## Other ESP32 variants
 

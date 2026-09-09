@@ -258,6 +258,15 @@ a concealed frame is delivered through it like any other. The
 [bare-metal probe](../platforms/bare-metal.md) decodes every fixture through these forms and holds
 no PCM at all.
 
+An access unit's objects come through the same block. `PcmBlock::objects` is a view per JOC
+output onto the unit's own reconstruction, cut to the block, and `object_indices` and
+`object_metadata` mean what `DecodedAccessUnit`'s do; all three are empty for an AC-3 frame, for
+a bed-only decode (`skip_object_reconstruction`) and for a unit with no object layer. A sink
+placing objects on loudspeakers therefore needs no frame of anything - the value form's
+`object_audio` is a frame of copies per object, and this is none. The probe's
+`eac3_atmos_render` row is that sink: `ac3::spatial::pan_direction` for the gains, once per
+object per unit, and a block of float sums per target.
+
 ## The output stage
 
 `ac3/decoder/output.hpp`. Everything between "the coded channels have been reconstructed" and

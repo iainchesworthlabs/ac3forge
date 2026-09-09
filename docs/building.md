@@ -371,6 +371,58 @@ Each fits alone; no two fit together. A build offering both would be offering so
 cannot run, so the option refuses the combination rather than letting it arrive as `out_of_memory`
 on a device. Sequential use is fine — tear one down, build the other.
 
+### What the encode direction costs
+
+Six rows since 2026-09-10, each six frames of the same synthesised programme through one
+encoder, and each printing its peak heap and its time per frame on the terms the decode probe
+uses (`<row>.us_per_frame`, `realtime_permille` against a 32 ms frame). Peaks are the same on
+the `arm-none-eabi` leg and the ESP32-S3 under QEMU; the host's are about one per cent higher
+for its wider pointers. Instructions per frame are the `--encoder --icount` leg's: Thumb-2 on
+the Cortex-M3, `-Os`, soft float throughout, held to the ceilings in
+`run_baremetal_probe.sh`'s `ICOUNT_CEILING_ENCODE` table.
+
+| Row | Peak heap | Allocations per frame | Instructions per frame | Ceiling | Decode row's count |
+|---|---:|---:|---:|---:|---:|
+| `ac3_stereo` 2/0, 192 kbit/s | 82,367 | 34 | 12,623,000 | 16,000,000 | 3,548,000 |
+| `eac3_stereo` 2/0, 192 kbit/s, no tools | 118,962 | 84 | 24,200,000 | 30,000,000 | 4,851,000 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 195,321 | 47 | 24,486,000 | 31,000,000 | - |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 192,573 | 91 | 82,975,000 | 104,000,000 | 28,861,000 |
+| `ac3` 5.1, 448 kbit/s | 162,602 | 67 | 34,286,000 | 43,000,000 | 10,224,000 |
+| `eac3` 5.1, 384 kbit/s | 220,608 | 180 | 62,590,000 | 78,000,000 | 12,928,000 |
+
+Three to five times the decode row's count for the same layout, and the reason is not the
+encoders' search: it is that both encoders are `double` throughout, so on a leg with no FPU
+every operation is a software call, where the decode path has been `float` under this profile
+since 2026-09-09. On an ESP32-S3 the same arithmetic is the mask ROM's software floating point,
+the cost that had a 5.1 E-AC-3 *decode* at 78.8 ms before its conversion; the board figure for
+the encoders is the next hardware run's, and the [ESP32-S3 page](platforms/esp32.md#encoding)
+says what to expect from it.
+
+`eac3_tools` is the row that reaches the coupling, spectral-extension and AHT encoders at all:
+the 5.1 row's default is no tool. It is 2/0 with its band edges pinned (`cplbegf` 0, `spxbegf`
+7), and `encode_fixture.hpp` has the two findings behind that shape, with the host profile's
+numbers:
+
+| Shape | Peak heap (host) | Fits an ESP32-S3's encode build (241,664-byte largest free run)? |
+|---|---:|---|
+| 5.1 at 256 kbit/s, spx alone | 205,718 | Yes |
+| 5.1 at 256 kbit/s, standard coupling alone | 289,202 | No |
+| 5.1 at 256 kbit/s, AHT alone | 312,744 | No |
+| 5.1 at 256 kbit/s, all three | 369,790 | No |
+| 5.1 at 384 kbit/s, §E3.5 enhanced coupling | 343,483 | No (the ecpl row's own finding) |
+| 7.1.4 at 640 kbit/s through `AccessUnitEncoder` (a bed and two dependents, 14 coded channels) | 601,954 | No - three encoders resident at once, 416 allocations a frame |
+| The Atmos object encoder | about 300,000 | No, and it is not in the profile |
+
+And at 2/0 with both merely permitted, the rate defaults start spectral extension below where
+coupling would begin and §E3.3.1 then drops coupling, so the frame is spx + AHT - the pinned
+edges are what keep all three live, which `ac3cli probe` confirms on the frame. The Atmos
+figure is a bench estimate rather than a probe row: `ac3membench` shows `AtmosEncoder`
+constructing with 138,743 bytes live against the plain E-AC-3 encoder's 58,912 and its first
+frame allocating what that encoder's does, which puts it about 80 KB above the 5.1 row - and
+its per-frame QMF analysis of the bed and every object is `double` as well. What the part can
+encode is therefore one substream at a time, 5.1 with no tool or 2/0 with any, in the
+configurations the six rows are.
+
 Two things about the probe differ from the decode one, and both follow from the direction:
 
 - **The input is synthesised.** A decoder's fixture is a 10,752-byte bitstream; an encoder's is the
