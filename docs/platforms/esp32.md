@@ -22,7 +22,8 @@ the float32 path worth having and real-time decode worth measuring.
 | Retained after teardown | 24 bytes, two `__cxa_thread_atexit` records |
 | Audio output | Two examples drive real peripherals — see [Examples](#examples) |
 | Real time | **Not measured.** No board has been timed; QEMU cannot answer it — see [Timing](#timing) |
-| CI | `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
+| ESPHome | An external component, `esphome/components/ac3forge/` — the decoder and framer, not a `speaker` source. See [ESPHome](#esphome) |
+| CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU; `esphome config` and the component pack in their own workflows |
 
 Decode and encode are separate builds. They are mutually exclusive, and configure fails if both
 are asked for, because neither fits beside the other in this memory.
@@ -47,9 +48,11 @@ shape `apps/android/app/src/main/cpp/CMakeLists.txt` uses. Re-listing
 `src/forge/minimal.cmake`'s sources in an `idf_component_register(SRCS ...)` was rejected: two
 copies of a source list drift, and the drift surfaces as a link error rather than a diff.
 
-`idf_component.yml` carries registry metadata and names `esp32s3` as its only target. **Nothing
-publishes it** — there is no upload step in any workflow, deliberately, since publishing to a
-registry is a distribution decision rather than a build one.
+`idf_component.yml` carries registry metadata and names `esp32s3` as its only target. **It is not
+published to the ESP Component Registry.** `.github/workflows/esp-component.yml` lints the
+manifest and packs the archive on every change, but its `compote component upload` job is gated to
+a manual `workflow_dispatch` on a `v` tag — a published version cannot be replaced, so the upload
+is a decision rather than a consequence of merging.
 
 ### The probes
 
@@ -317,14 +320,49 @@ per-core in both cases. The memory advantage is already spent, since this port f
 
 ## ESPHome
 
-Not built. The first of the three steps it needs is done: [the component](#the-esp-idf-component)
-is reusable and reachable through `EXTRA_COMPONENT_DIRS`. Two remain:
+`esphome/components/ac3forge/` is an ESPHome external component. It is the plumbing:
+`Ac3ForgeComponent` owns an `ac3::FrameDecoder` and an `ac3::io::AccessUnitAccumulator`, takes
+bytes and hands back planar float PCM. It is **not** a `media_player` or a `speaker` source —
+ESPHome's `speaker` platform is ESP-IDF-only, so that is the obvious next step rather than a
+blocked one.
 
-1. **An ESPHome external component**, `components/ac3_decoder/{__init__.py, *.cpp}` in a git repo,
-   referenced from YAML via `external_components:`.
-2. **Pulling the library in**, with `add_idf_component(name=..., repo=..., ref=...)` from that
-   component's `to_code()` — the mechanism ESPHome's own `mqtt` and `usb_host` components use.
-   That wants a registry-hosted dependency and nothing publishes this component, so an ESPHome
-   build would reach it by git reference instead.
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/iainchesworthlabs/ac3forge
+      ref: main
+      path: esphome/components
+    components: [ac3forge]
 
-ESPHome's `speaker` media_player platform is ESP-IDF-only, so the frameworks are compatible.
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+ac3forge:
+  version: v0.10.0-beta.1   # a git ref of ac3forge itself
+  buffer_size: 16384
+```
+
+Two refs are in play: `external_components`' `ref` picks the version of the ESPHome component,
+and `ac3forge:`'s `version:` picks the version of the library it fetches. Pin both for anything
+meant to keep working.
+
+`buffer_size` is the framer's working buffer, floored at 4,160 bytes — one syncframe plus the
+next header, which is what deciding where an access unit ends requires. 16 KB holds an independent
+substream plus three dependents, which covers Atmos.
+
+The component reaches the library by git reference rather than the registry:
+`add_idf_component` writes `git:`, `version:` and `path:` into the generated
+`idf_component.yml`, which is the form the IDF component manager wants for a component in a
+subdirectory. Nothing here is blocked on [publishing](#the-esp-idf-component).
+
+CI runs `esphome config` over `esphome/tests/ac3forge-test.yaml` against a local source pointing
+at the working tree, which exercises the schema and `to_code` including the `add_idf_component`
+call, and asserts that a `buffer_size` no access unit fits in is rejected. It does **not** compile
+the firmware: that would clone ac3forge at the configured ref and build the whole IDF project,
+which says nothing about the code under review, since the ref it fetched is not that code.
+
+[`esphome/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esphome/README.md)
+has the rest, including why PSRAM is worth having on a board that also runs WiFi.
