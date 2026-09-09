@@ -394,9 +394,9 @@ Three to five times the decode row's count for the same layout, and the reason i
 encoders' search: it is that both encoders are `double` throughout, so on a leg with no FPU
 every operation is a software call, where the decode path has been `float` under this profile
 since 2026-09-09. On an ESP32-S3 the same arithmetic is the mask ROM's software floating point,
-the cost that had a 5.1 E-AC-3 *decode* at 78.8 ms before its conversion; the board figure for
-the encoders is the next hardware run's, and the [ESP32-S3 page](platforms/esp32.md#encoding)
-says what to expect from it.
+the cost that had a 5.1 E-AC-3 *decode* at 78.8 ms before its conversion, and on that board the
+encoders run 2.3x (AC-3 2/0) to 14.8x (§E3.5 2/0) over real time - the
+[ESP32-S3 page](platforms/esp32.md#encoding) has the six rows.
 
 `eac3_tools` is the row that reaches the coupling, spectral-extension and AHT encoders at all:
 the 5.1 row's default is no tool. It is 2/0 with its band edges pinned (`cplbegf` 0, `spxbegf`

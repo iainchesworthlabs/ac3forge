@@ -102,8 +102,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   and AHT all live, its band edges pinned so §E3.3.1 does not drop the coupling - is the first
   row to reach those three encoders on the target. On the Cortex-M3 leg an E-AC-3 5.1 frame
   encodes in 62.6 M instructions against 12.9 M to decode it, both directions soft float
-  there; the encoders are `double` throughout. Measured and documented as not fitting an
-  ESP32-S3: 5.1 with AHT or coupling, any dependent-substream layout (7.1.4 peaks at 601,954
+  there; the encoders are `double` throughout, and on the board that is 2.3x over real time for
+  AC-3 2/0 and 10.9x for E-AC-3 5.1, every row's bytes the host's. The probe reports its stages
+  under `AC3FORGE_STAGE_TIMERS` as the decode probe does - the stage-timer table holds 64 zones
+  now, the two encoders' rows having overflowed 32 - and the board's breakdown puts the forward
+  MDCT and transient detection, both `double`, at 64% of an AC-3 5.1 frame. Measured and
+  documented as not fitting
+  an ESP32-S3: 5.1 with AHT or coupling, any dependent-substream layout (7.1.4 peaks at 601,954
   bytes), and the Atmos object encoder.
 - **The block form carries the objects.** `PcmBlock` gains `objects`, `object_indices` and
   `object_metadata`: a view per JOC output onto the unit's own reconstruction, cut to the block,
@@ -117,8 +122,9 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   7.1.4 by each object's OAMD position through `ac3::spatial::pan_direction`, every level the
   host's to the digit on both emulated legs. The render is 5% of the row's
   28,938,000 instructions a frame on the Cortex-M3 leg, at 210,573
-  bytes of peak. `pan_ring` and `pan_direction` no longer allocate - eight vectors per object per
-  call, on the stack now - which took the row from 129 allocations a frame to 36.
+  bytes of peak, and 25.1 ms a frame on the ESP32-S3 (0.78x; the render 3.3 ms of it). `pan_ring`
+  and `pan_direction` no longer allocate - eight vectors per object per call, on the stack now -
+  which took the row from 129 allocations a frame to 36.
 - **The ESP32-S3 page has a capability table**: everything the library does against what the
   part has been shown to do with it, with how each row is known - board, emulation, or a host
   measurement of what does not fit.

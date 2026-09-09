@@ -730,8 +730,8 @@ intervening commits.
 |---|---|
 | `.text` (code + read-only data) | 276,188 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 60,669 |
-| **Image total** | **337,257** (329.4 KiB) |
+| `.bss` (zero-initialised) | 62,205 |
+| **Image total** | **338,793** (330.9 KiB) |
 
 These are `arm-none-eabi-size`'s own columns, which is what `AC3FORGE_MAX_IMAGE_BYTES` gates, so
 they group sections rather than list them: `.text` here includes `.init`, `.fini` and
@@ -785,6 +785,8 @@ beside the double one, and `probe.cpp.obj` from 86.0 KiB to 86.3 with the rows. 
 is 33,640 more, for 337,257: the height stream's 10,752 bytes and
 `spatial.cpp` in `.text`, and in `.bss` a 12,288-byte render block - twelve channels of one
 256-sample block, what a player holds - with a 1,536-byte table of each object's gain per slot.
+The stage-timer table's growth from 32 zones to 64, which the encoder's rows needed, is 1,536
+more of `.bss` in every shape of the probe: 338,793.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
@@ -1001,8 +1003,10 @@ are `ICOUNT_CEILING_ENCODE` in the runner, with the same headroom as every other
 | `eac3` 5.1, 384 kbit/s | 62,590,000 | 78,000,000 | 220,608 | 180 |
 | `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 82,975,000 | 104,000,000 | 192,573 | 91 |
 
-The three 2/0 rows are new with the timing; the encode image is 232,205 bytes with them
-(157,752 `.text`, 400 `.data`, 74,053 `.bss`), 480 more than without. [Building](building.md#what-the-encode-direction-costs)
+The three 2/0 rows are new with the timing; the encode image is 237,325 bytes with them
+(159,384 `.text`, 400 `.data`, 77,541 `.bss`), 5,600 more than without: 480 for the rows, the rest
+the stage timers' application half, which an encode image links now that the probe reports its
+stages, and the 64-zone table. [Building](building.md#what-the-encode-direction-costs)
 has what the encode direction cannot fit on an ESP32-S3, with the host profile's numbers.
 
 <div id="memory-trend-app">
