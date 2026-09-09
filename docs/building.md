@@ -413,7 +413,7 @@ a design change, not a build option. The runner gates the number at 100 for ever
 no exemption ([the footprint table](performance-trend.md#minimum-footprint-decoder) has the
 detail), so the distance from zero cannot grow while the gap is open.
 
-**Scratch that was never released — closed.** `eac3_tools.cpp` keeps enhanced coupling's
+**Scratch that was never released — closed.** `eac3_tools.cpp` kept enhanced coupling's
 32,768-byte `EcplSpectrumScratch` and its 1,440-byte bin-angle vector in `thread_local` storage,
 so §E3.5 neither allocates per call nor puts 32 KB on the stack. On a target whose only thread
 never exits, the destructor that would release them never runs, and 34,232 bytes stayed live for
@@ -422,10 +422,13 @@ the life of the decoding task. That was bounded and paid once, so it was never t
 fit into.
 
 `ac3::eac3::release_ecpl_scratch()` hands them back and the next call rebuilds what it needs. The
-probe calls it between fixtures, and retained bytes at exit went from 34,232 to **24**, which is
-two `__cxa_thread_atexit` registration records. Both runners gate it at 1,024 — deliberately tight,
-because nothing here grows a little: either the scratch is handed back or it is not, and the
-difference is five figures. [The ESP32-S3 page](platforms/esp32.md#objects) has what it unblocked.
+probe calls it between fixtures, and retained bytes at exit went from 34,232 to 24, and to **12**
+once the bin-angle vector became a stack array. What is left is one `__cxa_thread_atexit`
+registration record, for the pointer to the spectrum scratch — the one `thread_local` the library
+still declares, and 23,552 bytes on this profile in its float form rather than the 32,768 above.
+Both runners gate it at 1,024 — deliberately tight, because nothing here grows a little: either
+the scratch is handed back or it is not, and the difference is five figures.
+[The ESP32-S3 page](platforms/esp32.md#objects) has what it unblocked.
 
 **A float32-only path — met for the decode path.** `src/forge/src/internal/scalar/`'s
 seam carries `decode_scalar_t`: `float` under this profile, `double` by default in every other
