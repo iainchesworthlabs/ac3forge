@@ -585,9 +585,10 @@ constexpr std::array<Eac3Fixture, 5> kEac3Fixtures{{
     // use, not the reference one.
     //
     // It runs AFTER the enhanced-coupling row on purpose. That ordering used
-    // to fail outright - ecpl leaves 34,232 bytes of thread_local scratch
-    // behind on a target whose thread never exits, and object reconstruction
-    // then had nowhere to go. release_ecpl_scratch() below is what makes the
+    // to fail outright - ecpl leaves its thread_local spectrum scratch behind
+    // (23,552 bytes on this profile, 32,768 in double; it was 34,232 with the
+    // bin-angle vector that is a stack array now) on a target whose thread
+    // never exits, and object reconstruction then had nowhere to go. release_ecpl_scratch() below is what makes the
     // order stop mattering, so this row sits where it would naturally rather
     // than where it happens to pass.
     {"eac3_atmos_objects", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms,
@@ -686,7 +687,7 @@ int ac3probe::run() {
         // Hand back what enhanced coupling cached, if this fixture used it.
         // Its scratch is thread_local and this thread never exits, so without
         // this it stays resident for the rest of the run - not a leak, but
-        // 34,232 bytes the next fixture cannot have. It is what stopped
+        // 23,552 bytes on this profile that the next fixture cannot have. It is what stopped
         // object reconstruction fitting on an ESP32-S3 whenever it ran after
         // the ecpl row, and calling it here is what lets these rows sit in
         // any order.
