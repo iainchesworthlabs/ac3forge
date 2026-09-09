@@ -275,6 +275,11 @@ ac3::FrameDecoder decoder{{
 // reference. acmod/lfe still describe what was CODED.
 ```
 
+The stage's per-sample arithmetic runs in the decoder's scalar type - `double` in every ordinary
+build, `float` under the [minimum-footprint profile](../building.md#minimum-footprint-decoder-profile),
+whose targets have a single-precision FPU at best - and its gains and mix coefficients are
+`double` everywhere. That profile's probe holds two folded fixtures to their levels on the target.
+
 | `OutputConfig` | Default | Notes |
 |---|---|---|
 | `target` | `kAsCoded` | `kLoRo` (§7.8.1's plain stereo fold), `kLtRt` (§7.8.2's Dolby Surround compatible fold), `kMono` (§7.8's `output_mode == 1/0` branch), or no fold at all. |

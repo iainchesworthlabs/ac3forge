@@ -432,6 +432,15 @@
       }
     },
     {
+      "name": "config-arm-none-eabi-minimal-encoder-icount",
+      "inherits": [ "config-arm-none-eabi-minimal-encoder" ],
+      "displayName": "arm-none-eabi minimum-footprint encoder, instruction-counting clock",
+      "description": "The encoder preset above with the probe's clock on the mps2-an385's CMSDK timer, for tools/checks/run_baremetal_probe.sh --encoder --icount: instructions per encoded frame, deterministically. Its own build directory for the same reason the decoder's icount preset has one.",
+      "cacheVariables": {
+        "AC3FORGE_BAREMETAL_CLOCK": "timer"
+      }
+    },
+    {
       "name": "config-linux-llvm-shared",
       "inherits": [ "debug", "linux-llvm", "shared-libs", "core" ],
       "displayName": "Linux LLVM Shared (BUILD_SHARED_LIBS=ON)"
@@ -583,6 +592,11 @@
       "name": "build-arm-none-eabi-minimal-encoder",
       "configurePreset": "config-arm-none-eabi-minimal-encoder",
       "displayName": "arm-none-eabi bare-metal minimum-footprint encoder"
+    },
+    {
+      "name": "build-arm-none-eabi-minimal-encoder-icount",
+      "configurePreset": "config-arm-none-eabi-minimal-encoder-icount",
+      "displayName": "arm-none-eabi bare-metal minimum-footprint encoder, instruction-counting clock"
     },
     {
       "name": "build-linux-llvm-shared",

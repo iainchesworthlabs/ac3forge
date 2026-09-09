@@ -94,7 +94,7 @@ fi
 # the arm-none-eabi leg can still fail here. It did: at 267,754, before the
 # scratch was released, this leg died on a 6,144-byte request.
 : "${AC3FORGE_ESP32S3_MAX_HEAP_BYTES:=245000}"
-# One ceiling for all nine fixtures. Enhanced coupling had its own of 140
+# One ceiling for all eleven fixtures. Enhanced coupling had its own of 140
 # until the 60 allocations per frame behind that exemption turned out to be two
 # std::vector<double> in the reconstruction loop rather than anything §E3.5
 # asks for; it now measures 12, level with plain eac3. See

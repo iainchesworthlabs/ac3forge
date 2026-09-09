@@ -83,6 +83,17 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   both. Each fixture now prints `<fixture>.peak_bytes=`, so a part with another budget can read
   which fixture needs what. The probe's PCM block is twelve channels (73,728 bytes) rather than
   eight.
+- **The output stage's per-sample arithmetic in `decode_scalar_t`, and two folded fixtures.**
+  Dialnorm, the §7.8 folds, the Hilbert phase shift behind Lt/Rt and RF mode's overload
+  protection ran in `double` under the minimum-footprint profile, on the ESP32-S3's software
+  floating point; they now follow the decoder's scalar, the gains and mix coefficients staying
+  `double`, through the same template-and-`<double>`-instantiation shape as the passes before,
+  so every ordinary build is unchanged. The probe gains `ac3_fold` and `eac3_fold` - the two
+  5.1 streams decoded to Lo/Ro stereo in line mode, both levels exact on every leg - at 68,617
+  and 216,406 bytes of peak heap and 10.78 M and 14.28 M instructions a frame on the Cortex-M3
+  leg, 0.56 M and 1.35 M over the plain 5.1 rows; `run_baremetal_probe.sh --icount` gates
+  both. `tools/generators/gen_baremetal_fixture.py` can now emit a fixture that decodes an
+  existing stream under a decoder setting rather than encoding a new one.
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has

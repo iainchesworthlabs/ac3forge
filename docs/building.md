@@ -447,8 +447,10 @@ call into the ROM's software routines, and a board profile on 2026-09-09 found t
 a 5.1 E-AC-3 decode ([the ESP32-S3 page](platforms/esp32.md#timing) has the stage table). Those
 paths now run in `decode_scalar_t` too, through templates whose `<double>` instantiations are the
 exported functions the ordinary build always called, so its arithmetic is unchanged. What still
-runs in `double` on this profile is stated rather than hidden: the per-block DRC gain and the
-output stage's fold. Enhanced coupling's reconstruction followed in a second pass - its routines
+runs in `double` on this profile is stated rather than hidden: the per-block DRC gain, and the
+output stage's gains and mix coefficients - the stage's per-sample arithmetic, the dialnorm
+scale, the folds, the Hilbert phase shift and RF mode's protection, followed on 2026-09-10.
+Enhanced coupling's reconstruction followed in a second pass - its routines
 are shared with the encoder, so they exist in both scalars now, the double forms being the
 encoder's - and with it the last of the decode path is in `decode_scalar_t`.
 
