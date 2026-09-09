@@ -88,6 +88,10 @@ struct DeltaSegments {
     std::array<std::uint8_t, 8> deltoffst{};  // 5-bit band offsets (Table 5.3/E1.3)
     std::array<std::uint8_t, 8> deltlen{};    // 4-bit band lengths
     std::array<std::uint8_t, 8> deltba{};     // 3-bit adjustment codes (Table 5.17)
+
+    // Field-wise, so a decoder can tell whether a block's segments are the
+    // previous block's and keep the allocation they produced.
+    [[nodiscard]] friend bool operator==(const DeltaSegments&, const DeltaSegments&) = default;
 };
 
 // Where the allocation starts, and - for the coupling channel - the leak
@@ -115,6 +119,8 @@ struct BitAllocRegion {
     // §7.2.2.6: this call's delta segments (see DeltaSegments above) — the
     // caller picks whichever of cpldelt*/delt*[ch] belongs to this channel.
     DeltaSegments delta{};
+
+    [[nodiscard]] friend bool operator==(const BitAllocRegion&, const BitAllocRegion&) = default;
 };
 
 // §7.2.2.2-7.2.2.7 for one channel. exps are the DECODED exponents (the

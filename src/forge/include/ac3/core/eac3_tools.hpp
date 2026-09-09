@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <type_traits>
 
 #include "ac3/export.hpp"
 
@@ -201,9 +202,17 @@ struct AC3FORGE_EXPORT SpxNoise {
         state ^= state >> 17;
         state ^= state << 5;
         constexpr auto kRadius = static_cast<Scalar>(1.7320508075688772);
-        const Scalar unit =
-            static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
-        return (unit * Scalar{2} - Scalar{1}) * kRadius;
+        if constexpr (std::is_same_v<Scalar, float>) {
+            // A multiply by the reciprocal rather than the divide the double
+            // form keeps (see DitherGenerator::next_as for the same choice).
+            constexpr float kUnit = 1.0F / 4294967295.0F;
+            const float unit = static_cast<float>(state) * kUnit;  // [0,1]
+            return (unit * 2.0F - 1.0F) * kRadius;
+        } else {
+            const Scalar unit =
+                static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
+            return (unit * Scalar{2} - Scalar{1}) * kRadius;
+        }
     }
 };
 
@@ -390,8 +399,14 @@ template <typename Scalar>
     state ^= state << 13;
     state ^= state >> 17;
     state ^= state << 5;
-    const Scalar unit = static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
-    return unit * Scalar{2} - Scalar{1};  // [-1, 1], matching §3.5.5.3's uniform
+    if constexpr (std::is_same_v<Scalar, float>) {
+        constexpr float kUnit = 1.0F / 4294967295.0F;
+        return static_cast<float>(state) * kUnit * 2.0F - 1.0F;  // [-1, 1]
+    } else {
+        const Scalar unit =
+            static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
+        return unit * Scalar{2} - Scalar{1};  // [-1, 1], matching §3.5.5.3's uniform
+    }
 }
 
 // §3.5.5.3's other sequence, for a channel/bin WITH a transient present
@@ -409,9 +424,14 @@ struct AC3FORGE_EXPORT EcplNoise {
         state ^= state << 13;
         state ^= state >> 17;
         state ^= state << 5;
-        const Scalar unit =
-            static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
-        return unit * Scalar{2} - Scalar{1};
+        if constexpr (std::is_same_v<Scalar, float>) {
+            constexpr float kUnit = 1.0F / 4294967295.0F;
+            return static_cast<float>(state) * kUnit * 2.0F - 1.0F;
+        } else {
+            const Scalar unit =
+                static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
+            return unit * Scalar{2} - Scalar{1};
+        }
     }
 };
 
@@ -682,5 +702,60 @@ template <typename Scalar>
     return (large_code >= 0 ? Scalar{1} : Scalar{-1}) *
            (dead_zone + static_cast<Scalar>(k) * large_step);
 }
+
+// aht_dequantize_mantissa_as with its per-bin constants resolved once. A
+// bin's six codewords share mantissa_bits and gain, and the function above
+// derives three divisions from those two integers on every call - the dead
+// zone, the large step and the small-codeword scale - six times over per
+// bin; on the single-precision FPU the minimum-footprint profile targets
+// that was where an AHT bin's time went once its inverse transform ran in
+// float. Same expressions, evaluated once: every value this produces is the
+// one the function produces. The small-codeword scale is 1 over a power of
+// two, so multiplying by it is the division it stands in for.
+template <typename Scalar>
+struct AhtGaqDequantizer {
+    int mantissa_bits;
+    int gain;
+    int small_bits;
+    int large_bits;
+    Scalar levels;       // gain 1: 2^mantissa_bits - 1
+    Scalar small_scale;  // gain 2 and 4: 1 / (small_half * gain)
+    Scalar dead_zone;    // 1 / gain
+    Scalar large_step;
+
+    static constexpr int small_bits_for(int mantissa_bits, int gain) {
+        return gain == 1 ? mantissa_bits : (gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2);
+    }
+
+    constexpr AhtGaqDequantizer(int mantissa_bits_, int gain_)
+        : mantissa_bits(mantissa_bits_),
+          gain(gain_),
+          small_bits(small_bits_for(mantissa_bits_, gain_)),
+          large_bits(gain_ == 2 ? mantissa_bits_ - 1 : mantissa_bits_),
+          levels(static_cast<Scalar>((1 << mantissa_bits_) - 1)),
+          small_scale(Scalar{1} / static_cast<Scalar>((1 << (small_bits_for(mantissa_bits_, gain_) - 1)) *
+                                                     gain_)),
+          dead_zone(Scalar{1} / static_cast<Scalar>(gain_)),
+          large_step(gain_ == 2 ? Scalar{1} / static_cast<Scalar>((1 << (mantissa_bits_ - 1)) - 1)
+                                : Scalar{3} / static_cast<Scalar>((1 << (mantissa_bits_ + 1)) - 2)) {}
+
+    [[nodiscard]] constexpr Scalar operator()(std::uint32_t code, std::uint32_t escape,
+                                              bool has_escape) const {
+        const auto sign_extend = [](std::uint32_t raw, int bits) {
+            const auto sign_bit = static_cast<std::uint32_t>(1) << (bits - 1);
+            return static_cast<int>((raw ^ sign_bit) - sign_bit);
+        };
+        if (gain == 1) {
+            return Scalar{2} * static_cast<Scalar>(sign_extend(code, mantissa_bits)) / levels;
+        }
+        if (!has_escape) {
+            return static_cast<Scalar>(sign_extend(code, small_bits)) * small_scale;
+        }
+        const int large_code = sign_extend(escape, large_bits);
+        const int k = large_code >= 0 ? large_code : -large_code - 1;
+        return (large_code >= 0 ? Scalar{1} : Scalar{-1}) *
+               (dead_zone + static_cast<Scalar>(k) * large_step);
+    }
+};
 
 }  // namespace ac3::eac3

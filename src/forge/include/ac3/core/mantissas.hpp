@@ -4,9 +4,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <type_traits>
 #include <vector>
 
 #include "ac3/core/bitreader.hpp"
+#include "ac3/core/exponents.hpp"
 #include "ac3/export.hpp"
 
 // Mantissa quantization and grouping (A/52 §7.3).
@@ -54,17 +56,42 @@ inline constexpr std::array<int, 6> kSymmetricLevels = {0, 3, 5, 7, 11, 15};
 // to a float rounding boundary for the double result narrowed to float to
 // differ from the float division itself. The asymmetric case is a division by
 // a power of two, exact in both.
+//
+// Neither branch divides at run time any more. The symmetric quantizers'
+// reconstruction values are a table - five baps of at most fifteen codes,
+// filled at compile time by the very division the function used to perform,
+// so each entry is that division's correctly rounded result in the table's
+// own type - and the asymmetric ones scale by 2^-(bits-1), which as a
+// multiply by an exact power of two is the division it replaces. A divide is
+// a short software sequence on the single-precision FPU the minimum-footprint
+// profile targets, and this ran once per coded mantissa.
+template <typename Scalar>
+inline constexpr std::array<std::array<Scalar, 16>, 6> kSymmetricReconstruction = [] {
+    std::array<std::array<Scalar, 16>, 6> table{};
+    for (int bap = 1; bap <= 5; ++bap) {
+        const int levels = kSymmetricLevels[static_cast<std::size_t>(bap)];
+        for (int code = 0; code < levels; ++code) {
+            table[static_cast<std::size_t>(bap)][static_cast<std::size_t>(code)] =
+                (Scalar{2} * static_cast<Scalar>(code) - static_cast<Scalar>(levels - 1)) /
+                static_cast<Scalar>(levels);
+        }
+    }
+    return table;
+}();
+
 template <typename Scalar>
 [[nodiscard]] constexpr Scalar dequantize_mantissa_as(std::uint32_t code, int bap) {
     if (bap <= 5) {
-        const int levels = kSymmetricLevels[static_cast<std::size_t>(bap)];
-        return (Scalar{2} * static_cast<Scalar>(static_cast<int>(code)) -
-                static_cast<Scalar>(levels - 1)) /
-               static_cast<Scalar>(levels);
+        // The ungrouping arithmetic bounds every symmetric code below 16
+        // (a 7-bit group over 25 or 11, a 5-bit one over 9, or the 3- and
+        // 4-bit raw fields), so a corrupt group reads a table entry - zero,
+        // past its quantizer's levels - rather than past the table.
+        return kSymmetricReconstruction<Scalar>[static_cast<std::size_t>(bap)]
+                                              [static_cast<std::size_t>(code & 15U)];
     }
     const int bits = kBapBits[static_cast<std::size_t>(bap)];
     const auto value = static_cast<std::int32_t>(code << (32 - bits)) >> (32 - bits);  // sign extend
-    return static_cast<Scalar>(value) / static_cast<Scalar>(1u << (bits - 1));
+    return static_cast<Scalar>(value) * exponent_scale<Scalar>(bits - 1);
 }
 
 // §7.3.4: dither for zero-bit mantissas (bap == 0), substituted only where
@@ -97,9 +124,19 @@ struct AC3FORGE_EXPORT DitherGenerator {
         state ^= state >> 17;
         state ^= state << 5;
         constexpr auto kScale = static_cast<Scalar>(0.707);
-        const Scalar unit =
-            static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
-        return (unit * Scalar{2} - Scalar{1}) * kScale;
+        if constexpr (std::is_same_v<Scalar, float>) {
+            // A multiply by the reciprocal rather than the divide the double
+            // form keeps - not the same values to the last bit, but this
+            // sequence is the decoder's own to choose, and a float divide is
+            // a short software sequence on the FPU the float profile targets.
+            constexpr float kUnit = 1.0F / 4294967295.0F;
+            const float unit = static_cast<float>(state) * kUnit;  // [0,1]
+            return (unit * 2.0F - 1.0F) * kScale;
+        } else {
+            const Scalar unit =
+                static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
+            return (unit * Scalar{2} - Scalar{1}) * kScale;
+        }
     }
 };
 

@@ -437,6 +437,62 @@ template <typename Scalar>
     return dq[1];
 }
 
+// §6.6.5's ramp with its per-block fractions resolved once. interpolate()
+// above divides on every call - (ts + 1) / slots, or the half-frame
+// equivalents - and the MDCT-band mixing calls it once per (object, channel,
+// subband) per block, some eleven thousand times a frame; on the
+// single-precision FPU the minimum-footprint profile targets each divide is a
+// short software sequence. At float the three fractions are formed once per
+// block and the ramp is a multiply-add, which is the same ramp to float
+// rounding. At double this is interpolate() itself, so a double
+// reconstruction is unchanged to the bit.
+template <typename Scalar>
+struct RampFractions {
+    Scalar whole{0};        // (ts + 1) / slots, the single-data-point ramp
+    Scalar first_half{0};   // (ts + 1) / half
+    Scalar second_half{0};  // (ts - half + 1) / (slots - half)
+};
+
+template <typename Scalar>
+[[nodiscard]] RampFractions<Scalar> ramp_fractions(int ts, int slots) {
+    const int half = slots / 2;
+    return RampFractions<Scalar>{
+        .whole = static_cast<Scalar>(ts + 1) / static_cast<Scalar>(slots),
+        .first_half = static_cast<Scalar>(ts + 1) / static_cast<Scalar>(half),
+        .second_half = static_cast<Scalar>(ts - half + 1) / static_cast<Scalar>(slots - half)};
+}
+
+template <typename Scalar>
+[[nodiscard]] Scalar interpolate_ramp(const ObjectShape& shape, Scalar previous, Scalar dq0,
+                                      Scalar dq1, const RampFractions<Scalar>& fraction, int ts,
+                                      int slots) {
+    if constexpr (std::is_same_v<Scalar, float>) {
+        if (!shape.steep) {
+            if (shape.data_points == 1) {
+                return previous + fraction.whole * (dq0 - previous);
+            }
+            if (ts < slots / 2) {
+                return previous + fraction.first_half * (dq0 - previous);
+            }
+            return dq0 + fraction.second_half * (dq1 - dq0);
+        }
+        if (ts < shape.offset_ts[0]) {
+            return previous;
+        }
+        if (shape.data_points == 1 || ts < shape.offset_ts[1]) {
+            return dq0;
+        }
+        return dq1;
+    } else {
+        const std::array<Scalar, kMaxDataPoints> dq = {dq0, dq1};
+        return interpolate<Scalar>(shape, previous, dq, ts, slots);
+    }
+}
+
+// The widest parameter-band count Table 50 allows, for the per-object
+// coefficient scratch the mixing loop below fills once per block.
+constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.back());
+
 // Domain::kMdctBand. Per-object band count, quantizer, sparse mode,
 // interpolation slope and data-point count - everything parse_payload can
 // now produce - applied inside the same block-granular MDCT reconstruction
@@ -639,25 +695,42 @@ template <typename Scalar>
             // it across those 4 bins instead of recomputing an identical
             // value 4 times; the per-bin summation itself (order, operands)
             // is untouched, so this is the same arithmetic, done less often.
+            // The two data points of every (channel, band), read once per
+            // object per block rather than once per subband: a band spans
+            // several subbands, and the index arithmetic behind each read
+            // cost more than the ramp it fed. The values are the same reads.
+            std::array<std::array<Scalar, kMaxChannels>, kMaxParameterBands> dq0{};
+            std::array<std::array<Scalar, kMaxChannels>, kMaxParameterBands> dq1{};
+            for (int band = 0; band < nbands; ++band) {
+                const auto ub = static_cast<std::size_t>(band);
+                for (int ch = 0; ch < channels; ++ch) {
+                    const auto uc = static_cast<std::size_t>(ch);
+                    dq0[ub][uc] = coefficient(view, base, nbands, 0, ch, band);
+                    dq1[ub][uc] = shape.data_points > 1
+                                      ? coefficient(view, base, nbands, 1, ch, band)
+                                      : dq0[ub][uc];
+                }
+            }
+            const RampFractions<Scalar> fraction = ramp_fractions<Scalar>(ts, slots);
+            const std::size_t previous_base =
+                static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) *
+                static_cast<std::size_t>(kQmfSubbands);
             std::array<Scalar, kMaxChannels> m{};
             for (int subband = 0; subband < kQmfSubbands; ++subband) {
-                const int band = mapping[static_cast<std::size_t>(subband)];
+                const auto band = static_cast<std::size_t>(mapping[static_cast<std::size_t>(subband)]);
                 for (int ch = 0; ch < channels; ++ch) {
-                    const std::array<Scalar, kMaxDataPoints> dq = {
-                        coefficient(view, base, nbands, 0, ch, band),
-                        shape.data_points > 1 ? coefficient(view, base, nbands, 1, ch, band)
-                                              : coefficient(view, base, nbands, 0, ch, band)};
+                    const auto uc = static_cast<std::size_t>(ch);
+                    if (!has_ramp) {
+                        m[uc] = shape.data_points > 1 ? dq1[band][uc] : dq0[band][uc];
+                        continue;
+                    }
                     const std::size_t previous_index =
-                        (static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) +
-                         static_cast<std::size_t>(ch)) *
-                            static_cast<std::size_t>(kQmfSubbands) +
+                        previous_base + uc * static_cast<std::size_t>(kQmfSubbands) +
                         static_cast<std::size_t>(subband);
                     const Scalar previous =
-                        has_ramp ? static_cast<Scalar>(state.previous_matrix[previous_index])
-                                 : dq[0];
-                    m[static_cast<std::size_t>(ch)] =
-                        has_ramp ? interpolate<Scalar>(shape, previous, dq, ts, slots)
-                                 : dq[static_cast<std::size_t>(shape.data_points - 1)];
+                        static_cast<Scalar>(state.previous_matrix[previous_index]);
+                    m[uc] = interpolate_ramp<Scalar>(shape, previous, dq0[band][uc], dq1[band][uc],
+                                                     fraction, ts, slots);
                 }
                 for (int bin = subband * 4; bin < subband * 4 + 4; ++bin) {
                     Scalar sum{0};

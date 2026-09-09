@@ -230,6 +230,7 @@ if(AC3FORGE_MINIMAL_HOT_O2)
     set_source_files_properties(
         src/core/bitalloc.cpp
         src/core/eac3_tools.cpp
+        src/core/fft.cpp
         src/decoder/decoder.cpp
         src/decoder/eac3_decoder.cpp
         src/oba/joc.cpp
