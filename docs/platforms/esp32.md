@@ -569,7 +569,7 @@ cycles on an ESP32-C3 against 121 on an ESP32-S3
 | **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — see below |
 | ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
 | ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
-| ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | No — same, slower |
+| ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | Not for E-AC-3: a 5.1 frame is 12.9 M soft-float instructions on the [Cortex-M3 leg](../performance-trend.md#instructions-per-frame), three to six times a 160 MHz budget once RISC-V's compiled soft-float and its IPC are allowed for. AC-3 mono fits at 1.6 M; AC-3 2/0 at 3.5 M is the marginal case. A board measures it next |
 
 Every part with an FPU has a single-precision one, so `double` is soft-float across the family and
 `decode_scalar_t` earns its keep on all of them.

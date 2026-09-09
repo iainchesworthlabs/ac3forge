@@ -37,7 +37,20 @@ tools/checks/run_baremetal_probe.sh
 
 # The same profile natively, no emulator
 tools/checks/run_baremetal_probe.sh --host
+
+# Instructions per frame under QEMU -icount, deterministic and gated
+tools/checks/run_baremetal_probe.sh --icount
 ```
+
+`--icount` is the one timing figure this leg can give. QEMU is not cycle-accurate and the probe's
+ordinary clock is semihosting's, which reports the host's time; but under `-icount shift=0` the
+guest's own clock advances one nanosecond per executed instruction, and a build whose clock reads
+the mps2-an385's 25 MHz timer (`AC3FORGE_BAREMETAL_CLOCK=timer`, its own preset and build
+directory) follows it. Every microsecond the probe then prints is a thousand Thumb-2 instructions,
+identical on every host and every run — `eac3.instructions_per_frame=12948000` — gated per fixture
+with the same headroom rule as the other ceilings, and with `--stage-timers` counted per stage. It
+is not cycles on any real part; it is a number that moves when the code does, which the host-time
+figure never was, and it is what the [ESP32-C3 estimate](esp32.md#other-esp32-variants) rests on.
 
 Both drive the presets, which you can also use directly: `config-arm-none-eabi-minimal` /
 `build-arm-none-eabi-minimal`, and `config-linux-gcc-minimal` or `config-linux-llvm-minimal` for
