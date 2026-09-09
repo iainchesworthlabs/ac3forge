@@ -1,8 +1,10 @@
 # Bare metal
 
 A board with no operating system, no C++ runtime to speak of, and a few hundred kilobytes of RAM.
-The library builds for it as `ac3::forge_minimal`: one decode-only static archive, no exceptions,
-no RTTI, and none of the direct-form transform tables.
+The library builds for it as `ac3::forge_minimal`: one static archive, no exceptions, no RTTI,
+and none of the direct-form transform tables. It is decode-only under
+`AC3FORGE_MINIMAL_DECODER` and encode-only under `AC3FORGE_MINIMAL_ENCODER`; the two are
+mutually exclusive, because neither fits beside the other in the memory this profile targets.
 
 The reference target is `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine — a
 Cortex-M3 with no floating-point unit, where every floating-point operation is software-emulated.
@@ -20,7 +22,7 @@ It is the target CI measures the profile on. The
 | Image size | 297,612 bytes total — 200,060 `.text`, 400 `.data`, 97,152 `.bss` |
 | Peak heap | 179,064 bytes |
 | Retained after teardown | 34,232 bytes of enhanced-coupling scratch, held for the life of the decoding thread |
-| Encode | Not built. The profile is decode-only. |
+| Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`. The two are mutually exclusive: neither fits beside the other. |
 | Audio output | None. The probe decodes built-in fixtures and prints levels. |
 | Real silicon | None. Correctness is established under emulation. |
 | CI | `build-footprint` in `.github/workflows/_build.yml`, on every push |
@@ -51,7 +53,7 @@ list if any component needing the full library is still switched on.
 
 | Not compiled | Consequence |
 |---|---|
-| The encoder, container writers, WAV I/O, analysis and QC layers, the object encoder | Decode only. `src/forge/minimal.cmake` lists what is compiled, with a line on why each file is reachable from a decode. |
+| Under `AC3FORGE_MINIMAL_DECODER`: the encoder, container writers, WAV I/O, analysis and QC layers, the object encoder | Decode only. `src/forge/minimal.cmake` lists what is compiled, with a line on why each file is reachable from a decode. `AC3FORGE_MINIMAL_ENCODER` is the same profile pointed the other way. |
 | The direct-form transform tables | 1,900,544 bytes of `.bss` that are absent from the image rather than merely unused. `DecoderConfig::fast_imdct = false` returns `DecodeError::kUnsupported` here instead of being served quietly by the fast path. |
 
 Object reconstruction compiles and links, and decodes correctly, but does not fit on a part this

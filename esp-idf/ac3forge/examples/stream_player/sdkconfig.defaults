@@ -1,0 +1,19 @@
+# ESP-IDF configuration for the streaming player example.
+#
+# The same shape as the i2s_player example beside it - see that file for why
+# each setting is what it is - plus a custom partition table, which is the one
+# thing this example needs and that one does not.
+
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# The audio partition lives here. Without this IDF uses its own single-factory
+# table, which has nowhere to put a stream.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# PSRAM stays off, as everywhere else in this profile: the point is that the
+# decode fits in internal SRAM, and the streaming buffers are part of what has
+# to fit.

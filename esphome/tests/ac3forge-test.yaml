@@ -1,0 +1,25 @@
+# Validated by CI with `esphome config` - see .github/workflows/esp-component.yml.
+#
+# A LOCAL source, not the git one the README shows: this has to validate the
+# component in the working tree, which is the whole point of running it in CI.
+# A git source would fetch whatever is on the branch this PR has not merged to
+# and pass no matter what the PR did.
+esphome:
+  name: ac3forge-test
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [ac3forge]
+
+logger:
+
+ac3forge:
+  version: main
+  buffer_size: 16384

@@ -175,7 +175,7 @@ constexpr std::uint8_t kTagAtscEac3Descriptor = 0xCC;
 // pin it, honour them; where they do not, an unqualified visually-impaired,
 // hearing-impaired or commentary service is normally complete on its own.
 [[nodiscard]] bool full_service(int bsmod, int acmod, std::optional<bool> override_value) {
-    if (override_value) {
+    if (override_value.has_value()) {
         return *override_value;
     }
     switch (bsmod) {
@@ -241,7 +241,7 @@ void put_descriptor_header(Bytes& d, std::uint8_t tag, std::size_t payload_bytes
     const bool multiple = eac3 && (s.independent_substreams & 0xFEu) != 0;
     const auto flags = channel_flags(s.acmod, s.lfe, s.channels, s.dsurmod, multiple,
                                      ChannelFlagLimits{.wide = eac3, .programmes = eac3});
-    if (!flags) {
+    if (!flags.has_value()) {
         return std::nullopt;
     }
     const unsigned value = (eac3 ? 0x80u : 0x00u) |
@@ -260,7 +260,7 @@ void put_descriptor_header(Bytes& d, std::uint8_t tag, std::size_t payload_bytes
     // A substream's own bed is all its acmod describes, so no "> 5.1" rung.
     const auto flags = channel_flags(s.acmod, s.lfe, /*channels=*/0, s.dsurmod,
                                      /*multiple_programmes=*/false, ChannelFlagLimits{});
-    if (!flags) {
+    if (!flags.has_value()) {
         return std::nullopt;
     }
     const unsigned value = (s.mix_metadata ? 0x80u : 0x00u) |
@@ -292,7 +292,7 @@ void put_descriptor_header(Bytes& d, std::uint8_t tag, std::size_t payload_bytes
     const auto flags = channel_flags(s.acmod, s.lfe, /*channels=*/0, s.dsurmod,
                                      /*multiple_programmes=*/false,
                                      ChannelFlagLimits{.dual_mono = false});
-    if (!flags) {
+    if (!flags.has_value()) {
         return std::nullopt;  // Table G.6 reserves 1+1
     }
     const unsigned value = 0x80u | (s.substream_priority ? 0x40u : 0x00u) |
@@ -308,26 +308,26 @@ Bytes build_dvb_ac3_descriptor(const ServiceInfo& s) {
     const auto component_type = dvb_component_type(s, /*eac3=*/false);
     Bytes body;
     unsigned flags = 0;
-    if (component_type) {
+    if (component_type.has_value()) {
         flags |= 0x80u;
     }
     flags |= 0x40u;  // bsid_flag
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         flags |= 0x20u;
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         flags |= 0x10u;
     }
     // reserved_flags (b3-b0) "should always be set to 0b0".
     put_byte(body, static_cast<std::uint8_t>(flags));
-    if (component_type) {
+    if (component_type.has_value()) {
         put_byte(body, *component_type);
     }
     put_byte(body, static_cast<std::uint8_t>(s.bsid & 0x1F));
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         put_byte(body, static_cast<std::uint8_t>(*s.mainid & 0x7));
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         put_byte(body, *s.asvc);
     }
 
@@ -351,14 +351,14 @@ Bytes build_dvb_eac3_descriptor(const ServiceInfo& s) {
 
     Bytes body;
     unsigned flags = 0;
-    if (component_type) {
+    if (component_type.has_value()) {
         flags |= 0x80u;
     }
     flags |= 0x40u;  // bsid_flag
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         flags |= 0x20u;
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         flags |= 0x10u;
     }
     if (s.mix_metadata) {
@@ -370,18 +370,18 @@ Bytes build_dvb_eac3_descriptor(const ServiceInfo& s) {
         }
     }
     put_byte(body, static_cast<std::uint8_t>(flags));
-    if (component_type) {
+    if (component_type.has_value()) {
         put_byte(body, *component_type);
     }
     put_byte(body, static_cast<std::uint8_t>(s.bsid & 0x1F));
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         put_byte(body, static_cast<std::uint8_t>(*s.mainid & 0x7));
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         put_byte(body, *s.asvc);
     }
     for (const auto& substream : substreams) {
-        if (substream) {
+        if (substream.has_value()) {
             put_byte(body, *substream);
         }
     }
@@ -485,10 +485,10 @@ Bytes build_atsc_eac3_descriptor(const ServiceInfo& s) {
     // Byte 1: reserved '1', then bsid_flag, mainid_flag, asvc_flag,
     // mixinfoexists, substream1_flag, substream2_flag, substream3_flag.
     unsigned flags = 0x80u | 0x40u;  // reserved '1', bsid_flag
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         flags |= 0x20u;
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         flags |= 0x10u;
     }
     if (s.mix_metadata) {
@@ -510,17 +510,17 @@ Bytes build_atsc_eac3_descriptor(const ServiceInfo& s) {
                        static_cast<unsigned>(flags_value.value_or(0x4))));
     // Byte 3: language_flag = 0, language_flag_2 = 0, reserved, bsid.
     put_byte(body, static_cast<std::uint8_t>(0x20u | (s.bsid & 0x1F)));
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         // reserved '111', priority (Table A4.6, which Annex G reuses), mainid.
         put_byte(body, static_cast<std::uint8_t>(0xE0u |
                                                  ((static_cast<unsigned>(s.priority) & 0x3u) << 3) |
                                                  (static_cast<unsigned>(*s.mainid) & 0x7u)));
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         put_byte(body, *s.asvc);
     }
     for (const auto& substream : substreams) {
-        if (substream) {
+        if (substream.has_value()) {
             put_byte(body, *substream);
         }
     }
@@ -880,7 +880,7 @@ std::expected<std::vector<std::byte>, MuxError> mux(
 
         const auto pts = stamp_90k(i);
         auto pes = build_pes_packet(frames[i], pts);
-        if (!pes) {
+        if (!pes.has_value()) {
             return std::unexpected(pes.error());
         }
         emit_pes_packets(out, options.audio_pid, audio_cc, *pes, pts);
@@ -942,7 +942,7 @@ std::expected<std::vector<std::byte>, MuxError> Writer::push(
     const std::uint64_t pts = static_cast<std::uint64_t>(index_) * track_.samples_per_frame *
                               90'000ull / track_.sample_rate;
     auto pes = build_pes_packet(access_unit, pts);
-    if (!pes) {
+    if (!pes.has_value()) {
         return std::unexpected(pes.error());
     }
     emit_pes_packets(out, options_.audio_pid, audio_cc_, *pes, pts);

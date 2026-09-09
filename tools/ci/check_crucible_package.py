@@ -44,6 +44,8 @@ import sys
 import tarfile
 import zipfile
 
+NOTICES_TXT = "NOTICES.txt"
+
 # What has to be there for the window to exist and start at all: itself, the
 # console runner beside it, the driver scripts its Settings page points at,
 # the qt.conf that makes the layout resolve, and the Windows platform plugin
@@ -57,7 +59,7 @@ REQUIRED = (
     "bin/driver/NullSinkDevice.ps1",
     "bin/qt.conf",
     "plugins/platforms/qwindows.dll",
-    "NOTICES.txt",
+    NOTICES_TXT,
     "LICENSE.txt",
 )
 
@@ -237,7 +239,7 @@ def main(argv: list[str]) -> int:
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
         total_mb = round(sum(info.file_size for info in archive.infolist()) / 1048576)
-        notices = archive.read("NOTICES.txt").decode("utf-8") if "NOTICES.txt" in names else None
+        notices = archive.read(NOTICES_TXT).decode("utf-8") if NOTICES_TXT in names else None
 
     qml = [n for n in names if n.startswith("qml/")]
     print(f"{path}: {len(names)} entries, {total_mb} MB unpacked, {len(qml)} QML files")

@@ -93,3 +93,4 @@ dist/
 # matters more here, the same reasoning requirements/*.txt's --require-hashes
 # pins Python tooling).
 rust/target/
+esphome/tests/too-small.yaml

@@ -15,6 +15,11 @@ to one path per alternative, and a path named in a page's prose is checked the
 way one in a link is - except on the pages exempted by name, whose links are
 still checked.
 
+WrappedLinks covers the one rule that cannot be stated a line at a time: a link
+whose text wraps across a line break is one link, is checked, and is reported
+against the line it opens on — and the two boundaries that keep matching a
+paragraph at a time from over-reaching, a blank line and a stray '['.
+
 Run: python3 -m unittest discover -s tools/checks -p 'test_*.py'
 """
 
@@ -83,6 +88,61 @@ class MarkdownLinks(unittest.TestCase):
         report = check_doc_paths.check_tree(self.root)
         self.assertEqual(len(report.problems), 1)
         self.assertIn("ROADMAP.md:2:", report.problems[0])
+        self.assertIn("must be an absolute URL", report.problems[0])
+
+
+class WrappedLinks(unittest.TestCase):
+    """A link whose text wraps across a line break, and the bounds on that."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        _write(self.root, "docs/target.md", "# target\n")
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_wrapped_link_is_checked_and_resolves(self) -> None:
+        _write(self.root, "docs/page.md", "See [the target page, named\nhere](target.md).\n")
+        report = check_doc_paths.check_tree(self.root)
+        self.assertEqual(report.problems, [])
+        self.assertEqual(report.checked, 1)
+
+    def test_wrapped_link_to_a_missing_target_fails_on_its_opening_line(self) -> None:
+        text = "intro\n\nSee [the page that\nwent away](gone.md) for why.\n"
+        _write(self.root, "docs/page.md", text)
+        report = check_doc_paths.check_tree(self.root)
+        self.assertEqual(len(report.problems), 1)
+        self.assertIn("docs/page.md:3:", report.problems[0])
+        self.assertIn("gone.md", report.problems[0])
+
+    def test_wrapped_link_inside_a_fence_is_still_syntax(self) -> None:
+        _write(self.root, "docs/page.md", "```\n[an example that\nwraps](nowhere.md)\n```\n")
+        report = check_doc_paths.check_tree(self.root)
+        self.assertEqual(report.problems, [])
+        self.assertEqual(report.checked, 0)
+
+    def test_a_blank_line_ends_the_paragraph_and_so_the_link(self) -> None:
+        """Markdown stops a link at a paragraph break, so no match may cross one."""
+        targets = check_doc_paths.link_targets(["[text that stops", "", "here](nowhere.md)"])
+        self.assertEqual(targets, [])
+
+    def test_a_prose_bracket_does_not_capture_a_later_link(self) -> None:
+        """A ']' closes the most recent '[': the interval must not swallow the link below it."""
+        lines = [
+            "The key space is exactly [0, 32), so a flat array indexes it",
+            "directly and the lookup costs nothing.",
+            "- [CONTRIBUTING.md](CONTRIBUTING.md) records the rule.",
+        ]
+        self.assertEqual(check_doc_paths.link_targets(lines), [(3, "CONTRIBUTING.md")])
+
+    def test_two_links_on_one_line_keep_their_order(self) -> None:
+        lines = ["[first](a.md) then [second](b.md)"]
+        self.assertEqual(check_doc_paths.link_targets(lines), [(1, "a.md"), (1, "b.md")])
+
+    def test_roadmaps_absolute_rule_reaches_a_wrapped_link(self) -> None:
+        _write(self.root, "ROADMAP.md", "A [link whose text\nwraps](docs/target.md) here.\n")
+        report = check_doc_paths.check_tree(self.root)
+        self.assertEqual(len(report.problems), 1)
+        self.assertIn("ROADMAP.md:1:", report.problems[0])
         self.assertIn("must be an absolute URL", report.problems[0])
 
 

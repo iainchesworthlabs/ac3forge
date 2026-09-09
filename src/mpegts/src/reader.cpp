@@ -523,7 +523,7 @@ std::expected<std::size_t, DemuxError> walk(ReaderState& s, std::span<const std:
     while (at + s.grid.stride <= window.size()) {
         const auto packet = window.subspan(at + s.grid.offset, kTsPacketSize);
         const auto parsed = parse_packet(s, packet, on_payload);
-        if (!parsed) {
+        if (!parsed.has_value()) {
             return std::unexpected(parsed.error());
         }
         at += s.grid.stride;
@@ -565,7 +565,7 @@ std::expected<Demuxed, DemuxError> demux(std::span<const std::byte> file,
     };
 
     const auto walked = walk(s, file, keep);
-    if (!walked) {
+    if (!walked.has_value()) {
         return std::unexpected(walked.error());
     }
     // The last PES of a capture using the unbounded length form is only
@@ -573,7 +573,7 @@ std::expected<Demuxed, DemuxError> demux(std::span<const std::byte> file,
     emit_pes(s, keep);
 
     const auto verdict = finish_verdict(s);
-    if (!verdict) {
+    if (!verdict.has_value()) {
         return std::unexpected(verdict.error());
     }
 
@@ -603,7 +603,7 @@ std::expected<void, DemuxError> Reader::push(std::span<const std::byte> chunk,
     auto& s = *state_;
     s.buffer.insert(s.buffer.end(), chunk.begin(), chunk.end());
     const auto consumed = walk(s, s.buffer, on_payload);
-    if (!consumed) {
+    if (!consumed.has_value()) {
         return std::unexpected(consumed.error());
     }
     s.buffer.erase(s.buffer.begin(), s.buffer.begin() + static_cast<std::ptrdiff_t>(*consumed));

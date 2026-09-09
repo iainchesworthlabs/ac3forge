@@ -92,12 +92,17 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent.parent
 BUILD = REPO / "build"
+# The synthetic 5.1 material race_eac3() writes for the "eac3-51" mode.
+RACE_SRC51_WAV = BUILD / "race_src51.wav"
 # AC3CLI overrides the binary: the "dev" preset this default assumes does not
 # exist (see CMakePresets.json - there is no such preset, only per-platform
 # config-<leg> ones), and there is no ac3cli.exe on Linux at all. CI sets
 # AC3CLI to the leg's real build/config-<preset>/bin/ac3cli; the hardcoded
 # default is left as-is for whatever local workflow it used to match.
 CLI = Path(os.environ.get("AC3CLI", str(BUILD / "dev" / "bin" / "ac3cli.exe")))
+# FFmpeg's own -err_detect flags for a strict decode: -xerror (elsewhere)
+# turns any of these into a failing process rather than a concealed frame.
+FFMPEG_ERR_DETECT = "crccheck+bitstream+buffer+explode"
 RATE = 48000
 SEG = 2 * RATE  # 2 s per segment
 # Bin 85, sub-band 4: the lowest the encoder will ever start coupling, so
@@ -563,7 +568,7 @@ def decode_scores(original, coded, wav_path, strict=True, perceptual=False):
         # change ffmpeg's exit code, which run() below is the only thing
         # checking. -xerror is what turns a detected error into a failing
         # process and a raised SystemExit here.
-        cmd += ["-xerror", "-err_detect", "crccheck+bitstream+buffer+explode"]
+        cmd += ["-xerror", "-err_detect", FFMPEG_ERR_DETECT]
     run([*cmd, "-i", coded, "-c:a", "pcm_f32le", wav_path])
     o, d, _ = align(original, read_wav_f32(wav_path))
     snr = 10 * np.log10(np.sum(o**2) / max(np.sum((d - o) ** 2), 1e-30))
@@ -649,17 +654,24 @@ def race_ac3(original, source, seconds):
     print("see perceptual_score()'s own docstring.")
 
 
+# The combined-tools column label/token, shared between EAC3_VARIANTS and
+# the per-material SNR-floor/LSD-ceiling tables below.
+TOOLSET_CPL_SPX = "cpl+spx"
+# Likewise for EAC3_SELF_VARIANTS and its own tables further down.
+TOOLSET_ECPL_TPN = "ecpl+tpn"
+
 # One column per E-AC-3 variant: the label, and the tool token handed to
 # `ac3cli eac3-encode`. "none" is the tool-free coding path the Annex E tools
 # have to beat to earn their place.
 EAC3_VARIANTS = [("none", None), ("auto", "auto"), ("cpl", "cpl"), ("spx", "spx"),
-                 ("aht", "aht"), ("cpl+spx", "cpl+spx"), ("all", "all")]
+                 ("aht", "aht"), (TOOLSET_CPL_SPX, TOOLSET_CPL_SPX), ("all", "all")]
 
 # Enhanced coupling and transient pre-noise processing: FFmpeg has no reading
 # of either's syntax at all (see decode_scores_ours' docstring), so these are
 # scored separately from EAC3_VARIANTS above, through this project's own
 # decoder rather than race_eac3's FFmpeg path.
-EAC3_SELF_VARIANTS = [("ecpl", "cpl+ecpl"), ("tpn", "tpn"), ("ecpl+tpn", "cpl+ecpl+tpn")]
+EAC3_SELF_VARIANTS = [("ecpl", "cpl+ecpl"), ("tpn", "tpn"),
+                      (TOOLSET_ECPL_TPN, "cpl+ecpl+tpn")]
 
 
 def race_eac3(original, source, seconds, rates=(96, 128, 192)):
@@ -869,7 +881,7 @@ def race_fgaincod(original, source, seconds, rates=FGAINCOD_RATES, tools="none",
             # agreement with this project's own decoder, which is the §7.3.4
             # dither floor rather than an allocation divergence.
             run(["ffmpeg", "-v", "error", "-y", "-xerror", "-err_detect",
-                 "crccheck+bitstream+buffer+explode", "-i", str(coded),
+                 FFMPEG_ERR_DETECT, "-i", str(coded),
                  "-c:a", "pcm_f32le", str(wav)])
             o, d, _ = align(original, read_wav_f32(wav))
             snrs, lsds, moses = window_profile(o, d)
@@ -1156,7 +1168,7 @@ CI_EAC3_THRESHOLDS = {
         "cpl": (28.0, 7.0),
         "spx": (26.0, 7.0),
         "aht": (28.0, 8.0),
-        "cpl+spx": (25.0, 7.0),
+        TOOLSET_CPL_SPX: (25.0, 7.0),
         "all": (25.0, 7.5),
     },
     "51": {
@@ -1165,7 +1177,7 @@ CI_EAC3_THRESHOLDS = {
         "cpl": (10.0, 10.0),
         "spx": (9.0, 9.5),
         "aht": (10.0, 11.0),
-        "cpl+spx": (9.0, 9.5),
+        TOOLSET_CPL_SPX: (9.0, 9.5),
         "all": (9.0, 10.5),
     },
     # Transient material. The LSD ceilings were re-measured when align() above
@@ -1216,7 +1228,7 @@ CI_EAC3_THRESHOLDS = {
         "cpl": (4.0, 2.7),
         "spx": (-2.0, 3.1),
         "aht": (4.0, 2.7),
-        "cpl+spx": (-2.0, 3.1),
+        TOOLSET_CPL_SPX: (-2.0, 3.1),
         "all": (-2.0, 3.1),
     },
 }
@@ -1260,12 +1272,12 @@ CI_EAC3_SELF_THRESHOLDS = {
     "stereo": {
         "ecpl": (28.0, 7.0),
         "tpn": (18.0, 7.5),
-        "ecpl+tpn": (18.0, 7.0),
+        TOOLSET_ECPL_TPN: (18.0, 7.0),
     },
     "51": {
         "ecpl": (6.0, 9.0),
         "tpn": (10.0, 11.0),
-        "ecpl+tpn": (6.0, 9.0),
+        TOOLSET_ECPL_TPN: (6.0, 9.0),
     },
 }
 
@@ -1498,6 +1510,7 @@ def materialise_fixture(path):
 
 SPEECH_FIXTURE = AUDIO_DIR / "programme_speech_stereo.flac"
 MUSIC_FIXTURE = AUDIO_DIR / "programme_music_stereo.flac"
+REFERENCE_STEREO_WAV = AUDIO_DIR / "reference_stereo.wav"
 
 # Kept in sync by hand with tools/generators/gen_external_baseline.py's LEGS -
 # see this section's own header for why this file must never import that one.
@@ -1523,12 +1536,12 @@ MUSIC_FIXTURE = AUDIO_DIR / "programme_music_stereo.flac"
 TREND_LEGS = [
     {"name": "ac3-51-448", "codec": "ac3", "kbps": 448, "wav": AUDIO_DIR / "reference_51.wav"},
     {"name": "eac3-stereo-192", "codec": "eac3", "kbps": 192,
-     "wav": AUDIO_DIR / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "eac3-51-256", "codec": "eac3", "kbps": 256, "wav": AUDIO_DIR / "reference_51.wav"},
     {"name": "eac3-stereo-96", "codec": "eac3", "kbps": 96,
-     "wav": AUDIO_DIR / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "eac3-stereo-64", "codec": "eac3", "kbps": 64,
-     "wav": AUDIO_DIR / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "ac3-music-stereo-192", "codec": "ac3", "kbps": 192, "wav": MUSIC_FIXTURE},
     {"name": "eac3-music-stereo-96", "codec": "eac3", "kbps": 96, "wav": MUSIC_FIXTURE},
     {"name": "eac3-speech-stereo-64", "codec": "eac3", "kbps": 64, "wav": SPEECH_FIXTURE},
@@ -2119,7 +2132,7 @@ def crosscheck(original, source):
         run(cmd)
         ff_wav = BUILD / f"x_{tools}_ff.wav"
         run(["ffmpeg", "-v", "error", "-y", "-xerror", "-err_detect",
-             "crccheck+bitstream+buffer+explode", "-i", coded,
+             FFMPEG_ERR_DETECT, "-i", coded,
              "-c:a", "pcm_f32le", ff_wav])
         ff = read_wav_f32(ff_wav)
         o, d, _ = align(original, ff)
@@ -2234,7 +2247,7 @@ def encode_and_decode(source, tag, kbps, couple=False, extra_flag=None):
         cmd.append(extra_flag)
     run(cmd)
     run(["ffmpeg", "-v", "error", "-y", "-xerror",
-         "-err_detect", "crccheck+bitstream+buffer+explode",
+         "-err_detect", FFMPEG_ERR_DETECT,
          "-i", ac3, "-c:a", "pcm_f32le", wav])
     return read_wav_f32(wav)
 
@@ -2352,7 +2365,7 @@ def main():
         # Coupling's saving scales with the channel count - five high bands
         # collapse into one, where stereo only collapses two - so 5.1 is where
         # it has the most to prove.
-        source = BUILD / "race_src51.wav"
+        source = RACE_SRC51_WAV
         write_wav_f32(source, make_material_51())
         race_eac3(read_wav_f32(source), source, seconds, rates=(192, 256, 384))
     elif which == "fgaincod":
@@ -2381,7 +2394,7 @@ def main():
         # synthetic rows into a real-material table without saying so is
         # exactly how a measurement gets misread later.
         if "--with-51" in sys.argv:
-            source_51 = BUILD / "race_src51.wav"
+            source_51 = RACE_SRC51_WAV
             write_wav_f32(source_51, make_material_51())
             original_51 = read_wav_f32(source_51)
             print("\n=== coupled 5.1, SYNTHETIC material (make_material_51) ===")
@@ -2410,7 +2423,7 @@ def main():
         write_wav_f32(source, *make_material_transient())
         race_eac3(read_wav_f32(source), source, seconds, rates=(128, 192, 256))
     elif which == "ci":
-        source_51 = BUILD / "race_src51.wav"
+        source_51 = RACE_SRC51_WAV
         write_wav_f32(source_51, make_material_51())
         source_tr = BUILD / "race_src_transient.wav"
         write_wav_f32(source_tr, *make_material_transient())

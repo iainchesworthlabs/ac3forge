@@ -26,3 +26,10 @@ apps/crucible/notices/** text eol=lf
 # Without this the tree above is LF on every checkout and this one is CRLF
 # on a Windows one, for two sets of files that are concatenated together.
 apps/notices/** text eol=lf
+
+# ESP-IDF example stream assets. Binary: git must not touch line endings in an
+# elementary bitstream, where 0x0D 0x0A is audio data like any other pair of
+# bytes - see the fixture-hash note above for the same failure caught once
+# already on a text fixture.
+*.ac3 -text
+*.ec3 -text
