@@ -195,7 +195,7 @@ on.
 
 - **AC-3 *and* E-AC-3 5.1 both decode correctly on an ESP32-S3.** Six frames each, all twelve
   channel levels exact against `apps/baremetal/fixture.hpp`. It **fits internal SRAM with no
-  PSRAM**: the allocator reports 280,792 bytes free against a 179,064-byte peak heap.
+  PSRAM**: the allocator reports 280,792 bytes free against a 236,391-byte peak heap.
 - **float32 closed it, and closed PF7's float32 gap with it.** A profile-selected
   `decode_scalar_t`, validated at roughly 139 dB against the double decode on four real streams
   and 2.7e-7 at the transform. The memory fix and the speed fix were the same fix, because the
@@ -215,8 +215,10 @@ on.
 | Peak heap | 270,886 | **171,558** (−37%) |
 
 Those were the figures #546 itself moved. Fixture coverage added since has taken the peak to
-179,064; [the ESP32-S3 page](../docs/platforms/esp32.md#how-much-memory-there-actually-is) carries the
-current set.
+236,391 and the image to 320,940: the table above predates the Atmos fixture that reconstructs its
+objects, which is what the peak now measures. [The footprint
+table](../docs/performance-trend.md#minimum-footprint-decoder) carries the current set, measured on
+`main` at `be71f454`.
 
 There is now a `build-esp32s3` CI leg (in `espressif/idf:v6.1`, leg 6 of the Linux fan-out) and a
 `docs/platforms/esp32.md`.

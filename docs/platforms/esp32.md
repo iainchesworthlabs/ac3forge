@@ -1,43 +1,63 @@
 # ESP32-S3
 
-The minimum-footprint decoder profile on an Espressif ESP32-S3: a
-240 MHz dual-core Xtensa LX7 with a single-precision FPU, 128-bit PIE SIMD
-extensions, 512 KB of internal SRAM and hardware I2S.
+The minimum-footprint codec profile on an Espressif ESP32-S3: a 240 MHz dual-core Xtensa LX7 with
+a single-precision FPU, 512 KB of internal SRAM and hardware I2S. It decodes AC-3 and E-AC-3
+— including Atmos objects — and encodes both, in internal SRAM with no PSRAM.
 
-It is the second bare-metal target. The first is `arm-none-eabi` on QEMU's
-`mps2-an385`, a Cortex-M3 with no FPU, where every floating-point operation is
-software-emulated. The ESP32-S3 has hardware single-precision floating point, so
-it is the first target where real-time decode is worth measuring.
+It is the second bare-metal target. The first is [`arm-none-eabi` on QEMU](bare-metal.md), a
+Cortex-M3 with no FPU. The S3 has hardware single-precision floating point, which is what makes
+the float32 path worth having and real-time decode worth measuring.
 
 ## Status
 
 | | |
 |---|---|
-| AC-3 5.1 decode | Correct. Six frames, all six channel levels exact against `apps/baremetal/fixture.hpp` |
-| E-AC-3 5.1 decode | Correct. Same, including AHT and spectral extension |
-| E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture, since `tools=all` does not select it; 12 allocations/frame, level with plain E-AC-3 |
-| E-AC-3 2/0, §7.5.4 rematrixing | Correct. A layout no 5.1 stream reaches whatever its tools are |
-| Atmos, bed | Correct. Its own fixture, decoded bed-only; 23 allocations/frame |
-| Atmos, objects | Correct, and it fits: a 237,303-byte peak against 280,792 free, 41 allocations/frame — see [Objects](#objects-and-what-it-took-to-fit-them) |
-| Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 237,303-byte peak — see [Memory](#how-much-memory-there-actually-is) |
-| Retained after teardown | 24 bytes, two `__cxa_thread_atexit` registration records, once the probe hands back the enhanced-coupling scratch (34,232 bytes while §E3.5 is in use) — see [Building](../building.md#gaps) |
-| Real time | Not measured. See [Timing](#timing) |
-| CI | `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
+| AC-3 decode | Correct. Mono, stereo and 5.1, every channel level exact against `apps/baremetal/fixture.hpp` |
+| E-AC-3 decode | Correct. 5.1 and 2/0, including AHT, spectral extension and §7.5.4 rematrixing |
+| E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture. Costs 12 allocations per frame, level with plain E-AC-3 |
+| Atmos bed | Correct, decoded bed-only via `DecoderConfig::skip_object_reconstruction`. 23 allocations per frame |
+| Atmos objects | **Correct, reconstructed on target.** 41 allocations per frame — see [Objects](#objects) |
+| Encode | AC-3 and E-AC-3, six frames of synthesised 5.1 through each encoder, byte count and FNV-1a hash checked against `apps/baremetal/encode_fixture.hpp` |
+| Fits internal SRAM | Yes, without PSRAM. 237,303-byte peak heap against 280,792 free — see [Memory](#memory) |
+| Retained after teardown | 24 bytes, two `__cxa_thread_atexit` records |
+| Audio output | Two examples drive real peripherals — see [Examples](#examples) |
+| Real time | **Yes, on a board**, at 240 MHz: every fixture but enhanced coupling is under its 32 ms — E-AC-3 5.1 in 14.2 ms, Atmos objects in 29.4; enhanced coupling is at 200.8 — see [Timing](#timing) |
+| ESPHome | An external component, `esphome/components/ac3forge/` — the decoder and framer, not a `speaker` source. See [ESPHome](#esphome) |
+| CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU; `esphome config` and the component pack in their own workflows |
+
+Decode and encode are separate builds. They are mutually exclusive, and configure fails if both
+are asked for, because neither fits beside the other in this memory.
 
 ## Building
 
-ESP-IDF owns the top-level build, as Gradle does for [Android](android.md), so
-there is no ac3forge preset for this target and no entry in `cmake/toolchains/`.
-The project reaches into this repo from the other direction:
-`apps/baremetal/platform/esp32s3/CMakeLists.txt` points `EXTRA_COMPONENT_DIRS`
-at `esp-idf/`, and the component there pre-seeds the root's `option()`s and
-`add_subdirectory()`s the repo root, the same shape
-`apps/android/app/src/main/cpp/CMakeLists.txt` uses.
+ESP-IDF owns the top-level build, as Gradle does for [Android](android.md), so there is no
+ac3forge preset for this target and no entry in `cmake/toolchains/`.
 
-The alternative was re-listing `src/forge/minimal.cmake`'s source list in an
-`idf_component_register(SRCS ...)`. That was rejected because two copies of a
-source list drift, and the drift surfaces as a link error rather than as a
-diff.
+### The ESP-IDF component
+
+`esp-idf/ac3forge/` is the profile packaged as a component. A project outside this repository
+builds against it in two lines, without vendoring the source list:
+
+```cmake
+set(EXTRA_COMPONENT_DIRS "/path/to/ac3forge/esp-idf")
+set(AC3FORGE_ESP_PROFILE "decoder")   # or "encoder"
+```
+
+The component pre-seeds the root's `option()`s and `add_subdirectory()`s the repo root, the same
+shape `apps/android/app/src/main/cpp/CMakeLists.txt` uses. Re-listing
+`src/forge/minimal.cmake`'s sources in an `idf_component_register(SRCS ...)` was rejected: two
+copies of a source list drift, and the drift surfaces as a link error rather than a diff.
+
+`idf_component.yml` carries registry metadata and names `esp32s3` as its only target. **It is not
+published to the ESP Component Registry.** `.github/workflows/esp-component.yml` lints the
+manifest and packs the archive on every change, but its `compote component upload` job is gated to
+a manual `workflow_dispatch` on a `v` tag — a published version cannot be replaced, so the upload
+is a decision rather than a consequence of merging.
+
+### The probes
+
+`apps/baremetal/platform/esp32s3/` is the footprint harness, and points `EXTRA_COMPONENT_DIRS` at
+`esp-idf/`:
 
 ```bash
 . $IDF_PATH/export.sh
@@ -48,134 +68,119 @@ idf.py qemu                    # no board needed
 idf.py -p <PORT> flash monitor # a real board
 ```
 
-Verified against ESP-IDF v6.1.0, which ships Xtensa GCC 15.2.0 and defaults to
-`-std=gnu++26`. The library's C++23 use — `std::expected`, `std::unreachable`,
-`std::byteswap` — compiles under `-fno-exceptions -fno-rtti`, as does
-`constexpr std::vector`. The libstdc++ problem in
-[esp-idf#18172](https://github.com/espressif/esp-idf/issues/18172) is specific to
-GCC 14.2, so it does not apply to IDF 6.1.
+`tools/checks/run_esp32s3_probe.sh` drives that under QEMU and gates on the results;
+`--encoder` runs the encode direction instead.
 
-## What the port needed from the library
+Verified against ESP-IDF v6.1.0, which ships Xtensa GCC 15.2.0 and defaults to `-std=gnu++26`.
+The library's C++23 use — `std::expected`, `std::unreachable`, `std::byteswap`, `constexpr
+std::vector` — compiles under `-fno-exceptions -fno-rtti`. The libstdc++ problem in
+[esp-idf#18172](https://github.com/espressif/esp-idf/issues/18172) is specific to GCC 14.2 and
+does not apply.
 
-### A `thread_local` that made the library unlinkable on any RTOS
+## Examples
 
-`eac3_tools.cpp`'s enhanced-coupling scratch was a 32 KB `thread_local`. On a
-single-threaded bare-metal target that costs 32 KB once. On FreeRTOS it prevents
-the application starting:
+Both live under `esp-idf/ac3forge/examples/` and are built by CI.
 
-```c
-/* freertos/FreeRTOS-Kernel/portable/xtensa/port.c */
-const uint32_t tls_area_size = ALIGNUP(16, tls_data_size + tls_bss_size);
-uxStackPointer = STACKPTR_ALIGN_DOWN(16, uxStackPointer - tls_area_size);
-```
+### I2S player
 
-FreeRTOS carves each task's thread-local area out of that task's own stack, and
-sizes it from the linked image's `.tdata + .tbss` — the same size for every task
-in the system, including tasks that never call into the decoder. ESP-IDF's IPC
-task has a 1 KB stack, so it could not be created, and the application failed an
-assert inside `esp_ipc_init()` during startup, before `app_main`.
+`i2s_player` decodes the AC-3 5.1 fixture linked into its own image, folds it to stereo through
+the decoder's §7.8 output stage, and writes it to an I2S DAC at 48 kHz, 16-bit, on a loop. It
+proves the codec works; it is not how anything real gets its audio.
 
-Keeping only a `unique_ptr` in TLS takes every task's area from 32 KB to one
-pointer. The `arm-none-eabi` leg benefits too: `.tbss` fell from 32,784 bytes to
-24, and resizing `tls.cpp`'s block to match reduced the image by 22%.
+Three GPIOs under `ac3forge I2S player` in `idf.py menuconfig`, defaulting to BCLK 5, WS 6,
+DOUT 7 — chosen to avoid the strapping pins, the USB pair and the console UART. No MCLK is
+configured, so a DAC needing one has to have it added. Written against a MAX98357A and a PCM5102.
 
-### float32 for the decode path
+### Streaming player
 
-The LX7's FPU is single-precision, so `double` coefficients are wider than
-anything downstream can use. Memory was the binding constraint: the per-block
-`coeffs` store is 100,352 bytes and `aht_coeffs_` 86,016, against 160,764 bytes
-of free internal SRAM at the time.
+`stream_player` decodes AC-3 out of a flash partition without ever holding more than 16 KB of the
+stream in memory. Where bytes come from and where audio goes are directories CMake picks, not
+flags the player branches on — the player itself names neither a partition nor I2S:
 
-`src/forge/src/internal/scalar/{float32,float64}/`'s seam carries
-`decode_scalar_t` — `float` under the minimum-footprint profile, `double` by
-default elsewhere, and selectable in any build with
-`-DAC3FORGE_DECODE_SCALAR=float`. Four decoder buffers follow it, and since
-2026-09-09 so does the arithmetic between the bitstream and those buffers -
-mantissa dequantisation, dither, coordinates, decoupling, spectral extension,
-the AHT and JOC's mixing - which had stayed `double`, and on this FPU was
-software: the [Timing section](#timing) below has what that cost. Which profile
-a build is and which scalar its decoder carries are two independent CMake axes.
-See [Building](../building.md#minimum-footprint-decoder-profile) for what the
-profile changes, and its Gaps section for the measured accuracy cost.
+| Source | Sink |
+|---|---|
+| `partition` — flash (default) | `i2s` — stereo DAC (default) |
+| `sd` — SD card over SDMMC | `tdm` — up to eight channels on one data line |
+| `http` — an HTTP body over WiFi | `null` — counts frames; what CI runs |
 
-## Configuration
+Chosen under *ac3forge stream player* in `idf.py menuconfig`.
 
-Both settings are in `sdkconfig.defaults` with their reasoning. They are
-repeated here because neither failure mode points at its cause.
+It exists to exercise the incremental input path. `ac3::split_frames` takes a span over a whole
+stream, which nothing streaming can produce; `ac3::io::AccessUnitAccumulator` applies the same
+boundary rule over a caller-owned buffer, allocating nothing. It hands the decoder access units
+rather than syncframes, because `decode_access_unit_into` wants an independent substream together
+with the dependents that extend it (§E3.8.2).
 
-- **`CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768`.** IDF's default is 3,584 bytes,
-  which suits an application that configures peripherals and waits on queues but
-  is too small for a codec. The overflow does not report as a stack overflow: it
-  surfaces as a `LoadProhibited` panic on the other core's idle task, inside the
-  task watchdog's bookkeeping, because the overflow corrupts a neighbouring
-  structure.
-- **`CONFIG_ESP_TASK_WDT_INIT=n`.** The probe is a batch computation that runs
-  the CPU continuously without yielding, which is what the watchdog exists to
-  catch. A decoder in a product should keep the watchdog and give the decode its
-  own task with a bounded per-frame budget.
+Only `partition` runs without hardware, so it is the default and the one CI drives end to end.
+`sd` and `http` are compiled and no further — QEMU has no SD host and no network. `tdm` has never
+run on hardware either; what is tested is `main/interleave.hpp`, on the host
+(`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing with slot padding is
+where the bugs are. A 5.1 programme on an 8-slot bus leaves two slots that must be written as
+zeros rather than skipped: the DMA buffer is reused, so whatever the previous frame left is what
+the DAC clocks out.
 
-PSRAM is off, although the development board has 8 MB. QEMU cannot emulate S3
-PSRAM ([espressif/qemu#129](https://github.com/espressif/qemu/issues/129)), so a
-build that requires it cannot run in CI, and keeping it off means the
-internal-SRAM budget is enforced rather than avoided.
+CI compares the sink's per-channel RMS against the host's answer for the same file through the
+same configuration (`ac3cli decode … downmix=loro drcmode=line`). A `result=pass` alone would be
+satisfied by a stream decoding to silence.
 
-## How much memory there actually is
+## Memory
 
-The datasheet says 512 KB of internal SRAM, `idf.py size` says 341,760, and the allocator
-says 280,792. All three are true and they answer different questions.
+The datasheet says 512 KB, `idf.py size` says 341,760, and the allocator says 280,792. All three
+are true and answer different questions.
 
 | | Bytes | |
 |---|---|---|
 | Physical SRAM | 524,288 | the datasheet's 512 KB |
 | − data cache | 32,768 | `CONFIG_ESP32S3_DATA_CACHE_SIZE`, carved out of SRAM2 |
-| − instruction cache | 16,384 | `CONFIG_ESP32S3_INSTRUCTION_CACHE_SIZE`, already the minimum |
+| − instruction cache | 16,384 | already the minimum |
 | = DRAM-addressable window | 491,520 | `SOC_DRAM_LOW`…`SOC_DRAM_HIGH` |
-| DIRAM pool `idf.py size` reports | 341,760 | after ROM reservations and the non-doubly-mapped region |
-| **free at runtime, this app** | 280,792 | what `heap_caps_get_free_size` returns |
+| DIRAM pool `idf.py size` reports | 341,760 | after ROM reservations |
+| **free at runtime** | **280,792** | what `heap_caps_get_free_size` returns |
 
-`idf.py size`'s "remain" is a **linker estimate** — it was 207,084 where the allocator reports
-280,792, 73,708 bytes pessimistic. A footprint budget quoted from it is a budget nobody checked.
-`app_main` prints the runtime figures now, before and after the decode.
+`idf.py size`'s "remain" is a linker estimate — 206,956 where the allocator reports 280,792. A
+footprint budget quoted from it is a budget nobody checked.
 
-### Contiguity, not just total
+Measured, decode direction: the image uses 134,804 bytes of DIRAM and the decode peaks at
+237,303 bytes of heap. The encode image is smaller, 110,900. `app_main` prints the runtime
+figures before and after.
+
+### Contiguity
 
 | | Free | Largest block |
 |---|---|---|
 | Before the decode | 280,792 | 217,088 |
 | After it | 245,248 | 116,736 |
 
-The total falls 35,544 (the retained scratch, mostly). The largest contiguous run falls
-100,352. That gap is the number that decides whether a large allocation succeeds, and the probe
-cannot see it — its allocator hooks count bytes, not runs.
+The total is not an allocation budget on this part: the heap is regioned, and the largest
+contiguous run is what decides whether a large allocation succeeds. That distinction is what made
+object reconstruction fail here while the same build passed on `arm-none-eabi`, whose newlib heap
+is flat.
 
-### There is no IRAM to reclaim here
+### IRAM and the caches
 
-ESP-IDF donates whatever IRAM an application does not fill to the heap as 32-bit-access-only
-memory, which `malloc` and `operator new` never return. That would suit this decoder well: its
-large buffers are `float` and `double` arrays and never byte-addressed. Measured, the pool is
-0 bytes — `idf.py size` reports IRAM as 16,384 of 16,384 used, so there is nothing left to
-donate. Reclaiming it is not an option that exists on this build.
-
-What is left is the caches. The instruction cache is already at its 16 KB minimum; the data
-cache could go 32 KB → 16 KB and return 16,384 bytes. It is not free: `fixture.hpp` lives in
-Flash Data, so a smaller data cache directly slows fixture reads. For a product streaming from
-I2S rather than decoding flash-resident fixtures, the trade may look different.
+ESP-IDF donates unfilled IRAM to the heap as 32-bit-access-only memory, which `malloc` never
+returns. Measured, that pool is 0 bytes — `idf.py size` reports IRAM as 16,384 of 16,384 used, so
+there is nothing to donate. The instruction cache is already at its 16 KB minimum; the data cache
+could go 32 KB → 16 KB and return 16,384 bytes, at the cost of slower reads from flash-resident
+fixtures.
 
 ### Stack
 
-The decode runs on the main task. `uxTaskGetStackHighWaterMark` leaves 14,000 bytes free of
-the 32,768 `sdkconfig.defaults` sets, so the decode uses about 18,800. That file's own comment
-told an integrator to measure this; now something does, and the runner holds a floor under it.
+The decode runs on the main task. `uxTaskGetStackHighWaterMark` leaves 11,280 bytes free of the
+32,768 `sdkconfig.defaults` sets, so the decode uses about 21,500; the encode direction leaves
+23,040. The runner holds a floor of 8,192 under it. That margin is the one to watch — it was
+14,000 before object reconstruction ran here.
 
 ## Timing
 
-The probe reports `decode_us`, `us_per_frame` and `realtime_permille` per codec.
-A frame is 1,536 samples at 48 kHz, so the budget is 32,000 microseconds and
-`realtime_permille` is 1000 at exactly real time.
+The probe reports `decode_us`, `us_per_frame` and `realtime_permille` per codec, and both example
+players report per-frame timing of their own. A frame is 1,536 samples at 48 kHz, so the budget
+is 32,000 microseconds and `realtime_permille` is 1000 at exactly real time.
 
-Under `idf.py qemu` these figures do not describe the hardware. QEMU is not a
-cycle-accurate emulator, and it reports `cpu_mhz=40` against its own boot log's
-160 MHz. Treat the QEMU leg as a correctness and footprint check only.
+Under `idf.py qemu` these figures do not describe hardware: QEMU is not cycle-accurate and
+reports `cpu_mhz=40` against its own boot log's 160 MHz, so treat the QEMU leg as a correctness
+and footprint check only; under the streaming player's `null` sink the figure means less again,
+since nothing paces the loop. The figures that follow are from a board.
 
 ### Measured, on an ESP32-S3-DevKitC-1-N16R8
 
@@ -364,290 +369,187 @@ hardware build therefore inherits `sdkconfig.hw`'s USB console and prints
 nothing under QEMU, which has no such device. Give each shape its own
 `-DSDKCONFIG=<build dir>/sdkconfig`, or delete `sdkconfig` between them.
 
-## Other ESP32 variants
+## Objects
 
-Whether the part has an FPU decides this; the RAM does not. Espressif publish the
-split, and measure a cosine at ~2,377 cycles on an ESP32-C3 against 121 on an
-ESP32-S3 ([Floating-Point Units on Espressif
-SoCs](https://developer.espressif.com/blog/2025/10/cores_with_fpu/)).
+`joc.cpp` and `oamd.cpp` are in `src/forge/minimal.cmake`'s source list and link into every build
+of this profile, so object decode always compiled here. For a long time it did not fit: an
+`atmos-encode` fixture (six objects, JOC over a 5.1 downmix, 448 kbit/s) peaked at 449,826 bytes
+against 280,792 free, and `ReconstructionState` was a single 147,504-byte allocation — larger
+than the 116,736-byte contiguous run a decode leaves free, so it failed on contiguity before any
+budget was consulted.
 
-| Part | Usable RAM | Clock | FPU | Vector unit | Viable |
-|---|---|---|---|---|---|
-| **ESP32-S3** | 341,760 DIRAM | 240 MHz | single | PIE, integer-only; 128-bit float load/store | **Yes** — the target here |
-| **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — fits trivially, costs the radio; [below](#the-esp32-p4-and-why-it-is-not-a-target) |
-| ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
-| ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
-| ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | No — same, slower |
-
-Every part above that has an FPU at all has a single-precision one, so `double`
-is soft-float across the whole family and `decode_scalar_t` earns its keep on
-all of them rather than only here.
-
-### The ESP32-P4, and why it is not a target
-
-Assessed 2026-09-08 and declined. The P4 is dual-core RISC-V at 400 MHz with
-768 KB of SRAM, and it holds the 237,303-byte peak heap without the float32
-work this port needed, so it reads as the answer if the S3 turns out not to
-be real time. Three things were checked before writing any of it, and two of
-them settle it.
-
-**Its vector extension is vendor-specific, and it has no floating point at
-all.** The P4 is `RV32IMAFC` plus two custom extensions: `Xhwlp` (hardware
-loop) and `Xesppie` (the vector unit). RISC-V reserves the `X` prefix for
-vendor extensions no other implementation carries, so this is not the ratified
-RISC-V Vector extension, and kernels written against it would serve the P4
-alone — the same single-target bargain as the Xtensa work. Espressif document
-"PIE" for both parts, which makes it easy to assume otherwise.
-
-The floating-point half is the part that decides it. ESP-IDF carries an
-exhaustive decoder test for the extension in
-`components/esp_gdbstub/test_gdbstub_host/rv_decode/xesppie.S`; across its 360
-instructions the only data-type suffixes that appear are `s8`, `s16`, `s32`,
-`u8`, `u16` and `u32`. `esp-dl`'s own `esp32p4-pie-simd` notes say the same in
-one line — *"datatype: s8, s16, s32 (signed); u8, u16 (unsigned)"*. There is
-no `f32` anywhere in it.
-
-Espressif's own code agrees. In `esp-dsp`, every `_arp4` file that uses a PIE
-vector instruction sits under a `fixed/` directory. The float32 kernels —
-`dsps_dotprod_f32_arp4.S`, `dsps_fft2r_fc32_arp4.S`, `dsps_fft4r_fc32_arp4.S`,
-`dsps_biquad_f32_arp4.S` — contain exactly one `esp.` instruction each, and it
-is `esp.lp.setup`, the hardware loop. Their arithmetic is scalar `fmadd.s` on
-scalar `flw` loads. `esp-gmf`'s PIE-accelerated FFT for the part is
-`fft_pie_radix2_dit_s16.S`: int16. An FFT in fixed point is where a float
-vector unit would show up first if there were one to use.
-
-So a `f32x4` has nothing to compile to on a P4. The decode path is float32 by
-`decode_scalar_t`, and would stay scalar there.
-
-**For this workload the S3 has the better float path of the two.** The S3's
-float32 dot product, `dsps_dotprod_f32_aes3.S`, opens with `EE.LDF.128.IP` —
-a 128-bit load landing four floats in four FPU registers — and then runs four
-independent scalar `madd.s` into four accumulators. That is load bandwidth
-plus instruction-level parallelism rather than a four-wide float ALU, and it
-is worth having — from hand-written assembly rather than from the arch seam,
-which [Not done](#not-done) measures. The P4's equivalent has no wide float
-load; it loads one float at a time. Whatever the S3's float path is eventually
-worth, the P4 does not inherit it.
-
-What the P4 does buy over the S3 is clock and memory. A frame is 1536 samples,
-32 ms at 48 kHz, which is 7.68 M cycles of budget at 240 MHz against 12.8 M at
-400 MHz: **1.67×**, and it is per-core in both cases. The memory advantage is
-already spent: this port fits internal SRAM on the S3 with 280,792 bytes free
-against a 237,303-byte peak.
-
-**It has no radio, and the plan it would serve is a Wi-Fi plan.** The P4 has
-neither Wi-Fi nor Bluetooth and needs a companion ESP32-C6 or -H2 for either,
-making any networked build a two-chip design.
-The [source/transport/sink plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md), which is
-kept in the repository rather than published here, puts a network transport in
-front of the decoder, and its Phase 5 exit is *"an ESP32-S3 decoding E-AC-3
-from a network origin in real time"*; the bandwidth argument for carrying a
-compressed stream at all is stated there as the difference between an ESP32-S3
-receiving Atmos over Wi-Fi and one receiving no surround. ESPHome nodes are
-Wi-Fi devices. A part that has to be paired with a second chip to reach the
-network works against all of that. This was a product-shape question rather
-than a technical one, and it was decided on
-2026-09-08: the radio is disqualifying on its own, whatever the S3 measures.
-
-**Whether the S3 needs rescuing was the third thing checked, and it turns out
-not to bear on this.** It is still unmeasured — [Timing](#timing)
-has what that costs, which is one board. The decision does not wait on it. The
-radio disqualifies the P4 on its own, so a decode that misses real time on the
-S3 gets fixed in the decoder rather than by changing part: 46–87 heap
-allocations per frame remain PF7's other open gap, and the float path has a
-hand-written-kernel option this page now sizes. `src/forge/src/internal/arch/` does
-carry an `f32x4` since PF7's SIMD step, but it resolves to `generic/` here and
-buys this part nothing. Those are the levers, and they apply to every target
-at once instead of to one that cannot reach the network.
-
-The measurement is still worth taking, for the S3's own sake and for
-[the topology plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md)'s Phase 5. It is no longer a question about
-the P4.
-
-## Not done
-
-- **A vectorised float32 path on this part.** `src/forge/src/internal/arch/` carries an
-  `f32x4` since PF7's SIMD step, so the float32 IMDCT's twiddle stages go four
-  lanes at a time on SSE2 and NEON. On an S3 that type resolves to `generic/`
-  and compiles to four scalar operations, because PIE's vector ALU is
-  integer-only — the name oversells it, which is worth being precise about.
-
-  What `esp-dsp`'s float32 kernels use instead is `EE.LDF.128.IP`, a 128-bit
-  load filling four FPU registers, feeding four independent scalar `madd.s`
-  into four accumulators: load bandwidth and instruction-level parallelism
-  rather than a four-wide float multiply.
-
-  **That is not reachable from the arch seam**, which was measured rather than
-  assumed. An `f32x4` whose `load`/`store` are `EE.LDF.128.IP`/`EE.STF.128.IP`
-  through inline asm, compiled over `imdct256_pair_windowed`'s post-twiddle at
-  `-O2` under ESP-IDF v6.1's Xtensa GCC 15.2.0:
-
-  | Form | Instructions | Spills |
-  |---|---|---|
-  | Plain scalar, what `generic/` emits today | **68** | — |
-  | PIE loads, `asm volatile` | 73 | 22 `ssi` |
-  | PIE loads, non-volatile with memory operands | 99 | 33 `ssi` + 22 `lsi` |
-
-  The six wide accesses do replace twenty-four narrow ones and are then
-  swamped. `EE.LDF.128.IP` writes a *consecutive quad* of `f` registers, and
-  GCC's Xtensa port has no way to model that as a single value, so it spills
-  every asm block's outputs and loses the hardware `loop` along with them.
-  `esp-dsp` does not meet this because its kernels are assembly end to end and
-  allocate their own registers.
-
-  So the shape that could capture it is a hand-written Xtensa kernel tier,
-  like `src/forge/src/internal/avx2/` rather than like `src/forge/src/internal/arch/`: whole
-  twiddle stages in assembly, selected at build time. Reaching `esp-dsp`'s
-  figures also means `madd.s`, a deliberate fused multiply-add of exactly the
-  kind `-ffp-contract=off` forbids project-wide, so that tier would have to
-  carry its own bit-exactness argument rather than inherit the seam's. It
-  still wants a measurement from real silicon before any of it.
-- **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works
-  but keeps both transform instantiations compiled.
-- **Audio output from the probe.** The footprint probe decodes built-in fixtures and
-  reports levels; it drives no peripheral. Sound out of this part goes through the
-  separate I2S example described in [Audio output](#audio-output) below.
-
-Adding fixtures does not move the internal-SRAM figure. The enhanced-coupling and 2/0 streams
-added 13,824 bytes and DIRAM stayed at 134,676: `fixture.hpp` is `constexpr` data, and on this
-part it lands in **Flash Data** (112,524 bytes) rather than DIRAM. The `arm-none-eabi` image
-ceiling is the one fixture size spends against; here it costs flash, of which the app partition
-has 66% free.
-
-## Objects, and what it took to fit them
-
-`src/forge/src/oba/joc.cpp` and `oamd.cpp` are both in `src/forge/minimal.cmake`'s source list and
-link into every build of this profile, so object decode always compiled here. It did not fit. An
-`atmos-encode` fixture (six objects, JOC over a 5.1 downmix, 448 kbit/s) decoded correctly on the
-`arm-none-eabi` leg and peaked at **449,826 bytes of heap** against 280,792 free — and worse,
-`oba::joc::ReconstructionState` was a single 147,504-byte allocation, larger than the 116,736-byte
-contiguous block a decode leaves free, so it failed on contiguity before any budget was consulted.
-
-Three changes, each measured on its own rather than stacked in arithmetic:
+Four changes, each measured on its own:
 
 | | Peak heap | Largest single allocation |
 |---|---|---|
 | As found (`Domain::kQmf`, `double`, arrays at `kMaxObjects`) | 449,826 | 147,504 |
 | `Domain::kMdctBand` | 386,770 | 147,504 |
 | + `ReconstructionState` in float32 | 301,522 | 73,776 |
-| + per-object scratches sized to the stream | **267,754** | 43,008 |
+| + per-object scratches sized to the stream | 267,754 | 43,008 |
+| + handing back the enhanced-coupling scratch | **233,546** | 43,008 |
 
-The largest allocation is now the E-AC-3 decoder's own AHT buffer rather than anything JOC owns,
-which removes the contiguity blocker: 43,008 fits the 116,736-byte free run easily, where 147,504
-never could.
+The largest allocation is now the E-AC-3 decoder's own AHT buffer rather than anything JOC owns.
 
-### It fits, and what it took to stop the order mattering
+That last row is the one that is easy to miss. 267,754 against 280,792 free looks like 13,038
+spare, but the order of fixtures decided the result: objects run after an enhanced-coupling decode
+failed with `out_of_memory bytes=6144`, while objects on a clean heap passed. The difference is
+`eac3_tools.cpp`'s 32,768-byte spectrum scratch and 1,440-byte bin-angle vector, both
+`thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack. On a hosted
+platform they are released at thread exit; here the only thread never exits.
+`ac3::eac3::release_ecpl_scratch()` hands them back, and the probe calls it between fixtures.
+Retained at exit went from 34,232 bytes to 24.
 
-267,754 against 280,792 bytes of free internal SRAM looks like 13,038 spare. On this part it was
-not, and the reason is worth keeping because a total-free figure is not an allocation budget here.
+**The bed does not need any of this.** An Atmos bed is ordinary E-AC-3 5.1 and the objects are
+side data, so `DecoderConfig::skip_object_reconstruction` decodes the bed without allocating
+`ReconstructionState` at all — 23 allocations per frame against 41. `tests/oba/test_atmos.cpp`
+asserts the rendered channels are bit-for-bit what a full decode produces. `object_metadata`
+still arrives, parsed out of a block's skip field.
 
-Measured on the ESP32-S3 itself, same build, same fixture, only the order changed:
+## Configuration
 
-| | Peak heap | Result |
-|---|---|---|
-| Objects after the enhanced-coupling fixture | 267,754 | **failed** — `out_of_memory bytes=6144` |
-| Objects first, on a clean heap | 233,522 | passed |
+`apps/baremetal/platform/esp32s3/sdkconfig.defaults` carries the settings and their reasoning. Two
+are repeated here because neither failure mode points at its cause:
 
-The 34,232 bytes between them are `eac3_tools.cpp`'s enhanced-coupling scratch — a 32,768-byte
-spectrum buffer and a 1,440-byte bin-angle vector, both `thread_local` so that §E3.5 neither
-allocates per call nor puts 32 KB on the stack. On a hosted platform they go at thread exit. Here
-the only thread never exits, so they stayed resident and object reconstruction had nowhere to go.
+- **`CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768`.** IDF's default is 3,584 bytes, which suits an
+  application that configures peripherals and waits on queues and is far too small for a codec.
+  The overflow does not report as a stack overflow: it surfaces as a `LoadProhibited` panic on the
+  other core's idle task, because it corrupts a neighbouring structure. An integrator sizing a
+  real decoding task should measure with `uxTaskGetStackHighWaterMark()` rather than copy this.
+- **`CONFIG_ESP_TASK_WDT_INIT=n`.** The probe is a batch computation that runs the CPU flat out
+  without yielding, which is what the watchdog exists to catch. A decoder in a product should keep
+  the watchdog and give the decode its own task with a bounded per-frame budget.
 
-`ac3::eac3::release_ecpl_scratch()` hands them back, and the next call rebuilds what it needs. The
-probe calls it between fixtures, so the rows sit in the order they belong rather than the order
-that happens to pass:
+PSRAM is off, although the development board has 8 MB. QEMU cannot emulate S3 PSRAM
+([espressif/qemu#129](https://github.com/espressif/qemu/issues/129)), so a build requiring it
+cannot run in CI, and keeping it off means the internal-SRAM budget is enforced rather than
+avoided. Turn it on for a board build that needs the headroom; not to make a footprint number go
+away.
 
-| | Peak heap | Retained at exit |
-|---|---|---|
-| Before | 267,754 | 34,232 |
-| After | **233,546** | **24** |
+## What the port required from the library
 
-24 bytes is two `__cxa_thread_atexit` registration records. Both legs report the same figures.
+**A `thread_local` that made the library unlinkable on any RTOS.** `eac3_tools.cpp`'s
+enhanced-coupling scratch was a 32 KB `thread_local`. FreeRTOS carves each task's thread-local
+area out of that task's own stack and sizes it from the linked image's `.tdata + .tbss` — the same
+size for every task, including tasks that never call the decoder. ESP-IDF's IPC task has a 1 KB
+stack, so it could not be created and the application failed an assert inside `esp_ipc_init()`
+before `app_main`. Keeping only a `unique_ptr` in TLS took every task's area from 32 KB to one
+pointer, and `.tbss` from 32,784 bytes to 24.
 
-That leaves **47,246 bytes spare** against free SRAM rather than 13,038, and it is why object
-decode is gated in CI on both bare-metal legs instead of documented as almost fitting.
+**float32 for the decode path.** The LX7's FPU is single-precision, so `double` coefficients are
+wider than anything downstream can use, and memory was the binding constraint: the per-block
+`coeffs` store is 100,352 bytes and `aht_coeffs_` 86,016.
+`src/forge/src/internal/scalar/{float32,float64}/` carries `decode_scalar_t` — `float` under the
+minimum-footprint profile, `double` by default elsewhere, and selectable in any build with
+`-DAC3FORGE_DECODE_SCALAR=float`. Which profile a build is and which scalar its decoder carries
+are independent CMake axes. Since 2026-09-09 the arithmetic between the bitstream and those
+buffers — mantissa dequantisation, dither, coordinates, decoupling, spectral extension, the AHT
+and JOC's mixing — follows the same scalar; it had stayed `double`, which on this FPU is
+software, and [Timing](#timing) has what that cost.
 
-The `arm-none-eabi` leg could not have found this. Its newlib heap is flat, so 267,754 of 280,792
-packs there and the same build passed. This part's heap is regioned — 280,792 free against a
-largest block of 217,088 — and that is the number that decides.
+## Open work
 
-### The bed plays, though
+- **Real time for enhanced coupling.** Every other fixture decodes under budget on a board;
+  §E3.5's reconstruction is still `double` and runs at 200.8 ms a frame. See [Timing](#timing).
+- **Heap traffic in the decode loop.** PF7 asks for zero; the steady state is 1–41 allocations per
+  frame depending on fixture, from per-block geometry vectors and the `std::vector` members of the
+  returned `DecodedFrame`. Reaching zero means those becoming fixed-capacity, which changes public
+  types. The runner gates at 100 so the distance from zero cannot grow quietly.
+- **A vectorised float32 path.** `src/forge/src/internal/arch/` carries an `f32x4`, but it
+  resolves to `generic/` here and compiles to four scalar operations: PIE's vector ALU is
+  integer-only. What `esp-dsp` uses instead is `EE.LDF.128.IP`, a 128-bit load filling four FPU
+  registers feeding four scalar `madd.s` — load bandwidth and instruction-level parallelism rather
+  than a four-wide multiply. That is not reachable from the arch seam, measured rather than
+  assumed: `EE.LDF.128.IP` writes a consecutive quad of `f` registers, which GCC's Xtensa port
+  cannot model as one value, so it spills every asm block's outputs (68 instructions scalar
+  against 73 with 22 spills). Capturing it needs a hand-written assembly kernel tier, like
+  `src/forge/src/internal/avx2/`, which would also need `madd.s` — a fused multiply-add of exactly
+  the kind `-ffp-contract=off` forbids project-wide — and so its own bit-exactness argument.
+- **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works but keeps both
+  transform instantiations compiled.
 
-None of the above stops an Atmos stream being played on this part. Its bed is ordinary E-AC-3 5.1
-and the objects are side data; only reconstructing them is expensive.
-`DecoderConfig::skip_object_reconstruction` decodes the bed and never allocates
-`ReconstructionState` at all, and `apps/baremetal/fixture.hpp` carries an Atmos fixture decoded
-that way:
+## Other ESP32 variants
 
-| | Full decode | Bed only |
-|---|---|---|
-| Peak heap | 449,826 | **179,064 — unchanged from a plain decode** |
-| Allocations/frame | 80 | 61 |
-| Bed channels correct | yes | yes, identically |
+Whether the part has an FPU decides this; RAM does not. Espressif measure a cosine at ~2,377
+cycles on an ESP32-C3 against 121 on an ESP32-S3
+([Floating-Point Units on Espressif SoCs](https://developer.espressif.com/blog/2025/10/cores_with_fpu/)).
 
-The flag costs the bed nothing: `tests/oba/test_atmos.cpp` asserts the rendered channels are
-bit-for-bit what a full decode produces, since skipping reconstruction touches no coefficient the
-bed is built from. `object_metadata` still arrives — it is parsed out of a block's skip field and
-costs nothing to keep, and a renderer picking a speaker layout still wants what the stream
-declared.
+| Part | Usable RAM | Clock | FPU | Vector unit | Viable |
+|---|---|---|---|---|---|
+| **ESP32-S3** | 341,760 DIRAM | 240 MHz | single | PIE, integer-only; 128-bit float load/store | **Yes** — the target here |
+| **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — see below |
+| ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
+| ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
+| ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | No — same, slower |
 
-Without the flag an Atmos stream does not degrade on this part, it fails: the allocation is
-attempted, and the decode stops partway through in `operator new`.
+Every part with an FPU has a single-precision one, so `double` is soft-float across the family and
+`decode_scalar_t` earns its keep on all of them.
 
-## The ESP-IDF component
+### Why not the ESP32-P4
 
-`esp-idf/ac3forge/` is the profile packaged as a component, so a project outside
-this repository can build against it without vendoring the source list:
+Assessed and declined on 2026-09-08. It is dual-core RISC-V at 400 MHz with 768 KB of SRAM, and
+holds the peak heap without the float32 work — so it reads as the answer if the S3 misses real
+time. Three things were checked and two settle it.
 
-```cmake
-set(EXTRA_COMPONENT_DIRS "/path/to/ac3forge/esp-idf")
-set(AC3FORGE_ESP_PROFILE "decoder")   # or "encoder"
-```
+**Its vector extension has no floating point.** The P4 is `RV32IMAFC` plus `Xhwlp` and `Xesppie`,
+vendor extensions no other implementation carries — not the ratified RISC-V Vector extension.
+Across the 360 instructions in ESP-IDF's own decoder test for it, the only data types are `s8`,
+`s16`, `s32`, `u8`, `u16`, `u32`. No `f32` anywhere. Espressif's own code agrees: in `esp-dsp`
+every `_arp4` file using a PIE instruction sits under `fixed/`, and the float32 kernels contain
+exactly one `esp.` instruction each — `esp.lp.setup`, the hardware loop — with scalar `fmadd.s`
+arithmetic. So an `f32x4` has nothing to compile to there either.
 
-The two profiles are mutually exclusive — `AC3FORGE_MINIMAL_DECODER` and
-`AC3FORGE_MINIMAL_ENCODER` fail configure together, because neither fits beside
-the other in internal SRAM. Build one, tear it down, rebuild for the other if a
-target needs both in sequence.
+**It has no radio, and the plan it would serve is a Wi-Fi plan.** No Wi-Fi and no Bluetooth; it
+needs a companion ESP32-C6 or -H2, making any networked build a two-chip design. That was a
+product-shape question and it is disqualifying on its own, whatever the S3 measures.
 
-`idf_component.yml` carries the registry metadata and names `esp32s3` as the
-only target, which is a measurement rather than a shrug at the rest: the S3 is
-the part this was ported to and the one CI exercises. **Nothing publishes the
-component** — there is no upload step in any workflow, deliberately, since
-publishing to a registry is a distribution decision rather than a build one.
-
-## Audio output
-
-`esp-idf/ac3forge/examples/i2s_player/` decodes the AC-3 5.1 fixture, folds it
-to stereo through the decoder's own §7.8 output stage, and writes it to an I2S
-DAC at 48 kHz, 16-bit, on a loop. Three GPIOs, set under `ac3forge I2S player`
-in `idf.py menuconfig`, defaulting to BCLK 5, WS 6, DOUT 7 — chosen to avoid the
-strapping pins, the USB pair and the console UART. The example's README names
-the DAC shapes it is written for (a MAX98357A, a PCM5102), and no MCLK pin is
-configured, so a DAC that needs one has to have it added.
-
-It is a smaller build than the footprint probe — 94,383 bytes of DIRAM against
-134,676 — because it reaches only the AC-3 path: no Annex E decoder, no QMF
-bank, no object reconstruction. An E-AC-3 or Atmos player is a bigger build.
-
-Unlike the probe under QEMU, the I2S peripheral is a real clock: the DMA drains
-at 48,000 frames a second whatever the CPU does, so the example's
-`realtime_permille` and `worst_frame_us` are the timing figures this port has
-otherwise had no way to take. What the [Timing](#timing) section says about QEMU
-still holds for the probe.
+What the P4 would buy is clock — 12.8 M cycles per frame against the S3's 7.68 M, **1.67×**,
+per-core in both cases. The memory advantage is already spent, since this port fits internal SRAM.
 
 ## ESPHome
 
-Not built. The first of the three steps it needs is now done:
-[the ESP-IDF component](#the-esp-idf-component) above is reusable and reachable
-through `EXTRA_COMPONENT_DIRS`. Two remain:
+`esphome/components/ac3forge/` is an ESPHome external component. It is the plumbing:
+`Ac3ForgeComponent` owns an `ac3::FrameDecoder` and an `ac3::io::AccessUnitAccumulator`, takes
+bytes and hands back planar float PCM. It is **not** a `media_player` or a `speaker` source —
+ESPHome's `speaker` platform is ESP-IDF-only, so that is the obvious next step rather than a
+blocked one.
 
-1. **An ESPHome external component**, `components/ac3_decoder/{__init__.py,
-   *.cpp}` in a git repo, referenced from YAML via `external_components:`.
-2. **Pulling the library in**, with `add_idf_component(name=..., repo=..., ref=...)`
-   from that component's `to_code()` — the mechanism ESPHome's own `mqtt` and
-   `usb_host` components use for IDF 6.0's registry-hosted dependencies. That
-   mechanism wants a registry-hosted dependency, and nothing publishes this
-   component, so an ESPHome build would reach it by git reference instead.
+```yaml
+external_components:
+  - source:
+      type: git
+      url: https://github.com/iainchesworthlabs/ac3forge
+      ref: main
+      path: esphome/components
+    components: [ac3forge]
 
-ESPHome's `speaker` media_player platform is ESP-IDF-only, so the frameworks are
-compatible.
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+ac3forge:
+  version: v0.10.0-beta.1   # a git ref of ac3forge itself
+  buffer_size: 16384
+```
+
+Two refs are in play: `external_components`' `ref` picks the version of the ESPHome component,
+and `ac3forge:`'s `version:` picks the version of the library it fetches. Pin both for anything
+meant to keep working.
+
+`buffer_size` is the framer's working buffer, floored at 4,160 bytes — one syncframe plus the
+next header, which is what deciding where an access unit ends requires. 16 KB holds an independent
+substream plus three dependents, which covers Atmos.
+
+The component reaches the library by git reference rather than the registry:
+`add_idf_component` writes `git:`, `version:` and `path:` into the generated
+`idf_component.yml`, which is the form the IDF component manager wants for a component in a
+subdirectory. Nothing here is blocked on [publishing](#the-esp-idf-component).
+
+CI runs `esphome config` over `esphome/tests/ac3forge-test.yaml` against a local source pointing
+at the working tree, which exercises the schema and `to_code` including the `add_idf_component`
+call, and asserts that a `buffer_size` no access unit fits in is rejected. It does **not** compile
+the firmware: that would clone ac3forge at the configured ref and build the whole IDF project,
+which says nothing about the code under review, since the ref it fetched is not that code.
+
+[`esphome/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esphome/README.md)
+has the rest, including why PSRAM is worth having on a board that also runs WiFi.

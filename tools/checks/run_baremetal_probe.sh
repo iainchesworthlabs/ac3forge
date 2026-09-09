@@ -62,8 +62,10 @@ done
 # reached 412,516 bytes at that point; nobody re-measured before merging.
 # See docs/performance-trend.md's footprint table for the current breakdown.
 : "${AC3FORGE_MAX_IMAGE_BYTES:=465000}"
-# Measured against main at e982712b: image 418,244 of 465,000 (11% headroom)
-# and peak heap 270,886 of 300,000 (11%). The heap figure moved up from 243,470
+# Measured on main at be71f454, 2026-09-09, arm-none-eabi GCC 14.2.1 under QEMU
+# 10.2.1: image 320,940 of 465,000 (31% headroom) and peak heap 236,391 of
+# 300,000 (21%). Both fell after the float32 decode path and the thread_local
+# move; the heap figure had earlier moved up from 243,470
 # - and its headroom from 23% to 11% - when AP3's pimpl sweep put both decoders'
 # state on the heap instead of in the caller's frame: a relocation out of
 # automatic storage rather than new consumption. The ceiling is deliberately
@@ -74,8 +76,8 @@ done
 # Allocations per frame in the steady state, whichever fixture is worst. The
 # requirement PF7 states is ZERO and this is not it - see docs/building.md's
 # gap note. The ceiling exists so the distance from zero cannot quietly grow
-# while that gap is open. Measured 2026-09-09, all eight fixtures, identical on
-# this leg and on tools/checks/run_esp32s3_probe.sh's:
+# while that gap is open. Measured on main at be71f454, 2026-09-09, all eight
+# fixtures, identical on this leg and on tools/checks/run_esp32s3_probe.sh's:
 #
 #   1 ac3_mono   1 ac3_stereo   3 ac3   10 eac3_stereo
 #   12 eac3   12 eac3_ecpl   23 eac3_atmos_bed   41 eac3_atmos_objects
@@ -222,7 +224,7 @@ fi
 CHURN=$(grep -o '[a-z0-9_]*\.steady_allocs_per_frame=[0-9]*' "$OUTPUT" | sed 's/\.steady_allocs_per_frame=/ /')
 if [[ "$DIRECTION" == "encoder" ]]; then
     # 260 rather than 100. E-AC-3 encode measures 249 allocations per frame and
-    # AC-3 78, against the decoders' 43-126 - and the reason is in the API, not
+    # AC-3 78, against the decoders' 1-41 - and the reason is in the API, not
     # the implementation: both encoders return std::vector<std::byte> from
     # encode_frame, with no encode_frame_into to match decode_frame_into. That
     # is PF7's zero-heap gap seen from the encode side, and it is wider here.

@@ -385,7 +385,7 @@ Two things about the probe differ from the decode one, and both follow from the 
   FPU at all.
 
 Steady-state churn is **78 allocations per frame for AC-3 and 249 for E-AC-3**, against the
-decoders' 43–126. That gap is in the API rather than the implementation: both encoders return
+decoders' 1–41. That gap is in the API rather than the implementation: both encoders return
 `std::vector<std::byte>` from `encode_frame`, and there is no `encode_frame_into` to match
 `decode_frame_into`. It is the same zero-heap gap [above](#gaps) records for the decode side, wider
 here, and it is the thing to close before this profile is fit for a real-time encode.
@@ -395,8 +395,9 @@ CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`)
 
 ### Gaps
 
-Two of PF7's requirements are not met, and are recorded here rather than half-enforced. The
-third, a float32-only path, is met for the decode path; its scope is described below.
+One of PF7's requirements is not met, and is recorded here rather than half-enforced: no heap
+traffic in the decode loop. The float32-only path is met for the decode path, and the retained
+scratch below has since been closed; both are kept here with what they cost and what closed them.
 
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
 (`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
@@ -412,16 +413,19 @@ a design change, not a build option. The runner gates the number at 100 for ever
 no exemption ([the footprint table](performance-trend.md#minimum-footprint-decoder) has the
 detail), so the distance from zero cannot grow while the gap is open.
 
-**Scratch that is never released — newly visible, and bounded.** 34,232 bytes are still live
-when the probe finishes, after every decoder it made has been destroyed: `eac3_tools.cpp`'s
-32,768-byte `EcplSpectrumScratch`, its 1,440-byte bin-angle vector, and 24 bytes of
-`__cxa_thread_atexit` registration for the two. Both are `thread_local`, deliberately, so that
-enhanced coupling neither allocates per call nor puts 32 KB on the stack; on a target whose only
-thread never exits the destructor that would release them never runs. This is not the heap gap
-above — it does not grow, and it is paid once — but on an ESP32-S3 it is 32 KB of 341,760 bytes
-of internal SRAM held for the life of the decoding task. The probe reports it as
-`heap.retained_bytes` and both runners gate it. It could not be measured until a fixture reached
-§E3.5, which none did before the enhanced-coupling stream was added.
+**Scratch that was never released — closed.** `eac3_tools.cpp` keeps enhanced coupling's
+32,768-byte `EcplSpectrumScratch` and its 1,440-byte bin-angle vector in `thread_local` storage,
+so §E3.5 neither allocates per call nor puts 32 KB on the stack. On a target whose only thread
+never exits, the destructor that would release them never runs, and 34,232 bytes stayed live for
+the life of the decoding task. That was bounded and paid once, so it was never the heap gap above
+— but on an ESP32-S3 it was 32 KB of internal SRAM that object reconstruction then had nowhere to
+fit into.
+
+`ac3::eac3::release_ecpl_scratch()` hands them back and the next call rebuilds what it needs. The
+probe calls it between fixtures, and retained bytes at exit went from 34,232 to **24**, which is
+two `__cxa_thread_atexit` registration records. Both runners gate it at 1,024 — deliberately tight,
+because nothing here grows a little: either the scratch is handed back or it is not, and the
+difference is five figures. [The ESP32-S3 page](platforms/esp32.md#objects) has what it unblocked.
 
 **A float32-only path — met for the decode path.** `src/forge/src/internal/scalar/`'s
 seam carries `decode_scalar_t`: `float` under this profile, `double` by default in every other
