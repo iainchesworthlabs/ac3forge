@@ -12,8 +12,8 @@ the float32 path worth having and real-time decode worth measuring.
 
 | | |
 |---|---|
-| AC-3 decode | Correct. Mono, stereo and 5.1, every channel level exact against `apps/baremetal/fixture.hpp` |
-| E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing |
+| AC-3 decode | Correct. Mono, stereo and 5.1, and 5.1 folded to Lo/Ro stereo in line mode by the §7.8 output stage, every channel level exact against `apps/baremetal/fixture.hpp` |
+| E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing, and 5.1 folded to Lo/Ro stereo in line mode |
 | E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture. Costs 12 allocations per frame, level with plain E-AC-3 |
 | Atmos bed | Correct, decoded bed-only via `DecoderConfig::skip_object_reconstruction`. 20 allocations per frame |
 | Atmos objects | **Correct, reconstructed on target.** 31 allocations per frame — see [Objects](#objects) |
@@ -415,22 +415,49 @@ A 7.1.4 frame is 2.6 times a 5.1 frame, not 2 - the same ratio the
 [instruction count](../performance-trend.md#instructions-per-frame) gives on
 the Cortex-M3 leg (33.8 M against 12.9 M), so the extra is the dependents'
 own per-substream work rather than anything this part does badly. It is
-also the new peak: 229,630 bytes against the 257,572 the probe now
-leaves free, 27,942 to spare, after the probe's own PCM block grew from
-eight channels to twelve (73,728 bytes, static). The peak by fixture, the
-same on both legs:
+also the new peak: 229,630 bytes against the 257,572 the probe left free
+on the board that day, 27,942 to spare, with the probe's own PCM block at
+twelve channels (73,728 bytes, static; the `_by_block` forms have since
+removed it, and the board's free figure is the next hardware run's to
+re-measure). The peak by fixture, the same on both legs:
 
 | Fixture | peak heap | allocations/frame |
 |---|---:|---:|
-| `ac3_mono` | 10,652 | 1 |
-| `ac3_stereo` | 12,356 | 1 |
-| `ac3` 5.1 | 19,457 | 3 |
+| `ac3_mono` | 47,524 | 1 |
+| `ac3_stereo` | 49,228 | 1 |
+| `ac3` 5.1 | 56,329 | 3 |
+| `ac3_fold` | 68,617 | 3 |
 | `eac3_atmos_bed` | 123,735 | 20 |
 | `eac3_stereo` | 140,534 | 10 |
 | `eac3_ecpl` | 157,493 | 12 |
 | `eac3` 5.1 | 167,042 | 12 |
 | `eac3_atmos_objects` | 210,203 | 31 |
+| `eac3_fold` | 216,406 | 12 |
 | `eac3_714` | 229,630 | 35 |
+
+The AC-3 rows carry the block form's own frame since the `_by_block`
+forms (10,652, 12,356 and 19,457 before them), and the two fold rows are
+[Folded to stereo](#folded-to-stereo)'s.
+
+### Folded to stereo
+
+The §7.8 output stage - dialnorm, the Lo/Ro, Lt/Rt and mono folds, the
+Hilbert phase shift behind Lt/Rt and RF mode's overload protection - ran
+its per-sample arithmetic in `double` until 2026-09-10, on the same
+software floating point every other stage had been moved off; it now
+follows `decode_scalar_t`, with the gains and mix coefficients still
+`double`. Two fixtures exercise it on the target: `ac3_fold` and
+`eac3_fold` decode the two 5.1 streams to Lo/Ro stereo in line mode, and
+both channels' levels are exact on every leg. What the fold costs, on the
+Cortex-M3 leg's deterministic count: 0.56 M instructions a frame over
+plain AC-3 5.1 (10.78 M against 10.22) and 1.35 M over E-AC-3 5.1 (14.28 M
+against 12.93), 5% and 10%. The board has not yet run this build; its
+figures are the next hardware run's.
+
+| Fixture | peak heap | allocations/frame | instructions/frame (Cortex-M3) |
+|---|---:|---:|---:|
+| `ac3_fold` | 68,617 | 3 | 10,782,000 |
+| `eac3_fold` | 216,406 | 12 | 14,280,000 |
 
 ### What is left, and what would move it
 
@@ -584,7 +611,8 @@ minimum-footprint profile, `double` by default elsewhere, and selectable in any 
 are independent CMake axes. Since 2026-09-09 the arithmetic between the bitstream and those
 buffers — mantissa dequantisation, dither, coordinates, decoupling, spectral extension, the AHT
 and JOC's mixing — follows the same scalar; it had stayed `double`, which on this FPU is
-software, and [Timing](#timing) has what that cost.
+software, and [Timing](#timing) has what that cost. The output stage's per-sample arithmetic
+followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
 
 ## Open work
 

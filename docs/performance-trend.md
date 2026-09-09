@@ -692,9 +692,11 @@ coupling), 2/0 AC-3 (192 kbit/s) and 1/0 AC-3 (128 kbit/s); 5.1 E-AC-3 (384 kbit
 standard coupling), 5.1 E-AC-3 with §E3.5 enhanced coupling (384 kbit/s, `cpl+ecpl`), E-AC-3
 Atmos (448 kbit/s, six objects over a 5.1 bed) and 2/0 E-AC-3 (192 kbit/s, which is the only
 layout §7.5.4 rematrixing exists in) and E-AC-3 7.1.4 (640 kbit/s, a bed and two dependent
-substreams) — and reports what it cost. That is nine fixtures: the
-Atmos stream is decoded twice, bed-only and with its objects reconstructed. Numbers below are
-from a run against `feature/decoder-block-form` at `b28e4869` on 2026-09-09, `arm-none-eabi`
+substreams) — and reports what it cost. That is eleven fixtures: the
+Atmos stream is decoded twice, bed-only and with its objects reconstructed, and the two 5.1
+streams are decoded a second time through the §7.8 output stage, folded to Lo/Ro stereo in
+line mode (`ac3_fold`, `eac3_fold`). Numbers below are
+from a run against `feature/esp32-output-stage-float` at `195ba37c` on 2026-09-10, `arm-none-eabi`
 GCC 14.2.1 under QEMU 10.2.1's `mps2-an385`; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
@@ -725,15 +727,15 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 255,916 |
+| `.text` (code + read-only data) | 256,372 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 46,829 |
-| **Image total** | **303,145** (296.0 KiB) |
+| `.bss` (zero-initialised) | 46,845 |
+| **Image total** | **303,617** (296.5 KiB) |
 
 These are `arm-none-eabi-size`'s own columns, which is what `AC3FORGE_MAX_IMAGE_BYTES` gates, so
 they group sections rather than list them: `.text` here includes `.init`, `.fini` and
 `.ARM.exidx`, `.data` includes `.init_array` and `.fini_array`, and `.bss` includes `.tbss`. Read
-per-section with `arm-none-eabi-size -A`, `.text` is 223,228, `.data` 388 and `.bss` 97,256.
+per-section with `arm-none-eabi-size -A`, `.text` is 256,340, `.data` 388 and `.bss` 46,824.
 
 `.bss` fell from 237,592 bytes in two steps. Moving `ecpl_channel_spectrum`'s 32 KB scratch off
 thread-local storage — it made the library unlinkable into any FreeRTOS application, see
@@ -775,7 +777,10 @@ is what it says: 30,720 bytes of stream in `.text` and 24,576 of `.bss` for the 
 probe's PCM block grew by, against 168 bytes of code. 376,097. The block-granular output forms then
 took that block out altogether - the probe reads the decoders' blocks in place and holds no PCM -
 and `.bss` fell 73,824 bytes to 46,829, against 872 bytes of `.text` for the forms themselves:
-303,145, the smallest image the probe has had since its fixtures were four.
+303,145, the smallest image the probe has had since its fixtures were four. The output stage's
+float forms and the two fold rows are 472 more - 456 of `.text`, 16 of `.bss` - for 303,617:
+`output.cpp.obj` went from 4.5 KiB to 4.6, the narrowed Hilbert kernel being a second static
+beside the double one, and `probe.cpp.obj` from 86.0 KiB to 86.3 with the rows.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
@@ -901,17 +906,21 @@ The peak by fixture, identical on both legs:
 | `ac3_mono` | 47,524 | 1 |
 | `ac3_stereo` | 49,228 | 1 |
 | `ac3` 5.1 | 56,329 | 3 |
+| `ac3_fold` | 68,617 | 3 |
 | `eac3_atmos_bed` | 123,735 | 20 |
 | `eac3_stereo` | 140,534 | 10 |
 | `eac3_ecpl` | 157,493 | 12 |
 | `eac3` 5.1 | 167,042 | 12 |
 | `eac3_atmos_objects` | 210,203 | 31 |
+| `eac3_fold` | 216,406 | 12 |
 | `eac3_714` | 229,630 | 35 |
 
 The AC-3 rows carry the 36,872 bytes of the block form's own frame (`decode_frame_by_block`: AC-3 has
 no substream vectors to hand out views of, so it keeps one frame, sized once); the E-AC-3 rows did
 not move, since that form copies nothing. Before the block forms the AC-3 rows were 10,652, 12,356
-and 19,457.
+and 19,457. The two fold rows are the 5.1 rows plus the output stage's own buffers: the stereo
+frame it writes (12,288 bytes) and, for E-AC-3, the six seats its layout fold stages the
+substreams' channels into (36,864) - neither of them the probe's peak.
  [The ESP32-S3 page](platforms/esp32.md#objects) has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
@@ -950,10 +959,16 @@ soft float throughout (the leg has no FPU, so this is what a part without one pa
 | `eac3_stereo` | 4,851,000 | 6,000,000 |
 | `eac3_atmos_bed` | 8,940,000 | 11,000,000 |
 | `ac3` 5.1 | 10,224,000 | 13,000,000 |
+| `ac3_fold` | 10,782,000 | 13,500,000 |
 | `eac3` 5.1 | 12,928,000 | 16,000,000 |
+| `eac3_fold` | 14,280,000 | 17,000,000 |
 | `eac3_atmos_objects` | 28,213,000 | 35,000,000 |
 | `eac3_ecpl` | 28,861,000 | 36,000,000 |
 | `eac3_714` | 33,793,000 | 42,000,000 |
+
+The two fold rows were measured at `195ba37c` on 2026-09-10, in a run that reproduced every
+other row to within the microsecond the probe prints - 1,000 instructions; the fold itself is
+558,000 instructions over plain AC-3 5.1 and 1,352,000 over E-AC-3 5.1, 5% and 10%.
 
 Not cycles on any real part: a Cortex-M3 would take more, an ESP32-S3 with its FPU takes a fifth
 of a 5.1 frame's count in cycles. What the column is for is that it is deterministic — two runs
