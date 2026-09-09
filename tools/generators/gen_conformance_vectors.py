@@ -380,7 +380,9 @@ def build_vector_list() -> list[Vector]:
             codec="AC-3",
             exercises=("§7.7.1 dynrng words from the Film Standard profile, plus "
                        "dialnorm measured from the source"),
-            args=["encode", SOURCE_TOKEN, "@out", "256", "51", "drc=film-standard", "dialnorm=auto"],
+            args=[
+                "encode", SOURCE_TOKEN, "@out", "256", "51", "drc=film-standard", "dialnorm=auto",
+            ],
             source="reference_51",
             suffix=".ac3",
             layout="51",
