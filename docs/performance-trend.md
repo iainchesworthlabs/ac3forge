@@ -806,7 +806,7 @@ a silent fast-path substitution — see the building doc for why.
 | | Value |
 |---|---|
 | Peak heap | 236,391 bytes (230.9 KiB) |
-| Retained after teardown | 24 bytes |
+| Retained after teardown | 12 bytes |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
 | Caller-owned PCM buffer (8 × 1536 `float`, via `decode_*_into`) | 49,152 bytes |
@@ -851,16 +851,20 @@ than at every read, 912 bytes more. 237,303 fits the 280,792 bytes an ESP32-S3 h
 has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
-made has been destroyed — so not per-frame growth and not a leak. It is 24 bytes now: two
-`__cxa_thread_atexit` registration records, one per `thread_local` the library declares.
+made has been destroyed — so not per-frame growth and not a leak. It is 12 bytes now: one
+`__cxa_thread_atexit` registration record, for the pointer to enhanced coupling's spectrum scratch,
+the one `thread_local` the library still declares.
 
-It was 34,232 until the probe began calling `ac3::eac3::release_ecpl_scratch()` between fixtures.
-That difference is enhanced coupling's 32,768-byte spectrum scratch and its 1,440-byte bin-angle
-vector, `thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack, and
-therefore resident for the life of a task that never exits. Bounded and paid once — but enough to
-decide whether something else fits, and it decided: object reconstruction failed on an ESP32-S3
-whenever it ran after an enhanced-coupling decode, on a 6,144-byte request, and succeeds now that
-the scratch goes back. Nothing could measure any of it until a fixture reached §E3.5.
+It was 34,232 until the probe began calling `ac3::eac3::release_ecpl_scratch()` between fixtures,
+and 24 until the per-bin angle buffer stopped being a second `thread_local`. The 34,232 was
+enhanced coupling's 32,768-byte spectrum scratch and its 1,440-byte bin-angle vector, both
+`thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack, and therefore
+resident for the life of a task that never exits. Bounded and paid once — but enough to decide
+whether something else fits, and it decided: object reconstruction failed on an ESP32-S3 whenever
+it ran after an enhanced-coupling decode, on a 6,144-byte request, and succeeds now that the
+scratch goes back. The scratch is 23,552 bytes on this profile now (its float form, tables
+included) and the angle buffer a stack array. Nothing could measure any of it until a fixture
+reached §E3.5.
 
 `tools/checks/run_baremetal_probe.sh` gates the image, the heap peak, the retained bytes and
 every fixture's allocation count at ceilings above these measured values, so a regression stops

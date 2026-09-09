@@ -20,8 +20,8 @@ it is the first target where real-time decode is worth measuring.
 | Atmos, bed | Correct. Its own fixture, decoded bed-only; costs 61 allocations/frame and nothing extra in peak heap |
 | Atmos, objects | Does not fit. Decodes correctly on a host; see [Objects](#objects-do-not-fit-in-internal-sram) |
 | Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 179,064-byte peak — see [Memory](#how-much-memory-there-actually-is) |
-| Retained after teardown | 34,232 bytes of `thread_local` enhanced-coupling scratch, held for the life of the decoding task — see [Building](../building.md#gaps) |
-| Real time | Not measured. See [Timing](#timing) |
+| Retained after teardown | 12 bytes once the probe hands back the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) — see [Building](../building.md#gaps) |
+| Real time | Yes, every fixture, at 240 MHz — from 0.08x for AC-3 mono to 0.92x for Atmos objects. See [Timing](#timing) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
 
 ## Building
@@ -298,13 +298,31 @@ After both, plain build, same board, same clock:
 | `eac3_atmos_bed` | 13,409 | 0.42 | 0.85 |
 | `eac3` 5.1 | 14,169 | 0.44 | 2.46 |
 | `eac3_atmos_objects` | 29,359 | 0.92 | 2.58 |
-| `eac3_ecpl` | 200,822 | 6.28 | 6.80 |
+| `eac3_ecpl` | 23,784 | 0.74 | 6.80 |
 
 Every E-AC-3 configuration this profile decodes now runs in real time on this
-part except enhanced coupling, with the Atmos objects fixture the closest to
-the line. Where a 5.1 frame's time goes now, stage-timed: bit allocation
-1.66 ms, the IMDCT 3.38, the AHT 2.98, spectral extension 1.49, mantissas
-0.45, and 2.3 ms at the access-unit level outside every marker.
+part, with the Atmos objects fixture the closest to the line. Where a 5.1
+frame's time goes now, stage-timed: bit allocation 1.66 ms, the IMDCT 3.38,
+the AHT 2.98, spectral extension 1.49, mantissas 0.45, and 2.3 ms at the
+access-unit level outside every marker.
+
+Enhanced coupling came last, on its own, because its routines are shared with
+the encoder and the first pass stopped at that boundary. It was the same
+disease at a larger scale - of 202 ms, 107 were the per-channel reconstruction
+and 83 `ecpl_channel_spectrum`, all `double`: three double inverse transforms
+and a double 512-point DFT per block, then `std::cos` and `std::sin` per bin of
+every coupled channel, each a software routine of a thousand cycles or so on
+this FPU. The §3.5.5 routines now exist in both scalars, the double forms
+being the encoder's and the exported ones as before; the float forms run the
+float inverses and a float `dft512`, take their sine and cosine from a short
+series held to libm at float precision (`tests/encoder/test_enhanced_coupling.cpp`
+pins every float form against its double one), and write into the decoder's
+store directly instead of round-tripping 512 conversions per channel per
+block. Stage-timed, the spectrum is 6.9 ms a frame and the reconstruction
+4.7; the fixture decodes in 23.8 ms. The float scratch is 23,552 bytes against
+the double one's 32,768, and the bin-angle vector that used to be `thread_local`
+is a stack array, so what stays retained after the probe hands the scratch
+back is one registration record, 12 bytes, rather than two.
 
 ### What is left, and what would move it
 
@@ -318,12 +336,14 @@ the line. Where a 5.1 frame's time goes now, stage-timed: bit allocation
   independent of the bed decode of frame N+1, so a second task can run it a
   frame behind, at the cost of one frame of latency, and throughput becomes
   the larger of the two halves rather than their sum. Neither is done.
-- **Enhanced coupling** is out of scope and still 6.3x over. Its profile is the
-  same disease at a larger scale: of 202 ms, 107 are the channel reconstruction
-  in `eac3_decoder.cpp` and 83 are `ecpl_channel_spectrum`, both `double`
-  throughout (the 512-point DFT in `fft.cpp`, `ecpl_angles`,
-  `ecpl_channel_coefficients`), and the float conversion above deliberately
-  stopped at its boundary because those routines are shared with the encoder.
+- **Enhanced coupling** is at 0.75x and has two cheap steps left. Each block's
+  spectrum runs three inverse transforms, and two of them are the neighbouring
+  blocks' - the same transforms the previous and next block run for
+  themselves, so eighteen a frame where eight are distinct; a cache keyed by
+  block would take about a millisecond off the 6.9. And `fft.cpp` is not on the
+  `-O2` list, because the float IMDCT's kernel (instantiated in `mdct.cpp`)
+  gained nothing there; the float `dft512` now on the hot path has not been
+  measured either way.
 - **The second core** was the lever the earlier estimates ranked first. It was
   not needed for stereo or 5.1, and the breakdown says why it would have
   disappointed: the stages that dominated were serial software floating point,
@@ -562,7 +582,9 @@ that happens to pass:
 | Before | 267,754 | 34,232 |
 | After | **233,546** | **24** |
 
-24 bytes is two `__cxa_thread_atexit` registration records. Both legs report the same figures.
+24 bytes was two `__cxa_thread_atexit` registration records; it is 12 now that the bin-angle
+vector is a stack array and only the spectrum scratch's pointer is `thread_local`. Both legs
+report the same figures.
 
 That leaves **47,246 bytes spare** against free SRAM rather than 13,038, and it is why object
 decode is gated in CI on both bare-metal legs instead of documented as almost fitting.

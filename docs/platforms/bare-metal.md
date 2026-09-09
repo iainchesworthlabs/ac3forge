@@ -21,7 +21,7 @@ It is the target CI measures the profile on. The
 | E-AC-3 2/0, §7.5.4 rematrixing | Correct. The only layout that tool exists in |
 | Image size | 297,612 bytes total — 200,060 `.text`, 400 `.data`, 97,152 `.bss` |
 | Peak heap | 179,064 bytes |
-| Retained after teardown | 34,232 bytes of enhanced-coupling scratch, held for the life of the decoding thread |
+| Retained after teardown | 12 bytes once the probe hands back the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) |
 | Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`. The two are mutually exclusive: neither fits beside the other. |
 | Audio output | None. The probe decodes built-in fixtures and prints levels. |
 | Real silicon | None. Correctness is established under emulation. |

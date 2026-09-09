@@ -277,15 +277,30 @@ inline constexpr std::array<bool, kEcplSubBands> kDefaultEcplBandStructure = {
 // Table E3.11: ecplangle (6 bits, 0..63) to a linear angle in units of pi
 // radians, range [-1, 1). The table is exactly i/32 for i < 32 and
 // (i - 64)/32 above it, so this is a formula rather than a literal lookup.
+//
+// Both decodes below exist in the caller's scalar as well as at double: the
+// decoder resolves them per band per coupled channel per block, and on the
+// single-precision FPU the minimum-footprint profile targets a double divide
+// is a software routine. The angle is an integer over a power of two, so its
+// float form is the double one narrowed; the chaos is an integer over 7,
+// which rounds the same way in either type (see dequantize_mantissa_as).
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar decode_ecplangle_as(int ecplangle) {
+    return static_cast<Scalar>(ecplangle < 32 ? ecplangle : ecplangle - 64) / Scalar{32};
+}
 [[nodiscard]] constexpr double decode_ecplangle(int ecplangle) {
-    return static_cast<double>(ecplangle < 32 ? ecplangle : ecplangle - 64) / 32.0;
+    return decode_ecplangle_as<double>(ecplangle);
 }
 [[nodiscard]] AC3FORGE_EXPORT int quantize_ecplangle(double angle);
 
 // Table E3.12: ecplchaos (3 bits, 0..7) to a linear scaling value in
 // [-1, 0]. Exactly -i/7, so again a formula rather than a literal lookup.
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar decode_ecplchaos_as(int ecplchaos) {
+    return -static_cast<Scalar>(ecplchaos) / Scalar{7};
+}
 [[nodiscard]] constexpr double decode_ecplchaos(int ecplchaos) {
-    return -static_cast<double>(ecplchaos) / 7.0;
+    return decode_ecplchaos_as<double>(ecplchaos);
 }
 [[nodiscard]] AC3FORGE_EXPORT int quantize_ecplchaos(double chaos);
 
@@ -315,12 +330,13 @@ inline constexpr std::array<bool, kEcplSubBands> kDefaultEcplBandStructure = {
 // Release the per-thread scratch ecpl_channel_spectrum caches, and let the
 // next call rebuild it.
 //
-// That scratch is 32,768 bytes plus a 1,440-byte bin-angle vector, kept
-// thread_local so enhanced coupling neither allocates per call nor puts 32 KB
-// on the stack. On a hosted platform it is released at thread exit and nobody
-// need think about it. On a bare-metal one the only thread never exits, so it
-// stays resident for the life of the task - and 34,232 bytes is enough to
-// decide whether something else fits.
+// That scratch is 32,768 bytes at double and 23,552 at float (16,384 of
+// buffers plus its own narrowed tables), kept thread_local so enhanced
+// coupling neither allocates per call nor puts it on the stack. On a hosted
+// platform it is released at thread exit and nobody need think about it. On
+// a bare-metal one the only thread never exits, so it stays resident for the
+// life of the task - and that much is enough to decide whether something
+// else fits.
 //
 // Measured on an ESP32-S3: an Atmos stream's object reconstruction peaks at
 // 233,522 bytes on a clean heap and fits, and at 267,754 after an
@@ -340,6 +356,21 @@ AC3FORGE_EXPORT void ecpl_channel_spectrum(std::span<const double, 256> prev_man
                                            std::span<double, 256> real_out,
                                            std::span<double, 256> imag_out, bool fast = false);
 
+// The same reconstruction over float32, for a decoder whose coefficient store
+// is float (ac3::internal::decode_scalar_t on the minimum-footprint profile).
+// No `fast` parameter, for the reason the float imdct512_windowed has none:
+// the direct form is double-only, and this form is the fast fold throughout -
+// three float inverses and a float dft512 over tables narrowed once from the
+// double ones. Not the double result narrowed; the transforms round in
+// float. Measured on an ESP32-S3 the double form was 13.8 ms per block, all
+// of it software floating point on that single-precision FPU
+// (docs/platforms/esp32.md).
+AC3FORGE_EXPORT void ecpl_channel_spectrum(std::span<const float, 256> prev_mant,
+                                           std::span<const float, 256> curr_mant,
+                                           std::span<const float, 256> next_mant,
+                                           std::span<float, 256> real_out,
+                                           std::span<float, 256> imag_out);
+
 // §3.5.5.3's fixed de-correlation sequence for a channel/bin not carrying a
 // transient: deterministic and stable for the whole stream (the spec's own
 // requirement - "generated once ... stay the same for every block"),
@@ -347,12 +378,41 @@ AC3FORGE_EXPORT void ecpl_channel_spectrum(std::span<const double, 256> prev_man
 // per-decoder state is needed to satisfy it.
 [[nodiscard]] AC3FORGE_EXPORT double ecpl_rand_notrans(int channel, int bin);
 
+// The same sequence mapped in the caller's scalar; the exported form is this
+// at double. The hash is integer arithmetic either way, so the two agree on
+// which bins are which; the float mapping rounds the state to 24 bits, so its
+// values are not the double ones narrowed. The generator is the decoder's to
+// choose (§3.5.5.3), and this is still one, stable for the stream.
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar ecpl_rand_notrans_as(int channel, int bin) {
+    std::uint32_t state = static_cast<std::uint32_t>(channel) * 0x9E3779B1U ^
+                          static_cast<std::uint32_t>(bin) * 0x85EBCA77U ^ 0xC2B2AE3DU;
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    const Scalar unit = static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
+    return unit * Scalar{2} - Scalar{1};  // [-1, 1], matching §3.5.5.3's uniform
+}
+
 // §3.5.5.3's other sequence, for a channel/bin WITH a transient present
 // (ecpltrans[ch]): regenerated every block, so - unlike the one above - this
 // one is genuine sequential state, one instance per substream/frame.
 struct AC3FORGE_EXPORT EcplNoise {
     std::uint32_t state = 0x2545F491U;  // never zero, or xorshift sticks at 0
     [[nodiscard]] double next();  // uniform on [-1, 1] (§3.5.5.3, not unit-variance)
+
+    // The same sequence mapped in the caller's scalar - next() is this at
+    // double, and the float decoder draws here for the reason
+    // SpxNoise::next_as gives.
+    template <typename Scalar>
+    [[nodiscard]] Scalar next_as() {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        const Scalar unit =
+            static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
+        return unit * Scalar{2} - Scalar{1};
+    }
 };
 
 // §3.5.5.2's amplitude decode + chaos modification, expanded from BANDS (as
@@ -370,6 +430,13 @@ AC3FORGE_EXPORT void ecpl_amplitudes(std::span<const int> ecplamp, std::span<con
                                      bool ecpltrans, bool is_first_channel, int begin_subbnd,
                                      int end_subbnd, std::span<const bool> structure,
                                      std::span<double> amp_out);
+// The float form, for the float decoder. Same values narrowed: Table E3.10's
+// entries are an integer over a power of two, and the chaos factor rounds
+// the same way in either type.
+AC3FORGE_EXPORT void ecpl_amplitudes(std::span<const int> ecplamp, std::span<const int> ecplchaos,
+                                     bool ecpltrans, bool is_first_channel, int begin_subbnd,
+                                     int end_subbnd, std::span<const bool> structure,
+                                     std::span<float> amp_out);
 
 // §3.5.5.3's angle decode + de-correlation add. `interpolate` selects between
 // the two ways that section gives for turning BAND angles into BIN angles:
@@ -393,6 +460,15 @@ AC3FORGE_EXPORT void ecpl_angles(int channel, std::span<const int> ecplangle,
                                  bool is_first_channel, int begin_subbnd, int end_subbnd,
                                  std::span<const bool> structure, EcplNoise& noise,
                                  std::span<double> angle_out, bool interpolate = false);
+// The float form, for the float decoder: the same band-to-bin conversion and
+// chaos add in float, drawing the de-correlation sequences in float
+// (ecpl_rand_notrans_as, EcplNoise::next_as). Angles agree with the double
+// form up to a whole turn and float rounding.
+AC3FORGE_EXPORT void ecpl_angles(int channel, std::span<const int> ecplangle,
+                                 std::span<const int> ecplchaos, bool ecpltrans,
+                                 bool is_first_channel, int begin_subbnd, int end_subbnd,
+                                 std::span<const bool> structure, EcplNoise& noise,
+                                 std::span<float> angle_out, bool interpolate = false);
 
 // §3.5.5.4: the final complex-product reconstruction, given this block's
 // enhanced coupling channel spectrum (`real_in`/`imag_in`, bins 0..255 from
@@ -408,6 +484,18 @@ AC3FORGE_EXPORT void ecpl_channel_coefficients(std::span<const double, 256> real
                                                std::span<const double> angle_bin,
                                                int begin_mant, int end_mant,
                                                std::span<double, 256> mant_out);
+// The float form, for the float decoder. The per-bin sine and cosine come
+// from a short series rather than libm - on the single-precision FPU the
+// minimum-footprint profile targets a double sine is a software routine, and
+// this ran two of them per bin of every coupled channel of every block - and
+// agree with std::sin/std::cos to float precision (eac3_tools.cpp has the
+// error bound). `mant_out` follows real_in's type, so a float decoder passes
+// its coefficient store directly.
+AC3FORGE_EXPORT void ecpl_channel_coefficients(std::span<const float, 256> real_in,
+                                               std::span<const float, 256> imag_in,
+                                               std::span<const float> amp_bin,
+                                               std::span<const float> angle_bin, int begin_mant,
+                                               int end_mant, std::span<float, 256> mant_out);
 
 // --- adaptive hybrid transform (§E3.4) -------------------------------------
 // A second transform stage, cascaded after the MDCT: a 6-point DCT-II taken

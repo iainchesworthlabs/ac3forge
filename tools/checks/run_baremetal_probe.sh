@@ -102,13 +102,15 @@ done
 # was really asking, and it is no.
 : "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 # Bytes still live when the probe finishes, after every decoder it made has been
-# destroyed. 24 - two __cxa_thread_atexit registration records, one per
-# thread_local the library declares.
+# destroyed. 12 - one __cxa_thread_atexit registration record, for the pointer
+# to enhanced coupling's spectrum scratch, the one thread_local the library
+# still declares. (24 while its per-bin angle buffer was a second one; that is
+# a stack array now.)
 #
 # It was 34,232 until the probe started calling ac3::eac3::release_ecpl_scratch()
-# between fixtures. That difference is enhanced coupling's 32,768-byte spectrum
-# scratch and its 1,440-byte bin-angle vector, which are thread_local and so
-# were resident for the life of a task that never exits. Not a leak - bounded,
+# between fixtures. That difference was enhanced coupling's 32,768-byte spectrum
+# scratch (23,552 in its float form) and the 1,440-byte bin-angle vector, which
+# were thread_local and so resident for the life of a task that never exits. Not a leak - bounded,
 # paid once, and the point of caching them - but enough to decide whether
 # something else fits: object reconstruction did not, on an ESP32-S3, whenever
 # it ran after an enhanced-coupling decode.

@@ -412,16 +412,18 @@ a design change, not a build option. The runner gates the number at 100 for ever
 no exemption ([the footprint table](performance-trend.md#minimum-footprint-decoder) has the
 detail), so the distance from zero cannot grow while the gap is open.
 
-**Scratch that is never released — newly visible, and bounded.** 34,232 bytes are still live
-when the probe finishes, after every decoder it made has been destroyed: `eac3_tools.cpp`'s
-32,768-byte `EcplSpectrumScratch`, its 1,440-byte bin-angle vector, and 24 bytes of
-`__cxa_thread_atexit` registration for the two. Both are `thread_local`, deliberately, so that
-enhanced coupling neither allocates per call nor puts 32 KB on the stack; on a target whose only
-thread never exits the destructor that would release them never runs. This is not the heap gap
-above — it does not grow, and it is paid once — but on an ESP32-S3 it is 32 KB of 341,760 bytes
-of internal SRAM held for the life of the decoding task. The probe reports it as
-`heap.retained_bytes` and both runners gate it. It could not be measured until a fixture reached
-§E3.5, which none did before the enhanced-coupling stream was added.
+**Scratch that is never released — visible, bounded, and now handed back.** `eac3_tools.cpp`'s
+`EcplSpectrumScratch` — 32,768 bytes at double, 23,552 at float, where it also carries its own
+narrowed tables — is `thread_local`, deliberately, so that enhanced coupling neither allocates
+per call nor puts that much on the stack; on a target whose only thread never exits the
+destructor that would release it never runs. This is not the heap gap above — it does not grow,
+and it is paid once — but on an ESP32-S3 it is that much of 341,760 bytes of internal SRAM held
+for the life of the decoding task, which is why `ac3::eac3::release_ecpl_scratch()` exists and
+the probe calls it between fixtures. What is still live when the probe finishes is 12 bytes, one
+`__cxa_thread_atexit` registration record for the scratch's pointer (it was 24 while the per-bin
+angle buffer was a second `thread_local`; that is a stack array now). The probe reports it as
+`heap.retained_bytes` and both runners gate it. None of it could be measured until a fixture
+reached §E3.5.
 
 **A float32-only path — met for the decode path.** `src/forge/src/internal/scalar/`'s
 seam carries `decode_scalar_t`: `float` under this profile, `double` by default in every other
@@ -439,9 +441,10 @@ call into the ROM's software routines, and a board profile on 2026-09-09 found t
 a 5.1 E-AC-3 decode ([the ESP32-S3 page](platforms/esp32.md#timing) has the stage table). Those
 paths now run in `decode_scalar_t` too, through templates whose `<double>` instantiations are the
 exported functions the ordinary build always called, so its arithmetic is unchanged. What still
-runs in `double` on this profile is stated rather than hidden: enhanced coupling's reconstruction
-(`ecpl_channel_spectrum` and the 512-point DFT behind it, shared with the encoder), the per-block
-DRC gain, and the output stage's fold.
+runs in `double` on this profile is stated rather than hidden: the per-block DRC gain and the
+output stage's fold. Enhanced coupling's reconstruction followed in a second pass - its routines
+are shared with the encoder, so they exist in both scalars now, the double forms being the
+encoder's - and with it the last of the decode path is in `decode_scalar_t`.
 
 No gold-reference number moved, because the choice is per-profile rather than global. The
 ordinary build's `decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite
