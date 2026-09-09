@@ -201,38 +201,25 @@ void operator delete[](void* p, std::size_t) noexcept { ::operator delete(p); }
 
 namespace {
 
-// --- caller-owned PCM ------------------------------------------------------
-// The decode_frame_into / decode_access_unit_into forms write through spans
-// the caller owns, which is what an embedded integrator has: one static block,
-// sized once, reused every frame.
+// --- no caller-owned PCM ---------------------------------------------------
+// The probe decodes through the *_by_block forms: each block of a frame or
+// access unit arrives as views onto the decoder's own storage and the levels
+// accumulate in place, so the probe holds no PCM at all. It used to hold a
+// frame's worth for the *_into forms - 49,152 bytes of .bss at eight channels,
+// 73,728 once the 7.1.4 fixture needed twelve - which is exactly the frame an
+// integrator's DMA ring no longer needs either, and on an ESP32-S3 it was the
+// difference between 280,792 and 257,572 bytes free before a decode began.
+// The host suite proves the *_into forms sample for sample against these.
 //
-// Eight channels, not §E3.8.2's cap of sixteen. This block is the CALLER's, not
-// the library's, and an integrator decoding 5.1 allocates six - so provisioning
-// for a stream the fixture does not contain was inflating the probe's own .bss
-// by 49,152 bytes and making the profile look more expensive than it is.
-// Twelve covers 7.1.4 - the widest programme the encoder makes, and what the
-// eac3_714 row below decodes - at 73,728 bytes, which is also what an
-// ESP32-S3 feeding a TDM DAC with 7.1.4 has to find for its output; the
-// format's own cap of sixteen would be 98,304.
-//
-// The static_assert below is what keeps this honest rather than merely smaller:
-// regenerate fixture.hpp with a wider layout and the build stops here, instead
-// of the decode writing past the end of a span.
-constexpr std::size_t kMaxChannels = 12;
-std::array<std::array<float, ac3::kSamplesPerFrame>, kMaxChannels> g_pcm{};
-std::array<std::span<float>, kMaxChannels> g_pcm_spans{};
+// Sixteen is §E3.8.2's cap on a rendered programme, and bounds only the level
+// accumulator below; the decoders size their own storage to the stream.
+constexpr std::size_t kMaxChannels = 16;
 
 // Every fixture of both generations is checked against kMaxChannels below,
 // once, over the two tables - see every_fixture_fits(). One assertion per
 // fixture would be a second place to remember when adding one, which is the
 // seam those tables exist to remove; there used to be one here for the single
 // AC-3 stream, and it is gone because AC-3 has a table now too.
-
-void bind_pcm_spans() {
-    for (std::size_t ch = 0; ch < kMaxChannels; ++ch) {
-        g_pcm_spans[ch] = std::span<float>(g_pcm[ch]);
-    }
-}
 
 // Sum of squares per channel across every frame, so the RMS at the end is the
 // whole fixture's - exactly what tools/generators/gen_baremetal_fixture.py
@@ -410,18 +397,31 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
     int index = 0;
     int channels = 0;
     for (const auto frame : *frames) {
+        // The block form: the decoder hands each block over from its own
+        // storage and the levels accumulate in place, so the probe holds no
+        // PCM at all. The sink's own work runs inside the decode call; it is
+        // timed there and taken back out, so what is reported is the
+        // decoder's cost rather than the probe's.
+        std::uint64_t sink_us = 0;
+        int delivered = 0;
+        const auto sink = [&](const ac3::PcmBlock& block) {
+            const std::uint64_t entered_us = ac3probe::now_us();
+            for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
+                levels.add(ch, block.channels[ch]);
+            }
+            delivered = static_cast<int>(block.channels.size());
+            sink_us += ac3probe::now_us() - entered_us;
+        };
         const std::uint64_t started_us = ac3probe::now_us();
-        const auto decoded = decoder.decode_frame_into(frame, g_pcm_spans);
-        churn.decode_us += ac3probe::now_us() - started_us;
+        const auto decoded = decoder.decode_frame_by_block(frame, sink);
+        const std::uint64_t elapsed_us = ac3probe::now_us() - started_us;
+        churn.decode_us += elapsed_us > sink_us ? elapsed_us - sink_us : 0;
         if (!decoded) {
             std::printf("check=%s.decode status=fail frame=%d error=%d\n", codec, index,
                         static_cast<int>(decoded.error()));
             return 1;
         }
-        channels = ac3::fullbw_channel_count(decoded->acmod) + (decoded->lfe ? 1 : 0);
-        for (int ch = 0; ch < channels; ++ch) {
-            levels.add(static_cast<std::size_t>(ch), g_pcm[static_cast<std::size_t>(ch)]);
-        }
+        channels = delivered;
         if (index == 0) {
             churn.first_frame_allocs = g_alloc_calls - before;
             churn.bucket_at_first = g_churn_count_by_bucket;
@@ -480,24 +480,34 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     int index = 0;
     int channels = 0;
     for (const auto unit : *units) {
+        // The block form, as for AC-3 above: views onto the decoder's own
+        // substream vectors, no PCM held here, the sink's time taken back out.
+        std::uint64_t sink_us = 0;
+        int delivered = 0;
+        const auto sink = [&](const ac3::PcmBlock& block) {
+            const std::uint64_t entered_us = ac3probe::now_us();
+            for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
+                levels.add(ch, block.channels[ch]);
+            }
+            delivered = static_cast<int>(block.channels.size());
+            sink_us += ac3probe::now_us() - entered_us;
+        };
         const std::uint64_t started_us = ac3probe::now_us();
-        const auto decoded = decoder.decode_access_unit_into(unit, g_pcm_spans);
-        churn.decode_us += ac3probe::now_us() - started_us;
+        const auto decoded = decoder.decode_access_unit_by_block(unit, sink);
+        const std::uint64_t elapsed_us = ac3probe::now_us() - started_us;
+        churn.decode_us += elapsed_us > sink_us ? elapsed_us - sink_us : 0;
         if (!decoded) {
             std::printf("check=%s.decode status=fail unit=%d error=%d\n", codec, index,
                         static_cast<int>(decoded.error()));
             return 1;
         }
-        // std::nullopt is the §3.7 hold-back, not an error. No fixture here
-        // selects transient pre-noise processing - neither "all" nor "cpl+ecpl"
-        // includes tpn - so none of them takes this branch today; handled anyway
-        // so a fixture that DOES use it fails on levels rather than on a silent
-        // miscount.
+        // std::nullopt is the §3.7 hold-back, not an error, and the sink is
+        // not called for it. No fixture here selects transient pre-noise
+        // processing - neither "all" nor "cpl+ecpl" includes tpn - so none of
+        // them takes this branch today; handled anyway so a fixture that DOES
+        // use it fails on levels rather than on a silent miscount.
         if (decoded->has_value()) {
-            channels = static_cast<int>((*decoded)->layout.count);
-            for (int ch = 0; ch < channels; ++ch) {
-                levels.add(static_cast<std::size_t>(ch), g_pcm[static_cast<std::size_t>(ch)]);
-            }
+            channels = delivered;
         }
         if (index == 0) {
             churn.first_frame_allocs = g_alloc_calls - before;
@@ -664,7 +674,9 @@ void check_reference_transform_refused() {
         return;
     }
     ac3::FrameDecoder decoder{{.fast_imdct = false}};
-    const auto decoded = decoder.decode_frame_into(frames->front(), g_pcm_spans);
+    // The sink is never reached: the refusal is what is being checked.
+    const auto discard = [](const ac3::PcmBlock&) {};
+    const auto decoded = decoder.decode_frame_by_block(frames->front(), discard);
     const bool refused =
         !decoded && decoded.error() == ac3::DecodeError::kUnsupported;
     std::printf("check=reference_transform_refused status=%s\n", refused ? "pass" : "fail");
@@ -682,13 +694,14 @@ int ac3probe::run() {
     // from a real decode, the churn from real allocations, and the absence of
     // the direct-form transform from the API actually refusing to use it.
     std::printf("profile=minimal-decoder\n");
+    // static.pcm_bytes is 0 by construction now - the probe reads the decoders'
+    // blocks in place (see kMaxChannels above) - and stays on the line so the
+    // runner scripts and footprint_report.py see the key they always did.
     std::printf("static.pcm_bytes=%lu static.frame_decoder_bytes=%lu "
                 "static.eac3_decoder_bytes=%lu\n",
-                static_cast<unsigned long>(sizeof(g_pcm)),
+                static_cast<unsigned long>(0),
                 static_cast<unsigned long>(sizeof(ac3::FrameDecoder)),
                 static_cast<unsigned long>(sizeof(ac3::Eac3Decoder)));
-
-    bind_pcm_spans();
 
     // Measured before any fixture so it cannot be confused with one, and
     // printed either way: a reader of the log then knows whether the
