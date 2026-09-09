@@ -298,6 +298,93 @@ which means adding those files to the encoder profile, a hand-over, and not some
 from here. The realistic first result is audio in, E-AC-3 5.1 out, in real time or a measured
 statement of how far short it falls.
 
+## Sendspin
+
+[The topology](topology.md#the-transport-later-a-sendspin-extension) already names Sendspin as
+the transport to approach after HLS. Two things have moved since it was written, both read from
+the sources on 2026-09-10: the ESPHome component is merged and shipping (a `sendspin:` hub, a media
+source that plays through the speaker media player, a group `media_player`, sensors), built on a
+standalone Apache-2.0 C++ client, `sendspin-cpp`, published to the ESP component registry
+(`sendspin/sendspin-cpp`, 0.7.2, ESP-IDF 5.1 and later); and Music Assistant carries the server
+built in and enabled by default, sending 16-bit FLAC or Opus, stereo, with no multichannel and
+no compressed passthrough. The Home Assistant this project is developed beside runs Music
+Assistant, so a Sendspin server is already on the network a board would join.
+
+**The protocol, as it bears on this page.** A player advertises `supported_formats`, a
+priority-ordered list of `{codec, channels, sample_rate, bit_depth}` with `codec` one of `opus`,
+`flac` or `pcm`, and a `buffer_capacity` in bytes of compressed audio; the server picks one and
+says so in `stream/start`, with an optional `codec_header`. Audio arrives as binary chunks: one
+type byte, an int64 microsecond timestamp on the server's clock saying when the chunk's first
+sample plays, a `send_ahead`, then the encoded frame; a chunk is between 15 and 150 ms. Clocks
+are aligned by a two-state Kalman filter fed by bursts of time messages, and a player must not
+report itself available until that filter has converged. The codec list is closed: "Servers MUST
+support all audio codecs: `opus`, `flac`, and `pcm`", and nothing wider than stereo is described.
+
+**What `sendspin-cpp` does and leaves to the application.** Everything protocol-shaped: the
+WebSocket server the Music Assistant connects to (over `esp_http_server` on ESP-IDF), the Noise
+handshake, message dispatch, the time filter and its bursts, decoding, and synchronisation, which
+it does in the PCM domain by inserting silence, dropping frames or interpolating. The application
+implements one method, `PlayerRoleListener::on_audio_write(uint8_t*, size_t, timeout_ms)`, which
+receives decoded interleaved 16-bit PCM from the library's sync task and blocks until the output
+has taken it, and calls `notify_audio_played(frames, timestamp_us)` from its output path so the
+library knows where the DAC is. The decoded-audio ring defaults to 1,000,000 bytes and the
+library expects PSRAM for it. The decoders are FLAC, Opus and PCM, compiled in, with no interface
+for a fourth.
+
+### Sendspin as a source, on this player
+
+On **ESPHome** there is nothing to build for Opus: the `sendspin` component plays through the
+same speaker this page's media player would, and a configuration can carry both. What this
+project adds there is the E-AC-3 media player of [Phase 3](#phase-3-esphome), beside it.
+
+On **ESP-IDF**, Sendspin is a source unlike the others: it delivers PCM, already decoded and
+already timed, and it pushes rather than being read. It does not go through `ByteSource` or the
+decoder at all. It goes straight to the `PcmSink` of [Where each layer belongs](#where-each-layer-belongs),
+whose `write(std::span<const std::int16_t>)` is `on_audio_write` in different clothes, and the
+sink's I2S write path is where `notify_audio_played` is called from, which is also where the
+underrun accounting already lives. So a `sendspin_player` shape of the streaming example is the
+`sendspin-cpp` client, a `PlayerRoleListener` over the component's sink, an mDNS advertisement
+(the library runs the server side of the WebSocket and leaves discovery to the application, as
+ESPHome's component does it), and PSRAM on for the library's ring. It costs no decoder memory,
+so a build carrying both it and the E-AC-3 decoder for the HTTP source is the first shape where
+this page's PSRAM question ([decision 4](#decisions)) answers itself: the Sendspin ring in PSRAM,
+the decoder's peak in internal SRAM as now.
+
+### Atmos over Sendspin
+
+Carrying E-AC-3 with JOC over Sendspin needs three changes in three places, and one thing stays
+the same:
+
+1. **The spec**: a fourth codec, `eac3`, in `supported_formats` and `stream/start`. One access
+   unit per chunk fits the protocol as it stands: 32 ms sits inside the 15 to 150 ms bounds, the
+   timestamp means what it means for Opus, `bit_depth` is ignored as it is for Opus, and
+   `channels` says 6 or 8. The list is closed today, which is a sentence in a document, not a
+   design constraint.
+2. **The client**: `sendspin-cpp` needs a decoder interface where it now has three compiled-in
+   decoders, so that a fourth can be supplied by the application. With one, this project's
+   decoder plugs in at the point the library already decodes a chunk, and the synchronisation
+   after it is unchanged: the library syncs decoded PCM, and an E-AC-3 chunk decodes to 1,536
+   frames of it exactly as an Opus chunk decodes to 960. The fold to stereo, or the render to a
+   layout, is this player's, as in every other source.
+3. **The server**: Music Assistant decodes everything to PCM and re-encodes. For a 5.1 file it
+   could encode E-AC-3 through ffmpeg as it encodes FLAC today; for an Atmos file the objects
+   survive only if the server passes the bitstream through undecoded, which is the
+   passthrough-capable endpoint the topology describes. That is the far end's work and the
+   larger ask.
+
+What does not change is the sink side of this page. Every layer below the transport, the
+decoder, the fold or render, the layouts, the I2S and TDM sinks and their instrumentation, is
+the same code whether the access units arrived over HTTP, in HLS segments, or in Sendspin
+chunks. That is the argument for building the HTTP and HLS paths first and the reason the
+topology sequences the Sendspin conversation after them: the proposal is made with a device
+that already decodes the codec in real time, and asks the protocol for a way to carry it.
+
+The risk the topology records stands. A synchronised-audio protocol may decline a codec whose
+decode latency it cannot see, and it may decline a fourth codec on principle. The
+`source` role the spec defines is the other half of "a source that streams it": a Sendspin
+source captures local audio for the server, in `opus`, `flac` or `pcm`, so the same extension
+would let an encoder on this part feed Atmos into the house.
+
 ## What the sink hardware asks for
 
 The examples were written against a MAX98357A and a PCM5102: 16-bit slots, the ESP32-S3 as I2S
@@ -408,6 +495,27 @@ recorded beside the decode's.
 board and the host's decoder, for the levels; a host test of the source seam against a fake
 receive channel.
 
+### Phase 6: a Sendspin player shape
+
+On ESP-IDF only; ESPHome has it. `sendspin-cpp` from the registry, a `PlayerRoleListener` over
+the component's `PcmSink`, `notify_audio_played` from the sink's write path, an mDNS
+advertisement, PSRAM on for the library's ring. Opus and FLAC from the Music Assistant already on
+the network.
+
+**Exit:** the board plays as a Sendspin player in a group with another Sendspin player, with the
+sink's underrun counters at zero over ten minutes, and its measured offset from the other player
+stated as a number rather than "sounds fine", which is [the topology's Phase 4](topology.md#phase-4-discovery-and-more-than-one-sink)
+measured on this hardware.
+
+**Verified by:** the board against the Music Assistant instance; the sink counters; a two-channel
+capture of both players for the offset.
+
+### Phase 7, conditional: E-AC-3 over Sendspin
+
+The three changes in [Atmos over Sendspin](#atmos-over-sendspin), proposed with Phases 0 to 6 as
+the argument: a decoder interface in `sendspin-cpp`, `eac3` in the spec, and a production or
+passthrough path in Music Assistant. Not schedulable here; the exit is the answer, recorded.
+
 ### Hand-over to the decoder core
 
 Three items for the session that owns `src/forge`; this page describes them and does not touch
@@ -501,3 +609,17 @@ that tree.
     host-to-board scaling above. **Recommend (a)**, because the scaling is an estimate and the
     measurement is a day's work. Cost: a profile change in the decoder core's tree, and possibly
     a number that closes the question the way the ESP32-P4 was closed.
+
+11. **Sendspin on ESP-IDF.** (a) **`sendspin-cpp` from the registry, over the component's
+    sink**; (b) a client of our own; (c) ESPHome only, nothing on ESP-IDF. **Recommend (a)**: the
+    library is what ESPHome ships, Apache-2.0, and already an IDF component; a client of our own
+    re-implements Noise, the time filter and the sync for no gain, and (c) leaves an ESP-IDF
+    integrator without the one transport their house already speaks. Cost: PSRAM on for that
+    shape, and a dependency that is in technical preview and will move.
+
+12. **Where E-AC-3 plugs into Sendspin.** (a) **propose a decoder interface upstream in
+    `sendspin-cpp`, then supply ours through it**; (b) fork the library and add the decoder;
+    (c) do not pursue. **Recommend (a)**: the interface is the smallest change that serves both
+    projects, and a fork of a preview-stage library is a maintenance debt from the first day.
+    Cost: the proposal's timetable is theirs, and the spec's codec list and the server's
+    production path have to move with it.
