@@ -400,8 +400,9 @@ traffic in the decode loop. The float32-only path is met for the decode path, an
 scratch below has since been closed; both are kept here with what they cost and what closed them.
 
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
-(`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
-the probe uses) and no frame leaks (what stays live after teardown is the bounded scratch below,
+(`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, and the
+`_by_block` forms hand the decoder's own storage over a block at a time, which is what the probe
+uses) and no frame leaks (what stays live after teardown is the bounded scratch below,
 not per-frame growth), but the steady state is **3 allocations per frame for AC-3, 12 for
 E-AC-3 and for E-AC-3 with §E3.5 enhanced coupling, 10 for 2/0, and 41 for Atmos with
 objects**. The per-block geometry vectors inside the decoders no longer account for any of it —

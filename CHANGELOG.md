@@ -23,6 +23,15 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `float` bit-for-bit, including 9,997 products that underflow into the denormal range - the
   case a flush-to-zero vector unit is the only one to fail, and the reason this type is safe
   on AArch64 where it would not have been on AArch32.
+- **Block-granular decoder output**: `FrameDecoder::decode_frame_by_block` and
+  `Eac3Decoder::decode_access_unit_by_block` hand the decoded PCM to a `BlockSink` - a non-owning
+  callback reference, so no allocation - one `PcmBlock` (256 samples of every output slot) at a
+  time, after the output stage has run, so the samples are the `_into` forms' exactly. A caller
+  feeding a DMA ring now needs a block of storage per channel where the `_into` forms needed a
+  frame - 73,728 bytes for 7.1.4 on an ESP32-S3. E-AC-3 copies nothing on the way out (each slot
+  is a view onto the substream vector that supplies it); AC-3 keeps one frame of its own. The
+  footprint probe decodes through the forms and holds no PCM, which took 73,824 bytes out of its
+  `.bss`. Both forms are pinned against the value forms sample for sample.
 
 ### Changed
 
