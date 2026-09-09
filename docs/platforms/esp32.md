@@ -15,13 +15,13 @@ the float32 path worth having and real-time decode worth measuring.
 | AC-3 decode | Correct. Mono, stereo and 5.1, every channel level exact against `apps/baremetal/fixture.hpp` |
 | E-AC-3 decode | Correct. 5.1 and 2/0, including AHT, spectral extension and §7.5.4 rematrixing |
 | E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture. Costs 12 allocations per frame, level with plain E-AC-3 |
-| Atmos bed | Correct, decoded bed-only via `DecoderConfig::skip_object_reconstruction`. 23 allocations per frame |
-| Atmos objects | **Correct, reconstructed on target.** 41 allocations per frame — see [Objects](#objects) |
+| Atmos bed | Correct, decoded bed-only via `DecoderConfig::skip_object_reconstruction`. 20 allocations per frame |
+| Atmos objects | **Correct, reconstructed on target.** 31 allocations per frame — see [Objects](#objects) |
 | Encode | AC-3 and E-AC-3, six frames of synthesised 5.1 through each encoder, byte count and FNV-1a hash checked against `apps/baremetal/encode_fixture.hpp` |
-| Fits internal SRAM | Yes, without PSRAM. 233,195-byte peak heap against 280,792 free — see [Memory](#memory) |
+| Fits internal SRAM | Yes, without PSRAM. 210,203-byte peak heap against 280,792 free — see [Memory](#memory) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record, the spectrum scratch's pointer; 23,552 bytes while §E3.5 is in use |
 | Audio output | Two examples drive real peripherals — see [Examples](#examples) |
-| Real time | **Yes, on a board**, at 240 MHz, every fixture: from 0.08x for AC-3 mono to 0.92x for Atmos objects — see [Timing](#timing) |
+| Real time | **Yes, on a board**, at 240 MHz, every fixture: from 0.07x for AC-3 mono to 0.66x for Atmos objects — see [Timing](#timing) |
 | ESPHome | An external component, `esphome/components/ac3forge/` — the decoder and framer, not a `speaker` source. See [ESPHome](#esphome) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU; `esphome config` and the component pack in their own workflows |
 
@@ -140,8 +140,8 @@ are true and answer different questions.
 `idf.py size`'s "remain" is a linker estimate — 206,956 where the allocator reports 280,792. A
 footprint budget quoted from it is a budget nobody checked.
 
-Measured, decode direction: the image uses 133,172 bytes of DIRAM and the decode peaks at
-233,195 bytes of heap. The encode image is smaller, 110,900. `app_main` prints the runtime
+Measured, decode direction: the image uses 133,588 bytes of DIRAM and the decode peaks at
+210,203 bytes of heap. The encode image is smaller, 110,900. `app_main` prints the runtime
 figures before and after.
 
 ### Contiguity
@@ -329,11 +329,79 @@ the double one's 32,768, and the bin-angle vector that used to be `thread_local`
 is a stack array, so what stays retained after the probe hands the scratch
 back is one registration record, 12 bytes, rather than two.
 
+A third pass took the stages the profile left largest, every change of it
+producing the values its predecessor produced: the host suite passes
+unchanged and the probe's levels are to the digit. `BitReader::read()` had
+been one loop iteration per bit - some eight cycles for each bit of every
+mantissa, exponent group and GAQ codeword - and now serves a field from a
+64-bit cache. A block whose exponents, allocation parameters and region are
+its predecessor's keeps the allocation it already has rather than deriving it
+again, which E-AC-3's once-a-frame exponents make the common case:
+`compute_bit_allocation` ran 36 times a frame on the 5.1 stream and runs
+6 now. The symmetric mantissa quantisers' values come from a table
+filled at compile time by the division they used to perform, the asymmetric
+ones scale by an exact power of two, and an AHT bin resolves its dequantiser's
+constants once for its six codewords. JOC's mixing reads each (channel,
+band)'s data points once per object per block and forms the ramp's fractions
+once per block, and `fft.cpp` joined the `-O2` list once the float DFT was on
+the hot path.
+
+Same board, same clock, plain build:
+
+| Fixture | us/frame | x real time | was |
+|---|---:|---:|---:|
+| `ac3_mono` | 2,188 | 0.07 | 2,588 |
+| `ac3_stereo` | 3,420 | 0.11 | 4,236 |
+| `eac3_stereo` | 6,171 | 0.19 | 6,814 |
+| `ac3` 5.1 | 9,939 | 0.31 | 11,803 |
+| `eac3_atmos_bed` | 10,914 | 0.34 | 13,416 |
+| `eac3` 5.1 | 12,775 | 0.40 | 14,185 |
+| `eac3_atmos_objects` | 23,191 | 0.72 | 29,337 |
+| `eac3_ecpl` | 21,547 | 0.67 | 23,784 |
+
+A 5.1 frame, stage-timed, now: bit allocation 0.4 ms (it was 1.6), the IMDCT
+3.5, the AHT 2.7, spectral extension 1.5, mantissas 0.3. The access-unit
+level, which the earlier profile could only report as 2.3 ms outside every
+marker, is now four zones: 2.0 ms assembling the unit from its queued
+substreams (`eac3_au_assemble`), 0.1 keying them (`eac3_au_key`), and
+splitting and queueing under 0.05 between them. The assembly is the largest
+cost the profile then named outside the decoders - at 36 KB of output PCM a
+frame it was some 50 cycles a sample - and was the next thing read.
+
+Reading it found a copy. `std::copy` of each channel's samples into the
+caller's spans lowers to `memmove`, and on this part that is a mask-ROM
+routine which measured some twelve cycles a byte, where the ROM's `memcpy` -
+the call every fixed-size copy in the decoders already reaches - moves the
+same 36 KB in 0.12 ms. The two ranges never overlap, so it is `memcpy` now,
+and `eac3_au_assemble` is 0.25 ms, of which the copy (`eac3_au_pcm`) is
+0.12. The same pass stopped copying a substream's object description into
+the access unit - the substream is consumed there, so it is moved - which is
+where the objects fixture's peak heap fell from 234,803 bytes to 210,203 and
+its allocations a frame from 41 to 31, the bed's from 23 to 20. Every level
+is unchanged to the digit, on the board and on the host suite.
+
+Same board, same clock, plain build:
+
+| Fixture | us/frame | x real time | was |
+|---|---:|---:|---:|
+| `ac3_mono` | 2,229 | 0.07 | 2,188 |
+| `ac3_stereo` | 3,476 | 0.11 | 3,420 |
+| `eac3_stereo` | 5,550 | 0.17 | 6,171 |
+| `ac3` 5.1 | 9,963 | 0.31 | 9,939 |
+| `eac3_atmos_bed` | 9,066 | 0.28 | 10,914 |
+| `eac3` 5.1 | 10,988 | 0.34 | 12,775 |
+| `eac3_atmos_objects` | 21,199 | 0.66 | 23,191 |
+| `eac3_ecpl` | 19,768 | 0.62 | 21,547 |
+
+A 5.1 frame, stage-timed, is 11.3 ms: the IMDCT 3.5, the AHT
+2.7, spectral extension 1.5, bit allocation 0.4, mantissas 0.4,
+and the access-unit level 0.4 in all.
+
 ### What is left, and what would move it
 
-- **Objects.** JOC reconstruction is 15.9 ms of the objects fixture's 29.7:
-  8.2 ms mixing, 3.4 ms re-analysing the bed with thirty forward transforms a
-  frame, 2.7 ms synthesising six objects. The bed analysis exists because
+- **Objects.** JOC reconstruction is 12.3 ms of the objects fixture's 21.7:
+  4.2 ms mixing, 3.5 ms re-analysing the bed with thirty forward transforms a
+  frame, 2.8 ms synthesising six objects. The bed analysis exists because
   `oba::joc::reconstruct` takes the bed as PCM; the decoder holds that bed's
   MDCT coefficients already, one block at a time, and a reconstruction that
   took them would skip the analysis outright. Beyond that, this is the one
@@ -341,26 +409,29 @@ back is one registration record, 12 bytes, rather than two.
   independent of the bed decode of frame N+1, so a second task can run it a
   frame behind, at the cost of one frame of latency, and throughput becomes
   the larger of the two halves rather than their sum. Neither is done.
-- **Enhanced coupling** is at 0.75x and has two cheap steps left. Each block's
+- **Enhanced coupling** is at 0.62x and has one cheap step left. Each block's
   spectrum runs three inverse transforms, and two of them are the neighbouring
   blocks' - the same transforms the previous and next block run for
   themselves, so eighteen a frame where eight are distinct; a cache keyed by
-  block would take about a millisecond off the 6.9. And `fft.cpp` is not on the
-  `-O2` list, because the float IMDCT's kernel (instantiated in `mdct.cpp`)
-  gained nothing there; the float `dft512` now on the hot path has not been
-  measured either way.
+  block would take about a millisecond off the 6.7 the spectrum costs now.
+  `fft.cpp` joined the `-O2` list in the third pass and was worth 0.1 ms:
+  `ecpl_channel_spectrum` went from 6.9 ms to 6.7 and the reconstruction
+  stayed at 4.7. The pass's gain on this fixture came from the bitstream
+  side instead - its mantissas 2.4 ms to 1.6.
 - **The second core** was the lever the earlier estimates ranked first. It was
   not needed for stereo or 5.1, and the breakdown says why it would have
   disappointed: the stages that dominated were serial software floating point,
   not parallel work, and splitting them across two cores would have halved a
   cost that could be removed instead.
-- **Per-frame allocations** are unchanged at 3 to 41 per frame (this profile's
-  open PF7 gap). At a few microseconds each they are not on the path to real
-  time for any fixture here; the coupling-coordinate vector that allocated once
-  per coupled channel per block is gone as a side effect, but the count the
-  runner gates did not move on any fixture, since no fixture couples.
+- **Per-frame allocations** are 1 to 31 per frame (this profile's open PF7
+  gap). At a few microseconds each they are not on the path to real time for
+  any fixture here. The first three passes left the count the runner gates
+  untouched on every fixture (the coupling-coordinate vector that allocated
+  once per coupled channel per block went as a side effect, but no fixture
+  couples); the fourth took the Atmos fixtures from 23 and 41 to 20 and 31 by
+  moving the object description rather than copying it.
 - **A hand-written kernel tier** (`madd.s`, which `-ffp-contract=off` forbids
-  project-wide) would apply to the IMDCT, which is 3.4 ms of a 14.6 ms 5.1
+  project-wide) would apply to the IMDCT, which is 3.5 ms of a 11.3 ms 5.1
   frame. That bounds what the tier could return at under a quarter of the
   remaining time, and it is not needed for anything that now fits.
 
@@ -422,7 +493,7 @@ stack array and the scratch took its float form, 23,552 bytes.
 
 **The bed does not need any of this.** An Atmos bed is ordinary E-AC-3 5.1 and the objects are
 side data, so `DecoderConfig::skip_object_reconstruction` decodes the bed without allocating
-`ReconstructionState` at all — 23 allocations per frame against 41. `tests/oba/test_atmos.cpp`
+`ReconstructionState` at all — 20 allocations per frame against 31. `tests/oba/test_atmos.cpp`
 asserts the rendered channels are bit-for-bit what a full decode produces. `object_metadata`
 still arrives, parsed out of a block's skip field.
 
@@ -469,7 +540,7 @@ software, and [Timing](#timing) has what that cost.
 
 ## Open work
 
-- **Heap traffic in the decode loop.** PF7 asks for zero; the steady state is 1–41 allocations per
+- **Heap traffic in the decode loop.** PF7 asks for zero; the steady state is 1–31 allocations per
   frame depending on fixture, from per-block geometry vectors and the `std::vector` members of the
   returned `DecodedFrame`. Reaching zero means those becoming fixed-capacity, which changes public
   types. The runner gates at 100 so the distance from zero cannot grow quietly.

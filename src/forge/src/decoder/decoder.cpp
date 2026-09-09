@@ -32,6 +32,7 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "bitalloc_internal.hpp"
+#include "bitalloc_memo.hpp"
 #include "gain.hpp"
 
 namespace ac3 {
@@ -289,6 +290,10 @@ struct FrameDecoder::Impl {
     std::vector<std::uint8_t> groups_;
     std::vector<std::vector<std::uint8_t>> bap_;
     std::vector<std::array<int, 50>> mask_;
+    // One per stream, grown with them: see bitalloc_memo.hpp for what it
+    // keeps and why. A block whose inputs are the previous block's keeps the
+    // allocation `bap_` already holds.
+    std::vector<internal::BitAllocMemo> bitalloc_memo_;
     std::vector<std::array<internal::decode_scalar_t, 256>> coeffs_;
 };
 
@@ -832,6 +837,12 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     groups.clear();
     auto& bap = impl_->bap_;
     reset_nested(bap, max_streams);
+    // The allocation memo describes what `bap` holds, and `bap` was just
+    // emptied: every stream's first block this frame recomputes, and the memo
+    // saves the blocks after it whose inputs are unchanged.
+    for (auto& memo : impl_->bitalloc_memo_) {
+        memo.valid = false;
+    }
     // Only meaningful when trace != nullptr (see the bit-allocation loop
     // below) - reused across blocks the same way `bap` above is, so tracing
     // a whole file costs one allocation rather than one per block.
@@ -1250,35 +1261,44 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         }
         {
             AC3_ZONE_SCOPED_N("ac3_bit_allocation");
+            if (impl_->bitalloc_memo_.size() < static_cast<std::size_t>(streams)) {
+                impl_->bitalloc_memo_.resize(static_cast<std::size_t>(streams));
+            }
             for (int s = 0; s < streams; ++s) {
                 const bool is_cpl = s == cpl_stream;
-                const int end = endmant[static_cast<std::size_t>(s)];
-                if (static_cast<int>(exps[static_cast<std::size_t>(s)].size()) != end) {
+                const auto us = static_cast<std::size_t>(s);
+                const int end = endmant[us];
+                if (static_cast<int>(exps[us].size()) != end) {
                     return std::unexpected(DecodeError::kInvalidStream);
                 }
                 BitAllocCodes codes = base_codes;
-                codes.fgaincod = fgaincod[static_cast<std::size_t>(s)];
+                codes.fgaincod = fgaincod[us];
                 const BitAllocRegion region{.start = is_cpl ? cplstrtmant : 0,
                                             .coupling = is_cpl,
                                             .cplfleak = cplfleak,
                                             .cplsleak = cplsleak,
                                             .snr_all_zero = snr_all_zero,
-                                            .delta = delta[static_cast<std::size_t>(s)]};
-                bap[static_cast<std::size_t>(s)].assign(static_cast<std::size_t>(end), 0);
+                                            .delta = delta[us]};
+                auto& memo = impl_->bitalloc_memo_[us];
                 // The traced form costs nothing extra to compute - it is the
                 // same routine, and `mask` is a value that routine already
                 // derives internally - so tracing this one call is free
                 // beyond the write into `mask[s]` itself; only bother when a
                 // trace is actually being kept (roadmap AP12).
                 if (impl_->config_.trace != nullptr) {
-                    internal::compute_bit_allocation_traced(
-                        exps[static_cast<std::size_t>(s)], sample_rate, codes, csnroffst,
-                        fsnroffst[static_cast<std::size_t>(s)], bap[static_cast<std::size_t>(s)],
-                        region, mask[static_cast<std::size_t>(s)]);
-                } else {
-                    compute_bit_allocation(exps[static_cast<std::size_t>(s)], sample_rate, codes,
-                                           csnroffst, fsnroffst[static_cast<std::size_t>(s)],
-                                           bap[static_cast<std::size_t>(s)], region);
+                    bap[us].assign(static_cast<std::size_t>(end), 0);
+                    internal::compute_bit_allocation_traced(exps[us], sample_rate, codes, csnroffst,
+                                                            fsnroffst[us], bap[us], region,
+                                                            mask[us]);
+                    memo.valid = false;
+                } else if (!memo.matches(exps[us], sample_rate, codes, csnroffst, fsnroffst[us],
+                                         region)) {
+                    // Unchanged inputs keep the allocation `bap` already holds
+                    // from the block that computed it (bitalloc_memo.hpp).
+                    bap[us].assign(static_cast<std::size_t>(end), 0);
+                    compute_bit_allocation(exps[us], sample_rate, codes, csnroffst, fsnroffst[us],
+                                           bap[us], region);
+                    memo.remember(exps[us], sample_rate, codes, csnroffst, fsnroffst[us], region);
                 }
             }
         }

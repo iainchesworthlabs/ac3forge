@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <expected>
 #include <memory>
 #include <optional>
@@ -40,6 +41,7 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
 #include "bitalloc_internal.hpp"
+#include "bitalloc_memo.hpp"
 #include "gain.hpp"
 
 // E-AC-3 syncframe decoding, ATSC A/52:2018 Annex E Tables E1.2, E1.3 and E1.4.
@@ -895,6 +897,10 @@ struct Eac3Decoder::Impl {
     // spxco and the three ecpl_*_raw are 1 + nfchans each).
     std::array<std::vector<std::uint8_t>, kMaxSubstreamStreams> exps_;
     std::array<std::vector<std::uint8_t>, kMaxSubstreamStreams> bap_;
+    // One per stream: see bitalloc_memo.hpp for what it keeps and why. A
+    // block whose inputs are the previous computation's keeps the allocation
+    // `bap_` already holds.
+    std::array<internal::BitAllocMemo, kMaxSubstreamStreams> bitalloc_memo_;
     std::vector<bool> chincpl_;
     std::vector<int> subband_band_;
     std::vector<bool> cpl_structure_;
@@ -1348,6 +1354,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     reset_nested(exps);
     auto& bap = impl_->bap_;
     reset_nested(bap);
+    // The allocation memo describes what `bap` holds, and `bap` was just
+    // emptied: every stream's first block this frame recomputes. What the memo
+    // saves is the blocks after it, where E-AC-3 reuses exponents.
+    for (auto& memo : impl_->bitalloc_memo_) {
+        memo.valid = false;
+    }
     // Only meaningful when block_trace != nullptr below (roadmap AP12) - see
     // decoder.cpp's identical comment on its own `mask` array.
     std::array<std::array<int, 50>, kMaxSubstreamStreams> mask{};
@@ -2397,7 +2409,6 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
             BitAllocCodes cpl_codes = codes;
             cpl_codes.fgaincod = fgaincod[s];
-            bap[s].assign(static_cast<std::size_t>(end), 0);
             const BitAllocRegion cpl_region{.start = cplstrtmant,
                                             .coupling = true,
                                             .cplfleak = cplfleak,
@@ -2405,13 +2416,20 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                             .snr_all_zero = snr_all_zero,
                                             .high_efficiency = frm->ahtinu[s],
                                             .delta = delta[static_cast<std::size_t>(kCplStream)]};
+            auto& cpl_memo = impl_->bitalloc_memo_[s];
             if (block_trace != nullptr) {
+                bap[s].assign(static_cast<std::size_t>(end), 0);
                 internal::compute_bit_allocation_traced(exps[s], bsi->sample_rate, cpl_codes,
                                                         csnroffst, fsnroffst[s], bap[s], cpl_region,
                                                         mask[s]);
-            } else {
+                cpl_memo.valid = false;
+            } else if (!cpl_memo.matches(exps[s], bsi->sample_rate, cpl_codes, csnroffst,
+                                         fsnroffst[s], cpl_region)) {
+                bap[s].assign(static_cast<std::size_t>(end), 0);
                 compute_bit_allocation(exps[s], bsi->sample_rate, cpl_codes, csnroffst,
                                        fsnroffst[s], bap[s], cpl_region);
+                cpl_memo.remember(exps[s], bsi->sample_rate, cpl_codes, csnroffst, fsnroffst[s],
+                                  cpl_region);
             }
         }
         {
@@ -2424,20 +2442,28 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 }
                 BitAllocCodes channel_codes = codes;
                 channel_codes.fgaincod = fgaincod[uch];
-                bap[uch].assign(static_cast<std::size_t>(end), 0);
                 // delta[ch] for ch == LFE's index is always {} (never written -
                 // §5.4.3.49/E2.3.2.9 bound their deltbae[ch] loop by nfchans, so
                 // the LFE channel has no delta bit allocation field at all).
                 const BitAllocRegion channel_region{.snr_all_zero = snr_all_zero,
                                                     .high_efficiency = frm->ahtinu[uch],
                                                     .delta = delta[uch]};
+                auto& memo = impl_->bitalloc_memo_[uch];
                 if (block_trace != nullptr) {
+                    bap[uch].assign(static_cast<std::size_t>(end), 0);
                     internal::compute_bit_allocation_traced(
                         exps[uch], bsi->sample_rate, channel_codes, csnroffst, fsnroffst[uch],
                         bap[uch], channel_region, mask[uch]);
-                } else {
+                    memo.valid = false;
+                } else if (!memo.matches(exps[uch], bsi->sample_rate, channel_codes, csnroffst,
+                                         fsnroffst[uch], channel_region)) {
+                    // Unchanged inputs keep the allocation `bap` already holds
+                    // from the block that computed it (bitalloc_memo.hpp).
+                    bap[uch].assign(static_cast<std::size_t>(end), 0);
                     compute_bit_allocation(exps[uch], bsi->sample_rate, channel_codes, csnroffst,
                                            fsnroffst[uch], bap[uch], channel_region);
+                    memo.remember(exps[uch], bsi->sample_rate, channel_codes, csnroffst,
+                                  fsnroffst[uch], channel_region);
                 }
             }
         }
@@ -2680,9 +2706,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     // NOLINT below on the same proven-safe grounds.
                     assert(mantissa_bits >= 3);
                     const int g = gain[ubin];
-                    const int small_bits =
-                        g == 1 ? mantissa_bits : (g == 2 ? mantissa_bits - 1 : mantissa_bits - 2);
-                    const int large_bits = g == 2 ? mantissa_bits - 1 : mantissa_bits;
+                    // The bin's constants once, its six codewords through them.
+                    const eac3::AhtGaqDequantizer<Scalar> dequantize{mantissa_bits, g};
+                    const int small_bits = dequantize.small_bits;
+                    const int large_bits = dequantize.large_bits;
                     for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
                         const auto raw = r.read(small_bits);
                         bool has_escape = false;
@@ -2692,8 +2719,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                             has_escape = true;
                             escape = r.read(large_bits);
                         }
-                        mantissas[j] = eac3::aht_dequantize_mantissa_as<Scalar>(
-                            raw, escape, has_escape, mantissa_bits, g);
+                        mantissas[j] = dequantize(raw, escape, has_escape);
                     }
                 }
                 // hb == 0: mantissas stays all-zero.
@@ -3424,7 +3450,9 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span
 std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode_access_unit_core(
     std::span<const std::byte> unit, std::span<const std::span<float>> external) {
     AC3_ZONE_SCOPED_N("eac3_decode_access_unit");
+    AC3_ZONE_BEGIN(split_zone, "eac3_au_split");
     const auto frames = split_frames(unit);
+    AC3_ZONE_END(split_zone);
     if (!frames.has_value()) {
         return std::unexpected(frames.error());
     }
@@ -3484,6 +3512,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // decoded - see the loop below and ConcealmentAction::kBedOnly.
     std::optional<DecodeError> bed_only;
     for (const auto& frame : *frames) {
+        AC3_ZONE_BEGIN(key_zone, "eac3_au_key");
         // §E2.3.1.2 assigns an AC-3 bit stream present in an E-AC-3 bit stream
         // the identity (independent, 0) without it carrying either field -
         // parse_bsi would read strmtyp out of crc1 and substreamid out of the
@@ -3508,6 +3537,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             keys.push_back(static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid);
             frame_is_dependent = bsi->strmtyp == StreamType::kDependent;
         }
+        AC3_ZONE_END(key_zone);
 
         auto decoded = decode_substream(frame);
         if (!decoded) {
@@ -3532,6 +3562,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             return std::unexpected(decoded.error());
         }
         if (decoded->has_value()) {
+            AC3_ZONE_SCOPED_N("eac3_au_queue");
             impl_->pending_au_parts_[static_cast<std::size_t>(keys.back())].push_back(
                 std::move(**decoded));
         }
@@ -3550,6 +3581,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             return std::optional<DecodedAccessUnit>(std::nullopt);
         }
     }
+    AC3_ZONE_BEGIN(assemble_zone, "eac3_au_assemble");
     std::vector<DecodedSubstream> substreams;
     substreams.reserve(keys.size());
     for (const int key : keys) {
@@ -3590,11 +3622,14 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // in a dependent. Taking the first substream that has any keeps the bed's
     // own the winner wherever there is one, which is every stream this
     // project produces, so nothing about those changes.
-    for (const auto& sub : substreams) {
+    // Moved rather than copied: `substreams` is consumed by this function,
+    // and a copy here was the object description - its vectors and the
+    // object PCM behind them - duplicated once per frame for nothing.
+    for (auto& sub : substreams) {
         if (sub.object_metadata.has_value()) {
-            out.object_metadata = sub.object_metadata;
-            out.object_audio = sub.object_audio;
-            out.object_indices = sub.object_indices;
+            out.object_metadata = std::move(sub.object_metadata);
+            out.object_audio = std::move(sub.object_audio);
+            out.object_indices = std::move(sub.object_indices);
             break;
         }
     }
@@ -3624,14 +3659,26 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // copied in full below, so external storage needs no pre-clearing),
     // otherwise a vector allocated into the result exactly as before -
     // decode_frame_core's own split, at access-unit granularity.
+    //
+    // std::memcpy rather than std::copy, on purpose. The two ranges never
+    // overlap - a substream's own vector against the caller's spans or the
+    // result's vectors - and std::copy lowers to memmove, which on the
+    // ESP32-S3 is a mask-ROM routine that measured some twelve cycles a byte:
+    // 1.9 ms of a 5.1 frame went into this loop's 36 KB, against 0.12 ms for
+    // the same bytes through the ROM's memcpy. On every other target the two
+    // are the same call.
     const auto write_slot = [&](std::size_t slot, const std::vector<float>& src) {
         if (external.empty()) {
-            out.channels[slot] = src;
+            out.channels[slot].resize(src.size());
+        } else {
+            assert(external.size() > slot);
+            assert(external[slot].size() >= src.size());
+        }
+        if (src.empty()) {
             return;
         }
-        assert(external.size() > slot);
-        assert(external[slot].size() >= src.size());
-        std::copy(src.begin(), src.end(), external[slot].begin());
+        float* const dst = external.empty() ? out.channels[slot].data() : external[slot].data();
+        std::memcpy(dst, src.data(), src.size() * sizeof(float));
     };
 
     // Dual mono has no Table E2.5 location - Ch1 and Ch2 are unrelated
@@ -3650,6 +3697,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         for (std::size_t ch = 0; ch < lead.channels.size(); ++ch) {
             write_slot(ch, lead.channels[ch]);
         }
+        AC3_ZONE_END(assemble_zone);
         apply_output(out, external);
         return std::optional<DecodedAccessUnit>(std::move(out));
     }
@@ -3686,19 +3734,24 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // out.layout comes from some substream's location_map() (the union
     // above), so every slot is written in full here - which is what lets
     // write_slot skip pre-clearing external storage.
-    for (const auto& sub : substreams) {
-        const auto locations = eac3::chanmap::expand(sub.location_map());
-        if (static_cast<std::size_t>(locations.count) != sub.channels.size()) {
-            return std::unexpected(DecodeError::kInvalidStream);
-        }
-        for (int i = 0; i < locations.count; ++i) {
-            const int slot = out.layout.index_of(locations[i]);
-            if (slot < 0) {
+    {
+        AC3_ZONE_SCOPED_N("eac3_au_pcm");
+        for (const auto& sub : substreams) {
+            const auto locations = eac3::chanmap::expand(sub.location_map());
+            if (static_cast<std::size_t>(locations.count) != sub.channels.size()) {
                 return std::unexpected(DecodeError::kInvalidStream);
             }
-            write_slot(static_cast<std::size_t>(slot), sub.channels[static_cast<std::size_t>(i)]);
+            for (int i = 0; i < locations.count; ++i) {
+                const int slot = out.layout.index_of(locations[i]);
+                if (slot < 0) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+                write_slot(static_cast<std::size_t>(slot),
+                           sub.channels[static_cast<std::size_t>(i)]);
+            }
         }
     }
+    AC3_ZONE_END(assemble_zone);
     apply_output(out, external);
     return std::optional<DecodedAccessUnit>(std::move(out));
 }

@@ -48,6 +48,24 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `ecpl_rand_notrans_as` are the noise sources in the caller's scalar. The float spectrum
   scratch is 23,552 bytes against the double one's 32,768, the bin-angle buffer that was a
   second `thread_local` is a stack array, and every `Eac3Decoder` is 4 KB smaller on the profile.
+- **A third pass over the same profile's hot path**, bit-exact for the double build and to the
+  digit on the probe's levels: `BitReader::read()` serves a field from a 64-bit cache rather than
+  looping once per bit; a block whose exponents, allocation parameters and region are its
+  predecessor's reuses the allocation it has; the symmetric mantissa quantisers read a
+  `constexpr` table and the asymmetric ones scale by an exact power of two; an AHT bin resolves
+  its GAQ dequantiser's constants once for its six codewords; JOC's mixing reads each
+  (channel, band)'s data points once per object per block; `fft.cpp` joins the `-O2` list; four
+  `eac3_au_*` timer zones cover the access-unit level. On the board, E-AC-3 5.1 went from 14.2 ms
+  a frame to 12.8, 2/0 from 6.8 to 6.2, Atmos objects from 29.4 to 23.2 and enhanced
+  coupling from 23.8 to 21.5.
+- **An access unit's PCM reaches the caller through `memcpy`, and its object description is
+  moved, not copied.** `std::copy` into the caller's spans lowered to the ESP32-S3 mask ROM's
+  `memmove`, which measured some twelve cycles a byte: 1.9 ms of a 5.1 frame for 36 KB the ROM's
+  `memcpy` moves in 0.12. A consumed substream's object description was copied into the unit,
+  vectors and all, once per frame. On the board, E-AC-3 5.1 is now 11.0 ms a frame, 2/0 5.5,
+  the Atmos bed 9.1, objects 21.2 and enhanced coupling 19.8; the objects fixture's
+  peak heap is 210,203 bytes (was 234,803) and its allocations a frame 31 (was 41), the bed's 20
+  (was 23). Every level unchanged to the digit.
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has

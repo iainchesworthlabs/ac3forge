@@ -226,7 +226,7 @@ fi
 CHURN=$(grep -o '[a-z0-9_]*\.steady_allocs_per_frame=[0-9]*' "$OUTPUT" | sed 's/\.steady_allocs_per_frame=/ /')
 if [[ "$DIRECTION" == "encoder" ]]; then
     # 260 rather than 100. E-AC-3 encode measures 249 allocations per frame and
-    # AC-3 78, against the decoders' 1-41 - and the reason is in the API, not
+    # AC-3 78, against the decoders' 1-31 - and the reason is in the API, not
     # the implementation: both encoders return std::vector<std::byte> from
     # encode_frame, with no encode_frame_into to match decode_frame_into. That
     # is PF7's zero-heap gap seen from the encode side, and it is wider here.
