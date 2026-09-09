@@ -6,7 +6,11 @@
 # with it disabled everything this example is actually testing - reading the
 # partition a block at a time, assembling access units across those block
 # boundaries, decoding them - runs exactly as it does on hardware.
-CONFIG_AC3FORGE_EXAMPLE_SINK_NULL=y
+# The capture sink rather than the null one. Both stand in for a peripheral
+# QEMU does not have; the difference is that this one runs the SAME conversion
+# the real sinks run (main/interleave.hpp, not a copy) and then checks what came
+# out - so CI gates on the samples rather than on the loop having turned over.
+CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE=y
 
 # Two passes, so the rewind path at end of stream is exercised rather than only
 # the first read, and then the application stops with a verdict.

@@ -10,6 +10,8 @@
 # variables from the project above it. See main/Kconfig.projbuild.
 if(CONFIG_AC3FORGE_EXAMPLE_SINK_NULL)
     set(AC3FORGE_SINK_DIR "sink/null")
+elseif(CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE)
+    set(AC3FORGE_SINK_DIR "sink/capture")
 elseif(CONFIG_AC3FORGE_EXAMPLE_SINK_TDM)
     set(AC3FORGE_SINK_DIR "sink/tdm")
 else()
@@ -20,6 +22,8 @@ endif()
 # main/byte_source.hpp. Only the partition source runs without hardware.
 if(CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD)
     set(AC3FORGE_SOURCE_DIR "source/sd")
+elseif(CONFIG_AC3FORGE_EXAMPLE_SOURCE_FATFS)
+    set(AC3FORGE_SOURCE_DIR "source/fatfs")
 elseif(CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP)
     set(AC3FORGE_SOURCE_DIR "source/http")
 else()
@@ -49,7 +53,7 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES ac3forge esp_driver_i2s esp_timer freertos
              esp_partition
-             esp_driver_sdmmc sdmmc fatfs
+             esp_driver_sdmmc sdmmc fatfs wear_levelling
              esp_wifi esp_http_client esp_netif esp_event nvs_flash)
 
 # How long the audio actually is. The partition is 256 KB and the sample is

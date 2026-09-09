@@ -36,3 +36,16 @@ project(ac3forge_stream_player LANGUAGES C CXX)
 # application needs on the part in one step - a demo whose second half has to be
 # flashed by hand is a demo that gets reported as broken.
 esptool_py_flash_to_partition(flash "audio" "${CMAKE_CURRENT_SOURCE_DIR}/stream/sample.ac3")
+
+# And the same bytes again as a FAT filesystem, for source/fatfs/.
+#
+# Not duplication for its own sake: source/sd/ cannot run under QEMU, which has
+# no SD host, but FATFS does not care what block device it sits on. Mounting the
+# same filesystem from flash runs the identical VFS, FATFS and stdio path that
+# the SD source uses (main/source/file_common.hpp), so the file layer gets
+# exercised on target and only the SDMMC host stays untested.
+#
+# read_only, because nothing writes to it and a read-only image needs no wear
+# levelling - which keeps the mount to esp_vfs_fat_spiflash_mount_ro and the
+# partition to its nominal size.
+fatfs_create_rawflash_image(storage "${CMAKE_CURRENT_SOURCE_DIR}/stream" FLASH_IN_PROJECT)

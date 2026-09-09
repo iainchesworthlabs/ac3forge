@@ -205,6 +205,7 @@ extern "C" void app_main() {
                 // decoded, and it produced them by reading the partition a
                 // block at a time - which is the whole claim.
                 report_levels();
+                player::sink_report();
                 std::printf("stream.units=%lu stream.resync_bytes=%lu stream.sink=%s "
                             "stream.sink_frames=%lu stream.source=%s\n",
                             static_cast<unsigned long>(played),
@@ -223,6 +224,7 @@ extern "C" void app_main() {
             if (!player::source_rewind()) {
                 std::printf("stream: %s cannot rewind, stopping\n", player::source_name());
                 report_levels();
+                player::sink_report();
                 std::printf("result=%s\n", played > 0 ? "pass" : "fail");
                 vTaskDelay(pdMS_TO_TICKS(200));
                 return;

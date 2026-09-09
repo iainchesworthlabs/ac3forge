@@ -4,13 +4,19 @@
 #include <cstdint>
 #include <span>
 
-// Planar float to interleaved fixed-point slots.
+// Planar float to interleaved fixed-point, in the two shapes the sinks need.
 //
-// Its own header, free of ESP-IDF, for one reason: it is the part of a TDM sink
-// that can be TESTED. Everything else in that sink is peripheral setup and a
-// blocking write, neither of which does anything without a DAC on the other end;
-// this is arithmetic and indexing, and indexing is where the bugs are. See
-// tests/io/test_interleave.cpp, which builds this on the host.
+// Its own header, free of ESP-IDF, for one reason: this is the part of a sink
+// that can be TESTED. Everything else in one is peripheral setup and a blocking
+// write, neither of which does anything without a DAC on the other end; this is
+// arithmetic and indexing, and indexing is where the bugs are.
+//
+// Both real sinks convert through here, and so does sink/capture/ - which is
+// what lets CI check the conversion ON TARGET without a peripheral, rather than
+// only on the host. A capture sink that did its own conversion would be
+// checking a copy of the code instead of the code.
+//
+// See tests/io/test_interleave.cpp, which builds this on the host.
 //
 // SLOTS ARE FIXED WIDTH AND MUST ALL BE WRITTEN. A TDM frame carries `slots`
 // samples whatever the programme has, so a 5.1 stream on an 8-slot bus has two
@@ -71,6 +77,39 @@ inline std::size_t interleave_24in32(std::span<const std::span<const float>> cha
         }
     }
     return slots - used;
+}
+
+// --- 16-bit stereo, which is what standard I2S carries ---------------------
+
+// 32767 rather than 32768 as the scale, so +1.0 maps to full scale and does not
+// need the clamp to catch it. Clipped rather than wrapped, for the same reason
+// to_slot_24in32 is: a wrapped sample turns a peak into full-scale noise of the
+// opposite sign, which is the loudest thing the system can produce.
+[[nodiscard]] inline std::int16_t to_pcm16(float sample) {
+    constexpr float kScale = 32767.0F;
+    const float scaled = sample * kScale;
+    if (scaled >= kScale) {
+        return 32767;
+    }
+    if (scaled <= -kScale) {
+        return -32767;
+    }
+    return static_cast<std::int16_t>(scaled);
+}
+
+// Writes `frames` stereo pairs into `out`, which must hold frames * 2 entries.
+//
+// Two channels exactly, because standard I2S carries two slots - there is no
+// padding case here and nothing to zero. A caller with more channels than that
+// wants interleave_24in32 and a TDM bus.
+inline void interleave_16(std::span<const std::span<const float>> channels, std::size_t frames,
+                          std::span<std::int16_t> out) {
+    const auto left = channels[0];
+    const auto right = channels[1];
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+        out[frame * 2] = to_pcm16(left[frame]);
+        out[(frame * 2) + 1] = to_pcm16(right[frame]);
+    }
 }
 
 }  // namespace player

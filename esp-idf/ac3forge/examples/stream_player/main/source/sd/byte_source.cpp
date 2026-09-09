@@ -19,14 +19,14 @@
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 
+#include "source/file_common.hpp"
+
 namespace player {
 namespace {
 
 constexpr const char* kMountPoint = "/sdcard";
 
 sdmmc_card_t* g_card = nullptr;
-std::FILE* g_file = nullptr;
-std::size_t g_length = 0;
 
 }  // namespace
 
@@ -56,40 +56,26 @@ bool source_open() {
         return false;
     }
 
+    // Everything past the mount is ../file_common.hpp, shared with
+    // source/fatfs/ - which mounts the same filesystem from FLASH and
+    // therefore runs under QEMU. That is what gives this file's read path
+    // coverage it could not otherwise have: only the SDMMC host above goes
+    // untested, and that is Espressif's driver rather than ours.
     const char* path = CONFIG_AC3FORGE_EXAMPLE_SD_PATH;
-    g_file = std::fopen(path, "rb");
-    if (g_file == nullptr) {
-        std::printf("error: %s is not on the card\n", path);
+    if (!file_source::open(path)) {
         return false;
     }
-    // The length, which the framer needs so it does not read past the audio.
-    // A file has one, unlike a partition.
-    if (std::fseek(g_file, 0, SEEK_END) == 0) {
-        const auto end = std::ftell(g_file);
-        g_length = end > 0 ? static_cast<std::size_t>(end) : 0;
-        std::rewind(g_file);
-    }
-    std::printf("source: sd %s, %lu bytes\n", path, static_cast<unsigned long>(g_length));
+    std::printf("source: sd %s, %lu bytes\n", path,
+                static_cast<unsigned long>(file_source::length()));
     return true;
 }
 
-std::size_t source_read(std::span<std::byte> dst) {
-    if (g_file == nullptr) {
-        return 0;
-    }
-    return std::fread(dst.data(), 1, dst.size(), g_file);
-}
+std::size_t source_read(std::span<std::byte> dst) { return file_source::read(dst); }
 
-bool source_rewind() {
-    if (g_file == nullptr) {
-        return false;
-    }
-    std::rewind(g_file);
-    return true;
-}
+bool source_rewind() { return file_source::rewind(); }
 
 const char* source_name() { return "sd"; }
 
-std::size_t source_length() { return g_length; }
+std::size_t source_length() { return file_source::length(); }
 
 }  // namespace player
