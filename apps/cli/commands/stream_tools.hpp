@@ -79,7 +79,7 @@ struct DecodeRenderStats {
     std::string_view in_path, const LoadedStream& loaded, const ac3::plan::Routing& routing,
     std::size_t coded_channels,
     const std::function<bool(std::span<const std::span<const float>>)>& on_frame,
-    const std::function<void()>& on_abort = [] {});
+    const std::function<void()>& on_abort = [] { /* default: nothing to clean up */ });
 
 // Decode and re-encode, preserving dialnorm, DRC and the mix metadata the
 // target codec has room for. The output codec comes from out_path's suffix

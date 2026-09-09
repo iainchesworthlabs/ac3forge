@@ -100,7 +100,9 @@ public:
     // Where a platform that installs from a built package should look. A
     // no-op where the concept does not apply: Linux loads a module and macOS
     // needs no device, so neither has a package directory.
-    virtual void set_package_dir(std::string_view) {}
+    virtual void set_package_dir(std::string_view) {
+        // No-op: see the comment above.
+    }
 
     // Whether the silent device comes from a package in a folder the person
     // can point at - a driver, installed and removed by tools that live
