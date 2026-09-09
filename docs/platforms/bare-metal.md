@@ -19,8 +19,8 @@ It is the target CI measures the profile on. The
 | E-AC-3 5.1 decode | Correct. Same, including AHT and spectral extension |
 | E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture; 12 allocations per frame, level with plain E-AC-3 |
 | E-AC-3 2/0, §7.5.4 rematrixing | Correct. The only layout that tool exists in |
-| Image size | 297,612 bytes total — 200,060 `.text`, 400 `.data`, 97,152 `.bss` |
-| Peak heap | 179,064 bytes |
+| Image size | 318,001 bytes total — 221,556 `.text`, 400 `.data`, 96,045 `.bss` |
+| Peak heap | 233,195 bytes, the Atmos fixture decoded with its objects |
 | Retained after teardown | 12 bytes once the probe hands back the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) |
 | Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`. The two are mutually exclusive: neither fits beside the other. |
 | Audio output | None. The probe decodes built-in fixtures and prints levels. |

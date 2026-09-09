@@ -691,7 +691,7 @@ for what the profile changes and why.
 coupling), 5.1 E-AC-3 (384 kbit/s, AHT + spx + standard coupling), 5.1 E-AC-3 with §E3.5
 enhanced coupling (384 kbit/s, `cpl+ecpl`) and 2/0 E-AC-3 (192 kbit/s, which is the only layout
 §7.5.4 rematrixing exists in) — and reports what it cost. Numbers below are from a run
-against `feature/esp32-realtime-decode` at `7944c8f5`; `build-footprint` in
+against `feature/esp32-ecpl-float` at `b8d87792`; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
@@ -721,10 +721,10 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 224,524 |
+| `.text` (code + read-only data) | 221,556 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 100,144 |
-| **Image total** | **325,068** (317.4 KiB) |
+| `.bss` (zero-initialised) | 96,045 |
+| **Image total** | **318,001** (310.5 KiB) |
 
 `.bss` fell 140,440 bytes from the 237,592 this table carried before, in two steps. Moving
 `ecpl_channel_spectrum`'s 32 KB scratch off thread-local storage — it made the library
@@ -752,19 +752,24 @@ path; 912 are two tables `eac3_tools.cpp` now fills once at start-up rather than
 call, spectral extension's attenuation (32 codes by 3 taps) and the AHT's inverse kernel in
 float.
 
+Enhanced coupling's float forms then took 7,067 bytes back off, to 318,001. The double `dft512`
+and its tables left the image — `fft.cpp.obj` went from 4,444 to 3,004 bytes of `.text` and
+from 9,204 to 5,116 of `.bss`, the float twiddles being half the size — and
+`eac3_decoder.cpp.obj` lost 1,150 bytes of `.text` with its double §E3.5 path.
+
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
 
 | Object | `.text` | `.bss` |
 |---|---|---|
 | `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks) | 55.8 KiB | 48.8 KiB |
-| `eac3_decoder.cpp.obj` (all of Annex E) | 37.5 KiB | 0 B |
-| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 19.9 KiB | 11.2 KiB |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 36.4 KiB | 0 B |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 19.8 KiB | 11.2 KiB |
 | `mdct.cpp.obj` (inverse transform, fast path only) | 15.9 KiB | 14.6 KiB |
-| `decoder.cpp.obj` (AC-3) | 18.9 KiB | 0 B |
-| `joc.cpp.obj` (§6 object reconstruction from the bed) | 14.0 KiB | 0 B |
-| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 4.3 KiB | 9.0 KiB |
+| `decoder.cpp.obj` (AC-3) | 18.8 KiB | 0 B |
+| `joc.cpp.obj` (§6 object reconstruction from the bed) | 13.9 KiB | 0 B |
 | `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction) | 6.0 KiB | 4.2 KiB |
+| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 2.9 KiB | 5.0 KiB |
 | `oamd.cpp.obj` (§H.1 object metadata) | 6.8 KiB | 0 B |
 | `output.cpp.obj` (`OutputStage::apply`/`mix_levels`, both decoders') | 4.5 KiB | 16 B |
 | `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 4.0 KiB |
@@ -816,7 +821,7 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 236,391 bytes (230.9 KiB) |
+| Peak heap | 233,195 bytes (227.7 KiB) |
 | Retained after teardown | 12 bytes |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
@@ -857,8 +862,9 @@ enhanced-coupling scratch between decodes took it to 233,546. Moving the decoder
 buffers onto the decoder — what closed the per-frame churn above — added 2,845 back, because a
 buffer's high-water capacity is now held for the decoder's lifetime rather than released each
 frame. JOC's mixing then began narrowing the frame's matrix once into a scratch of its own rather
-than at every read, 912 bytes more. 237,303 fits the 280,792 bytes an ESP32-S3 has free with
-43,489 to spare. [The ESP32-S3 page](platforms/esp32.md#objects-and-what-it-took-to-fit-them)
+than at every read, 912 bytes more. The float form of the enhanced-coupling scratch, and of
+the decoder's own §E3.5 state, then gave 4,108 back. 233,195 fits the 280,792 bytes an
+ESP32-S3 has free with 47,597 to spare. [The ESP32-S3 page](platforms/esp32.md#objects-and-what-it-took-to-fit-them)
 has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
