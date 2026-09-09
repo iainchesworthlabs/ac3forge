@@ -1845,8 +1845,9 @@ syncframes (the low-latency mode this was meant to document) have not landed - t
 latency section names the 512-1024-sample figures they would enable and says so.
 </details>
 
-**PF7 (L)** — A minimum-footprint decoder profile — 277 KB image, 168 KB peak heap, proven on
-a real cross-compiled bare-metal CI leg, with a vectorised float32 decode path.
+**PF7 (L)** — A minimum-footprint decoder profile — a 320,521-byte image and a 234,803-byte peak
+heap with Atmos objects, proven on a real cross-compiled bare-metal CI leg, with a float32 decode
+path that runs E-AC-3 in real time on an ESP32-S3.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1855,7 +1856,7 @@ RTTI and no direct-form transform tables (an explicit 1.81 MiB ROM budget, measu
 object file), proven on a cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/baremetal`,
 `build-footprint`) that decodes real AC-3/E-AC-3 to the host build's own levels in 408 KB of
 image and 265 KB of peak heap. Two requirements are recorded as open gaps rather than
-half-enforced: zero heap traffic in the decode loop (today: 46-87 allocations/frame) and a
+half-enforced: zero heap traffic in the decode loop (today: 1-41 allocations/frame) and a
 float32-only internal path. The second is now met for the decode path: both decoders carry their
 coefficients, transform scratch and overlap-add history in a profile-selected `decode_scalar_t`,
 agreeing with the double decode to ~139 dB across four real streams and to 2.7e-7 peak-normalised
@@ -1899,6 +1900,14 @@ followed in a second pass, its shared-with-the-encoder routines given float form
 ones: 217 ms to 23.8 ms, so every E-AC-3 configuration this profile decodes now runs in real
 time on the part. `docs/platforms/esp32.md`'s Timing section has the stage tables and what would
 move the objects and enhanced-coupling fixtures further.
+
+A third pass, bit-exact for the double build and to the digit on the probe's levels, took the
+stages the profile left largest - a `BitReader` that had read one bit per loop iteration, a bit
+allocation recomputed for blocks whose parameters had not changed, a division per mantissa, the
+GAQ constants per codeword, JOC's data-point reads per sample - and put `fft.cpp` on the `-O2`
+list: 5.1 at 0.40x, 2/0 at 0.19x, the Atmos objects fixture at 0.72x and enhanced
+coupling at 0.67x. The leg's figures at the end of it: 320,521 bytes of image, 234,803 of
+peak heap with the objects reconstructed, 12 retained, 1 to 41 allocations a frame.
 
 See `docs/building.md`'s Gaps section, `docs/performance-trend.md` for the current table, and
 `docs/platforms/esp32.md`.

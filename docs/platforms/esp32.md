@@ -21,7 +21,7 @@ it is the first target where real-time decode is worth measuring.
 | Atmos, objects | Correct, and it fits: a 234,803-byte peak against 280,792 free, 41 allocations/frame — see [Objects](#objects-and-what-it-took-to-fit-them) |
 | Fits internal SRAM | Yes, without PSRAM: 280,792 bytes free against a 234,803-byte peak — see [Memory](#how-much-memory-there-actually-is) |
 | Retained after teardown | 12 bytes once the probe hands back the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) — see [Building](../building.md#gaps) |
-| Real time | Yes, every fixture, at 240 MHz — from 0.08x for AC-3 mono to 0.92x for Atmos objects. See [Timing](#timing) |
+| Real time | **Yes, on a board**, at 240 MHz, every fixture: from 0.07x for AC-3 mono to 0.72x for Atmos objects — see [Timing](#timing) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
 
 ## Building
@@ -324,11 +324,50 @@ the double one's 32,768, and the bin-angle vector that used to be `thread_local`
 is a stack array, so what stays retained after the probe hands the scratch
 back is one registration record, 12 bytes, rather than two.
 
+A third pass took the stages the profile left largest, every change of it
+producing the values its predecessor produced: the host suite passes
+unchanged and the probe's levels are to the digit. `BitReader::read()` had
+been one loop iteration per bit - some eight cycles for each bit of every
+mantissa, exponent group and GAQ codeword - and now serves a field from a
+64-bit cache. A block whose exponents, allocation parameters and region are
+its predecessor's keeps the allocation it already has rather than deriving it
+again, which E-AC-3's once-a-frame exponents make the common case:
+`compute_bit_allocation` ran 36 times a frame on the 5.1 stream and runs
+6 now. The symmetric mantissa quantisers' values come from a table
+filled at compile time by the division they used to perform, the asymmetric
+ones scale by an exact power of two, and an AHT bin resolves its dequantiser's
+constants once for its six codewords. JOC's mixing reads each (channel,
+band)'s data points once per object per block and forms the ramp's fractions
+once per block, and `fft.cpp` joined the `-O2` list once the float DFT was on
+the hot path.
+
+Same board, same clock, plain build:
+
+| Fixture | us/frame | x real time | was |
+|---|---:|---:|---:|
+| `ac3_mono` | 2,188 | 0.07 | 2,588 |
+| `ac3_stereo` | 3,420 | 0.11 | 4,236 |
+| `eac3_stereo` | 6,171 | 0.19 | 6,814 |
+| `ac3` 5.1 | 9,939 | 0.31 | 11,803 |
+| `eac3_atmos_bed` | 10,914 | 0.34 | 13,416 |
+| `eac3` 5.1 | 12,775 | 0.40 | 14,185 |
+| `eac3_atmos_objects` | 23,191 | 0.72 | 29,337 |
+| `eac3_ecpl` | 21,547 | 0.67 | 23,784 |
+
+A 5.1 frame, stage-timed, now: bit allocation 0.4 ms (it was 1.6), the IMDCT
+3.5, the AHT 2.7, spectral extension 1.5, mantissas 0.3. The access-unit
+level, which the earlier profile could only report as 2.3 ms outside every
+marker, is now four zones: 2.0 ms assembling the unit from its queued
+substreams (`eac3_au_assemble`), 0.1 keying them (`eac3_au_key`), and
+splitting and queueing under 0.05 between them. The assembly is the largest
+cost the profile now names outside the decoders - at 36 KB of output PCM a
+frame it is some 50 cycles a sample - and is the next thing to read.
+
 ### What is left, and what would move it
 
-- **Objects.** JOC reconstruction is 15.9 ms of the objects fixture's 29.7:
-  8.2 ms mixing, 3.4 ms re-analysing the bed with thirty forward transforms a
-  frame, 2.7 ms synthesising six objects. The bed analysis exists because
+- **Objects.** JOC reconstruction is 12.3 ms of the objects fixture's 23.6:
+  4.2 ms mixing, 3.5 ms re-analysing the bed with thirty forward transforms a
+  frame, 2.8 ms synthesising six objects. The bed analysis exists because
   `oba::joc::reconstruct` takes the bed as PCM; the decoder holds that bed's
   MDCT coefficients already, one block at a time, and a reconstruction that
   took them would skip the analysis outright. Beyond that, this is the one
@@ -336,14 +375,15 @@ back is one registration record, 12 bytes, rather than two.
   independent of the bed decode of frame N+1, so a second task can run it a
   frame behind, at the cost of one frame of latency, and throughput becomes
   the larger of the two halves rather than their sum. Neither is done.
-- **Enhanced coupling** is at 0.75x and has two cheap steps left. Each block's
+- **Enhanced coupling** is at 0.67x and has one cheap step left. Each block's
   spectrum runs three inverse transforms, and two of them are the neighbouring
   blocks' - the same transforms the previous and next block run for
   themselves, so eighteen a frame where eight are distinct; a cache keyed by
-  block would take about a millisecond off the 6.9. And `fft.cpp` is not on the
-  `-O2` list, because the float IMDCT's kernel (instantiated in `mdct.cpp`)
-  gained nothing there; the float `dft512` now on the hot path has not been
-  measured either way.
+  block would take about a millisecond off the 6.7 the spectrum costs now.
+  `fft.cpp` joined the `-O2` list in the third pass and was worth 0.1 ms:
+  `ecpl_channel_spectrum` went from 6.9 ms to 6.7 and the reconstruction
+  stayed at 4.7. The pass's gain on this fixture came from the bitstream
+  side instead - its mantissas 2.4 ms to 1.6.
 - **The second core** was the lever the earlier estimates ranked first. It was
   not needed for stereo or 5.1, and the breakdown says why it would have
   disappointed: the stages that dominated were serial software floating point,
@@ -355,7 +395,7 @@ back is one registration record, 12 bytes, rather than two.
   per coupled channel per block is gone as a side effect, but the count the
   runner gates did not move on any fixture, since no fixture couples.
 - **A hand-written kernel tier** (`madd.s`, which `-ffp-contract=off` forbids
-  project-wide) would apply to the IMDCT, which is 3.4 ms of a 14.6 ms 5.1
+  project-wide) would apply to the IMDCT, which is 3.5 ms of a 13.0 ms 5.1
   frame. That bounds what the tier could return at under a quarter of the
   remaining time, and it is not needed for anything that now fits.
 
