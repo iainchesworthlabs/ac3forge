@@ -523,11 +523,16 @@ template <typename Scalar>
     const auto coefficient = [&](FrameParameters::ObjectMatrixView view, std::size_t base,
                                  int nbands, int data_point, int ch, int band) -> Scalar {
         if constexpr (kNarrowed) {
-            return state.matrix_scratch[base + ((static_cast<std::size_t>(data_point) *
-                                                     static_cast<std::size_t>(channels) +
-                                                 static_cast<std::size_t>(ch)) *
-                                                static_cast<std::size_t>(nbands)) +
-                                        static_cast<std::size_t>(band)];
+            // The cast is a no-op here and exists for the OTHER build: this
+            // lambda is not a template, so a double decoder still checks this
+            // branch, where a float would otherwise promote implicitly and
+            // -Wdouble-promotion (clang, -Werror) refuses it.
+            return static_cast<Scalar>(
+                state.matrix_scratch[base + ((static_cast<std::size_t>(data_point) *
+                                                  static_cast<std::size_t>(channels) +
+                                              static_cast<std::size_t>(ch)) *
+                                             static_cast<std::size_t>(nbands)) +
+                                     static_cast<std::size_t>(band)]);
         } else {
             return view.at(data_point, ch, band);
         }

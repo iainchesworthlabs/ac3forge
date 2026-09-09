@@ -26,6 +26,20 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Changed
 
+- **E-AC-3 decodes in real time on the ESP32-S3** (roadmap PF7). Measured on an
+  ESP32-S3-DevKitC-1-N16R8 at 240 MHz, a 5.1 frame went from 78.8 ms to 14.2 ms, 2/0 from
+  34.7 to 6.8 ms and an Atmos objects frame from 82.7 to 29.4 ms, against a 32 ms budget, with
+  every fixture's levels unchanged. The cost was `double` arithmetic between the bitstream and
+  the float32 coefficient store - mantissa dequantisation, dither, coordinates, decoupling,
+  spectral extension, the AHT and JOC's mixing - each operation a call into the ROM's software
+  floating point on that single-precision FPU; those paths now run in `decode_scalar_t`, through
+  templates whose `<double>` instantiations are the exported functions every other build calls,
+  so nothing changes outside the minimum-footprint profile. Two new build switches:
+  `AC3FORGE_STAGE_TIMERS` routes the library's zone markers to a per-stage timer an application
+  supplies (the bare-metal probe does; `--stage-timers` on both probe runners), and
+  `AC3FORGE_MINIMAL_HOT_O2` compiles five decode-critical files at `-O2` under the `-Os`
+  profile (on in the ESP32-S3 project, off by default; flash, not SRAM). `aht_inverse` gains a
+  `float` overload. [The ESP32-S3 page](docs/platforms/esp32.md#timing) has the stage tables.
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has
