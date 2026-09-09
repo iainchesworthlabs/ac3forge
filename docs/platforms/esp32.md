@@ -423,11 +423,13 @@ and the access-unit level 0.4 in all.
   disappointed: the stages that dominated were serial software floating point,
   not parallel work, and splitting them across two cores would have halved a
   cost that could be removed instead.
-- **Per-frame allocations** are unchanged at 3 to 41 per frame (this profile's
-  open PF7 gap). At a few microseconds each they are not on the path to real
-  time for any fixture here; the coupling-coordinate vector that allocated once
-  per coupled channel per block is gone as a side effect, but the count the
-  runner gates did not move on any fixture, since no fixture couples.
+- **Per-frame allocations** are 1 to 31 per frame (this profile's open PF7
+  gap). At a few microseconds each they are not on the path to real time for
+  any fixture here. The first three passes left the count the runner gates
+  untouched on every fixture (the coupling-coordinate vector that allocated
+  once per coupled channel per block went as a side effect, but no fixture
+  couples); the fourth took the Atmos fixtures from 23 and 41 to 20 and 31 by
+  moving the object description rather than copying it.
 - **A hand-written kernel tier** (`madd.s`, which `-ffp-contract=off` forbids
   project-wide) would apply to the IMDCT, which is 3.5 ms of a 11.3 ms 5.1
   frame. That bounds what the tier could return at under a quarter of the
@@ -538,7 +540,7 @@ software, and [Timing](#timing) has what that cost.
 
 ## Open work
 
-- **Heap traffic in the decode loop.** PF7 asks for zero; the steady state is 1–41 allocations per
+- **Heap traffic in the decode loop.** PF7 asks for zero; the steady state is 1–31 allocations per
   frame depending on fixture, from per-block geometry vectors and the `std::vector` members of the
   returned `DecodedFrame`. Reaching zero means those becoming fixed-capacity, which changes public
   types. The runner gates at 100 so the distance from zero cannot grow quietly.

@@ -21,7 +21,7 @@ target and the first with hardware floating point.
 | Image size | 320,601 bytes — 224,156 `.text`, 400 `.data`, 96,045 `.bss` |
 | Peak heap | 210,203 bytes, the Atmos fixture decoded with its objects |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
-| Allocations per frame | 1 to 41, by fixture — see [the footprint table](../performance-trend.md#minimum-footprint-decoder) |
+| Allocations per frame | 1 to 31, by fixture — see [the footprint table](../performance-trend.md#minimum-footprint-decoder) |
 | Audio output | None. The probe decodes built-in fixtures and prints levels |
 | Real silicon | None. Correctness is established under emulation |
 | CI | `build-footprint` in `.github/workflows/_build.yml`, on every push |

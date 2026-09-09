@@ -385,7 +385,7 @@ Two things about the probe differ from the decode one, and both follow from the 
   FPU at all.
 
 Steady-state churn is **78 allocations per frame for AC-3 and 249 for E-AC-3**, against the
-decoders' 1–41. That gap is in the API rather than the implementation: both encoders return
+decoders' 1–31. That gap is in the API rather than the implementation: both encoders return
 `std::vector<std::byte>` from `encode_frame`, and there is no `encode_frame_into` to match
 `decode_frame_into`. It is the same zero-heap gap [above](#gaps) records for the decode side, wider
 here, and it is the thing to close before this profile is fit for a real-time encode.
