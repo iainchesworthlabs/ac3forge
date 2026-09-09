@@ -866,6 +866,103 @@ TEST_CASE("Eac3Decoder recovers the object positions AtmosEncoder wrote", "[atmo
     }
 }
 
+TEST_CASE("decode_access_unit_by_block hands over the objects a block at a time",
+          "[atmos][decoder][joc]") {
+    // The block form's PcmBlock carries the reconstructed objects beside the
+    // bed: views onto the unit's own object_audio, cut to the block, with the
+    // indices and the metadata the value form reports. Encoded here rather
+    // than read from a fixture so the objects are known to be three dynamic
+    // ones at known positions, then decoded both ways and compared sample for
+    // sample - nothing is copied on the way out, so what is checked is that
+    // the views ARE the value form's samples, block by block, in order.
+    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
+    const std::array<ac3::oba::ObjectPlacement, 3> placement{{
+        {.position = {.x = 0.1, .y = 0.2, .z = 0.5}},
+        {.position = {.x = 0.9, .y = 0.2, .z = 0.0}},
+        {.position = {.x = 0.5, .y = 0.9, .z = 1.0}},
+    }};
+
+    std::vector<std::vector<float>> essences;
+    std::vector<std::span<const float>> views(3);
+    ac3::Eac3Decoder value_decoder;
+    ac3::Eac3Decoder block_decoder;
+    ac3::Eac3Decoder bed_decoder{{.skip_object_reconstruction = true}};
+    for (int frame = 0; frame < 3; ++frame) {
+        const auto start = static_cast<std::uint64_t>(frame) * kFrame;
+        essences = {tone(440.0, 0.3, 0.0, start), tone(880.0, 0.3, 0.5, start),
+                    tone(120.0, 0.3, 1.0, start)};
+        for (std::size_t i = 0; i < views.size(); ++i) {
+            views[i] = essences[i];
+        }
+        const auto encoded = encoder.encode_frame(views, placement);
+        REQUIRE(encoded.has_value());
+
+        const auto value = value_decoder.decode_access_unit(encoded->bytes);
+        REQUIRE(value.has_value());
+        REQUIRE(value->has_value());
+        REQUIRE((*value)->object_metadata.has_value());
+        REQUIRE((*value)->object_audio.size() == 3);
+        REQUIRE((*value)->object_indices.size() == 3);
+
+        std::vector<std::vector<float>> bed;
+        std::vector<std::vector<float>> objects;
+        int blocks_seen = 0;
+        bool metadata_every_block = true;
+        bool indices_every_block = true;
+        const auto sink = [&](const ac3::PcmBlock& pcm) {
+            ++blocks_seen;
+            bed.resize(pcm.channels.size());
+            for (std::size_t slot = 0; slot < pcm.channels.size(); ++slot) {
+                bed[slot].insert(bed[slot].end(), pcm.channels[slot].begin(),
+                                 pcm.channels[slot].end());
+            }
+            objects.resize(pcm.objects.size());
+            for (std::size_t o = 0; o < pcm.objects.size(); ++o) {
+                CHECK(pcm.objects[o].size() == static_cast<std::size_t>(ac3::kSamplesPerBlock));
+                objects[o].insert(objects[o].end(), pcm.objects[o].begin(), pcm.objects[o].end());
+            }
+            if (pcm.object_metadata == nullptr || pcm.object_metadata->objects.size() != 3) {
+                metadata_every_block = false;
+            }
+            if (!std::ranges::equal(pcm.object_indices, (*value)->object_indices)) {
+                indices_every_block = false;
+            }
+        };
+        const auto by_block = block_decoder.decode_access_unit_by_block(encoded->bytes, sink);
+        REQUIRE(by_block.has_value());
+        REQUIRE(by_block->has_value());
+        CHECK(blocks_seen == ac3::kBlocksPerFrame);
+        CHECK(metadata_every_block);
+        CHECK(indices_every_block);
+
+        REQUIRE(bed.size() == (*value)->channels.size());
+        for (std::size_t slot = 0; slot < bed.size(); ++slot) {
+            CAPTURE(frame, slot);
+            CHECK(std::ranges::equal(bed[slot], (*value)->channels[slot]));
+        }
+        REQUIRE(objects.size() == 3);
+        for (std::size_t o = 0; o < objects.size(); ++o) {
+            CAPTURE(frame, o);
+            REQUIRE(objects[o].size() == (*value)->object_audio[o].size());
+            CHECK(std::ranges::equal(objects[o], (*value)->object_audio[o]));
+        }
+
+        // A bed-only decode hands over the bed alone: no object views, no
+        // indices, no metadata pointer, exactly as its value form's
+        // object_audio is empty.
+        int bed_only_objects = 0;
+        bool bed_only_metadata = false;
+        const auto bed_sink = [&](const ac3::PcmBlock& pcm) {
+            bed_only_objects += static_cast<int>(pcm.objects.size() + pcm.object_indices.size());
+            bed_only_metadata = bed_only_metadata || pcm.object_metadata != nullptr;
+        };
+        const auto bed_only = bed_decoder.decode_access_unit_by_block(encoded->bytes, bed_sink);
+        REQUIRE(bed_only.has_value());
+        CHECK(bed_only_objects == 0);
+        CHECK_FALSE(bed_only_metadata);
+    }
+}
+
 TEST_CASE("skip_object_reconstruction leaves the bed untouched and the objects absent",
           "[atmos][decoder][joc]") {
     // The embedded case: an Atmos stream decoded for its 5.1 bed on a target
