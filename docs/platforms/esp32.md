@@ -13,15 +13,15 @@ the float32 path worth having and real-time decode worth measuring.
 | | |
 |---|---|
 | AC-3 decode | Correct. Mono, stereo and 5.1, every channel level exact against `apps/baremetal/fixture.hpp` |
-| E-AC-3 decode | Correct. 5.1 and 2/0, including AHT, spectral extension and §7.5.4 rematrixing |
+| E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing |
 | E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture. Costs 12 allocations per frame, level with plain E-AC-3 |
 | Atmos bed | Correct, decoded bed-only via `DecoderConfig::skip_object_reconstruction`. 20 allocations per frame |
 | Atmos objects | **Correct, reconstructed on target.** 31 allocations per frame — see [Objects](#objects) |
 | Encode | AC-3 and E-AC-3, six frames of synthesised 5.1 through each encoder, byte count and FNV-1a hash checked against `apps/baremetal/encode_fixture.hpp` |
-| Fits internal SRAM | Yes, without PSRAM. 210,203-byte peak heap against 280,792 free — see [Memory](#memory) |
+| Fits internal SRAM | Yes, without PSRAM. 229,630-byte peak heap (the 7.1.4 fixture; 210,203 with Atmos objects) against 257,572 free — see [Memory](#memory) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record, the spectrum scratch's pointer; 23,552 bytes while §E3.5 is in use |
 | Audio output | Two examples drive real peripherals — see [Examples](#examples) |
-| Real time | **Yes, on a board**, at 240 MHz, every fixture: from 0.07x for AC-3 mono to 0.66x for Atmos objects — see [Timing](#timing) |
+| Real time | **Yes, on a board**, at 240 MHz, every fixture: from 0.07x for AC-3 mono to 0.90x for E-AC-3 7.1.4 — see [Timing](#timing) |
 | ESPHome | An external component, `esphome/components/ac3forge/` — the decoder and framer, not a `speaker` source. See [ESPHome](#esphome) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU; `esphome config` and the component pack in their own workflows |
 
@@ -135,13 +135,13 @@ are true and answer different questions.
 | − instruction cache | 16,384 | already the minimum |
 | = DRAM-addressable window | 491,520 | `SOC_DRAM_LOW`…`SOC_DRAM_HIGH` |
 | DIRAM pool `idf.py size` reports | 341,760 | after ROM reservations |
-| **free at runtime** | **280,792** | what `heap_caps_get_free_size` returns |
+| **free at runtime** | **257,572** | what `heap_caps_get_free_size` returns before the probe decodes; 280,792 until the probe's own PCM block grew from eight channels to twelve for the 7.1.4 fixture |
 
 `idf.py size`'s "remain" is a linker estimate — 206,956 where the allocator reports 280,792. A
 footprint budget quoted from it is a budget nobody checked.
 
-Measured, decode direction: the image uses 133,588 bytes of DIRAM and the decode peaks at
-210,203 bytes of heap. The encode image is smaller, 110,900. `app_main` prints the runtime
+Measured, decode direction: the image uses 158,196 bytes of DIRAM and the decode peaks at
+229,630 bytes of heap, on the 7.1.4 fixture (210,203 with Atmos objects). The encode image is smaller, 110,900. `app_main` prints the runtime
 figures before and after.
 
 ### Contiguity
@@ -397,6 +397,41 @@ A 5.1 frame, stage-timed, is 11.3 ms: the IMDCT 3.5, the AHT
 2.7, spectral extension 1.5, bit allocation 0.4, mantissas 0.4,
 and the access-unit level 0.4 in all.
 
+### 7.1.4, the widest programme
+
+A ninth fixture, added for the question of driving a 7.1.4 DAC from this
+part: E-AC-3 7.1.4 at 640 kbit/s, a 5.1 bed and two dependent substreams
+(`k71Rear`, `kTopQuad`), the widest programme the encoder makes and the first
+fixture with more channels than one substream carries, so the access unit's
+assembly - locations unioned, a dependent's surrounds replacing the bed's -
+runs on the target for the first time. Every one of its twelve levels is
+exact. Plain build, same board, same clock:
+
+| Fixture | us/frame | x real time | peak heap | allocations/frame |
+|---|---:|---:|---:|---:|
+| `eac3_714` | 28,815 | 0.90 | 229,630 | 35 |
+
+A 7.1.4 frame is 2.6 times a 5.1 frame, not 2 - the same ratio the
+[instruction count](../performance-trend.md#instructions-per-frame) gives on
+the Cortex-M3 leg (33.8 M against 12.9 M), so the extra is the dependents'
+own per-substream work rather than anything this part does badly. It is
+also the new peak: 229,630 bytes against the 257,572 the probe now
+leaves free, 27,942 to spare, after the probe's own PCM block grew from
+eight channels to twelve (73,728 bytes, static). The peak by fixture, the
+same on both legs:
+
+| Fixture | peak heap | allocations/frame |
+|---|---:|---:|
+| `ac3_mono` | 10,652 | 1 |
+| `ac3_stereo` | 12,356 | 1 |
+| `ac3` 5.1 | 19,457 | 3 |
+| `eac3_atmos_bed` | 123,735 | 20 |
+| `eac3_stereo` | 140,534 | 10 |
+| `eac3_ecpl` | 157,493 | 12 |
+| `eac3` 5.1 | 167,042 | 12 |
+| `eac3_atmos_objects` | 210,203 | 31 |
+| `eac3_714` | 229,630 | 35 |
+
 ### What is left, and what would move it
 
 - **Objects.** JOC reconstruction is 12.3 ms of the objects fixture's 21.7:
@@ -418,6 +453,18 @@ and the access-unit level 0.4 in all.
   `ecpl_channel_spectrum` went from 6.9 ms to 6.7 and the reconstruction
   stayed at 4.7. The pass's gain on this fixture came from the bitstream
   side instead - its mantissas 2.4 ms to 1.6.
+- **7.1.4 to a DAC.** The decode is in real time on one core at 0.90x and in
+  internal SRAM with 27 KB to spare, and neither number leaves room for a
+  player around it: a TDM16 sink's DMA ring is 16 KB a 256-sample block, WiFi
+  wants 50 KB, and a full frame of twelve output channels is 73 KB whether
+  the probe holds it or a player does. What would move it is structural
+  rather than arithmetic - writing the decoder's output a block at a time
+  into the sink's ring instead of a frame at a time (twelve kilobytes rather
+  than seventy-three), and a dependent's channels going straight into their
+  output slots instead of through the access unit (another 73 KB at the
+  peak) - or PSRAM for the staging, with its own I2S-DMA constraints and a
+  speed cost to measure. At 0.90x the second core stops being optional
+  for anything that decodes 7.1.4 and does something else.
 - **The second core** was the lever the earlier estimates ranked first. It was
   not needed for stereo or 5.1, and the breakdown says why it would have
   disappointed: the stages that dominated were serial software floating point,

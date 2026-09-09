@@ -80,6 +80,7 @@ declare -A ICOUNT_CEILING=(
     [eac3]=16000000
     [eac3_atmos_objects]=35000000
     [eac3_ecpl]=36000000
+    [eac3_714]=42000000
 )
 
 # --- ceilings --------------------------------------------------------------
@@ -116,6 +117,8 @@ declare -A ICOUNT_CEILING=(
 #
 #   1 ac3_mono   1 ac3_stereo   3 ac3   10 eac3_stereo
 #   12 eac3   12 eac3_ecpl   23 eac3_atmos_bed   41 eac3_atmos_objects
+# (20 and 31 for the Atmos pair since the object description is moved, and 35 for
+# the 7.1.4 fixture added 2026-09-10, whose three substreams each allocate.)
 #
 # A ceiling of 100 over a worst fixture of 41 is loose, deliberately: what it
 # guards is the DISTANCE FROM ZERO not growing, and the fixtures that could

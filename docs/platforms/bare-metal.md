@@ -14,14 +14,14 @@ target and the first with hardware floating point.
 | | |
 |---|---|
 | AC-3 decode | Correct. Mono, stereo and 5.1, every channel level exact against `apps/baremetal/fixture.hpp` |
-| E-AC-3 decode | Correct. 5.1 and 2/0, including AHT, spectral extension and §7.5.4 rematrixing |
+| E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing |
 | E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture |
 | Atmos bed and objects | Correct. Objects reconstruct here; the flat newlib heap makes it easier than on the [ESP32-S3](esp32.md#objects) |
 | Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER` |
-| Image size | 320,601 bytes — 224,156 `.text`, 400 `.data`, 96,045 `.bss` |
-| Peak heap | 210,203 bytes, the Atmos fixture decoded with its objects |
+| Image size | 376,097 bytes — 255,044 `.text`, 400 `.data`, 120,653 `.bss` |
+| Peak heap | 229,630 bytes, the 7.1.4 fixture (210,203 with Atmos objects) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
-| Allocations per frame | 1 to 31, by fixture — see [the footprint table](../performance-trend.md#minimum-footprint-decoder) |
+| Allocations per frame | 1 to 35, by fixture — see [the footprint table](../performance-trend.md#minimum-footprint-decoder) |
 | Audio output | None. The probe decodes built-in fixtures and prints levels |
 | Real silicon | None. Correctness is established under emulation |
 | CI | `build-footprint` in `.github/workflows/_build.yml`, on every push |
@@ -72,7 +72,7 @@ list if any component needing the full library is still switched on.
 
 ## The probe
 
-`apps/baremetal/probe.cpp` links the archive, decodes six frames each of eight fixtures, compares
+`apps/baremetal/probe.cpp` links the archive, decodes six frames each of nine fixtures, compares
 every channel's level against `apps/baremetal/fixture.hpp`, and prints `key=value` lines the
 runner gates on: the levels, image size, peak heap, retained bytes and allocations per frame.
 `encode_probe.cpp` is its counterpart, checking a byte count and FNV-1a hash against
