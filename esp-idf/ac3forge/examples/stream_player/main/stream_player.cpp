@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -82,6 +83,48 @@ std::array<std::span<float>, kCodedChannels> g_pcm_spans{};
 // once per frame rather than held, because the count depends on what the
 // decoder folded to.
 std::array<std::span<const float>, kCodedChannels> g_out_views{};
+
+// --- what actually came out --------------------------------------------------
+// Sum of squares per output channel, over the whole run.
+//
+// The player REPORTS the level and does not judge it: what the levels should be
+// is a property of the stream, and a player carrying expectations for one
+// particular file would be a fixture wearing an example's clothes. CI holds the
+// expectation, and records where the reference values came from.
+//
+// Worth having because of what the verdict used to mean: "some units decoded
+// without returning an error". A stream that decoded to silence, or to
+// full-scale noise, satisfied that completely.
+//
+// Scaled by 1e6 and rounded - the same form apps/baremetal/probe.cpp reports
+// its own levels in, so the two read the same way.
+std::array<double, kCodedChannels> g_sum_squares{};
+std::size_t g_sample_count = 0;
+
+void accumulate_levels(int channels) {
+    for (int ch = 0; ch < channels; ++ch) {
+        const auto uch = static_cast<std::size_t>(ch);
+        for (const float sample : g_pcm[uch]) {
+            g_sum_squares[uch] += static_cast<double>(sample) * static_cast<double>(sample);
+        }
+    }
+    g_sample_count += ac3::kSamplesPerFrame;
+}
+
+std::int32_t rms_scaled(std::size_t channel) {
+    if (g_sample_count == 0) {
+        return 0;
+    }
+    const double rms = std::sqrt(g_sum_squares[channel] / static_cast<double>(g_sample_count));
+    return static_cast<std::int32_t>((rms * 1e6) + 0.5);
+}
+
+void report_levels() {
+    for (std::size_t ch = 0; ch < kOutputChannels; ++ch) {
+        std::printf("stream.rms[%u]=%ld\n", static_cast<unsigned>(ch),
+                    static_cast<long>(rms_scaled(ch)));
+    }
+}
 
 void play_frame(int channels) {
     for (int ch = 0; ch < channels; ++ch) {
@@ -161,6 +204,7 @@ extern "C" void app_main() {
                 // The verdict CI gates on. Every unit the accumulator produced
                 // decoded, and it produced them by reading the partition a
                 // block at a time - which is the whole claim.
+                report_levels();
                 std::printf("stream.units=%lu stream.resync_bytes=%lu stream.sink=%s "
                             "stream.sink_frames=%lu stream.source=%s\n",
                             static_cast<unsigned long>(played),
@@ -178,6 +222,7 @@ extern "C" void app_main() {
             // the seam as a click. Stopping is the honest answer.
             if (!player::source_rewind()) {
                 std::printf("stream: %s cannot rewind, stopping\n", player::source_name());
+                report_levels();
                 std::printf("result=%s\n", played > 0 ? "pass" : "fail");
                 vTaskDelay(pdMS_TO_TICKS(200));
                 return;
@@ -207,6 +252,7 @@ extern "C" void app_main() {
         }
         ++played;
 
+        accumulate_levels(static_cast<int>(kOutputChannels));
         play_frame(static_cast<int>(kOutputChannels));
     }
 }

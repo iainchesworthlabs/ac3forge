@@ -3698,6 +3698,43 @@ jobs:
             exit 1
           fi
 
+          # AND THAT THE AUDIO IS RIGHT, which is the part result=pass does not
+          # cover: that verdict is "some units decoded without returning an
+          # error", which a stream decoding to silence or to full-scale noise
+          # satisfies completely.
+          #
+          # The reference is the HOST's answer for the same file through the
+          # same configuration, obtained independently of anything this leg
+          # builds:
+          #
+          #   ac3cli decode stream/sample.ac3 out.wav downmix=loro drcmode=line
+          #
+          # giving RMS x 1e6 of 107370 and 106234. The target reports 107811 and
+          # 106647 - 0.41% and 0.39% out, which is the float32 decode path
+          # against the host's float64 and not a defect.
+          #
+          # Tolerance is apps/baremetal/probe.cpp's own convention, expected/20
+          # + 200, for the same reason: it absorbs the scalar-width difference
+          # and nothing larger. A channel that came back silent, or at the wrong
+          # level, is several times outside it.
+          check_rms() {
+            local channel="$1" expected="$2"
+            local got
+            got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-stream.txt | tail -1)
+            if [ -z "$got" ]; then
+              echo "::error title=ESP32-S3 streaming player::no stream.rms[$channel] line" >&2
+              exit 1
+            fi
+            local slack=$(( expected / 20 + 200 ))
+            echo "rms[$channel] = $got (host $expected, tolerance +/-$slack)"
+            if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
+              echo "::error title=ESP32-S3 streaming player::channel $channel decoded to $got, host says $expected" >&2
+              exit 1
+            fi
+          }
+          check_rms 0 107370
+          check_rms 1 106234
+
       # BUILD ONLY, and that is the whole point of the step.
       #
       # Three of the example's four sink/source combinations cannot RUN without

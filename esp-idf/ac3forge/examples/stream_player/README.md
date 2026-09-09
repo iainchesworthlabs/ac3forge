@@ -64,12 +64,26 @@ exactly as they do on hardware. What it cannot do is prove a DAC makes a noise.
 ## What it prints
 
 ```
-stream: partition 'audio' at 0x190000, 10752 bytes of audio in 262144
+source: partition 'audio' at 0x190000, 10752 bytes of audio in 262144
 sink: null 48000 Hz 16-bit x2 (no peripheral, no pacing)
-lap=1 frames=6 us_per_frame=16145 worst_frame_us=40737 realtime_permille=504 resync=0 heap_free=292696
-stream.units=12 stream.resync_bytes=0 stream.sink=null stream.sink_frames=12
+lap=1 frames=6 us_per_frame=16707 worst_frame_us=44199 realtime_permille=522 resync=0 heap_free=292696
+stream.rms[0]=107811
+stream.rms[1]=106647
+stream.units=12 stream.resync_bytes=0 stream.sink=null stream.sink_frames=12 stream.source=partition
 result=pass
 ```
+
+`stream.rms[ch]` is the RMS of what was sent to the sink, scaled by 1e6 — the
+same form `apps/baremetal/probe.cpp` reports its own levels in. The player
+reports it and does not judge it: what the levels *should* be is a property of
+the stream, so CI holds the expectation.
+
+**That is what makes this an end-to-end check rather than a smoke test.**
+`result=pass` on its own means "some units decoded without returning an error",
+which a stream decoding to silence or to full-scale noise satisfies completely.
+CI compares these against the host's answer for the same file through the same
+configuration — `ac3cli decode … downmix=loro drcmode=line`, giving 107,370 and
+106,234. The 0.4% gap is the float32 decode path against the host's float64.
 
 `resync` is bytes skipped looking for a sync word. Non-zero means the stream did
 not begin on a frame boundary, or that something between frames was not a frame.
