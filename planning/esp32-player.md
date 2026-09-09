@@ -366,11 +366,25 @@ the same:
    after it is unchanged: the library syncs decoded PCM, and an E-AC-3 chunk decodes to 1,536
    frames of it exactly as an Opus chunk decodes to 960. The fold to stereo, or the render to a
    layout, is this player's, as in every other source.
-3. **The server**: Music Assistant decodes everything to PCM and re-encodes. For a 5.1 file it
-   could encode E-AC-3 through ffmpeg as it encodes FLAC today; for an Atmos file the objects
-   survive only if the server passes the bitstream through undecoded, which is the
-   passthrough-capable endpoint the topology describes. That is the far end's work and the
-   larger ask.
+3. **The server, which is two repositories.** The wire encoding is not Music Assistant's: it
+   lives in `aiosendspin`, the Apache-2.0 Python protocol library Music Assistant's provider
+   calls, whose `AudioCodec` enum is `OPUS`, `FLAC`, `PCM` and whose encoders are PyAV over the
+   three (`OpusEncoder`, `FlacEncoder`, a `PcmPassthrough` that only chunks), selected by a
+   `create_encoder(codec)` factory. A fourth codec there is an `Eac3Encoder` on the same pattern,
+   and PyAV already carries ffmpeg's E-AC-3 encoder, so encoding a 5.1 programme to E-AC-3 is
+   the smaller part. Music Assistant's provider then needs little: it reads the player's
+   `supported_formats` into that enum, offers a `codec:rate:depth:channels` preference, and hands
+   PCM from its streams controller to the library, at stereo 48 kHz today. Six channels through
+   that controller, and passing an Atmos bitstream through it undecoded so the objects survive,
+   are the Music Assistant changes proper, and the larger ask: the second is the
+   passthrough-capable endpoint the topology describes, on the source side.
+
+So the repositories touched, in dependency order: `Sendspin/spec` (a codec name) and
+`Sendspin/aiosendspin` (the encoder) and `Sendspin/sendspin-cpp` (the decoder interface) have to
+agree and can move together; `music-assistant/server` follows for six channels and passthrough;
+ESPHome's `sendspin` component follows the library, advertising the codec and taking the decoder
+from this project's component. This repository's own work is the decoder behind the interface,
+which is the same decoder every other source here already uses.
 
 What does not change is the sink side of this page. Every layer below the transport, the
 decoder, the fold or render, the layouts, the I2S and TDM sinks and their instrumentation, is
