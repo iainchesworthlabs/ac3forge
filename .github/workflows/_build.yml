@@ -3819,6 +3819,75 @@ jobs:
             exit 1
           fi
 
+      # The HTTP source, end to end, with no board and no access point. QEMU
+      # has no WiFi, but `idf.py qemu` attaches an OpenCores Ethernet MAC to
+      # the host's network, so the source's own network seam picks net/openeth/
+      # (main/source/http/network.hpp, selected by sdkconfig.ci-http) and a
+      # python http.server on the runner serves apps/wasm/assets/ - the same
+      # E-AC-3 demo the WASM page plays: 5.1 with JOC objects, 448 kbit/s, 250
+      # access units. The guest reaches the host at 10.0.2.2. Everything above
+      # the radio runs as it does on a board: the HTTP client, the framer, the
+      # E-AC-3 decode; only WiFi itself is left for hardware.
+      #
+      # The levels are held against the host's
+      #   ac3cli decode apps/wasm/assets/demo.ec3 out.wav downmix=loro drcmode=line
+      # 56,673 and 47,346 (x 1e6), which the float32 target reproduced to the
+      # digit on 2026-09-10. Same tolerance as the steps above.
+      #
+      # QEMU is stopped as soon as the verdict prints rather than left to a
+      # timeout: the application returns from app_main into an idle FreeRTOS
+      # system and would otherwise sit there for the whole 300 seconds.
+      - name: Fetch and decode an E-AC-3 stream over QEMU's Ethernet
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          cd esp-idf/ac3forge/examples/stream_player
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          idf.py qemu > qemu-http.txt 2>&1 &
+          qemu=$!
+          for _ in $(seq 1 60); do
+            if grep -q '^result=' qemu-http.txt; then break; fi
+            sleep 5
+          done
+          kill "$qemu" 2>/dev/null || true
+          pkill -f qemu-system-xtensa 2>/dev/null || true
+          if ! grep -q '^result=pass' qemu-http.txt; then
+            echo "::error title=ESP32-S3 HTTP source::the example did not report result=pass" >&2
+            grep -E 'result=|error|network|source:|Guru Meditation|assert failed' qemu-http.txt >&2 || true
+            exit 1
+          fi
+          units=$(sed -n 's/.*stream\.units=\([0-9]*\).*/\1/p' qemu-http.txt | tail -1)
+          resync=$(sed -n 's/.*stream\.resync_bytes=\([0-9]*\).*/\1/p' qemu-http.txt | tail -1)
+          echo "access units: ${units:-unknown}, resynchronised bytes: ${resync:-unknown}"
+          if [ "${units:-0}" != "250" ] || [ "${resync:-1}" != "0" ]; then
+            echo "::error title=ESP32-S3 HTTP source::expected 250 access units and 0 resynchronised bytes, got ${units:-none} and ${resync:-none}" >&2
+            exit 1
+          fi
+          check_rms() {
+            local channel="$1" expected="$2"
+            local got
+            got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-http.txt | tail -1)
+            if [ -z "$got" ]; then
+              echo "::error title=ESP32-S3 HTTP source::no stream.rms[$channel] line" >&2
+              exit 1
+            fi
+            local slack=$(( expected / 20 + 200 ))
+            echo "rms[$channel] = $got (host $expected, tolerance +/-$slack)"
+            if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
+              echo "::error title=ESP32-S3 HTTP source::channel $channel decoded to $got, host says $expected" >&2
+              exit 1
+            fi
+          }
+          check_rms 0 56673
+          check_rms 1 47346
+
       - name: Build every sink and source combination
         run: |
           set -eu
@@ -3855,6 +3924,7 @@ jobs:
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
             esp-idf/ac3forge/examples/stream_player/qemu-stream.txt
             esp-idf/ac3forge/examples/stream_player/qemu-capture.txt
+            esp-idf/ac3forge/examples/stream_player/qemu-http.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.

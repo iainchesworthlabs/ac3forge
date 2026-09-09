@@ -154,19 +154,42 @@ config AC3FORGE_EXAMPLE_SD_D0_GPIO
     depends on AC3FORGE_EXAMPLE_SOURCE_SD
     default 2
 
+# WHICH NETWORK carries the HTTP source. A directory CMake picks
+# (main/source/http/net/), the same rule as the source and sink seams: the HTTP
+# client never learns which. WiFi is what a board has. The OpenCores Ethernet
+# MAC is what QEMU has - `idf.py qemu` attaches one to the host's network, and
+# the guest reaches the host at 10.0.2.2 - so it is how CI runs this source end
+# to end with no board and no access point.
+choice AC3FORGE_EXAMPLE_NETWORK
+    prompt "Network for the HTTP source"
+    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    default AC3FORGE_EXAMPLE_NETWORK_WIFI
+
+config AC3FORGE_EXAMPLE_NETWORK_WIFI
+    bool "WiFi station"
+
+config AC3FORGE_EXAMPLE_NETWORK_OPENETH
+    bool "OpenCores Ethernet MAC (QEMU only)"
+    select ETH_USE_OPENETH
+    help
+        The MAC qemu-system-xtensa emulates. Not a device that exists on any
+        board, which is why the driver refuses to run on one.
+
+endchoice
+
 config AC3FORGE_EXAMPLE_WIFI_SSID
     string "WiFi SSID"
-    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    depends on AC3FORGE_EXAMPLE_NETWORK_WIFI
     default "my-network"
 
 config AC3FORGE_EXAMPLE_WIFI_PASSWORD
     string "WiFi password"
-    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    depends on AC3FORGE_EXAMPLE_NETWORK_WIFI
     default ""
 
 config AC3FORGE_EXAMPLE_WIFI_RETRIES
     int "Association attempts before giving up"
-    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    depends on AC3FORGE_EXAMPLE_NETWORK_WIFI
     default 5
     help
         Bounded, so a wrong password fails and says so instead of retrying

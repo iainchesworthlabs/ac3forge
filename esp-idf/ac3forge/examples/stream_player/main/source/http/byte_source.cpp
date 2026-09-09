@@ -1,7 +1,10 @@
-// An HTTP body, over WiFi.
+// An HTTP body, over whichever network net/ supplies.
 //
-// COMPILED BY CI, NOT RUN, for the same reason the SD source is not: QEMU has
-// no network. Kept small on purpose.
+// RUN BY CI UNDER QEMU since 2026-09-10, over the emulated Ethernet MAC
+// (net/openeth/) with the host serving the stream; on a board it runs over
+// WiFi (net/wifi/). The HTTP client below is the same code either way, which
+// is the point of the seam: the part that could be wrong is exercised on
+// every push, and only the radio waits for hardware.
 //
 // THE ONE THING THAT IS DIFFERENT FROM EVERY OTHER SOURCE: it cannot rewind.
 // A partition and a file can seek; a socket has delivered what it has delivered.
@@ -14,94 +17,27 @@
 // wants a ring buffer and a fetch task so a slow network does not stall the
 // decode - that is a design decision about latency and RAM which belongs to the
 // integrator, and putting one here would make this example about buffering
-// rather than about where bytes come from.
+// rather than about where bytes come from. planning/esp32-player.md is where
+// that design lives.
 
 #include "byte_source.hpp"
 
 #include <cstdio>
-#include <cstring>
 
-#include "esp_event.h"
 #include "esp_http_client.h"
-#include "esp_netif.h"
-#include "esp_wifi.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/event_groups.h"
-#include "nvs_flash.h"
+
+#include "network.hpp"
 
 namespace player {
 namespace {
 
 esp_http_client_handle_t g_client = nullptr;
 std::size_t g_length = 0;
-EventGroupHandle_t g_wifi_events = nullptr;
-constexpr int kConnectedBit = BIT0;
-constexpr int kFailedBit = BIT1;
-int g_retries = 0;
-
-void on_wifi_event(void*, esp_event_base_t base, std::int32_t id, void* data) {
-    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
-        return;
-    }
-    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
-        // Bounded, so a wrong password fails instead of retrying forever. A
-        // player that silently never starts is harder to diagnose than one that
-        // says it could not associate.
-        if (g_retries < CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES) {
-            ++g_retries;
-            esp_wifi_connect();
-        } else {
-            xEventGroupSetBits(g_wifi_events, kFailedBit);
-        }
-        return;
-    }
-    if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
-        (void)data;
-        g_retries = 0;
-        xEventGroupSetBits(g_wifi_events, kConnectedBit);
-    }
-}
-
-bool wifi_up() {
-    if (nvs_flash_init() == ESP_ERR_NVS_NO_FREE_PAGES) {
-        // The calibration data WiFi keeps lives in NVS; a partition left over
-        // from a different build can be the wrong version.
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ESP_ERROR_CHECK(nvs_flash_init());
-    }
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
-
-    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&init));
-
-    g_wifi_events = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &on_wifi_event,
-                                               nullptr));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &on_wifi_event,
-                                               nullptr));
-
-    wifi_config_t config = {};
-    std::strncpy(reinterpret_cast<char*>(config.sta.ssid), CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID,
-                 sizeof(config.sta.ssid) - 1);
-    std::strncpy(reinterpret_cast<char*>(config.sta.password),
-                 CONFIG_AC3FORGE_EXAMPLE_WIFI_PASSWORD, sizeof(config.sta.password) - 1);
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &config));
-    ESP_ERROR_CHECK(esp_wifi_start());
-
-    const auto bits = xEventGroupWaitBits(g_wifi_events, kConnectedBit | kFailedBit, pdFALSE,
-                                          pdFALSE, portMAX_DELAY);
-    return (bits & kConnectedBit) != 0;
-}
 
 }  // namespace
 
 bool source_open() {
-    if (!wifi_up()) {
-        std::printf("error: could not associate with '%s'\n", CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID);
+    if (!network_up()) {
         return false;
     }
 

@@ -1,0 +1,22 @@
+# The third thing CI runs under QEMU: the HTTP source, end to end.
+#
+# qemu-system-xtensa has no WiFi, but `idf.py qemu` attaches an OpenCores
+# Ethernet MAC to the host's network (`-nic user,model=open_eth`), and the guest
+# reaches the host at 10.0.2.2. So the source's network seam picks net/openeth/
+# instead of net/wifi/, the workflow serves apps/wasm/assets/ on port 8000 for
+# the run's duration, and everything above the network - the HTTP client, the
+# framer, an E-AC-3 decode of a stream with objects - runs exactly as it does on
+# a board. Only the radio is left for hardware.
+CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP=y
+CONFIG_AC3FORGE_EXAMPLE_NETWORK_OPENETH=y
+CONFIG_ETH_USE_OPENETH=y
+CONFIG_AC3FORGE_EXAMPLE_HTTP_URL="http://10.0.2.2:8000/demo.ec3"
+
+# The capture sink, as sdkconfig.ci uses it: the same conversion the I2S sink
+# runs, checked, with no peripheral behind it.
+CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE=y
+
+# An HTTP source makes one pass and cannot rewind, so the run ends with the
+# stream and MAX_LAPS is not needed. A progress line every 50 frames (1.6 s of
+# audio) so a stall mid-stream shows where it happened.
+CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES=50

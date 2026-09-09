@@ -30,6 +30,20 @@ else()
     set(AC3FORGE_SOURCE_DIR "source/partition")
 endif()
 
+# The HTTP source has a seam of its own underneath it: which network. WiFi on a
+# board; the OpenCores Ethernet MAC under QEMU, which is what lets CI run this
+# source end to end. See main/source/http/network.hpp. Only the HTTP source
+# compiles a network at all - the other sources have no use for one, and a
+# file that is compiled and never called is one more thing to keep building.
+set(AC3FORGE_NETWORK_SRCS "")
+if(CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP)
+    if(CONFIG_AC3FORGE_EXAMPLE_NETWORK_OPENETH)
+        set(AC3FORGE_NETWORK_SRCS "source/http/net/openeth/network.cpp")
+    else()
+        set(AC3FORGE_NETWORK_SRCS "source/http/net/wifi/network.cpp")
+    endif()
+endif()
+
 # esp_driver_i2s is required either way. The null build does not call it, but a
 # component's REQUIRES is resolved before the source list is, and listing it
 # conditionally would make the two builds differ in a second place for no gain.
@@ -45,16 +59,19 @@ endif()
 # builds differ in exactly one place, which is the directory each seam picks.
 #
 # sdmmc as well as esp_driver_sdmmc: sdmmc_cmd.h lives in the former and
-# sdmmc_host.h in the latter. fatfs carries esp_vfs_fat.h.
+# sdmmc_host.h in the latter. fatfs carries esp_vfs_fat.h. esp_eth for the
+# QEMU network under the HTTP source, listed for every build for the reason
+# above.
 idf_component_register(
     SRCS "stream_player.cpp"
          "${AC3FORGE_SINK_DIR}/audio_sink.cpp"
          "${AC3FORGE_SOURCE_DIR}/byte_source.cpp"
-    INCLUDE_DIRS "."
+         ${AC3FORGE_NETWORK_SRCS}
+    INCLUDE_DIRS "." "source/http"
     REQUIRES ac3forge esp_driver_i2s esp_timer freertos
              esp_partition
              esp_driver_sdmmc sdmmc fatfs wear_levelling
-             esp_wifi esp_http_client esp_netif esp_event nvs_flash)
+             esp_wifi esp_eth esp_http_client esp_netif esp_event nvs_flash)
 
 # How long the audio actually is. The partition is 256 KB and the sample is
 # 10,752 bytes, so without this the player reads a quarter of a megabyte of

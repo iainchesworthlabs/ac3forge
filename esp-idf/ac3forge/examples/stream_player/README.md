@@ -153,12 +153,34 @@ board, not here: an E-AC-3 5.1 frame decodes in 11.0 ms of its 32 at 240 MHz —
 
 ## The sources
 
-Only `partition` can be **run** without hardware, which is why it is the default
-and the one CI exercises end to end. `sd` and `http` are compiled by CI and no
-further — QEMU has no SD host and no network — so both are deliberately small:
-the less that lives behind an unrunnable seam, the less can be wrong in it.
+`partition` runs without hardware, which is why it is the default and the one
+CI exercises first. `sd` cannot: QEMU has no SD host, so CI runs the same file
+layer from a FAT volume in flash (`fatfs`) and only the SDMMC host waits for a
+board. `http` **runs under QEMU too**, since 2026-09-10: QEMU has no WiFi but
+`idf.py qemu` attaches an OpenCores Ethernet MAC to the host's network, so the
+source has a network seam of its own — [`main/source/http/network.hpp`](main/source/http/network.hpp),
+`net/wifi/` for a board and `net/openeth/` for the emulator — and
+`sdkconfig.ci-http` selects the latter with the stream served from the host:
 
-Two things differ between them and are worth knowing before writing a third:
+```bash
+python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets &
+SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci-http" idf.py build
+idf.py qemu
+```
+
+The guest is 10.0.2.15 and the host 10.0.2.2 in QEMU's user-mode network, so
+the URL is `http://10.0.2.2:8000/demo.ec3` and no firewall is involved. The
+stream is the WASM page's demo: E-AC-3 5.1 with JOC objects, 448 kbit/s, 250
+access units. On 2026-09-10 the run fetched and decoded all 250 with zero
+resynchronised bytes, and its per-channel levels matched the host's
+`ac3cli decode demo.ec3 out.wav downmix=loro drcmode=line` to the digit —
+56,673 and 47,346 — which is the check CI holds it to. Three `E (esp_eth)`
+lines about multicast filters print at start-up: the emulated MAC has no
+filter, IDF says so, and nothing depends on one. What QEMU cannot say is
+anything about WiFi, or about time: its `realtime_permille` is shape only.
+
+Two things differ between the sources and are worth knowing before writing a
+third:
 
 **Length.** A partition is the only source with none. Every other kind has one —
 `Content-Length`, a file size — and without it the player reads the whole 256 KB

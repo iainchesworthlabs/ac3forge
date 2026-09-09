@@ -245,6 +245,21 @@ allocations; Phase 0 adds `encode_us`, `us_per_frame` and `realtime_permille` pe
 form the decode side already prints, and the board answers whether a 5.1 E-AC-3 encode fits its
 32 ms frame at 240 MHz. Everything below is conditional on that number.
 
+**What the encoder profile already carries**, so the question "can it encode everything the
+library can" has a precise answer. In: AC-3 at every layout from 1/0 to 3/2 with LFE and
+coupling; E-AC-3 with every Annex E tool the `FrameConfig` exposes, which is channel coupling,
+§E3.5 enhanced coupling, AHT, spectral extension, transient pre-noise processing, short frames
+(`numblkscod`), VBR, DRC profiles and heavy compression; layouts beyond 5.1 through the
+`AccessUnitEncoder`, an independent 5.1 substream with a dependent carrying the rear pair for 7.1
+(`chanmap::k71Rear`, the shape the legacy-core test builds); and a second programme. The probe
+exercises three of these shapes today (AC-3 5.1, E-AC-3 5.1, E-AC-3 2/0 with enhanced coupling)
+and checks each against the host's bytes. Out: `AtmosEncoder` and everything under it, so no
+object layer and no height channels. A "7.1.4" encode in this library's terms is a 5.1 bed with
+the rears and the four heights carried as objects at fixed positions, JOC-coded; that is the
+Atmos encoder, below. What a 7.1 access unit costs this part is unmeasured: two `FrameEncoder`s
+at once against peaks of 201,770 and 243,770 bytes for one, so it may not fit internal SRAM,
+which PSRAM would answer and QEMU cannot.
+
 **Audio in.** The mirror of the sink seams: an I2S or TDM receive channel, the S3's I2S being
 full duplex and a SigmaDSP's serial outputs carrying TDM8, filling caller-owned planar float one
 frame at a time. A `PcmSource` beside `ByteSource` in the component.
@@ -406,6 +421,10 @@ that tree.
 
 ## What cannot be verified, and why
 
+- **WiFi.** Everything above the radio in the `http` source runs under QEMU over its emulated
+  Ethernet, and CI runs it (`sdkconfig.ci-http`): 250 access units of the E-AC-3 demo fetched
+  from the host and decoded with levels matching the host's to the digit, 2026-09-10. The radio,
+  and everything timing-shaped, waits for a board.
 - **TDM on hardware.** No TDM DAC. The layout is tested on the host; the peripheral is not.
 - **The I2S slave role.** Needs a bus master, which means the SigmaDSP board. Until it is
   connected, the role compiles and nothing more.
