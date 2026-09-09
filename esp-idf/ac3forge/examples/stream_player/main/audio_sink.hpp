@@ -96,4 +96,13 @@ void sink_write(std::span<const std::span<const float>> channels);
 // gives CI something to gate on that the real sink cannot report.
 [[nodiscard]] std::uint64_t sink_frames_written();
 
+// Anything the sink wants to say at the end of a run, as key=value lines.
+//
+// Empty for the sinks with a peripheral behind them: what a DAC did with the
+// samples is not something this side of the wire can report. sink/capture/ is
+// where it earns its place - it runs the same conversion the real sinks run and
+// then checks the result, so CI has something to gate on that is about the
+// AUDIO rather than about the loop having turned over.
+void sink_report();
+
 }  // namespace player

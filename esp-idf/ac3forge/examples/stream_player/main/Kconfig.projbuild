@@ -40,14 +40,25 @@ config AC3FORGE_EXAMPLE_SINK_I2S
 config AC3FORGE_EXAMPLE_SINK_TDM
     bool "TDM DAC (multi-channel on one data line)"
 
+config AC3FORGE_EXAMPLE_SINK_CAPTURE
+    bool "Capture (convert and check, no peripheral)"
+
 config AC3FORGE_EXAMPLE_SINK_NULL
     bool "None (count frames only)"
 
 endchoice
 
+# Which real sink the capture sink is standing in for. An int rather than a
+# bool so it reaches C++ as a plain constant; see the note on the source choice
+# above for why the preprocessor is avoided here.
+config AC3FORGE_EXAMPLE_CAPTURE_TDM
+    int "Capture the TDM conversion (1) or the stereo one (0)"
+    depends on AC3FORGE_EXAMPLE_SINK_CAPTURE
+    default 0
+
 config AC3FORGE_EXAMPLE_TDM_SLOTS
     int "TDM slots on the bus"
-    depends on AC3FORGE_EXAMPLE_SINK_TDM
+    depends on AC3FORGE_EXAMPLE_SINK_TDM || AC3FORGE_EXAMPLE_SINK_CAPTURE
     default 8
     range 2 8
     help
@@ -74,10 +85,19 @@ config AC3FORGE_EXAMPLE_SOURCE_PARTITION
 config AC3FORGE_EXAMPLE_SOURCE_SD
     bool "SD card (SDMMC + FATFS)"
 
+config AC3FORGE_EXAMPLE_SOURCE_FATFS
+    bool "FAT filesystem in flash"
+
 config AC3FORGE_EXAMPLE_SOURCE_HTTP
     bool "HTTP over WiFi"
 
 endchoice
+
+config AC3FORGE_EXAMPLE_FATFS_PATH
+    string "Path to the bitstream in the flash filesystem"
+    depends on AC3FORGE_EXAMPLE_SOURCE_FATFS
+    default "/audio/sample.ac3"
+
 
 config AC3FORGE_EXAMPLE_SD_PATH
     string "Path to the bitstream on the card"

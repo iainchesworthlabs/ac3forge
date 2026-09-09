@@ -9,6 +9,7 @@
 #include <cstdio>
 
 #include "ac3/core/tables.hpp"
+#include "interleave.hpp"
 #include "driver/i2s_std.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -24,26 +25,6 @@ std::uint64_t g_frames = 0;
 // sink is the only thing that needs it - the player hands over planar float and
 // never sees this format at all.
 std::array<std::int16_t, ac3::kSamplesPerFrame * 2> g_interleaved{};
-
-// float to 16-bit, clipped rather than wrapped. §7.8's normalisation bounds the
-// Lo/Ro fold by the loudest coded sample so an out-of-range value should not
-// arrive, but an int16 that wraps turns a peak into full-scale noise of the
-// opposite sign - the loudest sound the system can make - and two comparisons
-// is a cheap price for not doing that.
-//
-// 32767 rather than 32768 as the scale, so +1.0 maps to full scale without
-// needing the clamp to catch it.
-std::int16_t to_pcm16(float sample) {
-    constexpr float kScale = 32767.0F;
-    const float scaled = sample * kScale;
-    if (scaled >= kScale) {
-        return 32767;
-    }
-    if (scaled <= -kScale) {
-        return -32767;
-    }
-    return static_cast<std::int16_t>(scaled);
-}
 
 }  // namespace
 
@@ -96,12 +77,9 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
 }
 
 void sink_write(std::span<const std::span<const float>> channels) {
-    const auto left = channels[0];
-    const auto right = channels[1];
-    for (std::size_t n = 0; n < ac3::kSamplesPerFrame; ++n) {
-        g_interleaved[n * 2] = to_pcm16(left[n]);
-        g_interleaved[(n * 2) + 1] = to_pcm16(right[n]);
-    }
+    // Through the shared conversion, not a copy of it: sink/capture/ checks
+    // this exact code on target, which it could not if each sink had its own.
+    interleave_16(channels, ac3::kSamplesPerFrame, g_interleaved);
 
     std::size_t written = 0;
     // portMAX_DELAY: block until the DMA has room. This is what paces the
@@ -116,5 +94,10 @@ void sink_write(std::span<const std::span<const float>> channels) {
 const char* sink_name() { return "i2s"; }
 
 std::uint64_t sink_frames_written() { return g_frames; }
+
+// Nothing to report: what the DAC did with the samples is not visible from
+// this side of the wire. sink/capture/ is the one that checks the
+// conversion, and it runs the same interleave this does.
+void sink_report() {}
 
 }  // namespace player

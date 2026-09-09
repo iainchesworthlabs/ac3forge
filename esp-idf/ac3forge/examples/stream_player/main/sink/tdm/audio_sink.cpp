@@ -131,4 +131,9 @@ const char* sink_name() { return "tdm"; }
 
 std::uint64_t sink_frames_written() { return g_frames; }
 
+// Nothing to report, for the same reason the stereo sink has nothing: the
+// DAC's side of the wire is not observable here. sink/capture/ with
+// CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM checks this sink's conversion.
+void sink_report() {}
+
 }  // namespace player
