@@ -5,8 +5,9 @@
 # --encoder switch for the same reason.
 #
 #   . $IDF_PATH/export.sh
-#   tools/checks/run_esp32s3_probe.sh              # decode (the default)
-#   tools/checks/run_esp32s3_probe.sh --encoder    # encode
+#   tools/checks/run_esp32s3_probe.sh                  # decode (the default)
+#   tools/checks/run_esp32s3_probe.sh --encoder        # encode
+#   tools/checks/run_esp32s3_probe.sh --stage-timers   # plus a per-stage breakdown
 #
 # WHAT THIS GATES, and what it deliberately does not:
 #
@@ -35,11 +36,21 @@ PROJECT="$REPO/apps/baremetal/platform/esp32s3"
 # part, no two of decode / AC-3 encode / E-AC-3 encode fit in internal SRAM at
 # once - so this selects a build rather than adding a fixture to one.
 DIRECTION=decoder
+# --stage-timers builds the library with AC3FORGE_STAGE_TIMERS so the probe
+# prints a per-stage breakdown of each fixture's decode time beside the
+# per-frame figure. Under QEMU that breakdown has the same standing as the
+# per-frame number - shape only, never evidence - but the build and the lines
+# it prints are what a board run uses, and this leg is where they are proven
+# to build and run at all. Passed to CMake explicitly in BOTH states: an
+# option set on one run stays in the cache for the next, and a "plain" run
+# that silently inherited the timers would print numbers nobody asked for.
+STAGE_TIMERS=OFF
 for arg in "$@"; do
     case "$arg" in
         --encoder) DIRECTION=encoder ;;
         --decoder) DIRECTION=decoder ;;
-        *) echo "usage: run_esp32s3_probe.sh [--encoder|--decoder]" >&2; exit 2 ;;
+        --stage-timers) STAGE_TIMERS=ON ;;
+        *) echo "usage: run_esp32s3_probe.sh [--encoder|--decoder] [--stage-timers]" >&2; exit 2 ;;
     esac
 done
 
@@ -181,7 +192,7 @@ if [[ -d build && "$(cat "$STAMP" 2>/dev/null || echo)" != "$DIRECTION" ]]; then
 fi
 
 idf.py set-target esp32s3
-idf.py -DAC3FORGE_ESP_PROFILE="$DIRECTION" build
+idf.py -DAC3FORGE_ESP_PROFILE="$DIRECTION" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS" build
 mkdir -p build && printf '%s' "$DIRECTION" > "$STAMP"
 
 echo

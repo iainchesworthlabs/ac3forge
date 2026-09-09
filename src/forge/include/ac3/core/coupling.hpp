@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <span>
 
+#include "ac3/core/exponents.hpp"
 #include "ac3/export.hpp"
 
 // Channel coupling (A/52 §7.4, §8.2.4-8.2.5): above a chosen frequency the
@@ -77,6 +78,28 @@ inline constexpr int kSpxMantissaBits = 2;
 // the value the decoder will actually apply.
 [[nodiscard]] AC3FORGE_EXPORT double decode_coordinate(Coordinate coordinate, int master,
                                                        int mantissa_bits = kCplMantissaBits);
+
+// The same reconstruction in the caller's scalar; decode_coordinate() is this
+// at double. The decoders call it at their coefficient store's type, for the
+// reason dequantize_mantissa_as gives: on a single-precision FPU a double
+// divide and a std::ldexp are two library calls per band. The value is the
+// same in either type - a mantissa of at most five significant bits over a
+// power of two, scaled by a power of two - so a float decoder's coordinate is
+// exactly the double one narrowed.
+//
+// cplcoexp's escape value: at 15 the mantissa is a plain fraction with no
+// implicit leading one (§7.4.3).
+inline constexpr int kCoordinateEscapeExp = 15;
+
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar decode_coordinate_as(Coordinate coordinate, int master,
+                                                    int mantissa_bits = kCplMantissaBits) {
+    const auto one = static_cast<Scalar>(1 << mantissa_bits);
+    const Scalar mantissa = coordinate.exp == kCoordinateEscapeExp
+                                ? static_cast<Scalar>(coordinate.mant) / one
+                                : (static_cast<Scalar>(coordinate.mant) + one) / (Scalar{2} * one);
+    return mantissa * exponent_scale<Scalar>(coordinate.exp + 3 * master);
+}
 
 // Quantize a linear coupling coordinate for a given per-channel master.
 // Values are clamped into the representable range rather than wrapping.

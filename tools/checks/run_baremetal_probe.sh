@@ -30,12 +30,20 @@ HOST=0
 # AC-3 encode / E-AC-3 encode fit in an ESP32-S3's internal SRAM at once), so
 # this picks a preset rather than adding a fixture.
 DIRECTION=decoder
+# --stage-timers: build the library with AC3FORGE_STAGE_TIMERS, so the probe
+# prints where each fixture's decode time goes stage by stage. On this leg
+# that is shape only - QEMU's clock describes the host, and the host shape's
+# describes a desktop - but it is the same build a board run uses, and this
+# is where it is proven to build and run. Passed to CMake in both states, so
+# a cached ON from an earlier run cannot leak into a plain one.
+STAGE_TIMERS=OFF
 for arg in "$@"; do
     case "$arg" in
         --host) HOST=1 ;;
         --encoder) DIRECTION=encoder ;;
         --decoder) DIRECTION=decoder ;;
-        *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder]" >&2; exit 2 ;;
+        --stage-timers) STAGE_TIMERS=ON ;;
+        *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder] [--stage-timers]" >&2; exit 2 ;;
     esac
 done
 
@@ -136,7 +144,7 @@ if [[ "$DIRECTION" == "encoder" ]]; then
     AC3FORGE_MAX_HEAP_BYTES=${AC3FORGE_MAX_HEAP_BYTES_ENCODE:-250000}
 fi
 
-cmake --preset "$PRESET"
+cmake --preset "$PRESET" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS"
 cmake --build --preset "$BUILD_PRESET"
 
 BIN="build/$PRESET/bin/ac3probe"

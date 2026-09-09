@@ -89,7 +89,11 @@ of free internal SRAM at the time.
 `src/forge/src/internal/scalar/{float32,float64}/`'s seam carries
 `decode_scalar_t` — `float` under the minimum-footprint profile, `double` by
 default elsewhere, and selectable in any build with
-`-DAC3FORGE_DECODE_SCALAR=float`. Four decoder buffers follow it. Which profile
+`-DAC3FORGE_DECODE_SCALAR=float`. Four decoder buffers follow it, and since
+2026-09-09 so does the arithmetic between the bitstream and those buffers -
+mantissa dequantisation, dither, coordinates, decoupling, spectral extension,
+the AHT and JOC's mixing - which had stayed `double`, and on this FPU was
+software: the [Timing section](#timing) below has what that cost. Which profile
 a build is and which scalar its decoder carries are two independent CMake axes.
 See [Building](../building.md#minimum-footprint-decoder-profile) for what the
 profile changes, and its Gaps section for the measured accuracy cost.
@@ -166,13 +170,199 @@ told an integrator to measure this; now something does, and the runner holds a f
 ## Timing
 
 The probe reports `decode_us`, `us_per_frame` and `realtime_permille` per codec.
+A frame is 1,536 samples at 48 kHz, so the budget is 32,000 microseconds and
+`realtime_permille` is 1000 at exactly real time.
 
 Under `idf.py qemu` these figures do not describe the hardware. QEMU is not a
 cycle-accurate emulator, and it reports `cpu_mhz=40` against its own boot log's
 160 MHz. Treat the QEMU leg as a correctness and footprint check only.
 
-Measuring real-time performance requires an ESP32-S3-DevKitC-1-N16R8 and
-`idf.py -p <PORT> flash monitor`. The instrumentation is already in place.
+### Measured, on an ESP32-S3-DevKitC-1-N16R8
+
+2026-09-09, chip revision v0.2, 240 MHz, PSRAM off, `-Os`. Every fixture
+decoded to its expected levels - `result=pass`, every channel's RMS matching its
+reference to the digit - so what follows is about speed alone.
+
+As found, before any of the work below:
+
+| Fixture | us/frame | x real time | |
+|---|---:|---:|---|
+| `ac3_mono` | 5,180 | 0.16 | fits |
+| `ac3_stereo` | 14,290 | 0.45 | fits |
+| `eac3_atmos_bed` | 27,197 | 0.85 | fits |
+| `ac3` 5.1 | 32,149 | 1.00 | at the line |
+| `eac3_stereo` | 34,739 | 1.08 | misses by 8% |
+| `eac3` 5.1 | 78,824 | 2.46 | no |
+| `eac3_atmos_objects` | 82,711 | 2.58 | no |
+| `eac3_ecpl` | 217,493 | 6.80 | no |
+
+The same build at 160 MHz - the clock this project inherited by never setting
+`CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ`, until 2026-09-09 - ran 1.44x to 1.49x slower
+across all eight fixtures, against an ideal ratio of 1.50. That near-linear
+scaling says the decode is compute-bound, not stalled on the flash cache, so
+configuration had nothing further to give; anything more had to come out of the
+code. (The `ac3` row is from the stage-timed run described next, whose markers
+cost it about 0.2 ms; the other seven are from a plain build.)
+
+### Where the time went
+
+Nothing in the table says which stage is slow, and the estimates that had been
+made about it were wrong. So before changing anything the decoder was
+profiled on the board, through the `AC3_ZONE_SCOPED_N()` markers it already
+carries for Tracy: `-DAC3FORGE_STAGE_TIMERS=ON` routes them to an accumulator
+in the probe (`apps/baremetal/stage_timers.cpp`, the application half of
+`src/forge/src/internal/profiling/stage_timers/`) and each fixture then prints a
+`<fixture>.stage[<zone>]` line per stage with its inclusive and self time per
+frame. A pair of markers costs 2.4 us on this part, and a frame passes through
+at most 99 of them, so the breakdown carries under 0.25 ms of its own weight -
+the stage-timed totals sit within 0.3% of the plain ones above.
+
+Self time per frame, microseconds, as found:
+
+| Stage | `eac3` 5.1 | `eac3_stereo` | `eac3_atmos_bed` | `ac3` 5.1 |
+|---|---:|---:|---:|---:|
+| spectral extension synthesis (`eac3_spx`) | 45,060 | 19,093 | - | - |
+| AHT dequantisation and inverse (`eac3_aht`) | 20,723 | 8,489 | - | - |
+| mantissa read and dequantisation | 1,194 | 1,596 | 14,006 | 14,980 |
+| decoupling | - | - | - | 4,904 |
+| bit allocation (`compute_bit_allocation`) | 3,704 | 1,416 | 4,559 | 4,350 |
+| IMDCT and overlap-add | 3,403 | 1,228 | 3,401 | 4,847 |
+| everything else | 4,983 | 3,082 | 5,591 | 3,043 |
+| total | 79,067 | 34,904 | 27,557 | 32,124 |
+
+The transform - the stage the earlier estimates had put first, and the one the
+hand-written kernel tier would have targeted - is 4% of a 5.1 decode. Spectral
+extension is 57%, and it is not arithmetic: an extension region is roughly
+150 bins in each of five channels in each of six blocks, 4,500 bins a frame,
+and they were costing 10 us each, 2,400 cycles a bin for a copy, a notch and a
+two-term blend.
+
+The cycles were going into the ROM. This part's FPU is single-precision, and
+every `double` operation compiles to a call into the mask ROM's software
+routines - `__muldf3`, `__divdf3` and the rest, some hundreds of cycles each,
+with `__divdf3` the worst. The coefficient store had moved to `float` under
+this profile (`decode_scalar_t`), but the arithmetic between the bitstream and
+that store had not: the mantissa dequantiser divided in `double` and then
+divided again by 2^exp, the dither and spectral-extension noise generators
+mapped their state in `double`, the coupling coordinates came out of
+`std::ldexp`, decoupling multiplied through `double`, the AHT's six-by-six
+inverse ran thirty-six `double` multiply-adds per bin, spectral extension's blend
+and band energies were `double` throughout, and JOC's object mixing summed
+`double`s over a `float` state. A static census of the linked image found 1,197
+call sites into those routines. None of it is visible on a desktop, where
+`double` costs what `float` costs, or on the Cortex-M3 leg, where everything is
+software floating point alike. It was visible only here.
+
+### What changed
+
+The arithmetic between bitstream and coefficient store now runs in the store's
+own type, `ac3::internal::decode_scalar_t`: `float` under this profile, `double`
+in every other build, which is why no gold reference, bitstream hash or test
+moved (the full Windows suite passes as before, 1,345 tests). The exported
+`double` functions - `dequantize_mantissa`, `decode_coordinate`,
+`spx_noise_ratio`, `aht_dequantize_mantissa`, `DitherGenerator::next`,
+`SpxNoise::next` - are now the `<double>` instantiations of templates the
+decoders call at their own scalar; `spx_attenuation` became a 96-entry table
+filled once from the same `std::exp2`; `aht_inverse` gained a `float` overload
+over the double kernel narrowed once; and the division by 2^exp everywhere
+became a multiply by a table of exact powers of two, which is the same value in
+either type. JOC's mixing follows `decode_scalar_t` too, narrowing the
+frame's matrix once rather than at every read, and the float analysis window
+it runs thirty times a frame stopped narrowing its 512 constants per sample.
+
+Where the float result is the double one narrowed, and where it is not, is
+stated at each site. Mantissas, coordinates and decoupling are bit-identical
+to before on this profile - a small integer over a power of two rounds the
+same way in either type. Spectral extension, the AHT inverse, the noise
+generators and the JOC sum round in `float` now, which is the same class of
+difference the float store already accepted at the transform; the probe's
+RMS figures, printed to six digits, did not move on any of the eight fixtures.
+
+The second lever is the optimiser. This profile compiles at `-Os`, and a board
+run with the decode-critical sources at `-O2` (`AC3FORGE_MINIMAL_HOT_O2`, on
+for this project, off in the profile's default) showed which files it pays for
+and which it does not: bit allocation 4.55 to 2.09 ms and the JOC mixing 11.0
+to 8.2 ms per frame, against nothing at all for the float32 IMDCT, which ran
+in 3.40 ms either way. The five files it pays for cost 39,192 bytes of
+flash code and no internal SRAM; `.bss`, `.data` and the DIRAM figure the
+runner gates are unchanged.
+
+After both, plain build, same board, same clock:
+
+| Fixture | us/frame | x real time | was |
+|---|---:|---:|---:|
+| `ac3_mono` | 2,446 | 0.08 | 0.16 |
+| `ac3_stereo` | 4,157 | 0.13 | 0.45 |
+| `eac3_stereo` | 6,803 | 0.21 | 1.08 |
+| `ac3` 5.1 | 11,772 | 0.37 | 1.00 |
+| `eac3_atmos_bed` | 13,409 | 0.42 | 0.85 |
+| `eac3` 5.1 | 14,169 | 0.44 | 2.46 |
+| `eac3_atmos_objects` | 29,359 | 0.92 | 2.58 |
+| `eac3_ecpl` | 200,822 | 6.28 | 6.80 |
+
+Every E-AC-3 configuration this profile decodes now runs in real time on this
+part except enhanced coupling, with the Atmos objects fixture the closest to
+the line. Where a 5.1 frame's time goes now, stage-timed: bit allocation
+1.66 ms, the IMDCT 3.38, the AHT 2.98, spectral extension 1.49, mantissas
+0.45, and 2.3 ms at the access-unit level outside every marker.
+
+### What is left, and what would move it
+
+- **Objects.** JOC reconstruction is 15.9 ms of the objects fixture's 29.7:
+  8.2 ms mixing, 3.4 ms re-analysing the bed with thirty forward transforms a
+  frame, 2.7 ms synthesising six objects. The bed analysis exists because
+  `oba::joc::reconstruct` takes the bed as PCM; the decoder holds that bed's
+  MDCT coefficients already, one block at a time, and a reconstruction that
+  took them would skip the analysis outright. Beyond that, this is the one
+  place the second core is worth its complexity: JOC for frame N is
+  independent of the bed decode of frame N+1, so a second task can run it a
+  frame behind, at the cost of one frame of latency, and throughput becomes
+  the larger of the two halves rather than their sum. Neither is done.
+- **Enhanced coupling** is out of scope and still 6.3x over. Its profile is the
+  same disease at a larger scale: of 202 ms, 107 are the channel reconstruction
+  in `eac3_decoder.cpp` and 83 are `ecpl_channel_spectrum`, both `double`
+  throughout (the 512-point DFT in `fft.cpp`, `ecpl_angles`,
+  `ecpl_channel_coefficients`), and the float conversion above deliberately
+  stopped at its boundary because those routines are shared with the encoder.
+- **The second core** was the lever the earlier estimates ranked first. It was
+  not needed for stereo or 5.1, and the breakdown says why it would have
+  disappointed: the stages that dominated were serial software floating point,
+  not parallel work, and splitting them across two cores would have halved a
+  cost that could be removed instead.
+- **Per-frame allocations** are unchanged at 3 to 41 per frame (this profile's
+  open PF7 gap). At a few microseconds each they are not on the path to real
+  time for any fixture here; the coupling-coordinate vector that allocated once
+  per coupled channel per block is gone as a side effect, but the count the
+  runner gates did not move on any fixture, since no fixture couples.
+- **A hand-written kernel tier** (`madd.s`, which `-ffp-contract=off` forbids
+  project-wide) would apply to the IMDCT, which is 3.4 ms of a 14.6 ms 5.1
+  frame. That bounds what the tier could return at under a quarter of the
+  remaining time, and it is not needed for anything that now fits.
+
+### Running it yourself
+
+    idf.py -p <PORT> flash monitor
+
+with `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw"` if the board is
+reached through its native USB connector rather than the UART bridge - see
+`sdkconfig.hw` for what that changes and why. Add `-DAC3FORGE_STAGE_TIMERS=ON`
+to the build for the per-stage lines.
+
+On a DevKitC-1 the host cannot reset the part into the application over
+USB-Serial-JTAG: both `esptool` and `idf.py monitor` assert IO0 during their
+reset sequence, so every host-initiated reset lands in `boot:0x0 (DOWNLOAD)` and
+the application never starts. Attach with `idf.py monitor --no-reset` and press
+the board's RESET button instead. Flashing over the same connector is
+unaffected. The probe pauses three seconds before its first line so the
+re-enumeration that follows a reset does not swallow the first fixture's
+output, which it otherwise does.
+
+One trap for a machine that builds both shapes: ESP-IDF keeps `sdkconfig` in
+the PROJECT directory, shared by every `-B` build directory, and regenerates it
+from `SDKCONFIG_DEFAULTS` only when it is absent. A QEMU build made after a
+hardware build therefore inherits `sdkconfig.hw`'s USB console and prints
+nothing under QEMU, which has no such device. Give each shape its own
+`-DSDKCONFIG=<build dir>/sdkconfig`, or delete `sdkconfig` between them.
 
 ## Other ESP32 variants
 

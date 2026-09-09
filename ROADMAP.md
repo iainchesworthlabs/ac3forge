@@ -1885,7 +1885,18 @@ consecutive quad of `f` registers that GCC's Xtensa port cannot model as one val
 spills. What is left for that part is a hand-written kernel tier shaped like
 `src/internal/avx2/`, which would need its own bit-exactness argument since reaching `esp-dsp`'s
 figures means the `madd.s` that `-ffp-contract=off` forbids project-wide. Whether any of it is
-warranted is still unmeasured: it wants one board, and QEMU cannot answer it.
+warranted was answered on a board on 2026-09-09, and the answer is no, for now: as found, E-AC-3
+5.1 decoded at 2.46x real time and 2/0 at 1.08x on an ESP32-S3 at 240 MHz, and a per-stage
+profile on the board (the `AC3FORGE_STAGE_TIMERS` backend, which routes this library's Tracy
+markers to the probe) put 4% of a 5.1 frame in the transform and 80% in spectral extension, the
+AHT and mantissa dequantisation - all of it `double` arithmetic between the bitstream and the
+float32 store, each operation a call into the ROM's software routines on that FPU. Moving that
+arithmetic to `decode_scalar_t` (templates whose `<double>` instantiations are the functions the
+ordinary build always called, so nothing moved there) and compiling five decode-critical files at
+`-O2` took 5.1 to 0.44x, 2/0 to 0.21x and the Atmos objects fixture from 2.58x to 0.92x, with
+every fixture's RMS unchanged to the digit. The second core was not needed. `docs/platforms/esp32.md`'s
+Timing section has the stage tables, what is still `double` (enhanced coupling, which stayed
+6.3x over) and what would move the objects fixture further.
 
 See `docs/building.md`'s Gaps section, `docs/performance-trend.md` for the current table, and
 `docs/platforms/esp32.md`.

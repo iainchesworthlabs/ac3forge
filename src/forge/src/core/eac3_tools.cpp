@@ -58,6 +58,26 @@ struct AhtKernel {
 // NOLINTNEXTLINE(cert-err58-cpp,bugprone-throwing-static-initialization)
 const AhtKernel kKernel{};
 
+// The same kernel narrowed once to float, for the float inverse below: the
+// double table stays the source, so the two agree to a rounding rather than
+// to two separate evaluations of cos.
+struct AhtKernelF {
+    std::array<std::array<float, kBlocksPerFrameSize>, kBlocksPerFrameSize> cell{};
+
+    AhtKernelF() {
+        for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+            for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
+                cell[j][m] = static_cast<float>(kKernel.cell[j][m]);
+            }
+        }
+    }
+};
+
+// Reads kKernel, which is initialised above it in this translation unit;
+// nothing here can throw either.
+// NOLINTNEXTLINE(cert-err58-cpp,bugprone-throwing-static-initialization)
+const AhtKernelF kKernelF{};
+
 // §E3.4.5's synthesis weights. The standard writes
 //     C(k,m) = 2 * sum_j R_j X(k,j) cos(j(2m+1)pi/12),  R_j = 1, R_0 = 1/2
 // but a plain-text extraction of the PDF renders a radical sign as nothing at
@@ -103,6 +123,21 @@ void aht_inverse(std::span<const double, kBlocksPerFrameSize> coefficients,
     }
 }
 
+void aht_inverse(std::span<const float, kBlocksPerFrameSize> coefficients,
+                 std::span<float, kBlocksPerFrameSize> out) {
+    // The same sum in the same order, in float throughout. kWj narrowed once
+    // here rather than per product.
+    const auto w0 = static_cast<float>(kW0);
+    const auto wj = static_cast<float>(kWj);
+    for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
+        float sum = 0.0F;
+        for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+            sum += (j == 0 ? w0 : wj) * coefficients[j] * kKernelF.cell[j][m];
+        }
+        out[m] = sum;
+    }
+}
+
 int aht_bin_bits(int hebap) {
     if (hebap <= 0) {
         return 0;
@@ -113,13 +148,40 @@ int aht_bin_bits(int hebap) {
     return 6 * aht_mantissa_bits(hebap);
 }
 
+namespace {
+
+// Table E3.14's 96 values, each the std::exp2 the function below used to
+// evaluate on every call. Evaluated once at startup instead: the notch runs
+// at every seam of every extended channel of every block, and on the
+// single-precision FPU the minimum-footprint profile targets a double exp2 is
+// a software routine of some hundreds of cycles. Same expression, same
+// values, so every existing double path reads identically through it.
+struct SpxAttenuationTable {
+    std::array<std::array<double, 3>, kSpxAttenCodes> cell{};
+
+    SpxAttenuationTable() {
+        for (int code = 0; code < kSpxAttenCodes; ++code) {
+            for (int tap = 0; tap < 3; ++tap) {
+                cell[static_cast<std::size_t>(code)][static_cast<std::size_t>(tap)] =
+                    std::exp2(-static_cast<double>(code + 1) * static_cast<double>(tap + 1) /
+                              15.0);
+            }
+        }
+    }
+};
+
+// std::exp2 of a finite argument cannot throw; nothing here allocates.
+// NOLINTNEXTLINE(cert-err58-cpp,bugprone-throwing-static-initialization)
+const SpxAttenuationTable kSpxAttenuation{};
+
+}  // namespace
+
 double spx_attenuation(int spxattencod, int index) {
     assert(spxattencod >= 0 && spxattencod < kSpxAttenCodes);
     // The table's three stored taps are the first three of a symmetric five,
     // so an index past the middle mirrors back.
     const int tap = index < 3 ? index : kSpxAttenTaps - 1 - index;
-    return std::exp2(-static_cast<double>(spxattencod + 1) *
-                     static_cast<double>(tap + 1) / 15.0);
+    return kSpxAttenuation.cell[static_cast<std::size_t>(spxattencod)][static_cast<std::size_t>(tap)];
 }
 
 namespace {
@@ -136,9 +198,13 @@ void spx_apply_notch_impl(std::span<Scalar> synth, int startmant, const BandLayo
             if (at < 0 || at >= static_cast<int>(synth.size())) {
                 continue;
             }
-            synth[static_cast<std::size_t>(at)] = static_cast<Scalar>(
-                static_cast<double>(synth[static_cast<std::size_t>(at)]) *
-                spx_attenuation(spxattencod, tap));
+            // In the spectrum's own type: at double this is the product it
+            // always was; at float it is one float multiply by the
+            // attenuation narrowed, rather than a promotion, a double
+            // multiply and a narrowing back.
+            synth[static_cast<std::size_t>(at)] =
+                synth[static_cast<std::size_t>(at)] *
+                static_cast<Scalar>(spx_attenuation(spxattencod, tap));
         }
     };
     notch(startmant);
@@ -162,21 +228,13 @@ void spx_apply_notch(std::span<float> synth, int startmant, const BandLayout& ba
 }
 
 double spx_noise_ratio(int band_start, int band_size, int endmant, int blend) {
-    const double centre = band_start + 0.5 * band_size;
-    const double ratio = centre / static_cast<double>(endmant) - static_cast<double>(blend) / 32.0;
-    return std::clamp(ratio, 0.0, 1.0);
+    return spx_noise_ratio_as<double>(band_start, band_size, endmant, blend);
 }
 
-double SpxNoise::next() {
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    // sqrt(3): a uniform distribution on [-a, a] has variance a^2/3, so this
-    // is the radius that makes the mapped value unit-variance.
-    constexpr double kRadius = 1.7320508075688772;
-    const double unit = static_cast<double>(state) / static_cast<double>(0xFFFFFFFFU);  // [0,1]
-    return (unit * 2.0 - 1.0) * kRadius;
-}
+// sqrt(3): a uniform distribution on [-a, a] has variance a^2/3, so that is
+// the radius that makes the mapped value unit-variance - see next_as() in
+// the header, which this is at double.
+double SpxNoise::next() { return next_as<double>(); }
 
 std::span<const int> aht_gaq_gains(int gaqmod) {
     // Table E3.3. Mode 1's gains reach only to hebap 11; modes 2 and 3 reach
@@ -251,32 +309,9 @@ AhtMantissaCode aht_quantize_mantissa(double value, int mantissa_bits, int gain)
 
 double aht_dequantize_mantissa(std::uint32_t code, std::uint32_t escape, bool has_escape,
                                int mantissa_bits, int gain) {
-    const auto sign_extend = [](std::uint32_t raw, int bits) {
-        const auto sign_bit = static_cast<std::uint32_t>(1) << (bits - 1);
-        return static_cast<int>((raw ^ sign_bit) - sign_bit);
-    };
-
-    if (gain == 1) {
-        const int levels = (1 << mantissa_bits) - 1;
-        return 2.0 * sign_extend(code, mantissa_bits) / levels;
-    }
-
-    const int small_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2;
-    const int large_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits;
-    const int small_half = 1 << (small_bits - 1);
-    const double dead_zone = 1.0 / gain;
-    const double large_step =
-        gain == 2 ? 1.0 / ((1 << (mantissa_bits - 1)) - 1)
-                  : 3.0 / ((1 << (mantissa_bits + 1)) - 2);
-
-    if (!has_escape) {
-        return static_cast<double>(sign_extend(code, small_bits)) / (small_half * gain);
-    }
-
-    // The mirror image of quantize's `code = value >= 0.0 ? k : -k - 1`.
-    const int large_code = sign_extend(escape, large_bits);
-    const int k = large_code >= 0 ? large_code : -large_code - 1;
-    return (large_code >= 0 ? 1.0 : -1.0) * (dead_zone + k * large_step);
+    // The header's template at double, operation for operation what this
+    // function computed before it existed.
+    return aht_dequantize_mantissa_as<double>(code, escape, has_escape, mantissa_bits, gain);
 }
 
 int aht_bin_gaq_bits(std::span<const double, kBlocksPerFrameSize> values,

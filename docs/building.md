@@ -430,6 +430,19 @@ decoders' coefficient stores, transform scratch and overlap-add history follow i
 `imdct512_windowed`/`imdct256_pair_windowed` have float32 overloads built from the same templated
 body as the double ones, so §7.9.4.1 is implemented once.
 
+For a while that was the buffers only. The arithmetic between the bitstream and them - mantissa
+dequantisation and the 2^-exp scale, dither, coupling and spectral-extension coordinates,
+decoupling, the whole of spectral-extension synthesis, the AHT's dequantiser and six-point
+inverse, and JOC's object mixing - stayed `double` and was narrowed at the store. On a desktop
+that costs nothing; on the ESP32-S3's single-precision FPU every one of those operations was a
+call into the ROM's software routines, and a board profile on 2026-09-09 found them to be 80% of
+a 5.1 E-AC-3 decode ([the ESP32-S3 page](platforms/esp32.md#timing) has the stage table). Those
+paths now run in `decode_scalar_t` too, through templates whose `<double>` instantiations are the
+exported functions the ordinary build always called, so its arithmetic is unchanged. What still
+runs in `double` on this profile is stated rather than hidden: enhanced coupling's reconstruction
+(`ecpl_channel_spectrum` and the 512-point DFT behind it, shared with the encoder), the per-block
+DRC gain, and the output stage's fold.
+
 No gold-reference number moved, because the choice is per-profile rather than global. The
 ordinary build's `decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite
 passes identically (4,032,916 assertions).
