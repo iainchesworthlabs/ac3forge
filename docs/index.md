@@ -78,7 +78,7 @@ never captured anything.
 | [macOS](platforms/macos.md) arm64 / Intel | Library, `ac3cli`, `ac3gui`; Crucible compiles | Green CI. Nothing has captured or played a sound |
 | [Android](platforms/android.md) (Shield) | Shield Atmos Demo only | Live objects out HDMI to a receiver, on the device |
 | [WebAssembly](platforms/wasm.md) | Decode and encode in a page | Demos published and running |
-| [ESP32-S3](platforms/esp32.md) | Decode or encode, reusable ESP-IDF component | Correct under QEMU. An I2S player example drives a DAC |
+| [ESP32-S3](platforms/esp32.md) | Decode or encode, incl. Atmos objects | Correct under QEMU. Two example players drive I2S. Real time not measured |
 | [Bare metal](platforms/bare-metal.md) | Decode or encode, `arm-none-eabi` | Correct under QEMU. No real silicon |
 
 Picking a platform settles where the code runs, not what it can encode or decode — that is the
