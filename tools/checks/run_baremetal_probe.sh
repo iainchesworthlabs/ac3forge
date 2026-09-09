@@ -66,10 +66,17 @@ done
 # Allocations per frame in the steady state, whichever fixture is worst. The
 # requirement PF7 states is ZERO and this is not it - see docs/building.md's
 # gap note. The ceiling exists so the distance from zero cannot quietly grow
-# while that gap is open. Today's numbers, all eight fixtures:
+# while that gap is open. Measured 2026-09-09, all eight fixtures, identical on
+# this leg and on tools/checks/run_esp32s3_probe.sh's:
 #
-#   16 ac3_mono   19 ac3_stereo   43 eac3_stereo   47 ac3
-#   61 eac3_atmos_bed   66 eac3_ecpl   79 eac3_atmos_objects   86 eac3
+#   1 ac3_mono   1 ac3_stereo   3 ac3   10 eac3_stereo
+#   12 eac3   12 eac3_ecpl   23 eac3_atmos_bed   41 eac3_atmos_objects
+#
+# A ceiling of 100 over a worst fixture of 41 is loose, deliberately: what it
+# guards is the DISTANCE FROM ZERO not growing, and the fixtures that could
+# grow it - the Atmos ones, whose remaining churn is the EMDF payload chain
+# rather than anything per-block - are the ones furthest from the ceiling. Cut
+# it to the measurement and every Atmos fixture change becomes a ceiling edit.
 #
 # ONE ceiling, where there used to be a second one of 140 for enhanced coupling
 # alone. That exemption was real while it lasted: §E3.5 reconstructs each
@@ -79,12 +86,12 @@ done
 # covering §E3.5 or lifting the ceiling for every other fixture to a number
 # none of them was near.
 #
-# It is gone because the 126 was not the tool's geometry after all. Sixty of it
-# were two std::vector<double> constructed per coupled channel per block in
-# eac3_decoder.cpp's reconstruction loop - hoisted into decoder scratch, ecpl
-# now measures 66 and sits below eac3's own 86. A ceiling of 140 over a
-# measurement of 66 would be dead slack, and the exemption would go on implying
-# that enhanced coupling is inherently the expensive one.
+# It is gone because the 126 was never the tool's geometry. Sixty of it were
+# two std::vector<double> constructed per coupled channel per block in
+# eac3_decoder.cpp's reconstruction loop; the rest went the same way when both
+# decoders' frame-scope buffers moved onto the decoder. eac3_ecpl now measures
+# 12, level with plain eac3 - which is the answer to the question the exemption
+# was really asking, and it is no.
 : "${AC3FORGE_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 # Bytes still live when the probe finishes, after every decoder it made has been
 # destroyed. 24 - two __cxa_thread_atexit registration records, one per

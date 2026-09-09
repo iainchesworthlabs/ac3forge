@@ -548,7 +548,14 @@ endif()
 # apps/wasm is gated on EMSCRIPTEN: outside that profile there is no
 # ac3::forge_minimal for it to link, so there is nothing to opt in or out of.
 if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
-    add_subdirectory(apps/baremetal)
+    # Guarded on existence because this tree is also PACKED, as the ESP-IDF
+    # component archive (tools/packaging/pack_esp_component.py), and that
+    # archive carries the library without the probe that measures it - a
+    # consumer wants the decoder, not a footprint harness. In a checkout the
+    # directory is always there and this is a no-op.
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/baremetal/CMakeLists.txt")
+        add_subdirectory(apps/baremetal)
+    endif()
 endif()
 
 # Forge's own LICENSE.txt and NOTICES.txt, and the install() rules that put

@@ -47,42 +47,24 @@ dependencies:
   # for EXTRA_COMPONENT_DIRS resolving a component outside the project tree.
   idf: ">=5.3"
 
-# The repository is the whole of ac3forge - a C++ library, a CLI, a GUI, three
-# container muxers and several language bindings - and a component archive
-# should carry the part that builds for this chip and nothing else. What remains
-# is this directory plus the sources src/forge/minimal.cmake names.
+# WHAT IS IN THE ARCHIVE is decided by tools/packaging/pack_esp_component.py,
+# not by a files: list here, and that is not a preference - it is the only thing
+# that works.
 #
-# `use_gitignore` rather than an exclude list of build outputs: the repo's own
-# .gitignore already knows what is generated, and two lists that mean the same
-# thing drift.
-files:
-  use_gitignore: true
-  exclude:
-    - "apps/**/*"
-    - "docs/**/*"
-    - "tests/**/*"
-    - "tools/**/*"
-    - "examples/**/*"
-    - "python/**/*"
-    - "rust/**/*"
-    - "js/**/*"
-    - "packaging/**/*"
-    - "src/matroska/**/*"
-    - "src/mp4/**/*"
-    - "src/mpegts/**/*"
-    - "src/ac3iab/**/*"
-    - "src/ac3iamf/**/*"
-    - "src/ac4/**/*"
-  include:
-    # apps/baremetal is excluded above, but its probes are the only application
-    # that exercises this component - an integrator wanting to check the port on
-    # their own board has nothing else to flash. The two probes and their
-    # fixtures are small (the decode fixtures total 27 KB) and they are the
-    # difference between "it linked" and "it decoded to the right levels".
-    - "apps/baremetal/probe.cpp"
-    - "apps/baremetal/probe.hpp"
-    - "apps/baremetal/fixture.hpp"
-    - "apps/baremetal/encode_probe.cpp"
-    - "apps/baremetal/encode_fixture.hpp"
-    - "apps/baremetal/platform/esp32s3/**/*"
-    - "docs/platforms/esp32.md"
+# `compote component pack` roots its archive at THIS directory and cannot
+# reference anything above it. The component is a thin wrapper that
+# add_subdirectory()s the repo root, so packing it directly produces an archive
+# of three files that installs and then fails to configure. A files: list naming
+# ../../src/forge would not help: those paths are silently ignored, and the pack
+# still succeeds.
+#
+# So the packing script stages a copy of the library INTO the component and
+# packs that. The component's own CMakeLists finds its root either way - beside
+# it when packed, two levels up in a checkout - by looking for src/forge rather
+# than being told.
+#
+#   python tools/packaging/pack_esp_component.py --version <v> --verify
+#
+# --verify builds a throwaway IDF project against the archive, which is the only
+# check that establishes self-containment; an entry count can pass on something
+# that does not configure.
