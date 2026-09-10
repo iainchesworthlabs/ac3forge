@@ -289,8 +289,9 @@ TEST_CASE("a channel the layout lacks is panned at unit power, never into the LF
     pair.set_bed(coded(k51));
     for (std::size_t c = 0; c < 5; ++c) {
         CAPTURE(c);
-        const double power = static_cast<double>(pair.bed_gain(c, 0)) * pair.bed_gain(c, 0) +
-                             static_cast<double>(pair.bed_gain(c, 1)) * pair.bed_gain(c, 1);
+        const auto left = static_cast<double>(pair.bed_gain(c, 0));
+        const auto right = static_cast<double>(pair.bed_gain(c, 1));
+        const double power = (left * left) + (right * right);
         REQUIRE(power == Approx(1.0).margin(1e-5));
         REQUIRE(pair.bed_gain(c, 2) == 0.0F);
     }
