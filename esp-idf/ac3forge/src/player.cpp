@@ -39,25 +39,9 @@ constexpr EventBits_t kRewindRequest = BIT1;  // decode -> fetch: the ring is dr
 constexpr EventBits_t kRewound = BIT2;        // fetch -> decode: rewind() succeeded
 constexpr EventBits_t kRewindFailed = BIT3;   // fetch -> decode: it could not
 constexpr EventBits_t kStop = BIT4;           // caller -> both
+constexpr EventBits_t kFetchExited = BIT5;
+constexpr EventBits_t kDecodeExited = BIT6;
 constexpr EventBits_t kFinished = BIT7;       // decode -> caller
-
-// NOTE there is no "task exited" BIT here, and that is the point.
-//
-// The two tasks used to announce their exit by setting a bit in this very
-// event group, and stop() waited on those bits and then deleted the group. On
-// a dual-core part that is a use-after-free with a window of a few
-// instructions: xEventGroupSetBits unblocks the waiting task from INSIDE the
-// call, so the main task on core 0 can return from its wait, delete the event
-// group and hand its memory back to the heap while the exiting task on core 1
-// is still inside xEventGroupSetBits, leaving its critical section - a write
-// to the lock word inside the object that has just been freed. What that
-// corrupts is whatever the heap put there next, and the failure surfaces later
-// and elsewhere as TLSF's "block already marked as free".
-//
-// Measured, not theorised: CI's QEMU run of the http shape panicked exactly
-// there, on the first free after the run ended, every time - and a local run
-// of the same image never did, because the window is a scheduling accident.
-// See Impl::workers_running below for what replaced it.
 
 }  // namespace
 
@@ -112,25 +96,6 @@ struct Player::Impl {
     std::atomic<std::size_t> decode_stack_free{0};
     StreamInfo stream{};  // written once, before have_stream is set
 
-    // How many of the two tasks are still running, and the ONLY thing stop()
-    // waits on before it frees the ring and the event group - see the note
-    // where the event bits are declared for what waiting on a bit in the group
-    // it is about to delete cost.
-    //
-    // A task's last act on anything shared is this decrement; after it the task
-    // calls vTaskDelete(nullptr) and touches nothing but the scheduler, whose
-    // structures are not ours to free. So a stop() that has seen zero here
-    // knows that no task will read the ring, the event group or this object
-    // again, which is exactly the guarantee the bits could not give.
-    std::atomic<int> workers_running{0};
-
-    // The task side of it: run `body`, then stand down.
-    void run_worker(void (Impl::*body)()) {
-        (this->*body)();
-        workers_running.fetch_sub(1, std::memory_order_release);
-        vTaskDelete(nullptr);
-    }
-
     // Sampled from the decode task only: the high-water mark is that task's.
     void sample_decode_stack() {
         decode_stack_free.store(static_cast<std::size_t>(uxTaskGetStackHighWaterMark(nullptr)));
@@ -162,10 +127,8 @@ struct Player::Impl {
         return s;
     }
 
-    static void fetch_entry(void* self) { static_cast<Impl*>(self)->run_worker(&Impl::fetch_loop); }
-    static void decode_entry(void* self) {
-        static_cast<Impl*>(self)->run_worker(&Impl::decode_loop);
-    }
+    static void fetch_entry(void* self) { static_cast<Impl*>(self)->fetch_loop(); }
+    static void decode_entry(void* self) { static_cast<Impl*>(self)->decode_loop(); }
 
     [[nodiscard]] bool stopping() const { return (xEventGroupGetBits(events) & kStop) != 0; }
 
@@ -217,6 +180,8 @@ struct Player::Impl {
                                           pdMS_TO_TICKS(100));
             }
         }
+        xEventGroupSetBits(events, kFetchExited);
+        vTaskDelete(nullptr);
     }
 
     // --- the decode task -----------------------------------------------------
@@ -377,6 +342,8 @@ struct Player::Impl {
             frames_played.fetch_add(1);
             resync_bytes.store(resync_before + accumulator.resynchronised_bytes());
         }
+        xEventGroupSetBits(events, kDecodeExited);
+        vTaskDelete(nullptr);
     }
 };
 
@@ -430,22 +397,16 @@ bool Player::start() {
                 static_cast<int>(im.config.decode_core),
                 static_cast<unsigned>(im.config.decode_priority));
 
-    // Counted BEFORE the task exists, so a task that runs to completion before
-    // this line would have executed cannot decrement past zero.
     // The decoder first, so the ring never fills before anything can drain it.
-    im.workers_running.fetch_add(1, std::memory_order_relaxed);
     if (xTaskCreatePinnedToCore(&Impl::decode_entry, "ac3-decode", im.config.decode_stack_bytes,
                                 &im, im.config.decode_priority, &im.decode_task,
                                 im.config.decode_core) != pdPASS) {
-        im.workers_running.fetch_sub(1, std::memory_order_relaxed);
         std::printf("player: could not start the decode task\n");
         return false;
     }
-    im.workers_running.fetch_add(1, std::memory_order_relaxed);
     if (xTaskCreatePinnedToCore(&Impl::fetch_entry, "ac3-fetch", im.config.fetch_stack_bytes, &im,
                                 im.config.fetch_priority, &im.fetch_task,
                                 im.config.fetch_core) != pdPASS) {
-        im.workers_running.fetch_sub(1, std::memory_order_relaxed);
         std::printf("player: could not start the fetch task\n");
         xEventGroupSetBits(im.events, kStop);
         return false;
@@ -462,20 +423,20 @@ void Player::stop() {
     // Both tasks check kStop within a bounded wait, except a fetch blocked in
     // the source's own read - a socket with a long timeout - which is the one
     // thing that can make this wait its full length.
-    //
-    // Polled rather than waited on, because what has to be true before the
-    // ring and the event group are freed is that no task will TOUCH them
-    // again, and only the counter says that: a task that has decremented it
-    // has left every shared object behind for good. A bit set from inside the
-    // event group cannot say it, because setting the bit is itself a use of
-    // the object being waited for - see the note at the top of this file.
-    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(15000);
-    while (im.workers_running.load(std::memory_order_acquire) > 0) {
-        if (xTaskGetTickCount() >= deadline) {
+    EventBits_t want = 0;
+    if (im.fetch_task != nullptr) {
+        want |= kFetchExited;
+    }
+    if (im.decode_task != nullptr) {
+        want |= kDecodeExited;
+    }
+    if (want != 0) {
+        const EventBits_t bits =
+            xEventGroupWaitBits(im.events, want, pdFALSE, pdTRUE, pdMS_TO_TICKS(15000));
+        if ((bits & want) != want) {
             std::printf("player: a task did not exit in 15 s; leaving it\n");
             return;
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
     }
     im.fetch_task = nullptr;
     im.decode_task = nullptr;
