@@ -3872,23 +3872,6 @@ jobs:
           check_rms 0 107370
           check_rms 1 106234
 
-      # BUILD ONLY, and that is the whole point of the step.
-      #
-      # Three of the example's four sink/source combinations cannot RUN without
-      # hardware: QEMU has no I2S, no TDM, no SD host and no network. What can
-      # go wrong in them anyway is that they stop compiling - an IDF component
-      # gets renamed, a driver API changes shape - and an integrator finding
-      # that out is strictly worse than CI finding it.
-      #
-      # It has already paid for itself: the SD and HTTP sources compiled their
-      # own sources against a REQUIRES list that had silently resolved to the
-      # partition branch, because IDF expands REQUIRES in an earlier pass than
-      # the source list and CONFIG_ is not reliably set in it.
-      #
-      # The interleave inside the TDM sink is the one part of this that gets a
-      # real test rather than a compile - it is free of ESP-IDF and unit-tested
-      # on the host (tests/io/test_interleave.cpp), because slot padding and
-      # planar-to-interleaved indexing are where the bugs are.
       # The second runnable configuration, and the one that covers the
       # boundaries the first cannot.
       #
@@ -4140,6 +4123,36 @@ jobs:
           python3 "$console" --title "ESP32-S3 HTTP source" qemu-http.txt
           kill "$qemu" 2>/dev/null || true
 
+      # BUILD ONLY, for the five combinations no step above runs: tdm, i2s,
+      # sd, http and null. Each entry sets one choice over sdkconfig.defaults
+      # and leaves the others at their Kconfig defaults: the I2S sink, the
+      # partition source, WiFi under the HTTP source.
+      #
+      # Four of them drive hardware QEMU does not emulate. The code they share
+      # with the runnable configurations already runs in the QEMU steps above:
+      #
+      #   * tdm and i2s drive the I2S peripheral, in TDM and in standard mode.
+      #     The conversion both sinks call (ac3forge/interleave.hpp) runs
+      #     through the capture sink - stereo in the streaming and HTTP steps,
+      #     8 and 12 TDM slots in the capture and render steps - and is
+      #     unit-tested on the host (tests/io/test_interleave.cpp).
+      #   * sd drives the SDMMC host. The file layer it shares with the
+      #     flash-backed FAT source (main/source/file_common.hpp) runs in the
+      #     capture and render steps.
+      #   * http drives WiFi (net/wifi/). The HTTP client, the framer and the
+      #     decode run over QEMU's OpenCores Ethernet MAC (net/openeth/) in
+      #     the HTTP step.
+      #
+      # The fifth, null, drives no hardware. It is built here because the
+      # four QEMU runs above all use the capture sink in its place.
+      #
+      # What can go wrong in a build nothing runs is that it stops compiling -
+      # an IDF component is renamed, a driver API changes shape - and CI should
+      # find that before an integrator does. It has found one: the SD and HTTP
+      # sources compiled against a REQUIRES list that had silently resolved to
+      # the partition branch, because IDF expands REQUIRES in an earlier pass
+      # than the source list and CONFIG_ is not reliably set in it.
+      # main/CMakeLists.txt now lists every component unconditionally.
       - name: Build every sink and source combination
         run: |
           set -eu
