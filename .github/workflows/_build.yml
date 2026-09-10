@@ -4228,7 +4228,10 @@ jobs:
           qemu=$!
           trap 'kill "$qemu" 2>/dev/null || true; kill "$server" 2>/dev/null || true' EXIT
 
-          fail() { echo "::error title=ESP32-S3 web page::$1" >&2; grep -E 'result=|error|control|Guru Meditation|assert failed|Backtrace|Rebooting' qemu-ui.txt >&2 || true; exit 1; }
+          # fail() checks the console first, as the HTTP step's does, so a check
+          # that trips because the part panicked is reported as the panic.
+          console="$GITHUB_WORKSPACE/tools/checks/check_esp_console.py"
+          fail() { python3 "$console" --title "ESP32-S3 web page" qemu-ui.txt || true; echo "::error title=ESP32-S3 web page::$1" >&2; grep -E 'result=|error|control|source:' qemu-ui.txt >&2 || true; exit 1; }
           check_rms() {
             local channel="$1" expected="$2"
             local got
@@ -4261,11 +4264,17 @@ jobs:
           check_rms 0 14168
           check_rms 1 11837
 
-          # And one boot, with no panic, from start to finish.
-          [ "$(grep -c 'ESP-ROM:' qemu-ui.txt)" -eq 1 ] || fail "the part booted more than once"
-          if grep -E 'Guru Meditation|assert failed|abort\(\) was called|Backtrace:' qemu-ui.txt >&2; then
-            fail "panic output on the console"
-          fi
+          # Then the console, once the part has nothing left to do: /status
+          # reads "stopped" only after app_main has taken the page's Stop, and
+          # with it any teardown. The smoke waits for the same, but this step
+          # should not rest on what the test happens to do last.
+          stopped=
+          for _ in $(seq 1 30); do
+            if curl -s -m 10 http://127.0.0.1:8080/status | grep -q '"state":"stopped"'; then stopped=1; break; fi
+            sleep 1
+          done
+          [ -n "$stopped" ] || fail "/status did not report the player as stopped"
+          python3 "$console" --title "ESP32-S3 web page" qemu-ui.txt
           kill "$qemu" 2>/dev/null || true
 
       - name: Build every sink and source combination
