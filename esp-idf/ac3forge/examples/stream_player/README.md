@@ -282,6 +282,11 @@ never fell below 8 KB, so the network kept up throughout; what the queue
 absorbs is the decoder, which with part of its state in PSRAM took 17 ms of the
 frame on average and 36 ms at worst. In the same run with progress lines on, 14
 to 16 KB of internal heap stayed free while it played: enough, and not much.
+Not enough for anything started after the decoder, which is why the control
+surface starts before the player's tasks: its server's task stack has to come
+from internal RAM, and a board run that started it 41 ms after the player found
+6,787 bytes free with the largest block 3,328, too small for the 4 KB stack,
+and came up with no control surface.
 
 Then ten minutes of it, which is the player's Phase 1 exit criterion: the demo
 concatenated seventy-five times, played by `POST /play` to the running board

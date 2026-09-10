@@ -40,6 +40,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -266,11 +267,17 @@ void end_play() {
     }
 }
 
-bool begin_play(Session& session) {
+// `on_source_open` runs once the source is open - and with it the network,
+// where there is one - and before the player's tasks take their memory. The
+// first play at boot starts the control surface there; see app_main.
+bool begin_play(Session& session, const std::function<void()>& on_source_open = {}) {
     end_play();
     if (!player::source_open()) {
         g_state.store("failed");
         return false;
+    }
+    if (on_source_open) {
+        on_source_open();
     }
     // What the decoder is about to allocate into: the source is open, so a
     // network stack, where there is one, is already up. Internal RAM is the
@@ -451,18 +458,30 @@ extern "C" void app_main() {
 
     // The configured location plays at once, as it always has; the control
     // surface, where there is one, can stop it and play something else.
+    //
+    // The control surface starts inside that first play: after its source
+    // opens, which is what brings the network up, and before the player's
+    // tasks do. The server's task stack has to come from internal RAM, and
+    // once the decoder has allocated its first unit there may not be 4 KB of
+    // it left in one piece - a board on the network shape, starting the server
+    // 41 ms after the player, found the largest free block at 3,328 bytes and
+    // came up with no control surface. A play that fails before its source
+    // opens still gets one afterwards, so that a location can be sent to it.
+    ac3forge::Control control;
+    bool control_started = false;
+    const auto start_control = [&control, &control_started] {
+        if (kControlPort != 0 && !control_started) {
+            control_started = true;
+            (void)control.start(control_handlers(), kControlPort);
+        }
+    };
     Session session;
-    const bool playing = begin_play(session);
+    const bool playing = begin_play(session, start_control);
     if (!playing && kControlPort == 0) {
         std::printf("result=fail\n");
         return;
     }
-
-    ac3forge::Control control;
-    if (kControlPort != 0) {
-        // After the source, which is what brings the network up.
-        (void)control.start(control_handlers(), kControlPort);
-    }
+    start_control();
 
     // Everything from here is reporting and command handling. The player runs
     // on its own two tasks; this task wakes ten times a second.
