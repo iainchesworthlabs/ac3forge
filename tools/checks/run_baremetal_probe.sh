@@ -210,7 +210,9 @@ QEMU_ICOUNT=()
 if [[ "$ICOUNT" == "1" ]]; then
     PRESET="${PRESET}-icount"
     BUILD_PRESET="${BUILD_PRESET}-icount"
-    QEMU_ICOUNT=(-icount shift=0,sleep=off)
+    # Quoted: the comma is QEMU's own option syntax, one argument, not an
+    # array separator (shellcheck SC2054 cannot tell the two apart).
+    QEMU_ICOUNT=(-icount "shift=0,sleep=off")
 fi
 
 cmake --preset "$PRESET" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS"
