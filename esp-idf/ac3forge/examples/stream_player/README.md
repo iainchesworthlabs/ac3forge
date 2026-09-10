@@ -1,7 +1,8 @@
 # Streaming player
 
-Decodes AC-3 out of a flash partition on an ESP32-S3 and plays it, without ever
-holding more than 16 KB of the stream in memory.
+Decodes AC-3 or E-AC-3 on an ESP32-S3 from wherever the bytes are — a flash
+partition by default, an SD card, or an HTTP body over WiFi — and plays it,
+without ever holding more than 16 KB of the stream in memory.
 
 The sibling of [`i2s_player`](../i2s_player), differing in one thing: where the
 audio comes from. That one decodes a bitstream linked into its own image, which
@@ -21,11 +22,31 @@ independent substream together with the dependents that extend it (§E3.8.2). A
 reader that handed over one syncframe at a time would give the decoder a
 dependent with nothing to extend.
 
+**One decoder for both generations.** `Eac3Decoder` reads Annex E with every
+tool and accepts a plain AC-3 syncframe as one access unit of one substream, so
+the player does not need to know which it was given. `FrameDecoder` reads AC-3
+alone — bsid above 8 comes back as `kUnsupported` — and this example used it
+until 2026-09-10, which meant an E-AC-3 stream failed before any audio and CI,
+whose sample is AC-3, could not tell.
+
 **Two seams.** Where bytes come from and where audio goes are both directories
 CMake picks, not flags the player branches on — the same rule the library uses
 for its own platform choices. The player mentions neither a partition nor I2S.
 See [`main/byte_source.hpp`](main/byte_source.hpp) and
 [`main/audio_sink.hpp`](main/audio_sink.hpp).
+
+**Two tasks and a ring, which are the component's.** Since 2026-09-10 the loop
+lives in `esp-idf/ac3forge` as `ac3forge::Player`
+([`include/ac3forge/player.hpp`](../../include/ac3forge/player.hpp)): a fetch
+task on core 0, beside WiFi and TCP/IP, reads the source into a ring buffer; a
+decode task on core 1 drains the ring through the accumulator, decodes, and
+writes to the sink. A source that blocks — a socket waiting on the network —
+blocks the fetch task and nothing else, and the ring's depth is how long a
+stall the DAC never hears. The single loop this replaced had 20 ms of I2S DMA
+between a slow read and silence. `main/stream_player.cpp` is what is left: two
+adapters from the seams to the player's `ByteSource` and `PcmSink`, a level
+meter, and the reporting. The ring's size, its placement in PSRAM, and both
+cores are under *ac3forge stream player* in `idf.py menuconfig`.
 
 | Source | Sink |
 | --- | --- |
@@ -49,6 +70,17 @@ idf.py -p <PORT> flash monitor
 `idf.py flash` writes `stream/sample.ac3` into the `audio` partition as well as
 the application, so there is nothing to copy by hand.
 
+On a DevKitC-1 reached through its **native USB connector** rather than the
+UART bridge, build with `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw"`
+so the console comes out of the same cable, and expect two things: every
+host-initiated reset lands in `boot:0x0 (DOWNLOAD)` and the application never
+starts, so flash, press the board's RESET button, then attach with
+`idf.py monitor --no-reset`; and the port re-enumerates on every reset, so a
+terminal that does not reopen it misses the first lines. Building more than one
+shape on one machine, give each its own build directory **and** its own
+`-DSDKCONFIG=<build dir>/sdkconfig`, because ESP-IDF otherwise keeps a single
+`sdkconfig` in the project directory and the second shape inherits the first's.
+
 Without a board:
 
 ```bash
@@ -56,22 +88,71 @@ SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci" idf.py build
 idf.py qemu
 ```
 
-which is what CI does. `sdkconfig.ci` selects the null sink and stops after two
-passes. The null sink is a real sink — same calls, same audio — with no
-peripheral behind it, so the partition reads, the framing and the decode all run
-exactly as they do on hardware. What it cannot do is prove a DAC makes a noise.
+which is what CI does. `sdkconfig.ci` selects the capture sink and stops after
+two passes. The capture sink is a real sink — same calls, same conversion, same
+audio — with no peripheral behind it, so the partition reads, the framing and
+the decode all run exactly as they do on hardware, and it checks the converted
+samples on the way past. What it cannot do is prove a DAC makes a noise.
 
 ## What it prints
 
+Under QEMU, through the capture sink:
+
 ```
 source: partition 'audio' at 0x190000, 10752 bytes of audio in 262144
-sink: null 48000 Hz 16-bit x2 (no peripheral, no pacing)
-lap=1 frames=6 us_per_frame=16707 worst_frame_us=44199 realtime_permille=522 resync=0 heap_free=292696
+sink: capture 48000 Hz 16-bit x2 in 2 slots (no peripheral, no pacing)
+stream: AC-3 acmod=7 channels=6 substreams=1 dialnorm=-31 objects=no, folded to 2
+lap=1 frames=6 us_per_frame=11059 worst_frame_us=36028 realtime_permille=345 resync=0 heap_free=228708
+lap=2 frames=12 us_per_frame=8166 worst_frame_us=36028 realtime_permille=255 resync=0 heap_free=228708
 stream.rms[0]=107811
 stream.rms[1]=106647
-stream.units=12 stream.resync_bytes=0 stream.sink=null stream.sink_frames=12 stream.source=partition
+capture.low_byte_set=0 capture.padding_nonzero=0 capture.carried_nonzero=36677 capture.rms=107218
+stream.units=12 stream.held=0 stream.resync_bytes=0 stream.sink=capture-i2s stream.sink_frames=12 stream.source=partition stream.audio_ms=384 stream.wall_ms=121
 result=pass
 ```
+
+`stream:` is what the first access unit said the stream is — which generation,
+its coded layout, how many substreams, its dialnorm, whether it carries object
+audio — and what it is being folded to. `stream.held` counts units the decoder
+released one call late (§3.7's transient pre-noise processing; zero for a
+stream that does not use the tool). `stream.audio_ms` against `stream.wall_ms`
+is the whole-pipeline real-time check: a player that kept up spent as long
+playing as the audio lasted, one that stalled spent longer by exactly the
+silence it inserted, and a sink with no peripheral runs ahead of the clock, as
+here. With `CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES` set, the same figures
+also print cumulatively every N frames as a `progress=` line, for a source that
+makes one long pass and would otherwise be silent for minutes.
+
+`ring_low` (and `stream.ring_low` at the end) is the least the ring between
+the fetch and decode tasks ever held when the decoder came for more, in bytes,
+measured while the source was still delivering: the first frame's fill and the
+drain after the source ends are both zeros that say nothing, so neither counts,
+and it prints as `-` until there has been something to measure (a stream
+shorter than the ring never gives one). Zero means the decoder waited on the
+source at least once; how far above zero it stays is the margin the ring's
+depth is buying, and the number to read before making the ring bigger. Under QEMU the HTTP source keeps a 16 KB ring
+at 14,336 throughout — the emulator's loopback is faster than the emulated
+decode — so the figure that matters is the board's. `stream.fetched` is what
+the source delivered in total, which should agree with its `Content-Length` or
+file size.
+
+The `i2s` sink adds a line of its own at each report, of this shape (the figures
+a board produced are under [the sources](#the-sources) below):
+
+```
+sink.writes=<frames> sink.underruns=<count> sink.dry_ms=<ms> sink.min_headroom_ms=<ms> sink.dma_ms=<depth>
+```
+
+The DAC's DMA drains at exactly the sample rate whatever the CPU does, and the
+driver says nothing when it runs dry — it plays zeros and carries on. So the
+sink models the queue from that one fact: what was queued when the last write
+returned, less what has drained since, is what is left when the next frame
+arrives. `min_headroom_ms` is the least that was ever left; `underruns` counts
+frames that arrived to an empty queue, and `dry_ms` is how long it had been
+empty, summed. The model is out by up to one DMA descriptor (5 ms at the
+default depth), which is enough to read a stall and not enough to mistake one
+for a smooth run. `sink.dma_ms` is the queue's depth, from
+`CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS` and `_DMA_FRAMES`.
 
 `stream.rms[ch]` is the RMS of what was sent to the sink, scaled by 1e6 — the
 same form `apps/baremetal/probe.cpp` reports its own levels in. The player
@@ -96,14 +177,93 @@ disagrees with its own boot log. Real-time decode on this part is measured on a
 board, not here: an E-AC-3 5.1 frame decodes in 11.0 ms of its 32 at 240 MHz — see
 [`docs/platforms/esp32.md`](../../../../docs/platforms/esp32.md#timing).
 
+## Controlling it
+
+With `CONFIG_AC3FORGE_EXAMPLE_CONTROL_PORT` set (the HTTP source's
+configurations set 80; the default is 0, none), the component's
+`ac3forge::Control` answers on that port:
+
+| | |
+| --- | --- |
+| `GET /status` | what is playing and how it is going, as JSON |
+| `POST /play` | body: a URL for the `http` source, a path for `fatfs` or `sd`. `202 Accepted` — the location is handed to the task that owns the player, and `/status` says how the open went. `409` from `partition`, which has one thing in it. |
+| `POST /stop` | |
+| `POST /volume` | body: `0.0` to `1.0`, a linear gain the decode task applies before the sink |
+
+The configured location plays at boot as before; the surface can stop it and
+play something else. A `/status` taken under QEMU during the E-AC-3 demo:
+
+```
+{"state":"playing","location":"http://10.0.2.2:8000/demo.ec3","source":"http","sink":"capture-i2s","volume":1.000,
+ "stream":{"codec":"E-AC-3","acmod":7,"channels":6,"substreams":1,"dialnorm":-31,"objects":true},
+ "frames":248,"held":0,"us_per_frame":10032,"worst_frame_us":46422,"realtime_permille":313,
+ "resync_bytes":0,"fetched_bytes":448000,"ring_low":6144,"passes":0,"finished":false,"failed":false,"why":"","error":0}
+```
+
+The HTTP server's task never touches the player: `/play`, `/stop` and `/volume`
+go through a queue to `app_main`, which owns the player, and `/status` reads a
+snapshot under a mutex. `stream.sink_frames` in the end-of-run line counts
+since boot, across every play; `stream.units` is the run's own.
+
+To reach it under QEMU, run the emulator with a port forward rather than
+through `idf.py qemu`, which fixes the network options:
+
+```bash
+esptool --chip=esp32s3 merge-bin --output=build/qemu_flash.bin --pad-to-size=16MB \
+  --flash-mode dio --flash-freq 80m --flash-size 16MB \
+  0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin \
+  0x10000 build/ac3forge_stream_player.bin 0x190000 stream/sample.ac3 0x1d0000 build/storage.bin
+qemu-system-xtensa -M esp32s3 -m 32M -drive file=build/qemu_flash.bin,if=mtd,format=raw \
+  -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
+  -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
+  -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
+  -nic user,model=open_eth,hostfwd=tcp::8080-:80 -nographic -serial mon:stdio
+curl http://127.0.0.1:8080/status
+curl -X POST -d 0.5 http://127.0.0.1:8080/volume
+curl -X POST -d http://10.0.2.2:8000/demo.ec3 http://127.0.0.1:8080/play
+```
+
+(`qemu_efuse.bin` is what `idf.py qemu` generates on its first run.) On
+2026-09-10 that sequence played the demo twice, the second time at half volume
+with per-channel levels exactly half the first's, stopped on request, and
+reported a refused `ftp://` location on the console.
+
+The QEMU shape without PSRAM is the tightest this example runs: WiFi's
+stand-in, lwIP, the HTTP client, the HTTP server, the E-AC-3 decoder and the
+player's two stacks in one 280 KB, so `sdkconfig.ci-http` gives it an 8 KB
+ring and a 24 KB decode stack, with the measurements that justify both in its
+comments. A board with PSRAM (`sdkconfig.psram`) has no such squeeze.
+
 ## The sources
 
-Only `partition` can be **run** without hardware, which is why it is the default
-and the one CI exercises end to end. `sd` and `http` are compiled by CI and no
-further — QEMU has no SD host and no network — so both are deliberately small:
-the less that lives behind an unrunnable seam, the less can be wrong in it.
+`partition` runs without hardware, which is why it is the default and the one
+CI exercises first. `sd` cannot: QEMU has no SD host, so CI runs the same file
+layer from a FAT volume in flash (`fatfs`) and only the SDMMC host waits for a
+board. `http` **runs under QEMU too**, since 2026-09-10: QEMU has no WiFi but
+`idf.py qemu` attaches an OpenCores Ethernet MAC to the host's network, so the
+source has a network seam of its own — [`main/source/http/network.hpp`](main/source/http/network.hpp),
+`net/wifi/` for a board and `net/openeth/` for the emulator — and
+`sdkconfig.ci-http` selects the latter with the stream served from the host:
 
-Two things differ between them and are worth knowing before writing a third:
+```bash
+python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets &
+SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci-http" idf.py build
+idf.py qemu
+```
+
+The guest is 10.0.2.15 and the host 10.0.2.2 in QEMU's user-mode network, so
+the URL is `http://10.0.2.2:8000/demo.ec3` and no firewall is involved. The
+stream is the WASM page's demo: E-AC-3 5.1 with JOC objects, 448 kbit/s, 250
+access units. On 2026-09-10 the run fetched and decoded all 250 with zero
+resynchronised bytes, and its per-channel levels matched the host's
+`ac3cli decode demo.ec3 out.wav downmix=loro drcmode=line` to the digit —
+56,673 and 47,346 — which is the check CI holds it to. Three `E (esp_eth)`
+lines about multicast filters print at start-up: the emulated MAC has no
+filter, IDF says so, and nothing depends on one. What QEMU cannot say is
+anything about WiFi, or about time: its `realtime_permille` is shape only.
+
+Two things differ between the sources and are worth knowing before writing a
+third:
 
 **Length.** A partition is the only source with none. Every other kind has one —
 `Content-Length`, a file size — and without it the player reads the whole 256 KB
@@ -138,14 +298,28 @@ exactly that.
 
 ## What it costs
 
-`idf.py size`, IDF v6.1, `-Os`:
+`idf.py size`, IDF v6.1, `-Os`, the default shape (`partition` to `i2s`) with
+the console on USB-Serial-JTAG, after the loop moved into `ac3forge::Player`:
 
 | | Bytes |
 | --- | --- |
-| Internal SRAM (DIRAM) used by the image | 111,055 |
-| …leaving for the heap | 230,705 |
-| Accumulator buffer (`kRecommendedBuffer`) | 16,384 |
-| Partition read block | 2,048 |
+| Internal SRAM (DIRAM) used by the image | 90,243 |
+| …of which `.bss` | 48,296 |
+| …leaving for the heap, by the linker's estimate | 251,517 |
+| Taken from that heap when the player starts: its PCM storage (eight channels of one frame), framing buffer and staging block | 67,584 |
+| The ring between fetch and decode (`CONFIG_AC3FORGE_EXAMPLE_RING_BYTES`; PSRAM when present) | 32,768 |
+| The decode task's stack, and the fetch task's | 32,768 + 8,192 |
+| Interleave buffer (one frame, static, in the sink) | 6,144 |
+| I2S DMA queue (4 × 240 frames, stereo, 16-bit) | 3,840 |
 
-More than `i2s_player`'s 94,383, and the difference is mostly the accumulator
-buffer — which is the price of not having the whole stream in memory.
+The image is smaller than `i2s_player`'s 93,967 because what the example used
+to hold in `.bss` - a frame of PCM wide enough for 7.1, the framing buffer -
+is the player's now and comes from the heap when it starts; the same bytes,
+paid at a different moment, plus the ring and the two stacks that did not exist
+before. Every source and sink's components are linked whichever pair is
+selected (`main/CMakeLists.txt` says why the `REQUIRES` list cannot follow the
+choice). The `http` shape adds the WiFi and TCP/IP stacks on top, which is why
+`sdkconfig.psram` exists for it: with PSRAM off, WiFi's stand-in, the E-AC-3
+decoder, the player's stacks and a 32 KB ring did not all fit under QEMU, and
+the CI shape runs a 16 KB ring in internal SRAM with the main task's stack cut
+to 8 KB.

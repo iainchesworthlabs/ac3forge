@@ -15,7 +15,7 @@
 #include <span>
 #include <vector>
 
-#include "interleave.hpp"
+#include "ac3forge/interleave.hpp"
 
 namespace {
 
@@ -39,14 +39,14 @@ TEST_CASE("interleave lays channels out slot by slot", "[io][interleave]") {
     const auto channels = views(planes);
 
     std::array<std::int32_t, 6> out{};
-    const auto zeroed = player::interleave_24in32(channels, 2, 3, out);
+    const auto zeroed = ac3forge::interleave_24in32(channels, 2, 3, out);
     REQUIRE(zeroed == 0);
 
     for (std::size_t frame = 0; frame < 3; ++frame) {
         for (std::size_t ch = 0; ch < 2; ++ch) {
             CAPTURE(frame, ch);
             REQUIRE(out[(frame * 2) + ch] ==
-                    player::to_slot_24in32(planes[ch][frame]));
+                    ac3forge::to_slot_24in32(planes[ch][frame]));
         }
     }
 }
@@ -68,7 +68,7 @@ TEST_CASE("interleave zeroes the slots a 5.1 programme does not fill", "[io][int
     // frame's contents. If the function skipped the unused slots instead of
     // zeroing them, this is what would reach the DAC.
     std::vector<std::int32_t> out(kSlots * kFrames, 0x7FFFFF00);
-    const auto zeroed = player::interleave_24in32(channels, kSlots, kFrames, out);
+    const auto zeroed = ac3forge::interleave_24in32(channels, kSlots, kFrames, out);
     REQUIRE(zeroed == 2);
 
     for (std::size_t frame = 0; frame < kFrames; ++frame) {
@@ -91,7 +91,7 @@ TEST_CASE("interleave never writes past the slot count", "[io][interleave]") {
     const auto channels = views(planes);
 
     std::array<std::int32_t, 4> out{};  // 2 slots x 2 frames
-    const auto zeroed = player::interleave_24in32(channels, 2, 2, out);
+    const auto zeroed = ac3forge::interleave_24in32(channels, 2, 2, out);
     REQUIRE(zeroed == 0);
     for (const auto slot : out) {
         REQUIRE(slot != 0);
@@ -101,21 +101,21 @@ TEST_CASE("interleave never writes past the slot count", "[io][interleave]") {
 TEST_CASE("slot conversion is 24-bit left-justified in 32", "[io][interleave]") {
     // The low byte is always clear: a DAC takes the top 24 bits of the slot, so
     // the sample is scaled to 24-bit and shifted up rather than scaled to 32.
-    REQUIRE((player::to_slot_24in32(0.5F) & 0xFF) == 0);
-    REQUIRE(player::to_slot_24in32(0.0F) == 0);
+    REQUIRE((ac3forge::to_slot_24in32(0.5F) & 0xFF) == 0);
+    REQUIRE(ac3forge::to_slot_24in32(0.0F) == 0);
 
     // Full scale maps to the 24-bit maximum, shifted - not to INT32_MAX, and
     // not wrapped.
-    REQUIRE(player::to_slot_24in32(1.0F) == (player::kPcm24Max << 8));
-    REQUIRE(player::to_slot_24in32(-1.0F) == (-player::kPcm24Max << 8));
+    REQUIRE(ac3forge::to_slot_24in32(1.0F) == (ac3forge::kPcm24Max << 8));
+    REQUIRE(ac3forge::to_slot_24in32(-1.0F) == (-ac3forge::kPcm24Max << 8));
 
     // Clipped, not wrapped. A wrapped sample turns a peak into full-scale noise
     // of the opposite sign, which is the loudest sound the system can make.
-    REQUIRE(player::to_slot_24in32(4.0F) == (player::kPcm24Max << 8));
-    REQUIRE(player::to_slot_24in32(-4.0F) == (-player::kPcm24Max << 8));
+    REQUIRE(ac3forge::to_slot_24in32(4.0F) == (ac3forge::kPcm24Max << 8));
+    REQUIRE(ac3forge::to_slot_24in32(-4.0F) == (-ac3forge::kPcm24Max << 8));
 
     // Monotonic across the range that matters, so a sign or shift error shows.
-    REQUIRE(player::to_slot_24in32(-0.5F) < 0);
-    REQUIRE(player::to_slot_24in32(0.5F) > 0);
-    REQUIRE(player::to_slot_24in32(0.25F) < player::to_slot_24in32(0.75F));
+    REQUIRE(ac3forge::to_slot_24in32(-0.5F) < 0);
+    REQUIRE(ac3forge::to_slot_24in32(0.5F) > 0);
+    REQUIRE(ac3forge::to_slot_24in32(0.25F) < ac3forge::to_slot_24in32(0.75F));
 }

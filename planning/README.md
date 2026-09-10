@@ -15,6 +15,7 @@ What is on the site instead: [the documentation](../docs/index.md) describes wha
 | [host-plugin.md](host-plugin.md) | Whether a DAW/NLE plugin is possible, and what shipping one takes | A study; nothing decided, no code |
 | [qc-report.md](qc-report.md) | A delivery-shaped QC report file | Not started — `ac3cli qc` writes no report file |
 | [arithmetic-tiers.md](arithmetic-tiers.md) | One implementation, three arithmetics (`double`, `float`, fixed point) and an encoder effort axis; the platform choice matrix; the fixed-point decoder for the ESP32-C3 | Two tiers shipping and gated; the effort axis's first level measured 2026-09-10; the fixed tier proposed, not started |
+| [esp32-player.md](esp32-player.md) | The ESP32-S3 player: a component layer under the examples, and an ESPHome media player | Phase 1 built and QEMU-verified; Phase 0, the hardware run, waits on the board |
 
 Two phase records stayed on the site because the reference pages cite them as evidence rather
 than as plans: [the Crucible promotion record](../docs/crucible/promotion.md), which carries the

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <span>
 
 // The part of a file-backed source that is not about the block device.
@@ -25,13 +26,39 @@ namespace file_source {
 
 inline std::FILE* g_file = nullptr;
 inline std::size_t g_length = 0;
+// The path the next open() uses: the configured default until a control
+// surface points the source at another file.
+inline char g_path[256] = {};
 
-// Opens `path` and learns its length. A file has one, unlike a partition -
-// which is what stops the framer reading past the audio into whatever follows.
-[[nodiscard]] inline bool open(const char* path) {
-    g_file = std::fopen(path, "rb");
+inline void set_default_path(const char* path) {
+    if (g_path[0] == '\0') {
+        std::strncpy(g_path, path, sizeof(g_path) - 1);
+    }
+}
+
+// False when the location does not fit; the caller reports it.
+[[nodiscard]] inline bool set_path(const char* path) {
+    if (path == nullptr || path[0] == '\0' || std::strlen(path) >= sizeof(g_path)) {
+        return false;
+    }
+    std::strncpy(g_path, path, sizeof(g_path) - 1);
+    g_path[sizeof(g_path) - 1] = '\0';
+    return true;
+}
+
+// Opens the current path and learns its length. A file has one, unlike a
+// partition - which is what stops the framer reading past the audio into
+// whatever follows. A file already open from a previous run is closed first,
+// so a source can be opened again for each thing it plays.
+[[nodiscard]] inline bool open() {
+    if (g_file != nullptr) {
+        std::fclose(g_file);
+        g_file = nullptr;
+    }
+    g_length = 0;
+    g_file = std::fopen(g_path, "rb");
     if (g_file == nullptr) {
-        std::printf("error: %s could not be opened\n", path);
+        std::printf("error: %s could not be opened\n", g_path);
         return false;
     }
     if (std::fseek(g_file, 0, SEEK_END) == 0) {
@@ -63,6 +90,8 @@ inline std::size_t g_length = 0;
 }
 
 [[nodiscard]] inline std::size_t length() { return g_length; }
+
+[[nodiscard]] inline const char* path() { return g_path; }
 
 }  // namespace file_source
 }  // namespace player

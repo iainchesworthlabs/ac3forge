@@ -142,6 +142,9 @@ PROSE_PATHS_UNCHECKED = {
     "planning/player-appliance.md": "plan; proposes an apps tree that does not exist",
     "planning/host-plugin.md": "study; proposes an Assay component and its own docs tree",
     "planning/qc-report.md": "plan; proposes source files it would add",
+    "planning/esp32-player.md": (
+        "plan; proposes component sources and an ESPHome platform that do not exist yet"
+    ),
     "docs/crucible/promotion.md": "phase record; names the pre-promotion apps/windows layout",
     "docs/platforms/windows-demo.md": "phase record; names the pre-promotion apps/windows layout",
     "CHANGELOG.md": "released entries are an immutable record of the tree as it was",

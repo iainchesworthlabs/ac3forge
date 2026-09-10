@@ -35,7 +35,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <expected>
 #include <span>
+#include <utility>
+#include <vector>
 
 #include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/tables.hpp"
@@ -47,6 +50,14 @@
 #include "stage_timers.hpp"
 
 namespace {
+
+// The 7.1 access-unit fixture is a SWITCH, not a default - see the block in
+// run() and encode_fixture.hpp for the measurement that made it one.
+// AC3FORGE_PROBE_SEVEN_ONE is 0 or 1 from CMake, defined by every build of
+// this file (apps/baremetal/CMakeLists.txt, platform/esp32s3/main/
+// CMakeLists.txt) - a value, not a conditional, per the platform-tree rule
+// tools/checks/check_platform_macros.ps1 enforces.
+constexpr bool kProbeSevenOne = AC3FORGE_PROBE_SEVEN_ONE != 0;
 
 // --- heap accounting -------------------------------------------------------
 // The same global replacement probe.cpp uses, and for the same reason: PF7's
@@ -254,6 +265,25 @@ void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes
     }
 }
 
+// The two encoder shapes answer the same question through different names:
+// a FrameEncoder's encode_frame returns the syncframe's bytes, an
+// AccessUnitEncoder's encode_access_unit returns an AccessUnit whose `bytes`
+// is every substream in transmission order. Both are one span of bytes to
+// count and hash, which is all encode_all wants.
+template <typename Encoder>
+auto encode_one(Encoder& encoder, std::span<const std::span<const float>> views) {
+    return encoder.encode_frame(views);
+}
+
+[[maybe_unused]] std::expected<std::vector<std::byte>, ac3::FrameError> encode_one(
+    ac3::eac3::AccessUnitEncoder& encoder, std::span<const std::span<const float>> views) {
+    auto unit = encoder.encode_access_unit(views);
+    if (!unit) {
+        return std::unexpected(unit.error());
+    }
+    return std::move(unit->bytes);
+}
+
 // `views` is however many channels the encoder's own layout asks for, which is
 // not always the six the PCM block holds - see the 2/0 fixture below.
 template <typename Encoder>
@@ -275,7 +305,7 @@ EncodeResult encode_all(Encoder& encoder,
     for (int frame = 0; frame < ac3probe::kEncodeFrames; ++frame) {
         fill_signal(pcm, frame);
         const std::uint64_t started = ac3probe::now_us();
-        const auto encoded = encoder.encode_frame(views);
+        const auto encoded = encode_one(encoder, views);
         result.encode_us += ac3probe::now_us() - started;
         if (!encoded) {
             std::printf("check=encode status=fail frame=%d error=%d\n", frame,
@@ -385,6 +415,40 @@ int ac3probe::run() {
         const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
         report("eac3_ecpl", r, ac3probe::kEac3EcplBytes, ac3probe::kEac3EcplHash);
     }
+    // 7.1 as an ACCESS UNIT: an independent 5.1 substream and a dependent
+    // carrying Ls, Rs, Lrs and Rrs (chanmap k71Rear), which is how Annex E
+    // codes a layout wider than 5.1 (E3.8.2) and the shape tests/encoder/
+    // test_eac3.cpp's seven_one() builds. Two FrameEncoders live at once
+    // inside the AccessUnitEncoder, and that is the finding: on the host this
+    // fixture takes the run's peak from about 223,000 bytes to 435,263, and
+    // on an ESP32-S3 (QEMU, same memory map, 2026-09-10) it dies on a
+    // 73,728-byte request with 303,656 bytes free and a largest block of
+    // 241,664 before the run began. A 7.1 E-AC-3 encode does not fit this
+    // part's internal SRAM; PSRAM is the question that remains, and QEMU
+    // cannot ask it.
+    //
+    // Opt-in (-DAC3FORGE_PROBE_SEVEN_ONE=ON) for exactly that reason: a default
+    // fixture that cannot pass on one leg is not a fixture, and the two legs'
+    // heap ceilings are statements about what fits. Off, the block is
+    // discarded and the image is the one the ceilings hold.
+    //
+    // Ten spans over six channels of PCM: the dependent's four alias the
+    // bed's L, R, SL and SR. The encoder does not care that two substreams
+    // see the same samples, and widening g_pcm to ten channels would add
+    // 24 KB of .bss to an image whose whole subject is footprint.
+    if constexpr (kProbeSevenOne) {
+        ac3::eac3::AccessUnitEncoder encoder{
+            {.independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true},
+             .dependents = {{.bitrate_kbps = 224,
+                             .acmod = ac3::Acmod::k2_2,
+                             .chanmap = ac3::eac3::chanmap::k71Rear}}}};
+        const std::array<std::span<const float>, 10> views = {
+            g_views[0], g_views[1], g_views[2], g_views[3], g_views[4], g_views[5],
+            g_views[3], g_views[4], g_views[0], g_views[1]};
+        const auto r = encode_all(encoder, g_pcm, views);
+        report("eac3_71", r, ac3probe::kEac3SevenOneBytes, ac3probe::kEac3SevenOneHash);
+    }
+
     // Hand back what enhanced coupling cached, exactly as probe.cpp does after
     // each decode fixture and for the same reason: the scratch is thread_local
     // and this thread never exits, so without this its 34,208 bytes stay

@@ -16,6 +16,31 @@ config AC3FORGE_EXAMPLE_I2S_DOUT_GPIO
     int "I2S data out (DOUT/SDIN) GPIO"
     default 7
 
+# THE I2S DMA QUEUE: how much audio the peripheral holds between the player's
+# writes, as descriptors of this many sample frames each. Four of 240 is 960
+# stereo 16-bit frames - 3,840 bytes, 20 ms at 48 kHz - which is LESS than one
+# coded frame (1,536 samples, 6,144 bytes). A write only completes as the DAC
+# drains, so once playback is under way the producer has the queue's depth, not
+# the frame's 32 ms, between one write returning and the DAC running dry.
+#
+# Small on purpose for the flash and SD sources: every millisecond here is a
+# millisecond of latency, and a deep queue would hide a decoder that cannot
+# keep up, which is one of the things this example exists to reveal. A network
+# source is a different case, and this is where its depth is set - the README
+# records what a board needed.
+config AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS
+    int "I2S DMA descriptors"
+    default 4
+    range 2 64
+
+config AC3FORGE_EXAMPLE_I2S_DMA_FRAMES
+    int "Sample frames per I2S DMA descriptor"
+    default 240
+    range 8 1023
+    help
+        1023 is the driver's ceiling for stereo 16-bit: a descriptor holds at
+        most 4,092 bytes.
+
 # WHICH SINK. Kconfig rather than a -D cache variable, because the component's
 # own CMakeLists is evaluated in IDF's separate requirements-expansion process,
 # which does not inherit cache variables set by the project above it - CONFIG_
@@ -129,19 +154,42 @@ config AC3FORGE_EXAMPLE_SD_D0_GPIO
     depends on AC3FORGE_EXAMPLE_SOURCE_SD
     default 2
 
+# WHICH NETWORK carries the HTTP source. A directory CMake picks
+# (main/source/http/net/), the same rule as the source and sink seams: the HTTP
+# client never learns which. WiFi is what a board has. The OpenCores Ethernet
+# MAC is what QEMU has - `idf.py qemu` attaches one to the host's network, and
+# the guest reaches the host at 10.0.2.2 - so it is how CI runs this source end
+# to end with no board and no access point.
+choice AC3FORGE_EXAMPLE_NETWORK
+    prompt "Network for the HTTP source"
+    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    default AC3FORGE_EXAMPLE_NETWORK_WIFI
+
+config AC3FORGE_EXAMPLE_NETWORK_WIFI
+    bool "WiFi station"
+
+config AC3FORGE_EXAMPLE_NETWORK_OPENETH
+    bool "OpenCores Ethernet MAC (QEMU only)"
+    select ETH_USE_OPENETH
+    help
+        The MAC qemu-system-xtensa emulates. Not a device that exists on any
+        board, which is why the driver refuses to run on one.
+
+endchoice
+
 config AC3FORGE_EXAMPLE_WIFI_SSID
     string "WiFi SSID"
-    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    depends on AC3FORGE_EXAMPLE_NETWORK_WIFI
     default "my-network"
 
 config AC3FORGE_EXAMPLE_WIFI_PASSWORD
     string "WiFi password"
-    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    depends on AC3FORGE_EXAMPLE_NETWORK_WIFI
     default ""
 
 config AC3FORGE_EXAMPLE_WIFI_RETRIES
     int "Association attempts before giving up"
-    depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
+    depends on AC3FORGE_EXAMPLE_NETWORK_WIFI
     default 5
     help
         Bounded, so a wrong password fails and says so instead of retrying
@@ -153,6 +201,58 @@ config AC3FORGE_EXAMPLE_HTTP_URL
     depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
     default "http://example.invalid/sample.ac3"
 
+# THE PLAYER'S TWO TASKS - see esp-idf/ac3forge/include/ac3forge/player.hpp. The
+# fetch task reads the source into a ring; the decode task drains the ring,
+# decodes and writes to the sink. WiFi and TCP/IP run on core 0, so the fetch
+# task goes beside them and the decode task has core 1 to itself. -1 lets the
+# scheduler choose, for a build with one core.
+config AC3FORGE_EXAMPLE_FETCH_CORE
+    int "Core for the fetch task (-1 = any)"
+    default 0
+    range -1 1
+
+config AC3FORGE_EXAMPLE_DECODE_CORE
+    int "Core for the decode task (-1 = any)"
+    default 1
+    range -1 1
+
+config AC3FORGE_EXAMPLE_RING_BYTES
+    int "Ring between fetch and decode, bytes of bitstream"
+    default 32768
+    range 4096 262144
+    help
+        How long a stall in the source the DAC never hears: 32 KB is 0.57 s of
+        a 448 kbit/s stream. In PSRAM when the part has it and the option
+        below says so, in internal SRAM otherwise.
+
+config AC3FORGE_EXAMPLE_RING_IN_PSRAM
+    int "Put the ring in PSRAM when present (1) or internal SRAM (0)"
+    default 1
+    range 0 1
+    help
+        An int rather than a bool so it reaches C++ as a plain constant, the
+        same reason the capture sink's choice is one.
+
+config AC3FORGE_EXAMPLE_DECODE_STACK_BYTES
+    int "Stack for the decode task, bytes"
+    default 32768
+    range 12288 65536
+    help
+        The player reports what the decode actually used as
+        stream.decode_stack_free at the end of a run: this minus that. Measured
+        under QEMU on 2026-09-10, an AC-3 5.1 decode left 20,604 of 32,768
+        spare. The default keeps the probe's margin; a shape that is short of
+        heap can spend some of it, knowing the number.
+
+# THE CONTROL SURFACE - ac3forge::Control, esp-idf/ac3forge/include/ac3forge/
+# control.hpp: GET /status, POST /play with a location, POST /stop, POST /volume.
+# Only worth having where there is a network, so 0 (off) by default; the HTTP
+# source's configurations turn it on.
+config AC3FORGE_EXAMPLE_CONTROL_PORT
+    int "TCP port for the REST control surface (0 = none)"
+    default 0
+    range 0 65535
+
 config AC3FORGE_EXAMPLE_MAX_LAPS
     int "Stop after this many passes through the stream (0 = never stop)"
     default 0
@@ -160,5 +260,15 @@ config AC3FORGE_EXAMPLE_MAX_LAPS
         0 plays forever, which is what a demo on a board should do. CI sets a
         small number so the application finishes and prints a verdict something
         can gate on.
+
+config AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES
+    int "Print a progress line every this many frames (0 = only at the end of a pass)"
+    default 0
+    help
+        The timing line is printed at the end of each pass through the stream.
+        A source that cannot rewind - HTTP - makes exactly one pass, which for
+        a long stream means one line after minutes of silence on the console.
+        A non-zero value prints the same figures, cumulative, every N frames as
+        well; 125 is every four seconds at 48 kHz.
 
 endmenu
