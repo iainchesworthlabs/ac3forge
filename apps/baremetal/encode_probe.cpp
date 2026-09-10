@@ -48,17 +48,14 @@
 #include "encode_fixture.hpp"
 #include "probe.hpp"
 
-// AC3FORGE_PROBE_SEVEN_ONE is 0 or 1 from CMake (apps/baremetal/CMakeLists.txt,
-// platform/esp32s3/main/CMakeLists.txt); a build that predates the option
-// gets the default the probe has always had.
-#ifndef AC3FORGE_PROBE_SEVEN_ONE
-#define AC3FORGE_PROBE_SEVEN_ONE 0
-#endif
-
 namespace {
 
 // The 7.1 access-unit fixture is a SWITCH, not a default - see the block in
 // run() and encode_fixture.hpp for the measurement that made it one.
+// AC3FORGE_PROBE_SEVEN_ONE is 0 or 1 from CMake, defined by every build of
+// this file (apps/baremetal/CMakeLists.txt, platform/esp32s3/main/
+// CMakeLists.txt) - a value, not a conditional, per the platform-tree rule
+// tools/checks/check_platform_macros.ps1 enforces.
 constexpr bool kProbeSevenOne = AC3FORGE_PROBE_SEVEN_ONE != 0;
 
 // --- heap accounting -------------------------------------------------------
