@@ -163,6 +163,16 @@ AC3FORGE_EXPORT void mdct256_forward_first(std::span<const double, 256> windowed
 AC3FORGE_EXPORT void mdct256_forward_second(std::span<const double, 256> windowed,
                                             std::span<double, 128> coeffs, bool fast = false);
 
+// The float32 forms of the short-block pair (roadmap PF7), for the encoders'
+// analysis front end under the minimum-footprint profile
+// (ac3/internal/encode_scalar.hpp). No `fast` parameter, as for the float32
+// mdct512_forward above: the direct evaluation stays double, and these are
+// the same two folds in float.
+AC3FORGE_EXPORT void mdct256_forward_first(std::span<const float, 256> windowed,
+                                           std::span<float, 128> coeffs);
+AC3FORGE_EXPORT void mdct256_forward_second(std::span<const float, 256> windowed,
+                                            std::span<float, 128> coeffs);
+
 // Normative inverse for blksw = 1 (§7.9.4.2): takes the SAME 256-length
 // interleaved coefficient set a long block would carry and produces 512
 // WINDOWED time samples, using the identical overlap-add as

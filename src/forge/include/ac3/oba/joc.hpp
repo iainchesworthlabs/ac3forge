@@ -388,6 +388,13 @@ struct ReconstructionState {
     // same object.
     std::vector<std::array<recon_scalar_t, 256>> object_mdct_scratch{};
     std::vector<std::array<recon_scalar_t, 512>> synth_scratch{};
+    // FrameParameters::matrix narrowed once per call, for a decoder whose
+    // own scalar is float (the minimum-footprint profile): the mixing reads
+    // each coefficient many times a frame and the matrix itself is double,
+    // so narrowing per read was a software routine per read on that
+    // profile's targets. A double decoder never touches this - it reads the
+    // matrix directly - so the member stays empty there.
+    std::vector<recon_scalar_t> matrix_scratch{};
 
     // --- Domain::kQmf only -------------------------------------------------
 

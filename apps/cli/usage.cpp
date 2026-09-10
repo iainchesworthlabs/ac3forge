@@ -565,6 +565,12 @@ void print_option_blocks(std::uint32_t mask) {
                      "decoder-defined, so this is for a run that needs bit-for-bit agreement "
                      "with another decoder more than it needs dither's own perceptual benefit "
                      "(tools/checks/verify_gold_reference.sh is the one that does)");
+        fmt::println("  delta=off         skip §7.2.2.6 delta bit allocation - the corrections "
+                     "chosen per run from the real coefficients and the second fit that weighs "
+                     "them - wherever this command encodes; eac3-encode's [tools] argument has "
+                     "the bare nodelta token. The encoders' first effort level "
+                     "(planning/arithmetic-tiers.md): what a part with little time for the "
+                     "search gives up, measured on the ESP32-S3 page");
         fmt::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
                      "signature (needs signing-key=); see docs/concepts/object-signing.md");
         fmt::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "

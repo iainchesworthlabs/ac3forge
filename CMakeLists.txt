@@ -218,6 +218,26 @@ if(AC3FORGE_MINIMAL_DECODER AND AC3FORGE_MINIMAL_ENCODER)
         "hold both at once.")
 endif()
 
+# Where a frame's time goes, on a target that cannot run Tracy. Routes the
+# library's AC3_ZONE_SCOPED_N() markers - the same ones AC3FORGE_ENABLE_TRACY
+# turns into Tracy zones - to two functions the APPLICATION supplies (see
+# src/forge/src/internal/profiling/stage_timers/), so a bare-metal probe can
+# report per-stage microseconds beside its per-frame ones. Minimum-footprint
+# profile only: it is that profile's targets that have no other profiler, and
+# apps/baremetal/stage_timers.cpp is the one implementation of the two
+# functions. Off by default, and when off the markers compile to nothing
+# exactly as before, so a timed build and a plain one differ only in the
+# library's include path.
+option(AC3FORGE_STAGE_TIMERS
+    "Minimum-footprint profile only: route zone markers to an application-supplied stage timer"
+    OFF)
+if(AC3FORGE_STAGE_TIMERS AND NOT (AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER))
+    message(FATAL_ERROR
+        "AC3FORGE_STAGE_TIMERS is only meaningful with AC3FORGE_MINIMAL_DECODER or "
+        "AC3FORGE_MINIMAL_ENCODER - the ordinary library has Tracy (AC3FORGE_ENABLE_TRACY) for "
+        "this, and nothing in it defines the two functions the stage-timer backend calls.")
+endif()
+
 # apps/cli, apps/gui, tests/ and examples/ all link matroska::matroska, mp4::mp4 and
 # mpegts::mpegts unconditionally - none of them are written to cope with any of the three being
 # absent. AC3FORGE_BUILD_MATROSKA=OFF, AC3FORGE_BUILD_MP4=OFF or AC3FORGE_BUILD_MPEGTS=OFF only

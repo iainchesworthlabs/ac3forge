@@ -14,6 +14,24 @@ CONFIG_IDF_TARGET="esp32s3"
 # thing, and the profile's whole subject is size.
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 
+# 240 MHz, asked for rather than inherited.
+#
+# This was never set, so it took ESP-IDF's default of 160 - two thirds of what
+# the part does - and every timing figure this port produced was at that clock
+# without anyone knowing. It could not have been noticed here: QEMU is not
+# cycle-accurate and reports a fabricated `cpu_mhz`, so the emulator's own
+# numbers were uninterpretable either way.
+#
+# On silicon the difference is almost exactly the clock ratio - 1.44x to 1.49x
+# across the eight fixtures, against an ideal 1.50 - which says the decode is
+# compute-bound rather than stalled on flash cache, and that there is no further
+# speed to be had from configuration. See docs/platforms/esp32.md's Timing
+# section for what that leaves.
+#
+# A decode that has to keep up with a 32 ms frame should name the clock it
+# needs.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
 # PSRAM stays OFF, deliberately, even though the board this is developed
 # against (ESP32-S3-DevKitC-1-N16R8) has 8 MB of it.
 #

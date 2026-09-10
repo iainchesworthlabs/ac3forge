@@ -519,6 +519,8 @@ bool parse_tools(std::string_view text, Tools& out) {
             out.fast_mdct = false;  // the direct §8.2.3.2 reference form
         } else if (token == "nodither") {
             out.dither = false;  // dithflag pinned at 0, not content-decided
+        } else if (token == "nodelta") {
+            out.delta = false;  // no §7.2.2.6 segments, and no second fit to weigh them
         } else if (token.starts_with("numblkscod:")) {
             out.numblkscod = parse_index(token.substr(11), 3);
             if (out.numblkscod < 0) {
@@ -567,6 +569,9 @@ std::string format_tools(const Tools& tools) {
         if (!tools.dither) {
             add("nodither");
         }
+        if (!tools.delta) {
+            add("nodelta");
+        }
         return out;
     }
     if (tools.coupling) {
@@ -602,6 +607,9 @@ std::string format_tools(const Tools& tools) {
     }
     if (!tools.dither) {
         add("nodither");
+    }
+    if (!tools.delta) {
+        add("nodelta");
     }
     return out.empty() ? std::string{"none"} : out;
 }
@@ -956,6 +964,7 @@ EncoderConfig ac3_config(const Plan& plan) {
             .cplbegf = plan.tools.cplbegf,
             .fast_mdct = plan.tools.fast_mdct,
             .dither = plan.tools.dither,
+            .delta_allocation = plan.tools.delta,
             .drc = plan.meta.drc,
             .heavy = plan.meta.heavy,
             .drc2 = cp.bed_acmod == Acmod::kDualMono
@@ -992,6 +1001,7 @@ void apply_tools(const Tools& tools, eac3::FrameConfig& config) {
     config.transient_prenoise = tools.transient_prenoise;
     config.fast_mdct = tools.fast_mdct;
     config.dither = tools.dither;
+    config.delta_allocation = tools.delta;
     config.numblkscod = tools.numblkscod;
     // EQ13: CBR only - see FrameConfig::search's own comment for what
     // search=distortion/perceptual actually do here, and for how the two

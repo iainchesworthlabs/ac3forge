@@ -1,0 +1,329 @@
+#pragma once
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <span>
+#include <vector>
+
+#include "ac3/core/eac3_tables.hpp"
+#include "ac3/decoder/decoder.hpp"
+#include "ac3/oba/oamd.hpp"
+#include "ac3/spatial/spatial.hpp"
+
+#include "ac3forge/layout.hpp"
+
+// From what the decoder rendered to what the speakers want, one 256-sample
+// block at a time.
+//
+// The decoder hands over a PcmBlock: the coded channels of the programme in
+// Table E2.5 order and, when the stream carries an object layer and the
+// decoder reconstructed it, the objects beside them with the metadata that
+// places them. This turns that into one block per output slot of an
+// OutputLayout, two ways:
+//
+//   THE BED, when there are no objects to place (an AC-3 or plain E-AC-3
+//   stream, or a player that chose not to reconstruct). Every coded channel is
+//   a source at its Table E2.5 direction, panned onto the layout's speakers by
+//   ac3::spatial::pan_direction - which for a channel whose location the layout
+//   has is unit gain to that one slot, exactly, and for one it lacks (a 7.1
+//   stream's rear surrounds on a 5.1 room) is the pairwise spread the panner
+//   gives. The LFE goes to the LFE slots and nowhere else.
+//
+//   THE OBJECTS, when a unit carries them and the player asked for them. Each
+//   object's own reconstructed audio is summed into the speakers by its OAMD
+//   position, at its own gain - the render apps/baremetal/probe.cpp's
+//   eac3_atmos_render row performs and ac3cli's `qc objects=` meters, in the
+//   same arithmetic and the same order, so a level measured here agrees with
+//   the probe's reference to the digit. The bed's other channels are NOT added
+//   on top: for a JOC programme the bed IS the objects' 5.1 fold, and adding it
+//   would render everything twice. The bed's LFE passes through, because it is
+//   not an object.
+//
+// The gains are trigonometry in double, refreshed when the coded layout
+// changes (set_bed) and once per unit for the objects (set_objects, on the
+// unit's first block); the per-sample work is float multiply-adds on the FPU,
+// which is where an ESP32-S3 spends its time well. Nothing here allocates
+// except describe_objects' own vector of descriptions, once per unit.
+//
+// Free of ESP-IDF, and tested on the host in tests/io/test_layout.cpp: the
+// geometry has its own tests under tests/spatial/, so what is checked here is
+// the indexing between coded channels, objects and slots - the part where a
+// swapped subscript is silent.
+
+namespace ac3forge {
+
+class LayoutRenderer {
+   public:
+    using Location = ac3::eac3::chanmap::Location;
+    static constexpr std::size_t kMaxSlots = OutputLayout::kMaxSlots;
+    // JOC carries at most sixteen objects (TS 103 420); a rendered programme
+    // has at most sixteen slots (§E3.8.2).
+    static constexpr std::size_t kMaxObjects = 16;
+    static constexpr std::size_t kMaxCoded = 16;
+
+    explicit LayoutRenderer(const OutputLayout& layout) : layout_(layout) {
+        for (std::size_t slot = 0; slot < layout_.slots(); ++slot) {
+            const Speaker& speaker = layout_.slot(slot);
+            if (speaker.kind == Speaker::Kind::kSpeaker) {
+                target_directions_[targets_] = speaker.direction;
+                target_slots_[targets_] = slot;
+                ++targets_;
+            }
+        }
+    }
+
+    [[nodiscard]] const OutputLayout& layout() const { return layout_; }
+
+    // The coded layout of the units about to arrive: the channels a PcmBlock
+    // will carry, in its order. Recomputes every bed gain. Call when it
+    // changes, which for a stream is once.
+    void set_bed(const ac3::eac3::chanmap::Layout& coded) {
+        coded_ = coded;
+        bed_channels_ = std::min(static_cast<std::size_t>(coded.count), kMaxCoded);
+        for (auto& row : bed_gains_) {
+            row.fill(0.0F);
+        }
+        // Where the coded surrounds sit depends on the coded layout's own
+        // company, exactly as the output layout's do - see OutputLayout.
+        const bool has_rears = coded.index_of(Location::kLrs) >= 0;
+        const bool has_side_discrete = coded.index_of(Location::kLsd) >= 0;
+        const bool layout_has_lfe2 = layout_.index_of(Location::kLfe2) >= 0;
+        std::array<double, kMaxSlots> gains{};
+        for (std::size_t c = 0; c < bed_channels_; ++c) {
+            const Location location = coded[static_cast<int>(c)];
+            if (location == Location::kLfe || location == Location::kLfe2) {
+                // LFE to the LFE feeds. A second LFE goes to a second feed when
+                // the room has one, and joins the first otherwise; the first
+                // never lands on a slot named LFE2.
+                for (std::size_t slot = 0; slot < layout_.slots(); ++slot) {
+                    const Speaker& speaker = layout_.slot(slot);
+                    if (speaker.kind != Speaker::Kind::kLfe) {
+                        continue;
+                    }
+                    const bool slot_is_lfe2 = speaker.location == Location::kLfe2;
+                    const bool wanted = location == Location::kLfe2
+                                            ? (layout_has_lfe2 ? slot_is_lfe2 : !slot_is_lfe2)
+                                            : !slot_is_lfe2;
+                    if (wanted) {
+                        bed_gains_[c][slot] = 1.0F;
+                    }
+                }
+                continue;
+            }
+            const int exact = layout_.index_of(location);
+            if (exact >= 0 && layout_.slot(static_cast<std::size_t>(exact)).kind ==
+                                  Speaker::Kind::kSpeaker) {
+                bed_gains_[c][static_cast<std::size_t>(exact)] = 1.0F;
+                continue;
+            }
+            if (targets_ == 0) {
+                continue;
+            }
+            const auto direction =
+                ac3::spatial::direction_of(location, has_rears, has_side_discrete);
+            ac3::spatial::pan_direction(
+                direction, std::span<const ac3::spatial::Direction>(target_directions_.data(), targets_),
+                std::span<double>(gains.data(), targets_));
+            for (std::size_t t = 0; t < targets_; ++t) {
+                bed_gains_[c][target_slots_[t]] = static_cast<float>(gains[t]);
+            }
+        }
+    }
+
+    // The objects of the unit about to be rendered, as describe_objects sees
+    // them: position, gain and whether active. Only the first kMaxObjects are
+    // placed.
+    void set_objects(std::span<const ac3::oba::DisplayObject> objects) {
+        object_count_ = std::min(objects.size(), kMaxObjects);
+        std::array<double, kMaxSlots> gains{};
+        for (std::size_t i = 0; i < object_count_; ++i) {
+            object_gains_[i].fill(0.0F);
+            if (!objects[i].active || targets_ == 0) {
+                continue;
+            }
+            const auto direction = ac3::spatial::position_direction(
+                objects[i].position.x, objects[i].position.y, objects[i].position.z);
+            ac3::spatial::pan_direction(
+                direction, std::span<const ac3::spatial::Direction>(target_directions_.data(), targets_),
+                std::span<double>(gains.data(), targets_));
+            const double linear = std::pow(10.0, objects[i].gain_db / 20.0);
+            for (std::size_t t = 0; t < targets_; ++t) {
+                // Double until here, float from here: the probe's arithmetic.
+                object_gains_[i][target_slots_[t]] = static_cast<float>(gains[t] * linear);
+            }
+        }
+    }
+
+    // The same, from the metadata a PcmBlock carries. `audio_count` is how
+    // many object signals the block has (PcmBlock::objects.size()); the
+    // description and the audio are parallel, so the shorter wins.
+    void set_objects(const ac3::oba::DecodedProgram* metadata, std::size_t audio_count) {
+        if (metadata == nullptr || audio_count == 0) {
+            object_count_ = 0;
+            return;
+        }
+        const std::vector<ac3::oba::DisplayObject> described = ac3::oba::describe_objects(*metadata);
+        const std::size_t count = std::min(described.size(), audio_count);
+        set_objects(std::span<const ac3::oba::DisplayObject>(described.data(), count));
+    }
+
+    [[nodiscard]] std::size_t object_count() const { return object_count_; }
+    [[nodiscard]] std::size_t bed_channels() const { return bed_channels_; }
+    [[nodiscard]] float bed_gain(std::size_t coded, std::size_t slot) const {
+        return bed_gains_[coded][slot];
+    }
+    [[nodiscard]] float object_gain(std::size_t object, std::size_t slot) const {
+        return object_gains_[object][slot];
+    }
+
+    // One block. `out` is one span per slot of the layout (out.size() ==
+    // layout().slots()), each at least as long as the block; the first
+    // block-length samples of every slot are OVERWRITTEN - an empty slot with
+    // zeros, so a bus reused from the last block never replays it. `objects`
+    // says whether to place the objects the block carries (when it carries
+    // none, the bed is placed whatever this says); `gain` is applied to
+    // everything, 1.0 being free.
+    void render(const ac3::PcmBlock& block, bool objects, float gain,
+                std::span<const std::span<float>> out) const {
+        const std::size_t slots = std::min(out.size(), layout_.slots());
+        const std::size_t n = block_length(block, out);
+        for (std::size_t slot = 0; slot < slots; ++slot) {
+            std::fill_n(out[slot].data(), n, 0.0F);
+        }
+        const bool place_objects = objects && object_count_ > 0 && !block.objects.empty();
+        if (place_objects) {
+            const std::size_t count = std::min(object_count_, block.objects.size());
+            for (std::size_t i = 0; i < count; ++i) {
+                const std::span<const float> audio = block.objects[i];
+                if (audio.size() < n) {
+                    continue;
+                }
+                for (std::size_t t = 0; t < targets_; ++t) {
+                    const std::size_t slot = target_slots_[t];
+                    if (slot >= slots) {
+                        continue;
+                    }
+                    const float g = object_gains_[i][slot];
+                    if (g <= 0.0F) {
+                        continue;
+                    }
+                    float* const dst = out[slot].data();
+                    for (std::size_t k = 0; k < n; ++k) {
+                        dst[k] += g * audio[k];
+                    }
+                }
+            }
+            // The bed's LFE, and only that, through its own gains.
+            for (std::size_t c = 0; c < bed_channels_ && c < block.channels.size(); ++c) {
+                const Location location = coded_[static_cast<int>(c)];
+                if (location != Location::kLfe && location != Location::kLfe2) {
+                    continue;
+                }
+                add_channel(block.channels[c], c, n, slots, out);
+            }
+        } else {
+            for (std::size_t c = 0; c < bed_channels_ && c < block.channels.size(); ++c) {
+                add_channel(block.channels[c], c, n, slots, out);
+            }
+        }
+        if (gain != 1.0F) {
+            for (std::size_t slot = 0; slot < slots; ++slot) {
+                float* const dst = out[slot].data();
+                for (std::size_t k = 0; k < n; ++k) {
+                    dst[k] *= gain;
+                }
+            }
+        }
+    }
+
+    // A block the decoder's own output stage already folded (kLoRo, kLtRt,
+    // kMono): channel j goes to the j-th full-bandwidth slot, or by name when
+    // the slots have names - L to the slot named L, R to R - so a list that
+    // wires a stereo DAC as "R,L" still plays the right way round. Empty and
+    // LFE slots are written as zeros.
+    void render_folded(const ac3::PcmBlock& block, float gain,
+                       std::span<const std::span<float>> out) const {
+        const std::size_t slots = std::min(out.size(), layout_.slots());
+        const std::size_t n = block_length(block, out);
+        for (std::size_t slot = 0; slot < slots; ++slot) {
+            std::fill_n(out[slot].data(), n, 0.0F);
+        }
+        std::size_t next_speaker = 0;
+        for (std::size_t ch = 0; ch < block.channels.size(); ++ch) {
+            int slot = -1;
+            if (block.channels.size() == 2) {
+                slot = layout_.index_of(ch == 0 ? Location::kLeft : Location::kRight);
+            }
+            if (slot < 0) {
+                while (next_speaker < slots &&
+                       layout_.slot(next_speaker).kind != Speaker::Kind::kSpeaker) {
+                    ++next_speaker;
+                }
+                if (next_speaker >= slots) {
+                    break;
+                }
+                slot = static_cast<int>(next_speaker++);
+            }
+            const std::span<const float> src = block.channels[ch];
+            float* const dst = out[static_cast<std::size_t>(slot)].data();
+            const std::size_t m = std::min(n, src.size());
+            if (gain == 1.0F) {
+                std::copy_n(src.data(), m, dst);
+            } else {
+                for (std::size_t k = 0; k < m; ++k) {
+                    dst[k] = src[k] * gain;
+                }
+            }
+        }
+    }
+
+   private:
+    static std::size_t block_length(const ac3::PcmBlock& block,
+                                    std::span<const std::span<float>> out) {
+        std::size_t n = block.channels.empty() ? 0 : block.channels.front().size();
+        if (n == 0 && !block.objects.empty()) {
+            n = block.objects.front().size();
+        }
+        for (const auto& slot : out) {
+            n = std::min(n, slot.size());
+        }
+        return n;
+    }
+
+    void add_channel(std::span<const float> src, std::size_t c, std::size_t n, std::size_t slots,
+                     std::span<const std::span<float>> out) const {
+        if (src.size() < n) {
+            return;
+        }
+        for (std::size_t slot = 0; slot < slots; ++slot) {
+            const float g = bed_gains_[c][slot];
+            if (g == 0.0F) {
+                continue;
+            }
+            float* const dst = out[slot].data();
+            if (g == 1.0F) {
+                for (std::size_t k = 0; k < n; ++k) {
+                    dst[k] += src[k];
+                }
+            } else {
+                for (std::size_t k = 0; k < n; ++k) {
+                    dst[k] += g * src[k];
+                }
+            }
+        }
+    }
+
+    OutputLayout layout_;
+    std::array<ac3::spatial::Direction, kMaxSlots> target_directions_{};
+    std::array<std::size_t, kMaxSlots> target_slots_{};
+    std::size_t targets_ = 0;
+    ac3::eac3::chanmap::Layout coded_{};
+    std::size_t bed_channels_ = 0;
+    std::array<std::array<float, kMaxSlots>, kMaxCoded> bed_gains_{};
+    std::array<std::array<float, kMaxSlots>, kMaxObjects> object_gains_{};
+    std::size_t object_count_ = 0;
+};
+
+}  // namespace ac3forge

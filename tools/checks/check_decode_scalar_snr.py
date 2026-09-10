@@ -1,4 +1,8 @@
-"""Gate the float32 decode path against the double one (roadmap PF7).
+"""Gate a second decode scalar's path against the double one (roadmap PF7).
+
+Written for the float32 path and used for the fixed-point one too
+(planning/arithmetic-tiers.md): --float-cli names whichever build is under
+test, and --min-snr-db the floor that build is held to.
 
 `AC3FORGE_DECODE_SCALAR=float` builds the decoder's coefficient stores,
 transform scratch and overlap-add history as `float` instead of `double` - the
@@ -43,11 +47,15 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 COMPARE = REPO_ROOT / "tools" / "checks" / "compare_wav.py"
 
-# The same three streams the cross-platform hash gate pins, and for the same
+# The three streams the cross-platform hash gate pins, and for the same
 # reason: they are this project's own encoder's output over the gold-reference
 # WAV, so they exercise AC-3, plain E-AC-3 and E-AC-3 with coupling without
-# anyone having to keep a second corpus agreeing with the first.
-STREAMS = ("gold.ac3", "gold.ec3", "gold_cpl.ec3")
+# anyone having to keep a second corpus agreeing with the first. Plus one the
+# hash gate does not pin: enhanced coupling, whose decode is the most involved
+# thing either non-double scalar does - three inverse transforms, a 512-point
+# DFT and a per-bin complex reconstruction per coupled channel per block - and
+# which neither scalar's check measured until 2026-09-10.
+STREAMS = ("gold.ac3", "gold.ec3", "gold_cpl.ec3", "gold_ecpl.ec3")
 
 # 120 dB against a measured 138.85. The margin is wide on purpose: this gate
 # exists to catch a float32 path that has BROKEN - a lost precision step, a
@@ -116,8 +124,8 @@ def main() -> int:
                   f"(floor {args.min_snr_db:.0f})")
         else:
             print(f"::error::[FAIL] {name}: worst channel {channel} at {snr:.2f} dB, "
-                  f"floor is {args.min_snr_db:.0f} dB - the float32 decode has diverged "
-                  f"from the double one by more than precision alone accounts for",
+                  f"floor is {args.min_snr_db:.0f} dB - the decode under test has diverged "
+                  f"from the double one by more than its precision accounts for",
                   file=sys.stderr)
             failed = True
 

@@ -17,6 +17,7 @@
 #include "ac3/internal/arch/simd.hpp"
 #include "ac3/internal/profiling.hpp"
 #include "bitalloc_internal.hpp"
+#include "scalar_math.hpp"
 
 namespace ac3 {
 
@@ -171,75 +172,63 @@ std::array<int, 50> band_psd(std::span<const int> psd, int start, int end) {
 // either way, `mask_out` null on the public path (see bitalloc_internal.hpp
 // for why that one is not just an added parameter on the public signature).
 namespace {
-void compute_bit_allocation_impl(std::span<const std::uint8_t> exps, SampleRate sample_rate,
-                                 const BitAllocCodes& codes, int csnroffst, int fsnroffst,
-                                 std::span<std::uint8_t> bap, const BitAllocRegion& region,
-                                 std::array<int, 50>* mask_out) {
-    AC3_ZONE_SCOPED_N("compute_bit_allocation");
-    assert(exps.size() == bap.size());
-    // A region outside 1..kMaxMantissas allocates nothing, and says so here
-    // rather than walking off the end of the arrays below. Both ends are
-    // real, and fuzz_signing_verify (roadmap VX3) reported both:
-    //
-    //  - Empty. §7.2.2.4's band walk runs from kMaskTab[start] to
-    //    kMaskTab[end - 1], and `end - 1` on end == 0 is -1, indexing that
-    //    256-entry table at SIZE_MAX.
-    //  - Longer than kMaxMantissas. §7.2.2.2's psd array is exactly that
-    //    long (A/52 admits no more mantissas than that in one channel), so
-    //    the first bin past it is a stack write one element off the end -
-    //    which is what ASan actually reported, a 4-byte WRITE at offset
-    //    1076 of a 1012-byte frame object.
-    //
-    // No encode path produces either, and the assert below still says so for
-    // a caller's benefit. But `exps` reaches here, through both the decoder
-    // and ac3::signing's own frame walk, sized by a field value a hostile
-    // stream picks - and this project has been here before (8386c8f: a
-    // decoder shifting by an unvalidated exponent). A contract that only a
-    // debug assert enforces is not enforced in the builds that ship.
-    //
-    // bap is filled rather than left alone: it is the caller's output, and
-    // "no allocation" is what an unreadable region gets, the same answer
-    // §7.2.2.1.1's all-zero-SNR case gives just below.
-    //
-    // region.start joins the same guard rather than waiting to be reported
-    // separately: it comes from the same stream (cplstrtmant, spx_startmant),
-    // it indexes kMaskTab directly two statements after the size check, and
-    // the assert immediately below already states the range - so leaving it
-    // to that assert alone would repeat the exact mistake the two findings
-    // above were.
-    if (exps.empty() || exps.size() > kMaxMantissas || region.start < 0 ||
-        static_cast<std::size_t>(region.start) >= exps.size()) {
-        std::ranges::fill(bap, std::uint8_t{0});
-        if (mask_out != nullptr) {
-            mask_out->fill(0);
-        }
-        return;
+// The region checks compute_bit_allocation_impl used to make inline, shared
+// with the split form below so the two agree on what an unusable region is.
+//
+// A region outside 1..kMaxMantissas allocates nothing, and says so here
+// rather than walking off the end of the arrays below. Both ends are
+// real, and fuzz_signing_verify (roadmap VX3) reported both:
+//
+//  - Empty. §7.2.2.4's band walk runs from kMaskTab[start] to
+//    kMaskTab[end - 1], and `end - 1` on end == 0 is -1, indexing that
+//    256-entry table at SIZE_MAX.
+//  - Longer than kMaxMantissas. §7.2.2.2's psd array is exactly that
+//    long (A/52 admits no more mantissas than that in one channel), so
+//    the first bin past it is a stack write one element off the end -
+//    which is what ASan actually reported, a 4-byte WRITE at offset
+//    1076 of a 1012-byte frame object.
+//
+// No encode path produces either, and the assert in the callers still says
+// so for a caller's benefit. But `exps` reaches here, through both the
+// decoder and ac3::signing's own frame walk, sized by a field value a hostile
+// stream picks - and this project has been here before (8386c8f: a decoder
+// shifting by an unvalidated exponent). A contract that only a debug assert
+// enforces is not enforced in the builds that ship.
+//
+// region.start joins the same guard rather than waiting to be reported
+// separately: it comes from the same stream (cplstrtmant, spx_startmant),
+// it indexes kMaskTab directly two statements after the size check, and
+// the assert immediately below already states the range - so leaving it
+// to that assert alone would repeat the exact mistake the two findings
+// above were.
+bool region_usable(std::span<const std::uint8_t> exps, const BitAllocRegion& region) {
+    return !(exps.empty() || exps.size() > kMaxMantissas || region.start < 0 ||
+             static_cast<std::size_t>(region.start) >= exps.size());
+}
+
+int floor_of(const BitAllocCodes& codes) {
+    int floor = kFloor[static_cast<std::size_t>(codes.floorcod)];
+    if (floor >= 0x8000) {
+        floor -= 0x10000;  // 0xf800 is a negative 16-bit value (-2048)
     }
+    return floor;
+}
+
+// §7.2.2.2-§7.2.2.5 for one channel: the decoded exponents to the banded
+// masking curve, before the delta correction and before the offset. The
+// region must be usable (region_usable above).
+void masking_curve(std::span<const std::uint8_t> exps, SampleRate sample_rate,
+                   const BitAllocCodes& codes, const BitAllocRegion& region,
+                   std::array<int, 50>& mask) {
     const int end = static_cast<int>(exps.size());
     assert(end >= 1 && end <= static_cast<int>(kMaxMantissas));
     assert(region.start >= 0 && region.start < end);
-
-    // §7.2.2.1.1 special case: when EVERY SNR offset in the block is zero,
-    // the whole bap array is zero and no allocation runs. The condition spans
-    // all channels, so the caller supplies it.
-    if (region.snr_all_zero) {
-        std::ranges::fill(bap, std::uint8_t{0});
-        if (mask_out != nullptr) {
-            mask_out->fill(0);
-        }
-        return;
-    }
 
     const int sdecay = kSlowDec[static_cast<std::size_t>(codes.sdcycod)];
     const int fdecay = kFastDec[static_cast<std::size_t>(codes.fdcycod)];
     const int sgain = kSlowGain[static_cast<std::size_t>(codes.sgaincod)];
     const int dbknee = kDbPerBit[static_cast<std::size_t>(codes.dbpbcod)];
-    int floor = kFloor[static_cast<std::size_t>(codes.floorcod)];
-    if (floor >= 0x8000) {
-        floor -= 0x10000;  // 0xf800 is a negative 16-bit value (-2048)
-    }
     const int fgain = kFastGain[static_cast<std::size_t>(codes.fgaincod)];
-    const int snroffset = snr_offset(csnroffst, fsnroffst);
     const int kStart = region.start;
 
     // §7.2.2.2: exponents -> 13-bit signed log PSD. exponents_to_psd's own
@@ -326,7 +315,6 @@ void compute_bit_allocation_impl(std::span<const std::uint8_t> exps, SampleRate 
     }
 
     // §7.2.2.5: masking curve (excitation, dB knee boost, hearing threshold).
-    std::array<int, 50> mask{};
     const auto& hth = *kHearingThreshold[static_cast<std::size_t>(fscod_family(sample_rate))];
     for (int bin = bndstrt; bin < bndend; ++bin) {
         if (bndpsd[static_cast<std::size_t>(bin)] < dbknee) {
@@ -336,86 +324,150 @@ void compute_bit_allocation_impl(std::span<const std::uint8_t> exps, SampleRate 
         mask[static_cast<std::size_t>(bin)] = std::max<int>(excite[static_cast<std::size_t>(bin)],
                                                             hth[static_cast<std::size_t>(bin)]);
     }
+}
 
-    // §7.2.2.6: delta bit allocation. mask[]/psd[] units are 128 per exponent
-    // step, which is exactly one Table 5.17 6 dB step, so `delta` below is
-    // added directly with no unit conversion. `region.delta.deltnseg == 0`
-    // (the default) makes this a no-op, matching the spec's own recommended
-    // reset state.
-    //
-    // The spec pseudocode initializes `band = 0` literally, but mask[] here
-    // is this routine's own global-indexed array (Table 7.13's bin-to-band
-    // map, the same one bndstrt/bndend above come from) - for the coupling
-    // channel, whose bndstrt is not 0, a literal reading would need every
-    // deltoffst to encode an absolute band number, which two independent
-    // real-world decoders disagree with: both FFmpeg's ff_ac3_bit_alloc_calc_mask()
-    // and Dolby's own reference decoder (dlbac3dec, verified directly via
-    // gst-launch) reject a coupling-channel delta stream built on that
-    // reading and accept one where band starts at bndstrt instead - the
-    // same kind of pseudocode erratum as calc_lowcomp's stray semicolon
-    // above. choose_delta_segments() below matches this.
-    {
-        int band = bndstrt;
-        for (int seg = 0; seg < region.delta.deltnseg; ++seg) {
-            band += region.delta.deltoffst[static_cast<std::size_t>(seg)];
-            const int code = region.delta.deltba[static_cast<std::size_t>(seg)];
-            const int delta = (code >= 4 ? code - 3 : code - 4) << 7;
-            const int len = region.delta.deltlen[static_cast<std::size_t>(seg)];
-            // Bitstream-level bounds are enforced by the decoder's own
-            // parser before this ever runs (deltoffst/deltlen are
-            // attacker-controlled, mask[] is exactly 50 bands wide) - this
-            // is a defense-in-depth backstop that must hold even in the
-            // CI static-analysis build, which defines NDEBUG and would
-            // silently compile an assert here away.
-            if (band < 0 || band + len > 50) {
-                break;
-            }
-            for (int k = 0; k < len; ++k) {
-                mask[static_cast<std::size_t>(band)] += delta;
-                ++band;
-            }
+// §7.2.2.6: delta bit allocation. mask[]/psd[] units are 128 per exponent
+// step, which is exactly one Table 5.17 6 dB step, so `delta` below is
+// added directly with no unit conversion. `region.delta.deltnseg == 0`
+// (the default) makes this a no-op, matching the spec's own recommended
+// reset state.
+//
+// The spec pseudocode initializes `band = 0` literally, but mask[] here
+// is this routine's own global-indexed array (Table 7.13's bin-to-band
+// map, the same one bndstrt/bndend above come from) - for the coupling
+// channel, whose bndstrt is not 0, a literal reading would need every
+// deltoffst to encode an absolute band number, which two independent
+// real-world decoders disagree with: both FFmpeg's ff_ac3_bit_alloc_calc_mask()
+// and Dolby's own reference decoder (dlbac3dec, verified directly via
+// gst-launch) reject a coupling-channel delta stream built on that
+// reading and accept one where band starts at bndstrt instead - the
+// same kind of pseudocode erratum as calc_lowcomp's stray semicolon
+// above. choose_delta_segments() below matches this.
+void add_delta(std::array<int, 50>& mask, int bndstrt, const DeltaSegments& delta_segments) {
+    int band = bndstrt;
+    for (int seg = 0; seg < delta_segments.deltnseg; ++seg) {
+        band += delta_segments.deltoffst[static_cast<std::size_t>(seg)];
+        const int code = delta_segments.deltba[static_cast<std::size_t>(seg)];
+        const int delta = (code >= 4 ? code - 3 : code - 4) << 7;
+        const int len = delta_segments.deltlen[static_cast<std::size_t>(seg)];
+        // Bitstream-level bounds are enforced by the decoder's own
+        // parser before this ever runs (deltoffst/deltlen are
+        // attacker-controlled, mask[] is exactly 50 bands wide) - this
+        // is a defense-in-depth backstop that must hold even in the
+        // CI static-analysis build, which defines NDEBUG and would
+        // silently compile an assert here away.
+        if (band < 0 || band + len > 50) {
+            break;
+        }
+        for (int k = 0; k < len; ++k) {
+            mask[static_cast<std::size_t>(band)] += delta;
+            ++band;
         }
     }
+}
 
+// §7.2.2.7: bap computation. The snroffset/floor/truncation order is
+// normative: subtract snroffset, subtract floor, clamp at zero, truncate
+// with & 0x1fe0, re-add floor. The psd a bin is compared against is
+// §7.2.2.2's own 3072 - (exp << 7), the value exponents_to_psd stores.
+void bap_from_mask(std::span<const std::uint8_t> exps, const std::array<int, 50>& mask,
+                   int floor, int snroffset, bool high_efficiency, int start,
+                   std::span<std::uint8_t> bap) {
+    const int end = static_cast<int>(exps.size());
+    int i = start;
+    int j = kMaskTab[static_cast<std::size_t>(start)];
+    int lastbin = 0;
+    do {
+        lastbin = std::min<int>(
+            kBandStart[static_cast<std::size_t>(j)] + kBandSize[static_cast<std::size_t>(j)],
+            end);
+        int m = mask[static_cast<std::size_t>(j)];
+        m -= snroffset;
+        m -= floor;
+        if (m < 0) {
+            m = 0;
+        }
+        m &= 0x1fe0;
+        m += floor;
+        for (int k = i; k < lastbin; ++k) {
+            const int psd = 3072 - (static_cast<int>(exps[static_cast<std::size_t>(i)]) << 7);
+            int address = (psd - m) >> 5;
+            address = std::min(63, std::max(0, address));
+            bap[static_cast<std::size_t>(i)] =
+                high_efficiency ? kHeBapTab[static_cast<std::size_t>(address)]
+                                : kBapTab[static_cast<std::size_t>(address)];
+            ++i;
+        }
+        ++j;
+    } while (end > lastbin);
+}
+
+void compute_bit_allocation_impl(std::span<const std::uint8_t> exps, SampleRate sample_rate,
+                                 const BitAllocCodes& codes, int csnroffst, int fsnroffst,
+                                 std::span<std::uint8_t> bap, const BitAllocRegion& region,
+                                 std::array<int, 50>* mask_out) {
+    AC3_ZONE_SCOPED_N("compute_bit_allocation");
+    assert(exps.size() == bap.size());
+    // bap is filled rather than left alone: it is the caller's output, and
+    // "no allocation" is what an unreadable region gets, the same answer
+    // §7.2.2.1.1's all-zero-SNR case gives just below.
+    if (!region_usable(exps, region)) {
+        std::ranges::fill(bap, std::uint8_t{0});
+        if (mask_out != nullptr) {
+            mask_out->fill(0);
+        }
+        return;
+    }
+    // §7.2.2.1.1 special case: when EVERY SNR offset in the block is zero,
+    // the whole bap array is zero and no allocation runs. The condition spans
+    // all channels, so the caller supplies it.
+    if (region.snr_all_zero) {
+        std::ranges::fill(bap, std::uint8_t{0});
+        if (mask_out != nullptr) {
+            mask_out->fill(0);
+        }
+        return;
+    }
+    std::array<int, 50> mask{};
+    masking_curve(exps, sample_rate, codes, region, mask);
+    add_delta(mask, kMaskTab[static_cast<std::size_t>(region.start)], region.delta);
     // The masking curve's final state - nothing below reads or writes `mask`
     // again, only `psd` against it - so this is the value roadmap AP12's
     // trace export wants, not a snapshot of a routine still in progress.
     if (mask_out != nullptr) {
         *mask_out = mask;
     }
-
-    // §7.2.2.7: bap computation. The snroffset/floor/truncation order is
-    // normative: subtract snroffset, subtract floor, clamp at zero, truncate
-    // with & 0x1fe0, re-add floor.
-    {
-        int i = kStart;
-        int j = kMaskTab[static_cast<std::size_t>(kStart)];
-        int lastbin = 0;
-        do {
-            lastbin = std::min<int>(
-                kBandStart[static_cast<std::size_t>(j)] + kBandSize[static_cast<std::size_t>(j)],
-                end);
-            int m = mask[static_cast<std::size_t>(j)];
-            m -= snroffset;
-            m -= floor;
-            if (m < 0) {
-                m = 0;
-            }
-            m &= 0x1fe0;
-            m += floor;
-            for (int k = i; k < lastbin; ++k) {
-                int address = (psd[static_cast<std::size_t>(i)] - m) >> 5;
-                address = std::min(63, std::max(0, address));
-                bap[static_cast<std::size_t>(i)] =
-                    region.high_efficiency ? kHeBapTab[static_cast<std::size_t>(address)]
-                                           : kBapTab[static_cast<std::size_t>(address)];
-                ++i;
-            }
-            ++j;
-        } while (end > lastbin);
-    }
+    bap_from_mask(exps, mask, floor_of(codes), snr_offset(csnroffst, fsnroffst),
+                  region.high_efficiency, region.start, bap);
 }
 }  // namespace
+
+MaskingCurve compute_masking_curve(std::span<const std::uint8_t> exps, SampleRate sample_rate,
+                                   const BitAllocCodes& codes, const BitAllocRegion& region) {
+    AC3_ZONE_SCOPED_N("compute_masking_curve");
+    MaskingCurve curve;
+    if (!region_usable(exps, region)) {
+        return curve;
+    }
+    masking_curve(exps, sample_rate, codes, region, curve.mask);
+    curve.valid = true;
+    return curve;
+}
+
+void allocate_from_curve(std::span<const std::uint8_t> exps, const MaskingCurve& curve,
+                         const BitAllocCodes& codes, int csnroffst, int fsnroffst,
+                         std::span<std::uint8_t> bap, const BitAllocRegion& region) {
+    AC3_ZONE_SCOPED_N("allocate_from_curve");
+    assert(exps.size() == bap.size());
+    if (!curve.valid || !region_usable(exps, region) || region.snr_all_zero) {
+        std::ranges::fill(bap, std::uint8_t{0});
+        return;
+    }
+    std::array<int, 50> mask = curve.mask;
+    add_delta(mask, kMaskTab[static_cast<std::size_t>(region.start)], region.delta);
+    bap_from_mask(exps, mask, floor_of(codes), snr_offset(csnroffst, fsnroffst),
+                  region.high_efficiency, region.start, bap);
+}
 
 void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sample_rate,
                             const BitAllocCodes& codes, int csnroffst, int fsnroffst,
@@ -424,8 +476,11 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
                                 nullptr);
 }
 
-DeltaSegments choose_delta_segments(std::span<const double> coefficients,
-                                    std::span<const std::uint8_t> exps, int start) {
+namespace {
+
+template <typename Scalar>
+DeltaSegments choose_delta_segments_over(std::span<const Scalar> coefficients,
+                                         std::span<const std::uint8_t> exps, int start) {
     AC3_ZONE_SCOPED_N("choose_delta_segments");
     assert(coefficients.size() == exps.size());
     const int end = static_cast<int>(exps.size());
@@ -445,12 +500,17 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
     exponents_to_psd(exps, start, end, psd_wide);
     std::array<int, kMaxMantissas> psd{};
     std::ranges::copy(psd_wide, psd.begin());
+    // The log is the scalar's own (scalar_math.hpp): libm's for double, the
+    // project's for float, so the float encode path rounds the same psd unit
+    // on every platform it runs on.
     std::array<int, kMaxMantissas> real_psd{};
     for (int bin = start; bin < end; ++bin) {
         const auto i = static_cast<std::size_t>(bin);
-        const double magnitude = std::abs(static_cast<double>(coefficients[i]));
-        real_psd[i] = magnitude > 0.0
-                          ? static_cast<int>(std::lround(3200.0 + 128.0 * std::log2(magnitude)))
+        const Scalar magnitude = std::abs(coefficients[i]);
+        real_psd[i] = magnitude > 0
+                          ? static_cast<int>(std::lround(
+                                static_cast<Scalar>(3200) +
+                                static_cast<Scalar>(128) * internal::scalar_log2(magnitude)))
                           : psd[i];  // silence: nothing to correct
     }
 
@@ -532,6 +592,18 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
         }
     }
     return out;
+}
+
+}  // namespace
+
+DeltaSegments choose_delta_segments(std::span<const double> coefficients,
+                                    std::span<const std::uint8_t> exps, int start) {
+    return choose_delta_segments_over<double>(coefficients, exps, start);
+}
+
+DeltaSegments choose_delta_segments(std::span<const float> coefficients,
+                                    std::span<const std::uint8_t> exps, int start) {
+    return choose_delta_segments_over<float>(coefficients, exps, start);
 }
 
 }  // namespace ac3

@@ -29,13 +29,22 @@
 # integrator's project would, its own build says so.
 # ---------------------------------------------------------------------------
 
-# Registered with no sources and no include directories of its own: both come
-# from ac3::forge_minimal, propagated by the INTERFACE link at the bottom of
-# this file (its own include directories are PUBLIC, behind $<BUILD_INTERFACE>,
-# which is exactly the in-build case this is). A component registered with no
-# SRCS gets an INTERFACE ${COMPONENT_LIB} - hence INTERFACE below rather than
-# PUBLIC, which CMake refuses on an interface target.
-idf_component_register()
+# Two things are registered here, and the library is neither of them. The
+# codec's sources and include directories come from ac3::forge_minimal,
+# propagated by the PUBLIC link at the bottom of this file (its own include
+# directories are PUBLIC, behind $<BUILD_INTERFACE>, which is exactly the
+# in-build case this is). What this component adds of its own is the layer
+# that cannot live in the library because it is made of FreeRTOS: the player
+# (include/ac3forge/player.hpp, src/player.cpp - a fetch task, a decode task and
+# the ring between them, over a source seam and a sink seam) and the
+# planar-to-interleaved conversion every sink shares (ac3forge/interleave.hpp,
+# tested on the host by tests/io/test_interleave.cpp, and on its way into the
+# library - see planning/esp32-player.md). freertos, esp_timer and heap are what
+# the player's own sources include.
+idf_component_register(
+    SRCS "src/player.cpp" "src/control.cpp"
+    INCLUDE_DIRS "include"
+    REQUIRES freertos esp_timer heap esp_http_server)
 
 # Where the library's own CMake lives, which depends on how this component was
 # obtained.
@@ -132,4 +141,6 @@ set(AC3FORGE_BAREMETAL_PLATFORM "esp32s3" CACHE STRING "" FORCE)
 # by mirroring the relative path the way it does for an in-tree subdirectory.
 add_subdirectory("${AC3FORGE_ROOT}" ac3forge_build)
 
-target_link_libraries(${COMPONENT_LIB} INTERFACE ac3::forge_minimal)
+# PUBLIC, not INTERFACE: the component now has sources of its own that include
+# the library's headers, and so does everything that includes the component's.
+target_link_libraries(${COMPONENT_LIB} PUBLIC ac3::forge_minimal)

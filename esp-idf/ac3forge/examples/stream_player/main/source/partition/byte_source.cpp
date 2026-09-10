@@ -1,4 +1,4 @@
-// A flash partition. The default source, and the only one CI can run.
+// A flash partition. The default source, and the first one CI runs.
 //
 // It needs no hardware beyond the flash the application is already sitting in,
 // so it works under QEMU - which is what lets the streaming path be exercised
@@ -51,6 +51,12 @@ bool source_open() {
                 static_cast<unsigned long>(g_audio->size));
     return true;
 }
+
+// A partition has one thing in it, flashed with the application. There is
+// nowhere else to point it.
+bool source_set_location(const char*) { return false; }
+
+const char* source_location() { return "audio"; }
 
 std::size_t source_read(std::span<std::byte> dst) {
     const std::size_t end = limit();

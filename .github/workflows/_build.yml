@@ -1405,7 +1405,94 @@ jobs:
           build/config-${{ matrix.preset }}/bin/ac3cli encode               tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
           build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
           build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
           python3 tools/checks/check_decode_scalar_snr.py               --double-cli build/config-${{ matrix.preset }}/bin/ac3cli               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
+
+      # The third scalar (planning/arithmetic-tiers.md): the fixed-point
+      # decoder, Q7.24 in an int32, for parts with no FPU. The same two
+      # questions as the float32 build's, with its own floor: 110 dB against a
+      # measured 121 on these three streams (and 110.8 on the widest of the
+      # checked-in third-party streams) - the tier's precision is that of the
+      # block exponent the store carries, not of the absolute format, and a
+      # drop to 100 would be a lost bit somewhere in that machinery.
+      - name: Build a fixed-point decoder
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-${{ matrix.preset }} -B build/decode-scalar-fixed -DAC3FORGE_DECODE_SCALAR=fixed
+          cmake --build build/decode-scalar-fixed --target ac3cli
+
+      - name: Gold reference gate (fixed-point decode)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          EXTRA_LABEL_SUFFIX: _fixed
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh build/decode-scalar-fixed/bin/ac3cli
+
+      - name: Fixed-point vs double decode
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          build/config-${{ matrix.preset }}/bin/ac3cli encode tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py --double-cli build/config-${{ matrix.preset }}/bin/ac3cli --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
+
+      # The tier's own gate, natively: the same twelve fixtures the bare-metal
+      # leg decodes under QEMU, decoded here on x86, their PCM hashes held to
+      # the pinned ones (tests/golden/fixed-probe-pcm-hashes.json). Two
+      # architectures, two compilers, one set of hashes - integer arithmetic
+      # has nothing to differ by, and this is what says so every run.
+      - name: Fixed-point probe natively, hashes against the pinned ones
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/checks/run_baremetal_probe.sh --host --scalar=fixed | tee "$RUNNER_TEMP/fixed-host.txt"
+          python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "$RUNNER_TEMP/fixed-host.txt"
+
+      # The same two questions for the ENCODE path's scalar. AC3FORGE_ENCODE_SCALAR
+      # (src/forge/src/internal/scalar/encode/) is the axis the minimum-footprint
+      # profile encodes on for the ESP32-S3, and a float encoder is a different
+      # thing from a float decoder: it makes its own decisions at its own
+      # thresholds and rounds its own coefficients, so it produces a different,
+      # equally valid stream rather than a near-identical decode. Two checks,
+      # then: its streams through the gold-reference gate, decoded by FFmpeg and
+      # by this project's decoder against the same floors as the double
+      # encoder's, and its worst channel held to within half a dB of the double
+      # encoder's by tools/checks/check_encode_scalar_quality.py. Again ac3cli
+      # only, again one leg, for the reasons given above.
+      - name: Build a float32 encoder
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-${{ matrix.preset }} -B build/encode-scalar-float \
+                -DAC3FORGE_ENCODE_SCALAR=float
+          cmake --build build/encode-scalar-float --target ac3cli
+
+      - name: Gold reference gate (float32 encode)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          EXTRA_LABEL_SUFFIX: _encfloat
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh build/encode-scalar-float/bin/ac3cli
+
+      - name: Float32 vs double encode
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/checks/check_encode_scalar_quality.py \
+              --double-cli build/config-${{ matrix.preset }}/bin/ac3cli \
+              --float-cli build/encode-scalar-float/bin/ac3cli \
+              --workdir "$(mktemp -d)"
 
       # Handed off to the quality-trend job below, which runs once (not once
       # per leg) after every gold_reference leg has passed - see that job's
@@ -1774,10 +1861,14 @@ jobs:
             exit 1
           fi
           dpkg-deb -I "${debs[0]}" | grep -E '^ (Package|Version|Section|Depends):'
-          dpkg-deb -I "${debs[0]}" | grep -q '^ Package: ac3forge-crucible$' || {
+          # The field itself, not `dpkg-deb -I | grep -q`: this step runs under
+          # bash -eo pipefail, grep -q exits at its first match, and dpkg-deb,
+          # still writing the Depends line after it, dies of SIGPIPE - so the
+          # pipeline failed on a package that was named correctly.
+          if [ "$(dpkg-deb -f "${debs[0]}" Package)" != "ac3forge-crucible" ]; then
             echo "::error::the Crucible .deb is not named ac3forge-crucible - CPACK_DEBIAN_CRUCIBLE_PACKAGE_NAME (cmake/Packaging.cmake) is not reaching the generator"
             exit 1
-          }
+          fi
 
       # packages-*, because that is the pattern release.yml downloads
       # (release.yml's "pattern: packages-*"). Under the old name the Linux
@@ -3545,13 +3636,19 @@ jobs:
   # real portability faults that no LP64 leg could have (see the profile's own
   # commit). A leg that only ran before releases would have found them then.
   build-esp32s3:
-    name: Minimum-footprint codec (ESP32-S3, QEMU)
+    name: Minimum-footprint codec (ESP32-S3 and C3, QEMU)
     # Leg 6 of check-runners' Linux fan-out. The sibling of build-footprint
-    # below: same profile, same probe, same fixtures, a different bare-metal
-    # target - an Xtensa LX7 with a single-precision FPU, where the arm-none-eabi
-    # leg is a Cortex-M3 with none at all. Between them they cover both answers
-    # to "does this build have hardware floating point", which is the axis
-    # decode_scalar_t turns on.
+    # below: same profile, same probe, same fixtures, different bare-metal
+    # targets - an Xtensa LX7 with a single-precision FPU and a RISC-V C3 with
+    # none, where the arm-none-eabi leg is a Cortex-M3 with none either.
+    # Between them they cover both answers to "does this build have hardware
+    # floating point", which is the axis decode_scalar_t turns on, and all
+    # three of its values.
+    #
+    # Both parts in one job rather than two, because the cost of a leg here is
+    # a queued runner rather than the minutes it spends: the container already
+    # carries both toolchains and both emulators, and the C3's build and run
+    # add about five minutes to a job that was already doing four of them.
     #
     # espressif/idf is Espressif's own image and carries ESP-IDF, its toolchain
     # AND qemu-xtensa, so this needs no composite action and no multi-gigabyte
@@ -3636,6 +3733,41 @@ jobs:
           set -eu
           . "$IDF_PATH/export.sh"
           ./tools/checks/run_esp32s3_probe.sh --encoder
+
+      # The fixed-point tier's own part and its third architecture
+      # (planning/arithmetic-tiers.md, Phase D). The C3 is a single-core
+      # RV32IMC with no floating-point unit, and its project defaults to
+      # -DAC3FORGE_DECODE_SCALAR=fixed for that reason.
+      #
+      # What this step is FOR is the hash check inside the runner. The tier
+      # promises PCM that is identical on every machine, integer arithmetic
+      # having no rounding mode or library last bit to differ by; the x86 host
+      # and the Cortex-M3 leg already agree, and two architectures agreeing is
+      # a coincidence a third can break. The runner holds this leg's
+      # <codec>.pcm_hash lines to the same pinned values
+      # (tests/golden/fixed-probe-pcm-hashes.json).
+      - name: Ensure QEMU for RISC-V is present
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python "$IDF_PATH/tools/idf_tools.py" install qemu-riscv32
+          # And enable the target, which is a separate thing. idf_tools.py
+          # exports only the tools whose supported targets intersect the ones
+          # recorded in $IDF_TOOLS_PATH/idf-env.json, so on an installation
+          # that was set up for esp32s3 alone the line above downloads
+          # qemu-system-riscv32 and export.sh still does not put it on PATH -
+          # `idf.py qemu` then reports it as not installed, several steps
+          # later and pointing at the install that just succeeded. Idempotent
+          # where the image already enables every target.
+          python "$IDF_PATH/tools/idf_tools.py" install --targets=esp32c3
+
+      - name: Build and run the FIXED-POINT probe on ESP32-C3 under QEMU
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          ./tools/checks/run_esp32c3_probe.sh
 
       # BUILD ONLY, and the reason is the peripheral rather than the code:
       # qemu-system-xtensa has no I2S, so there is nothing for the DMA to drain
@@ -3819,6 +3951,170 @@ jobs:
             exit 1
           fi
 
+      # A height layout, rendered from the stream's objects: the footprint
+      # probe's eac3_atmos_height fixture (stream/height.ec3, the same bytes as
+      # fixture.hpp's kEac3AtmosHeightStream) played onto 7.1.4 through the
+      # player - decode_access_unit_by_block, the objects reconstructed and
+      # placed by ac3::spatial::pan_direction, the bed's LFE passed through -
+      # into the twelve-slot TDM conversion. The reference is the probe's own
+      # eac3_atmos_render row (apps/baremetal/render_fixture.hpp): same
+      # objects, same panner, same float arithmetic in the same order, so the
+      # levels agree to the digit and the tolerance below is one unit of
+      # rounding. sdkconfig.ci-render says why one lap and why the MDCT-band
+      # domain and no DRC.
+      - name: Render a height-object stream onto 7.1.4 under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-render"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/stream_player
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          timeout 300 idf.py qemu 2>&1 | tee qemu-render.txt || true
+
+          fail() { echo "::error title=ESP32-S3 render run::$1" >&2; grep -E 'result=|error|player:|stream:|Guru Meditation|assert failed' qemu-render.txt >&2 || true; exit 1; }
+          grep -q '^result=pass' qemu-render.txt || fail "did not report result=pass"
+          grep -q 'onto 7.1.4 (12 slots, objects placed)' qemu-render.txt || fail "the player did not place the objects onto 7.1.4"
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-render.txt | tail -1; }
+          units=$(value 'stream\.units')
+          resync=$(value 'stream\.resync_bytes')
+          mismatches=$(value 'stream\.layout_mismatches')
+          [ "${units:-0}" = "6" ] || fail "expected 6 access units, got ${units:-none}"
+          [ "${resync:-1}" = "0" ] || fail "${resync} bytes skipped looking for a sync word"
+          [ "${mismatches:-1}" = "0" ] || fail "${mismatches} units decoded to a layout their headers did not announce"
+          # Twelve of twelve slots carried, so nothing to pad; every slot
+          # left-justified 24-in-32.
+          low=$(value 'capture\.low_byte_set')
+          pad=$(value 'capture\.padding_nonzero')
+          carried=$(value 'capture\.carried_nonzero')
+          echo "low_byte_set=$low padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${low:-1}" != "0" ] || [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            fail "TDM slot layout is wrong (low_byte_set=$low padding_nonzero=$pad carried_nonzero=$carried)"
+          fi
+          # The probe's reference, slot by slot: L C R Ls Rs Lrs Rrs Vhl Vhr Lts
+          # Rts LFE. Three objects on the ceiling and one half way up at the
+          # rear, so the heights carry most of it; the front left and the
+          # surrounds have nothing pointing at them and must be exactly silent.
+          slot=0
+          for expected in 0 0 7867 0 104 20201 20201 82431 97537 102185 58776 0; do
+            got=$(value "stream\.rms\[$slot\]")
+            [ -n "$got" ] || fail "no stream.rms[$slot] line"
+            echo "rms[$slot] = $got (probe $expected)"
+            if [ "$got" -lt $(( expected - 1 )) ] || [ "$got" -gt $(( expected + 1 )) ]; then
+              fail "slot $slot rendered to $got, the probe's row says $expected"
+            fi
+            slot=$(( slot + 1 ))
+          done
+
+      # The HTTP source, end to end, with no board and no access point. QEMU
+      # has no WiFi, but `idf.py qemu` attaches an OpenCores Ethernet MAC to
+      # the host's network, so the source's own network seam picks net/openeth/
+      # (main/source/http/network.hpp, selected by sdkconfig.ci-http) and a
+      # python http.server on the runner serves apps/wasm/assets/ - the same
+      # E-AC-3 demo the WASM page plays: 5.1 with JOC objects, 448 kbit/s, 250
+      # access units. The guest reaches the host at 10.0.2.2. Everything above
+      # the radio runs as it does on a board: the HTTP client, the framer, the
+      # E-AC-3 decode; only WiFi itself is left for hardware.
+      #
+      # The levels are held against the host's
+      #   ac3cli decode apps/wasm/assets/demo.ec3 out.wav downmix=loro drcmode=line
+      # 56,673 and 47,346 (x 1e6), which the float32 target reproduced to the
+      # digit on 2026-09-10. Same tolerance as the steps above.
+      #
+      # QEMU is stopped as soon as the verdict prints rather than left to a
+      # timeout: the application returns from app_main into an idle FreeRTOS
+      # system and would otherwise sit there for the whole 300 seconds.
+      - name: Fetch and decode an E-AC-3 stream over QEMU's Ethernet
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          cd esp-idf/ac3forge/examples/stream_player
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+
+          # QEMU by hand rather than `idf.py qemu`, for one reason: the port
+          # forward. idf.py fixes the network options, and the control surface
+          # (ac3forge::Control, on port 80 in this shape) is only reachable from
+          # the runner through hostfwd. The flash image is the same merge idf.py
+          # performs, from the build's own flash_args; the eFuse image is
+          # idf.py's own default blob, read from its module rather than pasted.
+          (cd build && esptool --chip esp32s3 merge-bin --output qemu_flash.bin --pad-to-size 16MB @flash_args >/dev/null)
+          PYTHONPATH="$IDF_PATH/tools" python3 -c "from idf_py_actions.qemu_ext import QEMU_TARGETS; open('build/qemu_efuse.bin','wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+          qemu_bin=$(find "${IDF_TOOLS_PATH:-$HOME/.espressif}/tools/qemu-xtensa" -name qemu-system-xtensa -type f | head -1)
+          if [ -z "$qemu_bin" ]; then
+            echo "::error title=ESP32-S3 HTTP source::qemu-system-xtensa not found under the IDF tools" >&2
+            exit 1
+          fi
+          command -v curl >/dev/null || { echo "::error title=ESP32-S3 HTTP source::curl is not in this image" >&2; exit 1; }
+          : > qemu-http.txt
+          "$qemu_bin" -M esp32s3 -m 32M \
+            -drive file=build/qemu_flash.bin,if=mtd,format=raw \
+            -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
+            -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
+            -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
+            -nic user,model=open_eth,hostfwd=tcp::8080-:80 \
+            -nographic -monitor none -serial file:qemu-http.txt &
+          qemu=$!
+          trap 'kill "$qemu" 2>/dev/null || true; kill "$server" 2>/dev/null || true' EXIT
+
+          fail() { echo "::error title=ESP32-S3 HTTP source::$1" >&2; grep -E 'result=|error|network|source:|control|Guru Meditation|assert failed' qemu-http.txt >&2 || true; exit 1; }
+          check_rms() {
+            local channel="$1" expected="$2"
+            local got
+            got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-http.txt | tail -1)
+            [ -n "$got" ] || fail "no stream.rms[$channel] line"
+            local slack=$(( expected / 20 + 200 ))
+            echo "rms[$channel] = $got (host $expected, tolerance +/-$slack)"
+            if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
+              fail "channel $channel decoded to $got, host says $expected"
+            fi
+          }
+
+          # The first run: the configured stream, played at boot.
+          for _ in $(seq 1 60); do
+            if grep -q '^result=' qemu-http.txt; then break; fi
+            sleep 5
+          done
+          grep -q '^result=pass' qemu-http.txt || fail "the first run did not report result=pass"
+          units=$(sed -n 's/.*stream\.units=\([0-9]*\).*/\1/p' qemu-http.txt | tail -1)
+          resync=$(sed -n 's/.*stream\.resync_bytes=\([0-9]*\).*/\1/p' qemu-http.txt | tail -1)
+          echo "access units: ${units:-unknown}, resynchronised bytes: ${resync:-unknown}"
+          if [ "${units:-0}" != "250" ] || [ "${resync:-1}" != "0" ]; then
+            fail "expected 250 access units and 0 resynchronised bytes, got ${units:-none} and ${resync:-none}"
+          fi
+          check_rms 0 56673
+          check_rms 1 47346
+
+          # The control surface, through the port forward. /status must know
+          # the run ended; /volume and /play must be taken; the replay must
+          # play every unit again at half volume, which is a level check on the
+          # gain the decode task applies; /stop must answer.
+          status=$(curl -s -m 10 http://127.0.0.1:8080/status)
+          echo "status: $status"
+          echo "$status" | grep -q '"state":"finished"' || fail "/status did not report the run as finished"
+          echo "$status" | grep -q '"frames":250' || fail "/status did not report 250 frames"
+          curl -s -m 10 -X POST -d 0.5 http://127.0.0.1:8080/volume | grep -q '^ok' || fail "POST /volume was not accepted"
+          code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -d http://10.0.2.2:8000/demo.ec3 http://127.0.0.1:8080/play)
+          [ "$code" = "202" ] || fail "POST /play answered $code, expected 202"
+          for _ in $(seq 1 60); do
+            if [ "$(grep -c '^result=' qemu-http.txt)" -ge 2 ]; then break; fi
+            sleep 5
+          done
+          [ "$(grep -c '^result=pass' qemu-http.txt)" -ge 2 ] || fail "the replay did not report result=pass"
+          # Half of 56,673 and 47,346; measured 28,336 and 23,673 on 2026-09-10.
+          check_rms 0 28336
+          check_rms 1 23673
+          curl -s -m 10 -X POST http://127.0.0.1:8080/stop | grep -q '^stopped' || fail "POST /stop was not accepted"
+          kill "$qemu" 2>/dev/null || true
+
       - name: Build every sink and source combination
         run: |
           set -eu
@@ -3855,6 +4151,8 @@ jobs:
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
             esp-idf/ac3forge/examples/stream_player/qemu-stream.txt
             esp-idf/ac3forge/examples/stream_player/qemu-capture.txt
+            esp-idf/ac3forge/examples/stream_player/qemu-render.txt
+            esp-idf/ac3forge/examples/stream_player/qemu-http.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.
@@ -3919,6 +4217,48 @@ jobs:
       - name: Build and run the ENCODE probe under QEMU
         run: ./tools/checks/run_baremetal_probe.sh --encoder
 
+      # The leg's one timing figure that reproduces: under QEMU -icount the
+      # probe's clock (its own preset, AC3FORGE_BAREMETAL_CLOCK=timer) counts
+      # instructions, deterministically, and the runner gates each fixture's
+      # count against docs/performance-trend.md's instructions-per-frame table.
+      - name: Instructions per frame under QEMU -icount
+        # Into the build directory, not ${{ runner.temp }}: on this container that
+        # expands to a host path tee cannot create ("No such file or directory"),
+        # and since tee is last in the pipeline under `sh -e` its failure fails the
+        # step - after the probe has already printed "pass", which makes it read as
+        # a probe regression that it is not. Same reason, same fix as build-esp32s3's
+        # AC3FORGE_ESP32S3_SUMMARY above.
+        run: ./tools/checks/run_baremetal_probe.sh --icount | tee "build/config-arm-none-eabi-minimal/icount.txt"
+
+      # The encode direction on the same terms. Both encoders are double
+      # throughout, so on this FPU-less leg every operation is a software call
+      # and the counts are several times the decode rows' - the figure an
+      # integrator sizing an encoder for a part without an FPU actually needs.
+      - name: Instructions per ENCODED frame under QEMU -icount
+        run: ./tools/checks/run_baremetal_probe.sh --encoder --icount | tee "build/config-arm-none-eabi-minimal/icount-encode.txt"
+
+      # The fixed-point tier on the same leg (planning/arithmetic-tiers.md):
+      # the probe built with -DAC3FORGE_DECODE_SCALAR=fixed, every fixture's
+      # levels gated as the float build's are, and its <codec>.pcm_hash lines
+      # kept: the tier is integer arithmetic, so those hashes are the same on
+      # this leg, on the host and on a RISC-V part by construction, and the
+      # step below holds this leg's to the pinned ones
+      # (tests/golden/fixed-probe-pcm-hashes.json), as the gold leg holds its
+      # native run's.
+      - name: Build and run the FIXED-POINT probe under QEMU
+        # Into the FLOAT build directory, which the first step of this job
+        # already created - not ${{ runner.temp }}, for the reason the -icount
+        # steps above give, and not this run's own -fixed directory either:
+        # the shell opens tee's file when it builds the pipeline, before the
+        # script has configured anything, so the target has to exist already.
+        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed | tee "build/config-arm-none-eabi-minimal/fixed-arm.txt"
+
+      - name: Fixed-point hashes against the pinned ones
+        run: python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "build/config-arm-none-eabi-minimal/fixed-arm.txt"
+
+      - name: Fixed-point instructions per frame under QEMU -icount
+        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed --icount | tee "build/config-arm-none-eabi-minimal/icount-fixed.txt"
+
       # The footprint table in docs/performance-trend.md is written by hand
       # from these numbers, so keep the run's own copy: a table nobody can
       # check against the run that produced it is a claim, not a measurement.
@@ -3927,6 +4267,24 @@ jobs:
         run: |
           set -eu
           python3 tools/checks/footprint_report.py             --probe "${{ runner.temp }}/footprint.txt"             --elf build/config-arm-none-eabi-minimal/bin/ac3probe             --map build/config-arm-none-eabi-minimal/apps/baremetal/ac3probe.map             --markdown >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "build/config-arm-none-eabi-minimal/icount.txt" ]; then
+            {
+              echo '### Instructions per frame (QEMU -icount)'
+              echo
+              echo '| Fixture | Instructions per frame |'
+              echo '| --- | --- |'
+              sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "build/config-arm-none-eabi-minimal/icount.txt"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f "build/config-arm-none-eabi-minimal/icount-encode.txt" ]; then
+            {
+              echo '### Instructions per encoded frame (QEMU -icount)'
+              echo
+              echo '| Fixture | Instructions per frame |'
+              echo '| --- | --- |'
+              sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "build/config-arm-none-eabi-minimal/icount-encode.txt"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload footprint artifacts
         if: always()

@@ -34,6 +34,14 @@ idf.py set-target esp32s3
 idf.py -p <PORT> flash monitor
 ```
 
+On a DevKitC-1 reached through its **native USB connector** rather than the
+UART bridge, add `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw"` so the
+console comes out of the same cable — and then flash, press the board's RESET
+button, and attach with `idf.py monitor --no-reset`, because every
+host-initiated reset over USB-Serial-JTAG lands in `boot:0x0 (DOWNLOAD)` and the
+application never starts. The port also re-enumerates on every reset, so a
+terminal that does not reopen it misses the first lines.
+
 ## What it prints
 
 Once per lap of the fixture — 192 ms of audio:
@@ -57,12 +65,13 @@ of them will not.
 
 ## What it costs
 
-Measured with `idf.py size` on IDF v6.1, `-Os`:
+Measured with `idf.py size` on IDF v6.1, `-Os`, with the console on
+USB-Serial-JTAG (`sdkconfig.hw`):
 
 | | Bytes |
 | --- | --- |
-| Internal SRAM (DIRAM) used by the image | 94,383 |
-| …leaving for the heap | 247,377 |
+| Internal SRAM (DIRAM) used by the image | 93,967 |
+| …leaving for the heap, by the linker's estimate | 247,793 |
 | I2S DMA buffers (4 × 240 frames, stereo, 16-bit) | 3,840 |
 | Interleave buffer (one frame, static) | 6,144 |
 

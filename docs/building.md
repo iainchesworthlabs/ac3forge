@@ -371,6 +371,60 @@ Each fits alone; no two fit together. A build offering both would be offering so
 cannot run, so the option refuses the combination rather than letting it arrive as `out_of_memory`
 on a device. Sequential use is fine — tear one down, build the other.
 
+### What the encode direction costs
+
+Six rows since 2026-09-10, each six frames of the same synthesised programme through one
+encoder, and each printing its peak heap and its time per frame on the terms the decode probe
+uses (`<row>.us_per_frame`, `realtime_permille` against a 32 ms frame). Peaks are the same on
+the `arm-none-eabi` leg and the ESP32-S3 under QEMU; the host's are about one per cent higher
+for its wider pointers. Instructions per frame are the `--encoder --icount` leg's: Thumb-2 on
+the Cortex-M3, `-Os`, soft float throughout, held to the ceilings in
+`run_baremetal_probe.sh`'s `ICOUNT_CEILING_ENCODE` table.
+
+| Row | Peak heap | Allocations per frame | Instructions per frame | Ceiling | Decode row's count |
+|---|---:|---:|---:|---:|---:|
+| `ac3_stereo` 2/0, 192 kbit/s | 52,707 | 34 | 9,136,000 | 16,000,000 | 3,548,000 |
+| `eac3_stereo` 2/0, 192 kbit/s, no tools | 79,894 | 76 | 12,683,000 | 30,000,000 | 4,851,000 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 143,037 | 47 | 16,920,000 | 31,000,000 | - |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 130,887 | 87 | 48,217,000 | 104,000,000 | 28,861,000 |
+| `ac3` 5.1, 448 kbit/s | 110,918 | 67 | 24,866,000 | 43,000,000 | 10,224,000 |
+| `eac3` 5.1, 384 kbit/s | 158,602 | 173 | 33,207,000 | 78,000,000 | 12,928,000 |
+
+Between 1.7 and 2.6 times the decode row's count for the same layout, with the encoders in
+`float` end to end since 2026-09-10 (the analysis front end first, then the coefficient store and
+every analysis behind it; the decode path has been `float` under this profile since 2026-09-09)
+and the rate-control search and exponent-run planner made cheaper the same day. What is left of
+the gap is the search - exponent-run planning, the allocation probes, mantissa bit counts -
+which is integer work the decoder does once a block. On an ESP32-S3 the board encodes AC-3 2/0
+at 0.35x real time, E-AC-3 2/0 at 0.73x, AC-3 5.1 at 1.01x and E-AC-3 5.1 at 1.74x - the
+[ESP32-S3 page](platforms/esp32.md#encoding) has the six rows and the stage tables, and the
+first platform choice on the search, `delta_allocation`.
+
+`eac3_tools` is the row that reaches the coupling, spectral-extension and AHT encoders at all:
+the 5.1 row's default is no tool. It is 2/0 with its band edges pinned (`cplbegf` 0, `spxbegf`
+7), and `encode_fixture.hpp` has the two findings behind that shape, with the host profile's
+numbers:
+
+| Shape | Peak heap (host) | Fits an ESP32-S3's encode build (241,664-byte largest free run)? |
+|---|---:|---|
+| 5.1 at 256 kbit/s, spx alone | 205,718 | Yes |
+| 5.1 at 256 kbit/s, standard coupling alone | 289,202 | No |
+| 5.1 at 256 kbit/s, AHT alone | 312,744 | No |
+| 5.1 at 256 kbit/s, all three | 369,790 | No |
+| 5.1 at 384 kbit/s, §E3.5 enhanced coupling | 343,483 | No (the ecpl row's own finding) |
+| 7.1.4 at 640 kbit/s through `AccessUnitEncoder` (a bed and two dependents, 14 coded channels) | 601,954 | No - three encoders resident at once, 416 allocations a frame |
+| The Atmos object encoder | about 300,000 | No, and it is not in the profile |
+
+And at 2/0 with both merely permitted, the rate defaults start spectral extension below where
+coupling would begin and §E3.3.1 then drops coupling, so the frame is spx + AHT - the pinned
+edges are what keep all three live, which `ac3cli probe` confirms on the frame. The Atmos
+figure is a bench estimate rather than a probe row: `ac3membench` shows `AtmosEncoder`
+constructing with 138,743 bytes live against the plain E-AC-3 encoder's 58,912 and its first
+frame allocating what that encoder's does, which puts it about 80 KB above the 5.1 row - and
+its per-frame QMF analysis of the bed and every object is `double` as well. What the part can
+encode is therefore one substream at a time, 5.1 with no tool or 2/0 with any, in the
+configurations the six rows are.
+
 Two things about the probe differ from the decode one, and both follow from the direction:
 
 - **The input is synthesised.** A decoder's fixture is a 10,752-byte bitstream; an encoder's is the
@@ -385,7 +439,7 @@ Two things about the probe differ from the decode one, and both follow from the 
   FPU at all.
 
 Steady-state churn is **78 allocations per frame for AC-3 and 249 for E-AC-3**, against the
-decoders' 43–126. That gap is in the API rather than the implementation: both encoders return
+decoders' 1–31. That gap is in the API rather than the implementation: both encoders return
 `std::vector<std::byte>` from `encode_frame`, and there is no `encode_frame_into` to match
 `decode_frame_into`. It is the same zero-heap gap [above](#gaps) records for the decode side, wider
 here, and it is the thing to close before this profile is fit for a real-time encode.
@@ -395,12 +449,14 @@ CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`)
 
 ### Gaps
 
-Two of PF7's requirements are not met, and are recorded here rather than half-enforced. The
-third, a float32-only path, is met for the decode path; its scope is described below.
+One of PF7's requirements is not met, and is recorded here rather than half-enforced: no heap
+traffic in the decode loop. The float32-only path is met for the decode path, and the retained
+scratch below has since been closed; both are kept here with what they cost and what closed them.
 
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
-(`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
-the probe uses) and no frame leaks (what stays live after teardown is the bounded scratch below,
+(`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, and the
+`_by_block` forms hand the decoder's own storage over a block at a time, which is what the probe
+uses) and no frame leaks (what stays live after teardown is the bounded scratch below,
 not per-frame growth), but the steady state is **3 allocations per frame for AC-3, 12 for
 E-AC-3 and for E-AC-3 with §E3.5 enhanced coupling, 10 for 2/0, and 41 for Atmos with
 objects**. The per-block geometry vectors inside the decoders no longer account for any of it —
@@ -412,16 +468,22 @@ a design change, not a build option. The runner gates the number at 100 for ever
 no exemption ([the footprint table](performance-trend.md#minimum-footprint-decoder) has the
 detail), so the distance from zero cannot grow while the gap is open.
 
-**Scratch that is never released — newly visible, and bounded.** 34,232 bytes are still live
-when the probe finishes, after every decoder it made has been destroyed: `eac3_tools.cpp`'s
-32,768-byte `EcplSpectrumScratch`, its 1,440-byte bin-angle vector, and 24 bytes of
-`__cxa_thread_atexit` registration for the two. Both are `thread_local`, deliberately, so that
-enhanced coupling neither allocates per call nor puts 32 KB on the stack; on a target whose only
-thread never exits the destructor that would release them never runs. This is not the heap gap
-above — it does not grow, and it is paid once — but on an ESP32-S3 it is 32 KB of 341,760 bytes
-of internal SRAM held for the life of the decoding task. The probe reports it as
-`heap.retained_bytes` and both runners gate it. It could not be measured until a fixture reached
-§E3.5, which none did before the enhanced-coupling stream was added.
+**Scratch that was never released — closed.** `eac3_tools.cpp` kept enhanced coupling's
+32,768-byte `EcplSpectrumScratch` and its 1,440-byte bin-angle vector in `thread_local` storage,
+so §E3.5 neither allocates per call nor puts 32 KB on the stack. On a target whose only thread
+never exits, the destructor that would release them never runs, and 34,232 bytes stayed live for
+the life of the decoding task. That was bounded and paid once, so it was never the heap gap above
+— but on an ESP32-S3 it was 32 KB of internal SRAM that object reconstruction then had nowhere to
+fit into.
+
+`ac3::eac3::release_ecpl_scratch()` hands them back and the next call rebuilds what it needs. The
+probe calls it between fixtures, and retained bytes at exit went from 34,232 to 24, and to **12**
+once the bin-angle vector became a stack array. What is left is one `__cxa_thread_atexit`
+registration record, for the pointer to the spectrum scratch — the one `thread_local` the library
+still declares, and 23,552 bytes on this profile in its float form rather than the 32,768 above.
+Both runners gate it at 1,024 — deliberately tight, because nothing here grows a little: either
+the scratch is handed back or it is not, and the difference is five figures.
+[The ESP32-S3 page](platforms/esp32.md#objects) has what it unblocked.
 
 **A float32-only path — met for the decode path.** `src/forge/src/internal/scalar/`'s
 seam carries `decode_scalar_t`: `float` under this profile, `double` by default in every other
@@ -429,6 +491,110 @@ build, and selectable there with `-DAC3FORGE_DECODE_SCALAR=float`. Both
 decoders' coefficient stores, transform scratch and overlap-add history follow it, and
 `imdct512_windowed`/`imdct256_pair_windowed` have float32 overloads built from the same templated
 body as the double ones, so §7.9.4.1 is implemented once.
+
+For a while that was the buffers only. The arithmetic between the bitstream and them - mantissa
+dequantisation and the 2^-exp scale, dither, coupling and spectral-extension coordinates,
+decoupling, the whole of spectral-extension synthesis, the AHT's dequantiser and six-point
+inverse, and JOC's object mixing - stayed `double` and was narrowed at the store. On a desktop
+that costs nothing; on the ESP32-S3's single-precision FPU every one of those operations was a
+call into the ROM's software routines, and a board profile on 2026-09-09 found them to be 80% of
+a 5.1 E-AC-3 decode ([the ESP32-S3 page](platforms/esp32.md#timing) has the stage table). Those
+paths now run in `decode_scalar_t` too, through templates whose `<double>` instantiations are the
+exported functions the ordinary build always called, so its arithmetic is unchanged. What still
+runs in `double` on this profile is stated rather than hidden: the per-block DRC gain, and the
+output stage's gains and mix coefficients - the stage's per-sample arithmetic, the dialnorm
+scale, the folds, the Hilbert phase shift and RF mode's protection, followed on 2026-09-10.
+Enhanced coupling's reconstruction followed in a second pass - its routines
+are shared with the encoder, so they exist in both scalars now, the double forms being the
+encoder's - and with it the last of the decode path is in `decode_scalar_t`.
+
+**A fixed-point decode path, for parts with no FPU.** The third value of the same axis,
+`-DAC3FORGE_DECODE_SCALAR=fixed`, carries `decode_scalar_t` as `ac3::internal::Fixed32`
+(`src/forge/src/core/fixed32.hpp`): a signed 32-bit integer read as Q7.24, products through 64
+bits and rounded once, sums wrapping, conversions saturating. It is the tier for an ESP32-C3 or
+a Cortex-M3, where even `float` is a compiled subroutine, and the minimum-footprint profile
+honours it (every other value of the option is `float` there). What the tier does, in the order
+the decode runs: dequantisation, dither, coordinates and decoupling in `Fixed32`; a coupling
+or spectral extension coordinate kept as its mantissa and its power of two, so the product with
+a coefficient is a shift; the §7.9.4 inverse pair as its own kernel
+(`src/forge/src/core/mdct_fixed.hpp` - the same pre-twiddle, N/4-point FFT, post-twiddle and window as the fast
+branch, with no scaling inside the transform: the input's bound gives the seven bits the FFT can
+grow by); the overlap-add in 64 bits with one float conversion at the end; and Annex E's own
+tools - the adaptive hybrid transform's dequantisers and six-point inverse, the spectral
+extension notch, and enhanced coupling's spectrum, amplitudes, angles and reconstruction
+(`src/forge/src/core/eac3_tools_fixed.hpp` and the bodies beside the floating ones in
+`eac3_tools.cpp`). Enhanced coupling's 512-point DFT is the one place the tier does scale inside
+a transform: an unscaled one can grow by nine bits where the format has seven, so its stages
+shed bits only where the next would otherwise overflow and what they shed is carried in the
+exponent, the spec's own 1/N with it. On the Cortex-M3 leg that row is
+10.1 M instructions against the float tier's 28.9 M.
+
+What is not in the tier: JOC's object reconstruction, which runs in `float` in every build of
+this library including the double one (`recon_scalar_t`), so it is not a seam of this tier's at
+all - what the tier does with it is convert each matrix coefficient it reads.
+
+What makes the precision is not the word but the exponent. Q7.24 is an absolute format - a
+raw unit is 2^-24 of full scale wherever a value sits - and stored directly, a quiet dense
+channel came out 99 dB from the double decode and a coupled one 88, the mantissas' bits lost at
+dequantisation. So each stream's coefficients are stored under a block exponent
+(`src/forge/src/decoder/block_norm.hpp`): scaled up so the largest sits just below one half,
+which is the transform's precondition, and every mantissa keeps all of its bits. The exponent
+travels with the block - a tool that needs more room lowers it where it runs, an AHT stream's
+is exact from its reconstructed peaks - and the overlap-add aligns the two halves it sums before
+the conversion applies the power of two exactly. Measured with
+`tools/checks/check_decode_scalar_snr.py` on 2026-09-10: 121, 122 and 122 dB on the worst
+channel of the three gold streams, and no channel of the thirteen checked-in third-party streams
+(Dolby Encoding Engine and FFmpeg, AC-3 and E-AC-3, with coupling, spectral extension and the
+AHT) below 111 dB. The gold-reference gate passes with the fixed CLI at the same floors as the
+double one, and its encoder - `encode_scalar_t` is a separate axis - writes the pinned bitstreams
+byte for byte. The tier's own gate is a different kind: integer arithmetic is the same on every
+machine, so the bare-metal probe's `<codec>.pcm_hash` lines are identical on the x86 host and
+the Cortex-M3 leg, and CI holds both to the pinned ones in
+`tests/golden/fixed-probe-pcm-hashes.json` (`tools/checks/check_probe_hashes.py`). The
+Catch2 suite is not one of its gates: two of the encoder's mirror self-checks compare the
+encoder's model against a real decode at a tolerance set for the double decoder, and fail under
+the fixed one. The plan, the phases and what each measured are in
+`planning/arithmetic-tiers.md`.
+
+**And the encoders' analysis front end, on its own axis.**
+`src/forge/src/internal/scalar/encode/{float64,float32}/` carries `encode_scalar_t`: the type
+the two encoders run in, from transient detection and the forward transform through the
+coefficient store, the coupling, spectral-extension and enhanced-coupling analyses and fits, the
+dither and delta-segment decisions and the fixed-point conversion - `double` by default, `float`
+under this profile, and selectable in any build with `-DAC3FORGE_ENCODE_SCALAR=float`. A second axis rather than a second alias beside
+`decode_scalar_t`, for the reason that one was split from the profile: a full build with either
+scalar `float` and the other `double` is what lets the float front end's bitstreams be decoded
+and measured against the double encoder's through the CLI and the oracles. What is not in it:
+the adaptive hybrid transform (its six-block DCT and vector quantiser are `double`), the masking
+model's own arithmetic, and the allocation search, which is integer. `TransientDetector` is the
+`double` instantiation of `BasicTransientDetector<Scalar>` and `DitherBallot` of
+`BasicDitherBallot<Scalar>`; `to_fixed25` is a template, exact in either scalar for the same
+reasons; `to_fixed25_block`, `accumulate_peak_exponents`, `choose_delta_segments` and
+`PerceptualModel::analyse` have `float` overloads; the short-block forward pair and the two peak
+meters that read the overlap history take either. The float path's `log2` and `exp` are the
+project's own (`src/forge/src/core/scalar_math.hpp`: a bit-level `frexp` and a short series,
+Cody-Waite reduction and a short series), because the profile's fixture hashes are checked on
+the x86 host, the Cortex-M3 leg and the ESP32-S3 and three C libraries' `logf` do not agree in
+their last bit; the `double` overloads are libm's, called as before. Every `<double>`
+instantiation is the function the ordinary build always called, so
+`tests/golden/bitstream-hashes.json` holds; the profile's own fixtures
+(`apps/baremetal/encode_fixture.hpp`) are the float encoder's streams, identical on the x86
+host, the Cortex-M3 leg and the ESP32-S3 - and the same bytes the float front end alone had
+produced, so converting everything behind it moved no fixture's hash.
+
+Why the front end first: on the ESP32-S3, with the encoders wholly in `double`, the forward
+transform and transient detection were 64% of an AC-3 5.1 frame and 36% of an E-AC-3 one. With
+them in `float` the board encoded AC-3 2/0 in 28.3 ms of its 32 (0.88x, from 2.34x over) and
+AC-3 5.1 in 71.0 ms (2.22x, from 6.25x); E-AC-3 5.1 went from 349 ms to 220. With the rest
+converted the same day: AC-3 2/0 in 12.1 ms (0.38x), E-AC-3 2/0 in 33.8 (1.06x), AC-3 5.1 in 35.1
+(1.10x), E-AC-3 5.1 in 81.2 (2.54x), and the §E3.5 row from 426 ms to 55. The
+[ESP32-S3 page](platforms/esp32.md#encoding) has every row and the stage table; what remains
+is the integer search. CI's `linux-gcc` leg builds this scalar's full CLI beside the float
+decoder's to run its streams through the gold-reference gate and
+`tools/checks/check_encode_scalar_quality.py`, which holds the float encoder's worst channel to
+within 0.5 dB of the double encoder's on five gold streams (they are identical to the hundredth
+of a decibel), and `tests/golden/bitstream-hashes.json` pins its three streams on x86-64 under
+the `encfloat` mode.
 
 No gold-reference number moved, because the choice is per-profile rather than global. The
 ordinary build's `decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite

@@ -78,6 +78,16 @@ void to_fixed25_block(std::span<const double> coefficients, std::span<std::int32
     }
 }
 
+// The float form: to_fixed25 on each float coefficient, which is that
+// coefficient's own round-half-away-from-zero (exponents.hpp says why the
+// float instantiation is exact). Bin by bin - see the header.
+void to_fixed25_block(std::span<const float> coefficients, std::span<std::int32_t> fixed) {
+    assert(coefficients.size() == fixed.size());
+    for (std::size_t i = 0; i < coefficients.size(); ++i) {
+        fixed[i] = to_fixed25(coefficients[i]);
+    }
+}
+
 void extract_exponents(std::span<const std::int32_t> fixed, std::span<std::uint8_t> exponents) {
     assert(fixed.size() == exponents.size());
     for (std::size_t i = 0; i < fixed.size(); ++i) {

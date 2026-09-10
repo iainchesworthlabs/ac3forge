@@ -222,6 +222,25 @@ std::span<const double> PerceptualModel::band_centre_hz() const {
 
 void PerceptualModel::analyse(int channel, std::span<const double> coefficients, int end,
                               BlockAnalysis& out) {
+    analyse_over<double>(channel, coefficients, end, out);
+}
+
+void PerceptualModel::analyse(int channel, std::span<const float> coefficients, int end,
+                              BlockAnalysis& out) {
+    analyse_over<float>(channel, coefficients, end, out);
+}
+
+// The masking model itself stays in double whatever the coefficients are -
+// see the header - so every read of them is widened explicitly. Implicitly is
+// how it was written, and clang's -Wdouble-promotion (an error in the wheels
+// leg, which is the only one that compiles this with Apple clang) refuses a
+// float-to-double promotion it can see; GCC does not diagnose the same
+// conversion inside a template instantiation, so this only ever went red on
+// macOS. The <double> instantiation is unchanged either way: a static_cast
+// from double to double is nothing.
+template <typename Scalar>
+void PerceptualModel::analyse_over(int channel, std::span<const Scalar> coefficients, int end,
+                                   BlockAnalysis& out) {
     AC3_ZONE_SCOPED_N("perceptual_analyse");
     assert(channel >= 0 && channel < impl_->channels);
     assert(end >= 0 && end <= kBins);
@@ -244,7 +263,8 @@ void PerceptualModel::analyse(int channel, std::span<const double> coefficients,
         for (int offset = -1; offset <= 1; ++offset) {
             const int neighbour = bin + offset;
             if (neighbour >= 0 && neighbour < end) {
-                const double value = coefficients[static_cast<std::size_t>(neighbour)];
+                const auto value =
+                    static_cast<double>(coefficients[static_cast<std::size_t>(neighbour)]);
                 sum += value * value;
             }
         }
@@ -276,7 +296,7 @@ void PerceptualModel::analyse(int channel, std::span<const double> coefficients,
         double weighted = 0.0;
         double largest = 0.0;
         for (int bin = start; bin < stop; ++bin) {
-            const double value = coefficients[static_cast<std::size_t>(bin)];
+            const auto value = static_cast<double>(coefficients[static_cast<std::size_t>(bin)]);
             energy += value * value;
             largest = std::max(largest, std::abs(value));
             const double current = magnitude[static_cast<std::size_t>(bin)];

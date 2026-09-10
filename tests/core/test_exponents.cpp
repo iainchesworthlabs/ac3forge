@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cmath>
 #include <random>
+#include <span>
 #include <vector>
 
 #include "ac3/core/exponents.hpp"
@@ -253,5 +255,58 @@ TEST_CASE("encode/decode properties over random exponent sets", "[exponents]") {
             CHECK(re_encoded.absolute == encoded.absolute);
             CHECK(re_encoded.groups == encoded.groups);
         }
+    }
+}
+
+// The float forms (AC3FORGE_ENCODE_SCALAR's path) against the double ones on
+// the same float values: to_fixed25's float instantiation is exact for the
+// same reasons the double one is (exponents.hpp), so the two must agree on
+// every input, ties included.
+namespace {
+
+std::vector<float> float_probe_values() {
+    std::vector<float> values;
+    // Exact ties at the 2^-25 grid, both signs, plus the clamps' edges and a
+    // spread of ordinary magnitudes.
+    for (int k = -40; k <= 40; ++k) {
+        const float tie = std::ldexp(static_cast<float>(2 * k + 1), -25);
+        values.push_back(tie);
+        values.push_back(-tie);
+        values.push_back(tie + std::ldexp(1.0f, -30));
+        values.push_back(tie - std::ldexp(1.0f, -30));
+    }
+    for (const float v : {0.0f, -0.0f, 0.5f, -0.5f, 0.999999f, 1.0f, -1.0f, 1.5f, 2.0f, -2.0f,
+                          5.9e-8f, 1e-9f, 1e-30f, 3.0e7f, -3.0e7f}) {
+        values.push_back(v);
+    }
+    std::mt19937 rng(0x5eed);
+    std::uniform_real_distribution<float> dist(-1.2f, 1.2f);
+    for (int i = 0; i < 2000; ++i) {
+        values.push_back(dist(rng));
+    }
+    return values;
+}
+
+}  // namespace
+
+TEST_CASE("to_fixed25's float instantiation agrees with the double one", "[exponents]") {
+    for (const float v : float_probe_values()) {
+        CHECK(ac3::to_fixed25(v) == ac3::to_fixed25(static_cast<double>(v)));
+    }
+}
+
+TEST_CASE("the float block conversions agree with to_fixed25 element by element",
+          "[exponents]") {
+    const auto values = float_probe_values();
+    std::vector<std::int32_t> fixed(values.size());
+    ac3::to_fixed25_block(std::span<const float>{values}, fixed);
+    std::vector<std::int32_t> fused(values.size());
+    std::vector<std::uint8_t> exponents(values.size());
+    ac3::to_fixed25_block(std::span<const float>{values}, fused, exponents);
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        const std::int32_t expected = ac3::to_fixed25(values[i]);
+        CHECK(fixed[i] == expected);
+        CHECK(fused[i] == expected);
+        CHECK(exponents[i] == static_cast<std::uint8_t>(ac3::exponent_from_fixed(expected)));
     }
 }

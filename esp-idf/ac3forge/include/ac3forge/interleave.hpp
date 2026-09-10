@@ -6,17 +6,16 @@
 
 // Planar float to interleaved fixed-point, in the two shapes the sinks need.
 //
-// Its own header, free of ESP-IDF, for one reason: this is the part of a sink
-// that can be TESTED. Everything else in one is peripheral setup and a blocking
-// write, neither of which does anything without a DAC on the other end; this is
-// arithmetic and indexing, and indexing is where the bugs are.
+// In the component rather than in an example, because every sink converts
+// through it - the streaming example's I2S and TDM sinks, its capture sink,
+// and whatever an integrator writes - and free of ESP-IDF, because this is the
+// part of a sink that can be TESTED. Everything else in one is peripheral setup
+// and a blocking write, neither of which does anything without a DAC on the
+// other end; this is arithmetic and indexing, and indexing is where the bugs
+// are. tests/io/test_interleave.cpp builds it on the host.
 //
-// Both real sinks convert through here, and so does sink/capture/ - which is
-// what lets CI check the conversion ON TARGET without a peripheral, rather than
-// only on the host. A capture sink that did its own conversion would be
-// checking a copy of the code instead of the code.
-//
-// See tests/io/test_interleave.cpp, which builds this on the host.
+// It is library code with a temporary home: planning/esp32-player.md hands it
+// over to src/forge as ac3::io::interleave, and this copy goes when that lands.
 //
 // SLOTS ARE FIXED WIDTH AND MUST ALL BE WRITTEN. A TDM frame carries `slots`
 // samples whatever the programme has, so a 5.1 stream on an 8-slot bus has two
@@ -25,7 +24,7 @@
 // the DAC clocks out next time - two channels of stale audio that nobody is
 // listening for and everybody can hear.
 
-namespace player {
+namespace ac3forge {
 
 // 24-bit in a 32-bit slot, which is what a TDM DAC (a PCM3168A, say) expects and
 // what the ESP32-S3's I2S produces with a 32-bit slot width.
@@ -112,4 +111,4 @@ inline void interleave_16(std::span<const std::span<const float>> channels, std:
     }
 }
 
-}  // namespace player
+}  // namespace ac3forge

@@ -306,3 +306,26 @@ TEST_CASE("E-AC-3 narrows the coded bandwidth where it used to send 60") {
     // The default is auto, so a caller that says nothing gets the narrowing.
     CHECK(ac3::eac3::FrameConfig{}.chbwcod == -1);
 }
+
+TEST_CASE("accumulate_peak_exponents' float form agrees with the double one") {
+    // One block of float coefficients, folded into two minima - one through
+    // each form - from an empty spectrum. Same values in, same exponents out:
+    // to_fixed25's float instantiation is the double one's answer for the
+    // same coefficient (exponents.hpp), and the minimum is integer.
+    std::array<float, 256> coefficients{};
+    for (std::size_t bin = 0; bin < coefficients.size(); ++bin) {
+        const auto k = static_cast<float>(bin);
+        coefficients[bin] = std::ldexp(1.0f + 0.37f * std::sin(k), -1 - static_cast<int>(bin % 23));
+    }
+    const std::array<double, 256> widened = [&] {
+        std::array<double, 256> out{};
+        std::copy(coefficients.begin(), coefficients.end(), out.begin());
+        return out;
+    }();
+    std::vector<std::uint8_t> from_float(256, static_cast<std::uint8_t>(ac3::kMaxExponent));
+    std::vector<std::uint8_t> from_double(256, static_cast<std::uint8_t>(ac3::kMaxExponent));
+    ac3::encoder::accumulate_peak_exponents(std::span<const float>{coefficients}, from_float);
+    ac3::encoder::accumulate_peak_exponents(std::span<const double>{widened}, from_double);
+    CHECK(from_float == from_double);
+    CHECK(from_float[0] == 0);  // the loudest bin sits in the top exponent
+}

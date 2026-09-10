@@ -54,6 +54,9 @@ add_executable(ac3tests
     oba/test_atmos_motion.cpp
     audio/test_audio_backend.cpp
     core/test_bitalloc.cpp
+    core/test_fixed32.cpp
+    core/test_mdct_fixed.cpp
+    decoder/test_block_norm.cpp
     core/test_bitwriter.cpp
     meta/test_bsi.cpp
     encoder/test_bit_reservoir.cpp
@@ -74,6 +77,7 @@ add_executable(ac3tests
     io/test_elementary.cpp
     io/test_stream_accumulator.cpp
     io/test_interleave.cpp
+    io/test_layout.cpp
     io/test_metadata_edit.cpp
     io/test_probe.cpp
     emdf/test_emdf.cpp
@@ -121,6 +125,7 @@ add_executable(ac3tests
     spatial/test_spatial.cpp
     core/test_simd_kernels.cpp
     core/test_tables.cpp
+    encoder/test_scalar_math.cpp
     encoder/test_transient.cpp
     decoder/test_transient_prenoise.cpp
     audio/test_watchdog.cpp
@@ -167,6 +172,16 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src
 # through a whole encode. Same pattern as the signing headers above.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/encoder")
 
+# test_scalar_math.cpp includes src/forge/src/core/scalar_math.hpp, the float
+# encode path's own log2/log/exp - internal for the same reason as the
+# exponent-run planner above, and worth holding to accuracy bounds on its own
+# rather than only through the fixture hashes that depend on it.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/core")
+# test_block_norm.cpp includes src/forge/src/decoder/block_norm.hpp, the
+# fixed-point tier's block exponent, which both decoders share and which is not
+# library surface.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/decoder")
+
 # test_simd_kernels.cpp (roadmap PF5) needs the ONE architecture directory
 # CMake selected in src/forge/CMakeLists.txt, so the test exercises the
 # f64x2/i32x4 the library was actually built with rather than a different
@@ -174,14 +189,14 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/e
 # backend's internal header below.
 target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 
-# The TDM interleave from the ESP-IDF streaming example. Reaching into an
-# example is unusual and deliberate: that header is the only part of a TDM sink
-# that can be checked without a DAC on the other end - the rest is peripheral
-# setup and a blocking write - and it is the part with the indexing in it. The
-# header includes nothing from ESP-IDF, which is what makes building it here
-# possible and is worth keeping true.
+# The interleave from the ESP-IDF component (ac3forge/interleave.hpp). Reaching
+# into the component is deliberate: that header is the only part of an I2S or
+# TDM sink that can be checked without a DAC on the other end - the rest is
+# peripheral setup and a blocking write - and it is the part with the indexing
+# in it. The header includes nothing from ESP-IDF, which is what makes building
+# it here possible and is worth keeping true.
 target_include_directories(ac3tests PRIVATE
-    "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/examples/stream_player/main")
+    "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/include")
 
 # test_simd_kernels.cpp's CPU-feature-detection cases (ROADMAP PF5's
 # dynamic-dispatch follow-on) need cpu_features.cpp compiled a SECOND time,

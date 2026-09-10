@@ -1,0 +1,14 @@
+# Overlay for running on a real board that is flashed through the S3's NATIVE
+# USB connector rather than the UART bridge.
+#
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw" idf.py build
+#
+# The default console is UART0 on GPIO 43/44, which reaches a PC through the
+# board's USB-UART bridge - a second connector and a second cable. With the
+# console on USB-Serial-JTAG instead, one cable carries both the flash and the
+# probe's output, which is what a board on a desk usually has.
+#
+# Nothing else changes: this is where the bytes come out, not what the probe
+# does. CI does not use this file - QEMU reads UART0 - so the numbers a board
+# reports stay comparable with the ones the emulator reports.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y

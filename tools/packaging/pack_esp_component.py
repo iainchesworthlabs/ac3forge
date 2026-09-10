@@ -196,16 +196,52 @@ def verify(archive: pathlib.Path) -> None:
             + "\n",
             encoding="utf-8",
         )
-        (root / "sdkconfig.defaults").write_text(
-            'CONFIG_IDF_TARGET="esp32s3"\nCONFIG_COMPILER_OPTIMIZATION_SIZE=y\n', encoding="utf-8"
-        )
-
         # Through the interpreter rather than as `idf.py`: it is a Python
         # script, and on Windows subprocess cannot execute one directly
         # (WinError 193). This spelling works on both.
         idf_py = pathlib.Path(os.environ["IDF_PATH"]) / "tools" / "idf.py"
-        for command in (["set-target", "esp32s3"], ["build"]):
-            subprocess.run([sys.executable, str(idf_py), *command], cwd=root, check=True)
+
+        # Every target the manifest claims, not the first one. The two differ
+        # in the thing the archive is most likely to get wrong: the S3 has a
+        # single-precision FPU and builds the float32 decode path, the C3 has
+        # no FPU at all and builds the fixed-point one
+        # (planning/arithmetic-tiers.md), so a package that links for one can
+        # still fail to configure for the other. The manifest's own list is
+        # the source - adding a target there is what adds it here.
+        for target in manifest_targets():
+            (root / "sdkconfig.defaults").write_text(
+                f'CONFIG_IDF_TARGET="{target}"\nCONFIG_COMPILER_OPTIMIZATION_SIZE=y\n',
+                encoding="utf-8",
+            )
+            for command in (["set-target", target], ["build"]):
+                subprocess.run([sys.executable, str(idf_py), *command], cwd=root, check=True)
+
+
+def manifest_targets() -> list[str]:
+    """The `targets:` list from esp-idf/ac3forge/idf_component.yml.
+
+    Read rather than restated, and parsed by hand rather than with PyYAML: this
+    script has no third-party dependency and the block it needs is a flat list
+    of scalars under one key. A malformed or missing block is an error, not a
+    default - silently verifying nothing is how a target ends up claimed and
+    unbuilt.
+    """
+    manifest = (REPO / "esp-idf" / "ac3forge" / "idf_component.yml").read_text(encoding="utf-8")
+    targets: list[str] = []
+    inside = False
+    for line in manifest.splitlines():
+        if line.startswith("targets:"):
+            inside = True
+            continue
+        if inside:
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                targets.append(stripped[2:].strip())
+            elif stripped and not stripped.startswith("#"):
+                break
+    if not targets:
+        raise SystemExit("no targets: block in esp-idf/ac3forge/idf_component.yml")
+    return targets
 
 
 def main() -> int:

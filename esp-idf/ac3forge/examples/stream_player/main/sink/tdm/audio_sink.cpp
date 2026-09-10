@@ -1,16 +1,21 @@
 // Multi-channel out of one data line: I2S in TDM mode.
 //
-// Standard I2S carries two slots, so 5.1 and 7.1 need this. The ESP32-S3's I2S
-// packs up to 16 slots onto a single data line, which means eight channels needs
-// THREE pins - BCLK, WS and DATA - rather than four data lines, and eight slots
-// of 32 bits at 48 kHz is a 12.3 MHz bit clock, well inside what the peripheral
-// will do. The DAC has to speak TDM: a PCM3168A does, the common stereo
-// breakouts (MAX98357A, PCM5102) do not.
+// Standard I2S carries two slots, so anything wider needs this. The ESP32-S3's
+// I2S packs up to 16 slots onto a single data line, which means a whole 7.1.4
+// needs THREE pins - BCLK, WS and DATA - rather than six data lines. Eight
+// slots of 32 bits at 48 kHz is a 12.3 MHz bit clock and sixteen is 24.6 MHz,
+// both inside what the peripheral will do; whether the DAC follows is the
+// DAC's datasheet. It has to speak TDM: a PCM3168A does, an ADAU1452 or
+// ADAU1467 does on its serial inputs (TDM2/4/8/16), the common stereo breakouts
+// (MAX98357A, PCM5102) do not.
+//
+// Master by default; CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE hands the clocks to the
+// other end, which is how a SigmaDSP that is the house's clock wants it.
 //
 // NOT TESTED ON HARDWARE. There is no TDM DAC here, and QEMU has no I2S at all,
 // so what CI establishes about this file is that it compiles and links. The
 // interleave is the exception and it is deliberately elsewhere:
-// ../../interleave.hpp is free of ESP-IDF and is unit-tested on the host
+// ac3forge/interleave.hpp is free of ESP-IDF and is unit-tested on the host
 // (tests/io/test_interleave.cpp), because indexing a planar-to-interleaved
 // transform with slot padding is where the bugs are, and the rest of this file
 // is peripheral setup that either works on a board or does not.
@@ -25,18 +30,22 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "interleave.hpp"
+#include "ac3forge/interleave.hpp"
+
+#include "../sink_common.hpp"
 
 namespace player {
 namespace {
 
+constexpr bool kSlave = CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE != 0;
+
 i2s_chan_handle_t g_tx = nullptr;
-std::uint64_t g_frames = 0;
+DacQueueModel g_model;
 std::size_t g_slots = 0;
 
-// One frame of interleaved TDM: 1,536 samples of kMaxSlots 32-bit slots. At
-// namespace scope because 49,152 bytes is far more than a FreeRTOS task stack
-// has, and static because the sink is the only thing that needs it.
+// One block of interleaved TDM: 256 sample frames of kMaxSlots 32-bit slots,
+// 16 KB. At namespace scope because that is more than a FreeRTOS task stack
+// has spare, and static because the sink is the only thing that needs it.
 //
 // It is .bss, which on this part is internal SRAM - so it is already where DMA
 // can reach, and i2s_channel_write copies into the driver's own descriptors
@@ -44,8 +53,11 @@ std::size_t g_slots = 0;
 // profile whose whole subject is not having any; that requirement belongs to
 // the zero-copy paths (i2s_channel_preload_data and friends), which this does
 // not use.
-constexpr std::size_t kMaxSlots = 8;
-std::array<std::int32_t, ac3::kSamplesPerFrame * kMaxSlots> g_interleaved{};
+constexpr std::size_t kMaxSlots = 16;
+std::array<std::int32_t, ac3::kSamplesPerBlock * kMaxSlots> g_interleaved{};
+
+constexpr int kDmaDescriptors = CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS;
+constexpr int kDmaFrames = CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES;
 
 // Which slots the bus carries. Always the full width, not the channel count:
 // a TDM frame is a fixed shape, and a 5.1 programme on an 8-slot bus leaves two
@@ -69,20 +81,25 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
     // The BUS width, from configuration, not from the programme. A DAC is wired
     // for a fixed number of slots and does not renegotiate because this stream
     // happens to be 5.1 - so the slot count is a property of the board and the
-    // channel count is a property of the audio, and they are allowed to differ.
+    // channel count is a property of the layout, and they are allowed to differ.
     g_slots = static_cast<std::size_t>(CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS);
     if (g_slots > kMaxSlots || static_cast<std::size_t>(channels) > g_slots) {
         std::printf("error: %d channels do not fit %u TDM slots\n", channels,
                     static_cast<unsigned>(g_slots));
         return false;
     }
+    const std::size_t bytes_per_frame = g_slots * sizeof(std::int32_t);
+    // The same depth the stereo sink has, in as many descriptors as this
+    // width needs - see dma_plan.
+    const DmaPlan plan = dma_plan(kDmaDescriptors, kDmaFrames, bytes_per_frame);
+    const std::size_t dma_bytes = static_cast<std::size_t>(plan.descriptors) *
+                                  static_cast<std::size_t>(plan.frames) * bytes_per_frame;
+    g_model.open(sample_rate * static_cast<std::uint32_t>(bytes_per_frame), dma_bytes);
 
-    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
-    // Fewer, larger descriptors than the stereo sink uses: the same 20 ms of
-    // audio is four times the bytes at eight 32-bit slots, and dma_frame_num is
-    // counted in FRAMES rather than bytes.
-    chan_cfg.dma_desc_num = 4;
-    chan_cfg.dma_frame_num = 240;
+    i2s_chan_config_t chan_cfg =
+        I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, kSlave ? I2S_ROLE_SLAVE : I2S_ROLE_MASTER);
+    chan_cfg.dma_desc_num = static_cast<uint32_t>(plan.descriptors);
+    chan_cfg.dma_frame_num = static_cast<uint32_t>(plan.frames);
     chan_cfg.auto_clear = true;
     if (i2s_new_channel(&chan_cfg, &g_tx, nullptr) != ESP_OK) {
         std::printf("error: could not allocate an I2S channel\n");
@@ -106,34 +123,45 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
         std::printf("error: could not start I2S in TDM mode\n");
         return false;
     }
-    std::printf("sink: tdm %lu Hz 24-in-32 x%d in %u slots, bclk=%d ws=%d dout=%d\n",
+    std::printf("sink: tdm %lu Hz 24-in-32 x%d in %u slots, %s, bclk=%d ws=%d dout=%d, "
+                "dma=%dx%d frames (%ld ms)\n",
                 static_cast<unsigned long>(sample_rate), channels,
-                static_cast<unsigned>(g_slots), CONFIG_AC3FORGE_EXAMPLE_I2S_BCLK_GPIO,
-                CONFIG_AC3FORGE_EXAMPLE_I2S_WS_GPIO, CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT_GPIO);
+                static_cast<unsigned>(g_slots), kSlave ? "slave (the DAC clocks)" : "master",
+                CONFIG_AC3FORGE_EXAMPLE_I2S_BCLK_GPIO, CONFIG_AC3FORGE_EXAMPLE_I2S_WS_GPIO,
+                CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT_GPIO, plan.descriptors, plan.frames,
+                static_cast<long>(g_model.capacity_ms()));
     return true;
 }
 
 void sink_write(std::span<const std::span<const float>> channels) {
-    interleave_24in32(channels, g_slots, ac3::kSamplesPerFrame,
-                      std::span<std::int32_t>{g_interleaved.data(),
-                                              ac3::kSamplesPerFrame * g_slots});
+    if (channels.empty()) {
+        return;
+    }
+    std::size_t frames = channels[0].size();
+    if (frames > ac3::kSamplesPerBlock) {
+        frames = ac3::kSamplesPerBlock;
+    }
+    ac3forge::interleave_24in32(channels, g_slots, frames,
+                                std::span<std::int32_t>{g_interleaved.data(), frames * g_slots});
+    const std::size_t bytes = frames * g_slots * sizeof(std::int32_t);
 
+    g_model.arriving();
     std::size_t written = 0;
     // portMAX_DELAY: block until the DMA has room. This is what paces the
     // player at real time - the DAC's clock, not a delay.
-    (void)i2s_channel_write(g_tx, g_interleaved.data(),
-                            ac3::kSamplesPerFrame * g_slots * sizeof(std::int32_t), &written,
-                            portMAX_DELAY);
-    ++g_frames;
+    (void)i2s_channel_write(g_tx, g_interleaved.data(), bytes, &written, portMAX_DELAY);
+    g_model.queued(bytes);
 }
 
 const char* sink_name() { return "tdm"; }
 
-std::uint64_t sink_frames_written() { return g_frames; }
+int sink_slots() { return static_cast<int>(g_slots); }
 
-// Nothing to report, for the same reason the stereo sink has nothing: the
-// DAC's side of the wire is not observable here. sink/capture/ with
-// CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM checks this sink's conversion.
-void sink_report() {}
+std::uint64_t sink_frames_written() { return g_model.writes(); }
+
+// The DAC's side of the wire is not observable here; sink/capture/ with
+// CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM checks this sink's conversion. Whether
+// the samples arrived in time is - see sink_common.hpp.
+void sink_report() { g_model.report(); }
 
 }  // namespace player

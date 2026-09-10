@@ -1,31 +1,34 @@
 # Bare metal
 
 A board with no operating system, no C++ runtime to speak of, and a few hundred kilobytes of RAM.
-The library builds for it as `ac3::forge_minimal`: one static archive, no exceptions, no RTTI,
-and none of the direct-form transform tables. It is decode-only under
-`AC3FORGE_MINIMAL_DECODER` and encode-only under `AC3FORGE_MINIMAL_ENCODER`; the two are
-mutually exclusive, because neither fits beside the other in the memory this profile targets.
+The library builds for it as `ac3::forge_minimal`: one static archive, no exceptions, no RTTI, and
+none of the direct-form transform tables.
 
 The reference target is `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine — a
 Cortex-M3 with no floating-point unit, where every floating-point operation is software-emulated.
-It is the target CI measures the profile on. The
-[ESP32-S3](esp32.md) is the second bare-metal target and the first with hardware floating point.
+It is the target CI measures the profile on. The [ESP32-S3](esp32.md) is the second bare-metal
+target and the first with hardware floating point.
 
 ## Status
 
 | | |
 |---|---|
-| AC-3 5.1 decode | Correct. Six frames, every channel level exact against `apps/baremetal/fixture.hpp` |
-| E-AC-3 5.1 decode | Correct. Same, including AHT and spectral extension |
-| E-AC-3 §E3.5 enhanced coupling | Correct. Its own fixture; costs 126 allocations per frame against 86 |
-| E-AC-3 2/0, §7.5.4 rematrixing | Correct. The only layout that tool exists in |
-| Image size | 297,612 bytes total — 200,060 `.text`, 400 `.data`, 97,152 `.bss` |
-| Peak heap | 179,064 bytes |
-| Retained after teardown | 34,232 bytes of enhanced-coupling scratch, held for the life of the decoding thread |
-| Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`. The two are mutually exclusive: neither fits beside the other. |
-| Audio output | None. The probe decodes built-in fixtures and prints levels. |
-| Real silicon | None. Correctness is established under emulation. |
+| AC-3 decode | Correct. Mono, stereo and 5.1, and 5.1 folded to Lo/Ro stereo in line mode by the §7.8 output stage, every channel level exact against `apps/baremetal/fixture.hpp` |
+| E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing, and 5.1 folded to Lo/Ro stereo in line mode |
+| E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture |
+| Atmos bed and objects | Correct. Objects reconstruct here, and are placed onto 7.1.4 by their positions (`eac3_atmos_render`, through the block form's object views); the flat newlib heap makes it easier than on the [ESP32-S3](esp32.md#objects) |
+| Fixed-point decode | `-DAC3FORGE_DECODE_SCALAR=fixed` builds every decode row above in Q7.24 integers under a per-block exponent, for a part with no FPU at all - the plan is [arithmetic-tiers.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md). CI runs the probe twice on this leg, and the fixed build's PCM is identical to the x86 host's and to an ESP32-C3's under `qemu-riscv32` - three architectures, one pinned set of hashes (`tests/golden/fixed-probe-pcm-hashes.json`). It costs 0.37x the instructions the default build spends on the same frame: `eac3.instructions_per_frame=4827000` against 12,948,000, integer arithmetic where that one's is software floating point |
+| Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`: six rows (5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, 2/0 §E3.5), each hashed against `encode_fixture.hpp` with its peak and its time per frame; 242,589-byte image, 202,760 peak, 10.3 M to 80.7 M instructions a frame under `--encoder --icount` - see [Building](../building.md#what-the-encode-direction-costs) |
+| Image size | 338,793 bytes — 276,188 `.text`, 400 `.data`, 62,205 `.bss` |
+| Peak heap | 229,630 bytes, the 7.1.4 fixture (210,203 with Atmos objects) |
+| Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
+| Allocations per frame | 1 to 35, by fixture — see [the footprint table](../performance-trend.md#minimum-footprint-decoder) |
+| Audio output | None. The probe decodes built-in fixtures and prints levels |
+| Real silicon | None. Correctness is established under emulation |
 | CI | `build-footprint` in `.github/workflows/_build.yml`, on every push |
+
+Decode and encode are separate builds, and mutually exclusive: configure fails if both are asked
+for, because neither fits beside the other in the memory this profile targets.
 
 ## Building and running it
 
@@ -35,15 +38,27 @@ tools/checks/run_baremetal_probe.sh
 
 # The same profile natively, no emulator
 tools/checks/run_baremetal_probe.sh --host
+
+# Instructions per frame under QEMU -icount, deterministic and gated
+tools/checks/run_baremetal_probe.sh --icount
 ```
+
+`--icount` is the one timing figure this leg can give. QEMU is not cycle-accurate and the probe's
+ordinary clock is semihosting's, which reports the host's time; but under `-icount shift=0` the
+guest's own clock advances one nanosecond per executed instruction, and a build whose clock reads
+the mps2-an385's 25 MHz timer (`AC3FORGE_BAREMETAL_CLOCK=timer`, its own preset and build
+directory) follows it. Every microsecond the probe then prints is a thousand Thumb-2 instructions,
+identical on every host and every run — `eac3.instructions_per_frame=12948000` — gated per fixture
+with the same headroom rule as the other ceilings, and with `--stage-timers` counted per stage. It
+is not cycles on any real part; it is a number that moves when the code does, which the host-time
+figure never was, and it is what the [ESP32-C3](esp32.md#other-esp32-variants) row's speed estimate rests on. That part now runs the fixed tier's probe under `qemu-riscv32` for correctness, but its time still comes from here, and instructions are not cycles on either part.
 
 Both drive the presets, which you can also use directly: `config-arm-none-eabi-minimal` /
 `build-arm-none-eabi-minimal`, and `config-linux-gcc-minimal` or `config-linux-llvm-minimal` for
 the host. GCC and Clang only.
 
-[Building from source](../building.md#minimum-footprint-decoder-profile) covers what
-`AC3FORGE_MINIMAL_DECODER=ON` changes, what the probe checks and what it does not, and the gaps
-the profile has not closed. The measured figures and how they moved are in
+[Building from source](../building.md#minimum-footprint-decoder-profile) covers what the profile
+changes and the gaps it has not closed. The measured figures are in
 [the footprint table](../performance-trend.md#minimum-footprint-decoder).
 
 ## What you give up
@@ -54,18 +69,31 @@ list if any component needing the full library is still switched on.
 | Not compiled | Consequence |
 |---|---|
 | Under `AC3FORGE_MINIMAL_DECODER`: the encoder, container writers, WAV I/O, analysis and QC layers, the object encoder | Decode only. `src/forge/minimal.cmake` lists what is compiled, with a line on why each file is reachable from a decode. `AC3FORGE_MINIMAL_ENCODER` is the same profile pointed the other way. |
-| The direct-form transform tables | 1,900,544 bytes of `.bss` that are absent from the image rather than merely unused. `DecoderConfig::fast_imdct = false` returns `DecodeError::kUnsupported` here instead of being served quietly by the fast path. |
+| The direct-form transform tables | 1,900,544 bytes of `.bss` absent from the image rather than merely unused. `DecoderConfig::fast_imdct = false` returns `DecodeError::kUnsupported` here instead of being served quietly by the fast path. |
 
-Object reconstruction compiles and links, and decodes correctly, but does not fit on a part this
-size — [the ESP32-S3 page](esp32.md#objects-do-not-fit-in-internal-sram) has the measurement and
-what it would take. An Atmos stream's 5.1 bed decodes normally via
-`DecoderConfig::skip_object_reconstruction`.
+## The probe
+
+`apps/baremetal/probe.cpp` links the archive, decodes six frames each of twelve fixtures, compares
+every channel's level against `apps/baremetal/fixture.hpp`, and prints `key=value` lines the
+runner gates on: the levels, image size, peak heap, retained bytes and allocations per frame.
+`encode_probe.cpp` is its counterpart, checking a byte count and FNV-1a hash against
+`encode_fixture.hpp`.
+
+It is not a unit test — the profile requires `AC3FORGE_BUILD_TESTS=OFF`, since nothing under
+`tests/` builds against this archive — and it answers three questions a test could not: does the
+archive link with everything else absent, does it produce the right audio on a 32-bit soft-float
+target, and what did it cost.
+
+Nothing regenerates the fixtures automatically and nothing detects that they have drifted from the
+encoder: the probe decodes a committed bitstream and compares it against committed levels, so both
+moving together is invisible to it. Regenerate with
+`python tools/generators/gen_baremetal_fixture.py --ac3cli <path>`.
 
 ## Porting to another part
 
-Two things are target-specific, and both live under `apps/baremetal/platform/`: a thread-pointer
-stub (`baremetal/tls.cpp`, whose static block the linker script bounds with two `ASSERT()`s) and
-the linker script and startup for the board. Nothing in `src/` branches on the target.
+Two things are target-specific, both under `apps/baremetal/platform/`: a thread-pointer stub
+(`baremetal/tls.cpp`, whose static block the linker script bounds with two `ASSERT()`s) and the
+linker script and startup for the board. Nothing in `src/` branches on the target.
 
 Whether a part is viable comes down to floating point. Every operation the decoder does in
 `double` is software-emulated without an FPU, and `decode_scalar_t` is `float` under this profile

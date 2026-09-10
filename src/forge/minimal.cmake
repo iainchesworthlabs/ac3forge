@@ -34,6 +34,22 @@
 add_library(forge_minimal STATIC)
 add_library(ac3::forge_minimal ALIAS forge_minimal)
 
+# Which "ac3/internal/profiling.hpp" the profile's sources see. Off, the
+# markers expand to nothing (tracy_disabled/); with AC3FORGE_STAGE_TIMERS they
+# become calls into whatever application links this archive
+# (stage_timers/, and apps/baremetal/stage_timers.cpp for the probe). A
+# directory choice rather than a define, per the platform-tree rule
+# (tools/checks/check_platform_macros.ps1), and the root CMakeLists.txt has
+# already refused the option outside this profile.
+if(AC3FORGE_STAGE_TIMERS)
+    set(_ac3_minimal_profiling_dir
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/stage_timers")
+    message(STATUS "Minimum-footprint profile: zone markers routed to the stage-timer backend")
+else()
+    set(_ac3_minimal_profiling_dir
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled")
+endif()
+
 target_sources(forge_minimal
     PRIVATE
         # --- bitstream and shared coding tools ---------------------------
@@ -112,6 +128,15 @@ target_sources(forge_minimal
         src/meta/mixing.cpp        # §7.8 downmix coefficients - OutputStage::apply's own
         src/oba/joc.cpp            # §6 object reconstruction from the bed
         src/oba/oamd.cpp           # §H.1 object metadata
+        # --- and placing them -----------------------------------------------
+        # Reconstructed objects are mono signals with a position each; a part
+        # driving loudspeakers has to pan them onto its layout, and this is
+        # the panner ac3cli's `qc objects=` and the encoder's own bed render
+        # use: pan_targets/pan_direction/position_direction, height-aware,
+        # for any Table E2.5 layout. Pure arithmetic over <vector> and <cmath>
+        # - no fmt, no exceptions - which is why it can be here. The probe's
+        # eac3_atmos_render row exercises it onto 7.1.4.
+        src/spatial/spatial.cpp
 )
 else()
 target_sources(forge_minimal
@@ -140,6 +165,19 @@ target_sources(forge_minimal
 endif()
      # DecoderConfig::trace's own types
 
+# The decode scalar this profile carries. float32 whatever the ordinary
+# build's option says, with one exception: this profile exists for targets
+# whose FPU is single-precision at best, and the ESP32-S3 port did not fit in
+# internal SRAM until the decode path moved to float, so double is not a shape
+# a caller can configure it into. The fixed-point tier is the profile's other
+# legitimate shape - a part with no FPU at all (planning/arithmetic-tiers.md) -
+# and is the one value of AC3FORGE_DECODE_SCALAR honoured here.
+if(AC3FORGE_DECODE_SCALAR STREQUAL "fixed")
+    set(_ac3_minimal_scalar_dir "fixed32")
+else()
+    set(_ac3_minimal_scalar_dir "float32")
+endif()
+
 target_include_directories(forge_minimal
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -148,15 +186,18 @@ target_include_directories(forge_minimal
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profile/minimal"
-        # float32 unconditionally, whatever AC3FORGE_DECODE_SCALAR says: this
-        # profile exists for targets whose FPU is single-precision at best, and
-        # the ESP32-S3 port did not fit in internal SRAM until the decode path
-        # moved. Not an option here, so a caller cannot configure the profile
-        # into a shape it was measured never to fit in.
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/float32"
+        # float32 or fixed32 - see _ac3_minimal_scalar_dir above.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac3_minimal_scalar_dir}"
+        # And the encoders' front end in float32 too (encode_scalar_t), for
+        # the same part's sake: in double, transient detection and the
+        # forward transform were 64% of an AC-3 5.1 frame on an ESP32-S3.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/encode/float32"
         # Tracy is never part of this profile - the disabled variant's macros
-        # expand to nothing, which is what a footprint build wants.
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profiling/tracy_disabled"
+        # expand to nothing, which is what a footprint build wants. What CAN
+        # answer the same markers here is the stage-timer backend, resolved
+        # above this target_sources() block: the application supplies the
+        # clock and the table, the library only calls in.
+        "${_ac3_minimal_profiling_dir}"
         # Roadmap PF5's SIMD arch seam, resolved by src/forge/CMakeLists.txt
         # above the branch that included this file - see the comment there for
         # why it is resolved that early. mdct.cpp/bitalloc.cpp/exponents.cpp
@@ -187,6 +228,38 @@ target_include_directories(forge_minimal
 
 target_compile_features(forge_minimal PUBLIC cxx_std_23)
 
+# The decode-critical translation units at -O2 under an otherwise
+# size-optimised build. Off by default: this profile's subject is size, and
+# the arm-none-eabi leg's image figure is only comparable across builds that
+# optimise for the same thing. A target that has to keep up with real time
+# and has flash to spare turns it on - apps/baremetal/platform/esp32s3 does,
+# and docs/platforms/esp32.md's Timing section has the measurement behind
+# the list below.
+#
+# Each file is here because a board run showed the optimiser paying for it,
+# stage by stage, and the ones it did not pay for are deliberately absent:
+# mdct.cpp and fft.cpp (the float32 IMDCT ran in 3.40 ms either way),
+# exponents.cpp and mantissas.cpp (under a tenth of a millisecond between
+# them). What it bought at 240 MHz, per frame of the 5.1 Atmos fixture:
+# bit allocation 4.55 -> 2.09 ms, the JOC mixing 11.0 -> 8.2 ms, the
+# E-AC-3 stages in eac3_decoder.cpp about 1.5 ms between them. The cost is
+# flash, not SRAM - the code lives in flash on every part this profile
+# targets - and it is stated on the board page beside the gain.
+option(AC3FORGE_MINIMAL_HOT_O2
+    "Minimum-footprint profile: compile the decode-critical sources at -O2 (costs flash, not SRAM)"
+    OFF)
+if(AC3FORGE_MINIMAL_HOT_O2)
+    set_source_files_properties(
+        src/core/bitalloc.cpp
+        src/core/eac3_tools.cpp
+        src/core/fft.cpp
+        src/decoder/decoder.cpp
+        src/decoder/eac3_decoder.cpp
+        src/oba/joc.cpp
+        PROPERTIES COMPILE_OPTIONS "-O2")
+    message(STATUS "Minimum-footprint profile: decode-critical sources at -O2")
+endif()
+
 target_link_libraries(forge_minimal
     PUBLIC ac3::minimal_profile
     PRIVATE "$<BUILD_INTERFACE:ac3::warnings>")
@@ -199,6 +272,7 @@ target_link_libraries(forge_minimal
 include(GenerateExportHeader)
 generate_export_header(forge_minimal
     BASE_NAME AC3FORGE
+    CUSTOM_CONTENT_FROM_VARIABLE _ac3_export_custom_content
     EXPORT_MACRO_NAME AC3FORGE_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3/export.hpp"
     DEFINE_NO_DEPRECATED

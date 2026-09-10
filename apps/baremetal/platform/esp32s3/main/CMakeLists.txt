@@ -34,12 +34,40 @@ endif()
 #
 # - and removing any one of them should break the build rather than silently
 # widen it.
+# stage_timers.cpp is the application half of the AC3FORGE_STAGE_TIMERS zone
+# backend, present in every build for the reason apps/baremetal/CMakeLists.txt
+# gives beside its own copy of this line: without the option the library
+# never calls it and the linker drops it, so a timed build and a plain one
+# differ only in the library's include path. Build one with
+#
+#   idf.py -DAC3FORGE_STAGE_TIMERS=ON build
+#
+# and the probe prints a <fixture>.stage[...] line per decoder stage.
 idf_component_register(
     SRCS "main.cpp"
          "${AC3FORGE_ESP_PROBE_SRC}"
+         "../../../stage_timers.cpp"
     INCLUDE_DIRS ""
     REQUIRES ac3forge esp_timer esp_hw_support esp_rom freertos)
 
 # probe.hpp and the two fixture headers all sit beside the probes.
 target_include_directories(${COMPONENT_LIB} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+
+# The encode probe's 7.1 measurement switch, the same option and default as
+# apps/baremetal/CMakeLists.txt gives the hosted shapes - see the comment
+# there. Measured 2026-09-10 under QEMU with this part's memory map: the
+# fixture dies on a 73,728-byte request, so a build with it ON is a
+# measurement and never what CI runs. idf.py -DAC3FORGE_PROBE_SEVEN_ONE=ON build
+set(AC3FORGE_PROBE_SEVEN_ONE OFF CACHE BOOL
+    "Encode probe: add the 7.1 access-unit fixture (a footprint measurement; does not fit)")
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    "AC3FORGE_PROBE_SEVEN_ONE=$<BOOL:${AC3FORGE_PROBE_SEVEN_ONE}>")
+
+# No heap budget: every fixture runs on this part, 7.1.4 included, at a
+# 238,094-byte peak inside internal SRAM with no PSRAM. The C3 is the shape
+# that needs one (see platform/esp32c3/main/CMakeLists.txt). Zero rather
+# than absent because probe.cpp does not default it - the platform is
+# selected here, not by a conditional in the translation unit.
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    AC3FORGE_PROBE_HEAP_BUDGET_BYTES=0)

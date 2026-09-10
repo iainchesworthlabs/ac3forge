@@ -48,6 +48,7 @@ Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/a
 | `fgaincod` | -1 | §7.2.2.4 fast gain, Table 7.11. -1 takes the encoder's rate-dependent choice; 0–7 pins it. |
 | `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation (~25× on the long-transform kernel, identical streams to within ~3e-12 coefficient error). `false` forces the direct reference form, kept as the validation oracle — the CLI spells that `fast-mdct=off`. |
 | `dither` | `true` | §7.3.4 `dithflag`, decided per channel per block from the content — see below. `false` pins it at 0 in every block, which is what a bit-for-bit comparison against a second decoder needs, since dither values are decoder-defined; the CLI spells that `dither=off`. |
+| `delta_allocation` | `true` | §7.2.2.6 delta bit allocation: the corrections chosen per run from the real coefficients, and the second rate-control fit that weighs them against a frame without them. `false` skips both, which is the first level of the encoders' effort axis for a part with little time for the search (the ESP32-S3 page measures what it saves and costs); the stream is a legal one with `dbaflde` clear. The CLI spells it `delta=off`. |
 | `drc` | none | `std::optional<meta::Profile>`. Absent leaves `dynrnge` clear in every block. |
 | `heavy` | none | `std::optional<meta::HeavyConfig>`. Independent of `drc`. |
 | `drc2` | none | `std::optional<meta::Profile>`. Ch2's own DRC, meaningful only under `kDualMono` — no fallback to `drc` when unset (see below). |

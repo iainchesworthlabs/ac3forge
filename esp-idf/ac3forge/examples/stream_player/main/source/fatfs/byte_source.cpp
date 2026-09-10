@@ -23,33 +23,46 @@ namespace player {
 namespace {
 
 constexpr const char* kMountPoint = "/audio";
-wl_handle_t g_wl = WL_INVALID_HANDLE;
+bool g_mounted = false;
 
 }  // namespace
 
 bool source_open() {
-    esp_vfs_fat_mount_config_t config = {};
-    // Not formatted on failure: an unreadable volume here means the build did
-    // not produce the image, and silently formatting would turn a build fault
-    // into an empty filesystem and a confusing "file not found".
-    config.format_if_mount_failed = false;
-    config.max_files = 2;
-    config.allocation_unit_size = CONFIG_WL_SECTOR_SIZE;
+    // Mounted once; each play after the first reopens a file on the same
+    // volume.
+    if (!g_mounted) {
+        esp_vfs_fat_mount_config_t config = {};
+        // Not formatted on failure: an unreadable volume here means the build
+        // did not produce the image, and silently formatting would turn a
+        // build fault into an empty filesystem and a confusing "file not
+        // found".
+        config.format_if_mount_failed = false;
+        config.max_files = 2;
+        config.allocation_unit_size = CONFIG_WL_SECTOR_SIZE;
 
-    const auto err = esp_vfs_fat_spiflash_mount_ro(kMountPoint, "storage", &config);
-    if (err != ESP_OK) {
-        std::printf("error: could not mount the 'storage' partition read-only (%d)\n",
-                    static_cast<int>(err));
-        return false;
+        const auto err = esp_vfs_fat_spiflash_mount_ro(kMountPoint, "storage", &config);
+        if (err != ESP_OK) {
+            std::printf("error: could not mount the 'storage' partition read-only (%d)\n",
+                        static_cast<int>(err));
+            return false;
+        }
+        g_mounted = true;
     }
 
-    const char* path = CONFIG_AC3FORGE_EXAMPLE_FATFS_PATH;
-    if (!file_source::open(path)) {
+    file_source::set_default_path(CONFIG_AC3FORGE_EXAMPLE_FATFS_PATH);
+    if (!file_source::open()) {
         return false;
     }
-    std::printf("source: fatfs %s, %lu bytes (flash-backed)\n", path,
+    std::printf("source: fatfs %s, %lu bytes (flash-backed)\n", file_source::path(),
                 static_cast<unsigned long>(file_source::length()));
     return true;
+}
+
+bool source_set_location(const char* location) { return file_source::set_path(location); }
+
+const char* source_location() {
+    file_source::set_default_path(CONFIG_AC3FORGE_EXAMPLE_FATFS_PATH);
+    return file_source::path();
 }
 
 std::size_t source_read(std::span<std::byte> dst) { return file_source::read(dst); }

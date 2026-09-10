@@ -1,9 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <type_traits>
 
 #include "ac3/export.hpp"
 
@@ -141,10 +144,11 @@ AC3FORGE_EXPORT void spx_apply_notch(std::span<double> synth, int startmant,
                                      int spxattencod);
 
 // The same notch over a float32 spectrum, for the minimum-footprint decoder
-// (roadmap PF7), whose coefficient store is float. The attenuation itself is
-// still computed in double - spx_attenuation is one std::exp2 per tap, and
-// there is nothing to gain from rounding it early - so the only difference is
-// the type of the thing it multiplies.
+// (roadmap PF7), whose coefficient store is float. The attenuation is the
+// same table entry either way (spx_attenuation is now a 96-entry table
+// filled once, since std::exp2 per tap was a software routine on the FPU
+// that profile targets); here it is narrowed to float before the multiply,
+// which is one rounding of the attenuation rather than of the product.
 AC3FORGE_EXPORT void spx_apply_notch(std::span<float> synth, int startmant,
                                      const BandLayout& bands, std::span<const bool> wrapflag,
                                      int spxattencod);
@@ -158,6 +162,29 @@ AC3FORGE_EXPORT void spx_apply_notch(std::span<float> synth, int startmant,
 [[nodiscard]] AC3FORGE_EXPORT double spx_noise_ratio(int band_start, int band_size, int endmant,
                                                      int blend);
 
+// spx_noise_ratio in the caller's scalar; the exported form is this at
+// double. The decoder evaluates it once per band per channel per block in
+// its coefficient store's type, where at double it was two software divides
+// per band on a single-precision FPU (docs/platforms/esp32.md).
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar spx_noise_ratio_as(int band_start, int band_size, int endmant,
+                                                  int blend) {
+    if constexpr (std::floating_point<Scalar>) {
+        const Scalar centre = static_cast<Scalar>(band_start) +
+                              static_cast<Scalar>(0.5) * static_cast<Scalar>(band_size);
+        const Scalar ratio =
+            centre / static_cast<Scalar>(endmant) - static_cast<Scalar>(blend) / Scalar{32};
+        return std::clamp(ratio, Scalar{0}, Scalar{1});
+    } else {
+        // The same ratio from its integers: a bin index does not fit a scalar
+        // with a fixed point, so the division is done on the integers and
+        // the quotient is what the scalar holds.
+        const Scalar ratio = Scalar::from_integer_ratio(2 * band_start + band_size, 2 * endmant) -
+                             Scalar::from_integer_ratio(blend, 32);
+        return std::clamp(ratio, Scalar{0}, Scalar{1});
+    }
+}
+
 // §E3.6.4.2.4's noise(): "a pseudo-random number generated from a zero-mean,
 // unity-variance noise generator." The standard deliberately leaves the exact
 // generator unspecified - the same class of freedom AC-3's own dither
@@ -169,6 +196,39 @@ AC3FORGE_EXPORT void spx_apply_notch(std::span<float> synth, int startmant,
 struct AC3FORGE_EXPORT SpxNoise {
     std::uint32_t state = 0x9E3779B9U;  // never zero, or xorshift sticks at 0
     [[nodiscard]] double next();
+
+    // The same sequence mapped in the caller's scalar - next() is this at
+    // double. Drawn once per extension-region bin, so a decoder whose
+    // coefficients are float draws in float: at double the mapping was a
+    // software divide and two multiplies per bin on the FPU the
+    // minimum-footprint profile targets, and was most of what made spectral
+    // extension the largest stage of an E-AC-3 decode there. The float
+    // mapping rounds the state to 24 bits first, so its values are not the
+    // double ones narrowed; the generator is the decoder's to choose, and
+    // this is still one, deterministic per instance.
+    template <typename Scalar>
+    [[nodiscard]] Scalar next_as() {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        constexpr auto kRadius = static_cast<Scalar>(1.7320508075688772);
+        if constexpr (std::is_same_v<Scalar, float>) {
+            // A multiply by the reciprocal rather than the divide the double
+            // form keeps (see DitherGenerator::next_as for the same choice).
+            constexpr float kUnit = 1.0F / 4294967295.0F;
+            const float unit = static_cast<float>(state) * kUnit;  // [0,1]
+            return (unit * 2.0F - 1.0F) * kRadius;
+        } else if constexpr (!std::floating_point<Scalar>) {
+            // The fixed-point tier's own reading of the state - see
+            // DitherGenerator::next_as.
+            const Scalar unit = Scalar::unit_from_state(state);  // [0,1)
+            return (unit * Scalar{2} - Scalar{1}) * kRadius;
+        } else {
+            const Scalar unit =
+                static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
+            return (unit * Scalar{2} - Scalar{1}) * kRadius;
+        }
+    }
 };
 
 // --- enhanced coupling (§E3.5) ----------------------------------------------
@@ -241,15 +301,30 @@ inline constexpr std::array<bool, kEcplSubBands> kDefaultEcplBandStructure = {
 // Table E3.11: ecplangle (6 bits, 0..63) to a linear angle in units of pi
 // radians, range [-1, 1). The table is exactly i/32 for i < 32 and
 // (i - 64)/32 above it, so this is a formula rather than a literal lookup.
+//
+// Both decodes below exist in the caller's scalar as well as at double: the
+// decoder resolves them per band per coupled channel per block, and on the
+// single-precision FPU the minimum-footprint profile targets a double divide
+// is a software routine. The angle is an integer over a power of two, so its
+// float form is the double one narrowed; the chaos is an integer over 7,
+// which rounds the same way in either type (see dequantize_mantissa_as).
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar decode_ecplangle_as(int ecplangle) {
+    return static_cast<Scalar>(ecplangle < 32 ? ecplangle : ecplangle - 64) / Scalar{32};
+}
 [[nodiscard]] constexpr double decode_ecplangle(int ecplangle) {
-    return static_cast<double>(ecplangle < 32 ? ecplangle : ecplangle - 64) / 32.0;
+    return decode_ecplangle_as<double>(ecplangle);
 }
 [[nodiscard]] AC3FORGE_EXPORT int quantize_ecplangle(double angle);
 
 // Table E3.12: ecplchaos (3 bits, 0..7) to a linear scaling value in
 // [-1, 0]. Exactly -i/7, so again a formula rather than a literal lookup.
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar decode_ecplchaos_as(int ecplchaos) {
+    return -static_cast<Scalar>(ecplchaos) / Scalar{7};
+}
 [[nodiscard]] constexpr double decode_ecplchaos(int ecplchaos) {
-    return -static_cast<double>(ecplchaos) / 7.0;
+    return decode_ecplchaos_as<double>(ecplchaos);
 }
 [[nodiscard]] AC3FORGE_EXPORT int quantize_ecplchaos(double chaos);
 
@@ -279,12 +354,13 @@ inline constexpr std::array<bool, kEcplSubBands> kDefaultEcplBandStructure = {
 // Release the per-thread scratch ecpl_channel_spectrum caches, and let the
 // next call rebuild it.
 //
-// That scratch is 32,768 bytes plus a 1,440-byte bin-angle vector, kept
-// thread_local so enhanced coupling neither allocates per call nor puts 32 KB
-// on the stack. On a hosted platform it is released at thread exit and nobody
-// need think about it. On a bare-metal one the only thread never exits, so it
-// stays resident for the life of the task - and 34,232 bytes is enough to
-// decide whether something else fits.
+// That scratch is 32,768 bytes at double and 23,552 at float (16,384 of
+// buffers plus its own narrowed tables), kept thread_local so enhanced
+// coupling neither allocates per call nor puts it on the stack. On a hosted
+// platform it is released at thread exit and nobody need think about it. On
+// a bare-metal one the only thread never exits, so it stays resident for the
+// life of the task - and that much is enough to decide whether something
+// else fits.
 //
 // Measured on an ESP32-S3: an Atmos stream's object reconstruction peaks at
 // 233,522 bytes on a clean heap and fits, and at 267,754 after an
@@ -304,6 +380,21 @@ AC3FORGE_EXPORT void ecpl_channel_spectrum(std::span<const double, 256> prev_man
                                            std::span<double, 256> real_out,
                                            std::span<double, 256> imag_out, bool fast = false);
 
+// The same reconstruction over float32, for a decoder whose coefficient store
+// is float (ac3::internal::decode_scalar_t on the minimum-footprint profile).
+// No `fast` parameter, for the reason the float imdct512_windowed has none:
+// the direct form is double-only, and this form is the fast fold throughout -
+// three float inverses and a float dft512 over tables narrowed once from the
+// double ones. Not the double result narrowed; the transforms round in
+// float. Measured on an ESP32-S3 the double form was 13.8 ms per block, all
+// of it software floating point on that single-precision FPU
+// (docs/platforms/esp32.md).
+AC3FORGE_EXPORT void ecpl_channel_spectrum(std::span<const float, 256> prev_mant,
+                                           std::span<const float, 256> curr_mant,
+                                           std::span<const float, 256> next_mant,
+                                           std::span<float, 256> real_out,
+                                           std::span<float, 256> imag_out);
+
 // §3.5.5.3's fixed de-correlation sequence for a channel/bin not carrying a
 // transient: deterministic and stable for the whole stream (the spec's own
 // requirement - "generated once ... stay the same for every block"),
@@ -311,12 +402,56 @@ AC3FORGE_EXPORT void ecpl_channel_spectrum(std::span<const double, 256> prev_man
 // per-decoder state is needed to satisfy it.
 [[nodiscard]] AC3FORGE_EXPORT double ecpl_rand_notrans(int channel, int bin);
 
+// The same sequence mapped in the caller's scalar; the exported form is this
+// at double. The hash is integer arithmetic either way, so the two agree on
+// which bins are which; the float mapping rounds the state to 24 bits, so its
+// values are not the double ones narrowed. The generator is the decoder's to
+// choose (§3.5.5.3), and this is still one, stable for the stream.
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar ecpl_rand_notrans_as(int channel, int bin) {
+    std::uint32_t state = static_cast<std::uint32_t>(channel) * 0x9E3779B1U ^
+                          static_cast<std::uint32_t>(bin) * 0x85EBCA77U ^ 0xC2B2AE3DU;
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    if constexpr (std::is_same_v<Scalar, float>) {
+        constexpr float kUnit = 1.0F / 4294967295.0F;
+        return static_cast<float>(state) * kUnit * 2.0F - 1.0F;  // [-1, 1]
+    } else if constexpr (!std::floating_point<Scalar>) {
+        return Scalar::unit_from_state(state) * Scalar{2} - Scalar{1};  // [-1, 1)
+    } else {
+        const Scalar unit =
+            static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
+        return unit * Scalar{2} - Scalar{1};  // [-1, 1], matching §3.5.5.3's uniform
+    }
+}
+
 // §3.5.5.3's other sequence, for a channel/bin WITH a transient present
 // (ecpltrans[ch]): regenerated every block, so - unlike the one above - this
 // one is genuine sequential state, one instance per substream/frame.
 struct AC3FORGE_EXPORT EcplNoise {
     std::uint32_t state = 0x2545F491U;  // never zero, or xorshift sticks at 0
     [[nodiscard]] double next();  // uniform on [-1, 1] (§3.5.5.3, not unit-variance)
+
+    // The same sequence mapped in the caller's scalar - next() is this at
+    // double, and the float decoder draws here for the reason
+    // SpxNoise::next_as gives.
+    template <typename Scalar>
+    [[nodiscard]] Scalar next_as() {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        if constexpr (std::is_same_v<Scalar, float>) {
+            constexpr float kUnit = 1.0F / 4294967295.0F;
+            return static_cast<float>(state) * kUnit * 2.0F - 1.0F;
+        } else if constexpr (!std::floating_point<Scalar>) {
+            return Scalar::unit_from_state(state) * Scalar{2} - Scalar{1};
+        } else {
+            const Scalar unit =
+                static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
+            return unit * Scalar{2} - Scalar{1};
+        }
+    }
 };
 
 // §3.5.5.2's amplitude decode + chaos modification, expanded from BANDS (as
@@ -334,6 +469,13 @@ AC3FORGE_EXPORT void ecpl_amplitudes(std::span<const int> ecplamp, std::span<con
                                      bool ecpltrans, bool is_first_channel, int begin_subbnd,
                                      int end_subbnd, std::span<const bool> structure,
                                      std::span<double> amp_out);
+// The float form, for the float decoder. Same values narrowed: Table E3.10's
+// entries are an integer over a power of two, and the chaos factor rounds
+// the same way in either type.
+AC3FORGE_EXPORT void ecpl_amplitudes(std::span<const int> ecplamp, std::span<const int> ecplchaos,
+                                     bool ecpltrans, bool is_first_channel, int begin_subbnd,
+                                     int end_subbnd, std::span<const bool> structure,
+                                     std::span<float> amp_out);
 
 // §3.5.5.3's angle decode + de-correlation add. `interpolate` selects between
 // the two ways that section gives for turning BAND angles into BIN angles:
@@ -357,6 +499,15 @@ AC3FORGE_EXPORT void ecpl_angles(int channel, std::span<const int> ecplangle,
                                  bool is_first_channel, int begin_subbnd, int end_subbnd,
                                  std::span<const bool> structure, EcplNoise& noise,
                                  std::span<double> angle_out, bool interpolate = false);
+// The float form, for the float decoder: the same band-to-bin conversion and
+// chaos add in float, drawing the de-correlation sequences in float
+// (ecpl_rand_notrans_as, EcplNoise::next_as). Angles agree with the double
+// form up to a whole turn and float rounding.
+AC3FORGE_EXPORT void ecpl_angles(int channel, std::span<const int> ecplangle,
+                                 std::span<const int> ecplchaos, bool ecpltrans,
+                                 bool is_first_channel, int begin_subbnd, int end_subbnd,
+                                 std::span<const bool> structure, EcplNoise& noise,
+                                 std::span<float> angle_out, bool interpolate = false);
 
 // §3.5.5.4: the final complex-product reconstruction, given this block's
 // enhanced coupling channel spectrum (`real_in`/`imag_in`, bins 0..255 from
@@ -372,6 +523,18 @@ AC3FORGE_EXPORT void ecpl_channel_coefficients(std::span<const double, 256> real
                                                std::span<const double> angle_bin,
                                                int begin_mant, int end_mant,
                                                std::span<double, 256> mant_out);
+// The float form, for the float decoder. The per-bin sine and cosine come
+// from a short series rather than libm - on the single-precision FPU the
+// minimum-footprint profile targets a double sine is a software routine, and
+// this ran two of them per bin of every coupled channel of every block - and
+// agree with std::sin/std::cos to float precision (eac3_tools.cpp has the
+// error bound). `mant_out` follows real_in's type, so a float decoder passes
+// its coefficient store directly.
+AC3FORGE_EXPORT void ecpl_channel_coefficients(std::span<const float, 256> real_in,
+                                               std::span<const float, 256> imag_in,
+                                               std::span<const float> amp_bin,
+                                               std::span<const float> angle_bin, int begin_mant,
+                                               int end_mant, std::span<float, 256> mant_out);
 
 // --- adaptive hybrid transform (§E3.4) -------------------------------------
 // A second transform stage, cascaded after the MDCT: a 6-point DCT-II taken
@@ -393,6 +556,17 @@ AC3FORGE_EXPORT void aht_forward(std::span<const double, kBlocksPerFrameSize> bl
 // The decoder's direction, so the encoder can see what it will reconstruct.
 AC3FORGE_EXPORT void aht_inverse(std::span<const double, kBlocksPerFrameSize> coefficients,
                                  std::span<double, kBlocksPerFrameSize> out);
+
+// The same inverse over float32, for a decoder whose coefficient store is
+// float (ac3::internal::decode_scalar_t on the minimum-footprint profile).
+// Thirty-six multiply-adds per bin against a kernel narrowed once from the
+// double one: at double, on a single-precision FPU, those were seventy-two
+// software routines per bin and a quarter of an E-AC-3 decode
+// (docs/platforms/esp32.md). Not the double result narrowed - the sums round
+// in float - which is the same class of difference the float coefficient
+// store already accepted at the transform.
+AC3FORGE_EXPORT void aht_inverse(std::span<const float, kBlocksPerFrameSize> coefficients,
+                                 std::span<float, kBlocksPerFrameSize> out);
 
 // Table E3.2: mantissa bits per coefficient for the scalar hebap range 8-19.
 // Outside it the answer is not a per-coefficient width at all - hebap 0 codes
@@ -508,5 +682,144 @@ struct AhtMantissaCode {
 [[nodiscard]] AC3FORGE_EXPORT double aht_dequantize_mantissa(std::uint32_t code,
                                                              std::uint32_t escape, bool has_escape,
                                                              int mantissa_bits, int gain);
+
+// aht_dequantize_mantissa in the caller's scalar; the exported form is this
+// at double. Every operation is a small integer scaled by another, so the
+// float instantiation is the correctly rounded float of the same value the
+// double one produces, for the reason dequantize_mantissa_as gives.
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar aht_dequantize_mantissa_as(std::uint32_t code, std::uint32_t escape,
+                                                          bool has_escape, int mantissa_bits,
+                                                          int gain) {
+    const auto sign_extend = [](std::uint32_t raw, int bits) {
+        const auto sign_bit = static_cast<std::uint32_t>(1) << (bits - 1);
+        return static_cast<int>((raw ^ sign_bit) - sign_bit);
+    };
+
+    if (gain == 1) {
+        const int levels = (1 << mantissa_bits) - 1;
+        return Scalar{2} * static_cast<Scalar>(sign_extend(code, mantissa_bits)) /
+               static_cast<Scalar>(levels);
+    }
+
+    const int small_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2;
+    const int large_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits;
+    const int small_half = 1 << (small_bits - 1);
+    const Scalar dead_zone = Scalar{1} / static_cast<Scalar>(gain);
+    const Scalar large_step =
+        gain == 2 ? Scalar{1} / static_cast<Scalar>((1 << (mantissa_bits - 1)) - 1)
+                  : Scalar{3} / static_cast<Scalar>((1 << (mantissa_bits + 1)) - 2);
+
+    if (!has_escape) {
+        return static_cast<Scalar>(sign_extend(code, small_bits)) /
+               static_cast<Scalar>(small_half * gain);
+    }
+
+    // The mirror image of quantize's `code = value >= 0.0 ? k : -k - 1`.
+    const int large_code = sign_extend(escape, large_bits);
+    const int k = large_code >= 0 ? large_code : -large_code - 1;
+    return (large_code >= 0 ? Scalar{1} : Scalar{-1}) *
+           (dead_zone + static_cast<Scalar>(k) * large_step);
+}
+
+// aht_dequantize_mantissa_as with its per-bin constants resolved once. A
+// bin's six codewords share mantissa_bits and gain, and the function above
+// derives three divisions from those two integers on every call - the dead
+// zone, the large step and the small-codeword scale - six times over per
+// bin; on the single-precision FPU the minimum-footprint profile targets
+// that was where an AHT bin's time went once its inverse transform ran in
+// float. Same expressions, evaluated once: every value this produces is the
+// one the function produces. The small-codeword scale is 1 over a power of
+// two, so multiplying by it is the division it stands in for.
+template <typename Scalar>
+struct AhtGaqDequantizer {
+    int mantissa_bits;
+    int gain;
+    int small_bits;
+    int large_bits;
+    // The quantiser's own integers, rather than reciprocals of them: a code
+    // and a level count are both larger than a scalar that holds values below
+    // 128 can represent (a twelve-bit mantissa has 4,095 levels), so the
+    // fixed-point tier forms each value as the RATIO it is - one rounding,
+    // exact numerator and denominator - where the floating tiers multiply by
+    // a stored reciprocal. Both branches below evaluate the same expression;
+    // what differs is where the division happens.
+    int level_count;  // gain 1: 2^mantissa_bits - 1
+    int small_den;    // gain 2 and 4: small_half * gain
+    int large_num;    // gain 2: 1 over 2^(mantissa_bits-1) - 1; else 3 over ...
+    int large_den;
+    Scalar small_scale;  // gain 2 and 4: 1 / small_den
+    Scalar dead_zone;    // 1 / gain
+    Scalar large_step;   // large_num / large_den
+
+    static constexpr int small_bits_for(int mantissa_bits, int gain) {
+        return gain == 1 ? mantissa_bits : (gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2);
+    }
+
+    // num / den in the caller's scalar. The floating tiers' form is the
+    // division they always did; a scalar that is not a floating type says how
+    // it divides two integers (Fixed32::from_integer_ratio).
+    static constexpr Scalar ratio(int num, int den) {
+        if constexpr (std::floating_point<Scalar>) {
+            return static_cast<Scalar>(num) / static_cast<Scalar>(den);
+        } else {
+            return Scalar::from_integer_ratio(num, den);
+        }
+    }
+
+    constexpr AhtGaqDequantizer(int mantissa_bits_, int gain_)
+        : mantissa_bits(mantissa_bits_),
+          gain(gain_),
+          small_bits(small_bits_for(mantissa_bits_, gain_)),
+          large_bits(gain_ == 2 ? mantissa_bits_ - 1 : mantissa_bits_),
+          level_count((1 << mantissa_bits_) - 1),
+          small_den((1 << (small_bits_for(mantissa_bits_, gain_) - 1)) * gain_),
+          large_num(gain_ == 2 ? 1 : 3),
+          large_den(gain_ == 2 ? (1 << (mantissa_bits_ - 1)) - 1
+                               : (1 << (mantissa_bits_ + 1)) - 2),
+          small_scale(ratio(1, (1 << (small_bits_for(mantissa_bits_, gain_) - 1)) * gain_)),
+          dead_zone(ratio(1, gain_)),
+          large_step(gain_ == 2 ? ratio(1, (1 << (mantissa_bits_ - 1)) - 1)
+                                : ratio(3, (1 << (mantissa_bits_ + 1)) - 2)) {}
+
+    [[nodiscard]] constexpr Scalar operator()(std::uint32_t code, std::uint32_t escape,
+                                              bool has_escape) const {
+        const auto sign_extend = [](std::uint32_t raw, int bits) {
+            const auto sign_bit = static_cast<std::uint32_t>(1) << (bits - 1);
+            return static_cast<int>((raw ^ sign_bit) - sign_bit);
+        };
+        constexpr bool kFloating = std::floating_point<Scalar>;
+        if (gain == 1) {
+            const int c = sign_extend(code, mantissa_bits);
+            if constexpr (kFloating) {
+                return Scalar{2} * static_cast<Scalar>(c) / static_cast<Scalar>(level_count);
+            } else {
+                return ratio(2 * c, level_count);
+            }
+        }
+        if (!has_escape) {
+            const int c = sign_extend(code, small_bits);
+            if constexpr (kFloating) {
+                return static_cast<Scalar>(c) * small_scale;
+            } else {
+                return ratio(c, small_den);
+            }
+        }
+        const int large_code = sign_extend(escape, large_bits);
+        const int k = large_code >= 0 ? large_code : -large_code - 1;
+        if constexpr (kFloating) {
+            return (large_code >= 0 ? Scalar{1} : Scalar{-1}) *
+                   (dead_zone + static_cast<Scalar>(k) * large_step);
+        } else {
+            // 1/gain + k*num/den as one ratio, so the step is not rounded
+            // before it is multiplied by a code of up to eleven bits.
+            const auto num = static_cast<std::int64_t>(large_den) +
+                             static_cast<std::int64_t>(gain) * k * large_num;
+            const auto den = static_cast<std::int64_t>(gain) * large_den;
+            const Scalar magnitude = Scalar::from_integer_ratio(num, den);
+            return large_code >= 0 ? magnitude : -magnitude;
+        }
+    }
+};
 
 }  // namespace ac3::eac3
