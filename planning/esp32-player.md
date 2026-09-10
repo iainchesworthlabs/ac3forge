@@ -12,7 +12,13 @@
     rewired over it, all three QEMU shapes passing, and `ac3forge::Control` answering `/status`,
     `/play`, `/stop` and `/volume` over QEMU's Ethernet with a port forward. Its exit criterion
     that needs a board - ten minutes with zero underruns - waits with the rest of Phase 0.
-    Nothing from Phase 2 onward exists in the tree.
+    Phase 2's QEMU half exists as of the same day: `ac3forge::OutputLayout` and
+    `LayoutRenderer` in the component, the player on the block form rendering every stream onto
+    a configured layout, 32-bit slots and the slave role in the I2S sinks, sixteen TDM slots,
+    `GET`/`PUT /layout` on the control surface, and a fourth QEMU shape that renders the probe's
+    height-object fixture onto 7.1.4 with every slot's level the probe's to the digit. What
+    Phase 2 still owes is hardware: the slave role against a SigmaDSP and the render's per-frame
+    cost on the board. Nothing from Phase 3 onward exists in the tree.
 
     Shape follows [the topology](topology.md) and [the appliance plan](player-appliance.md):
     design sections say what changes and why, phases carry exit criteria and how each is
@@ -211,7 +217,7 @@ layout, in increasing cost, and the configuration names one of them:
 |---|---|---|
 | **2.0** | The §7.8 fold of the bed, in the decoder (`DownmixTarget::kLoRo` or `kLtRt`). | Exists; what both examples play today. |
 | **As coded: 5.1, 7.1** | The bed's channels as decoded, one TDM slot each. An Atmos bed is the complete mix, so objects need not be reconstructed. | The `tdm` sink exists and has never run on hardware. |
-| **With height: 5.0.4, 5.1.4, 7.1.4, 9.2.4, …** | Objects reconstructed from the bed (`skip_object_reconstruction = false`), then each object panned onto the configured speaker set by `ac3::spatial::pan_direction` over two rings, horizontal and upper, with the bed's own channels placed at their nominal positions and the LFE sends summed. | **Exists on the target as of main's #611, in the probe**: the `eac3_atmos_render` row places a height-object stream onto 7.1.4 through the block form (`decode_access_unit_by_block`, one 256-sample block at a time), every level the host's, the render 5% of the row's instructions, 210,573 bytes of peak heap. `spatial.cpp` is in the profile. What the player still lacks is the wiring: a layout in its configuration, the block-form decode in place of the frame-form, and a sink wide enough. |
+| **With height: 5.0.4, 5.1.4, 7.1.4, 9.2.4, …** | Objects reconstructed from the bed (`skip_object_reconstruction = false`), then each object panned onto the configured speaker set by `ac3::spatial::pan_direction` over two rings, horizontal and upper, with the bed's own channels placed at their nominal positions and the LFE sends summed. | **Exists on the target as of main's #611, in the probe**: the `eac3_atmos_render` row places a height-object stream onto 7.1.4 through the block form (`decode_access_unit_by_block`, one 256-sample block at a time), every level the host's, the render 5% of the row's instructions, 210,573 bytes of peak heap. `spatial.cpp` is in the profile. **Wired the same day** (Phase 2): a layout in `PlayerConfig`, the block-form decode, `LayoutRenderer`, and a TDM sink of sixteen slots; the QEMU shape `sdkconfig.ci-render` plays this row's stream through the player onto 7.1.4 at the row's own levels. |
 
 The configuration takes a named layout (`5.1.4`) or a speaker list, each with an azimuth, an
 elevation and a slot number, which is what `pan_ring` wants anyway; named layouts are the ITU-R
@@ -510,6 +516,28 @@ decode alone.
 **Verified by:** `tests/io/test_interleave.cpp` for the layout and the probe's render row for the
 levels; hardware for the role and the timing, which have no substitute.
 
+**Built 2026-09-10, everything but what needs a board.** `include/ac3forge/layout.hpp` holds
+`OutputLayout` - a name (`7.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`, or angles), one speaker
+per slot, sixteen at most - and `render.hpp` holds `LayoutRenderer`, which turns a `PcmBlock`
+into one block per slot: unit gain to a slot whose location matches, `pan_direction` for one that
+does not, the LFE to the LFE feeds, and, when the unit carries objects and the player asked for
+them, the objects placed by their positions with the bed's LFE passed through and the bed's other
+channels left out. `Player` moved onto `decode_access_unit_by_block` and `decode_frame_by_block`;
+its `PlayerConfig` takes the layout, the stereo fold and an objects policy (auto reconstructs when
+the layout has heights), and its `PcmSink` takes one block per slot. The coded layout the
+renderer places is read from the unit's headers before the decode (the block form delivers
+samples before it reports the layout) and confirmed against the decoded layout after; a
+disagreement is counted in `layout_mismatches`, and none has been seen. The example's I2S sink
+runs 32-bit slots by default and takes the slave role from Kconfig, the TDM sink carries up to
+sixteen slots with its DMA descriptors sized from the bus width, and `PUT /layout` changes the
+layout for the next play. Host tests: `tests/io/test_layout.cpp`, eleven cases. QEMU: the
+stereo, TDM and HTTP shapes unchanged to the digit, and a fourth, `sdkconfig.ci-render`, that
+plays the probe's height-object fixture onto 7.1.4 through the twelve-slot TDM conversion with
+every slot's RMS equal to `render_fixture.hpp`'s - one lap, as coded, MDCT-band domain, an 8 KB
+ring: 31 KB of internal heap left after the reconstruction state is allocated, 22 KB of the
+decode task's 32 KB stack used. The QMF domain a real stream needs is 233 KB more and waits for
+the board's PSRAM, as does everything in the exit criterion that says "board".
+
 ### Phase 3: ESPHome
 
 `Ac3ForgeComponent` onto `Eac3Decoder`; a `media_player` platform over `Player` and a configured
@@ -631,7 +659,9 @@ that tree.
 
 5. **Slot width default.** (a) **32-bit slots**; (b) 16-bit as now. **Recommend (a)**: a superset
    of what the two tested DACs accept, and what a DSP requires. Cost: the CI capture check gains a
-   case.
+   case. **Taken, (a), 2026-09-10**: `CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS` defaults to 32, the
+   stereo `capture` sink converts the way the `i2s` sink is configured to, and
+   `CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE` is the role.
 
 6. **A firmware compile in CI for the ESPHome component.** (a) **not yet: `esphome config` as
    today, and a manual compile recorded in the README when Phase 3 lands**; (b) a compile job
@@ -644,7 +674,10 @@ that tree.
    speaker an azimuth, an elevation and a slot; (b) named layouts only; (c) a speaker list only.
    **Recommend (a)**: names for the installations that have a standard name, the list for the
    ones that do not, and the list is what the panner consumes either way. Cost: two schemas that
-   must agree, checked by expanding every name through the list form in a test.
+   must agree, checked by expanding every name through the list form in a test. **Taken, (a),
+   2026-09-10**: `ac3forge::OutputLayout` parses both from one string - `7.1.4`, or
+   `L,R,C,LFE,Ls,Rs`, or `30/0,-30/0,lfe` - and a name is exactly the list of its Table E2.5
+   locations, which `tests/io/test_layout.cpp` checks.
 
 8. **The control surface.** (a) **REST in the component for ESP-IDF, the `media_player` entity
    for ESPHome, sensors for the counters**; (b) REST everywhere, including under ESPHome; (c) the

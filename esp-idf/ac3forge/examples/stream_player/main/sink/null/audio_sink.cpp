@@ -20,6 +20,7 @@ namespace player {
 namespace {
 
 std::uint64_t g_frames = 0;
+int g_channels = 0;
 // Summed but never read back. It exists so the decode has an observable
 // consumer: a sink that genuinely touched nothing would let the compiler delete
 // work the run is supposed to be doing, and CI would be exercising less than it
@@ -32,10 +33,13 @@ double g_checksum = 0.0;
 // developed against before a TDM DAC existed to test on, so refusing anything
 // here would just move the obstacle.
 bool sink_open(std::uint32_t sample_rate, int channels) {
-    std::printf("sink: null %lu Hz 16-bit x%d (no peripheral, no pacing)\n",
+    g_channels = channels;
+    std::printf("sink: null %lu Hz x%d (no peripheral, no pacing)\n",
                 static_cast<unsigned long>(sample_rate), channels);
     return true;
 }
+
+int sink_slots() { return g_channels; }
 
 void sink_write(std::span<const std::span<const float>> channels) {
     for (const auto channel : channels) {

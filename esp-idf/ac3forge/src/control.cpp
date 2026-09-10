@@ -13,8 +13,8 @@
 namespace ac3forge {
 namespace {
 
-// The body of a small POST, as a string. Empty on a read error or an empty
-// body - the two are the same to a handler that needs a location.
+// The body of a small POST or PUT, as a string. Empty on a read error or an
+// empty body - the two are the same to a handler that needs a location.
 std::string read_body(httpd_req_t* req) {
     std::string body;
     if (req->content_len <= 0 || req->content_len > 2048) {
@@ -37,7 +37,7 @@ std::string read_body(httpd_req_t* req) {
 }
 
 // JSON string escaping for the two characters that can break a document; the
-// strings here are URLs, paths and this code's own constants.
+// strings here are URLs, paths, layouts and this code's own constants.
 void append_json_string(std::string& out, std::string_view s) {
     out += '"';
     for (const char c : s) {
@@ -65,6 +65,11 @@ void append_number(std::string& out, const char* key, unsigned long long value) 
     out += std::to_string(value);
 }
 
+void append_bool(std::string& out, const char* key, bool value) {
+    append_key(out, key);
+    out += value ? "true" : "false";
+}
+
 esp_err_t send_text(httpd_req_t* req, const char* status, const char* text) {
     httpd_resp_set_status(req, status);
     httpd_resp_set_type(req, "text/plain");
@@ -85,7 +90,9 @@ struct Control::Impl {
                          "GET  /status        what is playing, as JSON\n"
                          "POST /play          body: a URL or path to play\n"
                          "POST /stop\n"
-                         "POST /volume        body: 0.0 to 1.0\n");
+                         "POST /volume        body: 0.0 to 1.0\n"
+                         "GET  /layout        the output layout\n"
+                         "PUT  /layout        body: a name (5.1.4) or a speaker list; next play\n");
     }
 
     static esp_err_t on_status(httpd_req_t* req) {
@@ -105,6 +112,10 @@ struct Control::Impl {
             append_key(out, "sink");
             append_json_string(out, h.sink_name());
         }
+        if (h.layout) {
+            append_key(out, "layout");
+            append_json_string(out, h.layout());
+        }
         if (h.volume) {
             append_key(out, "volume");
             std::array<char, 16> buf{};
@@ -123,8 +134,9 @@ struct Control::Impl {
                 append_key(out, "dialnorm");
                 out += '-';
                 out += std::to_string(info->dialnorm);
-                append_key(out, "objects");
-                out += info->objects ? "true" : "false";
+                append_bool(out, "objects", info->objects);
+                append_bool(out, "objects_rendered", info->objects_rendered);
+                append_number(out, "slots", static_cast<unsigned long long>(info->slots));
                 out += '}';
             } else {
                 out += "null";
@@ -145,10 +157,9 @@ struct Control::Impl {
             append_key(out, "ring_low");
             out += s.ring_low_valid ? std::to_string(s.ring_low_water) : "null";
             append_number(out, "passes", s.passes);
-            append_key(out, "finished");
-            out += s.finished ? "true" : "false";
-            append_key(out, "failed");
-            out += s.failed ? "true" : "false";
+            append_number(out, "layout_mismatches", s.layout_mismatches);
+            append_bool(out, "finished", s.finished);
+            append_bool(out, "failed", s.failed);
             append_key(out, "why");
             append_json_string(out, s.failure);
             append_number(out, "error", static_cast<unsigned long long>(s.error));
@@ -193,6 +204,34 @@ struct Control::Impl {
         }
         return send_text(req, "200 OK", "ok\n");
     }
+
+    static esp_err_t on_layout_get(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        if (!h.layout) {
+            return send_text(req, "404 Not Found", "this player has no layout to report\n");
+        }
+        std::string text = h.layout();
+        text += '\n';
+        return send_text(req, "200 OK", text.c_str());
+    }
+
+    static esp_err_t on_layout_put(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        const std::string body = read_body(req);
+        if (body.empty()) {
+            return send_text(req, "400 Bad Request",
+                             "PUT /layout wants a name (5.1.4) or a speaker list (L,R,C,LFE,Ls,Rs)\n");
+        }
+        if (!h.set_layout) {
+            return send_text(req, "409 Conflict", "this player's layout is fixed\n");
+        }
+        if (!h.set_layout(body)) {
+            return send_text(req, "409 Conflict",
+                             "not a layout this player can play: check the name or the list, and "
+                             "that it has no more slots than the sink\n");
+        }
+        return send_text(req, "200 OK", "ok; takes effect at the next play\n");
+    }
 };
 
 Control::~Control() { stop(); }
@@ -208,7 +247,7 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port) {
     config.server_port = port;
     // A handful of routes and one client at a time is the whole job; the
     // defaults size the server for more than that and this part has less.
-    config.max_uri_handlers = 5;
+    config.max_uri_handlers = 7;
     config.max_open_sockets = 3;
     config.lru_purge_enable = true;
     if (httpd_start(&impl_->server, &config) != ESP_OK) {
@@ -224,11 +263,14 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port) {
         {.uri = "/play", .method = HTTP_POST, .handler = &Impl::on_play, .user_ctx = impl_},
         {.uri = "/stop", .method = HTTP_POST, .handler = &Impl::on_stop, .user_ctx = impl_},
         {.uri = "/volume", .method = HTTP_POST, .handler = &Impl::on_volume, .user_ctx = impl_},
+        {.uri = "/layout", .method = HTTP_GET, .handler = &Impl::on_layout_get, .user_ctx = impl_},
+        {.uri = "/layout", .method = HTTP_PUT, .handler = &Impl::on_layout_put, .user_ctx = impl_},
     };
     for (const auto& route : routes) {
         httpd_register_uri_handler(impl_->server, &route);
     }
-    std::printf("control: http on port %u - GET /status, POST /play, /stop, /volume\n",
+    std::printf("control: http on port %u - GET /status, POST /play, /stop, /volume, GET/PUT "
+                "/layout\n",
                 static_cast<unsigned>(port));
     return true;
 }

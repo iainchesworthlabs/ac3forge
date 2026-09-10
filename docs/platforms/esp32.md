@@ -147,11 +147,14 @@ flags the player branches on — the player itself names neither a partition nor
 
 | Source | Sink |
 |---|---|
-| `partition` — flash (default) | `i2s` — stereo DAC (default) |
-| `sd` — SD card over SDMMC | `tdm` — up to eight channels on one data line |
-| `http` — an HTTP body over WiFi | `null` — counts frames; what CI runs |
+| `partition` — flash (default) | `i2s` — stereo DAC (default), 32-bit slots, master or slave |
+| `sd` — SD card over SDMMC | `tdm` — up to sixteen channels on one data line |
+| `http` — an HTTP body over WiFi | `capture` — converts and checks; what CI runs |
+| | `null` — counts blocks |
 
-Chosen under *ac3forge stream player* in `idf.py menuconfig`.
+Chosen under *ac3forge stream player* in `idf.py menuconfig`, along with the output layout — a
+name such as `5.1.4` or a speaker list — that the player renders every stream onto
+(`esp-idf/ac3forge/include/ac3forge/layout.hpp`, `render.hpp`).
 
 It exists to exercise the incremental input path. `ac3::split_frames` takes a span over a whole
 stream, which nothing streaming can produce; `ac3::io::AccessUnitAccumulator` applies the same

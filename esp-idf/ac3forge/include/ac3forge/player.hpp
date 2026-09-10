@@ -10,6 +10,9 @@
 #include "freertos/FreeRTOS.h"
 
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/decoder/output.hpp"
+
+#include "ac3forge/layout.hpp"
 
 // The player: bytes in, sound out, on two cores.
 //
@@ -21,13 +24,20 @@
 //
 // The shape, and the reason for it. A fetch task on one core reads the source
 // into a ring; a decode task on the other drains the ring through
-// ac3::io::AccessUnitAccumulator, decodes each access unit into caller-owned
-// storage, and writes the folded frame to the sink. The sink blocks until the
-// DAC has taken the frame, which is what paces the player at real time. A
-// source that blocks - a socket waiting on the network - blocks the fetch task
-// and nothing else: the decode keeps draining the ring, and the ring's depth is
-// how long a stall the DAC never hears. The single loop this replaced had 20 ms
-// of I2S DMA between a slow read and silence.
+// ac3::io::AccessUnitAccumulator, decodes each access unit a block at a time
+// (decode_access_unit_by_block: 256 samples of every channel, and the objects
+// beside them when there are any), renders each block onto the configured
+// speaker layout (ac3forge/render.hpp) and writes it to the sink. The sink
+// blocks until the DAC has taken the block, which is what paces the player at
+// real time. A source that blocks - a socket waiting on the network - blocks
+// the fetch task and nothing else: the decode keeps draining the ring, and the
+// ring's depth is how long a stall the DAC never hears. The single loop this
+// replaced had 20 ms of I2S DMA between a slow read and silence.
+//
+// A block at a time rather than a frame, because the storage is the
+// difference between a height layout fitting on this part or not: one block of
+// sixteen slots is 16 KB where a frame of them is 96 KB, and the decoder's own
+// block form copies nothing on the way.
 //
 // WiFi and TCP/IP run on core 0, so the fetch task goes beside them and the
 // decode task has core 1 to itself. Both are PlayerConfig fields, because a
@@ -55,34 +65,48 @@ class ByteSource {
     [[nodiscard]] virtual bool rewind() = 0;
 };
 
-// Where decoded audio goes. One frame per call: `channels` planar spans of
-// kSamplesPerFrame floats, nominally in [-1, 1), in the decoder's own order
-// after the configured fold. Called from the decode task only.
+// Where decoded audio goes. One BLOCK per call: one planar span of float per
+// slot of the configured OutputLayout, in slot order, each ac3::kSamplesPerBlock
+// samples long or fewer, nominally in [-1, 1). Called from the decode task
+// only, six times per frame at 48 kHz.
 //
 // Planar float rather than interleaved integers because the sample format is
-// the sink's business: standard I2S wants 16-bit stereo, a TDM bus wants 24 bits
-// in 32-bit slots with the unused slots zeroed, and the conversion is one pass
-// either way - ac3forge/interleave.hpp has both.
+// the sink's business: standard I2S wants two slots of 16 or 32 bits, a TDM bus
+// wants 24 bits in 32-bit slots with the unused slots zeroed, and the
+// conversion is one pass either way - ac3forge/interleave.hpp has both.
 class PcmSink {
    public:
     virtual ~PcmSink() = default;
-    // Blocks until the sink has taken the frame. For a DAC that is the
+    // Blocks until the sink has taken the block. For a DAC that is the
     // back-pressure that paces the whole player; a sink with no peripheral
     // returns at once and the player runs flat out.
-    virtual void write(std::span<const std::span<const float>> channels) = 0;
+    virtual void write(std::span<const std::span<const float>> slots) = 0;
 };
 
 struct PlayerConfig {
-    // The fold and operating mode, and whether to reconstruct objects. A
-    // stereo sink wants kLoRo or kLtRt with objects skipped: an Atmos stream's
-    // bed is the complete mix, and reconstruction costs this part about 10 ms
-    // of every 32 ms frame for objects a stereo DAC cannot place.
-    ac3::DecoderConfig decoder{.output = {.target = ac3::DownmixTarget::kLoRo,
-                                         .mode = ac3::OperatingMode::kLine},
-                               .skip_object_reconstruction = true};
-    // How many channels the fold leaves, which is how many spans the sink is
-    // handed. 2 for the folds; the coded count for kAsCoded.
-    std::size_t output_channels = 2;
+    // The speakers, one per output slot - ac3forge/layout.hpp. What the sink is
+    // handed is one span per slot of this, whatever the stream was coded as.
+    OutputLayout layout = OutputLayout::stereo();
+    // Which §7.8 fold a two-speaker layout gets: kLoRo, or kLtRt for a Dolby
+    // Surround decoder downstream. A one-speaker layout folds to mono; every
+    // other layout is rendered as coded (see `objects`) and this is unused.
+    ac3::DownmixTarget stereo_fold = ac3::DownmixTarget::kLoRo;
+    // Whether to reconstruct a stream's object layer and place the objects on
+    // the speakers by their own positions, or play the bed (the objects' 5.1
+    // fold, which is the complete mix for a stereo or 5.1 room). Costs this
+    // part about 10 ms of every 32 ms frame and, under the QMF domain, about
+    // 233 KB of heap - PSRAM territory. kAuto reconstructs exactly when the
+    // layout has height speakers, which is the case the bed cannot serve;
+    // kAlways does so for any rendered layout; kNever plays the bed. A layout
+    // that folds never reconstructs.
+    enum class Objects : std::uint8_t { kAuto, kNever, kAlways };
+    Objects objects = Objects::kAuto;
+
+    // The decoder's own knobs: operating mode, DRC, the JOC domain, the
+    // programme. Its `output.target` and `skip_object_reconstruction` are
+    // decided by the player from `layout` and `objects` above, whatever is set
+    // here.
+    ac3::DecoderConfig decoder{.output = {.mode = ac3::OperatingMode::kLine}};
 
     // The ring between fetch and decode, in bytes of bitstream. 32 KB is
     // 0.57 s at 448 kbit/s. Preferably in PSRAM where the part has it - a
@@ -104,7 +128,7 @@ struct PlayerConfig {
     // The decode task's stack. 32 KB is what the probe measured a decode
     // needing about 21 KB of, with an overflow that surfaced as a panic on the
     // other core when it was smaller (apps/baremetal/platform/esp32s3/
-    // sdkconfig.defaults).
+    // sdkconfig.defaults). PlayerStats::decode_stack_free says what a run used.
     std::uint32_t decode_stack_bytes = 32768;
     std::uint32_t fetch_stack_bytes = 8192;
 
@@ -113,19 +137,22 @@ struct PlayerConfig {
     // whatever this says.
     std::uint32_t max_passes = 0;
 
-    // A linear gain applied to the folded frame before it reaches the sink,
-    // 0.0 to 1.0. Changeable while playing through Player::set_volume().
+    // A linear gain applied to every slot before it reaches the sink, 0.0 to
+    // 1.0. Changeable while playing through Player::set_volume().
     float volume = 1.0F;
 };
 
-// What the first decoded access unit said the stream is.
+// What the first decoded access unit said the stream is, and what the player
+// is doing with it.
 struct StreamInfo {
     bool eac3 = false;
     int acmod = 0;
-    int channels = 0;
+    int channels = 0;    // as coded, every substream unioned
     int substreams = 0;
     int dialnorm = 0;
-    bool objects = false;
+    bool objects = false;           // the stream carries an object layer
+    bool objects_rendered = false;  // and this player is placing them
+    int slots = 0;                  // what the sink is handed: the layout's
 };
 
 struct PlayerStats {
@@ -136,6 +163,12 @@ struct PlayerStats {
     std::uint64_t fetched_bytes = 0;    // taken from the source
     std::uint64_t resync_bytes = 0;     // skipped looking for a sync word
     std::uint32_t passes = 0;           // completed passes through the stream
+    // Access units whose decoded layout was not the one their headers
+    // announced. The bed's placement is set up from the headers before the
+    // unit decodes (the block form hands the samples over before the layout),
+    // so a mismatch means one unit was placed by the previous layout; the
+    // next is placed by the decoded one. Zero for every stream met so far.
+    std::uint32_t layout_mismatches = 0;
     // The least the ring ever held when the decoder came for more, in bytes,
     // measured while the source was still delivering. Zero means the decoder
     // waited on the source at least once; how far above zero it stays is the
@@ -187,7 +220,7 @@ class Player {
     // Blocks until finished(), or for `ticks`. Returns finished().
     bool wait(TickType_t ticks = portMAX_DELAY);
 
-    // The gain the decode task applies to the next frame onwards; clamped to
+    // The gain the decode task applies to the next block onwards; clamped to
     // 0.0 to 1.0. Safe from any task.
     void set_volume(float volume);
     [[nodiscard]] float volume() const;

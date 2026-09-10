@@ -22,6 +22,11 @@
 //   POST /stop        200
 //   POST /volume      body: a number 0.0 to 1.0. 200, or 409 if the sink has
 //                     no volume to set.
+//   GET  /layout      the output layout, as text: a name or a speaker list
+//                     (ac3forge/layout.hpp)
+//   PUT  /layout      body: a name or a speaker list. Takes effect at the next
+//                     play. 200, 400 when it is not a layout, 409 when the
+//                     sink's bus has fewer slots than it needs.
 //
 // Every handler below runs on esp_http_server's task. Nothing here touches a
 // Player: the callbacks hand the request to whichever task owns the player -
@@ -40,6 +45,11 @@ struct ControlHandlers {
     // POST /volume. False means this sink has nothing to set.
     std::function<bool(float volume)> set_volume;
     std::function<float()> volume;
+    // GET and PUT /layout. set_layout returns false for text that is not a
+    // layout or one the sink cannot carry; the owner applies it at its next
+    // play, and `layout` reports whatever will play next.
+    std::function<std::string()> layout;
+    std::function<bool(std::string_view text)> set_layout;
 
     // GET /status draws on these. Any may be left empty; the field is then
     // omitted or reported as null.

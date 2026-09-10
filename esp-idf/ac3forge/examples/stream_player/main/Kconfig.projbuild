@@ -16,6 +16,31 @@ config AC3FORGE_EXAMPLE_I2S_DOUT_GPIO
     int "I2S data out (DOUT/SDIN) GPIO"
     default 7
 
+# THE SLOT WIDTH AND THE CLOCK ROLE, for the two sinks with a peripheral
+# (sink/i2s/ and sink/tdm/).
+config AC3FORGE_EXAMPLE_I2S_SLOT_BITS
+    int "Stereo I2S slot width in bits (16 or 32)"
+    default 32
+    range 16 32
+    help
+        32-bit slots carry the decoder's 24-bit samples left-justified, which
+        every DAC tried here accepts and a SigmaDSP requires, at twice the bit
+        clock of 16 (3.07 MHz against 1.54 for stereo at 48 kHz). Only 16 and
+        32 are valid; the sink refuses anything else when it compiles. The TDM
+        sink is always 32.
+
+config AC3FORGE_EXAMPLE_I2S_SLAVE
+    int "The DAC supplies the clocks (1) or the ESP32-S3 does (0)"
+    default 0
+    range 0 1
+    help
+        0, master: the ESP32-S3 generates BCLK and WS from its own clock, which
+        is what a DAC breakout wants. 1, slave: BCLK and WS are inputs on the
+        same two pins, driven by the other end - how an ADAU1452 or ADAU1467
+        that is the house's clock wants it; the sample rate is then what the
+        peripheral is told to expect rather than what it makes. An int rather
+        than a bool so it reaches C++ as a plain constant.
+
 # THE I2S DMA QUEUE: how much audio the peripheral holds between the player's
 # writes, as descriptors of this many sample frames each. Four of 240 is 960
 # stereo 16-bit frames - 3,840 bytes, 20 ms at 48 kHz - which is LESS than one
@@ -85,14 +110,15 @@ config AC3FORGE_EXAMPLE_TDM_SLOTS
     int "TDM slots on the bus"
     depends on AC3FORGE_EXAMPLE_SINK_TDM || AC3FORGE_EXAMPLE_SINK_CAPTURE
     default 8
-    range 2 8
+    range 2 16
     help
         How many slots the TDM frame carries - a property of the BOARD, not of
         the audio. A DAC is wired for a fixed number and does not renegotiate
-        because a stream happens to be 5.1, so slots that the programme does not
-        fill are written as zeros rather than skipped. Eight slots of 32 bits at
-        48 kHz is a 12.3 MHz bit clock, which is the comfortable ceiling rather
-        than the 16 slots the peripheral can address.
+        because a layout happens to be 5.1, so slots the layout does not fill
+        are written as zeros rather than skipped. Eight slots of 32 bits at
+        48 kHz is a 12.3 MHz bit clock and sixteen is 24.6 MHz; the S3's
+        peripheral does both, the DAC's datasheet says whether it follows. The
+        layout (AC3FORGE_EXAMPLE_LAYOUT) must have no more slots than this.
 
 # WHERE THE BYTES COME FROM. A directory CMake picks, the mirror of the sink
 # choice above; see main/byte_source.hpp.
@@ -200,6 +226,75 @@ config AC3FORGE_EXAMPLE_HTTP_URL
     string "URL of the bitstream"
     depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
     default "http://example.invalid/sample.ac3"
+
+# THE OUTPUT LAYOUT - esp-idf/ac3forge/include/ac3forge/layout.hpp. The
+# speakers the room has, one per output slot; the stream is rendered onto them
+# whatever it was coded as (ac3forge/render.hpp). A stereo or mono layout is
+# the decoder's own §7.8 fold; anything else is placed channel by channel, and
+# a layout with height speakers has the stream's objects reconstructed and
+# placed by their own positions.
+config AC3FORGE_EXAMPLE_LAYOUT
+    string "Output layout: a name (2.0, 5.1, 7.1.4, 9.2.4) or a speaker list"
+    default "2.0"
+    help
+        A NAME is F.L.H: F speakers on the ring (1, 2, 3, 4, 5, 7 or 9), L
+        low-frequency feeds (0, 1 or 2), H heights (0, 2, 4 or 6), and the
+        slots come out ring, heights, LFE in Table E2.5 order - "5.1" is
+        L C R Ls Rs LFE, the AC-3 order. A LIST is one token per slot in slot
+        order: a location name (L C R Ls Rs Lrs Rrs Lw Rw Vhl Vhr Vhc Lts Rts
+        Ts Cs LFE LFE2), azimuth/elevation in degrees ("30/0"; left is
+        positive), or "-" for a slot nothing is on. "L,R,C,LFE,Ls,Rs" is a 5.1
+        DAC wired in WAV order. The slot count must fit the sink: 1 or 2 for
+        i2s, AC3FORGE_EXAMPLE_TDM_SLOTS for tdm. PUT /layout on the control
+        surface changes it for the next play.
+
+config AC3FORGE_EXAMPLE_DRC_MODE
+    int "Operating mode: line (0), RF (1), or as coded with no normalisation and no DRC (2)"
+    default 0
+    range 0 2
+    help
+        §7.7's two consumer modes, or neither. Line mode normalises to the
+        stream's dialnorm and applies the transmitted dynrng words - what a
+        player feeding a wide-range system does, and the default. RF mode adds
+        compr and overload protection for a set-top box. 2 leaves the samples
+        as coded, which is what apps/baremetal/probe.cpp's references are
+        measured against; sdkconfig.ci-render uses it so the rendered levels
+        can be compared with the probe's to the digit.
+
+config AC3FORGE_EXAMPLE_STEREO_FOLD
+    int "Fold for a 2.0 layout: Lo/Ro (0) or Lt/Rt (1)"
+    default 0
+    range 0 1
+    help
+        §7.8.1's plain stereo, or §7.8.2's Dolby Surround compatible fold for
+        a matrix decoder downstream. Only a two-speaker layout uses this.
+
+config AC3FORGE_EXAMPLE_OBJECTS
+    int "Object layer: reconstruct when the layout has height (0), never (1), always (2)"
+    default 0
+    range 0 2
+    help
+        An Atmos stream's bed is the objects' own 5.1 fold, so a room without
+        height speakers loses nothing by playing the bed - and saves about
+        10 ms of every 32 ms frame on this part, plus the reconstruction's
+        heap (see AC3FORGE_EXAMPLE_JOC_DOMAIN). 0 reconstructs exactly when
+        the layout has a height speaker; 2 does so for any rendered layout,
+        so a 7.1 room gets its rear surrounds from the objects rather than
+        from the panned bed; 1 never does. A layout that folds never does.
+
+config AC3FORGE_EXAMPLE_JOC_DOMAIN
+    int "JOC reconstruction domain: QMF (0) or MDCT band (1)"
+    default 0
+    range 0 1
+    help
+        Which domain the object reconstruction applies TS 103 420's matrix in.
+        0, the 64-band QMF, is what the clause describes and what every stream
+        from a licensed encoder needs; it allocates about 233 KB, which on this
+        part means PSRAM. 1, the MDCT-band approximation, is correct ONLY for a
+        stream this project's own encoder produced with the same setting, and
+        allocates about 148 KB - which is how the QEMU shape, with no PSRAM,
+        renders the height fixture (sdkconfig.ci-render). Not a choice for a
+        board playing real content.
 
 # THE PLAYER'S TWO TASKS - see esp-idf/ac3forge/include/ac3forge/player.hpp. The
 # fetch task reads the source into a ring; the decode task drains the ring,

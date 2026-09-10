@@ -8,17 +8,19 @@
 // choices (tools/checks/check_platform_macros.ps1, and the arch/ and profile/
 // directories under src/internal/).
 //
-// Two implementations today, one chosen per build:
+// Four implementations, one chosen per build:
 //
-//   sink/i2s/    the real one. Standard I2S, two slots, 16-bit.
-//   sink/null/   counts what it is given and returns. What CI builds, because
-//                qemu-system-xtensa has no I2S peripheral: with the real sink
-//                the first write blocks on a DMA that never drains and the job
-//                times out.
+//   sink/i2s/      the real one. Standard I2S, two slots, 32-bit by default.
+//   sink/tdm/      multi-channel on one data line, up to sixteen slots.
+//   sink/capture/  converts exactly as the two above do and checks the result;
+//                  what CI runs.
+//   sink/null/     counts what it is given and returns.
 //
-// The null sink is not a stub that skips the work - it is a SINK, called
-// exactly as often and with exactly the same audio, so the player loop and the
-// timing arithmetic are all still exercised. What it cannot do is prove a DAC
+// The last two stand in for a peripheral qemu-system-xtensa does not have:
+// with a real sink the first write blocks on a DMA that never drains and the
+// job times out. Neither is a stub that skips the work - each is a SINK,
+// called exactly as often and with exactly the same audio, so the player and
+// its timing arithmetic are still exercised. What they cannot do is prove a DAC
 // makes a noise, and nothing running without hardware can.
 //
 // Selected in Kconfig (main/Kconfig.projbuild), read by main/CMakeLists.txt.
@@ -26,40 +28,49 @@
 //
 // --- WHY THE INTERFACE IS PLANAR FLOAT --------------------------------------
 //
-// Because interleaving and sample format are the SINK's business, and the next
-// sink to be written does both differently.
+// Because interleaving and sample format are the SINK's business, and the sinks
+// do both differently.
 //
-// Standard I2S carries two slots. 5.1 and 7.1 out of an ESP32-S3 mean TDM
+// Standard I2S carries two slots. Anything wider out of an ESP32-S3 means TDM
 // (driver/i2s_tdm.h): the S3's I2S packs up to 16 slots onto one data line, so
 // 8 channels needs three pins - BCLK, WS and DATA - rather than four data lines,
 // and 8 slots of 32 bits at 48 kHz is a 12.3 MHz bit clock, well inside what it
-// will do. The DAC has to speak TDM; a PCM3168A does, the common stereo
-// breakouts (MAX98357A, PCM5102) do not.
+// will do. The DAC has to speak TDM; a PCM3168A does, a SigmaDSP does, the
+// common stereo breakouts (MAX98357A, PCM5102) do not.
 //
-// That sink wants 24-bit samples in 32-bit slots, eight channels wide. This one
-// wants 16-bit, two channels wide. If this interface carried interleaved
-// int16_t - as it did for about an hour - adding the TDM sink would mean
-// changing the seam, and changing a seam is how the implementations behind it
-// drift apart. Handing over the decoder's own planar float and letting each
-// sink convert costs one pass over the samples and settles the question.
+// That sink wants 24-bit samples in 32-bit slots, as many as the bus has. The
+// stereo one wants two slots of 16 or 32 bits. If this interface carried
+// interleaved int16_t - as it did for about an hour - adding the TDM sink would
+// have meant changing the seam, and changing a seam is how the implementations
+// behind it drift apart. Handing over planar float and letting each sink
+// convert costs one pass over the samples (ac3forge/interleave.hpp, shared by
+// all of them) and settles the question.
 //
-// The decoder produces exactly this shape: DecodedFrame::channels, or the spans
-// handed to decode_frame_into.
+// --- WHAT A WRITE IS ---------------------------------------------------------
 //
-// --- NOTES FOR THE TDM SINK, WHICH DOES NOT EXIST YET -----------------------
+// One BLOCK: one span per output slot of the player's layout, each
+// ac3::kSamplesPerBlock (256) samples or fewer, six times a frame. A block
+// rather than a frame because that is what the decoder's block form hands
+// over and what keeps a sixteen-slot layout's storage at 16 KB rather than
+// 96 KB - see esp-idf/ac3forge/include/ac3forge/player.hpp.
 //
-// Written down here rather than discovered again later. None of it is tested -
-// there is no TDM DAC to test against - so treat it as a starting point.
+// --- NOTES THE TDM SINK WAS WRITTEN FROM ------------------------------------
 //
-//   * Slots are FIXED WIDTH. A 5.1 programme on an 8-slot stream has to write
-//     zeros into slots 6 and 7 every frame, not leave them; whatever was in the
-//     DMA buffer last time is what the DAC will otherwise clock out, which is
+// Still untested against a TDM DAC, so still worth keeping in one place.
+//
+//   * Slots are FIXED WIDTH. A 5.1 layout on an 8-slot bus has to write zeros
+//     into slots 6 and 7 every block, not leave them; whatever was in the DMA
+//     buffer last time is what the DAC will otherwise clock out, which is
 //     digital noise on two channels nobody is watching.
 //
 //   * 24-bit in 32-bit slots is the usual arrangement, so the conversion is to
-//     int32_t, not int16_t. Eight slots of 32 bits at 48 kHz is a 12.3 MHz bit
-//     clock - inside what the S3 will do, and the reason 8 channels is the
-//     comfortable ceiling rather than the 16 slots the peripheral can address.
+//     int32_t, not int16_t. Sixteen slots of 32 bits at 48 kHz is a 24.6 MHz
+//     bit clock, inside what the S3 will do; whether the DAC follows is its
+//     datasheet's business.
+//
+//   * The driver caps a DMA descriptor at 4,092 bytes and quietly shortens one
+//     that asks for more. The two I2S sinks size their descriptors from the
+//     bus width (sink/sink_common.hpp) so the configured depth survives.
 //
 //   * i2s_channel_write COPIES into the driver's own descriptors, so the
 //     buffer handed to it does NOT need MALLOC_CAP_DMA. That requirement
@@ -79,20 +90,26 @@
 
 namespace player {
 
-// `channels` is how many the sink will be given per write. Returns false if it
-// cannot do that many - which is not a failure of the caller, just a limit of
-// this sink, and the caller should stop and say so.
+// `channels` is how many slots the sink will be given per write - the
+// player's layout. Returns false if it cannot do that many - which is not a
+// failure of the caller, just a limit of this sink, and the caller should stop
+// and say so.
 [[nodiscard]] bool sink_open(std::uint32_t sample_rate, int channels);
 
-// One frame: `channels` spans, each one frame of samples, nominally in [-1, 1).
-// Blocks until the sink has taken it, which for I2S is the back-pressure that
-// paces the whole player at real time.
+// How many slots the bus has, once open: a layout with no more than this many
+// can replace the one the sink was opened with (the TDM sink pads what a
+// narrower layout leaves), a wider one cannot.
+[[nodiscard]] int sink_slots();
+
+// One block: one span per slot, each up to ac3::kSamplesPerBlock samples,
+// nominally in [-1, 1). Blocks until the sink has taken it, which for I2S is
+// the back-pressure that paces the whole player at real time.
 void sink_write(std::span<const std::span<const float>> channels);
 
 // For the log line, so a run says which sink produced its numbers.
 [[nodiscard]] const char* sink_name();
 
-// Frames accepted since sink_open. The null sink's reason for existing: it
+// Blocks accepted since sink_open. The null sink's reason for existing: it
 // gives CI something to gate on that the real sink cannot report.
 [[nodiscard]] std::uint64_t sink_frames_written();
 
