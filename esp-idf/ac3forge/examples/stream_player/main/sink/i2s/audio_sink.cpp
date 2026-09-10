@@ -63,14 +63,16 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
                     channels);
         return false;
     }
-    const DmaPlan plan = dma_plan(kDmaDescriptors, kDmaFrames, kBytesPerSampleFrame);
+    const DmaPlan plan =
+        dma_plan(kDmaDescriptors, kDmaFrames, kBytesPerSampleFrame, ac3::kSamplesPerBlock);
     const std::size_t dma_bytes = static_cast<std::size_t>(plan.descriptors) *
                                   static_cast<std::size_t>(plan.frames) * kBytesPerSampleFrame;
     g_model.open(sample_rate * static_cast<std::uint32_t>(kBytesPerSampleFrame), dma_bytes);
 
     i2s_chan_config_t chan_cfg =
         I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, kSlave ? I2S_ROLE_SLAVE : I2S_ROLE_MASTER);
-    // Four descriptors of 240 frames by default: 20 ms. Small on purpose -
+    // Four descriptors of 240 frames by default: 20 ms, which dma_plan reshapes
+    // into eight of 128 so that every block ends on a descriptor. Small on purpose -
     // every millisecond of buffer is a millisecond of latency, and a deep
     // buffer would hide a decoder that cannot keep up, which is one of the
     // things this example exists to reveal. Kconfig, so a source that needs
