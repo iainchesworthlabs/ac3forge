@@ -23,6 +23,7 @@
 #include "ac3/encoder/bandwidth.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/encoder/transient.hpp"
+#include "ac3/internal/encode_scalar.hpp"
 #include "ac3/internal/profiling.hpp"
 
 #include "ac3/meta/bsi.hpp"
@@ -31,6 +32,8 @@
 #include "ac3/quality/distortion.hpp"
 #include "ac3/quality/perceptual.hpp"
 #include "ac3/verify/mirror.hpp"
+
+#include "scalar_transform.hpp"
 #include "dither.hpp"
 #include "exp_strategy.hpp"
 #include "snr_search.hpp"
@@ -198,6 +201,10 @@ struct FrameEncoder::Impl {
         // run already shares one exponent set and one bit allocation across its
         // blocks, so its delta correction is constant across them too.
         DeltaSegments delta;
+        // §7.2.2.5's masking curve for `decoded`, computed once per search
+        // and reused by every probe - eac3_frame.cpp's ExponentRun says why.
+        MaskingCurve curve;
+        std::uint32_t curve_generation = 0;
     };
 
     struct StreamPlan {
@@ -206,10 +213,10 @@ struct FrameEncoder::Impl {
     };
 
     EncoderConfig config_;
-    std::array<std::array<double, 256>, 6> history_{};  // MDCT overlap per channel
+    std::array<std::array<internal::encode_scalar_t, 256>, 6> history_{};  // MDCT overlap per channel
     // One per full-bandwidth channel (§8.2.2 excludes the LFE): stateful
     // across frames, like history_ above.
-    std::vector<TransientDetector> transient_detectors_;
+    std::vector<BasicTransientDetector<internal::encode_scalar_t>> transient_detectors_;
     // Per-(channel, block) scratch for the MDCT pass, reused rather than
     // stack-declared inside encode_frame (PREfast's C6262 flagged the
     // function's stack frame). Each is always fully overwritten before being
@@ -218,16 +225,16 @@ struct FrameEncoder::Impl {
     // reuse across iterations, and across calls on this instance, changes
     // nothing observable. Not thread-safe for concurrent calls on the same
     // instance, same as history_ and the other per-frame state above.
-    std::array<double, 512> time_scratch_{};
+    std::array<internal::encode_scalar_t, 512> time_scratch_{};
     // Four windowed blocks, not one (ROADMAP PF5 phase 4c): step 1's
     // per-channel loop batches four BLOCKS' forward transforms into one
     // ac3::mdct512_forward_batch4 call, which needs all four to coexist.
     // Six blocks a frame, so a channel whose first four blocks are all long
     // runs one batch plus two ordinary calls; lane 0 doubles as the
     // one-at-a-time path's own buffer.
-    std::array<std::array<double, 512>, 4> windowed_scratch_{};
-    std::array<double, 128> half1_scratch_{};
-    std::array<double, 128> half2_scratch_{};
+    std::array<std::array<internal::encode_scalar_t, 512>, 4> windowed_scratch_{};
+    std::array<internal::encode_scalar_t, 128> half1_scratch_{};
+    std::array<internal::encode_scalar_t, 128> half2_scratch_{};
     // Frame-lifetime work buffers, reused across encode_frame calls under
     // the same reasoning (and the same single-instance contract) as the
     // scratch arrays above: each is re-sized via assign()/resize() and fully
@@ -239,7 +246,7 @@ struct FrameEncoder::Impl {
     // their per-slot offsets; block_tokens_ each block's mantissa tokens,
     // filled through MantissaBlockWriter::take_tokens_into so the token
     // storage cycles between the writer and these slots without copies.
-    std::vector<std::array<double, 256>> coeffs_;
+    std::vector<std::array<internal::encode_scalar_t, 256>> coeffs_;
     std::vector<std::int32_t> fixed_;
     std::vector<std::size_t> fixed_base_;
     std::vector<std::vector<std::uint8_t>> block_exps_;
@@ -254,10 +261,15 @@ struct FrameEncoder::Impl {
     std::uint64_t rate_accumulator_ = 0;  // ideal-bits Bresenham state
     std::uint64_t words_emitted_ = 0;
     // The previous frame's converged SNR-offset composite, warm-starting the
-    // next frame's search (src/forge/src/encoder/snr_search.hpp). Performance
-    // state only: it changes how fast the search converges, never which
-    // offset it converges to. Negative until a frame has been encoded.
+    // next frame's search (src/forge/src/encoder/snr_search.hpp). Negative
+    // until a frame has been encoded. Two, one per predicate of the delta
+    // race - eac3_frame.cpp's Impl says why, and why they are not purely
+    // performance state.
     int snr_search_hint_ = -1;
+    int snr_search_hint_bare_ = -1;
+    // Which search the runs' cached masking curves belong to - see
+    // eac3_frame.cpp's Impl for the same field.
+    std::uint32_t curve_generation_ = 1;
     // The previous frame's winning BitAllocCodes (EncoderConfig::search),
     // unlike the hint above NOT performance-only: it is step 9a's incumbent
     // for THIS frame's comparison, so which candidate wins can depend on it.
@@ -307,7 +319,7 @@ struct FrameEncoder::Impl {
     std::vector<StreamPlan> plan;
     std::vector<int> starts;
     std::vector<std::uint8_t> raw;
-    std::vector<double> peak_mag;
+    std::vector<internal::encode_scalar_t> peak_mag;
 
     // --- step 9a's decision search (EncoderConfig::search) ------------------
     // All unused, and the model unconstructed, when the search is off.
@@ -375,6 +387,10 @@ FrameEncoder::FrameEncoder(const EncoderConfig& config) : impl_(std::make_unique
 
 std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     std::span<const std::span<const float>> channels) {
+    // A new frame means new exponents behind every run: whatever masking
+    // curves the runs cached for the last frame's searches are stale, and a
+    // path that evaluates a cost without searching (VBR) must not read them.
+    ++impl_->curve_generation_;
     AC3_ZONE_SCOPED_N("ac3::FrameEncoder::encode_frame");
     // Before the first early return below, so a caller that keeps one trace
     // across a whole file never reads the previous frame's state back out of
@@ -537,7 +553,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // index where it was.
     auto& coeffs = impl_->coeffs_;
     coeffs.assign(static_cast<std::size_t>(nchans) * kBlocksPerFrame, {});
-    const auto coeffs_at = [&](int s, int block) -> std::array<double, 256>& {
+    const auto coeffs_at = [&](int s, int block) -> std::array<internal::encode_scalar_t, 256>& {
         return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
                       static_cast<std::size_t>(block)];
     };
@@ -553,7 +569,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 time[static_cast<std::size_t>(n)] =
                     pos < 0 ? impl_->history_[static_cast<std::size_t>(ch)]
                                       [static_cast<std::size_t>(pos + 256)]
-                            : static_cast<double>(
+                            : static_cast<internal::encode_scalar_t>(
                                   channels[static_cast<std::size_t>(ch)]
                                           [static_cast<std::size_t>(pos)]);
             }
@@ -580,9 +596,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 for (std::size_t lane = 0; lane < 4; ++lane) {
                     gather_and_window(block + static_cast<int>(lane), lane);
                 }
-                mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3],
-                                       coeffs_at(ch, block), coeffs_at(ch, block + 1),
-                                       coeffs_at(ch, block + 2), coeffs_at(ch, block + 3));
+                encoder_detail::forward_long_batch4(
+                    windowed[0], windowed[1], windowed[2], windowed[3], coeffs_at(ch, block),
+                    coeffs_at(ch, block + 1), coeffs_at(ch, block + 2),
+                    coeffs_at(ch, block + 3));
                 block += 4;
                 continue;
             }
@@ -592,24 +609,24 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 // bin-by-bin into one ordinary 256-coefficient set - from
                 // here on, exponent/bitalloc/mantissa code cannot tell this
                 // block apart from a long one.
-                const std::span<const double, 512> full(windowed[0]);
                 auto& first = impl_->half1_scratch_;
                 auto& second = impl_->half2_scratch_;
-                mdct256_forward_first(full.first<256>(), first, impl_->config_.fast_mdct);
-                mdct256_forward_second(full.last<256>(), second, impl_->config_.fast_mdct);
+                encoder_detail::forward_short(windowed[0], first, second,
+                                              impl_->config_.fast_mdct);
                 auto& out = coeffs_at(ch, block);
                 for (int k = 0; k < 128; ++k) {
                     out[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
                     out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
                 }
             } else {
-                mdct512_forward(windowed[0], coeffs_at(ch, block), impl_->config_.fast_mdct);
+                encoder_detail::forward_long(windowed[0], coeffs_at(ch, block),
+                                             impl_->config_.fast_mdct);
             }
             ++block;
         }
         for (int n = 0; n < 256; ++n) {
             impl_->history_[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
-                static_cast<double>(
+                static_cast<internal::encode_scalar_t>(
                     channels[static_cast<std::size_t>(ch)][static_cast<std::size_t>(1280 + n)]);
         }
     }
@@ -899,14 +916,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             const int low = cplbands.start[static_cast<std::size_t>(bnd)];
             const int high =
                 std::min(low + cplbands.size[static_cast<std::size_t>(bnd)], cplendmant);
-            double correlation = 0.0;
+            internal::encode_scalar_t correlation = 0;
             for (int block = 0; block < kBlocksPerFrame; ++block) {
                 for (int bin = low; bin < high; ++bin) {
                     correlation += coeffs_at(0, block)[static_cast<std::size_t>(bin)] *
                                    coeffs_at(1, block)[static_cast<std::size_t>(bin)];
                 }
             }
-            phsflg[static_cast<std::size_t>(bnd)] = correlation < 0.0;
+            phsflg[static_cast<std::size_t>(bnd)] = correlation < 0;
             phsflginu = phsflginu || phsflg[static_cast<std::size_t>(bnd)];
         }
         if (!phsflginu) {
@@ -959,10 +976,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // nfchans: with a block-switching channel left out, averaging by
         // nfchans would put the shared channel a level step below where the
         // allocator's absolute psd model expects it.
-        const double scale = static_cast<double>(coupled_count);
+        const auto scale = static_cast<internal::encode_scalar_t>(coupled_count);
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             auto& cpl = coeffs_at(cpl_stream, block);
-            cpl.fill(0.0);
+            cpl.fill(0);
             // The raw sum for now; the division by `scale` comes after the
             // coordinates, which are measured against that same raw sum.
             // Each channel enters with the sign the decoder will reconstruct
@@ -972,12 +989,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 const int high =
                     std::min(low + cplbands.size[static_cast<std::size_t>(bnd)], cplendmant);
                 for (int bin = low; bin < high; ++bin) {
-                    double sum = 0.0;
+                    internal::encode_scalar_t sum = 0;
                     for (int ch = 0; ch < nfchans; ++ch) {
                         if (!chincpl[static_cast<std::size_t>(ch)]) {
                             continue;
                         }
-                        sum += coupling_sign(ch, bnd) *
+                        sum += static_cast<internal::encode_scalar_t>(coupling_sign(ch, bnd)) *
                                coeffs_at(ch, block)[static_cast<std::size_t>(bin)];
                     }
                     cpl[static_cast<std::size_t>(bin)] = sum;
@@ -992,18 +1009,19 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     const int low = cplbands.start[static_cast<std::size_t>(bnd)];
                     const int high =
                         std::min(low + cplbands.size[static_cast<std::size_t>(bnd)], cplendmant);
-                    double power_ch = 0.0;
-                    double power_sum = 0.0;
+                    internal::encode_scalar_t power_ch = 0;
+                    internal::encode_scalar_t power_sum = 0;
                     for (int bin = low; bin < high; ++bin) {
-                        const double value =
+                        const internal::encode_scalar_t value =
                             coeffs_at(ch, block)[static_cast<std::size_t>(bin)];
-                        const double summed = cpl[static_cast<std::size_t>(bin)];
+                        const internal::encode_scalar_t summed = cpl[static_cast<std::size_t>(bin)];
                         power_ch += value * value;
                         power_sum += summed * summed;
                     }
-                    const double ratio =
-                        power_sum > 0.0 ? std::sqrt(power_ch / power_sum) : 0.0;
-                    values[static_cast<std::size_t>(bnd)] = ratio * scale / 8.0;
+                    const auto ratio =
+                        power_sum > 0 ? std::sqrt(power_ch / power_sum) : internal::encode_scalar_t{0};
+                    values[static_cast<std::size_t>(bnd)] =
+                        static_cast<double>(ratio * scale) / 8.0;
                 }
                 const int chosen = coupling::choose_master(values);
                 // Quantize into this block's own slots, then ask whether the
@@ -1037,7 +1055,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 // Above the coupling frequency the channel carries nothing of
                 // its own any more.
                 for (int bin = cplstrtmant; bin < 256; ++bin) {
-                    coeffs_at(ch, block)[static_cast<std::size_t>(bin)] = 0.0;
+                    coeffs_at(ch, block)[static_cast<std::size_t>(bin)] = 0;
                 }
             }
             for (int bin = cplstrtmant; bin < cplendmant; ++bin) {
@@ -1062,13 +1080,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 if (low > high) {
                     continue;
                 }
-                double power_l = 0.0;
-                double power_r = 0.0;
-                double power_sum = 0.0;
-                double power_diff = 0.0;
+                internal::encode_scalar_t power_l = 0;
+                internal::encode_scalar_t power_r = 0;
+                internal::encode_scalar_t power_sum = 0;
+                internal::encode_scalar_t power_diff = 0;
                 for (int bin = low; bin <= high; ++bin) {
-                    const double l = left[static_cast<std::size_t>(bin)];
-                    const double r = right[static_cast<std::size_t>(bin)];
+                    const internal::encode_scalar_t l = left[static_cast<std::size_t>(bin)];
+                    const internal::encode_scalar_t r = right[static_cast<std::size_t>(bin)];
                     power_l += l * l;
                     power_r += r * r;
                     power_sum += (l + r) * (l + r);
@@ -1077,11 +1095,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 if (std::min(power_sum, power_diff) < std::min(power_l, power_r)) {
                     rematflg[static_cast<std::size_t>(block)][static_cast<std::size_t>(band)] =
                         true;
+                    constexpr auto kHalf = static_cast<internal::encode_scalar_t>(0.5);
                     for (int bin = low; bin <= high; ++bin) {
-                        const double l = left[static_cast<std::size_t>(bin)];
-                        const double r = right[static_cast<std::size_t>(bin)];
-                        left[static_cast<std::size_t>(bin)] = 0.5 * (l + r);
-                        right[static_cast<std::size_t>(bin)] = 0.5 * (l - r);
+                        const internal::encode_scalar_t l = left[static_cast<std::size_t>(bin)];
+                        const internal::encode_scalar_t r = right[static_cast<std::size_t>(bin)];
+                        left[static_cast<std::size_t>(bin)] = kHalf * (l + r);
+                        right[static_cast<std::size_t>(bin)] = kHalf * (l - r);
                     }
                 }
             }
@@ -1141,7 +1160,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             cursor += count;
             block_exps[slot].resize(count);
             to_fixed25_block(
-                std::span<const double>{coeffs_at(s, block)}.subspan(
+                std::span<const internal::encode_scalar_t>{coeffs_at(s, block)}.subspan(
                     static_cast<std::size_t>(begin), count),
                 std::span<std::int32_t>{fixed}.subspan(base, count));
             extract_exponents(std::span<const std::int32_t>{fixed}.subspan(base, count),
@@ -1307,7 +1326,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // stream, if it would make an otherwise-fittable frame fail to
             // fit - so there is no need to withhold it here pre-emptively
             // just because coupling happens to be on this frame.
-            if (!is_lfe) {
+            if (!is_lfe && impl_->config_.delta_allocation) {
                 peak_mag.assign(static_cast<std::size_t>(end), 0.0);
                 for (int block = first; block < last; ++block) {
                     const auto& c = coeffs_at(s, block);
@@ -1858,22 +1877,44 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                             .delta = p.runs[run].delta};
                 auto& bap = run_bap[static_cast<std::size_t>(s)][run];
                 bap.assign(p.runs[run].decoded.size(), 0);
-                compute_bit_allocation(p.runs[run].decoded, impl_->config_.sample_rate, codes,
-                                       composite >> 4, fine, bap, region);
+                // The probe-independent half once per run per search, the
+                // offset per probe (ac3/core/bitalloc.hpp).
+                auto& exponent_run = p.runs[run];
+                if (exponent_run.curve_generation != impl_->curve_generation_) {
+                    exponent_run.curve = compute_masking_curve(
+                        exponent_run.decoded, impl_->config_.sample_rate, codes, region);
+                    exponent_run.curve_generation = impl_->curve_generation_;
+                }
+                allocate_from_curve(exponent_run.decoded, exponent_run.curve, codes,
+                                    composite >> 4, fine, bap, region);
             }
         }
+        // A block whose every stream reads the same run as the block before
+        // it costs what that block cost (the grouping of mantissas into
+        // codewords starts afresh each block), so it is counted once; runs
+        // are contiguous in blocks, so the previous block is the only one to
+        // compare with.
         std::uint32_t total = 0;
+        std::uint32_t block_bits = 0;
         for (int block = 0; block < kBlocksPerFrame; ++block) {
+            bool same_runs_as_previous = block > 0;
             for (int s = 0; s < streams; ++s) {
                 const auto& p = plan[static_cast<std::size_t>(s)];
                 const auto run = static_cast<std::size_t>(
                     p.run_of_block[static_cast<std::size_t>(block)]);
+                if (block > 0 && p.run_of_block[static_cast<std::size_t>(block) - 1] !=
+                                     p.run_of_block[static_cast<std::size_t>(block)]) {
+                    same_runs_as_previous = false;
+                }
                 // Only the stream's own region carries mantissas.
                 const auto& bap = run_bap[static_cast<std::size_t>(s)][run];
                 bap_views[static_cast<std::size_t>(s)] =
                     std::span{bap}.subspan(static_cast<std::size_t>(stream_start(s)));
             }
-            total += static_cast<std::uint32_t>(mantissa_bits_per_block(bap_views));
+            if (!same_runs_as_previous) {
+                block_bits = static_cast<std::uint32_t>(mantissa_bits_per_block(bap_views));
+            }
+            total += block_bits;
         }
         return total;
     };
@@ -1884,17 +1925,19 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // own search already measured on the winning probe (the same "was the
     // last probe already the answer" trick the single-pass search used to
     // apply inline).
-    const auto search = [&](std::uint32_t search_budget) -> SnrSearchResult {
+    const auto search = [&](std::uint32_t search_budget, int& hint) -> SnrSearchResult {
+        ++impl_->curve_generation_;
         int last_eval = -1;
         std::uint32_t last_bits = 0;
         const int found =
             internal::search_max_fitting(
-                1023, impl_->snr_search_hint_,
+                1023, hint,
                 [&last_eval, &last_bits, &bits_at, &search_budget](int composite) {
                     last_eval = composite;
                     last_bits = bits_at(composite);
                     return last_bits <= search_budget;
                 });
+        hint = found;
         return {found, last_eval == found ? last_bits : bits_at(found)};
     };
 
@@ -1930,7 +1973,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 plan[s].runs[r].delta = original_delta[s][r];
             }
         }
-        auto [lo, mantissa_bits] = search(budget);
+        auto [lo, mantissa_bits] = search(budget, impl_->snr_search_hint_);
 
         // §7.2.2.6 says delta is a pure refinement, and step 8 above already
         // guarantees it never costs a frame its FIT. It can still cost a frame
@@ -1981,7 +2024,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // so this cannot be larger than what step 8 already proved fits.
             assert(side_bits_without <= side_bits);
             const std::uint32_t budget_without = total_bits - side_bits_without - detail::kTailBits;
-            const auto without = search(budget_without);
+            const auto without = search(budget_without, impl_->snr_search_hint_bare_);
             if (without.composite > lo) {
                 lo = without.composite;
                 budget = budget_without;
@@ -2217,7 +2260,6 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
     const int lo = settlement.composite;
     const std::uint32_t mantissa_bits = settlement.mantissa_bits;
-    impl_->snr_search_hint_ = lo;
     csnroffst = lo >> 4;
     fsnroffst = lo & 15;
     assert(mantissa_bits <= budget);
@@ -2248,7 +2290,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto run = static_cast<std::size_t>(
                 p.run_of_block[static_cast<std::size_t>(block)]);
-            internal::DitherBallot ballot;
+            internal::BasicDitherBallot<internal::encode_scalar_t> ballot;
             ballot.weigh(coeffs_at(ch, block), p.runs[run].decoded,
                          run_bap[static_cast<std::size_t>(ch)][run], 0, stream_end(ch));
             if (cplinu) {

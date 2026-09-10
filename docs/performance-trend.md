@@ -730,8 +730,8 @@ intervening commits.
 |---|---|
 | `.text` (code + read-only data) | 276,188 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 60,669 |
-| **Image total** | **337,257** (329.4 KiB) |
+| `.bss` (zero-initialised) | 62,205 |
+| **Image total** | **338,793** (330.9 KiB) |
 
 These are `arm-none-eabi-size`'s own columns, which is what `AC3FORGE_MAX_IMAGE_BYTES` gates, so
 they group sections rather than list them: `.text` here includes `.init`, `.fini` and
@@ -785,6 +785,8 @@ beside the double one, and `probe.cpp.obj` from 86.0 KiB to 86.3 with the rows. 
 is 33,640 more, for 337,257: the height stream's 10,752 bytes and
 `spatial.cpp` in `.text`, and in `.bss` a 12,288-byte render block - twelve channels of one
 256-sample block, what a player holds - with a 1,536-byte table of each object's gain per slot.
+The stage-timer table's growth from 32 zones to 64, which the encoder's rows needed, is 1,536
+more of `.bss` in every shape of the probe: 338,793.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
@@ -984,25 +986,94 @@ agree to the instruction — so a change that adds one per cent of work to a fix
 run's own lines, and the ceilings above hold the same headroom the other gates do. The
 [ESP32-S3 page](platforms/esp32.md#other-esp32-variants) reads the ESP32-C3's prospects off it.
 
+### Instructions per frame, fixed-point tier
+
+The same clock on the same leg with the decoder built as its fixed-point tier
+(`tools/checks/run_baremetal_probe.sh --scalar=fixed --icount`,
+`planning/arithmetic-tiers.md`), measured 2026-09-10. Integer arithmetic where the
+row above it is software floating point: a Q7.24 multiply is one `smull` and a
+shift where a soft-float one is a call. The ceilings are `ICOUNT_CEILING_FIXED`
+in the runner, with the same headroom rule as every other gate here.
+
+| Fixture | Fixed tier | Float tier | Ratio | Ceiling |
+|---|---:|---:|---:|---:|
+| `ac3_mono` | 615,000 | 1,625,000 | 0.38x | 1,000,000 |
+| `ac3_stereo` | 1,246,000 | 3,548,000 | 0.35x | 2,000,000 |
+| `eac3_stereo` | 1,818,000 | 4,851,000 | 0.37x | 2,500,000 |
+| `eac3_atmos_bed` | 3,540,000 | 8,940,000 | 0.40x | 4,500,000 |
+| `ac3` 5.1 | 3,807,000 | 10,224,000 | 0.37x | 5,000,000 |
+| `ac3_fold` | 5,327,000 | 10,782,000 | 0.49x | 7,000,000 |
+| `eac3` 5.1 | 4,827,000 | 12,928,000 | 0.37x | 6,500,000 |
+| `eac3_fold` | 8,053,000 | 14,280,000 | 0.56x | 10,500,000 |
+| `eac3_atmos_objects` | 25,093,000 | 28,213,000 | 0.89x | 31,500,000 |
+| `eac3_atmos_render` | 25,525,000 | 28,938,000 | 0.88x | 32,000,000 |
+| `eac3_ecpl` | 10,088,000 | 28,861,000 | 0.35x | 13,000,000 |
+| `eac3_714` | 12,092,000 | 33,793,000 | 0.36x | 15,500,000 |
+
+The Annex E rows were measured twice. The tier reached them in two steps: the
+store and the transform first, with the adaptive hybrid transform, enhanced
+coupling and the spectral extension notch still running on `float` copies
+converted at the seam, and those three in the tier afterwards. What that
+second step moved:
+
+| Fixture | Tools through float | Tools in the tier |
+|---|---:|---:|
+| `eac3_ecpl` | 24,272,000 | 10,088,000 |
+| `eac3_714` | 17,650,000 | 12,092,000 |
+| `eac3` 5.1 | 6,639,000 | 4,827,000 |
+| `eac3_fold` | 9,870,000 | 8,053,000 |
+| `eac3_stereo` | 2,502,000 | 1,818,000 |
+
+Enhanced coupling is the row it was written for: three inverse transforms, a
+512-point DFT and a per-bin complex reconstruction per coupled channel per
+block, all of it software floating point before and integer after.
+
+The two object rows moved by neither step, and that is not the tier's doing.
+JOC's reconstruction runs in `float` in every build of this library, the
+double one included (`recon_scalar_t` in `ac3/oba/joc.hpp`), so an object row
+is a float transform sandwich whatever the decoder's own scalar is; the tier's
+only contact with it is one conversion per matrix coefficient read. Bringing
+it in would be a fixed forward MDCT and a fixed QMF path - a separate piece of
+work with its own quality question, and one that would change nothing for the
+other two tiers.
+
+The image is 353,413 bytes against the float tier's 338,793 - the fixed
+transform's tables and kernel beside the float ones the object path still
+needs - and the peak heap 238,094 on this leg. The `pcm_hash` lines
+are identical on this leg and on the x86 host for all twelve fixtures and are
+pinned in `tests/golden/fixed-probe-pcm-hashes.json`
+(`tools/checks/check_probe_hashes.py`); with the scalar's conversions from
+`float` and `double` written as floating expressions the two legs had differed
+by a raw unit on a few AC-3 samples, and writing them on the value's bits
+(`fixed32.hpp`) is what made them agree.
+
 ### Instructions per encoded frame
 
 The same clock on the encode probe, `tools/checks/run_baremetal_probe.sh --encoder --icount`,
-measured 2026-09-10 on the same leg. Both encoders are `double` throughout, so on this FPU-less
-leg every operation is a software call - which is the gap to the decode rows above, three to
-five times for the same layout, rather than anything the encoders' search costs. The ceilings
-are `ICOUNT_CEILING_ENCODE` in the runner, with the same headroom as every other gate.
+measured 2026-09-10 on the same leg. The encoders run in the profile's scalar end to end since
+2026-09-10, soft float on this leg as the decoders are; what is left of the gap to the decode
+rows above - 1.7 to 3 times for the same layout - is the search: exponent-run planning, several
+hundred bit-allocation calls a frame, mantissa bit counts, integer work the decoder does once a
+block. The ceilings are `ICOUNT_CEILING_ENCODE` in the runner, with the same headroom as every
+other gate.
 
 | Row | Instructions per frame | Ceiling | Peak heap | Allocations per frame |
 |---|---:|---:|---:|---:|
-| `ac3_stereo` 2/0, 192 kbit/s | 12,623,000 | 16,000,000 | 82,367 | 34 |
-| `eac3_stereo` 2/0, 192 kbit/s | 24,200,000 | 30,000,000 | 118,962 | 84 |
-| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 24,486,000 | 31,000,000 | 195,321 | 47 |
-| `ac3` 5.1, 448 kbit/s | 34,286,000 | 43,000,000 | 162,602 | 67 |
-| `eac3` 5.1, 384 kbit/s | 62,590,000 | 78,000,000 | 220,608 | 180 |
-| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 82,975,000 | 104,000,000 | 192,573 | 91 |
+| `ac3_stereo` 2/0, 192 kbit/s | 9,136,000 | 16,000,000 | 52,707 | 34 |
+| `eac3_stereo` 2/0, 192 kbit/s | 12,683,000 | 30,000,000 | 79,894 | 76 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 16,920,000 | 31,000,000 | 143,037 | 47 |
+| `ac3` 5.1, 448 kbit/s | 24,866,000 | 43,000,000 | 110,918 | 67 |
+| `eac3` 5.1, 384 kbit/s | 33,207,000 | 78,000,000 | 158,602 | 173 |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 48,217,000 | 104,000,000 | 130,887 | 87 |
 
-The three 2/0 rows are new with the timing; the encode image is 232,205 bytes with them
-(157,752 `.text`, 400 `.data`, 74,053 `.bss`), 480 more than without. [Building](building.md#what-the-encode-direction-costs)
+The three 2/0 rows are new with the timing; the encode image is 225,357 bytes with them
+(157,136 `.text`, 400 `.data`, 67,821 `.bss`): the rows, the stage timers' application half
+(an encode image links it now that the probe reports its stages) and the 64-zone table, and the
+encoders' float forms beside the double ones - smaller than the image with the front end alone
+in `float` (242,589), the `double` software routines the rest of the encoder had pulled in
+having gone with it. The counts fell a further 8% to 12% when the rate-control search and the
+exponent-run planner were made cheaper (the ESP32-S3 page's Encoding section); the peaks rose
+by the cached masking curves, some 200 bytes a run. [Building](building.md#what-the-encode-direction-costs)
 has what the encode direction cannot fit on an ESP32-S3, with the host profile's numbers.
 
 <div id="memory-trend-app">

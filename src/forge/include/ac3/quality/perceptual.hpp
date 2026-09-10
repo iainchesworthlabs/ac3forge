@@ -162,6 +162,11 @@ class AC3FORGE_EXPORT PerceptualModel {
     // per channel, in block order.
     void analyse(int channel, std::span<const double> coefficients, int end, BlockAnalysis& out);
 
+    // The float form, for the float encode path (AC3FORGE_ENCODE_SCALAR): the
+    // same analysis from float coefficients. The model's own arithmetic is
+    // double in either form; only the coefficients arrive narrower.
+    void analyse(int channel, std::span<const float> coefficients, int end, BlockAnalysis& out);
+
     // The band-centre frequencies this instance is working with, in Hz -
     // exposed for diagnostics and for tests that need to know where a band
     // sits without duplicating the table arithmetic.
@@ -169,6 +174,9 @@ class AC3FORGE_EXPORT PerceptualModel {
 
    private:
     struct Impl;
+    template <typename Scalar>
+    void analyse_over(int channel, std::span<const Scalar> coefficients, int end,
+                      BlockAnalysis& out);
     std::unique_ptr<Impl> impl_;
 };
 

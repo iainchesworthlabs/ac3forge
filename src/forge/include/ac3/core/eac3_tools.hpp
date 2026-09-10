@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -168,11 +169,20 @@ AC3FORGE_EXPORT void spx_apply_notch(std::span<float> synth, int startmant,
 template <typename Scalar>
 [[nodiscard]] constexpr Scalar spx_noise_ratio_as(int band_start, int band_size, int endmant,
                                                   int blend) {
-    const Scalar centre =
-        static_cast<Scalar>(band_start) + static_cast<Scalar>(0.5) * static_cast<Scalar>(band_size);
-    const Scalar ratio =
-        centre / static_cast<Scalar>(endmant) - static_cast<Scalar>(blend) / Scalar{32};
-    return std::clamp(ratio, Scalar{0}, Scalar{1});
+    if constexpr (std::floating_point<Scalar>) {
+        const Scalar centre = static_cast<Scalar>(band_start) +
+                              static_cast<Scalar>(0.5) * static_cast<Scalar>(band_size);
+        const Scalar ratio =
+            centre / static_cast<Scalar>(endmant) - static_cast<Scalar>(blend) / Scalar{32};
+        return std::clamp(ratio, Scalar{0}, Scalar{1});
+    } else {
+        // The same ratio from its integers: a bin index does not fit a scalar
+        // with a fixed point, so the division is done on the integers and
+        // the quotient is what the scalar holds.
+        const Scalar ratio = Scalar::from_integer_ratio(2 * band_start + band_size, 2 * endmant) -
+                             Scalar::from_integer_ratio(blend, 32);
+        return std::clamp(ratio, Scalar{0}, Scalar{1});
+    }
 }
 
 // §E3.6.4.2.4's noise(): "a pseudo-random number generated from a zero-mean,
@@ -208,6 +218,11 @@ struct AC3FORGE_EXPORT SpxNoise {
             constexpr float kUnit = 1.0F / 4294967295.0F;
             const float unit = static_cast<float>(state) * kUnit;  // [0,1]
             return (unit * 2.0F - 1.0F) * kRadius;
+        } else if constexpr (!std::floating_point<Scalar>) {
+            // The fixed-point tier's own reading of the state - see
+            // DitherGenerator::next_as.
+            const Scalar unit = Scalar::unit_from_state(state);  // [0,1)
+            return (unit * Scalar{2} - Scalar{1}) * kRadius;
         } else {
             const Scalar unit =
                 static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
@@ -402,6 +417,8 @@ template <typename Scalar>
     if constexpr (std::is_same_v<Scalar, float>) {
         constexpr float kUnit = 1.0F / 4294967295.0F;
         return static_cast<float>(state) * kUnit * 2.0F - 1.0F;  // [-1, 1]
+    } else if constexpr (!std::floating_point<Scalar>) {
+        return Scalar::unit_from_state(state) * Scalar{2} - Scalar{1};  // [-1, 1)
     } else {
         const Scalar unit =
             static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
@@ -427,6 +444,8 @@ struct AC3FORGE_EXPORT EcplNoise {
         if constexpr (std::is_same_v<Scalar, float>) {
             constexpr float kUnit = 1.0F / 4294967295.0F;
             return static_cast<float>(state) * kUnit * 2.0F - 1.0F;
+        } else if constexpr (!std::floating_point<Scalar>) {
+            return Scalar::unit_from_state(state) * Scalar{2} - Scalar{1};
         } else {
             const Scalar unit =
                 static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
@@ -718,13 +737,34 @@ struct AhtGaqDequantizer {
     int gain;
     int small_bits;
     int large_bits;
-    Scalar levels;       // gain 1: 2^mantissa_bits - 1
-    Scalar small_scale;  // gain 2 and 4: 1 / (small_half * gain)
+    // The quantiser's own integers, rather than reciprocals of them: a code
+    // and a level count are both larger than a scalar that holds values below
+    // 128 can represent (a twelve-bit mantissa has 4,095 levels), so the
+    // fixed-point tier forms each value as the RATIO it is - one rounding,
+    // exact numerator and denominator - where the floating tiers multiply by
+    // a stored reciprocal. Both branches below evaluate the same expression;
+    // what differs is where the division happens.
+    int level_count;  // gain 1: 2^mantissa_bits - 1
+    int small_den;    // gain 2 and 4: small_half * gain
+    int large_num;    // gain 2: 1 over 2^(mantissa_bits-1) - 1; else 3 over ...
+    int large_den;
+    Scalar small_scale;  // gain 2 and 4: 1 / small_den
     Scalar dead_zone;    // 1 / gain
-    Scalar large_step;
+    Scalar large_step;   // large_num / large_den
 
     static constexpr int small_bits_for(int mantissa_bits, int gain) {
         return gain == 1 ? mantissa_bits : (gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2);
+    }
+
+    // num / den in the caller's scalar. The floating tiers' form is the
+    // division they always did; a scalar that is not a floating type says how
+    // it divides two integers (Fixed32::from_integer_ratio).
+    static constexpr Scalar ratio(int num, int den) {
+        if constexpr (std::floating_point<Scalar>) {
+            return static_cast<Scalar>(num) / static_cast<Scalar>(den);
+        } else {
+            return Scalar::from_integer_ratio(num, den);
+        }
     }
 
     constexpr AhtGaqDequantizer(int mantissa_bits_, int gain_)
@@ -732,12 +772,15 @@ struct AhtGaqDequantizer {
           gain(gain_),
           small_bits(small_bits_for(mantissa_bits_, gain_)),
           large_bits(gain_ == 2 ? mantissa_bits_ - 1 : mantissa_bits_),
-          levels(static_cast<Scalar>((1 << mantissa_bits_) - 1)),
-          small_scale(Scalar{1} / static_cast<Scalar>((1 << (small_bits_for(mantissa_bits_, gain_) - 1)) *
-                                                     gain_)),
-          dead_zone(Scalar{1} / static_cast<Scalar>(gain_)),
-          large_step(gain_ == 2 ? Scalar{1} / static_cast<Scalar>((1 << (mantissa_bits_ - 1)) - 1)
-                                : Scalar{3} / static_cast<Scalar>((1 << (mantissa_bits_ + 1)) - 2)) {}
+          level_count((1 << mantissa_bits_) - 1),
+          small_den((1 << (small_bits_for(mantissa_bits_, gain_) - 1)) * gain_),
+          large_num(gain_ == 2 ? 1 : 3),
+          large_den(gain_ == 2 ? (1 << (mantissa_bits_ - 1)) - 1
+                               : (1 << (mantissa_bits_ + 1)) - 2),
+          small_scale(ratio(1, (1 << (small_bits_for(mantissa_bits_, gain_) - 1)) * gain_)),
+          dead_zone(ratio(1, gain_)),
+          large_step(gain_ == 2 ? ratio(1, (1 << (mantissa_bits_ - 1)) - 1)
+                                : ratio(3, (1 << (mantissa_bits_ + 1)) - 2)) {}
 
     [[nodiscard]] constexpr Scalar operator()(std::uint32_t code, std::uint32_t escape,
                                               bool has_escape) const {
@@ -745,16 +788,37 @@ struct AhtGaqDequantizer {
             const auto sign_bit = static_cast<std::uint32_t>(1) << (bits - 1);
             return static_cast<int>((raw ^ sign_bit) - sign_bit);
         };
+        constexpr bool kFloating = std::floating_point<Scalar>;
         if (gain == 1) {
-            return Scalar{2} * static_cast<Scalar>(sign_extend(code, mantissa_bits)) / levels;
+            const int c = sign_extend(code, mantissa_bits);
+            if constexpr (kFloating) {
+                return Scalar{2} * static_cast<Scalar>(c) / static_cast<Scalar>(level_count);
+            } else {
+                return ratio(2 * c, level_count);
+            }
         }
         if (!has_escape) {
-            return static_cast<Scalar>(sign_extend(code, small_bits)) * small_scale;
+            const int c = sign_extend(code, small_bits);
+            if constexpr (kFloating) {
+                return static_cast<Scalar>(c) * small_scale;
+            } else {
+                return ratio(c, small_den);
+            }
         }
         const int large_code = sign_extend(escape, large_bits);
         const int k = large_code >= 0 ? large_code : -large_code - 1;
-        return (large_code >= 0 ? Scalar{1} : Scalar{-1}) *
-               (dead_zone + static_cast<Scalar>(k) * large_step);
+        if constexpr (kFloating) {
+            return (large_code >= 0 ? Scalar{1} : Scalar{-1}) *
+                   (dead_zone + static_cast<Scalar>(k) * large_step);
+        } else {
+            // 1/gain + k*num/den as one ratio, so the step is not rounded
+            // before it is multiplied by a code of up to eleven bits.
+            const auto num = static_cast<std::int64_t>(large_den) +
+                             static_cast<std::int64_t>(gain) * k * large_num;
+            const auto den = static_cast<std::int64_t>(gain) * large_den;
+            const Scalar magnitude = Scalar::from_integer_ratio(num, den);
+            return large_code >= 0 ? magnitude : -magnitude;
+        }
     }
 };
 

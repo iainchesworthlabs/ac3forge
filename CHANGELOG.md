@@ -14,6 +14,46 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **A fixed-point decode tier**, `-DAC3FORGE_DECODE_SCALAR=fixed`, the third value of the
+  decode scalar axis beside `double` and `float` (`planning/arithmetic-tiers.md`): a Q7.24
+  integer scalar (`src/forge/src/core/fixed32.hpp`), its own §7.9.4 inverse transform pair
+  (`src/forge/src/core/mdct_fixed.hpp`) and a block exponent per stream per block
+  (`src/forge/src/decoder/block_norm.hpp`) that keeps every mantissa's bits where an absolute
+  store lost them. For parts with no FPU - an ESP32-C3, a Cortex-M3 - and the one value the
+  minimum-footprint profile honours over its `float` default. Measured against the double decode
+  at 121 dB and above on the gold streams and at 111 dB and above on every checked-in
+  third-party stream; the gold-reference gate passes with it at the double decoder's floors, and
+  its bitstreams are byte-identical. The bare-metal probe now prints a PCM hash per fixture
+  (`<codec>.pcm_hash`), identical between the host and the Cortex-M3 leg for this tier by
+  construction; the tier's are pinned in `tests/golden/fixed-probe-pcm-hashes.json` and
+  `tools/checks/check_probe_hashes.py` holds a run to them, or two runs to each other; the probe
+  runner takes `--scalar=fixed`. Annex E's tools are in the tier too - the adaptive hybrid
+  transform's dequantisers and six-point inverse, the spectral extension notch, and enhanced
+  coupling's spectrum, amplitudes, angles and reconstruction, the last with block floating point
+  across the 512-point DFT's stages and its own sine and cosine. Fidelity is unchanged to a
+  tenth of a decibel; on the Cortex-M3 leg enhanced coupling went from 28.9 M instructions per
+  frame in the float tier to 10.1 M, E-AC-3 5.1 from 12.9 M to
+  4.8 M. `check_decode_scalar_snr.py` gained a fourth stream, enhanced coupling,
+  which neither non-double scalar's gate had measured. JOC's object reconstruction is `float` in
+  every build of this library and is not part of this axis.
+- **An ESP32-C3 target for the minimum-footprint profile**
+  (`apps/baremetal/platform/esp32c3/`, `tools/checks/run_esp32c3_probe.sh`), decoding in the
+  fixed-point tier because the part has no floating-point unit, and listed beside `esp32s3` in
+  the ESP-IDF component's manifest. CI builds and runs it under `qemu-riscv32`: 11 of the
+  twelve fixtures decode, peaking at 225,038 bytes of heap, and their PCM is identical to
+  what the x86 host and the Cortex-M3 leg produce - three architectures, three compilers, one
+  pinned set of hashes. 7.1.4 is the exception and needs 238,094 bytes where the part
+  has 249,180 free in a heap whose largest block is 114,688; the probe now
+  takes a per-target heap budget, skips a fixture above it and names it, and the hash check
+  accepts a declared skip while still failing on an undeclared absence. The component packaging
+  check builds the archive for every target the manifest claims rather than only the first.
+  Speed on a C3 is not measured here: QEMU is not cycle-accurate and a board is what settles it.
+- **`delta_allocation`** on `ac3::EncoderConfig` and `ac3::eac3::FrameConfig` (`delta=off` on
+  the CLI, `nodelta` in `eac3-encode`'s tools string): off, the encoder chooses no §7.2.2.6
+  segments and runs no second search to weigh them. The first level of an effort axis for
+  parts with little time for the search (`planning/arithmetic-tiers.md`): on the ESP32-S3 it
+  removes about 9 ms of an E-AC-3 5.1 frame, and on the five gold streams it costs 0.01 dB on
+  the worst channel of the E-AC-3 ones and nothing on the AC-3 ones.
 - **An `f32x4` lane type in the SIMD arch seam** (roadmap PF7), alongside the `f64x2` and
   `i32x4` already there, in all three of
   `src/forge/src/internal/arch/{generic,x86_64,aarch64}/`. The float32 decode path's IMDCT
@@ -102,8 +142,13 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   and AHT all live, its band edges pinned so §E3.3.1 does not drop the coupling - is the first
   row to reach those three encoders on the target. On the Cortex-M3 leg an E-AC-3 5.1 frame
   encodes in 62.6 M instructions against 12.9 M to decode it, both directions soft float
-  there; the encoders are `double` throughout. Measured and documented as not fitting an
-  ESP32-S3: 5.1 with AHT or coupling, any dependent-substream layout (7.1.4 peaks at 601,954
+  there; the encoders are `double` throughout, and on the board that is 2.3x over real time for
+  AC-3 2/0 and 10.9x for E-AC-3 5.1, every row's bytes the host's. The probe reports its stages
+  under `AC3FORGE_STAGE_TIMERS` as the decode probe does - the stage-timer table holds 64 zones
+  now, the two encoders' rows having overflowed 32 - and the board's breakdown puts the forward
+  MDCT and transient detection, both `double`, at 64% of an AC-3 5.1 frame. Measured and
+  documented as not fitting
+  an ESP32-S3: 5.1 with AHT or coupling, any dependent-substream layout (7.1.4 peaks at 601,954
   bytes), and the Atmos object encoder.
 - **The block form carries the objects.** `PcmBlock` gains `objects`, `object_indices` and
   `object_metadata`: a view per JOC output onto the unit's own reconstruction, cut to the block,
@@ -117,11 +162,62 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   7.1.4 by each object's OAMD position through `ac3::spatial::pan_direction`, every level the
   host's to the digit on both emulated legs. The render is 5% of the row's
   28,938,000 instructions a frame on the Cortex-M3 leg, at 210,573
-  bytes of peak. `pan_ring` and `pan_direction` no longer allocate - eight vectors per object per
-  call, on the stack now - which took the row from 129 allocations a frame to 36.
+  bytes of peak, and 25.1 ms a frame on the ESP32-S3 (0.78x; the render 3.3 ms of it). `pan_ring`
+  and `pan_direction` no longer allocate - eight vectors per object per call, on the stack now -
+  which took the row from 129 allocations a frame to 36.
 - **The ESP32-S3 page has a capability table**: everything the library does against what the
   part has been shown to do with it, with how each row is known - board, emulation, or a host
   measurement of what does not fit.
+- **The encoders' analysis front end in the profile's scalar** (roadmap PF7). A second axis
+  beside `decode_scalar_t`: `src/forge/src/internal/scalar/encode/` carries `encode_scalar_t`,
+  `double` by default and in every ordinary build, `float` under the minimum-footprint profile,
+  selectable with `-DAC3FORGE_ENCODE_SCALAR=float`. Transient detection
+  (`BasicTransientDetector<Scalar>`, of which `TransientDetector` is the `double` instantiation),
+  the block gather, the analysis window and the forward transform - the short-block pair gains
+  `float` forms - run in it, and the coefficients are widened to `double` for the rest of the
+  encoder, which is unchanged; every `<double>` instantiation is the function the ordinary build
+  always called, so the golden bitstream hashes hold. On the ESP32-S3, where the two stages were
+  64% of an AC-3 5.1 frame, AC-3 2/0 encode went from 75.0 ms a frame to 28.3 - real time, at
+  0.88x - AC-3 5.1 from 199.9 to 71.0, E-AC-3 5.1 from 348.9 to 219.7 and 2/0 from 137.2 to 90.4;
+  the peaks fell with the halved scratch, and the profile's encode fixtures are the float front
+  end's streams, identical on host, Cortex-M3 and ESP32-S3.
+- **The rest of the encoders in the profile's scalar** (roadmap PF7), the same day. The
+  coefficient store and every analysis behind it - the coupling, spectral-extension and
+  enhanced-coupling analyses and fits, the dither and delta-segment decisions, the fixed-point
+  conversion, the rematrix - run in `encode_scalar_t`, with `float` overloads of the exported
+  functions the store feeds (`to_fixed25` is a template; `to_fixed25_block`,
+  `accumulate_peak_exponents`, `choose_delta_segments` and `PerceptualModel::analyse` take
+  `float`; `DitherBallot` is `BasicDitherBallot<double>`) and the project's own `log2` and `exp`
+  for the float path (`src/forge/src/core/scalar_math.hpp`: the profile's fixture hashes are
+  checked on three C libraries whose `logf` differ in the last bit). Only the adaptive hybrid
+  transform and the masking model's internals are still `double`; the allocation search is
+  integer. Every `<double>` instantiation is the function the ordinary build called, so the golden
+  hashes hold, and no fixture hash moved either. On the ESP32-S3: AC-3 2/0 in 12.1 ms a frame
+  (0.38x), E-AC-3 2/0 in 33.8 (1.06x), AC-3 5.1 in 35.1 (1.10x), E-AC-3 5.1 in 81.2 (2.54x) and
+  the §E3.5 2/0 row from 425.5 to 54.7; peaks fell a further 50 KB (E-AC-3 5.1: 202,760 to
+  154,932). CI's `linux-gcc` leg builds `-DAC3FORGE_ENCODE_SCALAR=float` beside the float decoder
+  and runs its streams through the gold-reference gate and the new
+  `tools/checks/check_encode_scalar_quality.py`, which holds the float encoder's worst channel to
+  within 0.5 dB of the double encoder's (on the five gold streams they are identical);
+  `tests/golden/bitstream-hashes.json` pins its three streams under the `encfloat` mode. The
+  exported `BasicTransientDetector` instantiations carry their attribute where each compiler wants
+  it (three generated macros; GCC's shared build had rejected the earlier placement).
+- **The encoders' rate-control search and exponent-run planner cost less, exactly and not.**
+  Three exact changes - the same candidates, the same answer, gated by the fixture hashes and
+  the golden pins not moving: the planner scores both Annex E frame forms in one pass with a
+  lower bound, only the coded bins and an incremental waste (held to a transcription of the old
+  pass over 400 random inputs); the masking curve is computed once per run per search and only
+  §7.2.2.7's offset applied per probe (`compute_masking_curve` and `allocate_from_curve`, new
+  exports of `ac3/core/bitalloc.hpp`, held to `compute_bit_allocation` over 1,800 offsets);
+  blocks that read the same run of every stream are counted once. And one that is not exact:
+  the delta race's two searches each warm-start from their own previous answer instead of each
+  other's, which halves their probes. That was documented as never changing the answer and
+  does, because the frame's mantissa cost is not monotone in the offset (mantissa grouping), so
+  the probe sequence decides which fitting boundary a rare frame lands on; the E-AC-3 streams
+  moved by a unit of offset here and there, the gold margins did not, and the E-AC-3 golden
+  hashes and profile fixtures are re-pinned (`snr_search.hpp` says why). On the ESP32-S3:
+  E-AC-3 2/0 33.8 -> 23.5 ms a frame (real time), E-AC-3 5.1 81.2 -> 55.5, AC-3 5.1 35.1 ->
+  32.2 (the line), §E3.5 2/0 54.7 -> 42.3.
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has
@@ -1165,7 +1261,7 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   in-tree comment previously cited 14.4) and now carries a pure, CI-verified OS-version capability
   check (`ac3::coreaudio::system_audio_tap_api_available()`) a future implementation should refuse
   on. Capture there is still input-only; the tap itself needs real Mac hardware to build and
-  verify. See [macOS](docs/platforms/macos.md#loopback-capture-not-yet-implemented).
+  verify. See [macOS](docs/platforms/macos.md#per-application-capture-the-core-audio-process-tap).
 
 ### Fixed
 

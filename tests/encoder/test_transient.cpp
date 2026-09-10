@@ -125,3 +125,19 @@ TEST_CASE("a loud onset trips the detector at every A/52 sample rate", "[transie
         CHECK_FALSE(detector.detect(segments[8]));
     }
 }
+
+TEST_CASE("the float detector decides as the double one does on a loud onset", "[transient]") {
+    // ac3::BasicTransientDetector<float> is the minimum-footprint profile's
+    // form (ac3/internal/encode_scalar.hpp). The recipe is identical; only
+    // the rounding differs, so on a clear onset the two must agree segment
+    // by segment - and the tone's steady segments must not trip either.
+    const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9));
+    ac3::TransientDetector wide(ac3::SampleRate::k48000);
+    ac3::BasicTransientDetector<float> narrow(ac3::SampleRate::k48000);
+    for (std::size_t i = 0; i < segments.size(); ++i) {
+        CAPTURE(i);
+        const bool wide_hit = wide.detect(segments[i]);
+        const bool narrow_hit = narrow.detect(segments[i]);
+        CHECK(narrow_hit == wide_hit);
+    }
+}

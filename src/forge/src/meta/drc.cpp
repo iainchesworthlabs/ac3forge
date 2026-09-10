@@ -93,15 +93,30 @@ double level_dbfs(std::span<const std::span<const float>> channels) {
     return power > 1e-20 ? 10.0 * std::log10(power) : -200.0;
 }
 
-double channel_peak_dbfs(std::span<const double> history, std::span<const float> samples) {
+namespace {
+
+// The peak in double whatever the history is kept in: the double form's
+// operations exactly, a widening cast being the identity on a double.
+template <typename Scalar>
+double channel_peak_dbfs_over(std::span<const Scalar> history, std::span<const float> samples) {
     double peak = 0.0;
-    for (const double value : history) {
-        peak = std::max(peak, std::abs(value));
+    for (const Scalar value : history) {
+        peak = std::max(peak, std::abs(static_cast<double>(value)));
     }
     for (const float value : samples) {
         peak = std::max(peak, std::abs(static_cast<double>(value)));
     }
     return to_db(peak);
+}
+
+}  // namespace
+
+double channel_peak_dbfs(std::span<const double> history, std::span<const float> samples) {
+    return channel_peak_dbfs_over<double>(history, samples);
+}
+
+double channel_peak_dbfs(std::span<const float> history, std::span<const float> samples) {
+    return channel_peak_dbfs_over<float>(history, samples);
 }
 
 namespace {

@@ -165,6 +165,19 @@ target_sources(forge_minimal
 endif()
      # DecoderConfig::trace's own types
 
+# The decode scalar this profile carries. float32 whatever the ordinary
+# build's option says, with one exception: this profile exists for targets
+# whose FPU is single-precision at best, and the ESP32-S3 port did not fit in
+# internal SRAM until the decode path moved to float, so double is not a shape
+# a caller can configure it into. The fixed-point tier is the profile's other
+# legitimate shape - a part with no FPU at all (planning/arithmetic-tiers.md) -
+# and is the one value of AC3FORGE_DECODE_SCALAR honoured here.
+if(AC3FORGE_DECODE_SCALAR STREQUAL "fixed")
+    set(_ac3_minimal_scalar_dir "fixed32")
+else()
+    set(_ac3_minimal_scalar_dir "float32")
+endif()
+
 target_include_directories(forge_minimal
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -173,12 +186,12 @@ target_include_directories(forge_minimal
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/core"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profile/minimal"
-        # float32 unconditionally, whatever AC3FORGE_DECODE_SCALAR says: this
-        # profile exists for targets whose FPU is single-precision at best, and
-        # the ESP32-S3 port did not fit in internal SRAM until the decode path
-        # moved. Not an option here, so a caller cannot configure the profile
-        # into a shape it was measured never to fit in.
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/float32"
+        # float32 or fixed32 - see _ac3_minimal_scalar_dir above.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac3_minimal_scalar_dir}"
+        # And the encoders' front end in float32 too (encode_scalar_t), for
+        # the same part's sake: in double, transient detection and the
+        # forward transform were 64% of an AC-3 5.1 frame on an ESP32-S3.
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/encode/float32"
         # Tracy is never part of this profile - the disabled variant's macros
         # expand to nothing, which is what a footprint build wants. What CAN
         # answer the same markers here is the stage-timer backend, resolved
@@ -259,6 +272,7 @@ target_link_libraries(forge_minimal
 include(GenerateExportHeader)
 generate_export_header(forge_minimal
     BASE_NAME AC3FORGE
+    CUSTOM_CONTENT_FROM_VARIABLE _ac3_export_custom_content
     EXPORT_MACRO_NAME AC3FORGE_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3/export.hpp"
     DEFINE_NO_DEPRECATED

@@ -63,3 +63,11 @@ set(AC3FORGE_PROBE_SEVEN_ONE OFF CACHE BOOL
     "Encode probe: add the 7.1 access-unit fixture (a footprint measurement; does not fit)")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     "AC3FORGE_PROBE_SEVEN_ONE=$<BOOL:${AC3FORGE_PROBE_SEVEN_ONE}>")
+
+# No heap budget: every fixture runs on this part, 7.1.4 included, at a
+# 238,094-byte peak inside internal SRAM with no PSRAM. The C3 is the shape
+# that needs one (see platform/esp32c3/main/CMakeLists.txt). Zero rather
+# than absent because probe.cpp does not default it - the platform is
+# selected here, not by a conditional in the translation unit.
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    AC3FORGE_PROBE_HEAP_BUDGET_BYTES=0)

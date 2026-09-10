@@ -680,6 +680,17 @@ that call is rate-limited or offline). Release tagging happens after the
 fact, on an existing `main` commit, so the badge is a join against the
 commit SHA already in quality-history, not a separate data source.
 
+## The fixed-point decode has its own series too
+
+`_fixed`-suffixed checks are the gate run against a decoder built with
+`-DAC3FORGE_DECODE_SCALAR=fixed` - Q7.24 integer arithmetic under a block
+exponent, the tier for a part with no FPU (`planning/arithmetic-tiers.md`).
+It differs from the double decode at 121 dB and above on the gold streams
+(`tools/checks/check_decode_scalar_snr.py`, held to 110 in CI), which is as
+far below this gate's coding noise as the float32 decode's 139, so the same
+reading applies: the series exists to show the arithmetic contributes nothing
+this gate can see, and would show a lost bit the day it did.
+
 ## The float32 decode has its own series
 
 `_float32`-suffixed checks are the same gate run against a decoder built with

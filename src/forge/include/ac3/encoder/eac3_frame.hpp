@@ -437,6 +437,18 @@ struct FrameConfig {
     // this false; nothing else needs to.
     bool dither = true;
 
+    // §7.2.2.6 delta bit allocation - on by default, like every other field
+    // here. The segments are chosen per run from the real coefficients
+    // (choose_delta_segments) and then weighed: the frame is fitted with and
+    // without them and whichever reaches the higher SNR offset wins. false
+    // skips both the choosing and the second fit, which is the first level of
+    // the encoders' effort axis (planning/arithmetic-tiers.md): what a part
+    // with a frame to spare on the search gives up is a correction that
+    // ordinary material drops on most frames anyway, and what it saves on an
+    // ESP32-S3 is measured on the ESP32-S3 page. A stream encoded without it
+    // is a legal stream with dbaflde clear, as §7.2.2.6 permits.
+    bool delta_allocation = true;
+
     // TS 103 420 §8.3. An object-audio stream sets flag_ec3_extension_type_a in
     // the addbsi field of whichever substream carries the EMDF container, and
     // follows it with the number of bed, ISF and dynamic objects (§8.3.2.2 caps

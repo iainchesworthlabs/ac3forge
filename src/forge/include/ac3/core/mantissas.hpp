@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -91,7 +92,13 @@ template <typename Scalar>
     }
     const int bits = kBapBits[static_cast<std::size_t>(bap)];
     const auto value = static_cast<std::int32_t>(code << (32 - bits)) >> (32 - bits);  // sign extend
-    return static_cast<Scalar>(value) * exponent_scale<Scalar>(bits - 1);
+    if constexpr (std::floating_point<Scalar>) {
+        return static_cast<Scalar>(value) * exponent_scale<Scalar>(bits - 1);
+    } else {
+        // A scalar with a fixed point cannot hold a sixteen-bit code before
+        // the scale: it scales the integer itself, exactly.
+        return Scalar::from_integer_scaled(value, -(bits - 1));
+    }
 }
 
 // §7.3.4: dither for zero-bit mantissas (bap == 0), substituted only where
@@ -132,6 +139,12 @@ struct AC3FORGE_EXPORT DitherGenerator {
             constexpr float kUnit = 1.0F / 4294967295.0F;
             const float unit = static_cast<float>(state) * kUnit;  // [0,1]
             return (unit * 2.0F - 1.0F) * kScale;
+        } else if constexpr (!std::floating_point<Scalar>) {
+            // A scalar that is not a floating type says how its unit interval
+            // reads the state (the fixed-point tier's Fixed32 takes the top
+            // bits); the sequence is still the decoder's own.
+            const Scalar unit = Scalar::unit_from_state(state);  // [0,1)
+            return (unit * Scalar{2} - Scalar{1}) * kScale;
         } else {
             const Scalar unit =
                 static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]

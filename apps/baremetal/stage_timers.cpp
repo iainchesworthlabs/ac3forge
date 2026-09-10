@@ -35,19 +35,23 @@ void zone_leave();
 
 namespace {
 
-// Zones are the library's marker names - about two dozen exist across both
-// decoders and the encoders - and a decode nests them at most five deep
-// (access unit > substream > block > stage > kernel). Both bounds are checked
-// rather than trusted: an overflow is counted and reported, never written
-// past the end of an array.
-constexpr std::size_t kMaxZones = 32;
+// Zones are the library's marker names, and a decode nests them at most five
+// deep (access unit > substream > block > stage > kernel). Both bounds are
+// checked rather than trusted: an overflow is counted and reported, never
+// written past the end of an array. The zone table was 32 while the decoders
+// were the only thing timed - about two dozen names between them - and the
+// first stage-timed ENCODE run on an ESP32-S3 overflowed it: the two encoders'
+// six rows register more than thirty names between them, and every AHT and
+// spectral-extension zone of the tools row fell off the end, its time neither
+// attributed nor left to the parent. 64 holds every name both directions have.
+constexpr std::size_t kMaxZones = 64;
 constexpr std::size_t kMaxDepth = 16;
 // A name reaches here as a pointer to a string literal, and the same text
 // can be a different literal in a different translation unit. Pointers are
 // what make the lookup cheap; the text is what makes two of them the same
 // zone. So a first sighting of a pointer resolves it by text once, and every
 // later sighting is a pointer compare.
-constexpr std::size_t kMaxAliases = 64;
+constexpr std::size_t kMaxAliases = 128;
 
 struct Zone {
     const char* name = nullptr;

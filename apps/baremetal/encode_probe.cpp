@@ -47,6 +47,7 @@
 
 #include "encode_fixture.hpp"
 #include "probe.hpp"
+#include "stage_timers.hpp"
 
 namespace {
 
@@ -249,6 +250,9 @@ void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes
                                                              : 0));
     std::printf("%s.peak_bytes=%lu\n", codec, static_cast<unsigned long>(r.peak_bytes));
     report_timing(codec, r);
+    // Where the time above went, when the library was built to say
+    // (AC3FORGE_STAGE_TIMERS); silent otherwise. probe.cpp's own note applies.
+    ac3probe::report_stages(codec, ac3probe::kEncodeFrames);
     if (r.bytes != expected_bytes) {
         fail("bytes", r.bytes, expected_bytes);
     }
@@ -290,6 +294,13 @@ EncodeResult encode_all(Encoder& encoder,
     // The fixture's peak starts from what is live now: this encoder, just
     // constructed, and nothing of the previous one, which its scope destroyed.
     g_fixture_peak_bytes = g_live_bytes;
+    // The stage timers likewise, so each row's stage lines are its own. Also
+    // what links the timers' application half into an encode image at all:
+    // stage_timers.cpp sits in the application's archive, and an archive
+    // member nothing references is never pulled in - which left the
+    // library's zone_enter/zone_leave undefined the first time this probe
+    // was built with AC3FORGE_STAGE_TIMERS.
+    ac3probe::reset_stages();
     std::size_t before = g_alloc_calls;
     for (int frame = 0; frame < ac3probe::kEncodeFrames; ++frame) {
         fill_signal(pcm, frame);
@@ -329,6 +340,11 @@ int ac3probe::run() {
     for (std::size_t ch = 0; ch < kChannels; ++ch) {
         g_views[ch] = std::span<const float>(g_pcm[ch]);
     }
+
+    // Measured before any row, as the decode probe does, so the stage lines
+    // that follow can be read against what the timing itself costs.
+    std::printf("stage.pair_cost_ns=%lu\n",
+                static_cast<unsigned long>(ac3probe::stage_pair_cost_ns()));
 
     // Scoped so each encoder is destroyed before the next is built. That is not
     // tidiness - it is the shape this profile exists to prove. Holding both at
@@ -444,6 +460,10 @@ int ac3probe::run() {
     // The ENCODER shares eac3_tools with the decoder, which is why this call
     // means anything in an encode-only profile at all.
     ac3::eac3::release_ecpl_scratch();
+
+    // Whether this build's library called the stage timers at all; a plain
+    // build says "off" and prints no stage lines.
+    std::printf("stage_timers=%s\n", ac3probe::stages_active() ? "on" : "off");
 
     std::printf("heap.peak_bytes=%lu heap.peak_after_ac3_bytes=%lu heap.allocs=%lu "
                 "heap.frees=%lu heap.retained_bytes=%lu\n",

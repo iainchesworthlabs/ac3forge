@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <random>
 #include <span>
 #include <vector>
 
 #include "ac3/core/bitalloc.hpp"
+#include "ac3/core/exponents.hpp"
 #include "golden/bitalloc_goldens.hpp"
 
 TEST_CASE("bit allocation matches the independent Python reference bit-exactly", "[bitalloc]") {
@@ -207,4 +209,101 @@ TEST_CASE("compute_bit_allocation refuses a region outside its own contract", "[
                                     {.start = 64});
         CHECK(std::ranges::all_of(bap, [](std::uint8_t b) { return b == 0; }));
     }
+}
+
+// The float form (the float encode path's), on the same shapes as the double
+// cases above. Its log2 is the project's own (src/forge/src/core/
+// scalar_math.hpp), exact at powers of two, so the +6 dB boost lands on the
+// same psd unit and the same Table 5.17 code.
+TEST_CASE("choose_delta_segments' float form finds the same divergence", "[bitalloc]") {
+    constexpr int kExp = 10;
+    constexpr int kEnd = 20;
+    const std::vector<std::uint8_t> exps(kEnd, kExp);
+    const float baseline = std::ldexp(1.0f, -1 - kExp);
+    std::vector<float> coeffs(kEnd, baseline);
+    for (int bin = 5; bin < 10; ++bin) {
+        coeffs[static_cast<std::size_t>(bin)] = baseline * 2.0f;
+    }
+    const auto segs = ac3::choose_delta_segments(std::span<const float>{coeffs}, exps, 0);
+    REQUIRE(segs.deltnseg == 1);
+    CHECK(segs.deltoffst[0] == 5);
+    CHECK(segs.deltlen[0] == 5);
+    CHECK(segs.deltba[0] == 4);  // +6 dB
+
+    const std::vector<double> as_double(coeffs.begin(), coeffs.end());
+    const auto reference = ac3::choose_delta_segments(as_double, exps, 0);
+    CHECK(reference.deltnseg == segs.deltnseg);
+    CHECK(reference.deltoffst[0] == segs.deltoffst[0]);
+    CHECK(reference.deltlen[0] == segs.deltlen[0]);
+    CHECK(reference.deltba[0] == segs.deltba[0]);
+}
+
+TEST_CASE("choose_delta_segments' float form is silent when content matches its exponents",
+          "[bitalloc]") {
+    constexpr int kExp = 8;
+    constexpr int kEnd = 30;
+    const std::vector<std::uint8_t> exps(kEnd, kExp);
+    const std::vector<float> coeffs(kEnd, std::ldexp(1.0f, -1 - kExp));
+    CHECK(ac3::choose_delta_segments(std::span<const float>{coeffs}, exps, 0).deltnseg == 0);
+}
+
+// The two-halves form of the allocation (compute_masking_curve then
+// allocate_from_curve, which the encoders' rate-control search uses to apply
+// many offsets to one curve) against compute_bit_allocation itself, over
+// random exponents, every code, both region shapes, delta segments and a
+// spread of offsets. They share their code; this holds the seam between them.
+TEST_CASE("the split allocation reproduces compute_bit_allocation bap for bap", "[bitalloc]") {
+    std::mt19937 rng(0x5eed1234U);
+    std::uniform_int_distribution<int> exp_dist(0, ac3::kMaxExponent);
+    std::uniform_int_distribution<int> composite_dist(0, 1023);
+    std::uniform_int_distribution<int> code6(0, 5);
+    std::uniform_int_distribution<int> code4(0, 3);
+    std::uniform_int_distribution<int> code8(0, 7);
+    int compared = 0;
+    for (int trial = 0; trial < 300; ++trial) {
+        const bool coupling = trial % 3 == 2;
+        const bool lfe = trial % 3 == 1;
+        const int end = lfe ? 7 : (coupling ? 37 + 12 * (1 + static_cast<int>(rng() % 15))
+                                            : 37 + 3 * static_cast<int>(rng() % 73));
+        const int start = coupling ? 37 : 0;
+        std::vector<std::uint8_t> exps(static_cast<std::size_t>(end));
+        for (auto& e : exps) {
+            e = static_cast<std::uint8_t>(exp_dist(rng));
+        }
+        const ac3::BitAllocCodes codes{.sdcycod = code4(rng), .fdcycod = code4(rng),
+                                       .sgaincod = code4(rng), .dbpbcod = code4(rng),
+                                       .floorcod = code8(rng), .fgaincod = code8(rng)};
+        ac3::BitAllocRegion region{.start = start, .coupling = coupling,
+                                   .cplfleak = code8(rng), .cplsleak = code8(rng),
+                                   .high_efficiency = trial % 7 == 0};
+        if (trial % 4 == 0) {
+            region.delta.deltnseg = 1 + static_cast<int>(rng() % 3);
+            for (int seg = 0; seg < region.delta.deltnseg; ++seg) {
+                region.delta.deltoffst[static_cast<std::size_t>(seg)] =
+                    static_cast<std::uint8_t>(rng() % 6);
+                region.delta.deltlen[static_cast<std::size_t>(seg)] =
+                    static_cast<std::uint8_t>(1 + rng() % 4);
+                region.delta.deltba[static_cast<std::size_t>(seg)] =
+                    static_cast<std::uint8_t>(rng() % 8);
+            }
+        }
+        const auto curve = ac3::compute_masking_curve(exps, ac3::SampleRate::k48000, codes, region);
+        REQUIRE(curve.valid);
+        for (int probe = 0; probe < 6; ++probe) {
+            const int composite = probe == 0 ? 0 : composite_dist(rng);
+            region.snr_all_zero = composite == 0;
+            std::vector<std::uint8_t> whole(static_cast<std::size_t>(end));
+            std::vector<std::uint8_t> split(static_cast<std::size_t>(end));
+            ac3::compute_bit_allocation(exps, ac3::SampleRate::k48000, codes, composite >> 4,
+                                        composite & 15, whole, region);
+            ac3::allocate_from_curve(exps, curve, codes, composite >> 4, composite & 15, split,
+                                     region);
+            CHECK(whole == split);
+            ++compared;
+        }
+    }
+    CHECK(compared == 1800);
+    // An unusable region is unusable in both halves.
+    const std::vector<std::uint8_t> none;
+    CHECK_FALSE(ac3::compute_masking_curve(none, ac3::SampleRate::k48000, {}, {}).valid);
 }

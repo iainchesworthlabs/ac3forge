@@ -565,7 +565,9 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
     // routine on the FPU the minimum-footprint profile targets. A double
     // decoder reads the matrix directly, as it always did.
     using Scalar = internal::decode_scalar_t;
-    constexpr bool kNarrowed = std::is_same_v<Scalar, float>;
+    // Every scalar but double reads the narrowed copy; the fixed-point tier
+    // converts each read from it (planning/arithmetic-tiers.md, Phase C).
+    constexpr bool kNarrowed = !std::is_same_v<Scalar, double>;
     if constexpr (kNarrowed) {
         state.matrix_scratch.resize(params.matrix.size());
         for (std::size_t i = 0; i < params.matrix.size(); ++i) {
@@ -590,7 +592,10 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
                                              static_cast<std::size_t>(nbands)) +
                                      static_cast<std::size_t>(band)]);
         } else {
-            return view.at(data_point, ch, band);
+            // Explicit for the same reason as the cast above: the fixed-point
+            // tier's Scalar converts from double only by name, and this
+            // branch is checked in that build too.
+            return static_cast<Scalar>(view.at(data_point, ch, band));
         }
     };
 
