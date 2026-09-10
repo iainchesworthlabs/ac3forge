@@ -281,7 +281,7 @@ struct Control::Impl {
 
 Control::~Control() { stop(); }
 
-bool Control::start(const ControlHandlers& handlers, std::uint16_t port) {
+bool Control::start(const ControlHandlers& handlers, std::uint16_t port, std::size_t stack_bytes) {
     if (impl_ != nullptr) {
         return true;
     }
@@ -309,6 +309,8 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port) {
     config.max_uri_handlers = static_cast<decltype(config.max_uri_handlers)>(std::size(routes));
     config.max_open_sockets = 3;
     config.lru_purge_enable = true;
+    // The owner's callbacks run on this task too: see kDefaultStackBytes.
+    config.stack_size = stack_bytes;
     if (httpd_start(&impl_->server, &config) != ESP_OK) {
         std::printf("control: could not start the HTTP server on port %u\n",
                     static_cast<unsigned>(port));

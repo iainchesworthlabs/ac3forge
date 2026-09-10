@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -68,13 +69,23 @@ struct ControlHandlers {
 
 class Control {
    public:
+    // The server task's stack, from internal RAM. Every callback above runs
+    // on it, so it is sized for the owner's work as much as the server's: in
+    // the streaming example PUT /layout parses the layout there, and under
+    // QEMU on 2026-09-11 the task's deepest use was 4,596 bytes. At
+    // esp_http_server's default of 4,096 that request overflowed the stack
+    // without tripping its canary, and the part panicked later in FreeRTOS's
+    // list code. An owner whose callbacks do more passes more.
+    static constexpr std::size_t kDefaultStackBytes = 6144;
+
     Control() = default;
     ~Control();
     Control(const Control&) = delete;
     Control& operator=(const Control&) = delete;
 
     // Starts the server on `port`. False, having said why, if it could not.
-    [[nodiscard]] bool start(const ControlHandlers& handlers, std::uint16_t port = 80);
+    [[nodiscard]] bool start(const ControlHandlers& handlers, std::uint16_t port = 80,
+                             std::size_t stack_bytes = kDefaultStackBytes);
     void stop();
 
    private:
