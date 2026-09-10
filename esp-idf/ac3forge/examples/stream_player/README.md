@@ -188,16 +188,13 @@ Every figure on that line is the play's own. `begin_play` tells the sink a play
 is starting (`sink_begin_play()` in [`main/audio_sink.hpp`](main/audio_sink.hpp)),
 and the counts start again from zero, with the play's first block exempt as the
 first block after boot always was: the queue has been draining since the last
-play ended, and nothing was owed to it in between. Until 2026-09-10 the model
-counted from boot. A ten-minute play started by `POST /play` over WiFi on a
-DevKitC-1 reported `sink.underruns=1 sink.dry_ms=55400 sink.min_headroom_ms=0`:
-one block, the play's first, arriving to a queue that had been empty for the
-55 seconds the board sat idle. `stream.wall_ms=599866` for
-`stream.audio_ms=600000` showed the play itself had no gaps, and the zero hid
-the least headroom it did have. `stream.sink_frames` still counts from boot,
-across every play, so from the second play on it runs ahead of `sink.writes`.
-The `capture` sink's line starts again with each play too, as the `stream.rms`
-levels always have.
+play ended, and nothing was owed to it in between. Until 2026-09-11 the model
+counted from boot, so a play started by `POST /play` counted the idle time
+before it as one underrun and reported its minimum headroom as zero; the
+ten-minute run under [On the board](#on-the-board) shows one.
+`stream.sink_frames` still counts from boot, across every play, so from the
+second play on it runs ahead of `sink.writes`. The `capture` sink's line starts
+again with each play too, as the `stream.rms` levels always have.
 
 `stream.rms[n]` is the RMS of what was sent to slot `n` of the layout, scaled by
 1e6 — the same form `apps/baremetal/probe.cpp` reports its own levels in. The
@@ -309,9 +306,11 @@ and read back by `GET /status` every two minutes. It played 18,750 access
 units in 599.9 s of wall clock for 600.0 s of audio, with levels 56,703 and
 47,350, the host decode of the same bytes to the digit, and the worst frame
 took 33.6 ms. The one underrun the sink line counts, 55.4 s long, is the board
-sitting idle between the play it made at boot and this one:
-the queue model runs from boot, as `stream.sink_frames` does, so it saw a queue
-empty since the last play when this one's first block arrived. None happened
+sitting idle between the play it made at boot and this one. When this was
+measured the queue model counted from boot, as `stream.sink_frames` does, so it
+saw a queue empty since the last play when this one's first block arrived; it
+has started again with each play since, so a play started after idle time no
+longer counts the idle (see [What it prints](#what-it-prints)). None happened
 during the ten minutes - the wall clock came in under the audio's length, which
 any silence inserted while playing would have pushed over:
 
