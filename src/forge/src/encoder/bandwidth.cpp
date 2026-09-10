@@ -20,6 +20,17 @@ namespace {
 constexpr int kMinEndmant = endmant_for_chbwcod(0);
 constexpr int kMaxEndmant = endmant_for_chbwcod(60);
 
+template <typename Scalar>
+void accumulate_peak_exponents_over(std::span<const Scalar> coefficients,
+                                    std::span<std::uint8_t> peak_exponents) {
+    const std::size_t bins = std::min(coefficients.size(), peak_exponents.size());
+    for (std::size_t bin = 0; bin < bins; ++bin) {
+        const auto exponent =
+            static_cast<std::uint8_t>(exponent_from_fixed(to_fixed25(coefficients[bin])));
+        peak_exponents[bin] = std::min(peak_exponents[bin], exponent);
+    }
+}
+
 }  // namespace
 
 int chbwcod_for_endmant(int endmant) {
@@ -36,12 +47,12 @@ int chbwcod_for_endmant(int endmant) {
 
 void accumulate_peak_exponents(std::span<const double> coefficients,
                                std::span<std::uint8_t> peak_exponents) {
-    const std::size_t bins = std::min(coefficients.size(), peak_exponents.size());
-    for (std::size_t bin = 0; bin < bins; ++bin) {
-        const auto exponent =
-            static_cast<std::uint8_t>(exponent_from_fixed(to_fixed25(coefficients[bin])));
-        peak_exponents[bin] = std::min(peak_exponents[bin], exponent);
-    }
+    accumulate_peak_exponents_over<double>(coefficients, peak_exponents);
+}
+
+void accumulate_peak_exponents(std::span<const float> coefficients,
+                               std::span<std::uint8_t> peak_exponents) {
+    accumulate_peak_exponents_over<float>(coefficients, peak_exponents);
 }
 
 int audible_endmant(std::span<const std::uint8_t> peak_exponents, SampleRate sample_rate) {

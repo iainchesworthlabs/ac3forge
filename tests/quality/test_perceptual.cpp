@@ -382,3 +382,38 @@ TEST_CASE("measured noise against the model tracks the allocation's generosity",
     CHECK(generous.mean_db < stingy.mean_db);
     CHECK(generous.worst_db < stingy.worst_db);
 }
+
+// The float overload (the float encode path's) against the double one on the
+// same values: the model's arithmetic is double in both, the coefficients only
+// arrive narrower, so on float-representable input the two analyses are the
+// same numbers, not merely close.
+TEST_CASE("analyse's float overload matches the double one on the same values",
+          "[quality][perceptual]") {
+    ac3::quality::PerceptualModel as_double(ac3::SampleRate::k48000, 1);
+    ac3::quality::PerceptualModel as_float(ac3::SampleRate::k48000, 1);
+    ac3::quality::BlockAnalysis from_double;
+    ac3::quality::BlockAnalysis from_float;
+    std::mt19937 rng(7);
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    for (int block = 0; block < 4; ++block) {
+        std::array<double, 512> samples{};
+        for (double& sample : samples) {
+            sample = 0.3 * dist(rng);
+        }
+        const auto coefficients = transform(samples);
+        std::array<float, 256> narrowed{};
+        std::array<double, 256> widened{};
+        for (std::size_t bin = 0; bin < coefficients.size(); ++bin) {
+            narrowed[bin] = static_cast<float>(coefficients[bin]);
+            widened[bin] = static_cast<double>(narrowed[bin]);
+        }
+        as_double.analyse(0, widened, 253, from_double);
+        as_float.analyse(0, narrowed, 253, from_float);
+        for (std::size_t band = 0; band < from_double.threshold.size(); ++band) {
+            CHECK(from_float.threshold[band] == from_double.threshold[band]);
+            CHECK(from_float.energy[band] == from_double.energy[band]);
+            CHECK(from_float.tonality[band] == from_double.tonality[band]);
+        }
+        CHECK(from_float.perceptual_entropy == from_double.perceptual_entropy);
+    }
+}

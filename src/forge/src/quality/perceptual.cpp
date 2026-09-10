@@ -222,6 +222,17 @@ std::span<const double> PerceptualModel::band_centre_hz() const {
 
 void PerceptualModel::analyse(int channel, std::span<const double> coefficients, int end,
                               BlockAnalysis& out) {
+    analyse_over<double>(channel, coefficients, end, out);
+}
+
+void PerceptualModel::analyse(int channel, std::span<const float> coefficients, int end,
+                              BlockAnalysis& out) {
+    analyse_over<float>(channel, coefficients, end, out);
+}
+
+template <typename Scalar>
+void PerceptualModel::analyse_over(int channel, std::span<const Scalar> coefficients, int end,
+                                   BlockAnalysis& out) {
     AC3_ZONE_SCOPED_N("perceptual_analyse");
     assert(channel >= 0 && channel < impl_->channels);
     assert(end >= 0 && end <= kBins);

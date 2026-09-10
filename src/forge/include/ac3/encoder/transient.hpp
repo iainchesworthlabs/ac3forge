@@ -32,7 +32,7 @@ namespace ac3 {
 // The recipe is the same in both; only the rounding differs, and with it,
 // now and then, a decision that sits on a threshold.
 template <typename Scalar>
-class BasicTransientDetector {
+class AC3FORGE_TEMPLATE_CLASS BasicTransientDetector {
    public:
     explicit BasicTransientDetector(SampleRate sample_rate);
 
@@ -88,11 +88,13 @@ class BasicTransientDetector {
 
 // Both instantiations live in transient.cpp; neither is instantiated by a
 // consumer. Exported both, so a test can hold the float one to the double
-// one's decisions through the shared library. AC3FORGE_TEMPLATE_IMPORT rather
-// than AC3FORGE_EXPORT: an explicit-instantiation declaration may import but
-// never export (MSVC C4910), so the generated export header supplies a macro
-// that is the import decoration for a consumer and nothing for the library's
-// own build - the definitions in transient.cpp carry the export.
+// one's decisions through the shared library. Three macros from the generated
+// export header rather than AC3FORGE_EXPORT, because the compilers disagree
+// about where the attribute goes: MSVC imports through this declaration
+// (AC3FORGE_TEMPLATE_IMPORT) and exports the definitions in transient.cpp
+// (AC3FORGE_TEMPLATE_INSTANTIATE); GCC and Clang take the visibility on the
+// class template itself (AC3FORGE_TEMPLATE_CLASS, above) and nothing here.
+// src/forge/CMakeLists.txt has the details.
 extern template class AC3FORGE_TEMPLATE_IMPORT BasicTransientDetector<double>;
 extern template class AC3FORGE_TEMPLATE_IMPORT BasicTransientDetector<float>;
 

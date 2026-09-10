@@ -154,4 +154,10 @@ AC3FORGE_EXPORT void compute_bit_allocation(std::span<const std::uint8_t> exps,
 [[nodiscard]] AC3FORGE_EXPORT DeltaSegments choose_delta_segments(
     std::span<const double> coefficients, std::span<const std::uint8_t> exps, int start);
 
+// The float form, for the float encode path (AC3FORGE_ENCODE_SCALAR): the
+// same comparison from float coefficients. Everything past the per-bin
+// magnitude is integer psd arithmetic in either form.
+[[nodiscard]] AC3FORGE_EXPORT DeltaSegments choose_delta_segments(
+    std::span<const float> coefficients, std::span<const std::uint8_t> exps, int start);
+
 }  // namespace ac3
