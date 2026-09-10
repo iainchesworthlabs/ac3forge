@@ -586,6 +586,17 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.fgaincod = static_cast<int>(parsed);
             continue;
         }
+        if (key == "delta") {
+            if (value == "off") {
+                out.delta = false;
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: delta bit allocation is on by default; 'delta=off' skips "
+                         "the corrections and the second fit that weighs them (got '{}')",
+                         token);
+            return false;
+        }
         if (key == "dither") {
             // No bare-word form: unlike fast-mdct, dither has no prior
             // opt-in spelling to keep parsing, so only the value form -

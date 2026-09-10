@@ -3881,7 +3881,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                    int last_blk) {
         run.delta = {};
         const bool is_lfe = impl_->config_.lfe && s == nfchans;
-        if (plan.aht || is_lfe) {
+        if (plan.aht || is_lfe || !impl_->config_.delta_allocation) {
             return;
         }
         auto& peak_mag = impl_->delta_peak_mag;

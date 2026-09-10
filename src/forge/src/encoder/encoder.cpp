@@ -1326,7 +1326,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // stream, if it would make an otherwise-fittable frame fail to
             // fit - so there is no need to withhold it here pre-emptively
             // just because coupling happens to be on this frame.
-            if (!is_lfe) {
+            if (!is_lfe && impl_->config_.delta_allocation) {
                 peak_mag.assign(static_cast<std::size_t>(end), 0.0);
                 for (int block = first; block < last; ++block) {
                     const auto& c = coeffs_at(s, block);
