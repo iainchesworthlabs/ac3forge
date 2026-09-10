@@ -12,15 +12,25 @@ live in the library because it is made of FreeRTOS:
 
 - **`ac3forge::Player`** ([`include/ac3forge/player.hpp`](include/ac3forge/player.hpp)): a fetch
   task reading a `ByteSource` into a ring buffer, a decode task draining it through the
-  incremental framer and both decoders into caller-owned storage, and a `PcmSink` taking one
-  folded frame of planar float at a time. Cores, priorities, the ring's size and whether it sits in
-  PSRAM are `PlayerConfig`. It reports frames, decode time, the worst frame, how low the ring ran,
-  and why a run ended. An integrator implements the two seams for their transport and their DAC
-  and gets the rest.
+  incremental framer and both decoders a block at a time, rendering each block onto the
+  configured speaker layout, and a `PcmSink` taking one block of planar float per output slot.
+  The layout, the fold, whether to reconstruct objects, cores, priorities, the ring's size and
+  whether it sits in PSRAM are `PlayerConfig`. It reports frames, decode time, the worst frame,
+  how low the ring ran, and why a run ended. An integrator implements the two seams for their
+  transport and their DAC and gets the rest.
+- **`ac3forge::OutputLayout`** ([`include/ac3forge/layout.hpp`](include/ac3forge/layout.hpp)):
+  the speakers a player has, one per slot, from a name (`2.0`, `5.1`, `7.1.4`, `9.2.4`) or a
+  speaker list (`L,R,C,LFE,Ls,Rs`, or angles). **`ac3forge::LayoutRenderer`**
+  ([`include/ac3forge/render.hpp`](include/ac3forge/render.hpp)) turns the decoder's block - the
+  coded channels and, when the stream has them, the objects with their positions - into one
+  block per slot: a stereo or mono layout is the decoder's own §7.8 fold; anything else has the
+  bed placed channel by channel through `ac3::spatial::pan_direction`, and a layout with height
+  speakers has the objects placed by their own positions instead. Both headers are free of
+  ESP-IDF and tested on the host (`tests/io/test_layout.cpp`).
 - **`ac3forge::Control`** ([`include/ac3forge/control.hpp`](include/ac3forge/control.hpp)): a REST
   surface over whatever owns a player - `GET /status`, `POST /play` with a location, `POST /stop`,
-  `POST /volume` - on `esp_http_server`, with callbacks the owner supplies so the server's task
-  never touches the player itself.
+  `POST /volume`, `GET`/`PUT /layout` - on `esp_http_server`, with callbacks the owner supplies so
+  the server's task never touches the player itself.
 - **`ac3forge/interleave.hpp`**: planar float to interleaved 16-bit or 24-in-32 with slot padding,
   free of ESP-IDF and tested on the host. Library code with a temporary home; see the plan below.
 
@@ -51,10 +61,11 @@ the component's own CMake finds the library either way.
 | Example | What it shows |
 |---|---|
 | [`examples/i2s_player`](examples/i2s_player/README.md) | Decodes a fixture linked into the image and plays it out of an I2S DAC, printing per-lap timing from the DAC's own clock. The measurement anyone with a board can repeat. |
-| [`examples/stream_player`](examples/stream_player/README.md) | Bytes from a flash partition, an SD card or an HTTP body over WiFi, through the incremental framer, to an I2S or TDM DAC; a `capture` sink for CI. How a real player gets its audio. |
+| [`examples/stream_player`](examples/stream_player/README.md) | Bytes from a flash partition, an SD card or an HTTP body over WiFi, through the incremental framer, rendered onto a configured layout - stereo, 5.1, 7.1.4 with the objects placed - to an I2S or TDM DAC; a `capture` sink for CI. How a real player gets its audio. |
 
-Both are built by CI under `espressif/idf:v6.1`, and `stream_player` runs under QEMU there.
-Timing figures come only from a board: QEMU is not cycle-accurate.
+Both are built by CI under `espressif/idf:v6.1`, and `stream_player` runs under QEMU there in four
+shapes, one of which renders a height-object stream onto 7.1.4 and checks every slot's level
+against the footprint probe's. Timing figures come only from a board: QEMU is not cycle-accurate.
 
 ## On a board
 
