@@ -98,7 +98,7 @@ TEST_CASE("renormalise shifts a stream down to a lower exponent and not up", "[f
 TEST_CASE("the overlap-add aligns two exponents and applies the result exactly", "[fixed32]") {
     std::mt19937 rng(0x0a1d);
     std::uniform_real_distribution<double> dist(-0.4, 0.4);
-    for (const auto [x_norm, delay_norm] : {std::pair{3, 3}, std::pair{2, 9}, std::pair{11, 4}}) {
+    for (const auto& [x_norm, delay_norm] : {std::pair{3, 3}, std::pair{2, 9}, std::pair{11, 4}}) {
         std::array<double, 512> x_true{};
         std::array<double, 256> delay_true{};
         std::array<Fixed32, 512> x{};
