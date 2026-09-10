@@ -906,13 +906,12 @@ followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
   the kind `-ffp-contract=off` forbids project-wide — and so its own bit-exactness argument.
 - **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works but keeps both
   transform instantiations compiled.
-- **The encoders are `double` behind their front end.** Transient detection, the gather, the
-  window and the forward transform run in the profile's scalar since 2026-09-10, which put AC-3
-  2/0 in real time (0.88x) and took E-AC-3 5.1 from 10.9x over to 6.9x; the masking model, bit
-  allocation's search, the quantisers and every coding tool still run on this part's software
-  floating point - see [Encoding](#encoding). The rest is a larger job than the decoder's was,
-  because the encoder's arithmetic is the bitstream's own: a float search makes different, valid
-  decisions, and its fixtures are its own rather than the double build's.
+- **The encoders' search is integer, and it is what is left.** The encoders run in the
+  profile's scalar end to end since 2026-09-10 (AC-3 2/0 at 0.38x, E-AC-3 2/0 and AC-3 5.1 at
+  the line, E-AC-3 5.1 at 2.5x); what an E-AC-3 5.1 frame spends now is exponent-run planning
+  and the rate-control search's allocation calls, integer work whose cost is a count of
+  candidates rather than an arithmetic type - see [Encoding](#encoding). The adaptive hybrid
+  transform's DCT and vector quantiser are the one `double` island, a quarter of the tools row.
 
 ## Other ESP32 variants
 
