@@ -134,6 +134,40 @@ AC3FORGE_EXPORT void compute_bit_allocation(std::span<const std::uint8_t> exps,
                                             std::span<std::uint8_t> bap,
                                             const BitAllocRegion& region = {});
 
+// The same allocation in two halves, for a caller that evaluates one channel
+// at many SNR offsets - the encoders' rate-control search, which probes a
+// frame's cost at an offset several times a frame for every run of every
+// stream. Everything up to and including §7.2.2.5's masking curve is a
+// function of the exponents, the codes, the sample rate and the region's
+// coupling leaks; only §7.2.2.6's delta correction and §7.2.2.7's offset,
+// floor and table lookup come after it. So the curve is computed once and the
+// offset applied per probe, which is most of the call. compute_bit_allocation
+// is exactly the two in sequence, and the two share its code.
+struct MaskingCurve {
+    // §7.2.2.5's banded curve, before the delta correction. Indexed by
+    // Table 7.13's absolute band, like compute_bit_allocation's own.
+    std::array<int, 50> mask{};
+    // False when the region was unusable (empty, past kMaxMantissas, or a
+    // start outside it): allocate_from_curve then gives an all-zero bap, as
+    // compute_bit_allocation does for the same region.
+    bool valid = false;
+};
+
+// §7.2.2.2-7.2.2.5. Reads region.start, region.coupling and the leaks; the
+// delta segments, snr_all_zero and high_efficiency are the other half's.
+[[nodiscard]] AC3FORGE_EXPORT MaskingCurve compute_masking_curve(std::span<const std::uint8_t> exps,
+                                                                 SampleRate sample_rate,
+                                                                 const BitAllocCodes& codes,
+                                                                 const BitAllocRegion& region);
+
+// §7.2.2.6-7.2.2.7 from a curve compute_masking_curve gave for the same exps
+// and region (its start, coupling and leaks; the delta, snr_all_zero and
+// high_efficiency fields are read here). `codes` supplies the floor.
+AC3FORGE_EXPORT void allocate_from_curve(std::span<const std::uint8_t> exps,
+                                         const MaskingCurve& curve, const BitAllocCodes& codes,
+                                         int csnroffst, int fsnroffst, std::span<std::uint8_t> bap,
+                                         const BitAllocRegion& region);
+
 // §7.2.2.6, encoder side. compute_bit_allocation()'s masking curve is built
 // only from the quantized exponent (psd[bin] = 3072 - exps[bin]<<7 — exactly
 // 128 units, one Table 5.17 delta step, per exponent step), which discards

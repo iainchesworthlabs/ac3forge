@@ -50,7 +50,7 @@ inline constexpr std::uint64_t kAc3Hash = 17097054118981639700ULL;
 
 // E-AC-3 5.1 at 384 kbit/s: 1,536 bytes an access unit, 9,216 for six.
 inline constexpr std::size_t kEac3Bytes = 9216;
-inline constexpr std::uint64_t kEac3Hash = 11442942162113356738ULL;
+inline constexpr std::uint64_t kEac3Hash = 57777224631052106ULL;
 
 // §E3.5 enhanced coupling. 2/0 at 192 kbit/s, and the layout is the finding.
 //
@@ -77,7 +77,7 @@ inline constexpr std::uint64_t kEac3Hash = 11442942162113356738ULL;
 //
 // 192 kbit/s 2/0 is 768 bytes an access unit, 4,608 for six.
 inline constexpr std::size_t kEac3EcplBytes = 4608;
-inline constexpr std::uint64_t kEac3EcplHash = 6441094702899796872ULL;
+inline constexpr std::uint64_t kEac3EcplHash = 6339175595316876366ULL;
 
 // AC-3 2/0 at 192 kbit/s - the decode probe's ac3_stereo shape seen from the
 // other side, and the layout most AC-3 encode on a small part actually is.
@@ -91,7 +91,7 @@ inline constexpr std::uint64_t kAc3StereoHash = 1195752761152509359ULL;
 // two together say what the tool costs - in peak bytes and, under --icount,
 // in instructions - at the same input. 768 bytes an access unit, 4,608 for six.
 inline constexpr std::size_t kEac3StereoBytes = 4608;
-inline constexpr std::uint64_t kEac3StereoHash = 17721662050392400292ULL;
+inline constexpr std::uint64_t kEac3StereoHash = 18016255318094015214ULL;
 
 // E-AC-3 2/0 at 192 kbit/s with standard coupling, spectral extension and the
 // adaptive hybrid transform all in use - the tools the 5.1 row above never
