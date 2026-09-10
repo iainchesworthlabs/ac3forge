@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -250,6 +251,67 @@ struct LevelAccumulator {
     }
 };
 
+// Every delivered sample's bit pattern, in delivery order, through FNV-1a:
+// printed beside the levels as <codec>.pcm_hash. For the fixed-point tier
+// (planning/arithmetic-tiers.md) the decode is integer arithmetic and this
+// value is the same on every leg - the host, the Cortex-M3, a RISC-V part -
+// which is the tier's own gate; for the floating tiers it varies with the
+// compiler and is informative only. Runs inside the sinks, whose time the
+// rows above take back out of the decode figure.
+struct PcmHash {
+    std::uint64_t state = 14695981039346656037ULL;
+
+    void add(std::span<const float> pcm) {
+        for (const float sample : pcm) {
+            const auto bits = std::bit_cast<std::uint32_t>(sample);
+            for (int shift = 0; shift < 32; shift += 8) {
+                state ^= (bits >> shift) & 0xFFU;
+                state *= 1099511628211ULL;
+            }
+        }
+    }
+};
+
+void report_hash(const char* codec, const PcmHash& hash) {
+    std::printf("%s.pcm_hash=%08lx%08lx\n", codec,
+                static_cast<unsigned long>(hash.state >> 32),
+                static_cast<unsigned long>(hash.state & 0xFFFFFFFFULL));
+}
+
+// What this part can give the decode, in bytes, or zero for "whatever it
+// asks for". A target with less than a fixture needs skips that fixture and
+// says so, rather than aborting the run on an allocation nobody can satisfy -
+// which is what an ESP32-C3 does on the 7.1.4 fixture: 249,180 bytes free, a
+// 238,094-byte peak, and a 6,144-byte request that fails anyway.
+//
+// A TOTAL is a proxy for what actually decides this, and an optimistic one.
+// Both ESP32 parts' heaps are regioned - the C3 reports 249,180 free with a
+// largest block of 114,688 - so a peak that packs into the flat newlib heap of
+// the arm-none-eabi leg can still fail there. The budget a target sets should
+// therefore be what it was OBSERVED to manage, not what its allocator reports
+// free.
+//
+// The value arrives from CMake and is never defaulted here: every shape that
+// builds this file sets it, the hosted and arm-none-eabi ones through
+// apps/baremetal/CMakeLists.txt's cache variable and each ESP-IDF app through
+// its own main/CMakeLists.txt. A conditional would put the platform back in
+// the translation unit, which is the rule Platform Macros enforces.
+constexpr std::size_t kHeapBudgetBytes = AC3FORGE_PROBE_HEAP_BUDGET_BYTES;
+
+// True when this fixture asks for more than the part has. `needed` is the peak
+// the fixture is measured to reach - the same figure the probe prints as
+// <codec>.peak_bytes after every fixture that runs, so a stale entry here is
+// visible beside the real one rather than only in this table.
+bool over_budget(const char* codec, std::size_t needed) {
+    if (kHeapBudgetBytes == 0 || needed <= kHeapBudgetBytes) {
+        return false;
+    }
+    std::printf("%s.skipped=heap_budget needed=%lu budget=%lu\n", codec,
+                static_cast<unsigned long>(needed),
+                static_cast<unsigned long>(kHeapBudgetBytes));
+    return true;
+}
+
 bool g_failed = false;
 
 void fail(const char* what, long got, long expected) {
@@ -396,6 +458,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
     config.output = output;
     ac3::FrameDecoder decoder{config};
     LevelAccumulator levels;
+    PcmHash hash;
     Churn churn;
     churn.frames = static_cast<int>(frames->size());
     g_fixture_peak_bytes = g_live_bytes;
@@ -415,6 +478,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
             const std::uint64_t entered_us = ac3probe::now_us();
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 levels.add(ch, block.channels[ch]);
+                hash.add(block.channels[ch]);
             }
             delivered = static_cast<int>(block.channels.size());
             sink_us += ac3probe::now_us() - entered_us;
@@ -447,6 +511,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
         fail(codec, "channels", channels, static_cast<long>(expected.size()));
     }
     report_levels(codec, levels, expected);
+    report_hash(codec, hash);
     report_churn(codec, churn);
     report_churn_buckets(codec, churn);
     report_timing(codec, churn);
@@ -482,6 +547,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     config.skip_object_reconstruction = bed_only;
     ac3::Eac3Decoder decoder{config};
     LevelAccumulator levels;
+    PcmHash hash;
     Churn churn;
     churn.frames = static_cast<int>(units->size());
     g_fixture_peak_bytes = g_live_bytes;
@@ -498,6 +564,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
             const std::uint64_t entered_us = ac3probe::now_us();
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 levels.add(ch, block.channels[ch]);
+                hash.add(block.channels[ch]);
             }
             delivered = static_cast<int>(block.channels.size());
             sink_us += ac3probe::now_us() - entered_us;
@@ -537,6 +604,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         fail(codec, "channels", channels, static_cast<long>(expected.size()));
     }
     report_levels(codec, levels, expected);
+    report_hash(codec, hash);
     report_churn(codec, churn);
     report_churn_buckets(codec, churn);
     report_timing(codec, churn);
@@ -617,6 +685,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     config.joc_domain = domain;
     ac3::Eac3Decoder decoder{config};
     LevelAccumulator levels;
+    PcmHash hash;
     // The bed's own slots, so the LFE can be picked out of them once the
     // layout is known - the block carries the samples in the layout's order
     // but not the layout, which the call returns afterwards.
@@ -687,6 +756,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
             const std::uint64_t levels_started_us = ac3probe::now_us();
             for (std::size_t t = 0; t < panned; ++t) {
                 levels.add(t, std::span<const float>(g_render_block[t].data(), n));
+                hash.add(std::span<const float>(g_render_block[t].data(), n));
             }
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 bed_levels.add(ch, block.channels[ch]);
@@ -736,6 +806,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         fail(codec, "channels", channels, static_cast<long>(expected.size()));
     }
     report_levels(codec, levels, expected);
+    report_hash(codec, hash);
     report_churn(codec, churn);
     report_churn_buckets(codec, churn);
     report_timing(codec, churn);
@@ -763,31 +834,35 @@ struct Ac3Fixture {
     const char* codec;
     std::span<const std::uint8_t> stream;
     std::span<const std::int32_t> rms;
+    // The peak heap this fixture is measured to reach. The same on every leg:
+    // the allocator counts bytes, and x86-64, Thumb-2 and RV32IMC allocate the
+    // same ones. Read only by over_budget() above.
+    std::size_t peak_bytes;
     // DecoderConfig::output. As coded for every row but the fold, which is
     // the §7.8 stage a stereo player runs every frame.
     ac3::OutputConfig output{};
 };
 
 constexpr std::array<Ac3Fixture, 4> kAc3Fixtures{{
-    {"ac3", ac3probe::kAc3Stream, ac3probe::kAc3Rms},
+    {"ac3", ac3probe::kAc3Stream, ac3probe::kAc3Rms, 56685},
     // The same stream folded to Lo/Ro in line mode (§7.8.1 with §5.4.2.8's
     // dialnorm normalisation): what i2s_player does to every frame on the
     // way to a stereo DAC, and the output stage's first row on any target.
     // Levels are ac3cli's for the same options (tools/generators/
     // gen_baremetal_fixture.py's decode-variant rows), two channels.
-    {"ac3_fold", ac3probe::kAc3Stream, ac3probe::kAc3FoldRms,
+    {"ac3_fold", ac3probe::kAc3Stream, ac3probe::kAc3FoldRms, 68973,
      {.target = ac3::DownmixTarget::kLoRo, .mode = ac3::OperatingMode::kLine}},
     // 2/0. §7.5.4 rematrixing lives in this layout alone, and it is a different
     // code path from the eac3_stereo row's - Annex E carries its own
     // rematrixing syntax - so that fixture does not stand in for this one.
     // Also the first AC-3 fixture whose channel count is not six.
-    {"ac3_stereo", ac3probe::kAc3StereoStream, ac3probe::kAc3StereoRms},
+    {"ac3_stereo", ac3probe::kAc3StereoStream, ac3probe::kAc3StereoRms, 49328},
     // 1/0. The narrowest programme the syntax has: one full-bandwidth channel,
     // no LFE, no coupling possible (§7.4 needs two channels to share a band
     // between) and no downmix to apply. Every per-channel loop in the decoder
     // runs exactly once here, which is the value 6 cannot catch an off-by-one
     // in.
-    {"ac3_mono", ac3probe::kAc3MonoStream, ac3probe::kAc3MonoRms},
+    {"ac3_mono", ac3probe::kAc3MonoStream, ac3probe::kAc3MonoRms, 47608},
 }};
 
 // The E-AC-3 fixtures, in the order the probe decodes them. Adding one is a
@@ -799,6 +874,10 @@ struct Eac3Fixture {
     const char* codec;
     std::span<const std::uint8_t> stream;
     std::span<const std::int32_t> rms;
+    // The peak heap this fixture is measured to reach. The same on every leg:
+    // the allocator counts bytes, and x86-64, Thumb-2 and RV32IMC allocate the
+    // same ones. Read only by over_budget() above.
+    std::size_t peak_bytes;
     // DecoderConfig::skip_object_reconstruction. Only the Atmos fixture sets
     // it, and it is the whole reason that fixture can be here: see its row.
     bool bed_only = false;
@@ -812,13 +891,13 @@ struct Eac3Fixture {
 };
 
 constexpr std::array<Eac3Fixture, 8> kEac3Fixtures{{
-    {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms},
+    {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms, 175674},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
     // ecpl_channel_spectrum - and the 512-point DFT
     // src/forge/src/core/fft.cpp is in the minimal source list for - are
     // linked into every build of this profile and executed by none of them.
-    {"eac3_ecpl", ac3probe::kEac3EcplStream, ac3probe::kEac3EcplRms},
+    {"eac3_ecpl", ac3probe::kEac3EcplStream, ac3probe::kEac3EcplRms, 159141},
     // An Atmos stream decoded for its BED. §6 object reconstruction allocates
     // an oba::joc::ReconstructionState - 147,504 bytes in one block, plus a
     // QmfState and its filterbanks - which is more than the largest free run
@@ -827,7 +906,8 @@ constexpr std::array<Eac3Fixture, 8> kEac3Fixtures{{
     // E-AC-3, and this row is what proves that on the target rather than in a
     // paragraph. Levels are the bed's, which is what ac3cli decode writes for
     // an Atmos stream too, so the host reference needed no special case.
-    {"eac3_atmos_bed", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms, true},
+    {"eac3_atmos_bed", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms, 125383,
+     true},
     // The Atmos bitstream again, this time reconstructing its objects. Two
     // rows off one stream: it is already linked in, so the second path costs
     // nothing in image size, and what differs is a decoder setting.
@@ -844,13 +924,13 @@ constexpr std::array<Eac3Fixture, 8> kEac3Fixtures{{
     // never exits, and object reconstruction then had nowhere to go. release_ecpl_scratch() below is what makes the
     // order stop mattering, so this row sits where it would naturally rather
     // than where it happens to pass.
-    {"eac3_atmos_objects", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms,
+    {"eac3_atmos_objects", ac3probe::kEac3AtmosBedStream, ac3probe::kEac3AtmosBedRms, 211851,
      false, ac3::oba::joc::Domain::kMdctBand},
     // 2/0, and Annex E's own rematrixing syntax - the E-AC-3 half of what the
     // ac3_stereo row covers for AC-3. Also the first E-AC-3 fixture whose
     // channel count is not six, so the layout-driven half of the level check is
     // exercised rather than merely written.
-    {"eac3_stereo", ac3probe::kEac3StereoStream, ac3probe::kEac3StereoRms},
+    {"eac3_stereo", ac3probe::kEac3StereoStream, ac3probe::kEac3StereoRms, 144278},
     // 7.1.4: a 5.1 bed and two dependent substreams (k71Rear and kTopQuad),
     // the widest programme the encoder makes and the first fixture with more
     // channels than one substream can carry. The access unit's assembly -
@@ -858,10 +938,10 @@ constexpr std::array<Eac3Fixture, 8> kEac3Fixtures{{
     // the bed's - runs here and nowhere else in this table, and twelve
     // channels of output is what a part driving a 7.1.4 DAC over TDM pays
     // for, in this probe's own PCM block as on the part.
-    {"eac3_714", ac3probe::kEac3714Stream, ac3probe::kEac3714Rms},
+    {"eac3_714", ac3probe::kEac3714Stream, ac3probe::kEac3714Rms, 238094},
     // The 5.1 stream folded to Lo/Ro in line mode - the E-AC-3 half of the
     // ac3_fold row, through the access-unit form's own output path.
-    {"eac3_fold", ac3probe::kEac3Stream, ac3probe::kEac3FoldRms, false,
+    {"eac3_fold", ac3probe::kEac3Stream, ac3probe::kEac3FoldRms, 225038, false,
      ac3::oba::joc::Domain::kQmf,
      {.target = ac3::DownmixTarget::kLoRo, .mode = ac3::OperatingMode::kLine}},
     // Objects reconstructed (kMdctBand, as the objects row) and then PLACED
@@ -872,7 +952,7 @@ constexpr std::array<Eac3Fixture, 8> kEac3Fixtures{{
     // Atmos rows' objects all sit on the listener plane and a render of them
     // would leave the four height targets silent and untested.
     {"eac3_atmos_render", ac3probe::kEac3AtmosHeightStream, ac3probe::kEac3AtmosRenderRms,
-     false, ac3::oba::joc::Domain::kMdctBand, {}, true},
+     212221, false, ac3::oba::joc::Domain::kMdctBand, {}, true},
 }};
 
 // What the per-fixture static_asserts above used to say, said once. Regenerate
@@ -951,12 +1031,18 @@ int ac3probe::run() {
                 static_cast<unsigned long>(ac3probe::stage_pair_cost_ns()));
 
     for (const auto& fixture : kAc3Fixtures) {
+        if (over_budget(fixture.codec, fixture.peak_bytes)) {
+            continue;
+        }
         if (decode_ac3(fixture.codec, fixture.stream, fixture.rms, fixture.output) != 0) {
             std::printf("result=fail\n");
             return 1;
         }
     }
     for (const auto& fixture : kEac3Fixtures) {
+        if (over_budget(fixture.codec, fixture.peak_bytes)) {
+            continue;
+        }
         const int status =
             fixture.render
                 ? render_eac3(fixture.codec, fixture.stream, fixture.rms, fixture.joc_domain)

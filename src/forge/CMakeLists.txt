@@ -394,15 +394,18 @@ target_include_directories(forge_objects PRIVATE
 # stated in terms of that arithmetic. forge_minimal below picks float32
 # unconditionally - see src/forge/minimal.cmake.
 set(AC3FORGE_DECODE_SCALAR "double" CACHE STRING
-    "Scalar the decoder carries coefficients in: double (default) or float")
-set_property(CACHE AC3FORGE_DECODE_SCALAR PROPERTY STRINGS double float)
+    "Scalar the decoder carries coefficients in: double (default), float, or fixed (Q7.24 in an int32, for parts with no FPU)")
+set_property(CACHE AC3FORGE_DECODE_SCALAR PROPERTY STRINGS double float fixed)
 if(AC3FORGE_DECODE_SCALAR STREQUAL "float")
     set(_ac3_scalar_dir "float32")
 elseif(AC3FORGE_DECODE_SCALAR STREQUAL "double")
     set(_ac3_scalar_dir "float64")
+elseif(AC3FORGE_DECODE_SCALAR STREQUAL "fixed")
+    # src/core/fixed32.hpp's Fixed32 - the third tier (planning/arithmetic-tiers.md).
+    set(_ac3_scalar_dir "fixed32")
 else()
     message(FATAL_ERROR
-        "AC3FORGE_DECODE_SCALAR is 'double' or 'float' (got '${AC3FORGE_DECODE_SCALAR}')")
+        "AC3FORGE_DECODE_SCALAR is 'double', 'float' or 'fixed' (got '${AC3FORGE_DECODE_SCALAR}')")
 endif()
 target_include_directories(forge_objects PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac3_scalar_dir}")

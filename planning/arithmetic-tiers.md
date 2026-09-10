@@ -1,12 +1,14 @@
 # One implementation, three arithmetics, one effort axis
 
-!!! note "Status as of 2026-09-10: the first axis measured, the second written down, the third proposed"
-    Two of the three arithmetic tiers exist and are gated: `double`, the reference, in every
-    ordinary build; `float`, the ESP32-S3's, for decode since 2026-09-09 and for encode since
-    2026-09-10 (#617, #618). The effort axis has its first measured point: the search and the
-    planner cost (this branch, on the ESP32-S3). The third tier - fixed point, for the ESP32-C3
-    and every other part without a floating-point unit - is proposed here and not started:
-    no `Fixed32` exists in the tree, no C3 target, and the RISC-V QEMU is not installed.
+!!! note "Status as of 2026-09-10: three tiers built, the third measured on the host and the Cortex-M3 leg, no C3 yet"
+    All three arithmetic tiers exist and are gated. `double`, the reference, in every ordinary
+    build; `float`, the ESP32-S3's, for decode since 2026-09-09 and for encode since 2026-09-10
+    (#617, #618); and `fixed`, the decoder for parts with no floating-point unit, whose phases
+    A to C below are done on the host and the Cortex-M3 leg with the numbers each measured.
+    What is not done: the timing half of Phase D, which needs an ESP32-C3 board - the target,
+    the RISC-V emulator and the correctness half are done, and the tier's hashes agree across
+    three architectures on the 11 of twelve fixtures that fit in the part's SRAM. The effort
+    axis has its first measured point: the search and the planner cost (#619, on the ESP32-S3).
 
     Design sections say what each tier and each effort level is and what it guarantees; each
     phase carries an exit criterion and how it is verified; [Decisions](#decisions) lists what
@@ -40,11 +42,13 @@ What each tier promises, and how the promise is checked:
 |---|---|---|---|---|
 | Reference | `double` | Every hosted platform: x86-64, AArch64, macOS, Android, WASM | The bitstream hashes in `tests/golden/bitstream-hashes.json`, byte-identical across kernels and architectures; the gold-reference SNR floors against FFmpeg | `verify_gold_reference.sh`, `check_cross_platform_hash.py`, the full suite |
 | Single precision | `float` | ESP32-S3 (and any part with a single-precision FPU); measurable on any host with `-DAC3FORGE_DECODE_SCALAR=float` / `-DAC3FORGE_ENCODE_SCALAR=float` | Decode: reproduces the double decode to ~139 dB. Encode: a different, equally valid stream whose worst channel is within 0.5 dB of the double encoder's (identical to the hundredth on the five gold streams); the profile's fixture hashes identical on the x86 host, the Cortex-M3 leg and the board | `check_decode_scalar_snr.py`, `check_encode_scalar_quality.py`, the float gold gates in CI, `run_baremetal_probe.sh` on three legs |
-| Fixed point | `Fixed32` (proposed) | ESP32-C3/C6, Cortex-M0+/M3/M4 without FPU, any RV32IM | Decode: within a stated SNR of the double decode on every fixture (the number to be measured; 100 dB is the target, see [Phases](#phases)); **bit-identical output on every platform by construction**, integer arithmetic having no rounding-mode or library variation to differ by | The probe's PCM hashes, exact, on x86, Cortex-M3 and RISC-V; `check_decode_scalar_snr.py` against the double CLI with a fixed floor |
+| Fixed point | `Fixed32` | ESP32-C3/C6, Cortex-M0+/M3/M4 without FPU, any RV32IM; measurable on any host with `-DAC3FORGE_DECODE_SCALAR=fixed` | Decode: 121 dB and above from the double decode on the worst channel of the three gold streams, 111 dB and above on every checked-in third-party stream (measured 2026-09-10, held to 110 in CI); **bit-identical output on every platform by construction**, integer arithmetic having no rounding-mode or library variation to differ by | The probe's `pcm_hash` lines, pinned in `tests/golden/fixed-probe-pcm-hashes.json` and held there on the x86 host and the Cortex-M3 leg (`check_probe_hashes.py`); `check_decode_scalar_snr.py` against the double CLI at 110 dB; the gold gate with the fixed CLI at the double decoder's floors |
 
 The fixed tier's guarantee is the strongest of the three - integer arithmetic is the same on
-every machine - and its fidelity is the lowest. That is the trade the choice matrix below is
-for.
+every machine - and its fidelity is between the other two's: below the float tier's 139 dB,
+and above the 100 dB this page set out to reach, because the store carries a block exponent
+(see [The block exponent](#the-block-exponent)) rather than an absolute scale. That is the
+trade the choice matrix below is for.
 
 ## The effort axis
 
@@ -95,7 +99,7 @@ Platform to arithmetic to effort, with the state of each cell. "Real time" is a 
 | WASM | `double` | `double` | `reference` | Shipping ([the WASM page](../docs/platforms/wasm.md)) |
 | ESP32-S3 (LX7, single-precision FPU) | `float` | `float` | `reference` for 2/0; `reduced` is the candidate for 5.1 | Decode: every fixture in real time. Encode: AC-3 2/0 and E-AC-3 2/0 in real time, AC-3 5.1 at the line, E-AC-3 5.1 at 1.7x |
 | ESP32 (LX6, single-precision FPU) | `float` | `float` | as the S3 | Not measured; the S3's arithmetic without the PIE and with a smaller cache |
-| ESP32-C3 / C6 (RV32IMC, no FPU) | `Fixed32` | none at first | `reduced` | Proposed here |
+| ESP32-C3 / C6 (RV32IMC, no FPU) | `Fixed32` | none at first | `reduced` | Built and gated: a probe target under `qemu-riscv32`, 11 of twelve fixtures decoding to PCM identical to the host's and the Cortex-M3 leg's. 7.1.4 does not fit in the part's SRAM. Time on a board is unmeasured |
 | Cortex-M3 (the CI leg, QEMU) | `float`, soft | `float`, soft | `reference` | Correctness and instruction counts only; the soft-float proxy every embedded estimate rests on |
 | Cortex-M4F / M7 (single-precision FPU) | `float` | `float` | `reference` | Not targeted; would behave as the S3 without its vector loads |
 
@@ -118,66 +122,153 @@ The decode path is templated on `decode_scalar_t` in the files the survey found
 
 ### The type
 
-`Fixed32`: a signed 32-bit integer in Q7.24 - seven bits of headroom above unity, twenty-four
-below. Coefficients and time-domain samples are below unity in magnitude for a legal stream;
-the headroom absorbs the intermediate growth of a transform stage and a downmix sum, and the
-twenty-four fractional bits put the quantisation floor at -144 dB of full scale, so a 512-point
-transform whose stages each lose half a bit still leaves the output above 110 dB of the double
-decode. Products go through 64 bits (`mul`/`mulh` on RV32IM, `smull` on Cortex-M3) and shift
-back; constants are Q2.30 so that a twiddle or a window coefficient of exactly 1.0 is
-representable.
+`Fixed32` (`src/forge/src/core/fixed32.hpp`): a signed 32-bit integer in Q7.24 - seven bits of
+headroom above unity, twenty-four below. Products go through 64 bits (`mul`/`mulh` on RV32IM,
+`smull` on Cortex-M3), round half up on the shift back and saturate; sums wrap; conversions
+from a wider type saturate. Constants - the twiddles, the window, a downmix coefficient - are
+the same format: a value of exactly 1.0 is 2^24 and fits, and twenty-four bits of a twiddle are
+more than the arithmetic around it keeps (the plan had said Q2.30 for these; nothing needed the
+extra bits).
 
 Two things the type does not try to be. It is not a general fixed-point library: only the
-operations above exist, each with one rounding rule (round half up on the shift back), so the
-result is defined by the source and not by a template's cleverness. And it is not
+operations the decode path asks of a scalar exist, each with one rounding rule, so the result
+is defined by the source and not by a template's cleverness. And it is not
 `std::floating_point`: the templates the decode path already has are written against a scalar
-that behaves like a number, and where they call a `std::` function the call becomes an overload
-set the way `scalar_math.hpp` already does for the float encode path - `scalar_sqrt`,
-`scalar_exp2`, `scalar_log2`, `scalar_ldexp` - with the `double` and `float` overloads being
-what they are today and the `Fixed32` ones integer routines.
+that behaves like a number, and where they call a `std::` function the call is an overload set
+the way `scalar_math.hpp` already does for the float encode path - `scalar_sqrt`, `scalar_abs`,
+`scalar_ldexp` - with the `double` and `float` overloads being what they were and the `Fixed32`
+ones integer routines. Where a template needs more than arithmetic - a noise draw from a 32-bit
+state, a dequantiser's integer over a power of two, a ratio of two integers - the public headers
+(`mantissas.hpp`, `eac3_tools.hpp`) ask for it through a member of the type on their
+non-floating branch.
+
+### The block exponent
+
+This is the part the plan did not have, and the measurement that put it there. Phase A stored
+coefficients in Q7.24 directly, with the transform bridged through double, and the worst
+channel of the gold AC-3 stream came out 98.8 dB from the double decode, the E-AC-3 one 99.0,
+and the E-AC-3 coupling one 87.8. A raw unit is 2^-24 of full scale wherever a value sits, so a
+mantissa of sixteen bits under an exponent of twelve keeps twelve of them; the transform sums
+two hundred and fifty-six such errors; and standard coupling's factor of eight scales them by
+eight. The information was on the wire and lost at dequantisation. The store was not too
+narrow - it was in the wrong place.
+
+So the store is normalised (`src/forge/src/decoder/block_norm.hpp`): each stream's
+coefficients are kept scaled up by 2^norm per block, with norm chosen so the largest sits just
+below one half, and every mantissa keeps all of its bits. The exponent travels with the block.
+A stream's own coded bins set it before any mantissa is read; a tool that can raise a channel
+above them - decoupling, enhanced coupling's reconstruction, spectral extension's synthesis,
+rematrixing - lowers it where it runs, shifting what the channel already holds down to match,
+so no bits are reserved that might not be needed. An AHT stream's six blocks are reconstructed
+at once, so its exponent is exact from their peaks and no bound is needed at all; a coupling
+or spectral extension coordinate is kept as its mantissa and its power of two, so the product
+with a coefficient is one rounding and a shift; the §7.7 gain is split into a mantissa applied
+to the coefficients and a power of two added to the exponent; and the overlap-add aligns the two
+halves it sums, in 64 bits, before one float conversion applies the power of two exactly. The
+floating tiers see none of this: their norms are zero, and `exponent_scale(exp - 0)` is the
+call they always made.
+
+Each of those was a measurement before it was a design. The first normalised build reached
+121, 122 and 122 dB on the gold streams but 74 on a Dolby Encoding Engine 5.1 stream with
+coupling, spectral extension and the AHT; keeping the spectral extension coordinate's power of
+two apart from its mantissa took that to 97; and replacing a two-bit guard on AHT streams with
+the exact exponent took it to 116. A rematrixed pair that was given its shared exponent twice -
+once before dequantisation and once at rematrixing - cost the 2/0 streams 6 dB until the second
+pass learned the first had already made room.
 
 ### The transform
 
-The FFT-based inverse is the one piece that is not a template instantiation with integer
-operators substituted. An unscaled fixed-point FFT of 128 complex points can grow by seven bits
-across its stages, which is exactly the headroom Q7.24 has and none to spare for the window and
-the overlap-add after it. So the fixed transform scales: block floating point, one exponent per
-block found by a count of leading zeros at each stage, the shift applied only when a stage would
-overflow, and the block's exponent carried into the window and the overlap so that nothing is
-lost that did not have to be. This is its own kernel beside the double and float ones, a
-fixed-point transform source next to `mdct.cpp` with the same pre-twiddle, N/4-point FFT and
-post-twiddle structure and the same tables in Q2.30.
+The FFT-based inverse is its own kernel beside the double and float ones
+(`src/forge/src/core/mdct_fixed.hpp`): the same pre-twiddle, N/4-point FFT, post-twiddle and
+window as `mdct.cpp`'s fast branch, transcribed step for step in `Fixed32`, on the shared
+`fft_kernel.hpp` tables instantiated at that type. The plan had it scaling per stage - block
+floating point inside the transform. It does not, and the reason is the block exponent above:
+the spec's inverse is an unscaled sum, the 128-point FFT of it can grow by exactly seven bits
+(four per radix-4 stage, then two), and Q7.24 has seven bits of headroom, so a transform whose
+input is below one half - which the store's exponent guarantees - cannot wrap on any input at
+all, the coherent one no real stream produces included. Every rounding step inside is a raw
+unit of an intermediate up to two orders of magnitude larger than the output, so what sets the
+floor is the post-twiddle and the window, about a raw unit per output sample, relative to a
+block scaled up to the format. `tests/core/test_mdct_fixed.cpp` holds it to the double inverse
+above 120 dB on dense blocks, 110 on sparse ones, and without wrapping at the worst case.
 
-The §3.5.5 DFT and the six-block DCT follow the same pattern and are smaller.
+The §3.5.5 DFT, the six-block DCT and the spectral extension notch still run through `float`
+copies at the seam - see Phase C.
 
 ### Phases
 
-**Phase A - the scalar and the straight-line path.** `Fixed32` with its operators and the
-overload sets; the minimum-footprint decoder profile compiles with `-DAC3FORGE_DECODE_SCALAR=fixed`
-on the host with the transform stubbed; dequantisation, the coupling reconstruction, the output
-stage (folds, DRC, the int16 and float outputs) run in it. Exit: AC-3 mono and 2/0 fixtures
-decode on the host through a reference (double) transform whose input and output are converted
-at the seam, and the probe's levels are within the stated SNR of the double decoder's. Verified
-by `check_decode_scalar_snr.py` with the fixed CLI, floor set from what is measured.
+**Phase A - the scalar and the straight-line path. Done 2026-09-10.** `Fixed32` with its
+operators and the overload sets; `-DAC3FORGE_DECODE_SCALAR=fixed` on the host, the transform
+bridged through double at the seam; dequantisation, coupling, spectral extension, the gain and
+the output stage in it. Measured: 98.8, 99.0 and 87.8 dB on the worst channel of the three gold
+streams (`check_decode_scalar_snr.py`), which is the finding [The block exponent](#the-block-exponent)
+records. The exit criterion was met as written and the number said the store had to change.
 
-**Phase B - the transform.** `mdct_fixed.cpp` with block floating point; the window and overlap
-in `Fixed32`. Exit: every AC-3 fixture and the plain E-AC-3 ones (2/0, 5.1, the folds) decode in
-the fixed tier on the host and on the Cortex-M3 leg with identical PCM hashes, and the SNR to
-the double decoder is at or above the Phase A floor. Verified by the probe on both legs and the
-SNR tool; the M3 instruction count is the first cost figure, against the float tier's on the
-same leg (12.9 M for E-AC-3 5.1).
+**Phase B - the transform and the block exponent. Done 2026-09-10.** `mdct_fixed.hpp` without
+per-stage scaling, the store under its block exponent, the overlap-add in 64 bits. Measured:
+121.2, 122.5 and 122.3 dB on the gold streams; the gold gate passes with the fixed CLI at the
+double decoder's floors and its bitstreams are the pinned ones byte for byte; the probe's
+twelve fixtures decode on the host and on the Cortex-M3 leg with identical `pcm_hash` lines
+(all twelve); the Catch2 suite is unchanged in the double build. On the M3 leg an E-AC-3 5.1 frame is
+6.6 M instructions against the float tier's 12.9 M, AC-3 5.1 3.8 M against
+10.2 M, 2/0 1.2 M against 3.5 M (`docs/performance-trend.md` has every row).
 
-**Phase C - the tools.** Spectral extension's noise and gains, enhanced coupling's DFT and
-reconstruction, the adaptive hybrid transform's DCT and dequantisation, JOC's object
-reconstruction if it fits the C3's memory. Exit: the remaining fixtures decode with identical
-hashes on both legs at the same floor. The SNR target for the whole tier is 100 dB to the
-double decode, and the number actually reached is what the documentation states.
+**Phase C - the tools. Done 2026-09-10.** Standard coupling and spectral extension went in
+first, with their coordinates split (mantissa and power of two) and the extension's band energy
+summed in 64 bits, and the AHT's exponent made exact. Measured on the thirteen checked-in
+third-party streams (Dolby Encoding Engine and FFmpeg; AC-3 and E-AC-3; coupling, spectral
+extension, the AHT and JOC among them): no channel below 111 dB, the DEE 5.1 stream that had
+been at 74 at 116. The rest followed: the AHT's dequantisers and six-point inverse, the
+spectral extension notch, and enhanced coupling's spectrum, amplitudes, angles and
+reconstruction, with the tier's own sine and cosine. Fidelity did not move - every stream is
+within a tenth of a dB of what the float bridges gave - and the cost did: enhanced coupling on
+the Cortex-M3 leg went from 24.3 M instructions to 10.1 M, E-AC-3 5.1 from
+6.6 M to 4.8 M, 7.1.4 from 17.7 M to 12.1 M.
 
-**Phase D - the part.** A C3 platform directory beside the S3's under the bare-metal probe,
-the ESP-IDF component's profile extended with the scalar choice, the RISC-V QEMU installed beside the Xtensa one, the probe run
-under it for correctness and, on a board, for time. Exit: the fixtures' hashes under QEMU
-identical to the host's and the M3's; on a board, the time per frame per fixture on the ESP32
-page's terms. Verified by the same runner that gates the S3, with the C3 as a third target.
+Two things this phase settled that the plan had wrong. The DFT is where block floating point
+belongs, not the IMDCT: enhanced coupling's 512-point transform can grow by nine bits where the
+format has seven, and taking those bits off its input instead cost the enhanced coupling stream
+seven decibels (109 dB against the double decode, where the float bridge had given 117). With
+the stages shedding bits only where the next would overflow, and the spec's 1/N carried in the
+exponent rather than taken out of the values, it measures 116.6. And JOC is not a bridge of this
+tier's at all: its reconstruction runs in `float` in every build of this library
+(`recon_scalar_t`), so the object rows are a float transform sandwich whatever the decoder's
+scalar is. Bringing JOC into the tier is a fixed forward MDCT and a fixed QMF path - real work,
+with its own quality question, and out of this tier's scope.
+
+Enhanced coupling also had no SNR measurement until this phase: none of the gold streams used
+the tool. `check_decode_scalar_snr.py` now encodes and checks a fourth stream that does, for
+both non-double scalars.
+
+**Phase D - the part. Correctness done 2026-09-10; the timing needs a board.**
+`apps/baremetal/platform/esp32c3/` is the probe's third target: an ESP-IDF project like the S3's,
+defaulting to `-DAC3FORGE_DECODE_SCALAR=fixed` because the part has no floating-point unit.
+`qemu-riscv32` is installed beside the Xtensa one, `tools/checks/run_esp32c3_probe.sh` drives the
+leg, and the component's manifest lists `esp32c3` beside `esp32s3` - with the packaging check now
+building the archive for every target the manifest claims rather than only the first, since a
+claimed target nobody links is the failure that list exists to prevent.
+
+The exit criterion is met for 11 of the twelve fixtures: they decode under
+`qemu-system-riscv32` and their PCM is **identical to the x86 host's and the Cortex-M3 leg's**,
+held to the same pinned set (`tests/golden/fixed-probe-pcm-hashes.json`). Three architectures -
+x86-64, Thumb-2, RV32IMC - three compilers, one set of hashes. That is the tier's central claim,
+and until this leg existed it rested on two.
+
+The twelfth is a finding rather than a pass. 7.1.4 needs 238,094 bytes of heap and this
+part does not have them: it reports 249,180 free, but its heap is regioned with a
+largest block of 114,688, and the fixture failed on a 6,144-byte request with eleven
+kilobytes still nominally free. So the probe now takes a per-target heap budget
+(`AC3FORGE_PROBE_HEAP_BUDGET_BYTES`), skips a fixture above it and names it -
+`eac3_714.skipped=heap_budget needed=238094 budget=230000` - and the hash check treats a
+declared skip as a skip while still failing on an undeclared absence. What the C3 does run peaks
+at 225,038 bytes with 12 retained after teardown, leaves 10,688 of
+the main task's 32,768-byte stack, and links to a 523,072-byte image.
+
+What is NOT done, and cannot be here: the time. QEMU is not cycle-accurate and reports a
+fabricated clock, so this leg says the decode is correct on RISC-V and nothing about whether it
+keeps up. A 32 ms frame at 160 MHz is 5.12 M cycles; the Cortex-M3 leg's instruction counts put
+AC-3 2/0 and mono comfortably inside that and E-AC-3 5.1 near it, but instructions are not cycles
+and no leg models this part's 16 KB flash cache. A board settles it.
 
 **Phase E (optional) - the encoder.** Not planned in this round. The encoder's analysis is
 more precision-sensitive than the decoder's synthesis, and the S3's float encoder is the shape
@@ -191,9 +282,10 @@ a C3 encoder would take only after the decoder has shown what the fixed tier cos
    it is the same kind of promise the float tier makes and the same tool measures it.
 2. **Decoder first, encoder later or never.** Recommended: decoder first (Phase E optional).
    The C3 is a sink-class part; nothing on the platform matrix asks it to encode.
-3. **Q-format.** Q7.24 with Q2.30 constants, as above; the alternative (Q1.31 with block
-   exponents everywhere) buys four more bits at the cost of carrying an exponent through
-   every buffer. Recommended: Q7.24, revisited only if Phase B's SNR falls short.
+3. **Q-format.** Q7.24, constants included. The plan's alternative - a narrower format with
+   block exponents everywhere - was half right: the format stayed, and Phase A's measurement
+   put the exponent on the store anyway (see [The block exponent](#the-block-exponent)),
+   because no width of absolute format keeps a small mantissa's bits. Decided by measurement.
 4. **The soft-float proxy.** The Cortex-M3 leg is what every embedded estimate rests on; a
    RISC-V QEMU leg would be a second. Recommended: install `qemu-riscv32` through ESP-IDF's
    `idf_tools.py` (about 30 MB into `D:\esp\tools`) when Phase D starts, not before; the M3
@@ -209,6 +301,11 @@ a C3 encoder would take only after the decoder has shown what the fixed tier cos
 
 - **The fixed tier's time on a C3** until there is a board; QEMU has no cache model. The M3
   instruction count is a proxy for the arithmetic, not the memory system.
+- **The fixed tier's fidelity on material other than the sixteen streams measured.** The
+  block exponent's bounds are stated in `block_norm.hpp` and each is on the side of never
+  wrapping, but the SNR figures are those streams'; a stream whose tools push a channel to
+  the format's edge would show as clipping at a conversion, not as wrapped arithmetic, and the
+  probe's hashes would still agree across legs.
 - **Exactness of a search-path change.** The rate-control predicate is not monotone, so no
   change to the probe sequence can be shown stream-preserving; it is shown quality-preserving
   by the gates and re-pinned. The exact changes on this branch are shown exact by their

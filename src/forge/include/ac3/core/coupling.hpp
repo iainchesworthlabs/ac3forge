@@ -101,6 +101,24 @@ template <typename Scalar>
     return mantissa * exponent_scale<Scalar>(coordinate.exp + 3 * master);
 }
 
+// The two halves of decode_coordinate_as, for a store that keeps a
+// coordinate's power of two apart from its mantissa - the fixed-point
+// decoder's, whose coefficients carry a block exponent
+// (src/forge/src/decoder/block_norm.hpp). The mantissa is in [0, 1) in either
+// form of the coordinate; the exponent is what exponent_scale would be given.
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar coordinate_mantissa_as(Coordinate coordinate,
+                                                      int mantissa_bits = kCplMantissaBits) {
+    const auto one = static_cast<Scalar>(1 << mantissa_bits);
+    return coordinate.exp == kCoordinateEscapeExp
+               ? static_cast<Scalar>(coordinate.mant) / one
+               : (static_cast<Scalar>(coordinate.mant) + one) / (Scalar{2} * one);
+}
+
+[[nodiscard]] constexpr int coordinate_exponent(Coordinate coordinate, int master) {
+    return coordinate.exp + 3 * master;
+}
+
 // Quantize a linear coupling coordinate for a given per-channel master.
 // Values are clamped into the representable range rather than wrapping.
 [[nodiscard]] AC3FORGE_EXPORT Coordinate quantize_coordinate(double value, int master,

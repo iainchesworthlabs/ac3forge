@@ -4,6 +4,8 @@
 #include <type_traits>
 
 #include "ac3/core/mdct.hpp"
+#include "fixed32.hpp"
+#include "mdct_fixed.hpp"
 #include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profile.hpp"
 
@@ -30,7 +32,19 @@ namespace ac3::internal {
 template <typename Scalar>
 void inverse_transform_into(const std::array<Scalar, 256>& coeffs, std::array<Scalar, 512>& x,
                             bool short_block, bool fast) {
-    if constexpr (std::is_same_v<Scalar, float>) {
+    if constexpr (std::is_same_v<Scalar, Fixed32>) {
+        // The fixed-point tier's own pair (mdct_fixed.hpp), integer end to
+        // end: the coefficients arrive under their block exponent
+        // (block_norm.hpp), which is what keeps them inside the pair's
+        // precondition, and the output leaves under the same exponent for
+        // the overlap-add to apply. No `fast`: there is one form.
+        (void)fast;
+        if (short_block) {
+            imdct256_pair_windowed_fixed(coeffs, x);
+        } else {
+            imdct512_windowed_fixed(coeffs, x);
+        }
+    } else if constexpr (std::is_same_v<Scalar, float>) {
         (void)fast;
         if (short_block) {
             imdct256_pair_windowed(coeffs, x);

@@ -1,6 +1,7 @@
 #include "ac3/core/eac3_tools.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -20,6 +21,10 @@
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/window.hpp"
 #include "ac3/internal/profiling.hpp"
+#include "eac3_tools_fixed.hpp"
+#include "fft_kernel.hpp"
+#include "fixed32.hpp"
+#include "mdct_fixed.hpp"
 
 namespace ac3::eac3 {
 
@@ -589,6 +594,30 @@ struct EcplTables<float> {
     }
 };
 
+// The fixed-point tier's copies of the same four tables, narrowed from the
+// same double ones (planning/arithmetic-tiers.md). Every entry is at most one
+// in magnitude, so the format holds them with the whole of its fraction.
+template <>
+struct EcplTables<internal::Fixed32> {
+    std::array<internal::Fixed32, 512> window{};
+    std::array<internal::Fixed32, 512> cos3{};
+    std::array<internal::Fixed32, 512> sin3{};
+    std::array<internal::Fixed32, 256> y{};
+
+    EcplTables() {
+        const auto& xcos3 = xcos3_table();
+        for (std::size_t i = 0; i < 512; ++i) {
+            window[i] = internal::Fixed32{kAnalysisWindow[i]};
+            cos3[i] = internal::Fixed32{xcos3.cos[i]};
+            sin3[i] = internal::Fixed32{xcos3.sin[i]};
+        }
+        const auto& y_table = ecpl_y().value;
+        for (std::size_t m = 0; m < 256; ++m) {
+            y[m] = internal::Fixed32{y_table[m]};
+        }
+    }
+};
+
 template <typename Scalar>
 struct EcplSpectrumScratch : EcplTables<Scalar> {
     std::array<Scalar, 512> x_prev{};
@@ -793,7 +822,202 @@ void ecpl_channel_spectrum_impl(std::span<const Scalar, 256> prev_mant,
     }
 }
 
+// --- the fixed-point tier (planning/arithmetic-tiers.md, Phase C) ----------
+//
+// Separate bodies rather than branches inside the templates above, for two
+// reasons. The arithmetic differs in kind: Q7.24 is an absolute format, so
+// every stage below carries an exponent the floating forms have no need of
+// (src/forge/src/decoder/block_norm.hpp says why the decoder's store does the
+// same). And leaving the templates untouched is what guarantees the double
+// and float paths are the functions they were - nothing here can change a bit
+// of either.
+//
+// The exponent convention is the decoder's: a stored value v under an
+// exponent n stands for v * 2^-n. Each function takes the exponents of what
+// it is given and reports the exponent of what it produces.
+
 }  // namespace
+
+namespace {
+
+using internal::Fixed32;
+
+// One past the highest set bit of a magnitude, as block_norm.hpp's raw_width
+// is for a stored value.
+[[nodiscard]] int width64(std::int64_t magnitude) {
+    return magnitude <= 0 ? 0 : 64 - std::countl_zero(static_cast<std::uint64_t>(magnitude));
+}
+
+// The 512-point DFT in the tier, for the one caller that needs it, with block
+// floating point across its stages.
+//
+// The permutation, the tables and the butterflies are fft.cpp's dft512's -
+// the same shared kernel at this scalar, one stage at a time so that
+// something can happen between them. What differs is where the scaling goes.
+// An unscaled 512-point transform can multiply a value by 512 and this format
+// holds 128, so a fixed-point transform has to shed bits somewhere; taking
+// them off the input costs the whole spectrum three bits of precision (the
+// enhanced coupling stream measured 109 dB against the double decode that
+// way, and 116 with the input at full scale), and taking two off every stage
+// costs more still on the stages that did not need it.
+//
+// So a stage sheds bits only when the next one could otherwise leave the
+// format, found by the width of its own peak, and what it shed is carried in
+// an exponent instead. The spec's own 1/N goes the same way: it is nine bits
+// of exponent, not nine bits taken out of the values. What the caller gets
+// back is the shift to add to its own exponent - nine less whatever the
+// stages already took - and values that kept every bit the format has.
+//
+// The ceiling is 2^28 of raw, sixteen in value: a radix-4 stage multiplies by
+// at most four, so a stage entered at sixteen leaves at sixty-four and the
+// format holds a hundred and twenty-eight.
+[[nodiscard]] int dft512_fixed(std::span<const Fixed32, 512> real_in,
+                               std::span<const Fixed32, 512> imag_in,
+                               std::span<Fixed32, 512> real_out,
+                               std::span<Fixed32, 512> imag_out) {
+    static const internal::FftTables<512, Fixed32> tables;
+    for (std::size_t n = 0; n < 512; ++n) {
+        real_out[tables.bitrev[n]] = real_in[n];
+        imag_out[tables.bitrev[n]] = imag_in[n];
+    }
+    constexpr int kStageCeiling = Fixed32::kFractionBits + 4;
+    const auto shed = [&]() {
+        std::int32_t peak = 0;
+        for (std::size_t k = 0; k < 512; ++k) {
+            const std::int32_t re = real_out[k].raw < 0 ? -real_out[k].raw : real_out[k].raw;
+            const std::int32_t im = imag_out[k].raw < 0 ? -imag_out[k].raw : imag_out[k].raw;
+            peak = std::max({peak, re, im});
+        }
+        const int excess = width64(peak) - kStageCeiling;
+        if (excess <= 0) {
+            return 0;
+        }
+        for (std::size_t k = 0; k < 512; ++k) {
+            real_out[k] = real_out[k].scaled_by_pow2(-excess);
+            imag_out[k] = imag_out[k].scaled_by_pow2(-excess);
+        }
+        return excess;
+    };
+    int applied = 0;
+    internal::fft_radix4_stage<512, 4, Fixed32, Fixed32>(tables, real_out, imag_out);
+    applied += shed();
+    internal::fft_radix4_stage<512, 16, Fixed32, Fixed32>(tables, real_out, imag_out);
+    applied += shed();
+    internal::fft_radix4_stage<512, 64, Fixed32, Fixed32>(tables, real_out, imag_out);
+    applied += shed();
+    internal::fft_radix4_stage<512, 256, Fixed32, Fixed32>(tables, real_out, imag_out);
+    applied += shed();
+    internal::fft_radix2_final_stage<512, Fixed32, Fixed32>(tables, real_out, imag_out);
+    // The last stage needs no ceiling of its own - nothing follows it - but
+    // what it did to the magnitude still belongs in the exponent.
+    applied += shed();
+    // 1/N is nine bits; the stages have already taken `applied` of them.
+    return 9 - applied;
+}
+
+// Shift `values` so its largest magnitude sits at `target` bits, and report
+// how far it moved - positive where the values grew, so the exponent grows
+// with them. An all-zero range keeps the exponent it had.
+[[nodiscard]] int normalise_to(std::span<std::int64_t> values, int target) {
+    std::int64_t peak = 0;
+    for (const std::int64_t v : values) {
+        peak = std::max(peak, v < 0 ? -v : v);
+    }
+    if (peak == 0) {
+        return 0;
+    }
+    const int shift = target - width64(peak);
+    if (shift > 0) {
+        for (std::int64_t& v : values) {
+            v <<= shift;
+        }
+    } else if (shift < 0) {
+        for (std::int64_t& v : values) {
+            v >>= -shift;
+        }
+    }
+    return shift;
+}
+
+}  // namespace
+
+void ecpl_channel_spectrum_fixed(std::span<const Fixed32, 256> prev_mant, int prev_norm,
+                                 std::span<const Fixed32, 256> curr_mant, int curr_norm,
+                                 std::span<const Fixed32, 256> next_mant, int next_norm,
+                                 std::span<Fixed32, 256> real_out,
+                                 std::span<Fixed32, 256> imag_out, int& out_norm) {
+    AC3_ZONE_SCOPED_N("ecpl_channel_spectrum");
+    auto& s = ecpl_spectrum_scratch<Fixed32>();
+
+    // Step 1: the three normative inverses, in the tier's own transform
+    // (mdct_fixed.hpp). Each block's coefficients meet that transform's
+    // precondition by construction - the decoder stores them under an
+    // exponent that puts the largest below one half - and each output carries
+    // its own block's exponent, a linear transform having changed no scale.
+    internal::imdct512_windowed_fixed(prev_mant, s.x_prev);
+    internal::imdct512_windowed_fixed(curr_mant, s.x_curr);
+    internal::imdct512_windowed_fixed(next_mant, s.x_next);
+
+    // Step 2: the overlap, in 64 bits and at one exponent. The three blocks
+    // arrive under three, so they are aligned to the SMALLEST - the loudest
+    // block's scale, the one with no bits to give up - and summed there. 64
+    // bits because the sum of two of this transform's outputs can leave the
+    // format where neither of them does.
+    const int base = std::min({prev_norm, curr_norm, next_norm});
+    const auto aligned = [](Fixed32 v, int from, int to) {
+        const int shift = from - to;  // never negative: `to` is the smallest
+        return shift >= 63 ? std::int64_t{0} : static_cast<std::int64_t>(v.raw) >> shift;
+    };
+    std::array<std::int64_t, 512> wide{};
+    for (std::size_t n = 0; n < 256; ++n) {
+        wide[n] =
+            aligned(s.x_prev[n + 256], prev_norm, base) + aligned(s.x_curr[n], curr_norm, base);
+        wide[n + 256] =
+            aligned(s.x_curr[n + 256], curr_norm, base) + aligned(s.x_next[n], next_norm, base);
+    }
+
+    // Normalised to the top of the format, and back into it. The window and
+    // the twiddle below only shrink what they multiply, and the transform
+    // sheds its own bits as it goes (dft512_fixed), so nothing here has to
+    // leave headroom for either.
+    int norm = base + normalise_to(wide, Fixed32::kFractionBits);
+    for (std::size_t n = 0; n < 512; ++n) {
+        s.pcm[n] = Fixed32::from_raw(static_cast<std::int32_t>(wide[n]));
+    }
+
+    // Step 3: the window and the xcos3/xsin3 twiddle, as the floating forms
+    // do them and from the same tables narrowed once (EcplTables above).
+    for (std::size_t n = 0; n < 256; ++n) {
+        const std::size_t n2 = n + 256;
+        const Fixed32 first = s.pcm[n] * s.window[n];
+        const Fixed32 second = s.pcm[n2] * s.window[255 - n];
+        s.pcm_real[n] = first * s.cos3[n];
+        s.pcm_imag[n] = first * s.sin3[n];
+        s.pcm_real[n2] = second * s.cos3[n2];
+        s.pcm_imag[n2] = second * s.sin3[n2];
+    }
+
+    // Step 4: the transform, which reports what its own scaling did to the
+    // exponent, and then the exponent the caller reconstructs under. A
+    // spectrum whose peak sits below the top of the format - the ordinary
+    // case, an audio block's bins being nothing like uniform - has room left
+    // over; recovering it here, once over the 256 bins anything downstream
+    // reads, is a pass and a shift for whatever it comes to.
+    norm += dft512_fixed(s.pcm_real, s.pcm_imag, s.zr, s.zi);
+    std::int64_t peak = 0;
+    for (std::size_t k = 0; k < 256; ++k) {
+        const auto re = static_cast<std::int64_t>(s.zr[k].raw);
+        const auto im = static_cast<std::int64_t>(s.zi[k].raw);
+        peak = std::max({peak, re < 0 ? -re : re, im < 0 ? -im : im});
+    }
+    const int recovered = peak == 0 ? 0 : (Fixed32::kFractionBits - 1) - width64(peak);
+    norm += recovered;
+    for (std::size_t k = 0; k < 256; ++k) {
+        real_out[k] = s.zr[k].scaled_by_pow2(recovered);
+        imag_out[k] = s.zi[k].scaled_by_pow2(recovered);
+    }
+    out_norm = norm;
+}
 
 void release_ecpl_scratch() {
     if (ecpl_scratch_ever_built<double>()) {
@@ -801,6 +1025,9 @@ void release_ecpl_scratch() {
     }
     if (ecpl_scratch_ever_built<float>()) {
         ecpl_spectrum_scratch_slot<float>().reset();
+    }
+    if (ecpl_scratch_ever_built<internal::Fixed32>()) {
+        ecpl_spectrum_scratch_slot<internal::Fixed32>().reset();
     }
 }
 
@@ -1125,6 +1352,52 @@ void ecpl_channel_coefficients(std::span<const float, 256> real_in,
                                std::span<float, 256> mant_out) {
     ecpl_channel_coefficients_impl<float>(real_in, imag_in, amp_bin, angle_bin, begin_mant,
                                           end_mant, mant_out);
+}
+
+void ecpl_amplitudes_fixed(std::span<const int> ecplamp, std::span<const int> ecplchaos,
+                           bool ecpltrans, bool is_first_channel, int begin_subbnd,
+                           int end_subbnd, std::span<const bool> structure,
+                           std::span<Fixed32> amp_out) {
+    ecpl_amplitudes_impl<Fixed32>(ecplamp, ecplchaos, ecpltrans, is_first_channel, begin_subbnd,
+                                  end_subbnd, structure, amp_out);
+}
+
+void ecpl_angles_fixed(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
+                       bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
+                       std::span<const bool> structure, EcplNoise& noise,
+                       std::span<Fixed32> angle_out, bool interpolate) {
+    ecpl_angles_impl<Fixed32>(channel, ecplangle, ecplchaos, ecpltrans, is_first_channel,
+                              begin_subbnd, end_subbnd, structure, noise, angle_out, interpolate);
+}
+
+void ecpl_channel_coefficients_fixed(std::span<const Fixed32, 256> real_in,
+                                     std::span<const Fixed32, 256> imag_in,
+                                     std::span<const Fixed32> amp_bin,
+                                     std::span<const Fixed32> angle_bin, int begin_mant,
+                                     int end_mant, int out_shift,
+                                     std::span<Fixed32, 256> mant_out) {
+    // The same sum as the floating forms', from the same y (the tier's
+    // narrowed copy) and with the tier's own sine and cosine
+    // (eac3_tools_fixed.hpp). `out_shift` is the difference between the
+    // spectrum's exponent and the one the receiving channel is stored under;
+    // applying it here is a shift per bin rather than a pass of its own.
+    const auto& y = ecpl_spectrum_scratch<Fixed32>().y;
+    for (int bin = begin_mant; bin < end_mant; ++bin) {
+        const auto idx = static_cast<std::size_t>(bin - begin_mant);
+        const Fixed32 amp = amp_bin[idx];
+        Fixed32 c{};
+        Fixed32 s{};
+        sincos_pi(angle_bin[idx], s, c);
+        const Fixed32 zr = real_in[static_cast<std::size_t>(bin)];
+        const Fixed32 zi = imag_in[static_cast<std::size_t>(bin)];
+        const Fixed32 zr_ch = zr * amp * c - zi * amp * s;
+        const Fixed32 zi_ch = zi * amp * c + zr * amp * s;
+        // N/2 - 1 - bin, N = 512.
+        const auto mirror = static_cast<std::size_t>(255 - bin);
+        const Fixed32 value =
+            Fixed32{-2} * (y[static_cast<std::size_t>(bin)] * zr_ch + y[mirror] * zi_ch);
+        mant_out[static_cast<std::size_t>(bin)] = value.scaled_by_pow2(out_shift);
+    }
 }
 
 }  // namespace ac3::eac3

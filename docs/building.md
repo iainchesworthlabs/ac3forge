@@ -508,6 +508,54 @@ Enhanced coupling's reconstruction followed in a second pass - its routines
 are shared with the encoder, so they exist in both scalars now, the double forms being the
 encoder's - and with it the last of the decode path is in `decode_scalar_t`.
 
+**A fixed-point decode path, for parts with no FPU.** The third value of the same axis,
+`-DAC3FORGE_DECODE_SCALAR=fixed`, carries `decode_scalar_t` as `ac3::internal::Fixed32`
+(`src/forge/src/core/fixed32.hpp`): a signed 32-bit integer read as Q7.24, products through 64
+bits and rounded once, sums wrapping, conversions saturating. It is the tier for an ESP32-C3 or
+a Cortex-M3, where even `float` is a compiled subroutine, and the minimum-footprint profile
+honours it (every other value of the option is `float` there). What the tier does, in the order
+the decode runs: dequantisation, dither, coordinates and decoupling in `Fixed32`; a coupling
+or spectral extension coordinate kept as its mantissa and its power of two, so the product with
+a coefficient is a shift; the §7.9.4 inverse pair as its own kernel
+(`src/forge/src/core/mdct_fixed.hpp` - the same pre-twiddle, N/4-point FFT, post-twiddle and window as the fast
+branch, with no scaling inside the transform: the input's bound gives the seven bits the FFT can
+grow by); the overlap-add in 64 bits with one float conversion at the end; and Annex E's own
+tools - the adaptive hybrid transform's dequantisers and six-point inverse, the spectral
+extension notch, and enhanced coupling's spectrum, amplitudes, angles and reconstruction
+(`src/forge/src/core/eac3_tools_fixed.hpp` and the bodies beside the floating ones in
+`eac3_tools.cpp`). Enhanced coupling's 512-point DFT is the one place the tier does scale inside
+a transform: an unscaled one can grow by nine bits where the format has seven, so its stages
+shed bits only where the next would otherwise overflow and what they shed is carried in the
+exponent, the spec's own 1/N with it. On the Cortex-M3 leg that row is
+10.1 M instructions against the float tier's 28.9 M.
+
+What is not in the tier: JOC's object reconstruction, which runs in `float` in every build of
+this library including the double one (`recon_scalar_t`), so it is not a seam of this tier's at
+all - what the tier does with it is convert each matrix coefficient it reads.
+
+What makes the precision is not the word but the exponent. Q7.24 is an absolute format - a
+raw unit is 2^-24 of full scale wherever a value sits - and stored directly, a quiet dense
+channel came out 99 dB from the double decode and a coupled one 88, the mantissas' bits lost at
+dequantisation. So each stream's coefficients are stored under a block exponent
+(`src/forge/src/decoder/block_norm.hpp`): scaled up so the largest sits just below one half,
+which is the transform's precondition, and every mantissa keeps all of its bits. The exponent
+travels with the block - a tool that needs more room lowers it where it runs, an AHT stream's
+is exact from its reconstructed peaks - and the overlap-add aligns the two halves it sums before
+the conversion applies the power of two exactly. Measured with
+`tools/checks/check_decode_scalar_snr.py` on 2026-09-10: 121, 122 and 122 dB on the worst
+channel of the three gold streams, and no channel of the thirteen checked-in third-party streams
+(Dolby Encoding Engine and FFmpeg, AC-3 and E-AC-3, with coupling, spectral extension and the
+AHT) below 111 dB. The gold-reference gate passes with the fixed CLI at the same floors as the
+double one, and its encoder - `encode_scalar_t` is a separate axis - writes the pinned bitstreams
+byte for byte. The tier's own gate is a different kind: integer arithmetic is the same on every
+machine, so the bare-metal probe's `<codec>.pcm_hash` lines are identical on the x86 host and
+the Cortex-M3 leg, and CI holds both to the pinned ones in
+`tests/golden/fixed-probe-pcm-hashes.json` (`tools/checks/check_probe_hashes.py`). The
+Catch2 suite is not one of its gates: two of the encoder's mirror self-checks compare the
+encoder's model against a real decode at a tolerance set for the double decoder, and fail under
+the fixed one. The plan, the phases and what each measured are in
+`planning/arithmetic-tiers.md`.
+
 **And the encoders' analysis front end, on its own axis.**
 `src/forge/src/internal/scalar/encode/{float64,float32}/` carries `encode_scalar_t`: the type
 the two encoders run in, from transient detection and the forward transform through the

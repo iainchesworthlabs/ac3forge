@@ -986,6 +986,67 @@ agree to the instruction — so a change that adds one per cent of work to a fix
 run's own lines, and the ceilings above hold the same headroom the other gates do. The
 [ESP32-S3 page](platforms/esp32.md#other-esp32-variants) reads the ESP32-C3's prospects off it.
 
+### Instructions per frame, fixed-point tier
+
+The same clock on the same leg with the decoder built as its fixed-point tier
+(`tools/checks/run_baremetal_probe.sh --scalar=fixed --icount`,
+`planning/arithmetic-tiers.md`), measured 2026-09-10. Integer arithmetic where the
+row above it is software floating point: a Q7.24 multiply is one `smull` and a
+shift where a soft-float one is a call. The ceilings are `ICOUNT_CEILING_FIXED`
+in the runner, with the same headroom rule as every other gate here.
+
+| Fixture | Fixed tier | Float tier | Ratio | Ceiling |
+|---|---:|---:|---:|---:|
+| `ac3_mono` | 615,000 | 1,625,000 | 0.38x | 1,000,000 |
+| `ac3_stereo` | 1,246,000 | 3,548,000 | 0.35x | 2,000,000 |
+| `eac3_stereo` | 1,818,000 | 4,851,000 | 0.37x | 2,500,000 |
+| `eac3_atmos_bed` | 3,540,000 | 8,940,000 | 0.40x | 4,500,000 |
+| `ac3` 5.1 | 3,807,000 | 10,224,000 | 0.37x | 5,000,000 |
+| `ac3_fold` | 5,327,000 | 10,782,000 | 0.49x | 7,000,000 |
+| `eac3` 5.1 | 4,827,000 | 12,928,000 | 0.37x | 6,500,000 |
+| `eac3_fold` | 8,053,000 | 14,280,000 | 0.56x | 10,500,000 |
+| `eac3_atmos_objects` | 25,093,000 | 28,213,000 | 0.89x | 31,500,000 |
+| `eac3_atmos_render` | 25,525,000 | 28,938,000 | 0.88x | 32,000,000 |
+| `eac3_ecpl` | 10,088,000 | 28,861,000 | 0.35x | 13,000,000 |
+| `eac3_714` | 12,092,000 | 33,793,000 | 0.36x | 15,500,000 |
+
+The Annex E rows were measured twice. The tier reached them in two steps: the
+store and the transform first, with the adaptive hybrid transform, enhanced
+coupling and the spectral extension notch still running on `float` copies
+converted at the seam, and those three in the tier afterwards. What that
+second step moved:
+
+| Fixture | Tools through float | Tools in the tier |
+|---|---:|---:|
+| `eac3_ecpl` | 24,272,000 | 10,088,000 |
+| `eac3_714` | 17,650,000 | 12,092,000 |
+| `eac3` 5.1 | 6,639,000 | 4,827,000 |
+| `eac3_fold` | 9,870,000 | 8,053,000 |
+| `eac3_stereo` | 2,502,000 | 1,818,000 |
+
+Enhanced coupling is the row it was written for: three inverse transforms, a
+512-point DFT and a per-bin complex reconstruction per coupled channel per
+block, all of it software floating point before and integer after.
+
+The two object rows moved by neither step, and that is not the tier's doing.
+JOC's reconstruction runs in `float` in every build of this library, the
+double one included (`recon_scalar_t` in `ac3/oba/joc.hpp`), so an object row
+is a float transform sandwich whatever the decoder's own scalar is; the tier's
+only contact with it is one conversion per matrix coefficient read. Bringing
+it in would be a fixed forward MDCT and a fixed QMF path - a separate piece of
+work with its own quality question, and one that would change nothing for the
+other two tiers.
+
+The image is 353,413 bytes against the float tier's 338,793 - the fixed
+transform's tables and kernel beside the float ones the object path still
+needs - and the peak heap 238,094 on this leg. The `pcm_hash` lines
+are identical on this leg and on the x86 host for all twelve fixtures and are
+pinned in `tests/golden/fixed-probe-pcm-hashes.json`
+(`tools/checks/check_probe_hashes.py`); with the scalar's conversions from
+`float` and `double` written as floating expressions the two legs had differed
+by a raw unit on a few AC-3 samples, and writing them on the value's bits
+(`fixed32.hpp`) is what made them agree.
+
 ### Instructions per encoded frame
 
 The same clock on the encode probe, `tools/checks/run_baremetal_probe.sh --encoder --icount`,

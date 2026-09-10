@@ -106,6 +106,18 @@ else()
     target_sources(ac3probe PRIVATE platform/host/clock.cpp)
 endif()
 
+# What the part can give the decode, in bytes, or 0 for no budget. A fixture
+# whose measured peak is above it is skipped and named rather than aborting
+# the run on an allocation nobody can satisfy - see probe.cpp's over_budget
+# and the ESP32-C3 app, which is the shape that needs one. Both hosted
+# builds and the mps2-an385 run every fixture, so both default to 0; a cache
+# variable rather than a conditional in probe.cpp, per the platform-tree
+# rule. Raising a target's budget is a measurement, not an edit.
+set(AC3FORGE_PROBE_HEAP_BUDGET_BYTES "0" CACHE STRING
+    "Heap a fixture may peak at before ac3probe skips it, in bytes; 0 means no budget")
+target_compile_definitions(ac3probe PRIVATE
+    AC3FORGE_PROBE_HEAP_BUDGET_BYTES=${AC3FORGE_PROBE_HEAP_BUDGET_BYTES})
+
 target_link_libraries(ac3probe PRIVATE ac3::forge_minimal ac3::warnings)
 
 # fixture.hpp sits beside probe.cpp; the generated ac3/export.hpp comes with
