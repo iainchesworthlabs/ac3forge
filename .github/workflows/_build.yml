@@ -4032,14 +4032,20 @@ jobs:
       # instructions, deterministically, and the runner gates each fixture's
       # count against docs/performance-trend.md's instructions-per-frame table.
       - name: Instructions per frame under QEMU -icount
-        run: ./tools/checks/run_baremetal_probe.sh --icount | tee "${{ runner.temp }}/icount.txt"
+        # Into the build directory, not ${{ runner.temp }}: on this container that
+        # expands to a host path tee cannot create ("No such file or directory"),
+        # and since tee is last in the pipeline under `sh -e` its failure fails the
+        # step - after the probe has already printed "pass", which makes it read as
+        # a probe regression that it is not. Same reason, same fix as build-esp32s3's
+        # AC3FORGE_ESP32S3_SUMMARY above.
+        run: ./tools/checks/run_baremetal_probe.sh --icount | tee "build/config-arm-none-eabi-minimal/icount.txt"
 
       # The encode direction on the same terms. Both encoders are double
       # throughout, so on this FPU-less leg every operation is a software call
       # and the counts are several times the decode rows' - the figure an
       # integrator sizing an encoder for a part without an FPU actually needs.
       - name: Instructions per ENCODED frame under QEMU -icount
-        run: ./tools/checks/run_baremetal_probe.sh --encoder --icount | tee "${{ runner.temp }}/icount-encode.txt"
+        run: ./tools/checks/run_baremetal_probe.sh --encoder --icount | tee "build/config-arm-none-eabi-minimal/icount-encode.txt"
 
       # The footprint table in docs/performance-trend.md is written by hand
       # from these numbers, so keep the run's own copy: a table nobody can
@@ -4049,22 +4055,22 @@ jobs:
         run: |
           set -eu
           python3 tools/checks/footprint_report.py             --probe "${{ runner.temp }}/footprint.txt"             --elf build/config-arm-none-eabi-minimal/bin/ac3probe             --map build/config-arm-none-eabi-minimal/apps/baremetal/ac3probe.map             --markdown >> "$GITHUB_STEP_SUMMARY"
-          if [ -f "${{ runner.temp }}/icount.txt" ]; then
+          if [ -f "build/config-arm-none-eabi-minimal/icount.txt" ]; then
             {
               echo '### Instructions per frame (QEMU -icount)'
               echo
               echo '| Fixture | Instructions per frame |'
               echo '| --- | --- |'
-              sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "${{ runner.temp }}/icount.txt"
+              sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "build/config-arm-none-eabi-minimal/icount.txt"
             } >> "$GITHUB_STEP_SUMMARY"
           fi
-          if [ -f "${{ runner.temp }}/icount-encode.txt" ]; then
+          if [ -f "build/config-arm-none-eabi-minimal/icount-encode.txt" ]; then
             {
               echo '### Instructions per encoded frame (QEMU -icount)'
               echo
               echo '| Fixture | Instructions per frame |'
               echo '| --- | --- |'
-              sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "${{ runner.temp }}/icount-encode.txt"
+              sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "build/config-arm-none-eabi-minimal/icount-encode.txt"
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 

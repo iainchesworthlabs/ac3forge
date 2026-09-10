@@ -119,14 +119,14 @@ def derive_714(source: pathlib.Path, destination: pathlib.Path, frames: int) -> 
     left, right, centre, lfe, ls, rs = (samples[i::6] for i in range(6))
 
     def at(channel: tuple[int, ...], gain: float) -> list[int]:
-        return [int(round(value * gain)) for value in channel]
+        return [round(value * gain) for value in channel]
 
     planar = [list(left), list(right), list(centre), list(lfe),  # FL FR FC LFE
               at(ls, 0.6), at(rs, 0.6),                            # BL BR (Lrs, Rrs)
               list(ls), list(rs),                                  # SL SR (Ls, Rs)
               at(left, 0.5), at(right, 0.5),                       # TFL TFR (Vhl, Vhr)
               at(ls, 0.4), at(rs, 0.4)]                            # TBL TBR (Lts, Rts)
-    interleaved = [value for frame in zip(*planar) for value in frame]
+    interleaved = [value for frame in zip(*planar, strict=True) for value in frame]
     with wave.open(str(destination), "wb") as dst:
         dst.setnchannels(12)
         dst.setsampwidth(2)
@@ -182,7 +182,8 @@ LAYOUTS = {
         cli_name="714",
         source="reference_51.wav",
         wav_position=(0, 2, 1, 6, 7, 4, 5, 8, 9, 10, 11, 3),
-        coded_order="Table E2.5: L, C, R, Ls, Rs, Lrs, Rrs, Vhl, Vhr, Lts, Rts, LFE (derived from the 5.1 file, see derive_714)",
+        coded_order=("Table E2.5: L, C, R, Ls, Rs, Lrs, Rrs, Vhl, Vhr, Lts, Rts, LFE"
+                     " (derived from the 5.1 file, see derive_714)"),
         derive=derive_714,
     ),
 }
@@ -264,7 +265,9 @@ STREAMS = (
     Stream(
         cxx="Eac3AtmosHeight",
         key="eac3_atmos_height",
-        label="E-AC-3 Atmos 448 kbit/s, the objects source with three objects raised to the ceiling and one half way (atmos_height_scene.txt) - the render row's stream; levels are the BED's",
+        label=("E-AC-3 Atmos 448 kbit/s, the objects source with three objects raised to"
+               " the ceiling and one half way (atmos_height_scene.txt) - the render"
+               " row's stream; levels are the BED's"),
         layout="objects",
         # The scene file is named relative to the repository; see run_stream.
         encode=("atmos-encode", "448", "5", "tools/generators/atmos_height_scene.txt"),
@@ -279,7 +282,8 @@ STREAMS = (
     Stream(
         cxx="Eac3714",
         key="eac3_714",
-        label="E-AC-3 7.1.4 640 kbit/s, tools=all: a 5.1 bed and two dependent substreams (k71Rear, kTopQuad)",
+        label=("E-AC-3 7.1.4 640 kbit/s, tools=all: a 5.1 bed and two dependent"
+               " substreams (k71Rear, kTopQuad)"),
         layout="714",
         encode=("eac3-encode", "640", "all", "714"),
     ),
@@ -437,7 +441,9 @@ def main() -> int:
                 suffix = "ac3" if source_stream.encode[0] == "encode" else "ec3"
                 coded = work / f"{stream.reuse}.{suffix}"
                 if not coded.exists():
-                    raise SystemExit(f"{stream.key}: reuses {stream.reuse}, which has not been encoded yet")
+                    raise SystemExit(
+                        f"{stream.key}: reuses {stream.reuse}, "
+                        "which has not been encoded yet")
                 run([str(ac3cli), "decode", str(coded), str(decoded), *stream.decode])
                 layout = LAYOUTS[stream.decoded_layout or stream.layout]
                 streams.append((stream, None, to_coded_order(layout, channel_rms(decoded))))
@@ -490,7 +496,8 @@ def main() -> int:
             layout = LAYOUTS[stream.decoded_layout or stream.layout]
             body += [
                 f"// {stream.label}: k{by_key_cxx(stream.reuse)}Stream decoded with",
-                f"// `ac3cli decode {' '.join(stream.decode)}`, {FRAMES} frames. No bitstream of its own.",
+                f"// `ac3cli decode {' '.join(stream.decode)}`, {FRAMES} frames."
+                " No bitstream of its own.",
                 "// Per-channel RMS x 1e6, in the decoder's own output order",
                 f"// ({layout.coded_order}) - see LAYOUTS in the generator.",
                 f"inline constexpr std::array<std::int32_t, {len(rms)}> k{stream.cxx}Rms{{{{",
