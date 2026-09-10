@@ -1,15 +1,17 @@
 # The ESP32 player's web UI
 
-!!! note "Status as of 2026-09-11: built and tested on the host and under QEMU; not run on a board"
+!!! note "Status as of 2026-09-11: built, tested on the host and under QEMU, and its requests measured on a board"
     The first pages the ESP32 player serves from its own firmware: one page that shows what the
     player is doing and drives it, served by `ac3forge::Control` beside the REST routes it
     already has, and calling only those routes. The design below was committed before the code;
     the same pull request built it as designed, with the tests and the CI that run them, and
     this page now records what the measurements said. Under QEMU the two new routes hold 76 bytes
     of internal heap and the page and its script are 16,227 bytes of a 16,384-byte flash budget.
-    The per-request heap targets were missed, by lwIP's buffers rather than by the page's own
-    code, and the measuring found a fault that was there before the page: `PUT /layout` overflowed
-    the server task's stack. Both are in [What the measurements found](#what-the-measurements-found).
+    The per-request heap targets were missed there, by lwIP's buffers rather than by the page's
+    own code, and the measuring found a fault that was there before the page: `PUT /layout`
+    overflowed the server task's stack. On a board playing over WiFi the page's requests did not
+    lower the least free internal heap, and the larger stack held. [Budget](#budget) and
+    [What the measurements found](#what-the-measurements-found) have the figures.
 
     Shape follows [the player plan](esp32-player.md): what exists, what changes and why, a
     budget with how each figure is measured, [Decisions](#decisions) with a recommendation and
@@ -223,7 +225,7 @@ mark after each handler, then reverted.
 
 | Item | Budget | Measured |
 |---|---|---|
-| Flash: the page and its script together, as stored | 16,384 bytes | 16,227 (5,812 + 10,415); a host test fails above the budget |
+| Flash: the page and its script together, as stored | 16,384 bytes | 16,227 (5,808 + 10,419); a host test fails above the budget |
 | Internal heap held once the server is up: two more route registrations and handler slots | 256 bytes | 76, from the `heap:` line: 290,428 free against the base's 290,504 |
 | Internal heap held while a browser has the page open | - | 376, the keep-alive connection |
 | Internal heap at the peak of one `GET /status` | 3,072 bytes | 4,700 to 7,700 from the page's keep-alive connection; 5,100 from `curl`, a new connection each time |
@@ -244,13 +246,34 @@ have. A page load does add one: three responses at once, two of them several kil
 several send windows fill together. It happens once per viewer; the page then costs 376 bytes held
 and a poll a second.
 
-The QEMU figures are a ceiling for the board, where they are not measured. QEMU has no PSRAM, so
-there every one of those buffers is internal RAM. On the board's network shape lwIP and WiFi try
-PSRAM first (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`), and how much of a page load still lands in
-internal RAM, against the 14 to 16 KB free while playing, is the measurement the board owes
-([decision 13](#decisions)). A per-socket send-buffer cap would lower the peak, and IDF v6.1's
-lwIP does not offer one: its Kconfig help names a `TCP_SNDBUF` socket option that its sources do
-not define.
+The QEMU figures are a ceiling for the board. QEMU has no PSRAM, so there every one of those
+buffers is internal RAM; on the board's network shape lwIP and WiFi try PSRAM first
+(`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`). A per-socket send-buffer cap would lower the QEMU peak,
+and IDF v6.1's lwIP does not offer one: its Kconfig help names a `TCP_SNDBUF` socket option that
+its sources do not define.
+
+**On the board.** Measured on 2026-09-11 on the second DevKitC-1 (an ESP32-S3 rev v0.2 with 8 MB
+of octal PSRAM), with this branch's image in the network shape
+(`sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram`, the `http` source over WiFi, the control
+surface on port 80, progress lines), playing the E-AC-3 demo looped to 64 seconds from a PC on the
+LAN. A 10 ms timer took the least free internal heap in each second; a dip shorter than 10 ms can
+escape it.
+
+| | Measured |
+|---|---|
+| The `heap:` line as the play starts, the server up | 170,583 free, largest block 98,304; 172,775 with the 4,096-byte stack |
+| Least free internal heap in any second of the play | 13,619 |
+| ...in the seconds with the page's requests: `GET /`, `GET /ui.js`, five `GET /status` a second apart, six `PUT /layout` and a `GET /layout` | 13,635 |
+| Free between the dips, which come every few seconds with or without requests | about 18,500 |
+| Largest free internal block, the whole play | 6,144 |
+| `GET /` (5,808 bytes), `GET /ui.js` (10,419), `GET /status` (544) | 0.19 s, 0.08 s, 0.09 to 0.16 s |
+| The play | 12,000 blocks written, no underrun, least headroom 3 ms of 64, `realtime_permille` 971, `result=pass` |
+
+The page's requests did not lower the least free internal heap: the dips come from the play and
+are the same without them, so on the board the network's buffers for a page load stay out of
+internal RAM. What the board adds is the largest free block, 6,144 bytes for the whole play: no
+single internal allocation larger than that can succeed while the player plays - no new task
+stack, no buffer - which bounds whatever this page, or the next one, might want to start.
 
 ## What the measurements found
 
@@ -266,8 +289,11 @@ not fit beside esp_http_server's own frames in 4,096; the overflow went past the
 without touching it, and the damage showed later. `Control::start` now takes the stack's size,
 6,144 bytes by default, documented beside the callbacks that run on it. That costs 2,048 bytes of
 internal RAM on every firmware that mounts Control, allocated when the server starts - which in
-the streaming example is before the player's tasks take theirs ([decision 12](#decisions)).
-`PUT /layout` had never run in CI: the HTTP step drives `/status`, `/volume`, `/play` and `/stop`.
+the streaming example is before the player's tasks take theirs ([decision 12](#decisions)). On
+a board playing over WiFi the `heap:` line reads 2,192 bytes lower than with the old stack, and
+six `PUT /layout` requests during the play left the least free internal heap at 13,635
+([Budget](#budget)). `PUT /layout` had never run in CI: the HTTP step drives `/status`,
+`/volume`, `/play` and `/stop`.
 The page's smoke test on the emulated board now calls it.
 
 **The page load's peak** is above, with the other heap figures.
@@ -349,10 +375,10 @@ run as root, so Playwright can install Chromium's system libraries).
 
 ## What cannot be verified
 
-- **The board's network shape.** QEMU's Ethernet is lighter than WiFi and QEMU has no PSRAM. The
-  heap figures above come from the emulator and are a ceiling for the board, not a measurement
-  of it; the page has not polled a board playing over WiFi in this work. The second board
-  belongs to another session.
+- **A long session on the board.** The board's figures come from the requests one page load and
+  five polls make, sent during one 64-second play. A page left open against a board through a
+  long play - Phase 1's ten minutes - has not been measured, and neither has the network shape
+  with a height layout, whose object reconstruction takes more of the same internal RAM.
 - **Other browsers.** CI runs Chromium. The page uses nothing newer than what current Firefox and
   Safari support, which is a statement about the code, not a test.
 - **Screen readers.** The structure is what the tests check; no screen reader is run.
@@ -430,8 +456,9 @@ run as root, so Playwright can install Chromium's system libraries).
     overflow for every owner, whose callbacks all run on that stack, and leaves 1,548 bytes above
     the deepest use measured. (b) costs no RAM and adds a reply path, up to 100 ms of latency and
     code in a file three other pull requests are changing; (c) doubles the margin for 2 KB more.
-    Cost of (a): 2,048 bytes of internal RAM, held from the moment the server starts. **Taken,
-    (a).**
+    Cost of (a): 2,048 bytes of internal RAM, held from the moment the server starts; 2,192 on the
+    board's `heap:` line. **Taken, (a)**: the board's play kept 13,619 bytes free at its lowest
+    with it.
 
 13. **A page load's peak on the board.** (a) **leave it, and measure it on the board's network
     shape**; (b) lower lwIP's default send buffer (`CONFIG_LWIP_TCP_SND_BUF_DEFAULT`, 5,760) on the
@@ -439,4 +466,7 @@ run as root, so Playwright can install Chromium's system libraries).
     connection. **Recommend (a)**: the QEMU figure is a ceiling that the board's PSRAM-first
     network buffers may not come near, and (b) and (c) change the device's TCP behaviour or the
     page's structure on the strength of an emulator. Cost: until the board is measured, a page
-    load while the board plays over WiFi has a margin nobody has seen.
+    load while the board plays over WiFi has a margin nobody has seen. **Answered by the board,
+    2026-09-11:** the page's requests left the least free internal heap where the play puts it,
+    13,635 against 13,619, so neither (b) nor (c) is needed. What the board showed instead is a
+    largest free internal block of 6,144 bytes throughout the play.

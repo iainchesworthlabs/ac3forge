@@ -871,7 +871,8 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   streaming example's layout handler parses the layout there: its deepest use was 4,596 bytes under
   QEMU. The stack's canary did not catch it, and the part panicked in FreeRTOS's list code in that
   request or a few after it, on the base branch as well as with the web page. `Control::start` takes
-  the stack's size, 6,144 bytes by default.
+  the stack's size, 6,144 bytes by default, which on a board playing over WiFi costs 2,192 bytes of
+  internal heap and left 13,619 free at the play's lowest.
 
 ### Changed
 

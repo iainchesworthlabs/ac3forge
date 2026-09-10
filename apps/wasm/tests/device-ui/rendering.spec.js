@@ -106,6 +106,19 @@ test('objects placed onto a height layout (a recorded payload, changed)', async 
     await expect(page.locator('#slots')).toHaveText('12');
 });
 
+test('a source still opening, before the play has figures of its own', async ({ page, stub }) => {
+    // A state of "opening", with the last play's figures cleared and no stream
+    // yet, as a firmware reports it while a new source opens.
+    const s = parsed('playing-eac3.json');
+    Object.assign(s, { state: 'opening', stream: null, frames: 0, us_per_frame: 0, ring_low: null, passes: 0 });
+    await show(page, stub, s);
+    await expect(page.locator('#state')).toHaveText('Opening');
+    await expect(page.locator('#reason')).toBeHidden();
+    await expect(page.locator('#codec')).toHaveText('Not known yet');
+    await expect(page.locator('#timing-note')).toHaveText('Nothing decoded yet.');
+    await expect(page.locator('#bar')).toBeHidden();
+});
+
 test('a stream not known yet', async ({ page, stub }) => {
     await show(page, stub, { ...parsed('playing-eac3.json'), stream: null });
     await expect(page.locator('#codec')).toHaveText('Not known yet');
