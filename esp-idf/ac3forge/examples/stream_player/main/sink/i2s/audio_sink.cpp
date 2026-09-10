@@ -152,6 +152,11 @@ int sink_slots() { return static_cast<int>(kSlots); }
 
 std::uint64_t sink_frames_written() { return g_model.writes(); }
 
+// The channel stays enabled from one play to the next and plays zeros once its
+// queue runs dry, so a new play has nothing to set up here: only the model
+// starts again. See audio_sink.hpp.
+void sink_begin_play() { g_model.restart(); }
+
 // What the DAC did with the samples is not visible from this side of the wire -
 // sink/capture/ is the one that checks the conversion, and it runs the same
 // interleave this does. What IS visible is whether the samples got there in
