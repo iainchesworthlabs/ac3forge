@@ -263,7 +263,7 @@ packaging/      vcpkg port, winget manifest, Conan recipe (staged, pending upstr
 docs/           the site source — see Documentation below
 ```
 
-The standards documents are not redistributed; `docs/spec/` is gitignored. See
+The standards documents are not redistributed; `spec/` is gitignored. See
 [docs/building.md](docs/building.md#the-standards-documents) if you need to re-run the table
 generators in `tools/`.
 

@@ -56,7 +56,7 @@ runnable the same way locally:
         and each is checked, since skipping the token meant none of the
         siblings ever was;
       - anything .gitignore covers, which is generated rather than stale:
-        docs/spec/'s standards documents, build/ outputs, the Android
+        spec/'s standards documents, build/ outputs, the Android
         signing-key asset a runner materialises, src/quarantine;
       - the tokens in FOREIGN_PATHS below, which are references into another
         project's source tree or into a subdirectory of this one, and are
