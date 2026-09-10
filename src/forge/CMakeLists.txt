@@ -154,26 +154,49 @@ set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
 # this one. Off by default; the root CMakeLists.txt refuses the combination of
 # this option with anything that would need the full library.
 # Appended to the generated ac3/export.hpp (both the shared library's and the
-# minimum-footprint archive's, below and in minimal.cmake): a template whose
-# instantiations the library exports needs a second macro. MSVC accepts
+# minimum-footprint archive's, below and in minimal.cmake): a class template
+# whose instantiations the library exports needs its own macros, because the
+# two compiler families put the attribute in different places. MSVC accepts
 # dllimport on an explicit-instantiation DECLARATION but refuses dllexport
-# there (C4910), so an `extern template class` line in a public header can
-# carry the import decoration for a consumer and nothing for the library's own
-# build, while the definition in the .cpp carries AC3FORGE_EXPORT. Generated
-# rather than written into the header itself because a conditional directive
-# in a source file is what tools/checks/check_platform_macros.ps1 forbids; this
-# one is the export header's own kind, not a platform branch.
+# there (C4910), so the `extern template class` line in a public header
+# carries the import decoration for a consumer and nothing for the library's
+# own build, and the definition in the .cpp carries the export. GCC and Clang
+# refuse a visibility attribute on that definition once an extern declaration
+# precedes it ("type attributes ignored after type is already defined") and
+# want it on the class template itself, where MSVC would read a dllexport on
+# every implicit instantiation. Generated rather than written into the header
+# because a conditional directive in a source file is what
+# tools/checks/check_platform_macros.ps1 forbids; this one is the export
+# header's own kind, not a platform branch.
 set(_ac3_export_custom_content [[
-/* Explicit-instantiation declarations: import for a consumer, plain for the
-   library's own build (MSVC C4910), see src/forge/CMakeLists.txt. */
+/* Class templates the library exports through explicit instantiations
+   (ac3/encoder/transient.hpp). Each compiler wants the attribute in a
+   different place, so three macros, one per place - see
+   src/forge/CMakeLists.txt for why this is generated rather than written.
+     AC3FORGE_TEMPLATE_CLASS       on the class template's definition
+     AC3FORGE_TEMPLATE_IMPORT      on `extern template class` declarations
+     AC3FORGE_TEMPLATE_INSTANTIATE on `template class` definitions
+   MSVC exports the instantiation definition and imports through the
+   declaration (C4910 forbids dllexport on `extern template`). GCC and Clang
+   take the visibility attribute on the class template itself, and reject it
+   on an instantiation that follows an extern declaration ("type attributes
+   ignored after type is already defined"). */
 #ifdef AC3FORGE_STATIC_DEFINE
+#  define AC3FORGE_TEMPLATE_CLASS
 #  define AC3FORGE_TEMPLATE_IMPORT
-#else
+#  define AC3FORGE_TEMPLATE_INSTANTIATE
+#elif defined(_MSC_VER)
+#  define AC3FORGE_TEMPLATE_CLASS
 #  ifdef AC3FORGE_BUILDING_SHARED
 #    define AC3FORGE_TEMPLATE_IMPORT
 #  else
 #    define AC3FORGE_TEMPLATE_IMPORT AC3FORGE_EXPORT
 #  endif
+#  define AC3FORGE_TEMPLATE_INSTANTIATE AC3FORGE_EXPORT
+#else
+#  define AC3FORGE_TEMPLATE_CLASS AC3FORGE_EXPORT
+#  define AC3FORGE_TEMPLATE_IMPORT
+#  define AC3FORGE_TEMPLATE_INSTANTIATE
 #endif
 ]])
 

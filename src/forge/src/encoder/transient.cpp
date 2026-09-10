@@ -139,7 +139,7 @@ bool BasicTransientDetector<Scalar>::detect(std::span<const float, 256> pcm) {
 // runs - the same operations in the same order the non-template class did,
 // so tests/golden/bitstream-hashes.json holds. The float one is the
 // minimum-footprint profile's (ac3/internal/encode_scalar.hpp).
-template class AC3FORGE_EXPORT BasicTransientDetector<double>;
-template class AC3FORGE_EXPORT BasicTransientDetector<float>;
+template class AC3FORGE_TEMPLATE_INSTANTIATE BasicTransientDetector<double>;
+template class AC3FORGE_TEMPLATE_INSTANTIATE BasicTransientDetector<float>;
 
 }  // namespace ac3
