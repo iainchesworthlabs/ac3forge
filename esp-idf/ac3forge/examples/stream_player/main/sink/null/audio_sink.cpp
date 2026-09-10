@@ -1,9 +1,10 @@
-// The sink CI uses: counts frames and returns.
+// Counts frames and returns. CI builds it; every configuration CI runs under
+// QEMU uses sink/capture/ instead, which also checks the samples.
 //
 // qemu-system-xtensa has no I2S peripheral, so the real sink's first write
 // blocks on a DMA that never drains. This one lets everything else run - the
-// partition reads, the access-unit framing, the decode, the interleaving, the
-// player loop - on the target, under the emulator, with no board.
+// partition reads, the access-unit framing, the decode, the player loop - on
+// the target, under the emulator, with no board.
 //
 // WHAT IT DOES NOT DO, said plainly: it does not pace anything. The real sink
 // blocks until the DAC has taken the samples, which is what makes the player
@@ -23,8 +24,7 @@ std::uint64_t g_frames = 0;
 int g_channels = 0;
 // Summed but never read back. It exists so the decode has an observable
 // consumer: a sink that genuinely touched nothing would let the compiler delete
-// work the run is supposed to be doing, and CI would be exercising less than it
-// looks like it is.
+// work the run is supposed to be doing.
 double g_checksum = 0.0;
 
 }  // namespace

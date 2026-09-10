@@ -8,8 +8,9 @@
 # boundaries, decoding them - runs exactly as it does on hardware.
 # The capture sink rather than the null one. Both stand in for a peripheral
 # QEMU does not have; the difference is that this one runs the SAME conversion
-# the real sinks run (main/interleave.hpp, not a copy) and then checks what came
-# out - so CI gates on the samples rather than on the loop having turned over.
+# the real sinks run (ac3forge/interleave.hpp, not a copy) and then checks what
+# came out - so CI gates on the samples rather than on the loop having turned
+# over.
 CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE=y
 
 # Two passes, so the rewind path at end of stream is exercised rather than only

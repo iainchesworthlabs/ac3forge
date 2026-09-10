@@ -78,11 +78,14 @@ choice AC3FORGE_EXAMPLE_SINK
     prompt "Audio sink"
     default AC3FORGE_EXAMPLE_SINK_I2S
     help
-        Where decoded audio goes. The null sink is what CI builds:
-        qemu-system-xtensa has no I2S peripheral, so the real sink's first
-        write blocks on a DMA that never drains, while everything this example
-        exists to exercise - the partition reads, the access-unit framing, the
-        decode - runs perfectly well without one.
+        Where decoded audio goes. The capture sink is what CI runs under
+        QEMU: qemu-system-xtensa has no I2S peripheral, so the real sink's
+        first write blocks on a DMA that never drains, while everything this
+        example exists to exercise - the source reads, the access-unit
+        framing, the decode - runs perfectly well without one. The capture
+        sink converts each block with the code the I2S and TDM sinks call
+        (ac3forge/interleave.hpp), into a buffer, and checks what comes out.
+        The null sink only counts frames; CI builds it and does not run it.
 
 config AC3FORGE_EXAMPLE_SINK_I2S
     bool "I2S DAC"
@@ -126,9 +129,13 @@ choice AC3FORGE_EXAMPLE_SOURCE
     prompt "Bitstream source"
     default AC3FORGE_EXAMPLE_SOURCE_PARTITION
     help
-        Only the partition source can be RUN without hardware, which is why it
-        is the default and the one CI exercises end to end. The other two are
-        compiled by CI and no further: QEMU has no SD host and no network.
+        The partition source runs without hardware, which is why it is the
+        default and the first one CI runs (sdkconfig.ci). Two more run under
+        QEMU in CI: the FAT filesystem in flash (sdkconfig.ci-tdm and
+        sdkconfig.ci-render) and HTTP over the OpenCores Ethernet MAC that
+        QEMU emulates (sdkconfig.ci-http). The SD source and the HTTP source
+        over WiFi are compiled by CI and no further: QEMU has no SD host and
+        no WiFi.
 
 config AC3FORGE_EXAMPLE_SOURCE_PARTITION
     bool "Flash partition"

@@ -2,9 +2,12 @@
 # same rule the library follows for its own platform choices. See
 # main/audio_sink.hpp.
 #
-#   i2s   the real one, and the default
-#   null  counts frames and returns; what CI builds, because qemu-system-xtensa
-#         has no I2S and the real sink's first write would never return
+#   i2s      the real one, and the default
+#   tdm      multi-channel on one data line, up to sixteen slots
+#   capture  converts with the code the two above call and checks the result;
+#            what CI runs under QEMU, because qemu-system-xtensa has no I2S and
+#            a real sink's first write would never return
+#   null     counts frames and returns
 # From Kconfig, not a -D cache variable: this file is evaluated in IDF's
 # separate requirements-expansion process, which does not inherit cache
 # variables from the project above it. See main/Kconfig.projbuild.
@@ -19,7 +22,9 @@ else()
 endif()
 
 # And where the bytes come from - the mirror of the same idea, see
-# main/byte_source.hpp. Only the partition source runs without hardware.
+# main/byte_source.hpp. The partition, fatfs and http sources run under QEMU in
+# CI, http over the OpenCores Ethernet MAC (below). sd, and http over WiFi, are
+# compiled there and no more: QEMU has no SD host and no WiFi.
 if(CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD)
     set(AC3FORGE_SOURCE_DIR "source/sd")
 elseif(CONFIG_AC3FORGE_EXAMPLE_SOURCE_FATFS)
@@ -44,9 +49,10 @@ if(CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP)
     endif()
 endif()
 
-# esp_driver_i2s is required either way. The null build does not call it, but a
-# component's REQUIRES is resolved before the source list is, and listing it
-# conditionally would make the two builds differ in a second place for no gain.
+# esp_driver_i2s is required whichever sink is chosen. The capture and null
+# builds do not call it, but a component's REQUIRES is resolved before the
+# source list is, and listing it conditionally would make the builds differ in
+# a second place for no gain.
 # EVERY component every sink and source might need, unconditionally, whichever
 # pair this build selected.
 #

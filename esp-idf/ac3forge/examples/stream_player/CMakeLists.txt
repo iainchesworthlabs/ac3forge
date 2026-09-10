@@ -18,8 +18,11 @@
 #   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci" idf.py build
 #   idf.py qemu
 #
-# which is what CI does. sdkconfig.ci selects the null sink - a real sink, same
-# calls and same buffers, with no peripheral behind it; see main/audio_sink.hpp.
+# which is the first of the four configurations CI runs under QEMU (the others
+# overlay sdkconfig.ci-tdm, sdkconfig.ci-render and sdkconfig.ci-http).
+# sdkconfig.ci selects the capture sink - the same calls and the same audio as
+# a real sink, converted with the same code and checked, with no peripheral
+# behind it; see main/audio_sink.hpp.
 # ---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.28)
 
