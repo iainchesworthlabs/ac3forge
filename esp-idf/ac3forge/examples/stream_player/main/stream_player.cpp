@@ -541,13 +541,18 @@ extern "C" void app_main() {
             continue;
         }
 
-        report_end(session, stats);
+        // The verdict goes out last. A client that waits for result= and
+        // then asks /status - CI's HTTP step does exactly that - must find the
+        // run recorded as finished or failed, not a player half torn down.
+        // Nothing report_end prints needs the player: the stats are a
+        // snapshot, and the meter and the sink are global.
         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
         g_last_stats = stats;
         g_last_stream = current->stream();
         xSemaphoreGive(g_player_mutex);
         end_play();
         g_state.store(stats.failed ? "failed" : "finished");
+        report_end(session, stats);
         if (kControlPort == 0) {
             vTaskDelay(pdMS_TO_TICKS(200));
             return;
