@@ -1,5 +1,6 @@
 # ---------------------------------------------------------------------------
-# ac3forge's streaming player example: decode AC-3 out of a flash partition.
+# ac3forge's streaming player example: decode AC-3 or E-AC-3 from a flash
+# partition (the default), a FAT volume in flash, an SD card or an HTTP body.
 #
 #   . $IDF_PATH/export.sh
 #   idf.py set-target esp32s3
@@ -10,16 +11,21 @@
 # to copy by hand.
 #
 # The sibling of i2s_player, differing in one thing: where the audio comes from.
-# That one decodes a bitstream linked into its own image; this one never holds
-# more than 16 KB of the stream at a time. See main/stream_player.cpp.
+# That one decodes a bitstream linked into its own image; this one reads the
+# stream a piece at a time, through a ring between the player's fetch and
+# decode tasks (32 KB by default, CONFIG_AC3FORGE_EXAMPLE_RING_BYTES) and a
+# 16 KB framing buffer. See main/stream_player.cpp and
+# esp-idf/ac3forge/include/ac3forge/player.hpp.
 #
 # WITHOUT A BOARD:
 #
 #   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci" idf.py build
 #   idf.py qemu
 #
-# which is what CI does. sdkconfig.ci selects the null sink - a real sink, same
-# calls and same buffers, with no peripheral behind it; see main/audio_sink.hpp.
+# which is the first of the four shapes CI runs under QEMU. sdkconfig.ci selects
+# the capture sink, which runs the i2s and tdm sinks' conversion code and checks
+# the result with no peripheral behind it; see main/audio_sink.hpp. The other
+# three are sdkconfig.ci-tdm, sdkconfig.ci-render and sdkconfig.ci-http.
 # ---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.28)
 

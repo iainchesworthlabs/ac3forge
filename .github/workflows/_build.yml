@@ -3798,9 +3798,11 @@ jobs:
       # I2S, because qemu-system-xtensa has none and the real sink's first write
       # blocks on a DMA that never drains.
       #
-      # sdkconfig.ci supplies exactly that: the null sink, and a two-lap limit
-      # so the application stops with a verdict instead of playing forever. Two
-      # laps rather than one so the rewind at end of stream is exercised.
+      # sdkconfig.ci supplies exactly that: the capture sink, which runs the I2S
+      # sink's conversion code and checks the result with no peripheral behind
+      # it, and a two-lap limit so the application stops with a verdict instead
+      # of playing forever. Two laps rather than one so the rewind at end of
+      # stream is exercised.
       - name: Build and run the streaming player example under QEMU
         env:
           SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci"

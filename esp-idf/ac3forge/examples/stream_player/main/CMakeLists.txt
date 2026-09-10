@@ -2,9 +2,12 @@
 # same rule the library follows for its own platform choices. See
 # main/audio_sink.hpp.
 #
-#   i2s   the real one, and the default
-#   null  counts frames and returns; what CI builds, because qemu-system-xtensa
-#         has no I2S and the real sink's first write would never return
+#   i2s      stereo on the I2S peripheral, and the default
+#   tdm      the I2S peripheral in TDM mode, up to sixteen slots
+#   capture  the i2s or tdm sink's conversion, checked, with no peripheral
+#            behind it: what CI runs, because qemu-system-xtensa has no I2S
+#            and the other two sinks' first write would never return
+#   null     counts blocks and returns; CI builds it and does not run it
 # From Kconfig, not a -D cache variable: this file is evaluated in IDF's
 # separate requirements-expansion process, which does not inherit cache
 # variables from the project above it. See main/Kconfig.projbuild.
@@ -19,7 +22,9 @@ else()
 endif()
 
 # And where the bytes come from - the mirror of the same idea, see
-# main/byte_source.hpp. Only the partition source runs without hardware.
+# main/byte_source.hpp. CI runs the partition, fatfs and http sources under
+# QEMU, http over the emulated Ethernet below; sd needs an SDMMC host, which
+# QEMU does not have, so CI only builds it.
 if(CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD)
     set(AC3FORGE_SOURCE_DIR "source/sd")
 elseif(CONFIG_AC3FORGE_EXAMPLE_SOURCE_FATFS)

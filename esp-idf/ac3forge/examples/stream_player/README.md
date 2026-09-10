@@ -1,8 +1,10 @@
 # Streaming player
 
 Decodes AC-3 or E-AC-3 on an ESP32-S3 from wherever the bytes are — a flash
-partition by default, an SD card, or an HTTP body over WiFi — and plays it,
-without ever holding more than 16 KB of the stream in memory.
+partition by default, a FAT volume in flash, an SD card, or an HTTP body over
+WiFi — and plays it. It reads the stream a piece at a time, through a ring
+between the player's fetch and decode tasks (32 KB by default) and a 16 KB
+framing buffer.
 
 The sibling of [`i2s_player`](../i2s_player), differing in one thing: where the
 audio comes from. That one decodes a bitstream linked into its own image, which

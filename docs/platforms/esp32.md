@@ -159,7 +159,7 @@ name such as `5.1.4` or a speaker list — that the player renders every stream 
 It exists to exercise the incremental input path. `ac3::split_frames` takes a span over a whole
 stream, which nothing streaming can produce; `ac3::io::AccessUnitAccumulator` applies the same
 boundary rule over a caller-owned buffer, allocating nothing. It hands the decoder access units
-rather than syncframes, because `decode_access_unit_into` wants an independent substream together
+rather than syncframes, because `decode_access_unit_by_block` wants an independent substream together
 with the dependents that extend it (§E3.8.2).
 
 Only `partition` runs without hardware, so it is the default and the one CI drives end to end.
