@@ -55,6 +55,10 @@ struct Player::Impl {
 
     EventGroupHandle_t events = nullptr;
     StreamBufferHandle_t ring = nullptr;
+    // The ring's two allocations, owned here rather than by
+    // xStreamBufferCreateWithCaps - see make_ring() for why.
+    std::uint8_t* ring_storage = nullptr;
+    StaticStreamBuffer_t* ring_struct = nullptr;
     bool ring_in_psram = false;
     TaskHandle_t fetch_task = nullptr;
     TaskHandle_t decode_task = nullptr;
@@ -95,6 +99,50 @@ struct Player::Impl {
     std::atomic<float> volume{1.0F};
     std::atomic<std::size_t> decode_stack_free{0};
     StreamInfo stream{};  // written once, before have_stream is set
+
+    // The ring, allocated by hand rather than through
+    // xStreamBufferCreateWithCaps.
+    //
+    // ESP-IDF v6.1's matching vStreamBufferDeleteWithCaps is broken: it
+    // deletes the buffer with vSemaphoreDelete(), i.e. vQueueDelete(), which
+    // reads the stream buffer's struct as a queue's and checks the queue's
+    // "statically allocated" byte - at an offset that in the smaller
+    // StaticStreamBuffer_t is another field, or memory past its end. When
+    // that byte reads 0 it frees the struct itself, and the helper's own
+    // heap_caps_free then frees it again. Whether it does depends on what the
+    // heap put beside the ring, so it panicked ("block already marked as
+    // free", from Player::stop()) on every CI QEMU run of the streaming
+    // example's http shape and on no local run of the same image.
+    //
+    // What follows is what the helper does, less the wrong delete: our own
+    // heap_caps_malloc for both parts, xStreamBufferCreateStatic, and in
+    // free_ring() vStreamBufferDelete - which frees nothing for a static
+    // buffer - then heap_caps_free for both. It keeps "PSRAM when present",
+    // which is all the helper was here for.
+    bool make_ring(std::uint32_t caps) {
+        ring_struct = static_cast<StaticStreamBuffer_t*>(
+            heap_caps_malloc(sizeof(StaticStreamBuffer_t), caps));
+        ring_storage = static_cast<std::uint8_t*>(heap_caps_malloc(config.ring_bytes, caps));
+        if (ring_struct != nullptr && ring_storage != nullptr) {
+            ring = xStreamBufferCreateStatic(config.ring_bytes, 1, ring_storage, ring_struct);
+        }
+        if (ring == nullptr) {
+            free_ring();
+            return false;
+        }
+        return true;
+    }
+
+    void free_ring() {
+        if (ring != nullptr) {
+            vStreamBufferDelete(ring);
+            ring = nullptr;
+        }
+        heap_caps_free(ring_struct);
+        heap_caps_free(ring_storage);
+        ring_struct = nullptr;
+        ring_storage = nullptr;
+    }
 
     // Sampled from the decode task only: the high-water mark is that task's.
     void sample_decode_stack() {
@@ -376,13 +424,10 @@ bool Player::start() {
     // The ring: PSRAM when asked for and present, internal SRAM otherwise. A
     // trigger level of one byte, so the decoder wakes on whatever arrives.
     if (im.config.ring_in_psram) {
-        im.ring = xStreamBufferCreateWithCaps(im.config.ring_bytes, 1,
-                                              MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        im.ring_in_psram = im.ring != nullptr;
+        im.ring_in_psram = im.make_ring(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     }
     if (im.ring == nullptr) {
-        im.ring = xStreamBufferCreateWithCaps(im.config.ring_bytes, 1,
-                                              MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        (void)im.make_ring(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     }
     if (im.ring == nullptr) {
         std::printf("player: no memory for a %lu-byte ring\n",
@@ -440,10 +485,7 @@ void Player::stop() {
     }
     im.fetch_task = nullptr;
     im.decode_task = nullptr;
-    if (im.ring != nullptr) {
-        vStreamBufferDeleteWithCaps(im.ring);
-        im.ring = nullptr;
-    }
+    im.free_ring();
     vEventGroupDelete(im.events);
     im.events = nullptr;
 }
