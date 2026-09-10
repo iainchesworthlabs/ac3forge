@@ -16,6 +16,7 @@ What is on the site instead: [the documentation](../docs/index.md) describes wha
 | [qc-report.md](qc-report.md) | A delivery-shaped QC report file | Not started — `ac3cli qc` writes no report file |
 | [arithmetic-tiers.md](arithmetic-tiers.md) | One implementation, three arithmetics (`double`, `float`, fixed point) and an encoder effort axis; the platform choice matrix; the fixed-point decoder for the ESP32-C3 | Two tiers shipping and gated; the effort axis's first level measured 2026-09-10; the fixed tier proposed, not started |
 | [esp32-player.md](esp32-player.md) | The ESP32-S3 player: a component layer under the examples, and an ESPHome media player | Phases 1 and 2 built and QEMU-verified; Phase 0 and Phase 2's hardware half wait on the board |
+| [esp32-device-ui.md](esp32-device-ui.md) | The player's web UI: a page the board serves from flash beside the REST API, and calls it | Designed 2026-09-11; nothing built yet |
 
 Two phase records stayed on the site because the reference pages cite them as evidence rather
 than as plans: [the Crucible promotion record](../docs/crucible/promotion.md), which carries the
