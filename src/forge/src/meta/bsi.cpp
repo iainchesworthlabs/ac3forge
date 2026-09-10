@@ -3,7 +3,6 @@
 #include <array>
 #include <charconv>
 #include <cstddef>
-#include <fmt/format.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -268,10 +267,6 @@ bool parse_timecode(std::string_view text, TimeCodeCoarse& coarse, TimeCodeFine&
     return true;
 }
 
-std::string format_timecode(const TimeCodeCoarse& coarse, const TimeCodeFine& fine) {
-    return fmt::format("{:02}:{:02}:{:02}:{:02}.{}", coarse.hours, coarse.minutes,
-                       coarse.eight_seconds * 8 + fine.seconds, fine.frames,
-                       fine.sixty_fourths);
-}
+// format_timecode lives in bsi_format.cpp - see there for why.
 
 }  // namespace ac3::meta

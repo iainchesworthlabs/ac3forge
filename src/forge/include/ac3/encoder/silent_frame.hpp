@@ -156,7 +156,7 @@ struct SkipPlan {
 [[nodiscard]] inline std::expected<std::vector<std::byte>, FrameError> build_silent_stereo_frame(
     const SilentFrameConfig& config) {
     const auto index = bitrate_index(config.bitrate_kbps);
-    if (!index) {
+    if (!index.has_value()) {
         return std::unexpected(FrameError::kInvalidBitrate);
     }
     if (config.dialnorm < 1 || config.dialnorm > 31) {
@@ -167,7 +167,7 @@ struct SkipPlan {
     // frmsizecod row for a reduced rate, so frame_size_words() refuses one.
     const auto words_opt = frame_size_words(config.sample_rate, config.bitrate_kbps,
                                             config.pad441);
-    if (!words_opt) {
+    if (!words_opt.has_value()) {
         return std::unexpected(FrameError::kInvalidBitrate);
     }
     const std::uint32_t words = *words_opt;

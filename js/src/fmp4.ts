@@ -59,7 +59,7 @@ export function* iterateBoxes(buffer: Uint8Array, rangeStart = 0, rangeEnd = buf
 }
 
 function readFourCc(buffer: Uint8Array, offset: number): string {
-  return String.fromCharCode(buffer[offset]!, buffer[offset + 1]!, buffer[offset + 2]!, buffer[offset + 3]!);
+  return String.fromCodePoint(buffer[offset]!, buffer[offset + 1]!, buffer[offset + 2]!, buffer[offset + 3]!);
 }
 
 function findChild(buffer: Uint8Array, box: Box, type: string): Box | null {

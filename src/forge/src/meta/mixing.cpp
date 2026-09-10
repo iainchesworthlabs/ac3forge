@@ -186,9 +186,14 @@ std::array<double, 5> mono_downmix(Acmod acmod, double clev, double slev) {
     return out;
 }
 
-double mono_downmix_peak_dbfs(std::span<const std::array<double, 256>> history,
-                              std::span<const std::span<const float>> channels, Acmod acmod,
-                              double clev, double slev) {
+namespace {
+
+// The double form's operations exactly, whatever the history is kept in: a
+// widening cast is the identity on a double, and the sum stays double.
+template <typename Scalar>
+double mono_downmix_peak_dbfs_over(std::span<const std::array<Scalar, 256>> history,
+                                   std::span<const std::span<const float>> channels, Acmod acmod,
+                                   double clev, double slev) {
     const auto coeffs = mono_downmix(acmod, clev, slev);
     const int nfchans = fullbw_channel_count(acmod);
     const auto usable =
@@ -201,7 +206,7 @@ double mono_downmix_peak_dbfs(std::span<const std::array<double, 256>> history,
         for (std::size_t n = 0; n < history[0].size(); ++n) {
             double sum = 0.0;
             for (std::size_t ch = 0; ch < usable && ch < history.size(); ++ch) {
-                sum += coeffs[ch] * history[ch][n];
+                sum += coeffs[ch] * static_cast<double>(history[ch][n]);
             }
             peak = std::max(peak, std::abs(sum));
         }
@@ -222,9 +227,24 @@ double mono_downmix_peak_dbfs(std::span<const std::array<double, 256>> history,
     return to_db(peak);
 }
 
+}  // namespace
+
+double mono_downmix_peak_dbfs(std::span<const std::array<double, 256>> history,
+                              std::span<const std::span<const float>> channels, Acmod acmod,
+                              double clev, double slev) {
+    return mono_downmix_peak_dbfs_over<double>(history, channels, acmod, clev, slev);
+}
+
+double mono_downmix_peak_dbfs(std::span<const std::array<float, 256>> history,
+                              std::span<const std::span<const float>> channels, Acmod acmod,
+                              double clev, double slev) {
+    return mono_downmix_peak_dbfs_over<float>(history, channels, acmod, clev, slev);
+}
+
 double mono_downmix_peak_dbfs(std::span<const std::span<const float>> channels, Acmod acmod,
                               double clev, double slev) {
-    return mono_downmix_peak_dbfs({}, channels, acmod, clev, slev);
+    return mono_downmix_peak_dbfs(std::span<const std::array<double, 256>>{}, channels, acmod,
+                                  clev, slev);
 }
 
 double dialnorm_gain(int dialnorm) {

@@ -72,7 +72,7 @@ class ProgrammeSource {
             return true;
         }
         auto whole = read_wav_arg(path);
-        if (!whole) {
+        if (!whole.has_value()) {
             fmt::println(stderr, "error: {}: {}", path, ac3::io::describe(whole.error()));
             return false;
         }
@@ -176,7 +176,7 @@ std::unique_ptr<SecondProgramme> open_second_programme(std::string_view path,
         return nullptr;
     }
     const auto second_rate = wav_sample_rate(out->source.sample_rate(), "E-AC-3", true);
-    if (!second_rate) {
+    if (!second_rate.has_value()) {
         return nullptr;
     }
     if (*second_rate != rate) {
@@ -201,7 +201,7 @@ std::unique_ptr<SecondProgramme> open_second_programme(std::string_view path,
     out->p.meta.dialnorm = meta.programme2_dialnorm;
     if (meta.programme2_layout.empty()) {
         const auto id = plan::layout_for_source(out->source.channels());
-        if (!id) {
+        if (!id.has_value()) {
             fmt::println(stderr, "error: {} has {} channels - {}", out->path,
                          out->source.channels(),
                          plan::describe(plan::PlanError::kNoSourceLayout));
@@ -225,7 +225,7 @@ std::unique_ptr<SecondProgramme> open_second_programme(std::string_view path,
         return nullptr;
     }
     auto routing = routing_or_error(out->p, out->source.channels());
-    if (!routing) {
+    if (!routing.has_value()) {
         return nullptr;
     }
     out->routing = std::move(*routing);
@@ -305,14 +305,14 @@ class Eac3Units {
         std::span<const std::span<const float>> channels) {
         if (plain_) {
             auto unit = plain_->encode_access_unit(channels);
-            if (!unit) {
+            if (!unit.has_value()) {
                 fmt::println(stderr, "error: the encoder cannot express this configuration");
                 return std::nullopt;
             }
             return std::move(unit->bytes);
         }
         auto unit = checked_->encode_access_unit(channels);
-        if (!unit) {
+        if (!unit.has_value()) {
             fmt::println(stderr, "error: the encoder cannot express this configuration");
             return std::nullopt;
         }
@@ -324,7 +324,7 @@ class Eac3Units {
             if (!report.empty()) {
                 fmt::println(stderr, "{}", report);
             }
-            if (unit->decode_error) {
+            if (unit->decode_error.has_value()) {
                 fmt::println(stderr, "  the decoder also refused a substream outright ({})",
                              ac3::describe(*unit->decode_error));
             }
@@ -349,11 +349,11 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
                           std::uint32_t bitrate, std::string_view tools,
                           std::string_view layout, std::string_view vbr, const Options& meta) {
     auto sources = load_sources(in_path, meta.sources, meta.offsets);
-    if (!sources) {
+    if (!sources.has_value()) {
         return kExitInput;
     }
     const auto sr = wav_sample_rate(sources->sample_rate, "E-AC-3", true);
-    if (!sr) {
+    if (!sr.has_value()) {
         return kExitInput;
     }
     plan::Plan p{.codec = plan::Codec::kEac3,
@@ -367,7 +367,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
             total_channels += shape.channels;
         }
         const auto id = plan::layout_for_source(total_channels);
-        if (!id) {
+        if (!id.has_value()) {
             fmt::println(stderr, "error: {} channels - {}", total_channels,
                          plan::describe(plan::PlanError::kNoSourceLayout));
             return kExitUsage;
@@ -382,6 +382,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     p.tools.search = meta.search;
     p.tools.fgaincod = meta.fgaincod;
     p.tools.dither = meta.dither;
+    p.tools.delta = meta.delta;
     if (!tools_or_error(tools, p.tools)) {
         return kExitUsage;
     }
@@ -390,7 +391,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     }
 
     const auto routing = routing_for_sources(p, *sources, meta.map_spec);
-    if (!routing) {
+    if (!routing.has_value()) {
         return kExitUsage;
     }
 
@@ -462,14 +463,14 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
         progress.start("measuring", (total + samples_per_frame - 1) / samples_per_frame);
         for (std::size_t start = 0; start < total; start += samples_per_frame) {
             route_frame(start);
-            if (whole) {
+            if (whole.has_value()) {
                 whole->push(views);
             }
-            if (ch1) {
+            if (ch1.has_value()) {
                 const std::array<std::span<const float>, 1> v{views[0]};
                 ch1->push(v);
             }
-            if (ch2) {
+            if (ch2.has_value()) {
                 const std::array<std::span<const float>, 1> v{views[1]};
                 ch2->push(v);
             }
@@ -479,7 +480,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
         if (want_dialnorm) {
             const auto measured = dual_mono ? finish_measurement(*ch1, "Ch1", "dialnorm", status)
                                             : finish_measurement(*whole, {}, "dialnorm", status);
-            if (!measured) {
+            if (!measured.has_value()) {
                 fmt::println(stderr, "error: {}no audio above the -70 LKFS absolute gate; "
                                      "pass dialnorm=<1..31> explicitly",
                              dual_mono ? "Ch1 has " : "");
@@ -489,7 +490,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
         }
         if (want_dialnorm2) {
             const auto measured2 = finish_measurement(*ch2, "Ch2", "dialnorm2", status);
-            if (!measured2) {
+            if (!measured2.has_value()) {
                 fmt::println(stderr, "error: Ch2 has no audio above the -70 LKFS absolute gate; "
                                      "pass dialnorm2=<1..31> explicitly");
                 return kExitRuntime;
@@ -515,7 +516,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     for (std::size_t start = 0; start < total; start += samples_per_frame) {
         route_frame(start);
         auto unit = encoder.next(views);
-        if (!unit) {
+        if (!unit.has_value()) {
             // Eac3Units::next() already printed the specific error - a self-
             // check disagreement's report, or the encoder's own refusal.
             out_sink.abort();
@@ -531,7 +532,7 @@ int run_eac3_encode_multi(std::string_view in_path, std::string_view out_path,
     if (!out_sink.close()) {
         return kExitOutput;
     }
-    if (p.vbr) {
+    if (p.vbr.has_value()) {
         // bitrate_kbps is only the nominal reference vbr's tool heuristics
         // used, not a target - what a VBR run actually spent is the sizes it
         // produced, so that is what gets reported instead of one number.
@@ -570,13 +571,13 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                     std::uint32_t bitrate, std::string_view tools, std::string_view layout,
                     std::string_view vbr, const Options& meta,
                     std::string_view in2_path) {
-    if (!meta.sources.empty() || meta.map_spec) {
+    if (!meta.sources.empty() || meta.map_spec.has_value()) {
         if (!in2_path.empty()) {
             fmt::println(stderr,
                          "error: use either a second positional file or src=/map=, not both");
             return kExitUsage;
         }
-        if (meta.programme2) {
+        if (meta.programme2.has_value()) {
             // src=/map= route several sources onto ONE programme's channels;
             // programme2= adds a second programme with its own source and its
             // own routing. Combining them is not ambiguous so much as
@@ -601,7 +602,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         std::unexpected(ac3::io::WavError::kCannotOpen);
     if (!streaming) {
         wav = read_wav_arg(in_path);
-        if (!wav) {
+        if (!wav.has_value()) {
             fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
             return kExitInput;        }
         if (!prepare_dual_mono_source(*wav, layout, in2_path)) {
@@ -619,7 +620,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     const std::size_t src_channels =
         streaming ? stream_in.channels() : wav->channels.size();
     const auto sr = wav_sample_rate(src_rate, "E-AC-3", true);
-    if (!sr) {
+    if (!sr.has_value()) {
         return kExitInput;
     }
     plan::Plan p{.codec = plan::Codec::kEac3,
@@ -631,7 +632,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
         // An unnamed layout follows the source, which is what this command
         // did before it could be told otherwise.
         const auto id = plan::layout_for_source(src_channels);
-        if (!id) {
+        if (!id.has_value()) {
             fmt::println(stderr, "error: {} channels - {}", src_channels,
                          plan::describe(plan::PlanError::kNoSourceLayout));
             return kExitUsage;
@@ -646,6 +647,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     p.tools.search = meta.search;
     p.tools.fgaincod = meta.fgaincod;
     p.tools.dither = meta.dither;
+    p.tools.delta = meta.delta;
     if (!tools_or_error(tools, p.tools)) {
         return kExitUsage;
     }
@@ -669,7 +671,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
                                   ? measured_dialnorm_channel(wav->channels[0], *sr, "Ch1",
                                                               "dialnorm", status)
                                   : measured_dialnorm(*wav, *sr, cp.bed_acmod, cp.bed_lfe, status);
-        if (!measured) {
+        if (!measured.has_value()) {
             fmt::println(stderr, "error: {}no audio above the -70 LKFS absolute gate; "
                                  "pass dialnorm=<1..31> explicitly",
                          dual_mono ? "Ch1 has " : "");
@@ -680,7 +682,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     if (dual_mono && p.meta.measure_dialnorm2) {
         const auto measured2 =
             measured_dialnorm_channel(wav->channels[1], *sr, "Ch2", "dialnorm2", status);
-        if (!measured2) {
+        if (!measured2.has_value()) {
             fmt::println(stderr, "error: Ch2 has no audio above the -70 LKFS absolute gate; "
                                  "pass dialnorm2=<1..31> explicitly");
             return kExitRuntime;
@@ -689,14 +691,14 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     }
 
     const auto routing = routing_or_error(p, src_channels);
-    if (!routing) {
+    if (!routing.has_value()) {
         return kExitUsage;
     }
 
     // §E2.3.1.2's second independent substream, when one was asked for: its
     // own source, layout, rate and dialnorm, riding in the same access units.
     std::unique_ptr<SecondProgramme> second;
-    if (meta.programme2) {
+    if (meta.programme2.has_value()) {
         second = open_second_programme(*meta.programme2, meta, *sr, bitrate, p.tools);
         if (!second) {
             return 1;
@@ -838,7 +840,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
             plan::render(second->routing, second_in, second_out, samples_per_frame);
         }
         auto unit = encoder.next(views);
-        if (!unit) {
+        if (!unit.has_value()) {
             // Eac3Units::next() already printed the specific error - a self-
             // check disagreement's report, or the encoder's own refusal.
             out_sink.abort();
@@ -854,7 +856,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
     if (!out_sink.close()) {
         return kExitOutput;
     }
-    if (p.vbr) {
+    if (p.vbr.has_value()) {
         // bitrate_kbps is only the nominal reference vbr's tool heuristics
         // used, not a target - what a VBR run actually spent is the sizes it
         // produced, so that is what gets reported instead of one number:
@@ -901,11 +903,11 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
 int run_encode_multi(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                      bool couple, std::string_view layout, const Options& meta) {
     auto sources = load_sources(in_path, meta.sources, meta.offsets);
-    if (!sources) {
+    if (!sources.has_value()) {
         return kExitInput;
     }
     const auto sr = wav_sample_rate(sources->sample_rate, "AC-3", false);
-    if (!sr) {
+    if (!sr.has_value()) {
         return kExitInput;
     }
     plan::Plan p{.codec = plan::Codec::kAc3,
@@ -919,7 +921,7 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
             total_channels += shape.channels;
         }
         const auto id = plan::layout_for_source(total_channels);
-        if (!id || !plan::carries(plan::Codec::kAc3, *id)) {
+        if (!id.has_value() || !plan::carries(plan::Codec::kAc3, *id)) {
             fmt::println(stderr,
                          "error: encode handles 1 to 6 channels ({} given); no AC-3 coding "
                          "mode is wider than 3/2 + LFE",
@@ -936,13 +938,14 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
     p.tools.search = meta.search;
     p.tools.fgaincod = meta.fgaincod;
     p.tools.dither = meta.dither;
+    p.tools.delta = meta.delta;
     if (const auto bad = plan::validate(p)) {
         fmt::println(stderr, "error: {}", plan::describe(*bad));
         return kExitUsage;
     }
 
     const auto routing = routing_for_sources(p, *sources, meta.map_spec);
-    if (!routing) {
+    if (!routing.has_value()) {
         return kExitUsage;
     }
 
@@ -1011,14 +1014,14 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
         progress.start("measuring", (total + ac3::kSamplesPerFrame - 1) / ac3::kSamplesPerFrame);
         for (std::size_t start = 0; start < total; start += ac3::kSamplesPerFrame) {
             route_frame(start);
-            if (whole) {
+            if (whole.has_value()) {
                 whole->push(views);
             }
-            if (ch1) {
+            if (ch1.has_value()) {
                 const std::array<std::span<const float>, 1> v{views[0]};
                 ch1->push(v);
             }
-            if (ch2) {
+            if (ch2.has_value()) {
                 const std::array<std::span<const float>, 1> v{views[1]};
                 ch2->push(v);
             }
@@ -1028,7 +1031,7 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
         if (want_dialnorm) {
             const auto measured = dual_mono ? finish_measurement(*ch1, "Ch1", "dialnorm", status)
                                             : finish_measurement(*whole, {}, "dialnorm", status);
-            if (!measured) {
+            if (!measured.has_value()) {
                 fmt::println(stderr, "error: {}no audio above the -70 LKFS absolute gate; "
                                      "pass dialnorm=<1..31> explicitly",
                              dual_mono ? "Ch1 has " : "");
@@ -1038,7 +1041,7 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
         }
         if (want_dialnorm2) {
             const auto measured2 = finish_measurement(*ch2, "Ch2", "dialnorm2", status);
-            if (!measured2) {
+            if (!measured2.has_value()) {
                 fmt::println(stderr, "error: Ch2 has no audio above the -70 LKFS absolute gate; "
                                      "pass dialnorm2=<1..31> explicitly");
                 return kExitRuntime;
@@ -1066,7 +1069,7 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
         }
         meter.process(metered);
         auto frame = encoder->encode_frame(views);
-        if (!frame) {
+        if (!frame.has_value()) {
             fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
             out_sink.abort();
             return kExitUsage;
@@ -1092,7 +1095,7 @@ int run_encode_multi(std::string_view in_path, std::string_view out_path, std::u
 int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                bool couple, std::string_view layout, const Options& meta,
                std::string_view in2_path) {
-    if (!meta.sources.empty() || meta.map_spec) {
+    if (!meta.sources.empty() || meta.map_spec.has_value()) {
         if (!in2_path.empty()) {
             fmt::println(stderr,
                          "error: use either a second positional file or src=/map=, not both");
@@ -1116,7 +1119,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
         std::unexpected(ac3::io::WavError::kCannotOpen);
     if (!streaming) {
         wav = read_wav_arg(in_path);
-        if (!wav) {
+        if (!wav.has_value()) {
             fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
             return kExitInput;        }
         if (!prepare_dual_mono_source(*wav, layout, in2_path)) {
@@ -1136,7 +1139,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
     const std::size_t src_channels =
         streaming ? stream_in.channels() : wav->channels.size();
     const auto sr = wav_sample_rate(src_rate, "AC-3", false);
-    if (!sr) {
+    if (!sr.has_value()) {
         return kExitInput;
     }
     plan::Plan p{.codec = plan::Codec::kAc3,
@@ -1149,7 +1152,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
         // did before it could be told otherwise. Naming one is how a stereo
         // file reaches a 5.1 stream, or a 5.1 file gets folded down per §7.8.
         const auto id = plan::layout_for_source(src_channels);
-        if (!id || !plan::carries(plan::Codec::kAc3, *id)) {
+        if (!id.has_value() || !plan::carries(plan::Codec::kAc3, *id)) {
             fmt::println(stderr,
                          "error: encode handles 1 to 6 channels ({} given); no AC-3 coding "
                          "mode is wider than 3/2 + LFE",
@@ -1166,6 +1169,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
     p.tools.search = meta.search;
     p.tools.fgaincod = meta.fgaincod;
     p.tools.dither = meta.dither;
+    p.tools.delta = meta.delta;
     if (const auto bad = plan::validate(p)) {
         fmt::println(stderr, "error: {}", plan::describe(*bad));
         return kExitUsage;
@@ -1195,7 +1199,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
                                   ? measured_dialnorm_channel(wav->channels[0], *sr, "Ch1",
                                                               "dialnorm", status)
                                   : measured_dialnorm(*wav, *sr, cp.bed_acmod, cp.bed_lfe, status);
-        if (!measured) {
+        if (!measured.has_value()) {
             fmt::println(stderr,
                          "error: {}no audio above the -70 LKFS absolute gate; "
                          "pass dialnorm=<1..31> explicitly",
@@ -1207,7 +1211,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
     if (dual_mono && p.meta.measure_dialnorm2) {
         const auto measured2 =
             measured_dialnorm_channel(wav->channels[1], *sr, "Ch2", "dialnorm2", status);
-        if (!measured2) {
+        if (!measured2.has_value()) {
             fmt::println(stderr,
                          "error: Ch2 has no audio above the -70 LKFS absolute gate; "
                          "pass dialnorm2=<1..31> explicitly");
@@ -1217,7 +1221,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
     }
 
     const auto routing = routing_or_error(p, src_channels);
-    if (!routing) {
+    if (!routing.has_value()) {
         return kExitUsage;
     }
 
@@ -1328,7 +1332,7 @@ int run_encode(std::string_view in_path, std::string_view out_path, std::uint32_
         }
         meter.process(metered);
         auto frame = encoder->encode_frame(views);
-        if (!frame) {
+        if (!frame.has_value()) {
             fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
             out_sink.abort();
             return kExitUsage;

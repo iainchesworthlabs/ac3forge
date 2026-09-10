@@ -32,4 +32,16 @@ AC3FORGE_EXPORT void dft512(std::span<const double, kDftLength> real_in,
                             std::span<double, kDftLength> real_out,
                             std::span<double, kDftLength> imag_out);
 
+// The same transform over float32, for a decoder whose coefficient store is
+// float (the minimum-footprint profile's enhanced-coupling path,
+// ecpl_channel_spectrum's float form). Same kernel, twiddles narrowed once
+// from the double ones (FftTables<512, float>), the 1/N scale an exact
+// power of two in either type. Not the double result narrowed - the
+// butterflies round in float - which is the same class of difference the
+// float coefficient store already accepted at the inverse transform.
+AC3FORGE_EXPORT void dft512(std::span<const float, kDftLength> real_in,
+                            std::span<const float, kDftLength> imag_in,
+                            std::span<float, kDftLength> real_out,
+                            std::span<float, kDftLength> imag_out);
+
 }  // namespace ac3

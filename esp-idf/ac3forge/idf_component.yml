@@ -1,0 +1,81 @@
+# The ESP Component Registry manifest for ac3forge's minimum-footprint profile
+# (roadmap PF7). Read by `idf.py add-dependency` and by the registry's own
+# upload tooling; ignored by a build that reaches this component through
+# EXTRA_COMPONENT_DIRS, which is how this repo's own probe uses it.
+#
+# NOT PUBLISHED YET. Nothing uploads this - there is no `compote component
+# upload` step in .github/workflows/, deliberately, because publishing to a
+# registry is a distribution decision rather than a build one and the version
+# below is not yet a released one. It is here so the shape is right and the
+# metadata is reviewed alongside the code it describes rather than written in a
+# hurry at upload time.
+
+version: "0.10.0-beta.1"
+description: >-
+  Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) decoding and encoding for
+  ESP32-S3 and ESP32-C3, in the minimum-footprint profile: a static archive built
+  without exceptions or RTTI, decode-only or encode-only, sized to run out of
+  internal SRAM with no PSRAM. The decode arithmetic follows the part - single
+  precision where there is a floating-point unit, fixed point where there is
+  not.
+url: https://github.com/iainchesworthlabs/ac3forge
+repository: https://github.com/iainchesworthlabs/ac3forge.git
+documentation: https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/esp32.md
+issues: https://github.com/iainchesworthlabs/ac3forge/issues
+license: "GPL-3.0-or-later"  # matches LICENSE at the repo root
+
+# Two parts, each a measurement rather than a shrug at the others.
+#
+#   - The ESP32-S3 is the part this was ported to first and the one CI has run
+#     under QEMU on every push since. Its LX7 has a single-precision FPU, which
+#     is what makes the float32 decode path worth having.
+#   - The ESP32-C3 is the fixed-point tier's part: a single-core RV32IMC with
+#     no floating-point unit, decoding in Q7.24 integer arithmetic
+#     (planning/arithmetic-tiers.md). It was "a different port entirely" here
+#     until that tier existed; what it needed was arithmetic, not a port. Its
+#     probe runs under qemu-riscv32 in CI, and the PCM it produces is
+#     bit-identical to the x86 host's and the Cortex-M3 leg's - which is a
+#     property of integer arithmetic rather than of this part.
+#   - The C6 is the same RISC-V core and the same tier and is not listed, for
+#     the reason the S2 is not: untested is not the same as unsuitable, and a
+#     target the archive has never been linked for would be a claim rather than
+#     a fact.
+#   - The original ESP32 and the S2 have no FPU worth the name for this (the S2
+#     has none at all). The fixed tier is what they would want too, and neither
+#     has been built.
+#   - The ESP32-P4 is CLOSED, not deferred: its PIE vector unit is integer-only,
+#     so there is no float SIMD there to port to. See
+#     docs/platforms/esp32.md and PR #551.
+targets:
+  - esp32s3
+  - esp32c3
+
+dependencies:
+  # 5.3 is the floor the CMake in this directory needs, not the version it is
+  # tested against - CI runs v6.1 (see .github/workflows/_build.yml's
+  # build-esp32s3 leg). The component itself uses no IDF API at all; the floor
+  # is for idf_component_register() accepting a registration with no SRCS and
+  # for EXTRA_COMPONENT_DIRS resolving a component outside the project tree.
+  idf: ">=5.3"
+
+# WHAT IS IN THE ARCHIVE is decided by tools/packaging/pack_esp_component.py,
+# not by a files: list here, and that is not a preference - it is the only thing
+# that works.
+#
+# `compote component pack` roots its archive at THIS directory and cannot
+# reference anything above it. The component is a thin wrapper that
+# add_subdirectory()s the repo root, so packing it directly produces an archive
+# of three files that installs and then fails to configure. A files: list naming
+# ../../src/forge would not help: those paths are silently ignored, and the pack
+# still succeeds.
+#
+# So the packing script stages a copy of the library INTO the component and
+# packs that. The component's own CMakeLists finds its root either way - beside
+# it when packed, two levels up in a checkout - by looking for src/forge rather
+# than being told.
+#
+#   python tools/packaging/pack_esp_component.py --version <v> --verify
+#
+# --verify builds a throwaway IDF project against the archive, which is the only
+# check that establishes self-containment; an entry count can pass on something
+# that does not configure.

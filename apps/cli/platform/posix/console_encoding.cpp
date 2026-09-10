@@ -17,6 +17,8 @@ unsigned int set_console_utf8() {
     return 0;
 }
 
-void restore_console_encoding(unsigned int /*previous*/) {}
+void restore_console_encoding(unsigned int /*previous*/) {
+    // Nothing to restore: set_console_utf8() above never changed anything.
+}
 
 }  // namespace ac3::cli::platform

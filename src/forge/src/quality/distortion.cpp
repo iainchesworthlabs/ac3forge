@@ -13,6 +13,12 @@
 #include "ac3/core/mantissas.hpp"
 #include "ac3/internal/profiling.hpp"
 
+// std::min<int> rather than bare std::min throughout this file: the band
+// tables are std::int32_t, which is 'long int' on arm-none-eabi and 'int' on
+// the hosted targets this code had only ever been compiled for, and bare
+// std::min cannot deduce one type from the two. See
+// src/encoder/bandwidth.cpp for where a bare-metal build of the encoder first
+// hit it.
 namespace ac3::quality {
 
 namespace {
@@ -151,9 +157,9 @@ void accumulate_block(std::span<const std::int32_t> fixed, std::span<const std::
     // one comparison per bin instead of a table lookup, and it keeps the two
     // running accumulators in registers across a whole band.
     int band = tables::kMaskTab[static_cast<std::size_t>(start)];
-    int band_end = std::min(tables::kBandStart[static_cast<std::size_t>(band)] +
-                                tables::kBandSize[static_cast<std::size_t>(band)],
-                            end);
+    int band_end = std::min<int>(tables::kBandStart[static_cast<std::size_t>(band)] +
+                                     tables::kBandSize[static_cast<std::size_t>(band)],
+                                 end);
     double signal = 0.0;
     double noise = 0.0;
     for (int bin = start; bin < end; ++bin) {
@@ -163,9 +169,9 @@ void accumulate_block(std::span<const std::int32_t> fixed, std::span<const std::
             signal = 0.0;
             noise = 0.0;
             band = tables::kMaskTab[static_cast<std::size_t>(bin)];
-            band_end = std::min(tables::kBandStart[static_cast<std::size_t>(band)] +
-                                    tables::kBandSize[static_cast<std::size_t>(band)],
-                                end);
+            band_end = std::min<int>(tables::kBandStart[static_cast<std::size_t>(band)] +
+                                         tables::kBandSize[static_cast<std::size_t>(band)],
+                                     end);
         }
         const std::int32_t value = fixed[static_cast<std::size_t>(bin - start)];
         const int exponent = exps[static_cast<std::size_t>(bin)];

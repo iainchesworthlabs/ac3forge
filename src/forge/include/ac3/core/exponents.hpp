@@ -1,8 +1,10 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cassert>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -10,6 +12,35 @@
 
 #include "ac3/core/tables.hpp"
 #include "ac3/export.hpp"
+
+namespace ac3 {
+
+// 2^-k for k in [0, 32): the scale a decoded exponent applies to its
+// mantissa (§7.1.3), a coupling coordinate's exponent to its mantissa
+// (§7.4.3), and an AHT bin's exponent to its six reconstructed blocks
+// (§E3.4.5). A table rather than std::ldexp or a division by (1u << k)
+// because on the single-precision FPU the minimum-footprint profile targets
+// both of those are library routines, while a multiply by an exact power of
+// two is one instruction - and produces the same value, since scaling by a
+// power of two is exact in either type at every magnitude a coefficient
+// reaches. Every existing double path reads identically through it.
+template <typename Scalar>
+inline constexpr std::array<Scalar, 32> kPow2Negative = [] {
+    std::array<Scalar, 32> table{};
+    Scalar value{1};
+    for (auto& entry : table) {
+        entry = value;
+        value = value / Scalar{2};
+    }
+    return table;
+}();
+
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar exponent_scale(int exp) {
+    return kPow2Negative<Scalar>[static_cast<std::size_t>(exp)];
+}
+
+}  // namespace ac3
 
 // AC-3 exponent pipeline (A/52 §7.1, §8.2.7-8.2.11).
 //
@@ -101,11 +132,22 @@ inline constexpr int kMaxAbsoluteExponent = 15;  // 4-bit exps[ch][0] field, §7
 // scaled - trunc(scaled) is exact in binary floating point (the remainder is
 // a multiple of scaled's own ulp with magnitude below 1), so the two
 // comparisons against +-0.5 below decide the tie exactly.
-[[nodiscard]] constexpr std::int32_t to_fixed25(double c) {
-    constexpr double kScale = 16777216.0;      // 2^24
-    constexpr std::int32_t kMax = 16777215;    // 2^24 - 1
-    constexpr std::int32_t kMin = -16777216;   // -2^24
-    const double scaled = c * kScale;
+//
+// A template so the float encode path (AC3FORGE_ENCODE_SCALAR, see
+// docs/building.md) rounds its own scalar rather than widening every bin.
+// Each step is exact in float for the reason it is exact in double: the scale
+// is a power of two, and the clamp keeps |scaled| below 2^24, so both the
+// truncation and the remainder are representable. The float instantiation is
+// therefore the round-half-away-from-zero of the float coefficient - the
+// value the double instantiation gives that same coefficient widened - and
+// the double instantiation is the function that was here before.
+template <std::floating_point Scalar>
+[[nodiscard]] constexpr std::int32_t to_fixed25(Scalar c) {
+    constexpr auto kScale = static_cast<Scalar>(16777216.0);  // 2^24
+    constexpr std::int32_t kMax = 16777215;                   // 2^24 - 1
+    constexpr std::int32_t kMin = -16777216;                  // -2^24
+    constexpr auto kHalf = static_cast<Scalar>(0.5);
+    const Scalar scaled = c * kScale;
     // Tested on the UNROUNDED product, which decides the same cases the
     // rounded test did: rounding is monotonic and both bounds are integers,
     // so scaled >= kMax implies round(scaled) >= kMax. A value just under a
@@ -114,18 +156,18 @@ inline constexpr int kMaxAbsoluteExponent = 15;  // 4-bit exps[ch][0] field, §7
     // it. Doing it here also bounds |scaled| below 2^24, which is what keeps
     // the int32 truncation in range (and catches the infinities, which
     // reached the same clamps before).
-    if (scaled >= static_cast<double>(kMax)) {
+    if (scaled >= static_cast<Scalar>(kMax)) {
         return kMax;
     }
-    if (scaled <= static_cast<double>(kMin)) {
+    if (scaled <= static_cast<Scalar>(kMin)) {
         return kMin;
     }
     const auto truncated = static_cast<std::int32_t>(scaled);     // toward zero
-    const double frac = scaled - static_cast<double>(truncated);  // exact
-    if (frac >= 0.5) {
+    const Scalar frac = scaled - static_cast<Scalar>(truncated);  // exact
+    if (frac >= kHalf) {
         return truncated + 1;
     }
-    if (frac <= -0.5) {
+    if (frac <= -kHalf) {
         return truncated - 1;
     }
     return truncated;
@@ -141,6 +183,13 @@ inline constexpr int kMaxAbsoluteExponent = 15;  // 4-bit exps[ch][0] field, §7
 // src/forge/src/internal/arch/x86_64/ac3/internal/arch/simd.hpp. The spans
 // must be the same length.
 AC3FORGE_EXPORT void to_fixed25_block(std::span<const double> coefficients,
+                                      std::span<std::int32_t> fixed);
+
+// The float form, for the float encode path: the same rounding and clamp,
+// bin by bin. The seam's f32x4 carries no round_ties_away (simd.hpp says
+// why), and the one platform whose encode scalar is float, the ESP32-S3, has
+// no float vector arithmetic to widen it into.
+AC3FORGE_EXPORT void to_fixed25_block(std::span<const float> coefficients,
                                       std::span<std::int32_t> fixed);
 
 // §8.2.7: leading zeros of the 24-bit magnitude, capped at 24 (zero input).
@@ -172,14 +221,30 @@ AC3FORGE_EXPORT void extract_exponents(std::span<const std::int32_t> fixed,
 // is two traversals of the same data and two chances to spill it. Written out
 // here as one loop over inline bodies so the compiler sees the whole per-bin
 // dependency chain and can widen it.
-inline void to_fixed25_block(std::span<const double> coeffs, std::span<std::int32_t> fixed,
-                             std::span<std::uint8_t> exponents) {
+namespace internal {
+
+template <std::floating_point Scalar>
+inline void to_fixed25_block_over(std::span<const Scalar> coeffs, std::span<std::int32_t> fixed,
+                                  std::span<std::uint8_t> exponents) {
     assert(coeffs.size() == fixed.size() && coeffs.size() == exponents.size());
     for (std::size_t i = 0; i < coeffs.size(); ++i) {
         const std::int32_t value = to_fixed25(coeffs[i]);
         fixed[i] = value;
         exponents[i] = static_cast<std::uint8_t>(exponent_from_fixed(value));
     }
+}
+
+}  // namespace internal
+
+inline void to_fixed25_block(std::span<const double> coeffs, std::span<std::int32_t> fixed,
+                             std::span<std::uint8_t> exponents) {
+    internal::to_fixed25_block_over<double>(coeffs, fixed, exponents);
+}
+
+// The float form, for the float encode path.
+inline void to_fixed25_block(std::span<const float> coeffs, std::span<std::int32_t> fixed,
+                             std::span<std::uint8_t> exponents) {
+    internal::to_fixed25_block_over<float>(coeffs, fixed, exponents);
 }
 
 struct EncodedExponents {

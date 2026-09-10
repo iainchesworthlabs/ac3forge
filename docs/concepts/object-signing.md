@@ -4,7 +4,7 @@ A clean-room Atmos stream from this encoder is a valid Atmos-in-E-AC-3 stream: t
 everywhere, and the JOC/OAMD object metadata is spec-correct. But a **Dolby-licensed decoder**
 does one extra thing before it will reconstruct the objects — it checks a keyed authenticity tag
 carried in the stream's EMDF *protection* field. Without a valid tag it plays the plain 5.1 bed
-instead of the height-rendered objects (see [Atmos & JOC](atmos-joc.md#two-honest-limitations)).
+instead of the height-rendered objects (see [Atmos & JOC](atmos-joc.md#two-limitations)).
 
 `ac3::signing` computes that tag.
 

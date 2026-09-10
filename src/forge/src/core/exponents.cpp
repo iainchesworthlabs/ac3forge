@@ -78,6 +78,16 @@ void to_fixed25_block(std::span<const double> coefficients, std::span<std::int32
     }
 }
 
+// The float form: to_fixed25 on each float coefficient, which is that
+// coefficient's own round-half-away-from-zero (exponents.hpp says why the
+// float instantiation is exact). Bin by bin - see the header.
+void to_fixed25_block(std::span<const float> coefficients, std::span<std::int32_t> fixed) {
+    assert(coefficients.size() == fixed.size());
+    for (std::size_t i = 0; i < coefficients.size(); ++i) {
+        fixed[i] = to_fixed25(coefficients[i]);
+    }
+}
+
 void extract_exponents(std::span<const std::int32_t> fixed, std::span<std::uint8_t> exponents) {
     assert(fixed.size() == exponents.size());
     for (std::size_t i = 0; i < fixed.size(); ++i) {
@@ -267,28 +277,38 @@ void decode_exponents(std::uint8_t absolute, std::span<const std::uint8_t> group
     assert(out.empty() || (out.size() - 1) % 3 == 0);  // legal endmant contract
     assert(static_cast<int>(out.size()) <= 1 + ngrps * 3 * group_size);
 
-    // §7.1.3 pseudocode: ungroup, unbias, accumulate, expand by grpsize.
-    std::vector<int> aexp(static_cast<std::size_t>(ngrps) * 3);
-    int prevexp = absolute;
-    for (int grp = 0; grp < ngrps; ++grp) {
-        const int gexp = groups[static_cast<std::size_t>(grp)];
-        const int dexp[3] = {gexp / 25, (gexp % 25) / 5, (gexp % 25) % 5};
-        for (int j = 0; j < 3; ++j) {
-            const std::size_t i = static_cast<std::size_t>(grp * 3 + j);
-            aexp[i] = prevexp + (dexp[j] - 2);
-            prevexp = aexp[i];
-        }
-    }
-
+    // §7.1.3 pseudocode: ungroup, unbias, accumulate, expand by grpsize - in
+    // one pass, writing each absolute exponent straight into `out` as it is
+    // derived, exactly as decode_coupling_exponents above already does.
+    //
+    // It used to accumulate into a std::vector<int> of ngrps * 3 first and
+    // expand from that afterwards, which cost one heap allocation per stream
+    // per block that sent exponents - about 1 KB for a full-bandwidth D15
+    // channel, and the whole of the AC-3 decoder's remaining per-frame churn
+    // once its frame-scope buffers moved onto the decoder. The intermediate
+    // was never needed: the expansion visits aexp[i] in the same increasing
+    // order the accumulation produces it and reads no entry twice, so this is
+    // the same sequence of writes with nothing held between them.
+    //
+    // `bin` advances whether or not the guard lets the write through, which is
+    // what the index arithmetic it replaces did - bin was computed from i and
+    // j rather than counted - so a short `out` still skips its tail rather
+    // than packing the remaining exponents down into it.
     if (!out.empty()) {
         out[0] = absolute;
     }
-    for (std::size_t i = 0; i < aexp.size(); ++i) {
-        for (int j = 0; j < group_size; ++j) {
-            const std::size_t bin = i * static_cast<std::size_t>(group_size) +
-                                    static_cast<std::size_t>(j) + 1;
-            if (bin < out.size()) {
-                out[bin] = static_cast<std::uint8_t>(aexp[i]);
+    int prevexp = absolute;
+    std::size_t bin = 1;
+    for (int grp = 0; grp < ngrps; ++grp) {
+        const int gexp = groups[static_cast<std::size_t>(grp)];
+        const int dexp[3] = {gexp / 25, (gexp % 25) / 5, (gexp % 25) % 5};
+        for (const int d : dexp) {
+            prevexp += d - 2;
+            for (int j = 0; j < group_size; ++j) {
+                if (bin < out.size()) {
+                    out[bin] = static_cast<std::uint8_t>(prevexp);
+                }
+                ++bin;
             }
         }
     }

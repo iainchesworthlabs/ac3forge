@@ -11,11 +11,9 @@ struct SigningHook::Impl {
     ac3::signing::SigningKey key;
 };
 
-SigningHook::SigningHook() : impl_(new Impl) {}
+SigningHook::SigningHook() : impl_(std::make_unique<Impl>()) {}
 
-SigningHook::~SigningHook() {
-    delete impl_;
-}
+SigningHook::~SigningHook() = default;
 
 std::string SigningHook::load(std::string_view explicit_path) {
     auto loaded = ac3::signing::load_signing_key(explicit_path);

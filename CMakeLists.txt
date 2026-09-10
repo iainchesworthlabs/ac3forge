@@ -189,6 +189,55 @@ option(AC3FORGE_MINIMAL_DECODER
     "Build ONLY the decode-only, exception-free, table-trimmed ac3::forge_minimal (roadmap PF7)"
     OFF)
 
+# The same profile pointed the other way: encode only, no decoder.
+#
+# Mutually exclusive with the decoder above, and that is a measurement rather
+# than a simplification. On the ESP32-S3, which has 277,400 bytes of internal
+# SRAM free once the image is placed, the three shapes peak at:
+#
+#   decode (including Atmos objects)   233,546
+#   AC-3 encode                        201,770
+#   E-AC-3 encode                      243,770
+#
+# Each fits alone. No two fit at once - the two encoders together reach 440,420,
+# and decode alongside E-AC-3 encode would be worse. A build that offered both
+# would be offering something the part cannot run, so the option refuses it
+# rather than letting the failure arrive as out_of_memory on a device.
+#
+# Sequential use is a different question and is fine: tear one down, build the
+# other. It is holding both at once that does not fit.
+option(AC3FORGE_MINIMAL_ENCODER
+    "Build ONLY the encode-only, exception-free ac3::forge_minimal (roadmap PF7)"
+    OFF)
+
+if(AC3FORGE_MINIMAL_DECODER AND AC3FORGE_MINIMAL_ENCODER)
+    message(FATAL_ERROR
+        "AC3FORGE_MINIMAL_DECODER and AC3FORGE_MINIMAL_ENCODER are mutually exclusive - see "
+        "the measured peaks beside the option above. Pick one; a target that needs both in "
+        "sequence can build one library and rebuild, but neither part this profile serves can "
+        "hold both at once.")
+endif()
+
+# Where a frame's time goes, on a target that cannot run Tracy. Routes the
+# library's AC3_ZONE_SCOPED_N() markers - the same ones AC3FORGE_ENABLE_TRACY
+# turns into Tracy zones - to two functions the APPLICATION supplies (see
+# src/forge/src/internal/profiling/stage_timers/), so a bare-metal probe can
+# report per-stage microseconds beside its per-frame ones. Minimum-footprint
+# profile only: it is that profile's targets that have no other profiler, and
+# apps/baremetal/stage_timers.cpp is the one implementation of the two
+# functions. Off by default, and when off the markers compile to nothing
+# exactly as before, so a timed build and a plain one differ only in the
+# library's include path.
+option(AC3FORGE_STAGE_TIMERS
+    "Minimum-footprint profile only: route zone markers to an application-supplied stage timer"
+    OFF)
+if(AC3FORGE_STAGE_TIMERS AND NOT (AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER))
+    message(FATAL_ERROR
+        "AC3FORGE_STAGE_TIMERS is only meaningful with AC3FORGE_MINIMAL_DECODER or "
+        "AC3FORGE_MINIMAL_ENCODER - the ordinary library has Tracy (AC3FORGE_ENABLE_TRACY) for "
+        "this, and nothing in it defines the two functions the stage-timer backend calls.")
+endif()
+
 # apps/cli, apps/gui, tests/ and examples/ all link matroska::matroska, mp4::mp4 and
 # mpegts::mpegts unconditionally - none of them are written to cope with any of the three being
 # absent. AC3FORGE_BUILD_MATROSKA=OFF, AC3FORGE_BUILD_MP4=OFF or AC3FORGE_BUILD_MPEGTS=OFF only
@@ -224,7 +273,7 @@ endif()
 # against a decode-only archive, and several would not even configure for a bare-metal target.
 # Name every offender at once rather than failing on the first, so a caller assembling the
 # option set gets one message instead of six configures.
-if(AC3FORGE_MINIMAL_DECODER)
+if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
     set(_ac3_minimal_conflicts "")
     foreach(_opt IN ITEMS AC3FORGE_BUILD_CLI AC3FORGE_BUILD_GUI AC3FORGE_BUILD_TESTS
                           AC3FORGE_BUILD_EXAMPLES AC3FORGE_BUILD_MATROSKA AC3FORGE_BUILD_MP4
@@ -238,8 +287,8 @@ if(AC3FORGE_MINIMAL_DECODER)
     if(_ac3_minimal_conflicts)
         list(JOIN _ac3_minimal_conflicts "=OFF, " _ac3_minimal_message)
         message(FATAL_ERROR
-            "AC3FORGE_MINIMAL_DECODER=ON needs ${_ac3_minimal_message}=OFF - none of them build "
-            "against a decode-only archive. The config-*-minimal presets in CMakePresets.json "
+            "The minimum-footprint profile needs ${_ac3_minimal_message}=OFF - none of them build "
+            "against a decode-only or encode-only archive. The config-*-minimal presets in CMakePresets.json "
             "already set them; see docs/building.md's minimum-footprint decoder profile.")
     endif()
     unset(_ac3_minimal_conflicts)
@@ -277,7 +326,7 @@ include(MinimalDecoder)
 # declared in this section, and a module cannot read an option that does not
 # exist yet. Everything that consumes ac3::fmt is added by add_subdirectory()
 # further down, so resolving it here is still early enough.
-if(NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT AC3FORGE_MINIMAL_DECODER AND NOT AC3FORGE_MINIMAL_ENCODER)
     include(Fmt)
 endif()
 
@@ -339,7 +388,7 @@ add_subdirectory(src/forge)
 # Emscripten but with the same effect: a bare-metal target has no audio
 # device, no backend directory would match it, and the profile's whole point
 # is that nothing outside the decode path is compiled.
-if(NOT EMSCRIPTEN AND NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT EMSCRIPTEN AND NOT AC3FORGE_MINIMAL_DECODER AND NOT AC3FORGE_MINIMAL_ENCODER)
     add_subdirectory(src/audio)
 endif()
 
@@ -352,7 +401,7 @@ endif()
 # Not under AC3FORGE_MINIMAL_DECODER: object SIGNING is a production-side
 # concern, and verification is opt-in even in a full build - neither is on a
 # decode path a set-top box has to run.
-if(NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT AC3FORGE_MINIMAL_DECODER AND NOT AC3FORGE_MINIMAL_ENCODER)
     add_subdirectory(src/signing)
 endif()
 
@@ -448,7 +497,7 @@ endif()
 # ac3::forge_static/ac3::forge_shared, neither of which exists in that
 # profile, and an embedded integrator consumes ac3::forge_minimal from an
 # in-tree add_subdirectory() build rather than from find_package().
-if(NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT AC3FORGE_MINIMAL_DECODER AND NOT AC3FORGE_MINIMAL_ENCODER)
     include(InstallLibrary)
 endif()
 
@@ -518,8 +567,15 @@ endif()
 # the profile rather than on an option of its own, for the same reason
 # apps/wasm is gated on EMSCRIPTEN: outside that profile there is no
 # ac3::forge_minimal for it to link, so there is nothing to opt in or out of.
-if(AC3FORGE_MINIMAL_DECODER)
-    add_subdirectory(apps/baremetal)
+if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
+    # Guarded on existence because this tree is also PACKED, as the ESP-IDF
+    # component archive (tools/packaging/pack_esp_component.py), and that
+    # archive carries the library without the probe that measures it - a
+    # consumer wants the decoder, not a footprint harness. In a checkout the
+    # directory is always there and this is a no-op.
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/baremetal/CMakeLists.txt")
+        add_subdirectory(apps/baremetal)
+    endif()
 endif()
 
 # Forge's own LICENSE.txt and NOTICES.txt, and the install() rules that put
@@ -542,7 +598,7 @@ endif()
 # After every target's install() rules (apps/cli, apps/gui) have been declared.
 # Nothing to package under AC3FORGE_MINIMAL_DECODER - no application is built
 # and nothing is installed (see include(InstallLibrary) above).
-if(NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT AC3FORGE_MINIMAL_DECODER AND NOT AC3FORGE_MINIMAL_ENCODER)
     include(Packaging)
 endif()
 

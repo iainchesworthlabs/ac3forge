@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <numbers>
 #include <random>
+#include <ranges>
 #include <span>
 
 #include "ac3/core/mdct.hpp"
@@ -306,6 +307,103 @@ TEST_CASE("float32 inverse transform agrees with the double one", "[mdct][float3
     CHECK(worst > 1e-9);
 }
 
+TEST_CASE("float32 forward transform agrees with the double one", "[mdct][float32]") {
+    // The forward direction had no float32 form until oba::joc needed one: it
+    // analyses the bed inside a DECODE before un-mixing it (PF8), which is the
+    // only forward transform a decode runs. The encoder's own forward path is
+    // still double and is not on this one.
+    std::mt19937 rng(20260908);
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+
+    double worst_window = 0.0;
+    double worst_forward = 0.0;
+    for (int trial = 0; trial < 32; ++trial) {
+        std::array<double, 512> raw_d{};
+        std::array<float, 512> raw_f{};
+        for (std::size_t i = 0; i < raw_d.size(); ++i) {
+            raw_d[i] = dist(rng);
+            raw_f[i] = static_cast<float>(raw_d[i]);
+        }
+
+        std::array<double, 512> win_d{};
+        std::array<float, 512> win_f{};
+        ac3::apply_analysis_window(raw_d, win_d);
+        ac3::apply_analysis_window(raw_f, win_f);
+
+        std::array<double, 512> win_widened{};
+        for (std::size_t i = 0; i < win_widened.size(); ++i) {
+            win_widened[i] = static_cast<double>(win_f[i]);
+        }
+        worst_window = std::max(worst_window, max_rel_error(win_widened, win_d));
+
+        std::array<double, 256> coeffs_d{};
+        std::array<float, 256> coeffs_f{};
+        ac3::mdct512_forward(win_d, coeffs_d, /*fast=*/true);
+        ac3::mdct512_forward(win_f, coeffs_f);
+
+        std::array<double, 256> widened{};
+        for (std::size_t i = 0; i < widened.size(); ++i) {
+            widened[i] = static_cast<double>(coeffs_f[i]);
+        }
+        worst_forward = std::max(worst_forward, max_rel_error(widened, coeffs_d));
+    }
+
+    INFO("worst peak-normalised float32-vs-double window error: " << worst_window);
+    CHECK(worst_window < 1e-6);
+
+    INFO("worst peak-normalised float32-vs-double forward error: " << worst_forward);
+    CHECK(worst_forward < 1e-5);
+    // The same trap the inverse's test guards: agreement to 1e-12 would mean
+    // the float overload had quietly computed in double, which the Scalar
+    // template parameter exists to prevent and which is far cheaper to catch
+    // here than as a performance mystery on the target.
+    CHECK(worst_forward > 1e-9);
+}
+
+TEST_CASE("float32 batch transforms agree with their scalar float forms", "[mdct][float32]") {
+    // The float32 batch entry points are four independent calls rather than
+    // four SIMD lanes - there is no float32 AVX2 kernel for them to fill yet.
+    // So this is an EXACT check, not a tolerance one: any difference at all
+    // would mean the batch form had stopped being the scalar one repeated,
+    // which is the whole of what it currently promises.
+    std::mt19937 rng(20260908);
+    std::uniform_real_distribution<float> dist(-1.0F, 1.0F);
+
+    std::array<std::array<float, 512>, 4> win{};
+    for (auto& block : win) {
+        for (auto& sample : block) {
+            sample = dist(rng);
+        }
+    }
+
+    std::array<std::array<float, 256>, 4> batched{};
+    ac3::mdct512_forward_batch4(win[0], win[1], win[2], win[3], batched[0], batched[1],
+                                batched[2], batched[3]);
+    for (std::size_t lane = 0; lane < win.size(); ++lane) {
+        CAPTURE(lane);
+        std::array<float, 256> one{};
+        ac3::mdct512_forward(win[lane], one);
+        CHECK(std::ranges::equal(one, batched[lane]));
+    }
+
+    std::array<std::array<float, 256>, 4> coeffs{};
+    for (auto& block : coeffs) {
+        for (auto& value : block) {
+            value = dist(rng);
+        }
+    }
+
+    std::array<std::array<float, 512>, 4> batched_inv{};
+    ac3::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3], batched_inv[0],
+                                  batched_inv[1], batched_inv[2], batched_inv[3]);
+    for (std::size_t lane = 0; lane < coeffs.size(); ++lane) {
+        CAPTURE(lane);
+        std::array<float, 512> one{};
+        ac3::imdct512_windowed(coeffs[lane], one);
+        CHECK(std::ranges::equal(one, batched_inv[lane]));
+    }
+}
+
 TEST_CASE("float32 short-block inverse agrees with the double one", "[mdct][float32]") {
     std::mt19937 rng(20260908);
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
@@ -335,6 +433,46 @@ TEST_CASE("float32 short-block inverse agrees with the double one", "[mdct][floa
     // 64-point FFTs rather than one 128-point, so there is one fewer radix
     // stage for rounding to accumulate through.
     INFO("worst peak-normalised float32-vs-double error: " << worst);
+    CHECK(worst < 1e-5);
+    CHECK(worst > 1e-9);
+}
+
+TEST_CASE("float32 short-block forward transforms agree with the double ones",
+          "[mdct][float32]") {
+    // The encoders' analysis front end under the minimum-footprint profile
+    // runs the block-switched pair in float too (ac3/internal/encode_scalar.hpp),
+    // through these forms; each is its double sibling's own fold in float.
+    std::mt19937 rng(20260910);
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    double worst = 0.0;
+    for (int trial = 0; trial < 32; ++trial) {
+        std::array<double, 512> win_d{};
+        std::array<float, 512> win_f{};
+        for (std::size_t i = 0; i < win_d.size(); ++i) {
+            win_d[i] = dist(rng);
+            win_f[i] = static_cast<float>(win_d[i]);
+        }
+        const std::span<const double, 512> full_d(win_d);
+        const std::span<const float, 512> full_f(win_f);
+        std::array<double, 128> first_d{};
+        std::array<double, 128> second_d{};
+        std::array<float, 128> first_f{};
+        std::array<float, 128> second_f{};
+        ac3::mdct256_forward_first(full_d.first<256>(), first_d, /*fast=*/true);
+        ac3::mdct256_forward_second(full_d.last<256>(), second_d, /*fast=*/true);
+        ac3::mdct256_forward_first(full_f.first<256>(), first_f);
+        ac3::mdct256_forward_second(full_f.last<256>(), second_f);
+        std::array<double, 128> widened{};
+        for (std::size_t i = 0; i < widened.size(); ++i) {
+            widened[i] = static_cast<double>(first_f[i]);
+        }
+        worst = std::max(worst, max_rel_error(widened, first_d));
+        for (std::size_t i = 0; i < widened.size(); ++i) {
+            widened[i] = static_cast<double>(second_f[i]);
+        }
+        worst = std::max(worst, max_rel_error(widened, second_d));
+    }
+    INFO("worst peak-normalised float32-vs-double short-block error: " << worst);
     CHECK(worst < 1e-5);
     CHECK(worst > 1e-9);
 }

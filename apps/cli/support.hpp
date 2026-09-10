@@ -364,6 +364,11 @@ struct Options {
     // design (see EncoderConfig::dither's own comment), which is exactly
     // what tools/checks/verify_gold_reference.sh needs this for.
     bool dither = true;
+    // §7.2.2.6 delta bit allocation (plan::Tools::delta), on by default;
+    // delta=off is the encoders' first effort level - see the field's own
+    // comment in ac3/encoder/encoder.hpp - reached the same way dither=off
+    // is. eac3-encode's tools= string has the bare nodelta token.
+    bool delta = true;
     // Whether channels= or downmix= actually named a target this run, so the
     // two can cooperate without either silently winning: downmix=ltrt on its
     // own means stereo, channels=2 on its own means Lo/Ro, and the pair in

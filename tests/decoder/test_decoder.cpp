@@ -662,6 +662,68 @@ TEST_CASE("dithflag=1 on a coupled channel dithers independently of its sibling"
     CHECK(any_differs);
 }
 
+TEST_CASE("decode_frame_by_block hands over the identical samples a block at a time", "[decoder]") {
+    // The block form exists so a caller never has to hold a frame; it must
+    // not change a sample. Same shape as the span-form case below: two
+    // decoders fed the same frames, the value form's vectors against the six
+    // blocks the sink receives, in order, reassembled.
+    ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .coupling = true}};
+    ac3::FrameDecoder by_value;
+    ac3::FrameDecoder by_block;
+    const auto nchans = static_cast<std::size_t>(encoder.channel_count());
+    std::vector<std::vector<float>> block(nchans, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> views(nchans);
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < 4; ++f) {
+        for (std::size_t ch = 0; ch < nchans; ++ch) {
+            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                const auto n = static_cast<double>(n0 + static_cast<std::uint64_t>(i));
+                const double freq = 180.0 + 130.0 * static_cast<double>(ch) + (f % 2) * 40.0;
+                block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    0.3 * std::sin(2.0 * std::numbers::pi * freq * n / 48000.0));
+            }
+            views[ch] = block[ch];
+        }
+        n0 += ac3::kSamplesPerFrame;
+        const auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+
+        const auto value_result = by_value.decode_frame(*frame);
+        REQUIRE(value_result.has_value());
+
+        std::vector<std::vector<float>> delivered;
+        int expected_index = 0;
+        const auto sink = [&](const ac3::PcmBlock& pcm) {
+            CHECK(pcm.index == expected_index);
+            CHECK(pcm.blocks == ac3::kBlocksPerFrame);
+            ++expected_index;
+            delivered.resize(pcm.channels.size());
+            for (std::size_t ch = 0; ch < pcm.channels.size(); ++ch) {
+                CHECK(pcm.channels[ch].size() == static_cast<std::size_t>(ac3::kSamplesPerBlock));
+                delivered[ch].insert(delivered[ch].end(), pcm.channels[ch].begin(),
+                                     pcm.channels[ch].end());
+            }
+        };
+        const auto block_result = by_block.decode_frame_by_block(*frame, sink);
+        REQUIRE(block_result.has_value());
+        CHECK(expected_index == ac3::kBlocksPerFrame);
+
+        CHECK(block_result->channels.empty());
+        CHECK(block_result->acmod == value_result->acmod);
+        CHECK(block_result->lfe == value_result->lfe);
+        CHECK(block_result->dialnorm == value_result->dialnorm);
+        REQUIRE(value_result->channels.size() == nchans);
+        REQUIRE(delivered.size() == nchans);
+        for (std::size_t ch = 0; ch < nchans; ++ch) {
+            CAPTURE(f, ch);
+            REQUIRE(delivered[ch].size() == value_result->channels[ch].size());
+            CHECK(std::equal(delivered[ch].begin(), delivered[ch].end(),
+                             value_result->channels[ch].begin()));
+        }
+    }
+}
+
 TEST_CASE("decode_frame_into writes the identical samples the value form allocates",
           "[decoder]") {
     // The span form exists to remove the per-call PCM allocation, never to

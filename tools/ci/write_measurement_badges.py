@@ -40,6 +40,8 @@ GREEN = "brightgreen"
 AMBER = "orange"
 GREY = "lightgrey"
 
+NO_DATA = "no data"
+
 # The steady-state retention line append_memory_history.py warns at. Not a
 # number chosen for this script.
 MEMORY_RETENTION_WARN_BYTES = 4 * 1024
@@ -84,7 +86,7 @@ def speed_badge(rows):
     timed = [r for r in rows
              if isinstance(r.get("ms_per_frame"), (int, float)) and r["ms_per_frame"] > 0]
     if not timed:
-        return badge("encode speed", "no data", GREY)
+        return badge("encode speed", NO_DATA, GREY)
     worst = max(timed, key=lambda r: r["ms_per_frame"])
     budget = worst.get("real_time_budget_ms_per_frame") or 32
     times = budget / worst["ms_per_frame"]
@@ -124,7 +126,7 @@ def accuracy_badge(rows):
               if isinstance(r.get("worst_db"), (int, float))
               and isinstance(r.get("threshold_db"), (int, float))]
     if not scored:
-        return badge("decode accuracy", "no data", GREY)
+        return badge("decode accuracy", NO_DATA, GREY)
 
     tight = min(scored, key=_headroom_db)
     headroom = _headroom_db(tight)
@@ -161,7 +163,7 @@ def memory_badge(rows):
     """
     scored = [r for r in rows if isinstance(r.get("bytes_per_frame"), (int, float))]
     if not scored:
-        return badge("memory", "no data", GREY)
+        return badge("memory", NO_DATA, GREY)
     worst = max(scored, key=lambda r: r["bytes_per_frame"])
     held = max((r.get("steady_live_growth") or 0) for r in scored)
     return badge("memory", f"{worst['bytes_per_frame'] / 1024:.0f} KB/frame",

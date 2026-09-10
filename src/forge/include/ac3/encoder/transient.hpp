@@ -20,9 +20,21 @@ namespace ac3 {
 // the last segment on level j of the tree calculated immediately prior to
 // the current tree") persist from one 256-sample segment to the next, so
 // state belongs to the channel's stream, not to a single call.
-class AC3FORGE_EXPORT TransientDetector {
+//
+// A template on the scalar the filter runs in (roadmap PF7's float32 gap).
+// TransientDetector below - the double instantiation - is what every
+// ordinary build and both encoders' double forms use, and its arithmetic is
+// exactly what the non-template class's was. The float instantiation is for
+// the minimum-footprint profile (ac3/internal/encode_scalar.hpp), whose
+// targets have single-precision hardware at best: on an ESP32-S3 this
+// detector in double was 57 ms of a 201 ms AC-3 5.1 frame, every biquad tap
+// a call into the ROM's software floating point (docs/platforms/esp32.md).
+// The recipe is the same in both; only the rounding differs, and with it,
+// now and then, a decision that sits on a threshold.
+template <typename Scalar>
+class AC3FORGE_TEMPLATE_CLASS BasicTransientDetector {
    public:
-    explicit TransientDetector(SampleRate sample_rate);
+    explicit BasicTransientDetector(SampleRate sample_rate);
 
     // pcm[0..255]: the 256 NEW samples this block period contributes - the
     // second half of the block's 512-sample analysis window, which is the
@@ -51,9 +63,9 @@ class AC3FORGE_EXPORT TransientDetector {
     // Butterworth Q (1/sqrt(2)) - a standard, principled derivation for a
     // cutoff the spec fixes but does not hand a coefficient formula for.
     struct Biquad {
-        double b0 = 0.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
-        double x1 = 0.0, x2 = 0.0, y1 = 0.0, y2 = 0.0;
-        double process(double x);
+        Scalar b0 = 0, b1 = 0, b2 = 0, a1 = 0, a2 = 0;
+        Scalar x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+        Scalar process(Scalar x);
     };
 
     bool run_pass(std::span<const float, 256> half);
@@ -62,9 +74,9 @@ class AC3FORGE_EXPORT TransientDetector {
 
     // §8.2.2 step 3's cross-pass carry: the previous pass's own last segment
     // at each tree level, used as this pass's P[j][0].
-    double prev_level1_ = 0.0;
-    double prev_level2_ = 0.0;
-    double prev_level3_ = 0.0;
+    Scalar prev_level1_ = 0;
+    Scalar prev_level2_ = 0;
+    Scalar prev_level3_ = 0;
     // The very first segment this instance ever sees has no real
     // "immediately prior tree" to compare against - its baseline is the
     // default-constructed 0.0, i.e. synthetic silence, and comparing
@@ -73,5 +85,19 @@ class AC3FORGE_EXPORT TransientDetector {
     // comment.
     bool first_block_ = true;
 };
+
+// Both instantiations live in transient.cpp; neither is instantiated by a
+// consumer. Exported both, so a test can hold the float one to the double
+// one's decisions through the shared library. Three macros from the generated
+// export header rather than AC3FORGE_EXPORT, because the compilers disagree
+// about where the attribute goes: MSVC imports through this declaration
+// (AC3FORGE_TEMPLATE_IMPORT) and exports the definitions in transient.cpp
+// (AC3FORGE_TEMPLATE_INSTANTIATE); GCC and Clang take the visibility on the
+// class template itself (AC3FORGE_TEMPLATE_CLASS, above) and nothing here.
+// src/forge/CMakeLists.txt has the details.
+extern template class AC3FORGE_TEMPLATE_IMPORT BasicTransientDetector<double>;
+extern template class AC3FORGE_TEMPLATE_IMPORT BasicTransientDetector<float>;
+
+using TransientDetector = BasicTransientDetector<double>;
 
 }  // namespace ac3

@@ -145,7 +145,7 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
         w.put(0, 1);  // reserved
     }
 
-    if (stream.oba_complexity_index) {
+    if (stream.oba_complexity_index.has_value()) {
         // TS 103 420 §8.3.1/§8.3.2.2, echoed into the box exactly as
         // ac3::io::scan() read it out of the bitstream's own addbsi (see
         // ScannedStream::oba_complexity_index) - this is the exact signal

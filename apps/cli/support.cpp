@@ -586,6 +586,17 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.fgaincod = static_cast<int>(parsed);
             continue;
         }
+        if (key == "delta") {
+            if (value == "off") {
+                out.delta = false;
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: delta bit allocation is on by default; 'delta=off' skips "
+                         "the corrections and the second fit that weighs them (got '{}')",
+                         token);
+            return false;
+        }
         if (key == "dither") {
             // No bare-word form: unlike fast-mdct, dither has no prior
             // opt-in spelling to keep parsing, so only the value form -
@@ -794,7 +805,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 fmt::println(stderr, "error: {} needs a level in dBFS", key);
                 return false;
             }
-            if (!out.p.heavy) {
+            if (!out.p.heavy.has_value()) {
                 out.p.heavy.emplace();
             }
             if (key == "ceiling") {
@@ -823,7 +834,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 fmt::println(stderr, "error: {} needs a level in dBFS", key);
                 return false;
             }
-            if (!out.p.heavy2) {
+            if (!out.p.heavy2.has_value()) {
                 out.p.heavy2.emplace();
             }
             if (key == "ceiling2") {
@@ -1155,7 +1166,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.p.mixdepth.mixing.premix = premix;
             // mixdef 0x3 carries its own copy inside mixdata2e, so the value
             // has to reach whichever of the two the mixdef= token selects.
-            if (!out.p.mixdepth.mixing.external) {
+            if (!out.p.mixdepth.mixing.external.has_value()) {
                 out.p.mixdepth.mixing.external.emplace();
             }
             out.p.mixdepth.mixing.external->premix = premix;
@@ -1186,7 +1197,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 return false;
             }
             out.p.mixmeta = true;
-            if (!out.p.mixdepth.mixing.external) {
+            if (!out.p.mixdepth.mixing.external.has_value()) {
                 out.p.mixdepth.mixing.external.emplace();
             }
             auto& external = *out.p.mixdepth.mixing.external;
@@ -1330,7 +1341,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "objects" && command == "qc") {
             const auto id = ac3::plan::parse_layout(value);
-            if (!id) {
+            if (!id.has_value()) {
                 fmt::println(stderr, "error: objects layout '{}' not recognised ({})", value,
                              ac3::plan::layout_names());
                 return false;
@@ -1553,7 +1564,7 @@ std::optional<int> finish_measurement(const ac3::meta::LoudnessMeter& meter,
                                       std::string_view programme, std::string_view field,
                                       FILE* out) {
     const auto lkfs = meter.integrated_lkfs();
-    if (!lkfs) {
+    if (!lkfs.has_value()) {
         return std::nullopt;
     }
     const int dialnorm = ac3::meta::dialnorm_from_lkfs(*lkfs);
@@ -1643,7 +1654,7 @@ bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
         return false;
     }
     auto second = ac3::io::read_wav(std::string{in2_path});
-    if (!second) {
+    if (!second.has_value()) {
         fmt::println(stderr, "error: {}: {}", in2_path, ac3::io::describe(second.error()));
         return false;
     }
@@ -1691,7 +1702,7 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
     // hard-coded 0: §E2.3.1.2 numbers independent substreams from 0, but a
     // stream someone has already cut a programme out of need not still start
     // at one, and refusing it would be refusing a stream that decodes fine.
-    if (!wanted) {
+    if (!wanted.has_value()) {
         return ids.front();
     }
     if (std::ranges::find(ids, *wanted) == ids.end()) {
@@ -2256,13 +2267,13 @@ bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Pl
         return true;
     }
     const auto custom = ac3::plan::parse_channels(name);
-    if (!custom) {
+    if (!custom.has_value()) {
         fmt::println(stderr, "error: unknown layout '{}' ({})", name,
                      ac3::plan::layout_names(codec));
         return false;
     }
     const auto allocated = ac3::eac3::chanmap::allocate(*custom);
-    if (!allocated) {
+    if (!allocated.has_value()) {
         fmt::println(stderr, "error: channel selection '{}' is invalid - {}", name,
                      ac3::eac3::chanmap::describe(allocated.error()));
         return false;
@@ -2367,7 +2378,7 @@ std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bit
     // it is given kAc3 - asked here without printing, because a "no" is the
     // ordinary path into E-AC-3 rather than an error.
     bool ac3_can_carry = false;
-    if (take.plan.custom_locations) {
+    if (take.plan.custom_locations.has_value()) {
         const auto allocated = ac3::eac3::chanmap::allocate(*take.plan.custom_locations);
         ac3_can_carry = allocated.has_value() && allocated->dependents.empty();
     } else {
@@ -2419,7 +2430,7 @@ std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_vie
 
 std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std::size_t channels) {
     auto routing = plan::route(plan::resolve(p), channels, p.meta.cmixlev, p.meta.surmixlev);
-    if (!routing) {
+    if (!routing.has_value()) {
         fmt::println(stderr, "error: {} channels - {}", channels,
                      plan::describe(plan::PlanError::kNoSourceLayout));
         return std::nullopt;
@@ -2433,7 +2444,7 @@ std::optional<ac3::signing::VerifySummary> apply_object_verification(
         return ac3::signing::VerifySummary{};
     }
     const auto key = ac3::signing::load_signing_key(meta.signing_key.value_or(""));
-    if (!key) {
+    if (!key.has_value()) {
         if (key.error().kind == ac3::signing::KeyErrorKind::kAbsent) {
             fmt::println(stderr,
                          "error: verify-objects needs a key — pass signing-key=<path>, or set "

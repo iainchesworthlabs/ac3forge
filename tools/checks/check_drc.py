@@ -38,6 +38,10 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent.parent
 
+# CLI option strings this check's encode commands share.
+DIALNORM_24 = "dialnorm=24"
+DRC_FILM_STANDARD = "drc=film-standard"
+
 FAILURES: list[str] = []
 
 
@@ -146,7 +150,7 @@ def check_dynrng(cli: str, tmp: Path) -> None:
     # dialnorm 24 puts the loud passage in the cut region and the quiet one in
     # the boost region of film-standard; without a sane dialnorm the whole
     # programme can land inside the null band and the curve does nothing.
-    run(cli, "encode", str(source), str(stream), "448", "drc=film-standard", "dialnorm=24")
+    run(cli, "encode", str(source), str(stream), "448", DRC_FILM_STANDARD, DIALNORM_24)
 
     levels = {}
     for scale in (0, 1):
@@ -174,7 +178,7 @@ def check_dynrng(cli: str, tmp: Path) -> None:
 
     # The discriminator: the same audio with no DRC must not respond at all.
     plain = tmp / "prog_none.ac3"
-    run(cli, "encode", str(source), str(plain), "448", "dialnorm=24")
+    run(cli, "encode", str(source), str(plain), "448", DIALNORM_24)
     plain_levels = []
     for scale in (0, 1):
         out = tmp / f"plain_s{scale}.wav"
@@ -196,7 +200,7 @@ def check_compr(cli: str, tmp: Path) -> None:
     write_programme(source, loud=0.95, quiet=0.0056)
     ceiling = -0.5
     stream = tmp / "hot_heavy.ac3"
-    run(cli, "encode", str(source), str(stream), "448", "heavy", "dialnorm=24",
+    run(cli, "encode", str(source), str(stream), "448", "heavy", DIALNORM_24,
         f"ceiling={ceiling}")
 
     peaks = {}
@@ -339,7 +343,7 @@ def check_eac3(cli: str, tmp: Path) -> None:
     # reads it, so -drc_scale is a real oracle here too.
     stream = tmp / "e51.ec3"
     run(cli, "eac3-sine", str(stream), "3", "448", "1000", "30", "51",
-        "drc=film-standard", "mixmeta", "dialnorm=24")
+        DRC_FILM_STANDARD, "mixmeta", DIALNORM_24)
     levels = []
     for scale in (0, 1):
         out = tmp / f"e51_s{scale}.wav"
@@ -354,7 +358,7 @@ def check_eac3(cli: str, tmp: Path) -> None:
     for layout, channels in (("stereo", 2), ("51", 6), ("71", 8), ("512", 8), ("514", 10)):
         path = tmp / f"mix_{layout}.ec3"
         run(cli, "eac3-sine", str(path), "1", "448", "1000", "30", layout, "mixmeta",
-            "drc=film-standard", "heavy", "dialnorm=24")
+            DRC_FILM_STANDARD, "heavy", DIALNORM_24)
         probe = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "stream=channels",
              "-of", "csv=p=0", str(path)],

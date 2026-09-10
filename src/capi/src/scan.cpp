@@ -12,7 +12,7 @@ ac3forge_status_t ac3forge_scan(const uint8_t* stream, size_t stream_size,
     if (stream == nullptr || out_stream == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&stream, &stream_size, &out_stream]() -> ac3forge_status_t {
         auto result =
             ac3::io::scan(std::as_bytes(std::span<const uint8_t>(stream, stream_size)));
         if (!result) {

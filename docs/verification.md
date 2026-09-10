@@ -64,7 +64,7 @@ In rough order of strength:
    `signing::verify_atmos_stream`/`verify_atmos_frame` and (opt-in) `ac3adm::parse_bw64`, each
    seeded from the real payloads inside this project's own Atmos streams. A sixth,
    `oba::parse_osc_packet` — the OSC 1.0 wire form a live session's object positions arrive over
-   (roadmap UX4), driving `live mode=atmos positions=osc:<port>` and the GUI live room — is
+  , driving `live mode=atmos positions=osc:<port>` and the GUI live room — is
    covered the same direct way by `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list
    and so covered by CI exactly as the five above are; its own seeds are hand-built OSC packets
    (`fuzz/seeds/fuzz_osc_parse/`) rather than extracted from an Atmos stream, since there is no
@@ -77,7 +77,7 @@ In rough order of strength:
    four unrepaired so the rejection path itself stays reachable.
 
    Out of the encoder: `tools/ci/fuzz_encoder_space.py` (AC-3) and
-   `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3, roadmap VX1) draw random legal encoder
+   `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3) draw random legal encoder
    configurations crossed with adversarial PCM — transients, silence↔loud transitions inside one
    frame, spectral jumps between blocks, dense harmonics, clipping — and hold every stream they
    produce against both decoders. This is the one check here that varies the *input material*
@@ -128,6 +128,9 @@ cross-correlation, and reports SNR against the original:
 | 448 kbps | 51.05 dB | 47.60 dB | +3.46 |
 
 Measured with FFmpeg 8.0.1 on 2026-08-09; reproduce with `python tools/ci/quality_race.py ac3`.
+Unlike the trend pages beside it, this table is a point measurement rather than a gated series:
+nothing on the `quality-history` branch carries an ac3forge-against-FFmpeg comparison, so no CI
+run reproduces these four numbers or would notice them drifting.
 SNR on synthetic material is a narrow metric — it says the waveform is closer, not that it
 sounds better, and no *subjective* listening test has been run. `quality_race.py`'s tables (and
 [Tool comparison trend](tool-comparison-trend.md)/[Landscape](landscape.md)) also carry an
@@ -190,8 +193,8 @@ allocation — the reading this page carried before the census existed to check 
 A single floor for this fixture therefore had to clear 22.7 dB, and it was set at 22.
 Which meant the centre channel was gated at 22 dB while measuring 58.1 — it could have
 lost 36 dB, more than the entire dynamic range of the surround channels, without
-failing anything. The LFE had 60 dB of slack. That is not a gate; it is a gate on one
-channel and a rounding error on the other five, and it was blind to precisely the
+failing anything. The LFE had 60 dB of slack. That gated one channel and left a rounding error
+on the other five, and it was blind to precisely the
 per-channel syntax defects the third-party fixtures were added to catch (one of the
 five found there, `firstcplcos[ch]`, is per channel by nature).
 
@@ -219,7 +222,7 @@ if the single-floor form is ever restored.
 
 The legs split into two groups on the high-SNR channels, ~6.02 dB apart, and this was
 carried for a long time as an unexplained effect attributed to "arm64 and macOS" legs
-(roadmap VX11). Two things are now settled.
+. Two things are now settled.
 
 **It is architecture, not OS or compiler.** `macos-llvm` (arm64) sits with the arm64
 group; `macos-llvm-x64` sits with the x86-64 group. Same OS, same Homebrew LLVM, opposite
@@ -300,7 +303,7 @@ was the same dither-dominated surround every single run.
    beside the current series rather than replacing it.
 
 Neither gap is a defect in the codec. Both are limits on how sharply the current
-instruments can see it, which is the more useful thing to be honest about.
+instruments can see it, which is the more useful thing to report.
 
 ## Performance and reference modes
 
@@ -503,7 +506,7 @@ Two divergences are recorded rather than resolved:
 
 FFmpeg and the in-repo decoder are complementary, not redundant, and neither covers everything
 alone. FFmpeg reads Annex E coupling, spectral extension and AHT (98+ dB SNR for coupling and
-spectral extension; 62–89 dB for AHT, which genuinely recodes mantissas rather than scaling or
+spectral extension; 62–89 dB for AHT, which recodes mantissas rather than scaling or
 synthesizing around already-decoded content, so a wider margin from bit-exact is expected there)
 — but it refuses any substream whose `substreamid != 0` (`ff_ac3_parse_header`), which rules out
 both the second *dependent* substream 7.1.4 needs and the second *independent* one a
@@ -525,7 +528,7 @@ only the in-repo decoder can read is checked against itself, not against anythin
 
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
 which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
-(roadmap VX1) is built around: it classifies every case it draws by which of these rows it lands
+ is built around: it classifies every case it draws by which of these rows it lands
 on, and checks the *framing* of the ones FFmpeg cannot decode — which needs no decode at all. Two
 things do it: a walk over the four fields that fix E-AC-3's framing (syncword, `strmtyp`,
 `substreamid`, `frmsiz`, all at fixed bit offsets), which shares nothing with the encoder and
@@ -634,7 +637,7 @@ the spec separately from the codec.
 FFmpeg implements no JOC reconstruction: it reads these streams correctly and renders the 5.1
 bed, which is the designed fallback, but it never produces objects to compare against. Dolby's
 own decoder does implement reconstruction — and gates it on a keyed authenticity tag this
-project ships no key for ([Atmos & JOC](concepts/atmos-joc.md#two-honest-limitations)), so it
+project ships no key for ([Atmos & JOC](concepts/atmos-joc.md#two-limitations)), so it
 plays them as the bed too. Nothing outside this repository can currently produce an independent
 object decode of an ac3forge stream, which makes this the one layer where even the partial
 oracle 7.1.4 gets is unavailable. What covers it instead is a self-consistency series with real
@@ -690,11 +693,11 @@ FFmpeg decodes the audio, `header_only` for the `fscod2` rates, `none` for 7.1.4
 coupling / transient pre-noise processing.
 
 Two limits are worth stating on this page rather than only in the bundle: the source material is
-synthetic, and the hashes are per-toolchain. On the first — roadmap VX7 has landed and the CC0
+synthetic, and the hashes are per-toolchain. On the first, the CC0
 speech and music fixtures are committed (`tests/golden/audio/programme_{speech,music}_stereo.flac`),
 but the vector generator was never pointed at them: `tools/generators/gen_conformance_vectors.py`
 still synthesizes its own sources and marks the spot where those files would join the set. Wiring
-this bundle to that material is outstanding work, not a pending roadmap item. On the second —
+this bundle to that material is outstanding work. On the second —
 encoded output is not bit-identical across compilers or architectures, so a bundle regenerated
 elsewhere differs from the published one for the same correct streams. VX11 closed without
 explaining the 6.02 dB arm64 offset (both hypotheses it proposed were falsified by direct
@@ -706,7 +709,7 @@ See [Conformance vectors](conformance-vectors.md).
 
 ## AC-4
 
-`ac4::` (roadmap IM4) is a bitstream inspector, not a decoder: it parses the sync frame, table of
+`ac4::` is a bitstream inspector, not a decoder: it parses the sync frame, table of
 contents, presentation and substream-group framing (ETSI TS 103 190-1/-2) — channel-coded,
 A-JOC-coded, direct-coded-object and OAMD alike — and reports `audio_data`/`metadata()` payloads
 as byte ranges without decoding them. That narrower scope changes which of this page's usual
@@ -774,7 +777,7 @@ ruled out the way MediaInfo or DEE's own output rules it out for the channel-cod
 is stronger than self-consistency alone: the vectors caught two real bugs during construction (an
 array-index formula that was reversed for one of the two flag-array widths, and this parser's own
 handling of LFE at the same array position - included for `ac4_substream_info_obj()`'s std-flags
-branch but excluded for `bed_dyn_obj_assignment()`'s, a genuine spec difference this project's
+branch but excluded for `bed_dyn_obj_assignment()`'s, a spec difference this project's
 first draft assumed away). If `dee_ac4ajoc_encoder.exe`'s provenance gate or `dee_ac4ims_encoder.exe`'s
 behavior changes, that would upgrade this to a tier 2/3 check. `oamd_common_data()` (§6.2.8.1,
 reachable only via `ac4_substream_info_ajoc()`'s own `b_oamd_common_data_present` flag) remains
@@ -821,7 +824,7 @@ covered where it's most relevant rather than repeated here:
   HDMI to a real AV receiver, with object audio confirmed reconstructable (not just the panned
   bed). Verification specific to this one Android app on this one Shield + receiver pair, not a
   general claim about Android as a platform.
-- [Atmos & JOC](concepts/atmos-joc.md#two-honest-limitations) — Dolby's own decoder gates object
+- [Atmos & JOC](concepts/atmos-joc.md#two-limitations) — Dolby's own decoder gates object
   decoding on a keyed authenticity tag; the signer ships in-tree (`ac3::signing`) but this
   project ships no key for it, so its streams are unsigned unless an operator supplies one.
   Objects sharing a direction also can't be perfectly separated. Neither is a conformance gap.

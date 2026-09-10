@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -8,13 +9,10 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
-#include "ac3/core/eac3_tools.hpp"  // no longer needed here: the BlockTail that used
-                                    // eac3::BandLayout moved into eac3_decoder.cpp with
-                                    // AP3's pimpl sweep. Kept because dropping it from a
-                                    // public header is its own source break.
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/diagnostics.hpp"
@@ -313,6 +311,60 @@ struct DecoderConfig {
     void* diagnostics_context = nullptr;
 };
 
+// One block of a decoded programme's PCM, as the *_by_block forms hand it
+// over: kSamplesPerBlock samples of every output slot, in the same slot order
+// the *_into forms write - the rendered layout's for an access unit, coded
+// order for an AC-3 frame and for dual mono - after the output stage has run,
+// so the samples are exactly what the *_into form would have written into a
+// caller's spans, delivered a block at a time. The spans view the decoder's
+// own storage and are valid for the duration of the call that receives them,
+// never past it.
+struct PcmBlock {
+    int index = 0;   // 0 .. blocks-1, in order
+    int blocks = 0;  // six for AC-3; numblkscod's count for an E-AC-3 unit
+    std::span<const std::span<const float>> channels;
+    // The programme's reconstructed objects for the same block, when the unit
+    // carried an object layer and the decoder reconstructed it: one span per
+    // JOC output, kSamplesPerBlock samples each, the block of
+    // DecodedAccessUnit::object_audio `channels` is the block of. Parallel to
+    // `object_indices`, whose entries mean what DecodedAccessUnit::object_indices'
+    // do, and described by `object_metadata` (DecodedAccessUnit::object_metadata,
+    // the same optional's contents, or null when it is unset). All three are
+    // empty for an AC-3 frame, for a bed-only decode
+    // (DecoderConfig::skip_object_reconstruction) and for a unit with no object
+    // layer, and view the decoder's own storage for the duration of the call
+    // exactly as `channels` does. What they are for: a sink placing objects on
+    // loudspeakers gets everything it needs a block at a time, with nothing
+    // copied - the value form's object_audio is a frame of copies per object.
+    std::span<const std::span<const float>> objects;
+    std::span<const int> object_indices;
+    const oba::DecodedProgram* object_metadata = nullptr;
+};
+
+// A caller's receiver for PcmBlocks. A non-owning reference to any callable,
+// so handing one to a decoder costs no allocation and a sink that fills a DMA
+// ring needs one block of storage per slot where the *_into forms need a
+// frame - twelve kilobytes rather than seventy-three for a 7.1.4 programme,
+// on a part with 280 KB free. The callable must outlive the decode call it
+// is handed to; for a lambda written in the call itself that is automatic.
+class BlockSink {
+   public:
+    template <typename F>
+        requires std::invocable<F&, const PcmBlock&>
+    // NOLINTNEXTLINE(google-explicit-constructor): the call site is the point
+    BlockSink(F&& f) noexcept
+        : object_(const_cast<void*>(static_cast<const void*>(std::addressof(f)))),
+          call_([](void* object, const PcmBlock& block) {
+              (*static_cast<std::remove_reference_t<F>*>(object))(block);
+          }) {}
+
+    void operator()(const PcmBlock& block) const { call_(object_, block); }
+
+   private:
+    void* object_;
+    void (*call_)(void*, const PcmBlock&);
+};
+
 struct DecodedFrame {
     SampleRate sample_rate = SampleRate::k48000;
     std::uint32_t bitrate_kbps = 0;
@@ -419,6 +471,22 @@ class AC3FORGE_EXPORT FrameDecoder {
     // - exactly as discarded as the value form's partial frame was.
     [[nodiscard]] std::expected<DecodedFrame, DecodeError> decode_frame_into(
         std::span<const std::byte> frame, std::span<const std::span<float>> channels);
+
+    // As decode_frame_into, but the PCM reaches the caller through `sink`, a
+    // block at a time: six PcmBlocks per frame, in order, each of
+    // kSamplesPerBlock samples per output slot, delivered once the whole
+    // frame has decoded and the output stage has run - so the samples are
+    // the *_into form's exactly, and a downmix arrives as one or two slots
+    // the way output_channel_count() says. The returned DecodedFrame carries
+    // everything except the PCM. What this form removes is the caller's
+    // frame: a sink can copy or interleave each block straight into a DMA
+    // ring and never hold more than a block. AC-3 has no per-substream
+    // storage to hand out views of, so this decoder keeps one frame of its
+    // own for the form (six channels, sized once, reused). Under
+    // skip_reconstruction the sink is never called; a concealed frame is
+    // delivered through it like any other.
+    [[nodiscard]] std::expected<DecodedFrame, DecodeError> decode_frame_by_block(
+        std::span<const std::byte> frame, BlockSink sink);
 
     // Roadmap PF6: the delay THIS decoder adds on top of whatever the
     // encoder's own budget (ac3/latency.hpp) already accounts for. Exactly
@@ -553,7 +621,7 @@ struct DecodedSubstream {
 
     // The Table E2.5 map this substream's channels occupy.
     [[nodiscard]] std::uint16_t location_map() const {
-        return chanmap ? *chanmap : eac3::chanmap::acmod_map(acmod, lfe);
+        return chanmap.has_value() ? *chanmap : eac3::chanmap::acmod_map(acmod, lfe);
     }
 };
 
@@ -714,6 +782,21 @@ class AC3FORGE_EXPORT Eac3Decoder {
     decode_access_unit_into(std::span<const std::byte> unit,
                             std::span<const std::span<float>> channels);
 
+    // As decode_access_unit_into, but the rendered programme reaches the
+    // caller through `sink`, a block at a time: one PcmBlock per block of the
+    // unit, in order, each of kSamplesPerBlock samples per slot of the
+    // returned layout (coded order for dual mono), delivered once the unit
+    // has assembled and the output stage has run, so the samples are the
+    // *_into form's exactly. Nothing is copied: each slot is a view onto the
+    // substream vector that supplies it - a dependent's channel over the bed's
+    // where §E3.8.2 says it replaces it - which also removes the assembly copy
+    // the *_into form pays. The returned DecodedAccessUnit carries everything
+    // except the PCM. The §3.7 hold-back's std::nullopt, a skipped programme
+    // and skip_reconstruction all leave the sink uncalled; a held-back unit
+    // is delivered through it on the call that releases it.
+    [[nodiscard]] std::expected<std::optional<DecodedAccessUnit>, DecodeError>
+    decode_access_unit_by_block(std::span<const std::byte> unit, BlockSink sink);
+
     // Releases whichever frames transient pre-noise processing is still
     // holding back, one per substream identity that has one pending - empty
     // if none does, which covers every stream that never used the tool.
@@ -759,12 +842,15 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // landed - the result's own vectors or the caller's spans. The fold
     // itself is OutputStage's; this only decides what to hand it.
     void apply_output(DecodedAccessUnit& out, std::span<const std::span<float>> external);
-    // Both public access-unit forms above: `external` empty means allocate
-    // the program PCM into the returned DecodedAccessUnit, non-empty means
-    // write through the spans - the same split decode_frame_core makes.
+    // All three public access-unit forms above: `external` empty means
+    // allocate the program PCM into the returned DecodedAccessUnit, non-empty
+    // means write through the spans - the same split decode_frame_core makes
+    // - and a `sink` means neither: views onto the substreams' own vectors,
+    // handed over a block at a time.
     [[nodiscard]] std::expected<std::optional<DecodedAccessUnit>, DecodeError>
     decode_access_unit_core(std::span<const std::byte> unit,
-                            std::span<const std::span<float>> external);
+                            std::span<const std::span<float>> external,
+                            const BlockSink* sink = nullptr);
 
     // §E2.3.1.2's legacy core, presented as substream (kIndependent, 0) - see
     // core_ below and decode_substream's own doc comment.

@@ -43,7 +43,13 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:banner="@drawable/banner"
-        android:theme="@style/Theme.ShieldAtmosDemo">
+        android:theme="@style/Theme.ShieldAtmosDemo"
+        android:usesCleartextTraffic="false">
+        <!-- INTERNET above is WebRemote.kt's local HTTP server (a raw
+             ServerSocket a phone browser connects INTO over LAN) - this
+             attribute governs the app's own OUTBOUND client connections
+             through Android's networking stack, which WebRemote never
+             makes, so disabling cleartext here does not affect it. -->
 
         <!-- configChanges lists every configuration change this Activity can
              survive without being recreated. Recreation is not cosmetic here:

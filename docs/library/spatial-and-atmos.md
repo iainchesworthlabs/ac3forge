@@ -14,7 +14,9 @@ const std::size_t object = renderer.add_object({.azimuth_deg = 0.0, .gain = 0.7}
 
 Rendering is clocked at the 256-sample block, because that is the rate automation runs at;
 gains ramp linearly within a block, so moving an object does not click. The render path itself
-does not allocate.
+does not allocate. Neither do `pan_ring` and `pan_direction` since 2026-09-10: their working
+storage is on the stack, sized to Table E2.5's widest ring, because a part rendering objects calls
+them once per object per frame and the minimum-footprint probe counts every allocation.
 
 ```cpp
 // One full turn every two seconds.
@@ -98,7 +100,7 @@ These are **transmitted, not rendered here**. §4.3 makes the renderer, not the 
 responsible for turning an extent into loudspeaker feeds, and the 5.1 downmix this encoder
 builds is a point-source VBAP pan by construction — a downmix that spread the object would
 then be spread *again* by the receiving renderer. So a sized object is transmitted as sized and
-folded into the bed as a point, which is the honest split.
+folded into the bed as a point, which is the split used.
 
 `Keyframe` carries the same four fields. `size` interpolates between keyframes the way position
 and gain do (BS.2076-2 §10.3 lists width/height/depth among its interpolatable parameters);
@@ -128,7 +130,7 @@ complex QMF, which is the domain the decoder will apply the result in; see
 [which domain the matrix lives in](../concepts/atmos-joc.md#which-domain-the-matrix-lives-in).
 Two limits are structural, not bugs: objects sharing a direction cannot be separated by any
 linear combination of the bed, and Dolby's decoder will not treat these as objects at all. Both
-are covered in [Atmos & JOC](../concepts/atmos-joc.md#two-honest-limitations).
+are covered in [Atmos & JOC](../concepts/atmos-joc.md#two-limitations).
 
 ## Getting the objects back: `oba::joc::reconstruct`
 
@@ -253,7 +255,7 @@ scene.set_orientation(ac3::oba::orientation_from_degrees(90, 0, 0));  // front w
 
 `SceneCursor` is the same timeline with per-object overrides an external source pushes in as
 they arrive — the seam a live position source and the GUI's live room plug into, and the reason
-the scene type isn't just a static table. Roadmap `UX4` is that seam: OSC (below) is a real live
+the scene type is not just a static table. That seam exists: OSC (below) is a live
 source today; MIDI and a game controller are follow-ons under the same `positions=` token, not
 implemented yet.
 

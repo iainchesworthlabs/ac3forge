@@ -365,9 +365,33 @@
       "displayName": "Linux GCC Coverage"
     },
     {
+      "name": "minimal-encoder",
+      "hidden": true,
+      "description": "Roadmap PF7's minimum-footprint profile pointed at ENCODE instead of decode: one encode-only static library (ac3::forge_minimal) carrying both codecs, plus apps/baremetal's encode probe, built without exceptions or RTTI. Mutually exclusive with minimal-decoder, and measured to be: on an ESP32-S3 with 277,400 bytes of internal SRAM free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode at 243,770 - each fits alone, no two fit at once. See src/forge/minimal.cmake and docs/building.md.",
+      "cacheVariables": {
+        "AC3FORGE_MINIMAL_ENCODER": "ON",
+        "AC3FORGE_BUILD_CLI": "OFF",
+        "AC3FORGE_BUILD_GUI": "OFF",
+        "AC3FORGE_BUILD_TESTS": "OFF",
+        "AC3FORGE_BUILD_EXAMPLES": "OFF",
+        "AC3FORGE_BUILD_MATROSKA": "OFF",
+        "AC3FORGE_BUILD_MP4": "OFF",
+        "AC3FORGE_BUILD_MPEGTS": "OFF",
+        "AC3FORGE_BUILD_IAB": "OFF",
+        "AC3FORGE_BUILD_IAMF": "OFF",
+        "AC3FORGE_BUILD_CAPI": "OFF",
+        "AC3FORGE_BUILD_AC4": "OFF"
+      }
+    },
+    {
       "name": "config-linux-gcc-minimal",
       "inherits": [ "minimal-decoder", "release", "linux-gcc", "core" ],
       "displayName": "Linux GCC minimum-footprint decoder"
+    },
+    {
+      "name": "config-linux-gcc-minimal-encoder",
+      "inherits": [ "minimal-encoder", "release", "linux-gcc", "core" ],
+      "displayName": "Linux GCC minimum-footprint encoder"
     },
     {
       "name": "config-linux-llvm-minimal",
@@ -384,6 +408,36 @@
       "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi.toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "MinSizeRel"
+      }
+    },
+    {
+      "name": "config-arm-none-eabi-minimal-icount",
+      "inherits": [ "config-arm-none-eabi-minimal" ],
+      "displayName": "arm-none-eabi minimum-footprint decoder, instruction-counting clock",
+      "description": "The decoder preset above with the probe's clock on the mps2-an385's CMSDK timer instead of semihosting, for tools/checks/run_baremetal_probe.sh --icount: under QEMU -icount that timer counts instructions, deterministically, where semihosting's clock reports host time. Its own build directory so a plain run and an --icount run never share a cache.",
+      "cacheVariables": {
+        "AC3FORGE_BAREMETAL_CLOCK": "timer"
+      }
+    },
+    {
+      "name": "config-arm-none-eabi-minimal-encoder",
+      "inherits": [ "minimal-encoder" ],
+      "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint encoder",
+      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint decoder profile - the concrete target roadmap PF7 names, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi.toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "MinSizeRel"
+      }
+    },
+    {
+      "name": "config-arm-none-eabi-minimal-encoder-icount",
+      "inherits": [ "config-arm-none-eabi-minimal-encoder" ],
+      "displayName": "arm-none-eabi minimum-footprint encoder, instruction-counting clock",
+      "description": "The encoder preset above with the probe's clock on the mps2-an385's CMSDK timer, for tools/checks/run_baremetal_probe.sh --encoder --icount: instructions per encoded frame, deterministically. Its own build directory for the same reason the decoder's icount preset has one.",
+      "cacheVariables": {
+        "AC3FORGE_BAREMETAL_CLOCK": "timer"
       }
     },
     {
@@ -515,6 +569,11 @@
       "displayName": "Linux GCC minimum-footprint decoder"
     },
     {
+      "name": "build-linux-gcc-minimal-encoder",
+      "configurePreset": "config-linux-gcc-minimal-encoder",
+      "displayName": "Linux GCC minimum-footprint decoder"
+    },
+    {
       "name": "build-linux-llvm-minimal",
       "configurePreset": "config-linux-llvm-minimal",
       "displayName": "Linux LLVM minimum-footprint decoder"
@@ -523,6 +582,21 @@
       "name": "build-arm-none-eabi-minimal",
       "configurePreset": "config-arm-none-eabi-minimal",
       "displayName": "arm-none-eabi bare-metal minimum-footprint decoder"
+    },
+    {
+      "name": "build-arm-none-eabi-minimal-icount",
+      "configurePreset": "config-arm-none-eabi-minimal-icount",
+      "displayName": "arm-none-eabi bare-metal minimum-footprint decoder, instruction-counting clock"
+    },
+    {
+      "name": "build-arm-none-eabi-minimal-encoder",
+      "configurePreset": "config-arm-none-eabi-minimal-encoder",
+      "displayName": "arm-none-eabi bare-metal minimum-footprint encoder"
+    },
+    {
+      "name": "build-arm-none-eabi-minimal-encoder-icount",
+      "configurePreset": "config-arm-none-eabi-minimal-encoder-icount",
+      "displayName": "arm-none-eabi bare-metal minimum-footprint encoder, instruction-counting clock"
     },
     {
       "name": "build-linux-llvm-shared",

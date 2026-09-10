@@ -52,7 +52,7 @@ std::optional<LoadedStream> load_stream(std::string_view path) {
         return std::nullopt;
     }
     auto scanned = ac3::io::scan(loaded.bytes);
-    if (!scanned) {
+    if (!scanned.has_value()) {
         fmt::println(stderr, "error: {}: {}", path, ac3::io::describe(scanned.error()));
         return std::nullopt;
     }
@@ -89,7 +89,7 @@ bool write_units(std::string_view out_path, std::span<const std::span<const std:
 // out.ac3` should not also need to be told what ".ac3" means; codec= covers
 // stdout and any name the suffix cannot speak for.
 std::optional<plan::Codec> output_codec(std::string_view out_path, const Options& meta) {
-    if (meta.codec) {
+    if (meta.codec.has_value()) {
         return meta.codec;
     }
     if (out_path.ends_with(".ac3")) {
@@ -146,25 +146,25 @@ void carry_mix_metadata(const ac3::io::FrameMetadata& source, plan::Metadata& ta
     static constexpr std::array kSurround{ac3::meta::SurroundMixLevel::kMinus3dB,
                                           ac3::meta::SurroundMixLevel::kMinus6dB,
                                           ac3::meta::SurroundMixLevel::kSilent};
-    if (source.cmixlev) {
+    if (source.cmixlev.has_value()) {
         target.cmixlev = *source.cmixlev;
     }
-    if (source.surmixlev) {
+    if (source.surmixlev.has_value()) {
         target.surmixlev = *source.surmixlev;
     }
-    if (!source.mix) {
+    if (!source.mix.has_value()) {
         return;
     }
     const bool ltrt = source.mix->dmixmod == ac3::meta::DownmixMode::kLtRt;
     const auto centre = ltrt ? source.mix->ltrtcmixlev : source.mix->lorocmixlev;
     const auto surround = ltrt ? source.mix->ltrtsurmixlev : source.mix->lorosurmixlev;
-    if (centre) {
+    if (centre.has_value()) {
         target.cmixlev = nearest_level(*centre, kCentre);
     }
-    if (surround) {
+    if (surround.has_value()) {
         target.surmixlev = nearest_level(*surround, kSurround);
     }
-    if (source.mix->dmixmod) {
+    if (source.mix->dmixmod.has_value()) {
         target.dmixmod = *source.mix->dmixmod;
     }
     // §E2.3.1.10: absent means LFE mixing is DISABLED, which is a decision in
@@ -270,7 +270,7 @@ class TranscodeEncoder {
         std::vector<std::byte> frame;
         if (ac3_) {
             auto encoded = ac3_->encode_frame(channels);
-            if (!encoded) {
+            if (!encoded.has_value()) {
                 fmt::println(stderr, "error: encode failed - bitrate must be a legal AC-3 rate");
                 sink_.abort();
                 return false;
@@ -278,7 +278,7 @@ class TranscodeEncoder {
             frame = std::move(*encoded);
         } else {
             auto unit = eac3_->encode_access_unit(channels);
-            if (!unit) {
+            if (!unit.has_value()) {
                 fmt::println(stderr, "error: the encoder cannot express this configuration");
                 sink_.abort();
                 return false;
@@ -292,9 +292,9 @@ class TranscodeEncoder {
         // already recorded. The rewrite needs compre already set, which is
         // why the plan carries a HeavyConfig whenever this is engaged - see
         // run_transcode.
-        if (compr_) {
+        if (compr_.has_value()) {
             const auto edited = ac3::io::edit_frame_metadata(frame, {.compr = compr_});
-            if (!edited) {
+            if (!edited.has_value()) {
                 fmt::println(stderr, "error: cannot carry compr across: {}",
                              ac3::io::describe(edited.error()));
                 sink_.abort();
@@ -406,7 +406,7 @@ std::optional<DecodeRenderStats> decode_and_render(
         std::vector<std::size_t> slot_to_wav;
         for (const auto& unit : loaded.scan.access_units) {
             const auto decoded = decoder->decode_access_unit(unit);
-            if (!decoded) {
+            if (!decoded.has_value()) {
                 fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
                 on_abort();
                 return std::nullopt;
@@ -484,7 +484,7 @@ std::optional<DecodeRenderStats> decode_and_render(
         const auto order = ac3::io::wav_channel_order(loaded.scan.acmod, loaded.scan.lfe);
         for (const auto& frame : loaded.scan.access_units) {
             const auto decoded = decoder.decode_frame(frame);
-            if (!decoded) {
+            if (!decoded.has_value()) {
                 fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
                 on_abort();
                 return std::nullopt;
@@ -511,15 +511,15 @@ std::optional<DecodeRenderStats> decode_and_render(
 int run_transcode(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                   std::string_view layout, const Options& meta) {
     const auto loaded = load_stream(in_path);
-    if (!loaded) {
+    if (!loaded.has_value()) {
         return 1;
     }
     const auto target_codec = output_codec(out_path, meta);
-    if (!target_codec) {
+    if (!target_codec.has_value()) {
         return 1;
     }
     const auto source_meta = ac3::io::read_frame_metadata(loaded->bytes);
-    if (!source_meta) {
+    if (!source_meta.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(source_meta.error()));
         return 1;
     }
@@ -531,7 +531,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     const auto rate = wav_sample_rate(
         source_rate, *target_codec == plan::Codec::kAc3 ? "AC-3" : "E-AC-3",
         *target_codec == plan::Codec::kEac3);
-    if (!rate) {
+    if (!rate.has_value()) {
         return 1;
     }
 
@@ -548,11 +548,11 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     if (!meta.dialnorm_given) {
         p.meta.dialnorm = source_meta->dialnorm;
     }
-    if (!meta.dialnorm2_given && source_meta->dialnorm2) {
+    if (!meta.dialnorm2_given && source_meta->dialnorm2.has_value()) {
         p.meta.dialnorm2 = *source_meta->dialnorm2;
     }
     carry_mix_metadata(*source_meta, p.meta);
-    if (*target_codec == plan::Codec::kEac3 && source_meta->mix) {
+    if (*target_codec == plan::Codec::kEac3 && source_meta->mix.has_value()) {
         p.meta.mixmeta = true;
     }
     // A compr word the operator did not override is carried across verbatim
@@ -560,7 +560,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     // the output - hence a HeavyConfig here even though its own detector's
     // answer is then overwritten.
     std::optional<std::uint8_t> compr_passthrough;
-    if (source_meta->compr && !meta.p.heavy) {
+    if (source_meta->compr.has_value() && !meta.p.heavy.has_value()) {
         p.meta.heavy.emplace();
         compr_passthrough = source_meta->compr;
     }
@@ -580,13 +580,13 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
         // into a stereo one.
         p.layout = plan::LayoutId::kDualMono;
         label = std::string(plan::layout(plan::LayoutId::kDualMono).label);
-        if (!meta.dialnorm2_given && !source_meta->dialnorm2) {
+        if (!meta.dialnorm2_given && !source_meta->dialnorm2.has_value()) {
             fmt::println(stderr, "error: {} is 1+1 but carries no dialnorm2", in_path);
             return 1;
         }
     } else {
         auto id = plan::layout_for_source(source_channels);
-        if (id && !plan::carries(*target_codec, *id)) {
+        if (id.has_value() && !plan::carries(*target_codec, *id)) {
             // The DD+-to-DD case this command exists for: an immersive or 7.1
             // programme has no AC-3 coding mode, so it folds to 5.1 per §7.8
             // using the mix levels carried across just above. Said out loud
@@ -598,7 +598,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
                          source_channels);
             id = plan::LayoutId::k51;
         }
-        if (!id) {
+        if (!id.has_value()) {
             fmt::println(stderr, "error: no standard layout has {} channels; name one with the "
                                  "[layout] argument",
                          source_channels);
@@ -614,7 +614,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     }
 
     const auto routing = routing_or_error(p, source_channels);
-    if (!routing) {
+    if (!routing.has_value()) {
         return 1;
     }
 
@@ -628,12 +628,12 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
 
     const auto stats = decode_and_render(
         in_path, *loaded, *routing, coded_channels,
-        [&](std::span<const std::span<const float>> views) {
+        [&meter, &encoder](std::span<const std::span<const float>> views) {
             meter.process(views);
             return encoder.encode(views);
         },
-        [&] { encoder.abort(); });
-    if (!stats) {
+        [&encoder] { encoder.abort(); });
+    if (!stats.has_value()) {
         return 1;
     }
     if (!encoder.close()) {
@@ -647,10 +647,10 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     fmt::println(status, "  layout {} <- {} source channels", label, source_channels);
     fmt::println(status, "  dialnorm {}{}", p.meta.dialnorm,
                  meta.dialnorm_given ? " (from dialnorm=)" : " (carried from the source)");
-    if (compr_passthrough) {
+    if (compr_passthrough.has_value()) {
         fmt::println(status, "  compr    {:+.2f} dB carried across verbatim",
                      ac3::meta::to_db(ac3::meta::compr_gain(*compr_passthrough)));
-    } else if (p.meta.heavy) {
+    } else if (p.meta.heavy.has_value()) {
         fmt::println(status, "  compr    re-derived (heavy given on the command line)");
     } else {
         fmt::println(status, "  compr    absent in the source");
@@ -671,11 +671,11 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
 
 int run_metadata(std::string_view in_path, std::string_view out_path, const Options& meta) {
     auto loaded = load_stream(in_path);
-    if (!loaded) {
+    if (!loaded.has_value()) {
         return 1;
     }
     const auto before = ac3::io::read_frame_metadata(loaded->bytes);
-    if (!before) {
+    if (!before.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(before.error()));
         return 1;
     }
@@ -701,10 +701,10 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
         }
         edit.dialnorm2 = meta.p.dialnorm2;
     }
-    if (meta.compr_word) {
+    if (meta.compr_word.has_value()) {
         edit.compr = meta.compr_word;
     }
-    if (meta.compr2_word) {
+    if (meta.compr2_word.has_value()) {
         edit.compr2 = meta.compr2_word;
     }
     edit.bsmod = meta.bsmod;
@@ -718,7 +718,7 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
     }
 
     const auto summary = ac3::io::edit_stream_metadata(loaded->bytes, edit);
-    if (!summary) {
+    if (!summary.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(summary.error()));
         return 1;
     }
@@ -726,7 +726,7 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
     // rewrote the buffer those pointed into, and re-deriving the framing from
     // the rewritten bytes is also a check that the rewrite left it walkable.
     const auto rescanned = ac3::io::scan(loaded->bytes);
-    if (!rescanned) {
+    if (!rescanned.has_value()) {
         fmt::println(stderr, "error: the rewritten stream no longer scans: {}",
                      ac3::io::describe(rescanned.error()));
         return 1;
@@ -739,17 +739,17 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
     const auto after = ac3::io::read_frame_metadata(loaded->bytes);
     fmt::println(status, "rewrote {} of {} {} syncframes -> {} (audio untouched)",
                  summary->changed, summary->syncframes, codec_label(loaded->scan.kind), out_path);
-    if (after) {
+    if (after.has_value()) {
         fmt::println(status, "  dialnorm {} -> {}", before->dialnorm, after->dialnorm);
-        if (before->compr && after->compr) {
+        if (before->compr.has_value() && after->compr.has_value()) {
             fmt::println(status, "  compr    {:+.2f} -> {:+.2f} dB",
                          ac3::meta::to_db(ac3::meta::compr_gain(*before->compr)),
                          ac3::meta::to_db(ac3::meta::compr_gain(*after->compr)));
         }
-        if (before->bsmod && after->bsmod) {
+        if (before->bsmod.has_value() && after->bsmod.has_value()) {
             fmt::println(status, "  bsmod    {} -> {}", *before->bsmod, *after->bsmod);
         }
-        if (before->dsurmod && after->dsurmod) {
+        if (before->dsurmod.has_value() && after->dsurmod.has_value()) {
             fmt::println(status, "  dsurmod  {} -> {}", *before->dsurmod, *after->dsurmod);
         }
     }
@@ -758,11 +758,11 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
 
 int run_normalize(std::string_view in_path, std::string_view out_path, const Options& meta) {
     auto loaded = load_stream(in_path);
-    if (!loaded) {
+    if (!loaded.has_value()) {
         return 1;
     }
     const auto before = ac3::io::read_frame_metadata(loaded->bytes);
-    if (!before) {
+    if (!before.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(before.error()));
         return 1;
     }
@@ -770,10 +770,10 @@ int run_normalize(std::string_view in_path, std::string_view out_path, const Opt
     // the whole programme, so there is no shortcut - but the audio it
     // produces is thrown away: only the dialnorm it implies is written back.
     const auto measured = measure_stream_loudness(loaded->bytes);
-    if (!measured) {
+    if (!measured.has_value()) {
         return 1;
     }
-    if (!measured->integrated_lkfs) {
+    if (!measured->integrated_lkfs.has_value()) {
         fmt::println(stderr,
                      "error: no audio above the -70 LKFS absolute gate; nothing to normalise "
                      "against");
@@ -785,19 +785,19 @@ int run_normalize(std::string_view in_path, std::string_view out_path, const Opt
     // measurement is its own integrated loudness.
     ac3::io::MetadataEdit edit;
     edit.dialnorm = ac3::meta::dialnorm_from_lkfs(*measured->integrated_lkfs);
-    if (before->dialnorm2 && measured->ch2_lkfs) {
+    if (before->dialnorm2.has_value() && measured->ch2_lkfs.has_value()) {
         // 1+1 levels its two programmes independently (§E1.3, no downmix
         // between them), so Ch2 gets its own measurement rather than Ch1's.
         edit.dialnorm2 = ac3::meta::dialnorm_from_lkfs(*measured->ch2_lkfs);
     }
 
     const auto summary = ac3::io::edit_stream_metadata(loaded->bytes, edit);
-    if (!summary) {
+    if (!summary.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(summary.error()));
         return 1;
     }
     const auto rescanned = ac3::io::scan(loaded->bytes);
-    if (!rescanned) {
+    if (!rescanned.has_value()) {
         fmt::println(stderr, "error: the rewritten stream no longer scans: {}",
                      ac3::io::describe(rescanned.error()));
         return 1;
@@ -814,7 +814,7 @@ int run_normalize(std::string_view in_path, std::string_view out_path, const Opt
     // All three re-checked together: the block above sets dialnorm2 only when
     // the other two hold, but that is two screens away and nothing local
     // says so.
-    if (edit.dialnorm2 && before->dialnorm2 && measured->ch2_lkfs) {
+    if (edit.dialnorm2.has_value() && before->dialnorm2.has_value() && measured->ch2_lkfs.has_value()) {
         fmt::println(status, "  dialnorm2  {} -> {} (Ch2 measured {:+.2f} LKFS)",
                      *before->dialnorm2, *edit.dialnorm2, *measured->ch2_lkfs);
     }
@@ -824,7 +824,7 @@ int run_normalize(std::string_view in_path, std::string_view out_path, const Opt
 int run_cut(std::string_view in_path, std::string_view out_path, std::string_view start_seconds,
             std::string_view duration_seconds) {
     const auto loaded = load_stream(in_path);
-    if (!loaded) {
+    if (!loaded.has_value()) {
         return 1;
     }
     const auto& scan = loaded->scan;
@@ -838,7 +838,7 @@ int run_cut(std::string_view in_path, std::string_view out_path, std::string_vie
     const auto first = start == 0.0
                            ? std::optional<std::size_t>{0}
                            : ac3::io::access_unit_at_seconds(scan, start);
-    if (!first) {
+    if (!first.has_value()) {
         fmt::println(stderr, "error: start {:.3f} s is past the end of {} ({:.3f} s)", start,
                      in_path, ac3::io::stream_duration_seconds(scan));
         return 1;
@@ -944,12 +944,12 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
     std::uint64_t samples = 0;
     for (const auto path : in_paths) {
         const auto loaded = load_stream(path);
-        if (!loaded) {
+        if (!loaded.has_value()) {
             sink.abort();
             return 1;
         }
         const auto& scan = loaded->scan;
-        if (!reference) {
+        if (!reference.has_value()) {
             reference = Shape{.kind = scan.kind,
                               .sample_rate = scan.sample_rate,
                               .acmod = scan.acmod,
@@ -994,7 +994,7 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
         return 1;
     }
 
-    if (!reference) {
+    if (!reference.has_value()) {
         // Unreachable: the loop above runs at least twice (in_paths.size() >= 2
         // is checked at the top) and fills this on its first pass. Stated as a
         // real check rather than an assert, so the report below reads a value

@@ -48,6 +48,7 @@ Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/a
 | `fgaincod` | -1 | §7.2.2.4 fast gain, Table 7.11. -1 takes the encoder's rate-dependent choice; 0–7 pins it. |
 | `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation (~25× on the long-transform kernel, identical streams to within ~3e-12 coefficient error). `false` forces the direct reference form, kept as the validation oracle — the CLI spells that `fast-mdct=off`. |
 | `dither` | `true` | §7.3.4 `dithflag`, decided per channel per block from the content — see below. `false` pins it at 0 in every block, which is what a bit-for-bit comparison against a second decoder needs, since dither values are decoder-defined; the CLI spells that `dither=off`. |
+| `delta_allocation` | `true` | §7.2.2.6 delta bit allocation: the corrections chosen per run from the real coefficients, and the second rate-control fit that weighs them against a frame without them. `false` skips both, which is the first level of the encoders' effort axis for a part with little time for the search (the ESP32-S3 page measures what it saves and costs); the stream is a legal one with `dbaflde` clear. The CLI spells it `delta=off`. |
 | `drc` | none | `std::optional<meta::Profile>`. Absent leaves `dynrnge` clear in every block. |
 | `heavy` | none | `std::optional<meta::HeavyConfig>`. Independent of `drc`. |
 | `drc2` | none | `std::optional<meta::Profile>`. Ch2's own DRC, meaningful only under `kDualMono` — no fallback to `drc` when unset (see below). |
@@ -146,7 +147,7 @@ for.
 
 Two criteria, because they are different questions rather than two points on one scale:
 
-- **`kDistortion`** minimises the reconstruction noise power. Honest and cheap, and still a
+- **`kDistortion`** minimises the reconstruction noise power. Cheap, and still a
   waveform criterion — it prices a decibel in a band nobody can hear the same as a decibel in one
   they can.
 - **`kPerceptual`** minimises the noise-to-mask ratio against the tonality/masking model, which
@@ -183,7 +184,7 @@ cycle as this table, and re-measuring against it is a follow-up, not done here:
 | film (stereo) | 192 kbit/s | `kPerceptual` | −2.18 dB | +0.46 (worse) | −0.06 |
 | film (stereo) | 448 kbit/s | `kPerceptual` | −1.30 dB | flat | flat |
 
-`kDistortion` is a genuine, repeatable win at 448 kbit/s and above on every material and metric
+`kDistortion` is a repeatable win at 448 kbit/s and above on every material and metric
 measured - the "structural unlock" this search exists to deliver. At the tighter 192 kbit/s budget
 its own criterion still improves (that is what it optimises: `kDistortion`'s score is the MEAN of
 each stream's own noise-to-signal ratio, not one ratio of power pooled across streams - a pooled
@@ -201,8 +202,8 @@ with evidence to turn on, and only where the material and rate resemble what was
 5.1 is not in the table above: the mirror self-check proves the search's mechanism correct at
 `Acmod::k3_2` + LFE (same candidates, same settlement, same re-settle-on-mismatch path
 `tests/quality/test_search.cpp` exercises for stereo), but external-metric validation on real 5.1
-material hit a measurement-harness alignment problem this session ran out of time to resolve, not
-an encoder defect. Left for a follow-up.
+material hit an alignment problem in the measurement harness rather than an encoder defect.
+That is left for a follow-up.
 
 See `docs/library/quality.md` for
 the model and the reproduction commands.
@@ -212,7 +213,7 @@ cost or save a byte. E-AC-3 has the same search, through `eac3::FrameConfig::sea
 `bamode = 1` — which this encoder writes — states the allocation parameters in the frame's own
 `baie` element, so the codes are per-frame there too. Its second axis is not free the way AC-3's
 is: `baie` carries no `fgaincod` at all, so a non-default fast gain has to open the per-block
-`fgaincode` element (roadmap EQ7/EQ13), which is why the candidates are scored after a refit
+`fgaincode` element, which is why the candidates are scored after a refit
 against their own side-info cost. See [Encoding E-AC-3](encoding-eac3.md).
 
 ### Dither substitution

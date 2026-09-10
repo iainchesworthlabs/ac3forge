@@ -172,7 +172,7 @@ void print_table(std::string_view path, const io::ProbeReport& report) {
     fmt::println("{:<16}{} per access unit", "substreams", report.substreams_per_unit);
     for (const auto& sub : report.substreams) {
         std::string chanmap = "-";
-        if (sub.chanmap) {
+        if (sub.chanmap.has_value()) {
             chanmap = fmt::format("chanmap 0x{:04x}", *sub.chanmap);
         }
         fmt::println("  {:<14}{} id {}, {}, {} syncframe(s), {}", "",
@@ -183,7 +183,7 @@ void print_table(std::string_view path, const io::ProbeReport& report) {
     fmt::println("{:<16}{} ({} syncframe(s)), {} bytes", "access units", report.access_units,
                  report.syncframes, report.bytes);
     fmt::println("{:<16}{:.3f} s", "duration", report.duration_seconds);
-    if (report.nominal_bitrate_kbps) {
+    if (report.nominal_bitrate_kbps.has_value()) {
         fmt::println("{:<16}{:.1f} kbit/s measured, {} kbit/s declared (frmsizecod)", "bit rate",
                      report.bitrate_kbps, *report.nominal_bitrate_kbps);
     } else {
@@ -230,16 +230,16 @@ void print_table(std::string_view path, const io::ProbeReport& report) {
         }
         fmt::println("{:<16}payload id(s) {}", "EMDF", ids);
     }
-    if (report.program) {
+    if (report.program.has_value()) {
         fmt::println("{:<16}{} object(s): bed {}, {} dynamic, in {} frame(s)", "object audio",
                      ac3::oba::object_count(*report.program), bed_label(*report.program),
                      report.program->dynamic_objects, report.object_frames);
-    } else if (report.oba_complexity_index) {
+    } else if (report.oba_complexity_index.has_value()) {
         fmt::println("{:<16}addbsi marker only, no OAMD payload parsed", "object audio");
     } else {
         fmt::println("{:<16}none", "object audio");
     }
-    if (report.oba_complexity_index) {
+    if (report.oba_complexity_index.has_value()) {
         fmt::println("{:<16}{}", "complexity", *report.oba_complexity_index);
     }
     fmt::println("{:<16}{}", "JOC", report.joc ? "present" : "absent");
@@ -306,10 +306,10 @@ void print_access_unit(const io::ProbeAccessUnit& unit, Detail detail) {
                      frame.header.compr ? fmt::format(", compr {}", *frame.header.compr)
                                         : std::string{},
                      frame.authenticity_tag ? ", signed" : "");
-        if (frame.parse_error) {
+        if (frame.parse_error.has_value()) {
             fmt::println("    parse error: {}", ac3::describe(*frame.parse_error));
         }
-        if (frame.objects) {
+        if (frame.objects.has_value()) {
             fmt::println("    objects: {} total, {} dynamic, bed {}",
                          ac3::oba::object_count(frame.objects->program),
                          frame.objects->program.dynamic_objects,
@@ -388,24 +388,24 @@ void write_syncframe(JsonWriter& json, const io::ProbeSyncframe& frame, Detail d
     json.member("lfeon", frame.header.lfe);
     json.member("numblkscod", static_cast<std::int64_t>(frame.header.numblkscod));
     json.member("dialnorm_db", static_cast<std::int64_t>(dialnorm_db(frame.header.dialnorm)));
-    if (frame.header.compr) {
+    if (frame.header.compr.has_value()) {
         json.member("compr", static_cast<std::int64_t>(*frame.header.compr));
     } else {
         json.member_null("compr");
     }
-    if (frame.header.chanmap) {
+    if (frame.header.chanmap.has_value()) {
         json.member("chanmap", static_cast<std::int64_t>(*frame.header.chanmap));
     } else {
         json.member_null("chanmap");
     }
     json.member("crc_valid", frame.crc_valid);
     json.member("authenticity_tag", frame.authenticity_tag);
-    if (frame.parse_error) {
+    if (frame.parse_error.has_value()) {
         json.member("parse_error", ac3::describe(*frame.parse_error));
     } else {
         json.member_null("parse_error");
     }
-    if (frame.objects) {
+    if (frame.objects.has_value()) {
         json.key("objects");
         json.begin_object();
         json.member("total", static_cast<std::int64_t>(
@@ -533,7 +533,7 @@ void write_stream(JsonWriter& json, const io::ProbeReport& report) {
         json.member("acmod", static_cast<std::int64_t>(sub.acmod));
         json.member("lfeon", sub.lfe);
         json.member("numblkscod", static_cast<std::int64_t>(sub.numblkscod));
-        if (sub.chanmap) {
+        if (sub.chanmap.has_value()) {
             json.member("chanmap", static_cast<std::int64_t>(*sub.chanmap));
         } else {
             json.member_null("chanmap");
@@ -550,7 +550,7 @@ void write_stream(JsonWriter& json, const io::ProbeReport& report) {
     json.member("bytes", static_cast<std::uint64_t>(report.bytes));
     json.member("duration_seconds", report.duration_seconds, 6);
     json.member("bitrate_kbps", report.bitrate_kbps, 3);
-    if (report.nominal_bitrate_kbps) {
+    if (report.nominal_bitrate_kbps.has_value()) {
         json.member("nominal_bitrate_kbps",
                     static_cast<std::int64_t>(*report.nominal_bitrate_kbps));
     } else {
@@ -575,7 +575,7 @@ void write_stream(JsonWriter& json, const io::ProbeReport& report) {
 
     json.key("objects");
     json.begin_object();
-    if (report.oba_complexity_index) {
+    if (report.oba_complexity_index.has_value()) {
         json.member("complexity_index", static_cast<std::int64_t>(*report.oba_complexity_index));
     } else {
         json.member_null("complexity_index");
@@ -588,7 +588,7 @@ void write_stream(JsonWriter& json, const io::ProbeReport& report) {
         json.value(static_cast<std::int64_t>(id));
     }
     json.end_array();
-    if (report.program) {
+    if (report.program.has_value()) {
         json.member("total", static_cast<std::int64_t>(ac3::oba::object_count(*report.program)));
         json.member("dynamic", static_cast<std::int64_t>(report.program->dynamic_objects));
         json.member("bed", bed_label(*report.program));
@@ -624,7 +624,7 @@ void write_stream(JsonWriter& json, const io::ProbeReport& report) {
                 static_cast<std::uint64_t>(report.syncframes - report.crc_failures));
     json.member("crc_failures", static_cast<std::uint64_t>(report.crc_failures));
     json.member("parse_failures", static_cast<std::uint64_t>(report.parse_failures));
-    if (report.first_parse_error) {
+    if (report.first_parse_error.has_value()) {
         json.member("first_parse_error", ac3::describe(*report.first_parse_error));
     } else {
         json.member_null("first_parse_error");
@@ -707,18 +707,18 @@ Ac4Summary summarize_ac4(std::span<const std::byte> data) {
     summary.sync_frames = scanned.frames.size();
     for (const auto& frame : scanned.frames) {
         summary.bytes += frame.raw_ac4_frame.size() + (frame.crc_ok ? 6 : 4);
-        if (frame.crc_ok && !*frame.crc_ok) {
+        if (frame.crc_ok.has_value() && !*frame.crc_ok) {
             ++summary.crc_failures;
         }
         auto parsed = ac4::parse_raw_frame(frame.raw_ac4_frame);
-        if (!parsed && !summary.parse_error) {
+        if (!parsed && !summary.parse_error.has_value()) {
             summary.parse_error = parsed.error();
         }
-        if (parsed && !summary.first_frame) {
+        if (parsed && !summary.first_frame.has_value()) {
             summary.first_frame = std::move(*parsed);
         }
     }
-    if (scanned.stopped_at && !summary.parse_error) {
+    if (scanned.stopped_at.has_value() && !summary.parse_error.has_value()) {
         summary.parse_error = scanned.stopped_at;
     }
     return summary;
@@ -738,14 +738,14 @@ std::string_view object_kind_token(ac4::ObjectKind kind) {
 std::string describe_group_substream(const ac4::GroupSubstream& sub) {
     switch (sub.kind) {
         case ac4::GroupSubstream::Kind::kChan:
-            if (!sub.chan) {
+            if (!sub.chan.has_value()) {
                 break;
             }
             return fmt::format(
                 "{}{}", sub.chan->channel_mode_name,
                 sub.chan->bitrate_kbps ? fmt::format(", {} kbit/s", *sub.chan->bitrate_kbps) : "");
         case ac4::GroupSubstream::Kind::kAjoc:
-            if (!sub.ajoc) {
+            if (!sub.ajoc.has_value()) {
                 break;
             }
             return fmt::format(
@@ -753,7 +753,7 @@ std::string describe_group_substream(const ac4::GroupSubstream& sub) {
                 sub.ajoc->n_fullband_upmix_signals,
                 sub.ajoc->bitrate_kbps ? fmt::format(", {} kbit/s", *sub.ajoc->bitrate_kbps) : "");
         case ac4::GroupSubstream::Kind::kObj:
-            if (!sub.obj) {
+            if (!sub.obj.has_value()) {
                 break;
             }
             return fmt::format(
@@ -771,10 +771,10 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary) {
                  summary.sync_frames, summary.bytes);
     fmt::println("{:<16}{} of {} valid", "CRC", summary.sync_frames - summary.crc_failures,
                  summary.sync_frames);
-    if (summary.parse_error) {
+    if (summary.parse_error.has_value()) {
         fmt::println("{:<16}{}", "parse error", ac4::describe(*summary.parse_error));
     }
-    if (!summary.first_frame) {
+    if (!summary.first_frame.has_value()) {
         return;
     }
     const auto& toc = summary.first_frame->toc;
@@ -797,17 +797,17 @@ void write_ac4_substream_info(JsonWriter& json, const ac4::ChannelSubstreamInfo&
     json.begin_object();
     json.member("channel_mode", static_cast<std::int64_t>(sub.channel_mode));
     json.member("channel_mode_name", sub.channel_mode_name);
-    if (sub.ch_mode) {
+    if (sub.ch_mode.has_value()) {
         json.member("ch_mode", static_cast<std::int64_t>(*sub.ch_mode));
     } else {
         json.member_null("ch_mode");
     }
-    if (sub.bitrate_kbps) {
+    if (sub.bitrate_kbps.has_value()) {
         json.member("bitrate_kbps", static_cast<std::int64_t>(*sub.bitrate_kbps));
     } else {
         json.member_null("bitrate_kbps");
     }
-    if (sub.substream_index) {
+    if (sub.substream_index.has_value()) {
         json.member("substream_index", static_cast<std::int64_t>(*sub.substream_index));
     } else {
         json.member_null("substream_index");
@@ -816,7 +816,7 @@ void write_ac4_substream_info(JsonWriter& json, const ac4::ChannelSubstreamInfo&
     // original content or carry encoded silence - e.g. a 5.1.4 source
     // carried in a 7.1.4-coded substream has b_4_back_channels_present ==
     // false, and channel_mode_name alone would say "7.1.4" either way.
-    if (sub.original_content) {
+    if (sub.original_content.has_value()) {
         json.key("original_content");
         json.begin_object();
         json.member("b_4_back_channels_present", sub.original_content->b_4_back_channels_present);
@@ -853,17 +853,17 @@ void write_ac4_ajoc_substream_info(JsonWriter& json, const ac4::AjocSubstreamInf
                 static_cast<std::int64_t>(sub.n_fullband_upmix_signals));
     json.key("upmix_objects");
     write_ac4_object_entries(json, sub.upmix_objects);
-    if (sub.sf_multiplier) {
+    if (sub.sf_multiplier.has_value()) {
         json.member("sf_multiplier", static_cast<std::int64_t>(*sub.sf_multiplier));
     } else {
         json.member_null("sf_multiplier");
     }
-    if (sub.bitrate_kbps) {
+    if (sub.bitrate_kbps.has_value()) {
         json.member("bitrate_kbps", static_cast<std::int64_t>(*sub.bitrate_kbps));
     } else {
         json.member_null("bitrate_kbps");
     }
-    if (sub.substream_index) {
+    if (sub.substream_index.has_value()) {
         json.member("substream_index", static_cast<std::int64_t>(*sub.substream_index));
     } else {
         json.member_null("substream_index");
@@ -876,17 +876,17 @@ void write_ac4_obj_substream_info(JsonWriter& json, const ac4::ObjSubstreamInfo&
     json.key("objects");
     write_ac4_object_entries(json, sub.objects);
     json.member("b_dynamic_objects", sub.b_dynamic_objects);
-    if (sub.sf_multiplier) {
+    if (sub.sf_multiplier.has_value()) {
         json.member("sf_multiplier", static_cast<std::int64_t>(*sub.sf_multiplier));
     } else {
         json.member_null("sf_multiplier");
     }
-    if (sub.bitrate_kbps) {
+    if (sub.bitrate_kbps.has_value()) {
         json.member("bitrate_kbps", static_cast<std::int64_t>(*sub.bitrate_kbps));
     } else {
         json.member_null("bitrate_kbps");
     }
-    if (sub.substream_index) {
+    if (sub.substream_index.has_value()) {
         json.member("substream_index", static_cast<std::int64_t>(*sub.substream_index));
     } else {
         json.member_null("substream_index");
@@ -911,19 +911,19 @@ void write_ac4_group_substream(JsonWriter& json, const ac4::GroupSubstream& sub)
             break;
     }
     json.key("chan");
-    if (sub.chan) {
+    if (sub.chan.has_value()) {
         write_ac4_substream_info(json, *sub.chan);
     } else {
         json.value_null();
     }
     json.key("ajoc");
-    if (sub.ajoc) {
+    if (sub.ajoc.has_value()) {
         write_ac4_ajoc_substream_info(json, *sub.ajoc);
     } else {
         json.value_null();
     }
     json.key("obj");
-    if (sub.obj) {
+    if (sub.obj.has_value()) {
         write_ac4_obj_substream_info(json, *sub.obj);
     } else {
         json.value_null();
@@ -943,7 +943,7 @@ void write_ac4_stream(JsonWriter& json, std::string_view path, const Ac4Summary&
     json.member("crc_valid", summary.crc_failures == 0 && summary.sync_frames > 0);
     json.member("crc_failures", static_cast<std::uint64_t>(summary.crc_failures));
     json.member("parse_failures", summary.parse_error ? std::uint64_t{1} : std::uint64_t{0});
-    if (summary.parse_error) {
+    if (summary.parse_error.has_value()) {
         json.member("first_parse_error", ac4_error_token(*summary.parse_error));
     } else {
         json.member_null("first_parse_error");
@@ -951,7 +951,7 @@ void write_ac4_stream(JsonWriter& json, std::string_view path, const Ac4Summary&
     json.end_object();
 
     json.key("ac4");
-    if (!summary.first_frame) {
+    if (!summary.first_frame.has_value()) {
         json.value_null();
         json.end_object();
         return;
@@ -970,10 +970,10 @@ void write_ac4_stream(JsonWriter& json, std::string_view path, const Ac4Summary&
         json.member("b_substreams_present", group.b_substreams_present);
         json.member("b_channel_coded", group.b_channel_coded);
         json.key("oamd");
-        if (group.oamd) {
+        if (group.oamd.has_value()) {
             json.begin_object();
             json.member("b_oamd_ndot", group.oamd->b_oamd_ndot);
-            if (group.oamd->substream_index) {
+            if (group.oamd->substream_index.has_value()) {
                 json.member("substream_index",
                             static_cast<std::int64_t>(*group.oamd->substream_index));
             } else {
@@ -1056,7 +1056,7 @@ int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& met
 
 int run_probe(std::string_view in_path, const Options& meta) {
     Detail detail = Detail::kNone;
-    if (meta.detail) {
+    if (meta.detail.has_value()) {
         detail = *meta.detail == "blocks" ? Detail::kBlocks : Detail::kFrames;
     }
 
@@ -1117,7 +1117,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
         return ac3::signing::has_authenticity_tag(frame);
     };
     if (detail != Detail::kNone) {
-        options.on_access_unit = [&](const io::ProbeAccessUnit& unit) {
+        options.on_access_unit = [&meta, &json, &detail](const io::ProbeAccessUnit& unit) {
             if (meta.json) {
                 write_access_unit(json, unit, detail);
             } else {

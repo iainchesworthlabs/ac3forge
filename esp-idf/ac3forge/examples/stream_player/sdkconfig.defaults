@@ -1,0 +1,33 @@
+# ESP-IDF configuration for the streaming player example.
+#
+# The same shape as the i2s_player example beside it - see that file for why
+# each setting is what it is - plus a custom partition table, which is the one
+# thing this example needs and that one does not.
+
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+# 8 KB, not the 32 KB i2s_player and the probe give their main task: since
+# 2026-09-10 the decode runs on the player's own task (ac3forge::Player, whose
+# PlayerConfig::decode_stack_bytes is the 32 KB the probe measured a decode
+# needing 21 KB of), and app_main only wires the seams and prints. The 24 KB
+# this gives back is heap the E-AC-3 decoder needs when WiFi is up: the first
+# two-task build aborted on an allocation in exactly that shape.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# The audio partition lives here. Without this IDF uses its own single-factory
+# table, which has nowhere to put a stream.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# PSRAM stays off, as everywhere else in this profile: the point is that the
+# decode fits in internal SRAM, and the streaming buffers are part of what has
+# to fit.
+
+# 240 MHz, asked for rather than inherited. ESP-IDF's default is 160, two
+# thirds of what the part does, and a player that has to finish each frame
+# inside the 32 ms the DAC takes to play it should name the clock it was
+# measured at. apps/baremetal/platform/esp32s3/sdkconfig.defaults has the
+# measurement: the decode scales with the clock almost exactly, so this is the
+# single largest setting on the part.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y

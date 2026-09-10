@@ -8,10 +8,13 @@
 #include <numbers>
 #include <optional>
 #include <span>
+#include <type_traits>
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"  // eac3::chanmap::Location/Layout
 #include "ac3/core/tables.hpp"
+#include "ac3/internal/decode_scalar.hpp"
+#include "fixed32.hpp"
 #include "ac3/meta/drc.hpp"  // to_db
 #include "ac3/meta/mixing.hpp"
 
@@ -56,6 +59,35 @@ const std::vector<double>& hilbert_kernel() {
     }();
     return kernel;
 }
+
+// The same taps in the decode path's own scalar (ac3::internal::decode_scalar_t):
+// the double table above, narrowed once, so the shift's per-sample products
+// run at that width. The double build gets the double table back untouched.
+template <typename Scalar>
+const std::vector<Scalar>& hilbert_kernel_as() {
+    if constexpr (std::is_same_v<Scalar, double>) {
+        return hilbert_kernel();
+    } else {
+        static const std::vector<Scalar> narrowed = [] {
+            const auto& wide = hilbert_kernel();
+            std::vector<Scalar> out;
+            out.reserve(wide.size());
+            for (const double tap : wide) {
+                out.push_back(static_cast<Scalar>(tap));
+            }
+            return out;
+        }();
+        return narrowed;
+    }
+}
+
+// Every per-sample product in this file runs in the decode path's scalar -
+// float under the minimum-footprint profile, double everywhere else, where
+// these expressions are exactly the ones they always were. Gains are still
+// derived in double (a handful per frame); it is the multiply per sample
+// that an ESP32-S3 with a single-precision FPU cannot afford in double, and
+// a player folding 5.1 to stereo every frame pays it every frame.
+using Scalar = internal::decode_scalar_t;
 
 // Which coded positions of Table 5.8 carry surround. ac3::meta's own downmix
 // builders keep a fuller version of this privately; what is needed here is
@@ -171,10 +203,10 @@ Acmod reduced_acmod(bool centre, bool mains, bool surrounds) {
 MixLevels mix_levels(std::optional<meta::CentreMixLevel> cmixlev,
                      std::optional<meta::SurroundMixLevel> surmixlev) {
     MixLevels out;
-    if (cmixlev) {
+    if (cmixlev.has_value()) {
         out.loro_clev = meta::coefficient(*cmixlev);
     }
-    if (surmixlev) {
+    if (surmixlev.has_value()) {
         out.loro_slev = meta::coefficient(*surmixlev);
     }
     // AC-3 has no separate Lt/Rt levels. §7.8.2's own -3 dB is the right
@@ -182,7 +214,7 @@ MixLevels mix_levels(std::optional<meta::CentreMixLevel> cmixlev,
     // surrounds from the downmix (§5.4.2.5's '10') meant that for any fold and
     // not only the plain one - carrying it across is the only reading that
     // does not put back channels the operator deliberately removed.
-    if (surmixlev && *surmixlev == meta::SurroundMixLevel::kSilent) {
+    if (surmixlev.has_value() && *surmixlev == meta::SurroundMixLevel::kSilent) {
         out.ltrt_slev = meta::level::kSilent;
     }
     return out;
@@ -190,7 +222,7 @@ MixLevels mix_levels(std::optional<meta::CentreMixLevel> cmixlev,
 
 MixLevels mix_levels(const std::optional<meta::MixMetadata>& mix) {
     MixLevels out;
-    if (!mix) {
+    if (!mix.has_value()) {
         return out;
     }
     out.loro_clev = meta::coefficient(mix->lorocmixlev);
@@ -266,9 +298,10 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
     // is the only order in which its ceiling means anything.
     const double dialnorm_gain = normalising ? meta::dialnorm_gain(dialnorm) : 1.0;
     if (dialnorm_gain != 1.0) {
+        const auto gain = static_cast<Scalar>(dialnorm_gain);
         for (const auto& channel : channels) {
             for (float& sample : channel) {
-                sample = static_cast<float>(static_cast<double>(sample) * dialnorm_gain);
+                sample = static_cast<float>(static_cast<Scalar>(sample) * gain);
             }
         }
     }
@@ -300,10 +333,11 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
             if (gain == 0.0) {
                 continue;
             }
+            const auto scaled_gain = static_cast<Scalar>(gain);
             const auto& source = channels[ch];
             const std::size_t n = std::min(length, source.size());
             for (std::size_t i = 0; i < n; ++i) {
-                out[i] += static_cast<float>(gain * static_cast<double>(source[i]));
+                out[i] += static_cast<float>(scaled_gain * static_cast<Scalar>(source[i]));
             }
         }
     };
@@ -337,11 +371,12 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
             // attenuation the direct path just got. Reading the coefficient
             // back out rather than re-deriving it from levels.ltrt_slev keeps
             // the two paths in step whatever normalisation decided.
-            const double gain = coeffs.surround[static_cast<std::size_t>(position)];
+            const auto gain =
+                static_cast<Scalar>(coeffs.surround[static_cast<std::size_t>(position)]);
             const auto& source = channels[static_cast<std::size_t>(position)];
             const std::size_t n = std::min(length, source.size());
             for (std::size_t i = 0; i < n; ++i) {
-                surround_sum_[i] += static_cast<float>(gain * static_cast<double>(source[i]));
+                surround_sum_[i] += static_cast<float>(gain * static_cast<Scalar>(source[i]));
             }
         }
 
@@ -350,7 +385,7 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
             // filter the surround sum, so the two arrive together. Both delay
             // lines carry across frames, which is what makes a stream decoded
             // frame by frame identical to the same stream decoded in one go.
-            const auto& kernel = hilbert_kernel();
+            const auto& kernel = hilbert_kernel_as<Scalar>();
             shift_history_.resize(static_cast<std::size_t>(kHilbertTaps) - 1U, 0.0F);
             direct_history_.resize(2);
             for (auto& history : direct_history_) {
@@ -390,17 +425,17 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
             // carried history. Even taps are exactly zero (see the kernel's own
             // comment), so only the odd ones are visited.
             const std::size_t history_size = shift_history_.size();
-            const auto sample_at = [&](std::ptrdiff_t index) -> double {
+            const auto sample_at = [&](std::ptrdiff_t index) -> Scalar {
                 if (index >= 0) {
-                    return static_cast<double>(surround_sum_[static_cast<std::size_t>(index)]);
+                    return static_cast<Scalar>(surround_sum_[static_cast<std::size_t>(index)]);
                 }
                 const auto back = static_cast<std::size_t>(-index);
                 return back <= history_size
-                           ? static_cast<double>(shift_history_[history_size - back])
-                           : 0.0;
+                           ? static_cast<Scalar>(shift_history_[history_size - back])
+                           : Scalar{0};
             };
             for (std::size_t i = 0; i < length; ++i) {
-                double shifted = 0.0;
+                Scalar shifted{0};
                 // The kernel's non-zero taps sit at EVEN indices, not odd
                 // ones: a tap is zero for even n, and n is (index -
                 // kHilbertDelay) with kHilbertDelay itself odd, so the parity
@@ -434,11 +469,12 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
     }
 
     if (lfe_gain != 0.0) {
+        const auto scaled_lfe = static_cast<Scalar>(lfe_gain);
         const auto& source = channels[lfe_index];
         const std::size_t n = std::min(length, source.size());
         for (std::size_t i = 0; i < n; ++i) {
             const auto contribution =
-                static_cast<float>(lfe_gain * static_cast<double>(source[i]));
+                static_cast<float>(scaled_lfe * static_cast<Scalar>(source[i]));
             out_left_[i] += contribution;
             if (stereo) {
                 out_right_[i] += contribution;
@@ -462,13 +498,15 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
     // backs it up: the ramp is what keeps the limiter inaudible, the clamp is
     // what makes the ceiling true.
     if (config_.mode == OperatingMode::kRf) {
-        double peak = 0.0;
+        Scalar scanned{0};
         for (std::size_t i = 0; i < length; ++i) {
-            peak = std::max(peak, std::abs(static_cast<double>(out_left_[i])));
+            scanned = std::max(scanned, internal::scalar_abs(static_cast<Scalar>(out_left_[i])));
             if (stereo) {
-                peak = std::max(peak, std::abs(static_cast<double>(out_right_[i])));
+                scanned = std::max(scanned,
+                                   internal::scalar_abs(static_cast<Scalar>(out_right_[i])));
             }
         }
+        const auto peak = static_cast<double>(scanned);
         double target = 1.0;
         if (peak > config_.rf_ceiling && peak > 0.0) {
             target = config_.rf_ceiling / peak;
@@ -480,13 +518,32 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
         const double released = std::min(1.0, protection_gain_ * kReleasePerFrame);
         const double frame_gain = std::min(target, released);
         const double start = protection_gain_;
-        const auto span = static_cast<double>(length);
+        // The ramp and the clamp per sample, in the decode scalar; the
+        // frame's own gains above stay double.
+        const auto ramp_start = static_cast<Scalar>(start);
+        const auto ramp_end = static_cast<Scalar>(frame_gain);
+        const auto ceiling = static_cast<Scalar>(config_.rf_ceiling);
+        // The position along the ramp per sample. The floating tiers divide
+        // by the length as they always did; the fixed one cannot hold a
+        // sample count (Q7.24 stops at 128), so it walks the ramp in steps
+        // sized once in double.
+        [[maybe_unused]] const auto span = static_cast<Scalar>(length);
+        [[maybe_unused]] const auto step = static_cast<Scalar>(
+            (frame_gain - start) / static_cast<double>(std::max<std::size_t>(length, 2) - 1));
+        Scalar walked = ramp_start;
         for (std::size_t i = 0; i < length; ++i) {
-            const double t = span > 1.0 ? static_cast<double>(i) / (span - 1.0) : 1.0;
-            const double gain = start + (frame_gain - start) * t;
+            Scalar gain{};
+            if constexpr (std::is_same_v<Scalar, internal::Fixed32>) {
+                gain = walked;
+                walked += step;
+            } else {
+                const Scalar t =
+                    span > Scalar{1} ? static_cast<Scalar>(i) / (span - Scalar{1}) : Scalar{1};
+                gain = ramp_start + (ramp_end - ramp_start) * t;
+            }
             const auto limited = [&](float sample) {
-                return static_cast<float>(std::clamp(static_cast<double>(sample) * gain,
-                                                     -config_.rf_ceiling, config_.rf_ceiling));
+                return static_cast<float>(
+                    std::clamp(static_cast<Scalar>(sample) * gain, -ceiling, ceiling));
             };
             out_left_[i] = limited(out_left_[i]);
             if (stereo) {
@@ -535,9 +592,10 @@ void OutputStage::apply(std::span<const std::span<float>> channels,
         const auto index = static_cast<std::size_t>(seat);
         occupied[index] = true;
         auto& target = fold_scratch_[index];
+        const auto scaled_gain = static_cast<Scalar>(gain);
         const std::size_t n = std::min(length, source.size());
         for (std::size_t i = 0; i < n; ++i) {
-            target[i] += static_cast<float>(gain * static_cast<double>(source[i]));
+            target[i] += static_cast<float>(scaled_gain * static_cast<Scalar>(source[i]));
         }
     };
     const auto count = std::min(static_cast<std::size_t>(layout.count), channels.size());

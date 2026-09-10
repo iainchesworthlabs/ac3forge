@@ -30,21 +30,21 @@ install_group() {
     # A desktop metapackage's recommends are the desktop: xfce4 without them
     # is an xfce4-session that starts, finds no xfconfd, and sits there with
     # no panel. Pass --recommends for those groups and nothing else.
-    if [ "$1" = --recommends ]; then opts=(); shift; fi
+    if [[ "$1" = --recommends ]]; then opts=(); shift; fi
     local label=$1 p missing=() present=()
     shift
     for p in "$@"; do
         if apt-cache policy "$p" 2>/dev/null | grep -q '^  Candidate: [^(]'; then present+=("$p"); else missing+=("$p"); fi
     done
-    [ ${#missing[@]} -eq 0 ] || echo "$label: not in this release: ${missing[*]}"
-    [ ${#present[@]} -gt 0 ] || return 0
+    [[ ${#missing[@]} -eq 0 ]] || echo "$label: not in this release: ${missing[*]}"
+    [[ ${#present[@]} -gt 0 ]] || return 0
     if apt-get install -y -qq "${opts[@]}" "${present[@]}"; then return 0; fi
     echo "$label: the group would not install together; going one at a time"
     local failed=()
     for p in "${present[@]}"; do
         apt-get install -y -qq "${opts[@]}" "$p" || failed+=("$p")
     done
-    [ ${#failed[@]} -eq 0 ] || { echo "$label: could not install: ${failed[*]}"; return 1; }
+    [[ ${#failed[@]} -eq 0 ]] || { echo "$label: could not install: ${failed[*]}"; return 1; }
 }
 
 # --- archives ---------------------------------------------------------------
@@ -161,8 +161,8 @@ systemctl disable lightdm 2>/dev/null || true
 
 cat > /home/crucible/.bash_profile <<'EOF'
 # The console login starts the session; an ssh login (any other tty) does not.
-[ -f ~/.bashrc ] && . ~/.bashrc
-if [ -z "${WAYLAND_DISPLAY:-}" ] && [ "$(tty)" = "/dev/tty1" ]; then
+[[ -f ~/.bashrc ]] && . ~/.bashrc
+if [[ -z "${WAYLAND_DISPLAY:-}" ]] && [[ "$(tty)" = "/dev/tty1" ]]; then
     exec labwc > ~/.labwc.log 2>&1
 fi
 EOF
@@ -198,7 +198,7 @@ xhost +local: >/dev/null 2>&1
 for v in DISPLAY WAYLAND_DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS \
          XDG_RUNTIME_DIR XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_DATA_DIRS; do
     eval "value=\${$v:-}"
-    [ -n "$value" ] && echo "$v=$value"
+    [[ -n "$value" ]] && echo "$v=$value"
 done > "$HOME/.crucible-session-env"
 EOF
 chmod 0755 /usr/local/bin/crucible-session-env
@@ -209,7 +209,7 @@ chown -R crucible:crucible /home/crucible/.config /home/crucible/.bash_profile
 # for catch2 and fmt only, so this is a few minutes once and cached after.
 # A full clone, not a shallow one: vcpkg has to reach the manifest's
 # builtin-baseline commit.
-if [ ! -d /opt/vcpkg/.git ]; then
+if [[ ! -d /opt/vcpkg/.git ]]; then
     git clone --quiet https://github.com/microsoft/vcpkg /opt/vcpkg \
         && /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics >/dev/null
 fi

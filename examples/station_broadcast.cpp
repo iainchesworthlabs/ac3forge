@@ -1585,7 +1585,7 @@ ac3::oba::ObjectScene build_scene() {
         paths[i].name = kObjectNames[i];
     }
     auto scene = ac3::oba::ObjectScene::create(std::move(paths));
-    if (!scene) {
+    if (!scene.has_value()) {
         std::fputs("internal error: bad keyframe table\n", stderr);
         std::exit(1);
     }
@@ -1636,7 +1636,7 @@ bool write_bytes(const std::string& path, std::span<const std::byte> bytes) {
 // fine for a source that then goes through a radio.
 std::vector<double> load_music(const std::string& path) {
     const auto wav = ac3::io::read_wav(path);
-    if (!wav) {
+    if (!wav.has_value()) {
         fmt::printf("error: %s: %s\n", path.c_str(),
                     std::string{ac3::io::describe(wav.error())}.c_str());
         return {};
@@ -1869,7 +1869,7 @@ int main(int argc, char** argv) {
         }
 
         const auto unit = objects_encoder->encode_frame(views, placement);
-        if (!unit) {
+        if (!unit.has_value()) {
             fmt::printf("atmos encode failed at %.1f s: %d\n", t_start,
                         std::to_underlying(unit.error()));
             return 1;
@@ -1878,7 +1878,7 @@ int main(int argc, char** argv) {
                               unit->bytes.end());
         if (!smoke_test) {
             const auto bed_unit = bed51_encoder->encode_frame(views, placement);
-            if (!bed_unit) {
+            if (!bed_unit.has_value()) {
                 fmt::printf("bed51 encode failed at %.1f s: %d\n", t_start,
                             std::to_underlying(bed_unit.error()));
                 return 1;
@@ -1908,7 +1908,7 @@ int main(int argc, char** argv) {
 
     // The bed a legacy decoder hears, as a WAV in FL FR FC LFE BL BR order.
     const auto order = ac3::io::wav_channel_order(ac3::Acmod::k3_2, true);
-    if (!ac3::io::write_wav_f32(prefix + "_bed.wav", bed_out, 48000, order)) {
+    if (!ac3::io::write_wav_f32(prefix + "_bed.wav", bed_out, 48000, order).has_value()) {
         fmt::printf("error: cannot write %s_bed.wav\n", prefix.c_str());
         return 1;
     }
@@ -1934,7 +1934,7 @@ int main(int argc, char** argv) {
             s *= norm;
         }
     }
-    if (!ac3::io::write_wav_f32(prefix + "_stereo.wav", stereo, 48000)) {
+    if (!ac3::io::write_wav_f32(prefix + "_stereo.wav", stereo, 48000).has_value()) {
         fmt::printf("error: cannot write %s_stereo.wav\n", prefix.c_str());
         return 1;
     }

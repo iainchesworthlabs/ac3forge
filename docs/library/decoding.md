@@ -120,7 +120,7 @@ E-AC-3 — `independent_substreams` plus a `SubstreamService` for substreams 1�
 `ac3::io::build_codec_config_box`'s `dac3`/`dec3` payload and the MPEG-TS PMT descriptors of
 both broadcast profiles (see [Muxing & sinks](muxing-and-sinks.md#muxing-mpegtsmux)).
 `independent_substreams` is an *observation* of which substream ids appear; it deliberately does
-not change how `scan` groups access units, which stays one-programme (ROADMAP.md's DC5).
+not change how `scan` groups access units, which stays one-programme.
 
 ## Object-layer strip
 
@@ -223,6 +223,50 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 | `syntax` | `nullptr` | `FrameSyntax*` (`ac3/decoder/syntax_trace.hpp`): which coding tools each block used and what exponent strategy each stream carried, recorded on the way past. Written by **both** decoders, unlike `trace`/`eac3_trace` — the Annex E tools are most of what makes it worth having. Filled incrementally, so a refused frame still leaves behind everything read before the refusal. |
 | `skip_reconstruction` | `false` | Parse every field exactly as a full decode does, but stop short of turning the coefficients into audio: no inverse transform, no overlap-add, no JOC object reconstruction, and no per-access-unit channel combination. The metadata (and any trace above) is identical to a full decode's; `channels` and `object_audio` come back empty. What `ac3cli probe` runs a whole file through. Note what it does *not* skip: the mantissas are still read, because the bit position of every field after them depends on it. |
 
+### Block-granular output
+
+Both decoders have three output forms. `decode_frame` / `decode_access_unit` return the PCM in
+vectors of their own; `decode_frame_into` / `decode_access_unit_into` write it through spans the
+caller owns, a frame per channel; and `decode_frame_by_block` / `decode_access_unit_by_block` hand
+it to a `BlockSink` — a non-owning reference to any callable, so passing one allocates nothing —
+one `PcmBlock` at a time: `kSamplesPerBlock` (256) samples of every output slot, in the order the
+`_into` form writes, delivered once the whole frame or unit has decoded and the output stage has
+run. The samples are the `_into` form's exactly, and a downmix arrives as one or two slots. The
+spans view the decoder's own storage and are valid only inside the call that hands them over.
+
+```cpp
+ac3::Eac3Decoder decoder;
+const auto sink = [&](const ac3::PcmBlock& block) {
+    // block.index of block.blocks; block.channels[slot] is 256 samples of
+    // the rendered layout's slot. Interleave it into a DMA ring one block deep.
+    ring.push(block.channels);
+};
+for (const auto unit : scanned->access_units) {
+    const auto decoded = decoder.decode_access_unit_by_block(unit, sink);
+    if (!decoded) { /* as above */ }
+}
+```
+
+What the form is for is a caller that cannot afford a frame: on an ESP32-S3 a 7.1.4 programme's
+frame is 73,728 bytes of the part's free SRAM, and a DMA ring needs a block. For E-AC-3 nothing
+is copied on the way out — each slot is a view onto the substream vector that supplies it, a
+dependent's over the bed's where §E3.8.2 says it replaces it — so the assembly copy the `_into`
+form pays goes as well. AC-3 has no per-substream storage to hand out views of, so its form keeps
+one frame of its own (six channels, sized once); the saving there is the caller's. The §3.7
+hold-back's `std::nullopt`, a skipped programme and `skip_reconstruction` leave the sink uncalled;
+a concealed frame is delivered through it like any other. The
+[bare-metal probe](../platforms/bare-metal.md) decodes every fixture through these forms and holds
+no PCM at all.
+
+An access unit's objects come through the same block. `PcmBlock::objects` is a view per JOC
+output onto the unit's own reconstruction, cut to the block, and `object_indices` and
+`object_metadata` mean what `DecodedAccessUnit`'s do; all three are empty for an AC-3 frame, for
+a bed-only decode (`skip_object_reconstruction`) and for a unit with no object layer. A sink
+placing objects on loudspeakers therefore needs no frame of anything - the value form's
+`object_audio` is a frame of copies per object, and this is none. The probe's
+`eac3_atmos_render` row is that sink: `ac3::spatial::pan_direction` for the gains, once per
+object per unit, and a block of float sums per target.
+
 ## The output stage
 
 `ac3/decoder/output.hpp`. Everything between "the coded channels have been reconstructed" and
@@ -239,6 +283,11 @@ ac3::FrameDecoder decoder{{
 // decoded->channels now holds two channels, Lo then Ro, at the -31 dBFS
 // reference. acmod/lfe still describe what was CODED.
 ```
+
+The stage's per-sample arithmetic runs in the decoder's scalar type - `double` in every ordinary
+build, `float` under the [minimum-footprint profile](../building.md#minimum-footprint-decoder-profile),
+whose targets have a single-precision FPU at best - and its gains and mix coefficients are
+`double` everywhere. That profile's probe holds two folded fixtures to their levels on the target.
 
 | `OutputConfig` | Default | Notes |
 |---|---|---|
@@ -268,7 +317,7 @@ That follows from what §7.8.2 asks for rather than from anything decided here �
 `ltrt_phase_shift = false` and `kRf` are the two ways to get a bounded output, and the second is
 the one that guarantees it.
 
-Lt/Rt's surround sum is genuinely phase shifted, through a 127-tap Hilbert transformer, with the
+Lt/Rt's surround sum is phase shifted, through a 127-tap Hilbert transformer, with the
 direct path delayed to match; `OutputStage::latency_samples()` reports the resulting 63 samples of
 output delay, and is zero for every other configuration. `ltrt_phase_shift = false` selects the
 sign-only matrix a lot of hardware implements instead — no latency, at the cost of the surround
@@ -653,5 +702,5 @@ manifest of what each exercises, for checking an independent implementation.
 See also: [Encoding AC-3](encoding-ac3.md) and [Encoding E-AC-3](encoding-eac3.md) — what
 `decode_frame`/`decode_access_unit` are undoing, and the full latency budget;
 [Muxing & sinks](muxing-and-sinks.md) — pairing `ac3::io::scan` with `matroska::mux` is what
-keeps a container's track header honest; [Building](../building.md) — the minimum-footprint
+keeps a container's track header accurate; [Building](../building.md) — the minimum-footprint
 decoder profile for set-top and DSP targets.

@@ -52,6 +52,20 @@ AC3FORGE_EXPORT void apply_analysis_window(std::span<const double, 512> x,
 AC3FORGE_EXPORT void mdct512_forward(std::span<const double, 512> windowed,
                                      std::span<double, 256> coeffs, bool fast = false);
 
+// The float32 forms of the two above (roadmap PF7's float32 gap). Their caller
+// is oba::joc's object reconstruction, which runs a forward transform inside a
+// DECODE - it analyses the bed before un-mixing it (PF8). The encoder's own
+// forward path stays double and is untouched: the fifteen bitstream hashes in
+// tests/golden/bitstream-hashes.json pin its output.
+//
+// No `fast` parameter, for the same reason the float32 inverse below has none:
+// the direct evaluation is the spec's own and the oracle the fast path is
+// validated against, so it stays double, and there is no choice to offer.
+AC3FORGE_EXPORT void apply_analysis_window(std::span<const float, 512> x,
+                                           std::span<float, 512> windowed);
+AC3FORGE_EXPORT void mdct512_forward(std::span<const float, 512> windowed,
+                                     std::span<float, 256> coeffs);
+
 // Normative inverse: 256 coefficients -> 512 WINDOWED time samples
 // (§7.9.4.1 steps 1-5; the window application is part of step 5).
 // Reconstruction: pcm[n] = 2 * (x[n] + previous_block_x[256 + n]).
@@ -111,6 +125,21 @@ AC3FORGE_EXPORT void mdct512_forward_batch4(std::span<const double, 512> w0,
                                             std::span<double, 256> c0, std::span<double, 256> c1,
                                             std::span<double, 256> c2, std::span<double, 256> c3);
 
+// The float32 batch forms. Four independent calls rather than four lanes -
+// there is no float32 AVX2 kernel for them to fill, so batching would buy
+// nothing yet. They exist so a caller written against the batch shape (joc.cpp
+// is) picks up a real one later without changing.
+AC3FORGE_EXPORT void mdct512_forward_batch4(
+    std::span<const float, 512> w0, std::span<const float, 512> w1,
+    std::span<const float, 512> w2, std::span<const float, 512> w3, std::span<float, 256> c0,
+    std::span<float, 256> c1, std::span<float, 256> c2, std::span<float, 256> c3);
+
+AC3FORGE_EXPORT void imdct512_windowed_batch4(
+    std::span<const float, 256> coeffs0, std::span<const float, 256> coeffs1,
+    std::span<const float, 256> coeffs2, std::span<const float, 256> coeffs3,
+    std::span<float, 512> x0, std::span<float, 512> x1, std::span<float, 512> x2,
+    std::span<float, 512> x3);
+
 // The block-switched (short) transform pair (§7.9, blksw = 1): the usual
 // 512-sample windowed block split into two 256-sample halves, each
 // transformed separately with alpha = -1 (first) or +1 (second, §8.2.3.2).
@@ -133,6 +162,16 @@ AC3FORGE_EXPORT void mdct256_forward_first(std::span<const double, 256> windowed
                                            std::span<double, 128> coeffs, bool fast = false);
 AC3FORGE_EXPORT void mdct256_forward_second(std::span<const double, 256> windowed,
                                             std::span<double, 128> coeffs, bool fast = false);
+
+// The float32 forms of the short-block pair (roadmap PF7), for the encoders'
+// analysis front end under the minimum-footprint profile
+// (ac3/internal/encode_scalar.hpp). No `fast` parameter, as for the float32
+// mdct512_forward above: the direct evaluation stays double, and these are
+// the same two folds in float.
+AC3FORGE_EXPORT void mdct256_forward_first(std::span<const float, 256> windowed,
+                                           std::span<float, 128> coeffs);
+AC3FORGE_EXPORT void mdct256_forward_second(std::span<const float, 256> windowed,
+                                            std::span<float, 128> coeffs);
 
 // Normative inverse for blksw = 1 (§7.9.4.2): takes the SAME 256-length
 // interleaved coefficient set a long block would carry and produces 512

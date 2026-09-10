@@ -152,7 +152,7 @@ by actually reconstructing both ways with the fitted band values and keeping whi
 closer to the real content, which measurably fires (real material chooses it on a meaningful
 fraction of frames, not a rare edge case). Measured with `tools/ci/quality_race.py`: almost
 every row flat or improved, up to +3.1 dB E-AC-3 stereo and +12.3 dB AC-3 anti-phase stereo. One
-tradeoff: AC-3 5.1 coupled loses up to 0.4 dB SNR (192 kbit/s) from coordinate resends genuinely
+tradeoff: AC-3 5.1 coupled loses up to 0.4 dB SNR (192 kbit/s) from coordinate resends
 competing with mantissas for the same tight budget where they previously didn't get the chance
 to — the same dynamic EQ5's closed-loop delta decision exists to solve, not yet extended to
 coordinates. See the PR body for the full table.
@@ -253,7 +253,7 @@ checked the scaled size, the encode path then budgeted the unscaled one — so a
 0/1/2 stream carried 6×/3×/2× its nominal bit rate and every short frame had silently
 luxurious mantissa budgets. Fixed at all three call sites (encode budget, `access_unit_words`,
 `plan.cpp`'s framability check); six-block streams are byte-identical by construction
-(`blocks_per_syncframe(3)` is the old default), confirmed by the golden hashes. The honest
+(`blocks_per_syncframe(3)` is the old default), confirmed by the golden hashes. The fair
 consequence for objects: the OAMD+JOC container repeats per syncframe whatever its length, so
 its fixed cost is a six-times share of a one-block frame — four objects at 640 kbit/s fit a
 six-block frame and are correctly refused at one block, where ~2 Mbit/s is the realistic
@@ -300,7 +300,7 @@ E-AC-3 stereo, `tools=none`, FFmpeg as the constant decoder, paired per-4 s-wind
 standard errors). It does not beat §8.2.12's `0x4` at any rate on either material: ViSQOL
 MOS-LQO is never significantly positive, and is significantly *negative* where the curve moves
 furthest — −0.240±0.049 (speech) and −0.105±0.036 (music) at 96 kbit/s, −0.020±0.001 at 128 —
-flat above. The noise floor here is genuinely zero, because `fgaincod=4` is byte-identical to
+flat above. The noise floor here is zero, because `fgaincod=4` is byte-identical to
 the default by construction: that leg measures `+0.000±0.000` in every cell, so every non-zero
 figure is signal.
 
@@ -451,7 +451,7 @@ named), and the perceptual model needs further calibration before it is worth tu
   So this entry's original negative result **stands and is now better explained**: a per-frame
   search over transmitted bit-allocation parameters has little to find on E-AC-3 not because
   one axis was missing, but because `dbpbcod` was already settled by EQ3 and `fgaincod`'s
-  SNR-optimal direction is perceptually wrong. What that leaves genuinely open is a search
+  SNR-optimal direction is perceptually wrong. What that leaves open is a search
   driven by a criterion that tracks perception — `kPerceptual`, still uncalibrated — rather
   than more axes under `kDistortion`.
 
@@ -487,7 +487,7 @@ and no encoder in reach emits either strategy to arbitrate from — the encoder 
 Note that the emitted layout matched `tools/references/eac3_parse.py`, this project's
 independent transcription, so the two readings inside the project agree and it is FFmpeg that
 differs. The decoder's own 0x2 path was brought into line with that transcription in passing
-(it read no `cplfsnroffst` at all). What is left genuinely untried is the per-BLOCK dimension,
+(it read no `cplfsnroffst` at all). What is left untried is the per-BLOCK dimension,
 which on E-AC-3 needs a bit allocation per block rather than per frame — six times the work in
 the rate search's innermost loop — and has its own measurement to justify that.
 </details>
@@ -502,7 +502,7 @@ the 5.1 external-metric harness alignment EQ13 scoped out remains unattempted.
 Read EQ13's record before starting: more axes under `kDistortion` is *measured* territory —
 per-frame searches over the transmitted bit-allocation parameters have little left to find
 (`dbpbcod` was settled by EQ3, `fgaincod`'s SNR-optimal direction is perceptually wrong on
-E-AC-3, and EQ8's gap moved for other reasons entirely). The genuinely open work is a
+E-AC-3, and EQ8's gap moved for other reasons entirely). The open work is a
 criterion that tracks perception: `ac3::quality::PerceptualModel` is a cited/tested
 Johnston+MPEG-1-model-2 tonality/masking model that is validated in isolation yet loses to
 the fixed defaults on real material with rematrixing active, which means calibration work
@@ -1072,7 +1072,7 @@ its object half. The channel-based writer above is complete against v1.1.0, whic
 
 **IM5 (L, the library)** — Land the TrueHD/MLP branch as an explicitly experimental module. A
 substantial internal codec already exists on a long-lived branch; needs a rebase, its own
-build target, and honest output labelling before it can merge.
+build target, and accurate output labelling before it can merge.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1088,7 +1088,7 @@ inventory and not the shipping layout: no real TrueHD decoder reads it. To merge
 command table and `src/forge/CMakeLists.txt` both churned), gate it as its own target
 (`ac3::mlp`, `AC3FORGE_BUILD_MLP`) rather than compiling eleven files into `ac3::forge` —
 keeping it out of AP1's frozen surface and the library-only packages — remove the ten committed
-third-party PDFs (the tree's rule is "not redistributed here"), label the output honestly (an
+third-party PDFs (the tree's rule is "not redistributed here"), label the output accurately (an
 `.mlp` that `ffprobe` detects and then fails on), fix the design doc's drift (`src/lib` links;
 "deferred" vs the landed Atmos layer), delete or justify the superseded Rice coder, and add the
 CHANGELOG/docs rows the branch lacks. UX10 carries its front ends.
@@ -1272,7 +1272,7 @@ it is a `consteval` construction with no runtime libm call at all — fixed in t
 the gap is real, reproducible, and does not come from anything this project can build without
 the real hardware CI already has: the two most likely remaining candidates (GitHub's
 *natively*-packaged aarch64 compiler versus the Debian cross-compiler package used here, or a
-genuine real-silicon FP behaviour `qemu-user` does not reproduce) both need the real runners to
+real-silicon FP behaviour `qemu-user` does not reproduce) both need the real runners to
 test further, which is now recorded in `docs/building.md` rather than guessed at. What ships
 instead of an explanation: a cross-platform bitstream-hash gate
 (`tools/checks/check_cross_platform_hash.py`, wired into `verify_gold_reference.sh`) pinning a
@@ -1284,7 +1284,7 @@ pin the wrong number by this item's own finding. `docs/building.md` and `ci.yml`
 carry the corrected history in place of the stale libm explanation.
 
 **Update (DR8):** `macos-llvm-x64`, a new x86_64-on-macOS leg added for DR8's universal
-binaries, is a genuinely new data point along the OS-vs-architecture axis - same OS and Homebrew
+binaries, is a new data point along the OS-vs-architecture axis - same OS and Homebrew
 LLVM/Qt stack as `macos-llvm`, x86_64 instead of arm64. Across three real CI runs it measured
 67.80/67.82/67.76 dB, matching the x86 baseline every non-arm64 leg reports, not the ~61.8 dB
 `macos-llvm` and every other arm64/aarch64 leg reports. That rules out "something about macOS
@@ -1300,7 +1300,7 @@ box-size walk — the only failure `fuzz-short` had ever actually recorded.
 <summary>Full record</summary>
 
 The claimed track record didn't hold up under a real check of `gh run list`/job-level history
-back to 2026-08-09: `fuzz-differential` genuinely had zero failures across 218 push runs, but
+back to 2026-08-09: `fuzz-differential` had zero failures across 218 push runs, but
 `fuzz-short` had five, all the same `UndefinedBehaviorSanitizer` report in `fuzz_mp4_demux`,
 clustered in the 24 hours before this item was picked up (first at 2026-08-24T10:42Z) rather
 than spread across the window — a live regression, not pre-existing flakiness. Root cause:
@@ -1684,7 +1684,7 @@ on roadmap VX11, not on this audit: VX11 found that a real, standards-conformant
 does not reproduce the arm64/macOS gap at all, so the true root cause is still unidentified, and
 asserting cross-leg byte-equality today would either be vacuously true on the x86 legs (already
 covered by VX11's `check_cross_platform_hash.py`) or fail on arm64/macOS for a reason this audit
-cannot name yet. A recorded-decisions replay mode is genuinely independent future work, not
+cannot name yet. A recorded-decisions replay mode is independent future work, not
 attempted here.
 </details>
 
@@ -1845,8 +1845,9 @@ syncframes (the low-latency mode this was meant to document) have not landed - t
 latency section names the 512-1024-sample figures they would enable and says so.
 </details>
 
-**PF7 (L)** — A minimum-footprint decoder profile — 277 KB image, 168 KB peak heap, proven on
-a real cross-compiled bare-metal CI leg, with a vectorised float32 decode path.
+**PF7 (L)** — A minimum-footprint decoder profile — a 320,601-byte image and a 210,203-byte peak
+heap with Atmos objects, proven on a real cross-compiled bare-metal CI leg, with a float32 decode
+path that runs E-AC-3 in real time on an ESP32-S3.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -1855,7 +1856,7 @@ RTTI and no direct-form transform tables (an explicit 1.81 MiB ROM budget, measu
 object file), proven on a cross-compiled `arm-none-eabi`/QEMU CI leg (`apps/baremetal`,
 `build-footprint`) that decodes real AC-3/E-AC-3 to the host build's own levels in 408 KB of
 image and 265 KB of peak heap. Two requirements are recorded as open gaps rather than
-half-enforced: zero heap traffic in the decode loop (today: 46-87 allocations/frame) and a
+half-enforced: zero heap traffic in the decode loop (today: 1-31 allocations/frame) and a
 float32-only internal path. The second is now met for the decode path: both decoders carry their
 coefficients, transform scratch and overlap-add history in a profile-selected `decode_scalar_t`,
 agreeing with the double decode to ~139 dB across four real streams and to 2.7e-7 peak-normalised
@@ -1885,7 +1886,39 @@ consecutive quad of `f` registers that GCC's Xtensa port cannot model as one val
 spills. What is left for that part is a hand-written kernel tier shaped like
 `src/internal/avx2/`, which would need its own bit-exactness argument since reaching `esp-dsp`'s
 figures means the `madd.s` that `-ffp-contract=off` forbids project-wide. Whether any of it is
-warranted is still unmeasured: it wants one board, and QEMU cannot answer it.
+warranted was answered on a board on 2026-09-09, and the answer is no, for now: as found, E-AC-3
+5.1 decoded at 2.46x real time and 2/0 at 1.08x on an ESP32-S3 at 240 MHz, and a per-stage
+profile on the board (the `AC3FORGE_STAGE_TIMERS` backend, which routes this library's Tracy
+markers to the probe) put 4% of a 5.1 frame in the transform and 80% in spectral extension, the
+AHT and mantissa dequantisation - all of it `double` arithmetic between the bitstream and the
+float32 store, each operation a call into the ROM's software routines on that FPU. Moving that
+arithmetic to `decode_scalar_t` (templates whose `<double>` instantiations are the functions the
+ordinary build always called, so nothing moved there) and compiling five decode-critical files at
+`-O2` took 5.1 to 0.44x, 2/0 to 0.21x and the Atmos objects fixture from 2.58x to 0.92x, with
+every fixture's RMS unchanged to the digit. The second core was not needed. Enhanced coupling
+followed in a second pass, its shared-with-the-encoder routines given float forms beside the double
+ones: 217 ms to 23.8 ms, so every E-AC-3 configuration this profile decodes now runs in real
+time on the part. `docs/platforms/esp32.md`'s Timing section has the stage tables and what would
+move the objects and enhanced-coupling fixtures further.
+
+A third pass, bit-exact for the double build and to the digit on the probe's levels, took the
+stages the profile left largest - a `BitReader` that had read one bit per loop iteration, a bit
+allocation recomputed for blocks whose parameters had not changed, a division per mantissa, the
+GAQ constants per codeword, JOC's data-point reads per sample - and put `fft.cpp` on the `-O2`
+list: 5.1 at 0.40x, 2/0 at 0.19x, the Atmos objects fixture at 0.72x and enhanced
+coupling at 0.67x. The leg's figures at the end of it: 320,521 bytes of image, 234,803 of
+peak heap with the objects reconstructed, 12 retained, 1 to 41 allocations a frame. A fourth
+pass read the 2.0 ms the access-unit zones had isolated and found `std::copy` into the caller's
+spans reaching the mask ROM's `memmove` at some twelve cycles a byte; `memcpy` does the same 36 KB
+in 0.12 ms, and moving the object description into the unit instead of copying it took the peak
+to 210,203 bytes and the objects fixture to 31 allocations a frame: 5.1 at 0.34x, objects at
+0.66x, enhanced coupling at 0.62x, on a 320,601-byte image. A ninth fixture, E-AC-3 7.1.4 (a bed and
+two dependent substreams), measures 0.90x on the part and a 229,630-byte peak - the widest
+programme the format has, in internal SRAM, with the memory rather than the arithmetic as what a
+player around it would have to find room for. The first of that memory went next: `_by_block`
+decode forms hand the programme over 256 samples at a time from the decoder's own storage, so a
+sink holds a block where it held a frame (73,728 bytes for 7.1.4), and the probe itself holds no
+PCM at all.
 
 See `docs/building.md`'s Gaps section, `docs/performance-trend.md` for the current table, and
 `docs/platforms/esp32.md`.
@@ -2359,7 +2392,7 @@ Dolby's own JOC reconstruction.
 
 `ac3::audio::SpatialObjectSink` (`ISpatialAudioObjectRenderStream`): decoded objects go out as
 dynamic objects at their real OAMD positions, the bed's LFE as a static one (never a JOC
-output, §6.3.2.2 — the rest of a genuine bed programme's channels are not yet mapped, see the
+output, §6.3.2.2 — the rest of a bed programme's channels are not yet mapped, see the
 sink's own header). Confirmed against a real spatial endpoint: `GetMaxDynamicObjectCount` read
 0 everywhere on this machine before Windows Sonic for Headphones was enabled on the default
 Realtek output, `start()` refused with `kNoSpatialFormat` naming the fix, and after enabling it
@@ -2379,7 +2412,7 @@ Parse EDID short audio descriptors to choose AC-3, E-AC-3 or PCM, and a one-comm
 transcode-to-passthrough pipeline (DC9's transcode into `PassthroughSink`) for the "no 5.1 PCM
 over optical" case. Shipped as `ac3::audio::sink_capabilities` (real on ALSA, reading the
 HD-audio driver's own `/proc/asound/.../eld#*` text; every other backend reports `kNoBackend`
-honestly rather than guessing, and `play` falls back to `enumerate_render_devices()`'s live
+accurately rather than guessing, and `play` falls back to `enumerate_render_devices()`'s live
 probe there, same as before). `play` tries EDID first, an E-AC-3 source on an AC-3-only sink
 gets transcoded to AC-3 automatically (reusing `transcode` through a temp file, so
 dialnorm/compr/mix metadata still carry across), and a sink that bitstreams neither format
@@ -2836,7 +2869,7 @@ have to redo for no real benefit, on a leg this fix scopes as an afternoon, not 
 `cmake/Packaging.cmake`'s `find_program()` gate now warns instead of degrading silently when
 `makensis` is absent, for a local dev build that doesn't have it. `docs/releasing.md`'s winget
 instructions now default the *next* release bump to `InstallerType: nullsoft`; the
-already-published `0.9.0-beta.1` manifest stays `zip`/`portable` since that release genuinely
+already-published `0.9.0-beta.1` manifest stays `zip`/`portable` since that release
 has no `.exe` to point at — never rewrite a published version to claim an installer it never
 shipped. `tools/checks/check_packaging_versions.sh` now fails if a future manifest bump
 declares `nullsoft` without matching `InstallerUrl`/dropping `NestedInstallerType`, or vice

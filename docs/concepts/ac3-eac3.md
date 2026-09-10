@@ -260,7 +260,7 @@ It used to choose from the bitrate alone. It now also measures the frame: how we
 high band would survive being replaced by one shared copy, and how much of the signal is up in the
 band synthesis would take over. That matters because the same bitrate can afford a nearly empty
 top end and not a busy one, and because two channels that are already nearly the same thing above
-8 kHz can be coupled almost for free while two genuinely different ones cannot.
+8 kHz can be coupled almost for free while two different ones cannot.
 
 Two of the tools are not in that automatic set, and the reasons are worth stating plainly:
 

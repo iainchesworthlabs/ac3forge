@@ -96,6 +96,17 @@ std::uint32_t measure_cpu_mhz() {
 }  // namespace
 
 extern "C" void app_main() {
+    // A board reached through its native USB connector (sdkconfig.hw)
+    // re-enumerates on every reset, and the host's terminal reattaches some
+    // hundreds of milliseconds after the application has already started
+    // printing. The first fixture's lines were lost that way - the 2026-09-09
+    // hardware run has no `ac3` row because of it. A flat pause before the
+    // first line costs a measurement harness nothing and is not conditional
+    // on the console's transport (which would be a Kconfig #if, and the
+    // platform-tree rule keeps those out of apps/): QEMU and a UART bridge
+    // simply start three seconds later.
+    vTaskDelay(pdMS_TO_TICKS(3000));
+
     // Printed before the probe runs so that a run at an unexpected clock is
     // visible in the log even if the decode later fails, and so every
     // microsecond figure below can be converted to cycles by a reader.

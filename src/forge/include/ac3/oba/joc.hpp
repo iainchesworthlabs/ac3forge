@@ -322,12 +322,37 @@ enum class Domain : std::uint8_t {
 // uses are ever touched; `qmf` in particular stays null until a kQmf call
 // allocates it, so a decoder that never leaves the MDCT path carries none
 // of the filterbank's own state.
+// The scalar reconstruction carries its state in.
+//
+// float, in every build, and not decode_scalar_t. It is the same argument the
+// decoders' coefficient stores made - single-precision is all the target
+// hardware has and all the arithmetic needs - plus two this type has and they
+// do not:
+//
+//   - ReconstructionState is INSTALLED. src/forge/include/ ships wholesale and
+//     joc::reconstruct is exported, so an external caller declares one of
+//     these. decode_scalar_t lives in a header deliberately never installed,
+//     being a fact about how the library was built rather than part of its API;
+//     putting it in a shipped struct's layout would make a build variant part
+//     of the ABI.
+//   - The size is why the type is being changed at all. At double this struct
+//     is 147,504 bytes in ONE allocation - larger than the biggest contiguous
+//     block an ESP32-S3 has free after any other decode, so it fails on
+//     contiguity before any budget is consulted. A variant that is only smaller
+//     in some builds does not answer that.
+//
+// reconstruct() takes and returns float on both sides already, so nothing about
+// the API boundary moves; only what happens behind it. The accuracy cost is
+// measured rather than assumed - tests/oba/test_atmos.cpp pins this
+// reconstruction against the direct form and against the objects that went in.
+using recon_scalar_t = float;
+
 struct ReconstructionState {
-    std::array<std::array<double, 256>, kMaxChannels> bed_history{};
-    std::vector<double> previous_matrix{};
+    std::array<std::array<recon_scalar_t, 256>, kMaxChannels> bed_history{};
+    std::vector<recon_scalar_t> previous_matrix{};
     int previous_objects = 0;
     int previous_channels = 0;
-    std::vector<std::array<double, 256>> object_history{};
+    std::vector<std::array<recon_scalar_t, 256>> object_history{};
 
     // reconstruct()'s own per-call scratch (PREfast C6262: stack-declaring
     // these inside the function put it at ~24 KB of stack per call). Reused
@@ -336,22 +361,40 @@ struct ReconstructionState {
     // ecpl_spectrum_*_ members already use - each is fully overwritten
     // before being read, so nothing here needs to persist meaningfully
     // BETWEEN calls the way bed_history/previous_matrix/object_history do.
-    std::array<std::array<double, 256>, kMaxChannels> bed_mdct_scratch{};
-    std::array<double, 512> time_scratch{};
+    std::array<std::array<recon_scalar_t, 256>, kMaxChannels> bed_mdct_scratch{};
+    std::array<recon_scalar_t, 512> time_scratch{};
     // Four windowed blocks, not one (ROADMAP PF5 phase 4c): the bed
     // analysis batches four CHANNELS' forward transforms into one
     // ac3::mdct512_forward_batch4 call, which needs all four windowed
     // blocks to coexist. kNumChannels5X is 5, so a block runs one batch of
     // four plus one ordinary call; lane 0 doubles as the scalar path's own
-    // buffer, so this costs 3 x 512 doubles over the previous single one.
-    std::array<std::array<double, 512>, 4> windowed_scratch{};
+    // buffer, so this costs 3 x 512 scalars over the previous single one.
+    std::array<std::array<recon_scalar_t, 512>, 4> windowed_scratch{};
     // Per-object (ROADMAP PF5's batch-axis follow-on): every present
     // object's spectrum/synthesis output now coexists, so the imdct pass
     // can batch four objects at a time (ac3::imdct512_windowed_batch4)
     // instead of running strictly one object at a time - see
     // reconstruct_mdct_band's own object loop (joc.cpp).
-    std::array<std::array<double, 256>, kMaxObjects> object_mdct_scratch{};
-    std::array<std::array<double, 512>, kMaxObjects> synth_scratch{};
+    //
+    // Sized to the STREAM, not to kMaxObjects. At the cap of 16 these two are
+    // 16,384 and 32,768 bytes; the Atmos content this decoder has been pointed
+    // at carries six objects, where they are 6,144 and 12,288. Two thirds of
+    // this struct was provisioning for objects no stream in hand contains, on
+    // targets chosen because memory is scarce - see docs/platforms/esp32.md.
+    //
+    // Vectors rather than arrays for the same reason object_history above is
+    // one, and resized in the same place by the same rule: a changed object
+    // count invalidates the contents anyway, since index i stops naming the
+    // same object.
+    std::vector<std::array<recon_scalar_t, 256>> object_mdct_scratch{};
+    std::vector<std::array<recon_scalar_t, 512>> synth_scratch{};
+    // FrameParameters::matrix narrowed once per call, for a decoder whose
+    // own scalar is float (the minimum-footprint profile): the mixing reads
+    // each coefficient many times a frame and the matrix itself is double,
+    // so narrowing per read was a software routine per read on that
+    // profile's targets. A double decoder never touches this - it reads the
+    // matrix directly - so the member stays empty there.
+    std::vector<recon_scalar_t> matrix_scratch{};
 
     // --- Domain::kQmf only -------------------------------------------------
 
@@ -359,6 +402,15 @@ struct ReconstructionState {
     // per object - plus the one timeslot of subband values in flight.
     // Behind a pointer, and built on first use, so the MDCT path does not
     // pay for it.
+    // Deliberately double, unlike the MDCT-path members above.
+    //
+    // This half is allocated only under Domain::kQmf, which is the domain the
+    // clause describes and the one a licensed decoder reconstructs in - what
+    // tests/oba/test_atmos.cpp pins at 321-325 dB against the direct form.
+    // Narrowing it would change the arithmetic of the REFERENCE path to save
+    // memory on a target that does not use it: the configuration that makes
+    // objects fit in internal SRAM is kMdctBand, under which `qmf` stays null
+    // and none of this is allocated at all.
     struct QmfState {
         std::array<dsp::QmfAnalysis, kNumChannels5X> bed{};
         std::vector<dsp::QmfSynthesis> objects{};
@@ -393,7 +445,7 @@ struct ReconstructionState {
     // the first kQmfDelaySlots timeslots a call emits belong to the PREVIOUS
     // frame's audio and must ramp across the previous frame's own pair -
     // without this they would get a matrix one whole frame too new.
-    std::vector<double> older_matrix{};
+    std::vector<recon_scalar_t> older_matrix{};
 };
 
 // Reconstructs each JOC object's time-domain audio for one frame from the
