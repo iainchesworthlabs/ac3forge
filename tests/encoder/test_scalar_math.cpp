@@ -24,7 +24,7 @@ TEST_CASE("float scalar_log2 tracks std::log2 across the normal range", "[encode
     for (int i = -3700; i <= 3700; i += 7) {
         const auto x = static_cast<float>(std::pow(10.0, i / 100.0));
         const double reference = std::log2(static_cast<double>(x));
-        const double got = scalar_log2(x);
+        const double got = static_cast<double>(scalar_log2(x));
         const double abs_err = std::abs(got - reference);
         worst_abs = std::max(worst_abs, abs_err);
         if (std::abs(reference) > 1.0) {
@@ -65,7 +65,7 @@ TEST_CASE("float scalar_exp tracks std::exp over the arguments the analyses reac
     for (int i = -8500; i <= 800; i += 13) {
         const auto x = static_cast<float>(i / 100.0);
         const double reference = std::exp(static_cast<double>(x));
-        const double got = scalar_exp(x);
+        const double got = static_cast<double>(scalar_exp(x));
         worst_rel = std::max(worst_rel, std::abs(got - reference) / reference);
     }
     CHECK(worst_rel < 2e-6);
