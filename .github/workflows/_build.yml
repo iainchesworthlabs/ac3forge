@@ -1453,8 +1453,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./tools/checks/run_baremetal_probe.sh --host --scalar=fixed | tee "${{ runner.temp }}/fixed-host.txt"
-          python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "${{ runner.temp }}/fixed-host.txt"
+          ./tools/checks/run_baremetal_probe.sh --host --scalar=fixed | tee "$RUNNER_TEMP/fixed-host.txt"
+          python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "$RUNNER_TEMP/fixed-host.txt"
 
       # The same two questions for the ENCODE path's scalar. AC3FORGE_ENCODE_SCALAR
       # (src/forge/src/internal/scalar/encode/) is the axis the minimum-footprint
@@ -1861,10 +1861,14 @@ jobs:
             exit 1
           fi
           dpkg-deb -I "${debs[0]}" | grep -E '^ (Package|Version|Section|Depends):'
-          dpkg-deb -I "${debs[0]}" | grep -q '^ Package: ac3forge-crucible$' || {
+          # The field itself, not `dpkg-deb -I | grep -q`: this step runs under
+          # bash -eo pipefail, grep -q exits at its first match, and dpkg-deb,
+          # still writing the Depends line after it, dies of SIGPIPE - so the
+          # pipeline failed on a package that was named correctly.
+          if [ "$(dpkg-deb -f "${debs[0]}" Package)" != "ac3forge-crucible" ]; then
             echo "::error::the Crucible .deb is not named ac3forge-crucible - CPACK_DEBIAN_CRUCIBLE_PACKAGE_NAME (cmake/Packaging.cmake) is not reaching the generator"
             exit 1
-          }
+          fi
 
       # packages-*, because that is the pattern release.yml downloads
       # (release.yml's "pattern: packages-*"). Under the old name the Linux
