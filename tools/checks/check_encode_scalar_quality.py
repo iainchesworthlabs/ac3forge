@@ -58,9 +58,13 @@ class Stream:
 STREAMS = (
     Stream("ac3 5.1 448", "reference_51.wav", "encode", ("448", "51", "dither=off"), "ac3"),
     Stream("eac3 5.1 256", "reference_51.wav", "eac3-encode", ("256", "nodither", "51"), "ec3"),
-    Stream("eac3 5.1 256 cpl", "reference_51.wav", "eac3-encode", ("256", "cpl+nodither", "51"), "ec3"),
+    Stream(
+        "eac3 5.1 256 cpl", "reference_51.wav", "eac3-encode", ("256", "cpl+nodither", "51"), "ec3"
+    ),
     Stream("ac3 2/0 192", "reference_stereo.wav", "encode", ("192", "stereo", "dither=off"), "ac3"),
-    Stream("eac3 2/0 192", "reference_stereo.wav", "eac3-encode", ("192", "nodither", "stereo"), "ec3"),
+    Stream(
+        "eac3 2/0 192", "reference_stereo.wav", "eac3-encode", ("192", "nodither", "stereo"), "ec3"
+    ),
 )
 
 DEFAULT_MAX_DROP_DB = 0.5
