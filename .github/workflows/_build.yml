@@ -3850,43 +3850,81 @@ jobs:
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
-          idf.py qemu > qemu-http.txt 2>&1 &
+
+          # QEMU by hand rather than `idf.py qemu`, for one reason: the port
+          # forward. idf.py fixes the network options, and the control surface
+          # (ac3forge::Control, on port 80 in this shape) is only reachable from
+          # the runner through hostfwd. The flash image is the same merge idf.py
+          # performs, from the build's own flash_args; the eFuse image is
+          # idf.py's own default blob, read from its module rather than pasted.
+          (cd build && esptool --chip esp32s3 merge-bin --output qemu_flash.bin --pad-to-size 16MB @flash_args >/dev/null)
+          PYTHONPATH="$IDF_PATH/tools" python3 -c "from idf_py_actions.qemu_ext import QEMU_TARGETS; open('build/qemu_efuse.bin','wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+          qemu_bin=$(find "${IDF_TOOLS_PATH:-$HOME/.espressif}/tools/qemu-xtensa" -name qemu-system-xtensa -type f | head -1)
+          if [ -z "$qemu_bin" ]; then
+            echo "::error title=ESP32-S3 HTTP source::qemu-system-xtensa not found under the IDF tools" >&2
+            exit 1
+          fi
+          command -v curl >/dev/null || { echo "::error title=ESP32-S3 HTTP source::curl is not in this image" >&2; exit 1; }
+          : > qemu-http.txt
+          "$qemu_bin" -M esp32s3 -m 32M \
+            -drive file=build/qemu_flash.bin,if=mtd,format=raw \
+            -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
+            -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
+            -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
+            -nic user,model=open_eth,hostfwd=tcp::8080-:80 \
+            -nographic -monitor none -serial file:qemu-http.txt &
           qemu=$!
-          for _ in $(seq 1 60); do
-            if grep -q '^result=' qemu-http.txt; then break; fi
-            sleep 5
-          done
-          kill "$qemu" 2>/dev/null || true
-          pkill -f qemu-system-xtensa 2>/dev/null || true
-          if ! grep -q '^result=pass' qemu-http.txt; then
-            echo "::error title=ESP32-S3 HTTP source::the example did not report result=pass" >&2
-            grep -E 'result=|error|network|source:|Guru Meditation|assert failed' qemu-http.txt >&2 || true
-            exit 1
-          fi
-          units=$(sed -n 's/.*stream\.units=\([0-9]*\).*/\1/p' qemu-http.txt | tail -1)
-          resync=$(sed -n 's/.*stream\.resync_bytes=\([0-9]*\).*/\1/p' qemu-http.txt | tail -1)
-          echo "access units: ${units:-unknown}, resynchronised bytes: ${resync:-unknown}"
-          if [ "${units:-0}" != "250" ] || [ "${resync:-1}" != "0" ]; then
-            echo "::error title=ESP32-S3 HTTP source::expected 250 access units and 0 resynchronised bytes, got ${units:-none} and ${resync:-none}" >&2
-            exit 1
-          fi
+          trap 'kill "$qemu" 2>/dev/null || true; kill "$server" 2>/dev/null || true' EXIT
+
+          fail() { echo "::error title=ESP32-S3 HTTP source::$1" >&2; grep -E 'result=|error|network|source:|control|Guru Meditation|assert failed' qemu-http.txt >&2 || true; exit 1; }
           check_rms() {
             local channel="$1" expected="$2"
             local got
             got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-http.txt | tail -1)
-            if [ -z "$got" ]; then
-              echo "::error title=ESP32-S3 HTTP source::no stream.rms[$channel] line" >&2
-              exit 1
-            fi
+            [ -n "$got" ] || fail "no stream.rms[$channel] line"
             local slack=$(( expected / 20 + 200 ))
             echo "rms[$channel] = $got (host $expected, tolerance +/-$slack)"
             if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
-              echo "::error title=ESP32-S3 HTTP source::channel $channel decoded to $got, host says $expected" >&2
-              exit 1
+              fail "channel $channel decoded to $got, host says $expected"
             fi
           }
+
+          # The first run: the configured stream, played at boot.
+          for _ in $(seq 1 60); do
+            if grep -q '^result=' qemu-http.txt; then break; fi
+            sleep 5
+          done
+          grep -q '^result=pass' qemu-http.txt || fail "the first run did not report result=pass"
+          units=$(sed -n 's/.*stream\.units=\([0-9]*\).*/\1/p' qemu-http.txt | tail -1)
+          resync=$(sed -n 's/.*stream\.resync_bytes=\([0-9]*\).*/\1/p' qemu-http.txt | tail -1)
+          echo "access units: ${units:-unknown}, resynchronised bytes: ${resync:-unknown}"
+          if [ "${units:-0}" != "250" ] || [ "${resync:-1}" != "0" ]; then
+            fail "expected 250 access units and 0 resynchronised bytes, got ${units:-none} and ${resync:-none}"
+          fi
           check_rms 0 56673
           check_rms 1 47346
+
+          # The control surface, through the port forward. /status must know
+          # the run ended; /volume and /play must be taken; the replay must
+          # play every unit again at half volume, which is a level check on the
+          # gain the decode task applies; /stop must answer.
+          status=$(curl -s -m 10 http://127.0.0.1:8080/status)
+          echo "status: $status"
+          echo "$status" | grep -q '"state":"finished"' || fail "/status did not report the run as finished"
+          echo "$status" | grep -q '"frames":250' || fail "/status did not report 250 frames"
+          curl -s -m 10 -X POST -d 0.5 http://127.0.0.1:8080/volume | grep -q '^ok' || fail "POST /volume was not accepted"
+          code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -d http://10.0.2.2:8000/demo.ec3 http://127.0.0.1:8080/play)
+          [ "$code" = "202" ] || fail "POST /play answered $code, expected 202"
+          for _ in $(seq 1 60); do
+            if [ "$(grep -c '^result=' qemu-http.txt)" -ge 2 ]; then break; fi
+            sleep 5
+          done
+          [ "$(grep -c '^result=pass' qemu-http.txt)" -ge 2 ] || fail "the replay did not report result=pass"
+          # Half of 56,673 and 47,346; measured 28,336 and 23,673 on 2026-09-10.
+          check_rms 0 28336
+          check_rms 1 23673
+          curl -s -m 10 -X POST http://127.0.0.1:8080/stop | grep -q '^stopped' || fail "POST /stop was not accepted"
+          kill "$qemu" 2>/dev/null || true
 
       - name: Build every sink and source combination
         run: |
