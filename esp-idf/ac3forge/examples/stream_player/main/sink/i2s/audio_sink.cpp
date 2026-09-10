@@ -18,8 +18,10 @@
 #include <cstdio>
 
 #include "ac3/core/tables.hpp"
+#include "ac3forge/dac_queue_model.hpp"
 #include "ac3forge/interleave.hpp"
 #include "driver/i2s_std.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -36,7 +38,7 @@ constexpr std::size_t kSlots = 2;
 constexpr std::size_t kBytesPerSampleFrame = kSlots * (kSlotBits / 8);
 
 i2s_chan_handle_t g_tx = nullptr;
-DacQueueModel g_model;
+ac3forge::DacQueueModel g_model;
 
 // One block of interleaved stereo in each width, 2 KB and 1 KB. At namespace
 // scope because the sink is the only thing that needs them - the player hands
@@ -137,13 +139,13 @@ void sink_write(std::span<const std::span<const float>> channels) {
     }
     const std::size_t bytes = frames * kBytesPerSampleFrame;
 
-    g_model.arriving();
+    g_model.arriving(esp_timer_get_time());
     std::size_t written = 0;
     // portMAX_DELAY: block until the DMA has room. This is what paces the
     // player at real time - the DAC's clock, not a delay - and it is why the
     // timing figures mean something here and nothing under an emulator.
     (void)i2s_channel_write(g_tx, data, bytes, &written, portMAX_DELAY);
-    g_model.queued(bytes);
+    g_model.queued(bytes, esp_timer_get_time());
 }
 
 const char* sink_name() { return "i2s"; }
@@ -160,7 +162,7 @@ void sink_begin_play() { g_model.restart(); }
 // What the DAC did with the samples is not visible from this side of the wire -
 // sink/capture/ is the one that checks the conversion, and it runs the same
 // interleave this does. What IS visible is whether the samples got there in
-// time, and that is what this reports: see sink_common.hpp.
+// time, and that is what this reports: see ac3forge/dac_queue_model.hpp.
 void sink_report() { g_model.report(); }
 
 }  // namespace player

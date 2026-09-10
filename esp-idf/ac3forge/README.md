@@ -33,6 +33,14 @@ live in the library because it is made of FreeRTOS:
   the server's task never touches the player itself.
 - **`ac3forge/interleave.hpp`**: planar float to interleaved 16-bit or 24-in-32 with slot padding,
   free of ESP-IDF and tested on the host. Library code with a temporary home; see the plan below.
+- **`ac3forge::DacQueueModel`**
+  ([`include/ac3forge/dac_queue_model.hpp`](include/ac3forge/dac_queue_model.hpp)): what an I2S
+  DAC heard, worked out from the one fact the hardware guarantees - its DMA drains at exactly
+  the sample rate. A sink tells it when each block arrives and when its write has returned, by a
+  clock the sink passes in, and it counts, per play, the blocks that arrived to an empty queue,
+  how long the queue was dry, and the least that was left. The streaming example's `i2s` and
+  `tdm` sinks keep one each for their `sink.*` line. Free of ESP-IDF and tested on the host
+  against a simulated DMA (`tests/io/test_dac_queue_model.cpp`).
 
 `idf_component.yml` is the registry manifest, and it is not published yet — see
 [the CI workflow](../../.github/workflows/esp-component.yml) for why the publish job is gated.
