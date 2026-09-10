@@ -14,7 +14,9 @@ const std::size_t object = renderer.add_object({.azimuth_deg = 0.0, .gain = 0.7}
 
 Rendering is clocked at the 256-sample block, because that is the rate automation runs at;
 gains ramp linearly within a block, so moving an object does not click. The render path itself
-does not allocate.
+does not allocate. Neither do `pan_ring` and `pan_direction` since 2026-09-10: their working
+storage is on the stack, sized to Table E2.5's widest ring, because a part rendering objects calls
+them once per object per frame and the minimum-footprint probe counts every allocation.
 
 ```cpp
 // One full turn every two seconds.

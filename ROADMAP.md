@@ -1912,7 +1912,13 @@ pass read the 2.0 ms the access-unit zones had isolated and found `std::copy` in
 spans reaching the mask ROM's `memmove` at some twelve cycles a byte; `memcpy` does the same 36 KB
 in 0.12 ms, and moving the object description into the unit instead of copying it took the peak
 to 210,203 bytes and the objects fixture to 31 allocations a frame: 5.1 at 0.34x, objects at
-0.66x, enhanced coupling at 0.62x, on a 320,601-byte image.
+0.66x, enhanced coupling at 0.62x, on a 320,601-byte image. A ninth fixture, E-AC-3 7.1.4 (a bed and
+two dependent substreams), measures 0.90x on the part and a 229,630-byte peak - the widest
+programme the format has, in internal SRAM, with the memory rather than the arithmetic as what a
+player around it would have to find room for. The first of that memory went next: `_by_block`
+decode forms hand the programme over 256 samples at a time from the decoder's own storage, so a
+sink holds a block where it held a frame (73,728 bytes for 7.1.4), and the probe itself holds no
+PCM at all.
 
 See `docs/building.md`'s Gaps section, `docs/performance-trend.md` for the current table, and
 `docs/platforms/esp32.md`.

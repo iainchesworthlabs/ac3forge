@@ -253,6 +253,13 @@ struct FrameDecoder::Impl {
     // the material the NEXT loss is concealed from. Sized lazily at first
     // use, so a decoder with concealment off never allocates it.
     std::vector<std::array<double, 512>> conceal_scratch_;
+    // decode_frame_by_block's own frame of PCM. AC-3 writes its overlap-add
+    // straight into whatever spans it is given, so the block form - which
+    // promises the caller never needs more than a block - points the core at
+    // this and hands it out in blocks once the output stage has run. Six
+    // channels, the widest AC-3 layout; sized once at first use, so a decoder
+    // that never takes the form never allocates it.
+    std::vector<float> block_scratch_;
 
     // --- per-frame scratch --------------------------------------------------
     // Everything decode_frame_core used to declare as a local before its block
@@ -385,6 +392,62 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_into(
     }
     if (auto concealed = conceal(decoded.error(), channels)) {
         return std::move(*concealed);
+    }
+    return decoded;
+}
+
+std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_by_block(
+    std::span<const std::byte> frame, BlockSink sink) {
+    // The core and conceal() write through spans; here those spans are the
+    // decoder's own frame (see Impl::block_scratch_), which the sink then
+    // reads a block at a time. Sized once, for the widest AC-3 layout.
+    constexpr std::size_t kChannels = 6;
+    auto& scratch = impl_->block_scratch_;
+    if (scratch.empty()) {
+        scratch.assign(kChannels * static_cast<std::size_t>(kSamplesPerFrame), 0.0F);
+    }
+    std::array<std::span<float>, kChannels> spans{};
+    for (std::size_t ch = 0; ch < kChannels; ++ch) {
+        spans[ch] = std::span<float>(scratch).subspan(ch * static_cast<std::size_t>(kSamplesPerFrame),
+                                                      static_cast<std::size_t>(kSamplesPerFrame));
+    }
+    auto decoded = decode_frame_core(frame, spans);
+    if (!decoded.has_value()) {
+        auto concealed = conceal(decoded.error(), spans);
+        if (!concealed) {
+            return decoded;
+        }
+        decoded = std::move(*concealed);
+    }
+    if (impl_->config_.skip_reconstruction) {
+        return decoded;  // nothing was written, so nothing is delivered
+    }
+    // One or two slots after a fold, the coded channels otherwise - the
+    // count the *_into caller reads its spans by.
+    const std::size_t slots = std::min(
+        kChannels, output_channel_count(impl_->config_.output, decoded->acmod, decoded->lfe));
+    std::array<std::span<const float>, kChannels> block_views{};
+    {
+        // Its own zone, so a caller's sink reads as the caller's time.
+        AC3_ZONE_SCOPED_N("ac3_emit");
+        for (int b = 0; b < kBlocksPerFrame; ++b) {
+            for (std::size_t s = 0; s < slots; ++s) {
+                block_views[s] = spans[s].subspan(
+                    static_cast<std::size_t>(b) * static_cast<std::size_t>(kSamplesPerBlock),
+                    static_cast<std::size_t>(kSamplesPerBlock));
+            }
+            // No objects: AC-3 has no object layer, so the three object
+            // members stay empty - spelled out, since a designated
+            // initializer that omits them is a -Wmissing-field-initializers
+            // error on the profile's toolchain.
+            sink(PcmBlock{.index = b,
+                          .blocks = kBlocksPerFrame,
+                          .channels = std::span<const std::span<const float>>(block_views)
+                                          .first(slots),
+                          .objects = {},
+                          .object_indices = {},
+                          .object_metadata = nullptr});
+        }
     }
     return decoded;
 }

@@ -20,6 +20,11 @@
 //      produced the same bitstream it produced on the host. See kExpected below
 //      for what that does and does not establish.
 //
+// It also answers a fourth, since 2026-09-10: how long each frame took, on
+// exactly probe.cpp's terms (<codec>.us_per_frame and realtime_permille
+// against a 32 ms frame) and with exactly its caveats - see report_timing
+// below for what the number is worth on each leg.
+//
 // The output is machine-readable (`key=value` lines) so the CI leg can gate on
 // it; tools/checks/run_baremetal_probe.sh parses the same lines for either
 // direction.
@@ -69,6 +74,11 @@ std::size_t g_alloc_calls = 0;
 std::size_t g_free_calls = 0;
 std::size_t g_live_bytes = 0;
 std::size_t g_peak_bytes = 0;
+// The peak over the current fixture alone, reset by encode_all as a fixture
+// starts: heap.peak_bytes says what the run needed at its worst, and this says
+// which encoder needed it - the number a part with a different budget reads
+// to know whether it can hold AC-3, E-AC-3, or each in turn.
+std::size_t g_fixture_peak_bytes = 0;
 
 constexpr std::size_t kHeaderBytes = sizeof(std::size_t) < alignof(std::max_align_t)
                                          ? alignof(std::max_align_t)
@@ -91,6 +101,9 @@ void* operator new(std::size_t size) {
     g_live_bytes += size;
     if (g_live_bytes > g_peak_bytes) {
         g_peak_bytes = g_live_bytes;
+    }
+    if (g_live_bytes > g_fixture_peak_bytes) {
+        g_fixture_peak_bytes = g_live_bytes;
     }
     return static_cast<std::byte*>(raw) + kHeaderBytes;
 }
@@ -195,15 +208,36 @@ struct EncodeResult {
     std::uint64_t hash = kFnvOffset;
     std::size_t first_frame_allocs = 0;
     std::size_t steady_allocs = 0;
-    // Time inside encode_frame only, summed over every frame - the same
-    // measurement probe.cpp makes of decode_frame_into, for the same reason:
-    // on a board, against the 32,000 microseconds a frame lasts, this is
-    // whether the encoder keeps up. Under QEMU it is shape, not evidence.
+    // Microseconds inside encode_frame, summed over every frame; the signal
+    // synthesis is outside the span, so this is the encoder's alone.
     std::uint64_t encode_us = 0;
+    // Live heap at its highest while this fixture's encoder existed.
+    std::size_t peak_bytes = 0;
 };
 
-// §5.3.2: 1,536 samples at 48 kHz. Every fixture here is six blocks at 48 kHz.
+// A frame is 1536 samples at 48 kHz - 32 ms of audio - so real time means
+// encoding one in less than that, and the ratio is the headline exactly as it
+// is on the decode side: below 1.0 the target keeps up. A permille integer
+// rather than a float because newlib-nano's printf has no floating-point
+// support unless -u _printf_float is linked in, the same reason the hash
+// above prints as two halves.
+//
+// What the number is worth depends on the leg, and probe.hpp says which: on a
+// board it is the answer; under QEMU's semihosting clock it is the host's own
+// time and describes nothing; under -icount (run_baremetal_probe.sh --encoder
+// --icount) each microsecond is a thousand instructions, deterministic, and
+// the runner holds it to a ceiling per fixture.
 constexpr std::uint64_t kFrameDurationUs = 32000;
+
+void report_timing(const char* codec, const EncodeResult& r) {
+    constexpr auto kFrames = static_cast<std::uint64_t>(ac3probe::kEncodeFrames);
+    const std::uint64_t per_frame = r.encode_us / kFrames;
+    const std::uint64_t permille = (r.encode_us * 1000) / (kFrameDurationUs * kFrames);
+    std::printf("%s.encode_us=%lu %s.us_per_frame=%lu %s.realtime_permille=%lu\n", codec,
+                static_cast<unsigned long>(r.encode_us), codec,
+                static_cast<unsigned long>(per_frame), codec,
+                static_cast<unsigned long>(permille));
+}
 
 void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes,
             std::uint64_t expected_hash) {
@@ -216,15 +250,8 @@ void report(const char* codec, const EncodeResult& r, std::size_t expected_bytes
                 static_cast<unsigned long>(r.first_frame_allocs), codec,
                 static_cast<unsigned long>(steady_frames > 0 ? r.steady_allocs / steady_frames
                                                              : 0));
-    // The same three figures the decode probe prints, so the two directions
-    // read the same way: realtime_permille is encode time against the audio
-    // time it coded, 1000 being exactly real time.
-    const std::uint64_t frames = static_cast<std::uint64_t>(ac3probe::kEncodeFrames);
-    std::printf("%s.encode_us=%lu %s.us_per_frame=%lu %s.realtime_permille=%lu\n", codec,
-                static_cast<unsigned long>(r.encode_us), codec,
-                static_cast<unsigned long>(frames > 0 ? r.encode_us / frames : 0), codec,
-                static_cast<unsigned long>(
-                    frames > 0 ? (r.encode_us * 1000) / (kFrameDurationUs * frames) : 0));
+    std::printf("%s.peak_bytes=%lu\n", codec, static_cast<unsigned long>(r.peak_bytes));
+    report_timing(codec, r);
     if (r.bytes != expected_bytes) {
         fail("bytes", r.bytes, expected_bytes);
     }
@@ -263,16 +290,20 @@ EncodeResult encode_all(Encoder& encoder,
                         std::array<std::array<float, ac3::kSamplesPerFrame>, kChannels>& pcm,
                         std::span<const std::span<const float>> views) {
     EncodeResult result;
+    // The fixture's peak starts from what is live now: this encoder, just
+    // constructed, and nothing of the previous one, which its scope destroyed.
+    g_fixture_peak_bytes = g_live_bytes;
     std::size_t before = g_alloc_calls;
     for (int frame = 0; frame < ac3probe::kEncodeFrames; ++frame) {
         fill_signal(pcm, frame);
-        const std::uint64_t started_us = ac3probe::now_us();
+        const std::uint64_t started = ac3probe::now_us();
         const auto encoded = encode_one(encoder, views);
-        result.encode_us += ac3probe::now_us() - started_us;
+        result.encode_us += ac3probe::now_us() - started;
         if (!encoded) {
             std::printf("check=encode status=fail frame=%d error=%d\n", frame,
                         static_cast<int>(encoded.error()));
             g_failed = true;
+            result.peak_bytes = g_fixture_peak_bytes;
             return result;
         }
         result.bytes += encoded->size();
@@ -284,6 +315,7 @@ EncodeResult encode_all(Encoder& encoder,
         }
         before = g_alloc_calls;
     }
+    result.peak_bytes = g_fixture_peak_bytes;
     return result;
 }
 
@@ -314,11 +346,43 @@ int ac3probe::run() {
     }
     const std::size_t peak_after_ac3 = g_peak_bytes;
 
+    // The narrower shapes, one per codec: 2/0 is what a small part is most
+    // likely to be asked to encode, and each reads two of the block's six
+    // channels - the encoder's layout decides how many spans it takes.
+    {
+        ac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}};
+        const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
+        report("ac3_stereo", r, ac3probe::kAc3StereoBytes, ac3probe::kAc3StereoHash);
+    }
+
     {
         ac3::eac3::FrameEncoder encoder{
             {.bitrate_kbps = 384, .acmod = ac3::Acmod::k3_2, .lfe = true}};
         const auto r = encode_all(encoder, g_pcm, g_views);
         report("eac3", r, ac3probe::kEac3Bytes, ac3probe::kEac3Hash);
+    }
+
+    {
+        ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}};
+        const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
+        report("eac3_stereo", r, ac3probe::kEac3StereoBytes, ac3probe::kEac3StereoHash);
+    }
+
+    // The 5.1 row above encodes with no tool at all - that is the default -
+    // so until this row the encoder's coupling, spectral-extension and AHT
+    // paths were linked into the profile and run by nothing in it. All three
+    // at once, at 2/0 with the band edges pinned; encode_fixture.hpp says why
+    // not 5.1 and why pinned, with the numbers.
+    {
+        ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192,
+                                         .acmod = ac3::Acmod::k2_0,
+                                         .coupling = true,
+                                         .cplbegf = 0,
+                                         .spx = true,
+                                         .spxbegf = 7,
+                                         .aht = true}};
+        const auto r = encode_all(encoder, g_pcm, std::span{g_views}.first(2));
+        report("eac3_tools", r, ac3probe::kEac3ToolsBytes, ac3probe::kEac3ToolsHash);
     }
 
     // §E3.5 enhanced coupling, which nothing else here reaches. `coupling` and
@@ -343,16 +407,17 @@ int ac3probe::run() {
     // codes a layout wider than 5.1 (E3.8.2) and the shape tests/encoder/
     // test_eac3.cpp's seven_one() builds. Two FrameEncoders live at once
     // inside the AccessUnitEncoder, and that is the finding: on the host this
-    // fixture takes the run's peak from 220,608 bytes to 435,263, and on an
-    // ESP32-S3 (QEMU, same memory map, 2026-09-10) it dies on a 73,728-byte
-    // request with 303,656 bytes free and a largest block of 241,664 before
-    // the run began. A 7.1 E-AC-3 encode does not fit this part's internal
-    // SRAM; PSRAM is the question that remains, and QEMU cannot ask it.
+    // fixture takes the run's peak from about 223,000 bytes to 435,263, and
+    // on an ESP32-S3 (QEMU, same memory map, 2026-09-10) it dies on a
+    // 73,728-byte request with 303,656 bytes free and a largest block of
+    // 241,664 before the run began. A 7.1 E-AC-3 encode does not fit this
+    // part's internal SRAM; PSRAM is the question that remains, and QEMU
+    // cannot ask it.
     //
     // Opt-in (-DAC3FORGE_PROBE_SEVEN_ONE=ON) for exactly that reason: a default
     // fixture that cannot pass on one leg is not a fixture, and the two legs'
-    // heap ceilings (240,000 and 250,000) are statements about what fits.
-    // Off, the block is discarded and the image is the one the ceilings hold.
+    // heap ceilings are statements about what fits. Off, the block is
+    // discarded and the image is the one the ceilings hold.
     //
     // Ten spans over six channels of PCM: the dependent's four alias the
     // bed's L, R, SL and SR. The encoder does not care that two substreams

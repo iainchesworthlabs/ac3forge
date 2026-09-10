@@ -2037,6 +2037,87 @@ TEST_CASE("decode_access_unit_into writes the identical program into caller span
     }
 }
 
+TEST_CASE("decode_access_unit_by_block hands over the identical program a block at a time",
+          "[eac3][decoder]") {
+    // Same stream shape as the span-form case above - a 2/0 bed and a
+    // height-pair dependent - so the block form is exercised across the
+    // §E3.8.2 layout union, where each slot is a view onto a different
+    // substream's vector. Nothing is copied on the way out, so the check is
+    // that the views are the value form's samples, block by block, in order.
+    const ac3::eac3::AccessUnitConfig cfg{
+        .independent = {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0},
+        .dependents = {{.bitrate_kbps = 96,
+                        .acmod = ac3::Acmod::k2_0,
+                        .chanmap = ac3::eac3::chanmap::k512Height}}};
+    ac3::eac3::AccessUnitEncoder encoder{cfg};
+    REQUIRE(encoder.channel_count() == 4);
+
+    ac3::Eac3Decoder value_decoder;
+    ac3::Eac3Decoder block_decoder;
+
+    std::vector<std::vector<float>> block(4, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> views(4);
+
+    constexpr std::array<double, 4> tones = {440.0, 660.0, 880.0, 1320.0};
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < 3; ++f) {
+        for (std::size_t ch = 0; ch < 4; ++ch) {
+            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    0.3 * std::sin(2.0 * std::numbers::pi * tones[ch] *
+                                   static_cast<double>(n0 + static_cast<std::uint64_t>(i)) /
+                                   48000.0));
+            }
+            views[ch] = block[ch];
+        }
+        n0 += ac3::kSamplesPerFrame;
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+
+        const auto value = value_decoder.decode_access_unit(unit->bytes);
+        REQUIRE(value.has_value());
+        REQUIRE(value->has_value());
+
+        // Reassemble the delivered blocks into frames, checking their order
+        // and count as they arrive.
+        std::vector<std::vector<float>> delivered;
+        int expected_index = 0;
+        int blocks_seen = 0;
+        const auto sink = [&](const ac3::PcmBlock& pcm) {
+            CHECK(pcm.index == expected_index);
+            CHECK(pcm.blocks == ac3::kBlocksPerFrame);
+            ++expected_index;
+            ++blocks_seen;
+            delivered.resize(pcm.channels.size());
+            for (std::size_t slot = 0; slot < pcm.channels.size(); ++slot) {
+                CHECK(pcm.channels[slot].size() == static_cast<std::size_t>(ac3::kSamplesPerBlock));
+                delivered[slot].insert(delivered[slot].end(), pcm.channels[slot].begin(),
+                                       pcm.channels[slot].end());
+            }
+        };
+        const auto by_block = block_decoder.decode_access_unit_by_block(unit->bytes, sink);
+        REQUIRE(by_block.has_value());
+        REQUIRE(by_block->has_value());
+        CHECK(blocks_seen == ac3::kBlocksPerFrame);
+
+        CHECK((*by_block)->channels.empty());
+        CHECK((*by_block)->layout.count == (*value)->layout.count);
+        CHECK((*by_block)->acmod == (*value)->acmod);
+        CHECK((*by_block)->substream_count == (*value)->substream_count);
+        CHECK((*by_block)->dialnorm == (*value)->dialnorm);
+
+        REQUIRE((*value)->channels.size() ==
+                static_cast<std::size_t>((*value)->layout.count));
+        REQUIRE(delivered.size() == (*value)->channels.size());
+        for (std::size_t slot = 0; slot < (*value)->channels.size(); ++slot) {
+            CAPTURE(f, slot);
+            const auto& expect = (*value)->channels[slot];
+            REQUIRE(delivered[slot].size() == expect.size());
+            CHECK(std::equal(delivered[slot].begin(), delivered[slot].end(), expect.begin()));
+        }
+    }
+}
+
 TEST_CASE("decode_access_unit_into leaves the spans untouched across a hold-back and "
           "releases identically",
           "[eac3][decoder][transient_prenoise]") {

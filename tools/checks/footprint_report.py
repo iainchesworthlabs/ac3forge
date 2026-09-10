@@ -191,7 +191,7 @@ def main() -> int:
             ("heap.peak_bytes", "Peak heap"),
             ("static.frame_decoder_bytes", "sizeof(ac3::FrameDecoder)"),
             ("static.eac3_decoder_bytes", "sizeof(ac3::Eac3Decoder)"),
-            ("static.pcm_bytes", "Caller-owned PCM (8 x 1536 float)"),
+            ("static.pcm_bytes", "Caller-owned PCM (0: the probe reads the decoders' blocks in place)"),
         ):
             if key in probe:
                 rows.append((label, human(int(probe[key]))))

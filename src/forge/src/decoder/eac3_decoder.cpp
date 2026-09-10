@@ -3391,6 +3391,11 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     return decode_access_unit_core(unit, channels);
 }
 
+std::expected<std::optional<DecodedAccessUnit>, DecodeError>
+Eac3Decoder::decode_access_unit_by_block(std::span<const std::byte> unit, BlockSink sink) {
+    return decode_access_unit_core(unit, {}, &sink);
+}
+
 // §5.4.2.8/§7.8 over an assembled program, in whichever storage it landed -
 // the result's own vectors, or the caller's spans when decode_access_unit_into
 // supplied them. A no-op unless DecoderConfig::output asks for something, and
@@ -3448,7 +3453,8 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span
 }
 
 std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode_access_unit_core(
-    std::span<const std::byte> unit, std::span<const std::span<float>> external) {
+    std::span<const std::byte> unit, std::span<const std::span<float>> external,
+    const BlockSink* sink) {
     AC3_ZONE_SCOPED_N("eac3_decode_access_unit");
     AC3_ZONE_BEGIN(split_zone, "eac3_au_split");
     const auto frames = split_frames(unit);
@@ -3681,6 +3687,69 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         std::memcpy(dst, src.data(), src.size() * sizeof(float));
     };
 
+    // The block form copies nothing. Each output slot becomes a view onto the
+    // substream vector that supplies it - the same "a later dependent wins
+    // the locations it shares" rule write_slot follows - the output stage
+    // runs on those views in place, and the sink is handed the finished
+    // programme a block at a time. A frame's worth of caller storage, and
+    // the copy into it, both go.
+    constexpr std::size_t kMaxSlots = 16;  // §E3.8.2's cap on a rendered programme
+    const auto emit_blocks = [&](std::span<std::span<float>> views) {
+        apply_output(out, views);
+        // After the fold there are one or two slots; before it, every slot the
+        // layout has - the three cases apply_output's own tail sorts by.
+        const bool folded = impl_->config_.output.target != DownmixTarget::kAsCoded &&
+                            lead.acmod != Acmod::kDualMono;
+        const std::size_t slots =
+            folded ? (impl_->config_.output.target == DownmixTarget::kMono ? 1U : 2U)
+                   : views.size();
+        const std::size_t samples = views.empty() ? 0 : views.front().size();
+        const int blocks = static_cast<int>(samples / static_cast<std::size_t>(kSamplesPerBlock));
+        std::array<std::span<const float>, kMaxSlots> block_views{};
+        // The objects the same way: a view per JOC output onto the frame of
+        // audio §6 reconstructed, cut to this block. object_audio has moved
+        // into `out` by now (from whichever substream carried the container),
+        // so these are views onto the unit's own vectors, alive until it is
+        // returned. A unit reconstructs at most oba::joc::kMaxObjects outputs,
+        // and a longer object_audio is a decoder fault this would rather
+        // bound than overrun.
+        constexpr auto kMaxObjectViews = static_cast<std::size_t>(oba::joc::kMaxObjects);
+        std::array<std::span<const float>, kMaxObjectViews> object_views{};
+        const std::size_t objects = std::min(out.object_audio.size(), kMaxObjectViews);
+        const oba::DecodedProgram* const metadata =
+            out.object_metadata.has_value() ? &*out.object_metadata : nullptr;
+        // Its own zone, so the time a caller's sink spends in here reads as
+        // the caller's rather than as the access unit's.
+        AC3_ZONE_SCOPED_N("eac3_au_emit");
+        for (int b = 0; b < blocks; ++b) {
+            const auto offset =
+                static_cast<std::size_t>(b) * static_cast<std::size_t>(kSamplesPerBlock);
+            for (std::size_t s = 0; s < slots; ++s) {
+                block_views[s] =
+                    views[s].subspan(offset, static_cast<std::size_t>(kSamplesPerBlock));
+            }
+            std::size_t delivered = 0;
+            for (std::size_t o = 0; o < objects; ++o) {
+                const auto& audio = out.object_audio[o];
+                if (audio.size() < offset + static_cast<std::size_t>(kSamplesPerBlock)) {
+                    break;  // shorter than the frame: not this unit's objects
+                }
+                object_views[o] = std::span<const float>(audio).subspan(
+                    offset, static_cast<std::size_t>(kSamplesPerBlock));
+                ++delivered;
+            }
+            (*sink)(PcmBlock{.index = b,
+                             .blocks = blocks,
+                             .channels = std::span<const std::span<const float>>(block_views)
+                                             .first(slots),
+                             .objects = std::span<const std::span<const float>>(object_views)
+                                            .first(delivered),
+                             .object_indices = delivered > 0 ? std::span<const int>(out.object_indices)
+                                                             : std::span<const int>{},
+                             .object_metadata = delivered > 0 ? metadata : nullptr});
+        }
+    };
+
     // Dual mono has no Table E2.5 location - Ch1 and Ch2 are unrelated
     // programmes, not directions - and it has no bed/dependent split to make:
     // 1+1 is always this one lone independent substream. acmod_map() has a
@@ -3691,6 +3760,17 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // substream's own two channels straight through in coded order, and leave
     // `layout` empty to say plainly that there is no spatial layout to report.
     if (lead.acmod == Acmod::kDualMono) {
+        if (sink != nullptr) {
+            auto& own = substreams.front();
+            std::array<std::span<float>, kMaxSlots> views{};
+            const std::size_t count = std::min(own.channels.size(), kMaxSlots);
+            for (std::size_t ch = 0; ch < count; ++ch) {
+                views[ch] = own.channels[ch];
+            }
+            AC3_ZONE_END(assemble_zone);
+            emit_blocks(std::span<std::span<float>>(views).first(count));
+            return std::optional<DecodedAccessUnit>(std::move(out));
+        }
         if (external.empty()) {
             out.channels.resize(lead.channels.size());
         }
@@ -3721,6 +3801,26 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // optimisation: that loop checks each substream's channel count against
     // its own location map, which an empty `channels` would fail.
     if (impl_->config_.skip_reconstruction) {
+        return std::optional<DecodedAccessUnit>(std::move(out));
+    }
+    if (sink != nullptr) {
+        std::array<std::span<float>, kMaxSlots> views{};
+        for (auto& sub : substreams) {
+            const auto locations = eac3::chanmap::expand(sub.location_map());
+            if (static_cast<std::size_t>(locations.count) != sub.channels.size()) {
+                return std::unexpected(DecodeError::kInvalidStream);
+            }
+            for (int i = 0; i < locations.count; ++i) {
+                const int slot = out.layout.index_of(locations[i]);
+                if (slot < 0 || static_cast<std::size_t>(slot) >= kMaxSlots) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+                views[static_cast<std::size_t>(slot)] = sub.channels[static_cast<std::size_t>(i)];
+            }
+        }
+        AC3_ZONE_END(assemble_zone);
+        emit_blocks(std::span<std::span<float>>(views).first(
+            static_cast<std::size_t>(out.layout.count)));
         return std::optional<DecodedAccessUnit>(std::move(out));
     }
     const std::size_t samples = lead.channels.empty() ? 0 : lead.channels.front().size();

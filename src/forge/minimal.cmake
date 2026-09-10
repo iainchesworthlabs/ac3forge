@@ -128,6 +128,15 @@ target_sources(forge_minimal
         src/meta/mixing.cpp        # §7.8 downmix coefficients - OutputStage::apply's own
         src/oba/joc.cpp            # §6 object reconstruction from the bed
         src/oba/oamd.cpp           # §H.1 object metadata
+        # --- and placing them -----------------------------------------------
+        # Reconstructed objects are mono signals with a position each; a part
+        # driving loudspeakers has to pan them onto its layout, and this is
+        # the panner ac3cli's `qc objects=` and the encoder's own bed render
+        # use: pan_targets/pan_direction/position_direction, height-aware,
+        # for any Table E2.5 layout. Pure arithmetic over <vector> and <cmath>
+        # - no fmt, no exceptions - which is why it can be here. The probe's
+        # eac3_atmos_render row exercises it onto 7.1.4.
+        src/spatial/spatial.cpp
 )
 else()
 target_sources(forge_minimal

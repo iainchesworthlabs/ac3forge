@@ -13,15 +13,15 @@ target and the first with hardware floating point.
 
 | | |
 |---|---|
-| AC-3 decode | Correct. Mono, stereo and 5.1, every channel level exact against `apps/baremetal/fixture.hpp` |
-| E-AC-3 decode | Correct. 5.1 and 2/0, including AHT, spectral extension and §7.5.4 rematrixing |
+| AC-3 decode | Correct. Mono, stereo and 5.1, and 5.1 folded to Lo/Ro stereo in line mode by the §7.8 output stage, every channel level exact against `apps/baremetal/fixture.hpp` |
+| E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing, and 5.1 folded to Lo/Ro stereo in line mode |
 | E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture |
-| Atmos bed and objects | Correct. Objects reconstruct here; the flat newlib heap makes it easier than on the [ESP32-S3](esp32.md#objects) |
-| Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER` |
-| Image size | 320,601 bytes — 224,156 `.text`, 400 `.data`, 96,045 `.bss` |
-| Peak heap | 210,203 bytes, the Atmos fixture decoded with its objects |
+| Atmos bed and objects | Correct. Objects reconstruct here, and are placed onto 7.1.4 by their positions (`eac3_atmos_render`, through the block form's object views); the flat newlib heap makes it easier than on the [ESP32-S3](esp32.md#objects) |
+| Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`: six rows (5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, 2/0 §E3.5), each hashed against `encode_fixture.hpp` with its peak and its time per frame; 232,205-byte image, 220,608 peak, 12.6 M to 83.0 M instructions a frame under `--encoder --icount` - see [Building](../building.md#what-the-encode-direction-costs) |
+| Image size | 337,257 bytes — 276,188 `.text`, 400 `.data`, 60,669 `.bss` |
+| Peak heap | 229,630 bytes, the 7.1.4 fixture (210,203 with Atmos objects) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
-| Allocations per frame | 1 to 41, by fixture — see [the footprint table](../performance-trend.md#minimum-footprint-decoder) |
+| Allocations per frame | 1 to 35, by fixture — see [the footprint table](../performance-trend.md#minimum-footprint-decoder) |
 | Audio output | None. The probe decodes built-in fixtures and prints levels |
 | Real silicon | None. Correctness is established under emulation |
 | CI | `build-footprint` in `.github/workflows/_build.yml`, on every push |
@@ -37,7 +37,20 @@ tools/checks/run_baremetal_probe.sh
 
 # The same profile natively, no emulator
 tools/checks/run_baremetal_probe.sh --host
+
+# Instructions per frame under QEMU -icount, deterministic and gated
+tools/checks/run_baremetal_probe.sh --icount
 ```
+
+`--icount` is the one timing figure this leg can give. QEMU is not cycle-accurate and the probe's
+ordinary clock is semihosting's, which reports the host's time; but under `-icount shift=0` the
+guest's own clock advances one nanosecond per executed instruction, and a build whose clock reads
+the mps2-an385's 25 MHz timer (`AC3FORGE_BAREMETAL_CLOCK=timer`, its own preset and build
+directory) follows it. Every microsecond the probe then prints is a thousand Thumb-2 instructions,
+identical on every host and every run — `eac3.instructions_per_frame=12948000` — gated per fixture
+with the same headroom rule as the other ceilings, and with `--stage-timers` counted per stage. It
+is not cycles on any real part; it is a number that moves when the code does, which the host-time
+figure never was, and it is what the [ESP32-C3 estimate](esp32.md#other-esp32-variants) rests on.
 
 Both drive the presets, which you can also use directly: `config-arm-none-eabi-minimal` /
 `build-arm-none-eabi-minimal`, and `config-linux-gcc-minimal` or `config-linux-llvm-minimal` for
@@ -59,7 +72,7 @@ list if any component needing the full library is still switched on.
 
 ## The probe
 
-`apps/baremetal/probe.cpp` links the archive, decodes six frames each of eight fixtures, compares
+`apps/baremetal/probe.cpp` links the archive, decodes six frames each of twelve fixtures, compares
 every channel's level against `apps/baremetal/fixture.hpp`, and prints `key=value` lines the
 runner gates on: the levels, image size, peak heap, retained bytes and allocations per frame.
 `encode_probe.cpp` is its counterpart, checking a byte count and FNV-1a hash against
