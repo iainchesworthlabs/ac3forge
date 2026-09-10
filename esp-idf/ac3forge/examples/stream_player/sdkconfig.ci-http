@@ -23,7 +23,19 @@ CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES=50
 
 # QEMU has no PSRAM, so the ring lives in internal SRAM here, and this shape is
 # the tightest one the example has: WiFi's stand-in, lwIP, the HTTP client, the
-# E-AC-3 decoder and the player's two stacks all in the same 280 KB. Half the
+# E-AC-3 decoder, the control server and the player's two stacks all in the same
+# 280 KB. A quarter of the
 # default ring; the decoder never waits on QEMU's loopback anyway, and the
 # ring_low it reports says so.
-CONFIG_AC3FORGE_EXAMPLE_RING_BYTES=16384
+CONFIG_AC3FORGE_EXAMPLE_RING_BYTES=8192
+
+# The control surface, on the emulated network: GET /status, POST /play,
+# /stop, /volume. Reached from the host with a QEMU port forward - see the
+# README's "Controlling it" section.
+CONFIG_AC3FORGE_EXAMPLE_CONTROL_PORT=80
+
+# 24 KB for the decode task here, not the default 32: the E-AC-3 decode measured
+# 15,504 bytes of stack in this shape (stream.decode_stack_free=17264 of 32768,
+# 2026-09-10), and the 8 KB this frees is heap the control server needs when
+# there is no PSRAM to give it.
+CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES=24576

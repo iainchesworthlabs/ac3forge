@@ -17,6 +17,10 @@ live in the library because it is made of FreeRTOS:
   PSRAM are `PlayerConfig`. It reports frames, decode time, the worst frame, how low the ring ran,
   and why a run ended. An integrator implements the two seams for their transport and their DAC
   and gets the rest.
+- **`ac3forge::Control`** ([`include/ac3forge/control.hpp`](include/ac3forge/control.hpp)): a REST
+  surface over whatever owns a player - `GET /status`, `POST /play` with a location, `POST /stop`,
+  `POST /volume` - on `esp_http_server`, with callbacks the owner supplies so the server's task
+  never touches the player itself.
 - **`ac3forge/interleave.hpp`**: planar float to interleaved 16-bit or 24-in-32 with slot padding,
   free of ESP-IDF and tested on the host. Library code with a temporary home; see the plan below.
 

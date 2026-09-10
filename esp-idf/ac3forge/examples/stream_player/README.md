@@ -177,6 +177,63 @@ disagrees with its own boot log. Real-time decode on this part is measured on a
 board, not here: an E-AC-3 5.1 frame decodes in 11.0 ms of its 32 at 240 MHz — see
 [`docs/platforms/esp32.md`](../../../../docs/platforms/esp32.md#timing).
 
+## Controlling it
+
+With `CONFIG_AC3FORGE_EXAMPLE_CONTROL_PORT` set (the HTTP source's
+configurations set 80; the default is 0, none), the component's
+`ac3forge::Control` answers on that port:
+
+| | |
+| --- | --- |
+| `GET /status` | what is playing and how it is going, as JSON |
+| `POST /play` | body: a URL for the `http` source, a path for `fatfs` or `sd`. `202 Accepted` — the location is handed to the task that owns the player, and `/status` says how the open went. `409` from `partition`, which has one thing in it. |
+| `POST /stop` | |
+| `POST /volume` | body: `0.0` to `1.0`, a linear gain the decode task applies before the sink |
+
+The configured location plays at boot as before; the surface can stop it and
+play something else. A `/status` taken under QEMU during the E-AC-3 demo:
+
+```
+{"state":"playing","location":"http://10.0.2.2:8000/demo.ec3","source":"http","sink":"capture-i2s","volume":1.000,
+ "stream":{"codec":"E-AC-3","acmod":7,"channels":6,"substreams":1,"dialnorm":-31,"objects":true},
+ "frames":248,"held":0,"us_per_frame":10032,"worst_frame_us":46422,"realtime_permille":313,
+ "resync_bytes":0,"fetched_bytes":448000,"ring_low":6144,"passes":0,"finished":false,"failed":false,"why":"","error":0}
+```
+
+The HTTP server's task never touches the player: `/play`, `/stop` and `/volume`
+go through a queue to `app_main`, which owns the player, and `/status` reads a
+snapshot under a mutex. `stream.sink_frames` in the end-of-run line counts
+since boot, across every play; `stream.units` is the run's own.
+
+To reach it under QEMU, run the emulator with a port forward rather than
+through `idf.py qemu`, which fixes the network options:
+
+```bash
+esptool --chip=esp32s3 merge-bin --output=build/qemu_flash.bin --pad-to-size=16MB \
+  --flash-mode dio --flash-freq 80m --flash-size 16MB \
+  0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin \
+  0x10000 build/ac3forge_stream_player.bin 0x190000 stream/sample.ac3 0x1d0000 build/storage.bin
+qemu-system-xtensa -M esp32s3 -m 32M -drive file=build/qemu_flash.bin,if=mtd,format=raw \
+  -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
+  -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
+  -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
+  -nic user,model=open_eth,hostfwd=tcp::8080-:80 -nographic -serial mon:stdio
+curl http://127.0.0.1:8080/status
+curl -X POST -d 0.5 http://127.0.0.1:8080/volume
+curl -X POST -d http://10.0.2.2:8000/demo.ec3 http://127.0.0.1:8080/play
+```
+
+(`qemu_efuse.bin` is what `idf.py qemu` generates on its first run.) On
+2026-09-10 that sequence played the demo twice, the second time at half volume
+with per-channel levels exactly half the first's, stopped on request, and
+reported a refused `ftp://` location on the console.
+
+The QEMU shape without PSRAM is the tightest this example runs: WiFi's
+stand-in, lwIP, the HTTP client, the HTTP server, the E-AC-3 decoder and the
+player's two stacks in one 280 KB, so `sdkconfig.ci-http` gives it an 8 KB
+ring and a 24 KB decode stack, with the measurements that justify both in its
+comments. A board with PSRAM (`sdkconfig.psram`) has no such squeeze.
+
 ## The sources
 
 `partition` runs without hardware, which is why it is the default and the one

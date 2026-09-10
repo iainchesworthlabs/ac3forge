@@ -92,7 +92,14 @@ struct Player::Impl {
     std::atomic<bool> have_stream{false};
     std::atomic<const char*> failure{""};
     std::atomic<int> error{0};
+    std::atomic<float> volume{1.0F};
+    std::atomic<std::size_t> decode_stack_free{0};
     StreamInfo stream{};  // written once, before have_stream is set
+
+    // Sampled from the decode task only: the high-water mark is that task's.
+    void sample_decode_stack() {
+        decode_stack_free.store(static_cast<std::size_t>(uxTaskGetStackHighWaterMark(nullptr)));
+    }
 
     // The figures as they stood when the last pass completed, copied by the
     // decode task at that moment and read by whoever reports it. A spinlock
@@ -112,6 +119,7 @@ struct Player::Impl {
         const std::size_t low = ring_low_water.load();
         s.ring_low_valid = low != SIZE_MAX;
         s.ring_low_water = s.ring_low_valid ? low : 0;
+        s.decode_stack_free = decode_stack_free.load();
         s.finished = finished.load();
         s.failed = failed.load();
         s.failure = failure.load();
@@ -125,6 +133,7 @@ struct Player::Impl {
     [[nodiscard]] bool stopping() const { return (xEventGroupGetBits(events) & kStop) != 0; }
 
     void finish(const char* why, bool is_failure, int code) {
+        sample_decode_stack();
         failure.store(why);
         error.store(code);
         if (is_failure) {
@@ -267,6 +276,7 @@ struct Player::Impl {
 
             if (unit.status == Status::kEndOfStream) {
                 resync_bytes.store(resync_before + accumulator.resynchronised_bytes());
+                sample_decode_stack();
                 const std::uint32_t done = passes.fetch_add(1) + 1;
                 {
                     PlayerStats snap = snapshot();
@@ -315,6 +325,16 @@ struct Player::Impl {
                 frames_held.fetch_add(1);
                 continue;
             }
+            // The volume, applied in the caller-owned storage before the sink
+            // sees it. 3,072 multiplies a stereo frame; nothing at unity.
+            const float gain = volume.load();
+            if (gain != 1.0F) {
+                for (std::size_t ch = 0; ch < config.output_channels; ++ch) {
+                    for (float& sample : pcm[ch]) {
+                        sample *= gain;
+                    }
+                }
+            }
             for (std::size_t ch = 0; ch < config.output_channels; ++ch) {
                 views[ch] = pcm[ch];
             }
@@ -345,6 +365,7 @@ bool Player::start() {
         im.pcm_spans[ch] = std::span<float>(im.pcm[ch]);
     }
     im.staging.resize(im.config.fetch_bytes);
+    set_volume(im.config.volume);
 
     im.events = xEventGroupCreate();
     if (im.events == nullptr) {
@@ -445,6 +466,12 @@ std::optional<StreamInfo> Player::stream() const {
 }
 
 bool Player::finished() const { return impl_->finished.load(); }
+
+void Player::set_volume(float volume) {
+    impl_->volume.store(volume < 0.0F ? 0.0F : (volume > 1.0F ? 1.0F : volume));
+}
+
+float Player::volume() const { return impl_->volume.load(); }
 
 bool Player::wait(TickType_t ticks) {
     if (impl_->events == nullptr) {

@@ -233,6 +233,26 @@ config AC3FORGE_EXAMPLE_RING_IN_PSRAM
         An int rather than a bool so it reaches C++ as a plain constant, the
         same reason the capture sink's choice is one.
 
+config AC3FORGE_EXAMPLE_DECODE_STACK_BYTES
+    int "Stack for the decode task, bytes"
+    default 32768
+    range 12288 65536
+    help
+        The player reports what the decode actually used as
+        stream.decode_stack_free at the end of a run: this minus that. Measured
+        under QEMU on 2026-09-10, an AC-3 5.1 decode left 20,604 of 32,768
+        spare. The default keeps the probe's margin; a shape that is short of
+        heap can spend some of it, knowing the number.
+
+# THE CONTROL SURFACE - ac3forge::Control, esp-idf/ac3forge/include/ac3forge/
+# control.hpp: GET /status, POST /play with a location, POST /stop, POST /volume.
+# Only worth having where there is a network, so 0 (off) by default; the HTTP
+# source's configurations turn it on.
+config AC3FORGE_EXAMPLE_CONTROL_PORT
+    int "TCP port for the REST control surface (0 = none)"
+    default 0
+    range 0 65535
+
 config AC3FORGE_EXAMPLE_MAX_LAPS
     int "Stop after this many passes through the stream (0 = never stop)"
     default 0

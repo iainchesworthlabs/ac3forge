@@ -13,16 +13,14 @@
 // stream, not a rewind, and the decoder's overlap-add state would carry across
 // the seam as a click.
 //
-// It also does no buffering of its own beyond one read. A production player
-// wants a ring buffer and a fetch task so a slow network does not stall the
-// decode - that is a design decision about latency and RAM which belongs to the
-// integrator, and putting one here would make this example about buffering
-// rather than about where bytes come from. planning/esp32-player.md is where
-// that design lives.
+// It does no buffering of its own beyond one read, and does not need to: the
+// player it feeds (ac3forge::Player) reads it from a fetch task into a ring, so
+// a slow network stalls that task and nothing else.
 
 #include "byte_source.hpp"
 
 #include <cstdio>
+#include <cstring>
 
 #include "esp_http_client.h"
 
@@ -33,16 +31,36 @@ namespace {
 
 esp_http_client_handle_t g_client = nullptr;
 std::size_t g_length = 0;
+bool g_network = false;
+// The URL the next open() fetches: the configured default until a control
+// surface points the source elsewhere.
+char g_url[512] = {};
+
+void default_url() {
+    if (g_url[0] == '\0') {
+        std::strncpy(g_url, CONFIG_AC3FORGE_EXAMPLE_HTTP_URL, sizeof(g_url) - 1);
+    }
+}
 
 }  // namespace
 
 bool source_open() {
-    if (!network_up()) {
-        return false;
+    // The network once; the request per play.
+    if (!g_network) {
+        if (!network_up()) {
+            return false;
+        }
+        g_network = true;
     }
+    if (g_client != nullptr) {
+        esp_http_client_cleanup(g_client);
+        g_client = nullptr;
+    }
+    default_url();
+    g_length = 0;
 
     esp_http_client_config_t config = {};
-    config.url = CONFIG_AC3FORGE_EXAMPLE_HTTP_URL;
+    config.url = g_url;
     config.timeout_ms = 10000;
     // Chunked responses are fine: esp_http_client_read hides the framing, and
     // the accumulator never cared about read boundaries anyway.
@@ -52,22 +70,36 @@ bool source_open() {
         return false;
     }
     if (esp_http_client_open(g_client, 0) != ESP_OK) {
-        std::printf("error: could not open %s\n", CONFIG_AC3FORGE_EXAMPLE_HTTP_URL);
+        std::printf("error: could not open %s\n", g_url);
         return false;
     }
     const auto length = esp_http_client_fetch_headers(g_client);
     const auto status = esp_http_client_get_status_code(g_client);
     if (status != 200) {
-        std::printf("error: %s returned %d\n", CONFIG_AC3FORGE_EXAMPLE_HTTP_URL, status);
+        std::printf("error: %s returned %d\n", g_url, status);
         return false;
     }
     // Negative means chunked, i.e. no Content-Length. 0 is this seam's own
     // spelling of "unknown", and the player treats it the same way: read until
     // the source says there is no more.
     g_length = length > 0 ? static_cast<std::size_t>(length) : 0;
-    std::printf("source: http %s, %lu bytes\n", CONFIG_AC3FORGE_EXAMPLE_HTTP_URL,
-                static_cast<unsigned long>(g_length));
+    std::printf("source: http %s, %lu bytes\n", g_url, static_cast<unsigned long>(g_length));
     return true;
+}
+
+bool source_set_location(const char* location) {
+    if (location == nullptr || std::strncmp(location, "http://", 7) != 0 ||
+        std::strlen(location) >= sizeof(g_url)) {
+        return false;
+    }
+    std::strncpy(g_url, location, sizeof(g_url) - 1);
+    g_url[sizeof(g_url) - 1] = '\0';
+    return true;
+}
+
+const char* source_location() {
+    default_url();
+    return g_url;
 }
 
 std::size_t source_read(std::span<std::byte> dst) {

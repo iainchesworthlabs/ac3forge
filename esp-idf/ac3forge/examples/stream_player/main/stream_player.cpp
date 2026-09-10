@@ -11,10 +11,14 @@
 // access units come out, and writes them to the sink.
 //
 // Both tasks, the ring and the decoders are the component's
-// (esp-idf/ac3forge/include/ac3forge/player.hpp); what is left here is what an
-// integrator's own firmware would have to write too. BOTH ENDS ARE SEAMS, and
-// CMake resolves both - see byte_source.hpp and audio_sink.hpp. This file
-// mentions neither a partition nor I2S.
+// (esp-idf/ac3forge/include/ac3forge/player.hpp), and so is the control surface
+// (control.hpp) that lets something on the network say what to play. What is
+// left here is what an integrator's own firmware would have to write too: the
+// seams, adapted; a level meter; a command queue between the HTTP server's task
+// and this one, which owns the player; and the reporting.
+//
+// BOTH ENDS ARE SEAMS, and CMake resolves both - see byte_source.hpp and
+// audio_sink.hpp. This file mentions neither a partition nor I2S.
 //
 //   source/partition/  flash. The default, and the first one CI runs.
 //   source/fatfs/      a FAT volume in flash; the SD source's file layer, runnable.
@@ -27,18 +31,27 @@
 //   sink/null/         counts frames.
 
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <memory>
+#include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "ac3/core/tables.hpp"
+#include "ac3forge/control.hpp"
 #include "ac3forge/player.hpp"
 
 #include "audio_sink.hpp"
@@ -54,10 +67,15 @@ constexpr std::size_t kOutputChannels = 2;
 // preprocessor conditionals - see main/Kconfig.projbuild. kMaxLaps of 0 plays
 // until the source cannot rewind; CI sets a small number so the run ends with
 // a verdict. kReportEveryFrames of 0 reports only at the end of a pass.
+// kControlPort of 0 means no REST surface, and the application returns from
+// app_main when the stream ends, as a CI run needs it to.
 constexpr std::uint32_t kMaxLaps = CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS;
 constexpr std::uint64_t kReportEveryFrames = CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES;
+constexpr std::uint16_t kControlPort = CONFIG_AC3FORGE_EXAMPLE_CONTROL_PORT;
 
 BaseType_t core_from_kconfig(int value) { return value < 0 ? tskNO_AFFINITY : value; }
+
+// --- the seams, as the player's source and sink --------------------------------
 
 // The source seam as the player's ByteSource. The seam's functions are what
 // CMake resolved to a directory; this is the adapter, and it is all of it.
@@ -88,6 +106,11 @@ class MeteredSink final : public ac3forge::PcmSink {
         player::sink_write(channels);
     }
 
+    void reset() {
+        sum_squares_ = {};
+        samples_ = 0;
+    }
+
     void report() const {
         for (std::size_t ch = 0; ch < kOutputChannels; ++ch) {
             const double rms = samples_ == 0 ? 0.0
@@ -103,13 +126,29 @@ class MeteredSink final : public ac3forge::PcmSink {
     std::size_t samples_ = 0;
 };
 
-// realtime_permille is decode time against the audio time it produced: 1000 is
-// exactly real time and anything at or above it cannot play without gaps. The
-// worst SINGLE frame matters as much as the average, because the sink's queue
-// only absorbs a spike that small - it says how deep. ring_low is the least the
-// ring ever held when the decoder came for more: zero means the decoder waited
-// on the source at least once, and how far above zero it stays is the margin
-// the ring's depth is buying.
+// --- what the control surface sees ----------------------------------------------
+// The HTTP server runs on its own task and app_main owns the player, so the two
+// meet in a queue for commands and a mutex for the player's snapshot. Nothing
+// the server's task does touches the player directly.
+
+enum class CommandKind : std::uint8_t { kPlay, kStop, kVolume };
+
+struct Command {
+    CommandKind kind = CommandKind::kStop;
+    float volume = 1.0F;
+    char location[512] = {};
+};
+
+QueueHandle_t g_commands = nullptr;
+SemaphoreHandle_t g_player_mutex = nullptr;
+std::unique_ptr<ac3forge::Player> g_player;  // app_main's; read under the mutex by /status
+ac3forge::PlayerStats g_last_stats{};        // of the last run, once it has ended
+std::optional<ac3forge::StreamInfo> g_last_stream;
+std::atomic<const char*> g_state{"stopped"};
+std::atomic<float> g_volume{1.0F};
+
+// --- reporting -------------------------------------------------------------------
+
 // ring_low prints as "-" until the player has measured it: a stream shorter
 // than the ring, or one that has just begun, has nothing to say about buffering,
 // and a zero there would read as a stall.
@@ -121,6 +160,13 @@ void print_ring_low(const ac3forge::PlayerStats& s) {
     }
 }
 
+// realtime_permille is decode time against the audio time it produced: 1000 is
+// exactly real time and anything at or above it cannot play without gaps. The
+// worst SINGLE frame matters as much as the average, because the sink's queue
+// only absorbs a spike that small - it says how deep. ring_low is the least the
+// ring ever held when the decoder came for more: zero means the decoder waited
+// on the source at least once, and how far above zero it stays is the margin
+// the ring's depth is buying.
 void report_timing(const char* label, unsigned long value, const ac3forge::PlayerStats& s) {
     const std::uint64_t permille =
         s.frames_played > 0 ? (s.decode_us * 1000) / (kFrameDurationUs * s.frames_played) : 0;
@@ -144,88 +190,74 @@ void describe(const ac3forge::StreamInfo& info) {
                 static_cast<unsigned>(kOutputChannels));
 }
 
-}  // namespace
+// One run of the player: from source_open to the verdict.
+struct Session {
+    bool described = false;
+    std::int64_t started_us = 0;
+    std::uint32_t passes_seen = 0;
+    std::uint64_t next_report = kReportEveryFrames;
+    unsigned long reports = 0;
+};
 
-extern "C" void app_main() {
-    std::printf("ac3forge stream_player: AC-3 or E-AC-3, folded to stereo\n");
+MeteredSink g_sink;
+SeamSource g_source;
 
+void end_play() {
+    std::unique_ptr<ac3forge::Player> finished;
+    xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+    finished = std::move(g_player);
+    xSemaphoreGive(g_player_mutex);
+    if (finished) {
+        finished->stop();
+    }
+}
+
+bool begin_play(Session& session) {
+    end_play();
     if (!player::source_open()) {
-        std::printf("result=fail\n");
-        return;
+        g_state.store("failed");
+        return false;
     }
-    // kOutputChannels, not the coded count: the decoder folds to stereo before
-    // it returns (PlayerConfig's default decoder settings). A player that wanted
-    // 5.1 out would ask for kAsCoded and open the sink with six.
-    if (!player::sink_open(kSampleRate, static_cast<int>(kOutputChannels))) {
-        return;
-    }
+    g_sink.reset();
+    session = Session{};
 
-    SeamSource source;
-    MeteredSink sink;
     ac3forge::PlayerConfig config;
     config.output_channels = kOutputChannels;
     config.ring_bytes = CONFIG_AC3FORGE_EXAMPLE_RING_BYTES;
     config.ring_in_psram = CONFIG_AC3FORGE_EXAMPLE_RING_IN_PSRAM != 0;
     config.fetch_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_FETCH_CORE);
     config.decode_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE);
+    config.decode_stack_bytes = CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES;
     config.max_passes = kMaxLaps;
+    config.volume = g_volume.load();
 
-    ac3forge::Player player{config, source, sink};
-    if (!player.start()) {
-        std::printf("result=fail\n");
-        return;
+    auto player = std::make_unique<ac3forge::Player>(config, g_source, g_sink);
+    if (!player->start()) {
+        g_state.store("failed");
+        return false;
     }
+    xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+    g_player = std::move(player);
+    xSemaphoreGive(g_player_mutex);
+    g_state.store("playing");
+    return true;
+}
 
-    // Everything from here is reporting. The player runs on its own two tasks;
-    // this task wakes ten times a second to say what they did.
-    bool described = false;
-    std::int64_t started_us = 0;
-    std::uint32_t passes_seen = 0;
-    std::uint64_t next_report = kReportEveryFrames;
-    unsigned long reports = 0;
-    for (;;) {
-        const bool done = player.wait(pdMS_TO_TICKS(100));
-        const auto stats = player.stats();
-        if (!described) {
-            if (const auto info = player.stream()) {
-                started_us = esp_timer_get_time();
-                describe(*info);
-                described = true;
-            }
-        }
-        // The pass's own figures, taken by the decode task as the pass ended,
-        // not this task's later view of them. If more than one pass completed
-        // since the last wake - which only a sink with no pacing manages - the
-        // earlier ones carry the latest snapshot.
-        while (passes_seen < stats.passes) {
-            ++passes_seen;
-            report_timing("lap", passes_seen, player.last_pass());
-        }
-        if (kReportEveryFrames != 0 && stats.frames_played >= next_report) {
-            ++reports;
-            report_timing("progress", reports, stats);
-            player::sink_report();
-            next_report += kReportEveryFrames;
-        }
-        if (done) {
-            break;
-        }
-    }
-
-    // The verdict. stream.audio_ms against stream.wall_ms is the
-    // whole-pipeline real-time check: a player that kept up spent as long
-    // playing as the audio lasted, one that stalled spent longer by exactly
-    // the silence it inserted, and a sink with no peripheral runs ahead of the
-    // clock. The sink's own line says where.
-    const auto stats = player.stats();
+// The verdict. stream.audio_ms against stream.wall_ms is the whole-pipeline
+// real-time check: a player that kept up spent as long playing as the audio
+// lasted, one that stalled spent longer by exactly the silence it inserted,
+// and a sink with no peripheral runs ahead of the clock. The sink's own line
+// says where.
+void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
     if (stats.failed) {
         std::printf("error: %s failed (%d)\n", stats.failure, stats.error);
     } else {
         std::printf("stream: %s ended (%s)\n", player::source_name(), stats.failure);
     }
-    sink.report();
+    g_sink.report();
     player::sink_report();
-    const std::int64_t wall_us = started_us == 0 ? 0 : esp_timer_get_time() - started_us;
+    const std::int64_t wall_us =
+        session.started_us == 0 ? 0 : esp_timer_get_time() - session.started_us;
     std::printf("stream.units=%lu stream.held=%lu stream.resync_bytes=%lu stream.sink=%s "
                 "stream.sink_frames=%lu stream.source=%s stream.fetched=%lu stream.ring_low=",
                 static_cast<unsigned long>(stats.frames_played),
@@ -234,10 +266,161 @@ extern "C" void app_main() {
                 static_cast<unsigned long>(player::sink_frames_written()), player::source_name(),
                 static_cast<unsigned long>(stats.fetched_bytes));
     print_ring_low(stats);
-    std::printf(" stream.audio_ms=%lu stream.wall_ms=%lu\n",
+    std::printf(" stream.decode_stack_free=%lu stream.audio_ms=%lu stream.wall_ms=%lu\n",
+                static_cast<unsigned long>(stats.decode_stack_free),
                 static_cast<unsigned long>((stats.frames_played * kFrameDurationUs) / 1000),
                 static_cast<unsigned long>(wall_us / 1000));
     std::printf("result=%s\n", (stats.frames_played > 0 && !stats.failed) ? "pass" : "fail");
-    player.stop();
-    vTaskDelay(pdMS_TO_TICKS(200));
+}
+
+// The control surface's view, all of it through the mutex or an atomic.
+ac3forge::ControlHandlers control_handlers() {
+    ac3forge::ControlHandlers h;
+    h.play = [](std::string_view location) {
+        Command c;
+        c.kind = CommandKind::kPlay;
+        if (location.size() >= sizeof(c.location)) {
+            return false;
+        }
+        std::memcpy(c.location, location.data(), location.size());
+        return xQueueSend(g_commands, &c, 0) == pdTRUE;
+    };
+    h.stop = []() {
+        Command c;
+        c.kind = CommandKind::kStop;
+        xQueueSend(g_commands, &c, 0);
+    };
+    h.set_volume = [](float volume) {
+        Command c;
+        c.kind = CommandKind::kVolume;
+        c.volume = volume;
+        return xQueueSend(g_commands, &c, 0) == pdTRUE;
+    };
+    h.volume = []() { return g_volume.load(); };
+    h.stats = []() {
+        xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+        const ac3forge::PlayerStats s = g_player ? g_player->stats() : g_last_stats;
+        xSemaphoreGive(g_player_mutex);
+        return s;
+    };
+    h.stream = []() {
+        xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+        const auto s = g_player ? g_player->stream() : g_last_stream;
+        xSemaphoreGive(g_player_mutex);
+        return s;
+    };
+    h.location = []() { return std::string{player::source_location()}; };
+    h.source_name = []() { return player::source_name(); };
+    h.sink_name = []() { return player::sink_name(); };
+    h.state = []() { return g_state.load(); };
+    return h;
+}
+
+}  // namespace
+
+extern "C" void app_main() {
+    std::printf("ac3forge stream_player: AC-3 or E-AC-3, folded to stereo\n");
+
+    // kOutputChannels, not the coded count: the decoder folds to stereo before
+    // it returns (PlayerConfig's default decoder settings). A player that wanted
+    // 5.1 out would ask for kAsCoded and open the sink with six.
+    if (!player::sink_open(kSampleRate, static_cast<int>(kOutputChannels))) {
+        return;
+    }
+    g_commands = xQueueCreate(4, sizeof(Command));
+    g_player_mutex = xSemaphoreCreateMutex();
+
+    // The configured location plays at once, as it always has; the control
+    // surface, where there is one, can stop it and play something else.
+    Session session;
+    const bool playing = begin_play(session);
+    if (!playing && kControlPort == 0) {
+        std::printf("result=fail\n");
+        return;
+    }
+
+    ac3forge::Control control;
+    if (kControlPort != 0) {
+        // After the source, which is what brings the network up.
+        (void)control.start(control_handlers(), kControlPort);
+    }
+
+    // Everything from here is reporting and command handling. The player runs
+    // on its own two tasks; this task wakes ten times a second.
+    for (;;) {
+        Command cmd;
+        while (xQueueReceive(g_commands, &cmd, 0) == pdTRUE) {
+            switch (cmd.kind) {
+                case CommandKind::kPlay:
+                    end_play();
+                    if (!player::source_set_location(cmd.location)) {
+                        std::printf("control: %s refused location %s\n", player::source_name(),
+                                    cmd.location);
+                        g_state.store("stopped");
+                        break;
+                    }
+                    (void)begin_play(session);
+                    break;
+                case CommandKind::kStop:
+                    end_play();
+                    g_state.store("stopped");
+                    break;
+                case CommandKind::kVolume:
+                    g_volume.store(cmd.volume);
+                    xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+                    if (g_player) {
+                        g_player->set_volume(cmd.volume);
+                    }
+                    xSemaphoreGive(g_player_mutex);
+                    break;
+            }
+        }
+
+        xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+        ac3forge::Player* const current = g_player.get();
+        xSemaphoreGive(g_player_mutex);
+        if (current == nullptr) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        const bool done = current->wait(pdMS_TO_TICKS(100));
+        const auto stats = current->stats();
+        if (!session.described) {
+            if (const auto info = current->stream()) {
+                session.started_us = esp_timer_get_time();
+                describe(*info);
+                session.described = true;
+            }
+        }
+        // The pass's own figures, taken by the decode task as the pass ended,
+        // not this task's later view of them. If more than one pass completed
+        // since the last wake - which only a sink with no pacing manages - the
+        // earlier ones carry the latest snapshot.
+        while (session.passes_seen < stats.passes) {
+            ++session.passes_seen;
+            report_timing("lap", session.passes_seen, current->last_pass());
+        }
+        if (kReportEveryFrames != 0 && stats.frames_played >= session.next_report) {
+            ++session.reports;
+            report_timing("progress", session.reports, stats);
+            player::sink_report();
+            session.next_report += kReportEveryFrames;
+        }
+        if (!done) {
+            continue;
+        }
+
+        report_end(session, stats);
+        xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+        g_last_stats = stats;
+        g_last_stream = current->stream();
+        xSemaphoreGive(g_player_mutex);
+        end_play();
+        g_state.store(stats.failed ? "failed" : "finished");
+        if (kControlPort == 0) {
+            vTaskDelay(pdMS_TO_TICKS(200));
+            return;
+        }
+    }
 }

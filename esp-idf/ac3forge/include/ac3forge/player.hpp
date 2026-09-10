@@ -112,6 +112,10 @@ struct PlayerConfig {
     // cannot rewind. A source that cannot rewind ends the run after one pass
     // whatever this says.
     std::uint32_t max_passes = 0;
+
+    // A linear gain applied to the folded frame before it reaches the sink,
+    // 0.0 to 1.0. Changeable while playing through Player::set_volume().
+    float volume = 1.0F;
 };
 
 // What the first decoded access unit said the stream is.
@@ -140,6 +144,10 @@ struct PlayerStats {
     // has just started, has nothing to say yet.
     std::size_t ring_low_water = 0;
     bool ring_low_valid = false;
+    // The least stack the decode task has had spare, in bytes, sampled at each
+    // pass boundary and when the run ends: PlayerConfig::decode_stack_bytes
+    // minus this is what the decode actually used. Zero until sampled.
+    std::size_t decode_stack_free = 0;
     bool finished = false;
     bool failed = false;
     // Why the run ended, once `finished`: "passes" (max_passes reached), "end
@@ -178,6 +186,11 @@ class Player {
     [[nodiscard]] bool finished() const;
     // Blocks until finished(), or for `ticks`. Returns finished().
     bool wait(TickType_t ticks = portMAX_DELAY);
+
+    // The gain the decode task applies to the next frame onwards; clamped to
+    // 0.0 to 1.0. Safe from any task.
+    void set_volume(float volume);
+    [[nodiscard]] float volume() const;
 
    private:
     struct Impl;

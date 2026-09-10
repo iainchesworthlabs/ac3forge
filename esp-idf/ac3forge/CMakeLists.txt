@@ -42,9 +42,9 @@
 # library - see planning/esp32-player.md). freertos, esp_timer and heap are what
 # the player's own sources include.
 idf_component_register(
-    SRCS "src/player.cpp"
+    SRCS "src/player.cpp" "src/control.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES freertos esp_timer heap)
+    REQUIRES freertos esp_timer heap esp_http_server)
 
 # Where the library's own CMake lives, which depends on how this component was
 # obtained.
