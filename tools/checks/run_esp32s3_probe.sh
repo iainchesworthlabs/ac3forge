@@ -116,7 +116,7 @@ fi
 # something else fits: object reconstruction did not, on an ESP32-S3, whenever
 # it ran after an enhanced-coupling decode.
 #
-# 1,024 against a measured 24 is deliberately tight. There is nothing here that
+# 1,024 against a measured 12 is deliberately tight. There is nothing here that
 # grows a little; either the scratch is being handed back or it is not, and the
 # difference is five figures. A ceiling with room for half of it would report
 # nothing useful.
