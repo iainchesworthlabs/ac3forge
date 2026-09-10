@@ -3468,6 +3468,57 @@ jobs:
           CI: "1"
         run: npm test
 
+  # The ESP32 player's web page (esp-idf/ac3forge/ui/, planning/esp32-device-ui.md)
+  # in Chromium, against a stand-in for the firmware's REST routes that each test
+  # starts for itself: every action and its error paths, the polling, the status
+  # payloads recorded from the emulated board, accessibility and the flash
+  # budget, with coverage of the page's script held to the thresholds in
+  # apps/wasm/tests/package.json. The WASM demos' Playwright harness - its
+  # package, lockfile and browser - with a configuration of its own
+  # (device-ui.config.js). A job of its own because it needs nothing built;
+  # build-esp32s3 runs the same page against the emulated board.
+  device-ui:
+    name: Device web page (Chromium)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/wasm/tests/package-lock.json
+
+      - name: Install Playwright harness
+        working-directory: apps/wasm/tests
+        run: |
+          set -euo pipefail
+          npm ci
+          npx playwright install --with-deps --only-shell chromium
+
+      - name: Web page against a stand-in device
+        working-directory: apps/wasm/tests
+        env:
+          CI: "1"
+        run: npm run test:device-ui
+
+      - name: Coverage of the page's script
+        working-directory: apps/wasm/tests
+        run: npm run coverage:device-ui
+
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: device-ui-coverage
+          path: apps/wasm/tests/test-results/device-ui-coverage
+          if-no-files-found: warn
+
   # The Rust bindings (rust/, roadmap AP9): a Cargo workspace living in-tree but deliberately
   # never add_subdirectory()'d from the root CMakeLists.txt - see rust/README.md's "why this
   # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
@@ -4113,6 +4164,83 @@ jobs:
           check_rms 0 28336
           check_rms 1 23673
           curl -s -m 10 -X POST http://127.0.0.1:8080/stop | grep -q '^stopped' || fail "POST /stop was not accepted"
+          kill "$qemu" 2>/dev/null || true
+      # The web page (planning/esp32-device-ui.md) on the emulated board: the
+      # image the step above built, booted again with the same port forward,
+      # and the page the firmware serves driven by Playwright - the only place
+      # CI runs the routes ac3forge::Control serves it on. A step of its own so
+      # the one above stays as it is. The WASM demos' Playwright harness
+      # (apps/wasm/tests, device-ui.config.js's board project) comes into this
+      # container with Node, which the IDF image does not carry.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/wasm/tests/package-lock.json
+
+      - name: Drive the web page on the emulated board
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          (cd apps/wasm/tests && npm ci && npx playwright install --with-deps --only-shell chromium)
+          python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          cd esp-idf/ac3forge/examples/stream_player
+          if [ ! -f build/qemu_flash.bin ] || [ ! -f build/qemu_efuse.bin ]; then
+            echo "::error title=ESP32-S3 web page::the HTTP step's QEMU images are not in build/" >&2
+            exit 1
+          fi
+          qemu_bin=$(find "${IDF_TOOLS_PATH:-$HOME/.espressif}/tools/qemu-xtensa" -name qemu-system-xtensa -type f | head -1)
+          : > qemu-ui.txt
+          "$qemu_bin" -M esp32s3 -m 32M \
+            -drive file=build/qemu_flash.bin,if=mtd,format=raw \
+            -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
+            -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
+            -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
+            -nic user,model=open_eth,hostfwd=tcp::8080-:80 \
+            -nographic -monitor none -serial file:qemu-ui.txt &
+          qemu=$!
+          trap 'kill "$qemu" 2>/dev/null || true; kill "$server" 2>/dev/null || true' EXIT
+
+          fail() { echo "::error title=ESP32-S3 web page::$1" >&2; grep -E 'result=|error|control|Guru Meditation|assert failed|Backtrace|Rebooting' qemu-ui.txt >&2 || true; exit 1; }
+          check_rms() {
+            local channel="$1" expected="$2"
+            local got
+            got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-ui.txt | tail -1)
+            [ -n "$got" ] || fail "no stream.rms[$channel] line"
+            local slack=$(( expected / 20 + 200 ))
+            echo "rms[$channel] = $got (a quarter of the host's, $expected, tolerance +/-$slack)"
+            if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
+              fail "channel $channel decoded to $got at the page's volume, expected $expected"
+            fi
+          }
+
+          for _ in $(seq 1 60); do
+            if grep -q '^result=' qemu-ui.txt; then break; fi
+            sleep 5
+          done
+          grep -q '^result=pass' qemu-ui.txt || fail "the boot play did not report result=pass"
+          echo "served: GET / $(curl -s -m 10 -o /dev/null -w '%{size_download}' http://127.0.0.1:8080/) bytes, GET /ui.js $(curl -s -m 10 -o /dev/null -w '%{size_download}' http://127.0.0.1:8080/ui.js) bytes"
+
+          # The page loads from the firmware and shows the boot play; the
+          # volume set with its slider reads back through GET /status; a
+          # layout the capture sink cannot carry is refused in the firmware's
+          # words; a play started from its form finishes; its Stop reads back
+          # as stopped. device-ui/board/smoke.spec.js has the details.
+          (cd "$GITHUB_WORKSPACE/apps/wasm/tests" && AC3FORGE_DEVICE_URL=http://127.0.0.1:8080/ CI=1 npm run test:board) || fail "the page did not drive the board (Playwright's output is above)"
+
+          # The play the page started, at the volume the page set: a quarter of
+          # the boot play's levels, 56,673 and 47,346.
+          [ "$(grep -c '^result=pass' qemu-ui.txt)" -ge 2 ] || fail "the play the page started did not report result=pass"
+          check_rms 0 14168
+          check_rms 1 11837
+
+          # And one boot, with no panic, from start to finish.
+          [ "$(grep -c 'ESP-ROM:' qemu-ui.txt)" -eq 1 ] || fail "the part booted more than once"
+          if grep -E 'Guru Meditation|assert failed|abort\(\) was called|Backtrace:' qemu-ui.txt >&2; then
+            fail "panic output on the console"
+          fi
           kill "$qemu" 2>/dev/null || true
 
       - name: Build every sink and source combination
