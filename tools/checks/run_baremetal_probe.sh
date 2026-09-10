@@ -174,7 +174,7 @@ declare -A ICOUNT_CEILING_ENCODE=(
 # something else fits: object reconstruction did not, on an ESP32-S3, whenever
 # it ran after an enhanced-coupling decode.
 #
-# 1,024 against a measured 24 is deliberately tight. There is nothing here that
+# 1,024 against a measured 12 is deliberately tight. There is nothing here that
 # grows a little; either the scratch is being handed back or it is not, and the
 # difference is five figures. A ceiling with room for half of it would report
 # nothing useful.
@@ -210,7 +210,9 @@ QEMU_ICOUNT=()
 if [[ "$ICOUNT" == "1" ]]; then
     PRESET="${PRESET}-icount"
     BUILD_PRESET="${BUILD_PRESET}-icount"
-    QEMU_ICOUNT=(-icount shift=0,sleep=off)
+    # Quoted: the comma is QEMU's own option syntax, one argument, not an
+    # array separator (shellcheck SC2054 cannot tell the two apart).
+    QEMU_ICOUNT=(-icount "shift=0,sleep=off")
 fi
 
 cmake --preset "$PRESET" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS"
