@@ -8,7 +8,9 @@
     `Eac3Decoder`, its `http` source fetches and decodes the demo stream over the emulated
     Ethernet with levels matching the host's, and the 7.1 encode question is answered (it does
     not fit internal SRAM). The board supplies what QEMU cannot, which is time and the radio.
-    Nothing from Phase 1 onward exists in the tree.
+    Phase 1's player exists as of the same day - `ac3forge::Player` in the component, the
+    streaming example rewired over it, all three QEMU shapes passing - without its REST surface,
+    which is still to write. Nothing from Phase 2 onward exists in the tree.
 
     Shape follows [the topology](topology.md) and [the appliance plan](player-appliance.md):
     design sections say what changes and why, phases carry exit criteria and how each is

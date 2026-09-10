@@ -242,23 +242,27 @@ exactly that.
 ## What it costs
 
 `idf.py size`, IDF v6.1, `-Os`, the default shape (`partition` to `i2s`) with
-the console on USB-Serial-JTAG:
+the console on USB-Serial-JTAG, after the loop moved into `ac3forge::Player`:
 
 | | Bytes |
 | --- | --- |
-| Internal SRAM (DIRAM) used by the image | 155,615 |
-| …of which `.bss` | 114,024 |
-| …leaving for the heap, by the linker's estimate | 186,145 |
-| Caller-owned PCM, eight channels of one frame (`kMaxChannels`) | 49,152 |
-| Accumulator buffer (`kRecommendedBuffer`) | 16,384 |
-| Interleave buffer (one frame, static) | 6,144 |
+| Internal SRAM (DIRAM) used by the image | 90,243 |
+| …of which `.bss` | 48,296 |
+| …leaving for the heap, by the linker's estimate | 251,517 |
+| Taken from that heap when the player starts: its PCM storage (eight channels of one frame), framing buffer and staging block | 67,584 |
+| The ring between fetch and decode (`CONFIG_AC3FORGE_EXAMPLE_RING_BYTES`; PSRAM when present) | 32,768 |
+| The decode task's stack, and the fetch task's | 32,768 + 8,192 |
+| Interleave buffer (one frame, static, in the sink) | 6,144 |
 | I2S DMA queue (4 × 240 frames, stereo, 16-bit) | 3,840 |
-| Partition read block | 2,048 |
 
-More than `i2s_player`'s 93,967, and the difference is what a player that does
-not know its stream in advance carries: PCM storage wide enough for 7.1 rather
-than the fixture's 5.1, the framing buffer, and every source and sink's
-components linked whichever pair is selected (`main/CMakeLists.txt` says why
-the `REQUIRES` list cannot follow the choice). The `http` shape adds the WiFi
-and TCP/IP stacks on top: 163,546 bytes of DIRAM before either has allocated
-anything at run time.
+The image is smaller than `i2s_player`'s 93,967 because what the example used
+to hold in `.bss` - a frame of PCM wide enough for 7.1, the framing buffer -
+is the player's now and comes from the heap when it starts; the same bytes,
+paid at a different moment, plus the ring and the two stacks that did not exist
+before. Every source and sink's components are linked whichever pair is
+selected (`main/CMakeLists.txt` says why the `REQUIRES` list cannot follow the
+choice). The `http` shape adds the WiFi and TCP/IP stacks on top, which is why
+`sdkconfig.psram` exists for it: with PSRAM off, WiFi's stand-in, the E-AC-3
+decoder, the player's stacks and a 32 KB ring did not all fit under QEMU, and
+the CI shape runs a 16 KB ring in internal SRAM with the main task's stack cut
+to 8 KB.
