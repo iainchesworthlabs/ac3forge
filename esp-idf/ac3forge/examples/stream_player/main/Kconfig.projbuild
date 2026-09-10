@@ -80,11 +80,11 @@ choice AC3FORGE_EXAMPLE_SINK
     help
         Where decoded audio goes. The capture sink is what CI runs:
         qemu-system-xtensa has no I2S peripheral, so the I2S and TDM sinks'
-        first write blocks on a DMA that never drains. The capture sink runs
-        their conversion code and checks the result, with no peripheral
-        behind it, so the source, the access-unit framing and the decode run
-        as they do on a board. CI builds the other three and runs none of
-        them.
+        first write blocks on a DMA that never drains. The capture sink
+        converts with the code those two share (ac3forge/interleave.hpp) and
+        checks the result, with no peripheral behind it, so the source, the
+        access-unit framing and the decode run as they do on a board. CI
+        builds the other three and runs none of them.
 
 config AC3FORGE_EXAMPLE_SINK_I2S
     bool "I2S DAC"

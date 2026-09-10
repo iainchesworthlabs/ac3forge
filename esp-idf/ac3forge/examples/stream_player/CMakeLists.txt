@@ -23,9 +23,10 @@
 #   idf.py qemu
 #
 # which is the first of the four shapes CI runs under QEMU. sdkconfig.ci selects
-# the capture sink, which runs the i2s and tdm sinks' conversion code and checks
-# the result with no peripheral behind it; see main/audio_sink.hpp. The other
-# three are sdkconfig.ci-tdm, sdkconfig.ci-render and sdkconfig.ci-http.
+# the capture sink, which converts with the code the sinks share
+# (ac3forge/interleave.hpp) and checks the result with no peripheral behind it;
+# see main/audio_sink.hpp. The other three are sdkconfig.ci-tdm,
+# sdkconfig.ci-render and sdkconfig.ci-http.
 # ---------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.28)
 

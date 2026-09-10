@@ -23,9 +23,8 @@ namespace {
 std::uint64_t g_frames = 0;
 int g_channels = 0;
 // Summed but never read back. It exists so the decode has an observable
-// consumer: a sink that genuinely touched nothing would let the compiler delete
-// work the run is supposed to be doing, and CI would be exercising less than it
-// looks like it is.
+// consumer: a sink that touched nothing would let the compiler delete work the
+// run is supposed to be doing.
 double g_checksum = 0.0;
 
 }  // namespace

@@ -4,9 +4,9 @@
 #
 #   i2s      stereo on the I2S peripheral, and the default
 #   tdm      the I2S peripheral in TDM mode, up to sixteen slots
-#   capture  the i2s or tdm sink's conversion, checked, with no peripheral
-#            behind it: what CI runs, because qemu-system-xtensa has no I2S
-#            and the other two sinks' first write would never return
+#   capture  the conversion code the i2s and tdm sinks share, checked, with no
+#            peripheral behind it: what CI runs, because qemu-system-xtensa has
+#            no I2S and the other two sinks' first write would never return
 #   null     counts blocks and returns; CI builds it and does not run it
 # From Kconfig, not a -D cache variable: this file is evaluated in IDF's
 # separate requirements-expansion process, which does not inherit cache
@@ -49,9 +49,10 @@ if(CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP)
     endif()
 endif()
 
-# esp_driver_i2s is required either way. The null build does not call it, but a
-# component's REQUIRES is resolved before the source list is, and listing it
-# conditionally would make the two builds differ in a second place for no gain.
+# esp_driver_i2s is required whichever sink is chosen. The capture and null
+# builds do not call it, but a component's REQUIRES is resolved before the
+# source list is, and listing it conditionally would make the builds differ in
+# a second place for no gain.
 # EVERY component every sink and source might need, unconditionally, whichever
 # pair this build selected.
 #
