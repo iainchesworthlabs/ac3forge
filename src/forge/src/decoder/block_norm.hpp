@@ -198,6 +198,22 @@ template <std::size_t Slots, std::size_t N>
     return slots;
 }
 
+// A sixteen-bit vector-quantiser entry over 2^15 (the adaptive hybrid
+// transform's, per E3.4.4) in the caller's scalar: the division the floating
+// tiers always did, and for the fixed one the scaled integer it is - the
+// entry being larger than the format holds before the scale and exact after
+// it. A template because a scalar's own member cannot be NAMED in a branch
+// of a non-template, discarded or not (src/internal/cpu/minimal/
+// cpu_features.cpp's header records the same trap).
+template <typename Scalar>
+[[nodiscard]] inline Scalar vq_entry(int entry) {
+    if constexpr (kNormalisedStore<Scalar>) {
+        return Scalar::from_integer_scaled(entry, -15);
+    } else {
+        return static_cast<Scalar>(entry) / Scalar{32768};
+    }
+}
+
 // A stored value widened to double at its true scale: the retained block
 // §7.10's concealment repeats is kept in double whatever the store is.
 template <typename Scalar>

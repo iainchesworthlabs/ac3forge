@@ -47,11 +47,15 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 COMPARE = REPO_ROOT / "tools" / "checks" / "compare_wav.py"
 
-# The same three streams the cross-platform hash gate pins, and for the same
+# The three streams the cross-platform hash gate pins, and for the same
 # reason: they are this project's own encoder's output over the gold-reference
 # WAV, so they exercise AC-3, plain E-AC-3 and E-AC-3 with coupling without
-# anyone having to keep a second corpus agreeing with the first.
-STREAMS = ("gold.ac3", "gold.ec3", "gold_cpl.ec3")
+# anyone having to keep a second corpus agreeing with the first. Plus one the
+# hash gate does not pin: enhanced coupling, whose decode is the most involved
+# thing either non-double scalar does - three inverse transforms, a 512-point
+# DFT and a per-bin complex reconstruction per coupled channel per block - and
+# which neither scalar's check measured until 2026-09-10.
+STREAMS = ("gold.ac3", "gold.ec3", "gold_cpl.ec3", "gold_ecpl.ec3")
 
 # 120 dB against a measured 138.85. The margin is wide on purpose: this gate
 # exists to catch a float32 path that has BROKEN - a lost precision step, a

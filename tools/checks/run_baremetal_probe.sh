@@ -90,23 +90,24 @@ declare -A ICOUNT_CEILING=(
 )
 # The fixed-point tier's (--scalar=fixed --icount), measured 2026-09-10 on the
 # same leg with the same headroom rule (planning/arithmetic-tiers.md). Integer
-# arithmetic where the float tier's is software floating point, so the plain
-# rows are a half to a third of the float table's; enhanced coupling and the
-# objects rows come down less, their reconstruction and mixing still running
-# through float at the seam - what Phase C has left to bring into the tier.
+# arithmetic where the float tier's is software floating point, so most rows
+# are a third to a half of the float table's. The two object rows are the
+# exception, and not because of the tier: JOC's reconstruction runs in float
+# in every build of this library (oba/joc.hpp's recon_scalar_t), so those rows
+# are a float transform sandwich either way.
 declare -A ICOUNT_CEILING_FIXED=(
     [ac3_mono]=1000000
     [ac3_stereo]=2000000
-    [eac3_stereo]=3500000
+    [eac3_stereo]=2500000
     [eac3_atmos_bed]=4500000
     [ac3]=5000000
     [ac3_fold]=7000000
-    [eac3]=8500000
-    [eac3_fold]=12500000
+    [eac3]=6500000
+    [eac3_fold]=10500000
     [eac3_atmos_objects]=31500000
     [eac3_atmos_render]=32000000
-    [eac3_ecpl]=30500000
-    [eac3_714]=22500000
+    [eac3_ecpl]=13000000
+    [eac3_714]=15500000
 )
 # The encode direction's, from --encoder --icount: Thumb-2 instructions per
 # ENCODED frame, measured 2026-09-10 on the same leg with the same headroom

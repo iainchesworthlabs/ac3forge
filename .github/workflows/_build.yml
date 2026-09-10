@@ -1405,6 +1405,7 @@ jobs:
           build/config-${{ matrix.preset }}/bin/ac3cli encode               tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
           build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
           build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
           python3 tools/checks/check_decode_scalar_snr.py               --double-cli build/config-${{ matrix.preset }}/bin/ac3cli               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
 
       # The third scalar (planning/arithmetic-tiers.md): the fixed-point
@@ -1439,6 +1440,7 @@ jobs:
           build/config-${{ matrix.preset }}/bin/ac3cli encode tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
           build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
           build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
           python3 tools/checks/check_decode_scalar_snr.py --double-cli build/config-${{ matrix.preset }}/bin/ac3cli --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
 
       # The tier's own gate, natively: the same twelve fixtures the bare-metal

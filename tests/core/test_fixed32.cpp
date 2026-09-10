@@ -8,12 +8,14 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <numbers>
 #include <random>
 
 #include "ac3/core/coupling.hpp"
 #include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/mantissas.hpp"
+#include "eac3_tools_fixed.hpp"
 #include "fixed32.hpp"
 
 using ac3::internal::Fixed32;
@@ -203,6 +205,97 @@ TEST_CASE("the exponent scale and the mantissa tables read exactly through Fixed
     const double wide = ac3::coupling::decode_coordinate_as<double>(coordinate, 1);
     const double fixed = static_cast<double>(ac3::coupling::decode_coordinate_as<Fixed32>(coordinate, 1));
     CHECK(std::abs(fixed - wide) <= 2 * kUlp);
+}
+
+TEST_CASE("the tier's sine and cosine track the library's over a whole turn", "[fixed32]") {
+    // §3.5.5.4 asks for sin and cos of pi times an angle that §3.5.5.3
+    // transmits as a fraction of pi on (-1, 1]. Against std::sin/std::cos of
+    // the same product, over the transmitted grid and over a dense sweep.
+    double worst = 0.0;
+    const auto check = [&](double a) {
+        Fixed32 s{};
+        Fixed32 c{};
+        ac3::eac3::sincos_pi(Fixed32{a}, s, c);
+        const double angle = std::numbers::pi * static_cast<double>(Fixed32{a});
+        worst = std::max({worst, std::abs(static_cast<double>(s) - std::sin(angle)),
+                          std::abs(static_cast<double>(c) - std::cos(angle))});
+    };
+    // The 64 values ecplangle can carry, which is every angle a stream sends.
+    for (int code = 0; code < 64; ++code) {
+        check(ac3::eac3::decode_ecplangle(code));
+    }
+    for (int i = -2048; i <= 2048; ++i) {
+        check(static_cast<double>(i) / 2048.0);
+    }
+    INFO("worst error " << worst << " (" << worst * 16777216.0 << " raw units)");
+    // The series' own truncation is far below the format; what is left is its
+    // five roundings, which land in the tens of raw units.
+    CHECK(worst < 64.0 * kUlp);
+    // The quadrants, exactly where they should be.
+    Fixed32 s{};
+    Fixed32 c{};
+    ac3::eac3::sincos_pi(Fixed32{0.0}, s, c);
+    CHECK(s.raw == 0);
+    CHECK(c.raw == Fixed32::kOne);
+    ac3::eac3::sincos_pi(Fixed32{0.5}, s, c);
+    CHECK(std::abs(s.raw - Fixed32::kOne) < 64);
+    CHECK(std::abs(c.raw) < 64);
+    ac3::eac3::sincos_pi(Fixed32{1.0}, s, c);
+    CHECK(std::abs(s.raw) < 64);
+    CHECK(std::abs(c.raw + Fixed32::kOne) < 64);
+    ac3::eac3::sincos_pi(Fixed32{-1.0}, s, c);
+    CHECK(std::abs(s.raw) < 64);
+    CHECK(std::abs(c.raw + Fixed32::kOne) < 64);
+}
+
+TEST_CASE("the tier's six-point inverse and its notch are the double ones", "[fixed32]") {
+    // §E3.4.5's inverse, over the mantissa range the AHT dequantisers
+    // produce, against the double form of the same transform.
+    std::mt19937 rng(0xa47);
+    std::uniform_real_distribution<double> dist(-1.5, 1.5);
+    double worst = 0.0;
+    for (int trial = 0; trial < 2000; ++trial) {
+        std::array<double, 6> wide{};
+        std::array<Fixed32, 6> narrow{};
+        for (std::size_t j = 0; j < 6; ++j) {
+            narrow[j] = Fixed32{dist(rng)};
+            wide[j] = static_cast<double>(narrow[j]);
+        }
+        std::array<double, 6> wide_out{};
+        std::array<Fixed32, 6> narrow_out{};
+        ac3::eac3::aht_inverse(wide, wide_out);
+        ac3::eac3::aht_inverse(narrow, narrow_out);
+        for (std::size_t m = 0; m < 6; ++m) {
+            worst = std::max(worst, std::abs(static_cast<double>(narrow_out[m]) - wide_out[m]));
+        }
+    }
+    INFO("worst inverse error " << worst * 16777216.0 << " raw units");
+    // Six products, six roundings, over a basis of at most sqrt(2).
+    CHECK(worst < 16.0 * kUlp);
+
+    // §E3.6.4.2.3's notch: the same taps, at the same seams, on the same
+    // region - one product each, so it is exact to the attenuation's own
+    // rounding.
+    ac3::eac3::BandLayout bands{};
+    bands.count = 2;
+    bands.start[0] = 20;
+    bands.start[1] = 40;
+    bands.size[0] = 20;
+    bands.size[1] = 20;
+    const std::array<bool, 2> wrapflag{false, true};
+    for (const int code : {0, 7, 31}) {
+        std::array<double, 64> wide{};
+        std::array<Fixed32, 64> narrow{};
+        for (std::size_t i = 0; i < wide.size(); ++i) {
+            wide[i] = 0.5 - static_cast<double>(i) / 128.0;
+            narrow[i] = Fixed32{wide[i]};
+        }
+        ac3::eac3::spx_apply_notch(std::span<double>{wide}, 20, bands, wrapflag, code);
+        ac3::eac3::spx_apply_notch(std::span<Fixed32>{narrow}, 20, bands, wrapflag, code);
+        for (std::size_t i = 0; i < wide.size(); ++i) {
+            CHECK(std::abs(static_cast<double>(narrow[i]) - wide[i]) <= 2.0 * kUlp);
+        }
+    }
 }
 
 TEST_CASE("the noise generators draw in Fixed32 from the same state sequence", "[fixed32]") {
