@@ -2,7 +2,7 @@
 
 Annex A.1 does not print the trees. It prints only their names, modes and
 types, and ships the contents in the companion archive ts_103420v010201p0.zip
-as ts_103420_tables.c - so docs/spec/ts_103420_tables.c IS the normative table,
+as ts_103420_tables.c - so spec/ts_103420_tables.c IS the normative table,
 not a transcription of one.
 
 The tables are decoder-shaped: joc_huff_code[node][bit] holds the next node
@@ -23,8 +23,8 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
-TABLES_C = REPO / "docs" / "spec" / "ts_103420_tables.c"
-SPEC_TXT = REPO / "docs" / "spec" / "TS103420-2018.txt"
+TABLES_C = REPO / "spec" / "ts_103420_tables.c"
+SPEC_TXT = REPO / "spec" / "TS103420-2018.txt"
 OUT = REPO / "src" / "lib" / "include" / "ac3" / "oba" / "joc_tables.hpp"
 
 # Table 50: joc_num_bands_idx -> joc_num_bands. Table 54's columns run the
