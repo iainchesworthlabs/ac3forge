@@ -35,6 +35,17 @@ channel layout is a row in the second. What each row is for:
   - E-AC-3 2/0 at 192 kbit/s with tools=all: a non-5.1 layout, and with it
     §7.5.4 rematrixing, which is 2/0-only and so unreachable from any of the
     above however their tools are set.
+  - E-AC-3 7.1.4 at 640 kbit/s with tools=all: a 5.1 bed and two dependent
+    substreams (k71Rear, kTopQuad), the widest programme the encoder makes.
+    The only fixture with more channels than one substream carries, so the
+    access unit's assembly - locations unioned, a dependent's surrounds
+    replacing the bed's - runs here alone; and twelve channels of output is
+    what a part driving a 7.1.4 DAC has to find room and time for.
+  - The two 5.1 streams decoded AGAIN through the §7.8 output stage - a Lo/Ro
+    fold in line mode, the options the ESP32-S3 examples' CI comparison uses -
+    as levels-only rows that reuse the bitstreams above. A player feeding a
+    stereo DAC runs that fold every frame, and until these rows it ran
+    nowhere the target measures.
 
 The profile's library contains two decoders, and a probe that exercised only
 one would leave the other unproven at link time as well as at run time - which
@@ -83,6 +94,45 @@ class Layout(typing.NamedTuple):
     source: str  # programme material under tests/golden/audio/
     wav_position: tuple[int, ...]
     coded_order: str  # the channel names in coded order, for the emitted comment
+    # How the trimmed source is made from `source`: trim_wav below by default,
+    # or a derivation for a layout no committed file is wide enough for.
+    derive: typing.Callable[[pathlib.Path, pathlib.Path, int], int] | None = None
+
+
+def derive_714(source: pathlib.Path, destination: pathlib.Path, frames: int) -> int:
+    """A twelve-channel 7.1.4 source in WAV speaker order (FL FR FC LFE BL BR SL
+    SR TFL TFR TBL TBR) built from the 5.1 programme: the bed as it is, the
+    rears and the four heights the surrounds and fronts again at distinct gains,
+    so a channel landing in the wrong slot shows in its level. Derived rather
+    than a committed twelve-channel file, since none exists under
+    tests/golden/audio/ and 2.5 seconds of one would be 2.9 MB; still real
+    programme material, and reproducible from the file the 5.1 rows use."""
+    with wave.open(str(source), "rb") as src:
+        if src.getnchannels() != 6 or src.getsampwidth() != 2:
+            raise SystemExit(f"{source}: expected 16-bit 5.1 to derive 7.1.4 from")
+        wanted = frames * SAMPLES_PER_FRAME
+        if src.getnframes() < wanted:
+            raise SystemExit(f"{source} holds {src.getnframes()} samples, need {wanted}")
+        payload = src.readframes(wanted)
+        rate = src.getframerate()
+    samples = struct.unpack(f"<{wanted * 6}h", payload)
+    left, right, centre, lfe, ls, rs = (samples[i::6] for i in range(6))
+
+    def at(channel: tuple[int, ...], gain: float) -> list[int]:
+        return [round(value * gain) for value in channel]
+
+    planar = [list(left), list(right), list(centre), list(lfe),  # FL FR FC LFE
+              at(ls, 0.6), at(rs, 0.6),                            # BL BR (Lrs, Rrs)
+              list(ls), list(rs),                                  # SL SR (Ls, Rs)
+              at(left, 0.5), at(right, 0.5),                       # TFL TFR (Vhl, Vhr)
+              at(ls, 0.4), at(rs, 0.4)]                            # TBL TBR (Lts, Rts)
+    interleaved = [value for frame in zip(*planar, strict=True) for value in frame]
+    with wave.open(str(destination), "wb") as dst:
+        dst.setnchannels(12)
+        dst.setsampwidth(2)
+        dst.setframerate(rate)
+        dst.writeframes(struct.pack(f"<{len(interleaved)}h", *interleaved))
+    return 12
 
 
 LAYOUTS = {
@@ -124,6 +174,18 @@ LAYOUTS = {
         wav_position=(0,),
         coded_order="Table 5.8 acmod 1: C",
     ),
+    # The decoder assembles a programme in Table E2.5 order - the bed, then each
+    # dependent's new locations, LFE last - and ac3cli writes its WAVs in
+    # speaker order (FL FR FC LFE BL BR SL SR TFL TFR TBL TBR), so this is where
+    # each coded channel sits in that file.
+    "714": Layout(
+        cli_name="714",
+        source="reference_51.wav",
+        wav_position=(0, 2, 1, 6, 7, 4, 5, 8, 9, 10, 11, 3),
+        coded_order=("Table E2.5: L, C, R, Ls, Rs, Lrs, Rrs, Vhl, Vhr, Lts, Rts, LFE"
+                     " (derived from the 5.1 file, see derive_714)"),
+        derive=derive_714,
+    ),
 }
 
 
@@ -133,6 +195,14 @@ class Stream(typing.NamedTuple):
     label: str  # the emitted comment
     layout: str  # a key into LAYOUTS
     encode: tuple[str, ...]  # ac3cli's argv after <in> <out>
+    # A decode VARIANT of a stream above: no bitstream of its own (the probe
+    # reuses k<reuse>Stream), only a levels array from `ac3cli decode` run with
+    # these extra arguments, in decoded_layout's channel order. This is how
+    # the §7.8 output stage - a fold, a mode - gets a row without a second
+    # copy of a bitstream in flash.
+    reuse: str = ""
+    decode: tuple[str, ...] = ()
+    decoded_layout: str = ""
 
 
 STREAMS = (
@@ -193,11 +263,53 @@ STREAMS = (
         encode=("atmos-encode", "448"),
     ),
     Stream(
+        cxx="Eac3AtmosHeight",
+        key="eac3_atmos_height",
+        label=("E-AC-3 Atmos 448 kbit/s, the objects source with three objects raised to"
+               " the ceiling and one half way (atmos_height_scene.txt) - the render"
+               " row's stream; levels are the BED's"),
+        layout="objects",
+        # The scene file is named relative to the repository; see run_stream.
+        encode=("atmos-encode", "448", "5", "tools/generators/atmos_height_scene.txt"),
+    ),
+    Stream(
         cxx="Eac3Stereo",
         key="eac3_stereo",
         label="E-AC-3 2/0 192 kbit/s, tools=all (§7.5.4 rematrixing)",
         layout="stereo",
         encode=("eac3-encode", "192", "all", "stereo"),
+    ),
+    Stream(
+        cxx="Eac3714",
+        key="eac3_714",
+        label=("E-AC-3 7.1.4 640 kbit/s, tools=all: a 5.1 bed and two dependent"
+               " substreams (k71Rear, kTopQuad)"),
+        layout="714",
+        encode=("eac3-encode", "640", "all", "714"),
+    ),
+    # The §7.8 output stage, which a player folding 5.1 to a stereo DAC runs
+    # every frame: the two 5.1 streams above decoded again through a Lo/Ro fold
+    # in line mode (dialnorm normalised), the same ac3cli options the ESP32-S3
+    # examples' CI comparison uses. No new bitstream; two stereo levels arrays.
+    Stream(
+        cxx="Ac3Fold",
+        key="ac3_fold",
+        label="the AC-3 5.1 stream folded to Lo/Ro in line mode (§7.8.1 + §5.4.2.8)",
+        layout="51",
+        encode=(),
+        reuse="ac3",
+        decode=("downmix=loro", "drcmode=line"),
+        decoded_layout="stereo",
+    ),
+    Stream(
+        cxx="Eac3Fold",
+        key="eac3_fold",
+        label="the E-AC-3 5.1 stream folded to Lo/Ro in line mode (§7.8.1 + §5.4.2.8)",
+        layout="51",
+        encode=(),
+        reuse="eac3",
+        decode=("downmix=loro", "drcmode=line"),
+        decoded_layout="stereo",
     ),
 )
 
@@ -282,6 +394,14 @@ def to_coded_order(layout: Layout, wav_values: list[float]) -> list[float]:
     return [wav_values[position] for position in layout.wav_position]
 
 
+def by_key_cxx(key: str) -> str:
+    """The generated array name (minus its k prefix) of the stream with this key."""
+    for stream in STREAMS:
+        if stream.key == key:
+            return stream.cxx
+    raise SystemExit(f"no stream with key {key}")
+
+
 def hex_array(data: bytes, indent: str = "    ") -> str:
     lines = []
     for offset in range(0, len(data), 12):
@@ -308,15 +428,34 @@ def main() -> int:
         sources = {}
         for name, layout in LAYOUTS.items():
             sources[name] = work / f"source_{name}.wav"
-            trim_wav(AUDIO / layout.source, sources[name], FRAMES)
+            (layout.derive or trim_wav)(AUDIO / layout.source, sources[name], FRAMES)
 
         streams = []
+        by_key = {stream.key: stream for stream in STREAMS}
         for stream in STREAMS:
+            decoded = work / f"{stream.key}.wav"
+            if stream.reuse:
+                # A decode variant: the reused stream must precede it in STREAMS,
+                # so its bitstream is already in `work`.
+                source_stream = by_key[stream.reuse]
+                suffix = "ac3" if source_stream.encode[0] == "encode" else "ec3"
+                coded = work / f"{stream.reuse}.{suffix}"
+                if not coded.exists():
+                    raise SystemExit(
+                        f"{stream.key}: reuses {stream.reuse}, "
+                        "which has not been encoded yet")
+                run([str(ac3cli), "decode", str(coded), str(decoded), *stream.decode])
+                layout = LAYOUTS[stream.decoded_layout or stream.layout]
+                streams.append((stream, None, to_coded_order(layout, channel_rms(decoded))))
+                continue
             layout = LAYOUTS[stream.layout]
             command, *tail = stream.encode
+            # An argument naming a file in the repository (a scene file for
+            # atmos-encode) is passed by its absolute path, so the generator
+            # can be run from any directory.
+            tail = [str(REPO / arg) if (REPO / arg).is_file() else arg for arg in tail]
             suffix = "ac3" if command == "encode" else "ec3"
             coded = work / f"{stream.key}.{suffix}"
-            decoded = work / f"{stream.key}.wav"
             run([str(ac3cli), command, str(sources[stream.layout]), str(coded), *tail])
             run([str(ac3cli), "decode", str(coded), str(decoded)])
             streams.append(
@@ -353,6 +492,20 @@ def main() -> int:
     ]
 
     for stream, data, rms in streams:
+        if data is None:
+            layout = LAYOUTS[stream.decoded_layout or stream.layout]
+            body += [
+                f"// {stream.label}: k{by_key_cxx(stream.reuse)}Stream decoded with",
+                f"// `ac3cli decode {' '.join(stream.decode)}`, {FRAMES} frames."
+                " No bitstream of its own.",
+                "// Per-channel RMS x 1e6, in the decoder's own output order",
+                f"// ({layout.coded_order}) - see LAYOUTS in the generator.",
+                f"inline constexpr std::array<std::int32_t, {len(rms)}> k{stream.cxx}Rms{{{{",
+                "    " + ", ".join(str(round(value * 1e6)) for value in rms),
+                "}};",
+                "",
+            ]
+            continue
         layout = LAYOUTS[stream.layout]
         body += [
             f"// {stream.label} - {len(data)} bytes, {FRAMES} frames.",
@@ -374,7 +527,7 @@ def main() -> int:
     ]
 
     OUTPUT.write_text("\n".join(body), encoding="utf-8", newline="\n")
-    total = sum(len(data) for _, data, _ in streams)
+    total = sum(len(data) for _, data, _ in streams if data is not None)
     print(f"wrote {OUTPUT.relative_to(REPO)} ({total} bitstream bytes)")
     return 0
 

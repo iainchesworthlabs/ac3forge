@@ -411,6 +411,15 @@
       }
     },
     {
+      "name": "config-arm-none-eabi-minimal-icount",
+      "inherits": [ "config-arm-none-eabi-minimal" ],
+      "displayName": "arm-none-eabi minimum-footprint decoder, instruction-counting clock",
+      "description": "The decoder preset above with the probe's clock on the mps2-an385's CMSDK timer instead of semihosting, for tools/checks/run_baremetal_probe.sh --icount: under QEMU -icount that timer counts instructions, deterministically, where semihosting's clock reports host time. Its own build directory so a plain run and an --icount run never share a cache.",
+      "cacheVariables": {
+        "AC3FORGE_BAREMETAL_CLOCK": "timer"
+      }
+    },
+    {
       "name": "config-arm-none-eabi-minimal-encoder",
       "inherits": [ "minimal-encoder" ],
       "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint encoder",
@@ -420,6 +429,15 @@
       "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi.toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "MinSizeRel"
+      }
+    },
+    {
+      "name": "config-arm-none-eabi-minimal-encoder-icount",
+      "inherits": [ "config-arm-none-eabi-minimal-encoder" ],
+      "displayName": "arm-none-eabi minimum-footprint encoder, instruction-counting clock",
+      "description": "The encoder preset above with the probe's clock on the mps2-an385's CMSDK timer, for tools/checks/run_baremetal_probe.sh --encoder --icount: instructions per encoded frame, deterministically. Its own build directory for the same reason the decoder's icount preset has one.",
+      "cacheVariables": {
+        "AC3FORGE_BAREMETAL_CLOCK": "timer"
       }
     },
     {
@@ -566,9 +584,19 @@
       "displayName": "arm-none-eabi bare-metal minimum-footprint decoder"
     },
     {
+      "name": "build-arm-none-eabi-minimal-icount",
+      "configurePreset": "config-arm-none-eabi-minimal-icount",
+      "displayName": "arm-none-eabi bare-metal minimum-footprint decoder, instruction-counting clock"
+    },
+    {
       "name": "build-arm-none-eabi-minimal-encoder",
       "configurePreset": "config-arm-none-eabi-minimal-encoder",
-      "displayName": "arm-none-eabi bare-metal minimum-footprint decoder"
+      "displayName": "arm-none-eabi bare-metal minimum-footprint encoder"
+    },
+    {
+      "name": "build-arm-none-eabi-minimal-encoder-icount",
+      "configurePreset": "config-arm-none-eabi-minimal-encoder-icount",
+      "displayName": "arm-none-eabi bare-metal minimum-footprint encoder, instruction-counting clock"
     },
     {
       "name": "build-linux-llvm-shared",

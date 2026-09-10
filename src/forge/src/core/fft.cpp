@@ -16,6 +16,15 @@ const internal::FftTables<static_cast<std::size_t>(kDftLength)>& tables() {
     return t;
 }
 
+// The float twiddles, built on first use like the double ones: a build whose
+// decoder never takes the float form never constructs them, and a
+// minimum-footprint decoder that only ever takes it lets --gc-sections drop
+// the double table with the double function.
+const internal::FftTables<static_cast<std::size_t>(kDftLength), float>& tables_f32() {
+    static const internal::FftTables<static_cast<std::size_t>(kDftLength), float> t;
+    return t;
+}
+
 }  // namespace
 
 void dft512(std::span<const double, kDftLength> real_in,
@@ -50,6 +59,27 @@ void dft512(std::span<const double, kDftLength> real_in,
     for (std::size_t k = 0; k < static_cast<std::size_t>(kDftLength); k += 2) {
         (internal::arch::f64x2::load(rp + k) * inv).store(rp + k);
         (internal::arch::f64x2::load(ip + k) * inv).store(ip + k);
+    }
+}
+
+void dft512(std::span<const float, kDftLength> real_in, std::span<const float, kDftLength> imag_in,
+            std::span<float, kDftLength> real_out, std::span<float, kDftLength> imag_out) {
+    // The same shape as the double form above: digit-reversed copy-in, the
+    // shared kernel, then the spec sum's 1/N. A plain loop for the scale
+    // rather than the arch seam - on the part this form exists for the seam
+    // is scalar anyway, and 1,024 multiplies are not where a frame's time
+    // goes.
+    const auto& t = tables_f32();
+    for (std::size_t n = 0; n < static_cast<std::size_t>(kDftLength); ++n) {
+        real_out[t.bitrev[n]] = real_in[n];
+        imag_out[t.bitrev[n]] = imag_in[n];
+    }
+    internal::fft_forward_bitrev<static_cast<std::size_t>(kDftLength), float, float>(t, real_out,
+                                                                                      imag_out);
+    constexpr float kInvN = 1.0F / static_cast<float>(kDftLength);
+    for (std::size_t k = 0; k < static_cast<std::size_t>(kDftLength); ++k) {
+        real_out[k] *= kInvN;
+        imag_out[k] *= kInvN;
     }
 }
 

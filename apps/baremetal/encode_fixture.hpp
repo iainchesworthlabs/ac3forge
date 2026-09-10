@@ -70,4 +70,43 @@ inline constexpr std::uint64_t kEac3Hash = 1012121234525177924ULL;
 inline constexpr std::size_t kEac3EcplBytes = 4608;
 inline constexpr std::uint64_t kEac3EcplHash = 4460190987537266377ULL;
 
+// AC-3 2/0 at 192 kbit/s - the decode probe's ac3_stereo shape seen from the
+// other side, and the layout most AC-3 encode on a small part actually is.
+// 768 bytes a frame, 4,608 for six. Only two of the PCM block's channels are
+// read: the encoder's own layout decides how many spans it takes.
+inline constexpr std::size_t kAc3StereoBytes = 4608;
+inline constexpr std::uint64_t kAc3StereoHash = 5083089856730709063ULL;
+
+// E-AC-3 2/0 at 192 kbit/s with the default tools, which is none. The same
+// layout and rate as the enhanced-coupling row above with §E3.5 off, so the
+// two together say what the tool costs - in peak bytes and, under --icount,
+// in instructions - at the same input. 768 bytes an access unit, 4,608 for six.
+inline constexpr std::size_t kEac3StereoBytes = 4608;
+inline constexpr std::uint64_t kEac3StereoHash = 13948492102593968072ULL;
+
+// E-AC-3 2/0 at 192 kbit/s with standard coupling, spectral extension and the
+// adaptive hybrid transform all in use - the tools the 5.1 row above never
+// reaches, its default being no tool at all.
+//
+// WHY 2/0, AGAIN. The same finding as the enhanced-coupling row's, with the
+// tools' own numbers: 5.1 at 256 kbit/s with the three permitted peaks at
+// 369,790 bytes on the host profile, and each on its own says which part of
+// that is whose - AHT alone 312,744, standard coupling alone 289,202,
+// spectral extension alone 205,718, against 223,020 for the plain 5.1 row.
+// AHT's per-channel six-block store and coupling's shared-channel state are
+// what a 5.1 encode with either tool cannot fit beside on an ESP32-S3 whose
+// encode build leaves 241,664 bytes in its largest free run.
+//
+// WHY THE BAND EDGES ARE PINNED. At 2/0 and 192 kbit/s the rate defaults put
+// spectral extension's start below where coupling would begin, and §E3.3.1
+// derives the coupling end from the spx start, so with both merely permitted
+// the encoder drops coupling and the frame is spx+aht - the same bytes as
+// asking for those two alone. cplbegf 0 (coupling from coefficient 37) and
+// spxbegf 7 (synthesis from the highest start code) leave a coupling region
+// between them, and `ac3cli probe` on the frame reports coupling in 6 of 6
+// blocks, spx in 6 of 6 and AHT in the syncframe. 768 bytes an access unit,
+// 4,608 for six.
+inline constexpr std::size_t kEac3ToolsBytes = 4608;
+inline constexpr std::uint64_t kEac3ToolsHash = 14780076098644567874ULL;
+
 }  // namespace ac3probe

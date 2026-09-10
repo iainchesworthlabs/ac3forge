@@ -10,6 +10,7 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -18,6 +19,8 @@
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/dsp/qmf.hpp"
+#include "ac3/internal/decode_scalar.hpp"
+#include "ac3/internal/profiling.hpp"
 #include "ac3/oba/joc_tables.hpp"
 
 namespace ac3::oba::joc {
@@ -404,20 +407,26 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
 // timeslots) compare against ts unchanged - an offset at or past the frame's
 // end simply never arrives inside it, so `previous` (or dq[0]) holds to the
 // edge, which is the only reading a shortened window leaves.
-[[nodiscard]] double interpolate(const ObjectShape& shape, double previous,
-                                 std::span<const double, kMaxDataPoints> dq, int ts, int slots) {
+// A template over the scalar so the MDCT-band path can run it in the
+// decoder's own type: at double this is what it always was, operation for
+// operation; at float (the minimum-footprint profile) it is the same ramp
+// without a software divide per (object, channel, subband) per block on the
+// single-precision FPU that profile targets.
+template <typename Scalar>
+[[nodiscard]] Scalar interpolate(const ObjectShape& shape, Scalar previous,
+                                 const std::array<Scalar, kMaxDataPoints>& dq, int ts, int slots) {
     if (!shape.steep) {
         if (shape.data_points == 1) {
-            return previous + static_cast<double>(ts + 1) * (dq[0] - previous) /
-                                  static_cast<double>(slots);
+            return previous + static_cast<Scalar>(ts + 1) * (dq[0] - previous) /
+                                  static_cast<Scalar>(slots);
         }
         const int half = slots / 2;
         if (ts < half) {
             return previous +
-                   static_cast<double>(ts + 1) * (dq[0] - previous) / static_cast<double>(half);
+                   static_cast<Scalar>(ts + 1) * (dq[0] - previous) / static_cast<Scalar>(half);
         }
-        return dq[0] + static_cast<double>(ts - half + 1) * (dq[1] - dq[0]) /
-                           static_cast<double>(slots - half);
+        return dq[0] + static_cast<Scalar>(ts - half + 1) * (dq[1] - dq[0]) /
+                           static_cast<Scalar>(slots - half);
     }
     if (ts < shape.offset_ts[0]) {
         return previous;
@@ -427,6 +436,62 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
     }
     return dq[1];
 }
+
+// §6.6.5's ramp with its per-block fractions resolved once. interpolate()
+// above divides on every call - (ts + 1) / slots, or the half-frame
+// equivalents - and the MDCT-band mixing calls it once per (object, channel,
+// subband) per block, some eleven thousand times a frame; on the
+// single-precision FPU the minimum-footprint profile targets each divide is a
+// short software sequence. At float the three fractions are formed once per
+// block and the ramp is a multiply-add, which is the same ramp to float
+// rounding. At double this is interpolate() itself, so a double
+// reconstruction is unchanged to the bit.
+template <typename Scalar>
+struct RampFractions {
+    Scalar whole{0};        // (ts + 1) / slots, the single-data-point ramp
+    Scalar first_half{0};   // (ts + 1) / half
+    Scalar second_half{0};  // (ts - half + 1) / (slots - half)
+};
+
+template <typename Scalar>
+[[nodiscard]] RampFractions<Scalar> ramp_fractions(int ts, int slots) {
+    const int half = slots / 2;
+    return RampFractions<Scalar>{
+        .whole = static_cast<Scalar>(ts + 1) / static_cast<Scalar>(slots),
+        .first_half = static_cast<Scalar>(ts + 1) / static_cast<Scalar>(half),
+        .second_half = static_cast<Scalar>(ts - half + 1) / static_cast<Scalar>(slots - half)};
+}
+
+template <typename Scalar>
+[[nodiscard]] Scalar interpolate_ramp(const ObjectShape& shape, Scalar previous, Scalar dq0,
+                                      Scalar dq1, const RampFractions<Scalar>& fraction, int ts,
+                                      int slots) {
+    if constexpr (std::is_same_v<Scalar, float>) {
+        if (!shape.steep) {
+            if (shape.data_points == 1) {
+                return previous + fraction.whole * (dq0 - previous);
+            }
+            if (ts < slots / 2) {
+                return previous + fraction.first_half * (dq0 - previous);
+            }
+            return dq0 + fraction.second_half * (dq1 - dq0);
+        }
+        if (ts < shape.offset_ts[0]) {
+            return previous;
+        }
+        if (shape.data_points == 1 || ts < shape.offset_ts[1]) {
+            return dq0;
+        }
+        return dq1;
+    } else {
+        const std::array<Scalar, kMaxDataPoints> dq = {dq0, dq1};
+        return interpolate<Scalar>(shape, previous, dq, ts, slots);
+    }
+}
+
+// The widest parameter-band count Table 50 allows, for the per-object
+// coefficient scratch the mixing loop below fills once per block.
+constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.back());
 
 // Domain::kMdctBand. Per-object band count, quantizer, sparse mode,
 // interpolation slope and data-point count - everything parse_payload can
@@ -492,7 +557,45 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
     auto& object_mdct = state.object_mdct_scratch;
     auto& x = state.synth_scratch;
 
+    // The mixing below runs in the decoder's own scalar. params.matrix is
+    // double whatever the build - it is the parsed, dequantised matrix, part
+    // of the public FrameParameters - so a float decoder narrows it ONCE per
+    // frame here rather than once per read: at 2 reads per (object, channel,
+    // subband) per block that is 23,000 narrowings a frame, each a software
+    // routine on the FPU the minimum-footprint profile targets. A double
+    // decoder reads the matrix directly, as it always did.
+    using Scalar = internal::decode_scalar_t;
+    constexpr bool kNarrowed = std::is_same_v<Scalar, float>;
+    if constexpr (kNarrowed) {
+        state.matrix_scratch.resize(params.matrix.size());
+        for (std::size_t i = 0; i < params.matrix.size(); ++i) {
+            state.matrix_scratch[i] = static_cast<float>(params.matrix[i]);
+        }
+    }
+    // One object's coefficient, from whichever copy this build reads.
+    // `base` is the object's offset into the matrix and `nbands` its band
+    // count - the same index arithmetic as FrameParameters::ObjectMatrixView,
+    // which the double branch simply is.
+    const auto coefficient = [&](FrameParameters::ObjectMatrixView view, std::size_t base,
+                                 int nbands, int data_point, int ch, int band) -> Scalar {
+        if constexpr (kNarrowed) {
+            // The cast is a no-op here and exists for the OTHER build: this
+            // lambda is not a template, so a double decoder still checks this
+            // branch, where a float would otherwise promote implicitly and
+            // -Wdouble-promotion (clang, -Werror) refuses it.
+            return static_cast<Scalar>(
+                state.matrix_scratch[base + ((static_cast<std::size_t>(data_point) *
+                                                  static_cast<std::size_t>(channels) +
+                                              static_cast<std::size_t>(ch)) *
+                                             static_cast<std::size_t>(nbands)) +
+                                     static_cast<std::size_t>(band)]);
+        } else {
+            return view.at(data_point, ch, band);
+        }
+    };
+
     for (int block = 0; block < nblocks; ++block) {
+        AC3_ZONE_SCOPED_N("joc_block");
         // --- analyze this block of the downmix, one MDCT per bed channel ---
         // Only block 0 ever reads negative indices (into the previous
         // frame's tail); every later block's window sits entirely inside
@@ -520,6 +623,7 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
         // four plus one ordinary call; mode=reference (fast_mdct false)
         // never batches, exactly as the object loop does not.
         int bed_ch = 0;
+        AC3_ZONE_BEGIN(analysis_zone, "joc_bed_analysis");
         while (bed_ch < channels) {
             if (fast_mdct && bed_ch + 4 <= channels) {
                 for (std::size_t lane = 0; lane < 4; ++lane) {
@@ -537,6 +641,7 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
             forward_512(windowed[0], bed_mdct[static_cast<std::size_t>(bed_ch)], fast_mdct);
             ++bed_ch;
         }
+        AC3_ZONE_END(analysis_zone);
 
         // §6.6.5 counts in QMF timeslots, four to a 256-sample block. Taking
         // each block's LAST timeslot keeps the smooth single-data-point case
@@ -555,6 +660,7 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
         // runs on objects that actually have a spectrum to transform.
         std::array<int, kMaxObjects> present{};
         int n_present = 0;
+        AC3_ZONE_BEGIN(mix_zone, "joc_mix");
         for (int object = 0; object < objects; ++object) {
             const auto shape = params.shape(object);
             if (!shape.present) {
@@ -574,6 +680,8 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
             // One offset walk per object per block instead of one per
             // coefficient read - see FrameParameters::ObjectMatrixView.
             const auto view = params.object_view(object);
+            const std::size_t base = params.object_offset(object);
+            const int nbands = shape.bands();
             const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
 
             // --- §6.6.6: this object's spectrum is a per-band linear
@@ -587,30 +695,48 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
             // it across those 4 bins instead of recomputing an identical
             // value 4 times; the per-bin summation itself (order, operands)
             // is untouched, so this is the same arithmetic, done less often.
-            std::array<double, kMaxChannels> m{};
-            for (int subband = 0; subband < kQmfSubbands; ++subband) {
-                const int band = mapping[static_cast<std::size_t>(subband)];
+            // The two data points of every (channel, band), read once per
+            // object per block rather than once per subband: a band spans
+            // several subbands, and the index arithmetic behind each read
+            // cost more than the ramp it fed. The values are the same reads.
+            std::array<std::array<Scalar, kMaxChannels>, kMaxParameterBands> dq0{};
+            std::array<std::array<Scalar, kMaxChannels>, kMaxParameterBands> dq1{};
+            for (int band = 0; band < nbands; ++band) {
+                const auto ub = static_cast<std::size_t>(band);
                 for (int ch = 0; ch < channels; ++ch) {
-                    const std::array<double, kMaxDataPoints> dq = {
-                        view.at(0, ch, band),
-                        shape.data_points > 1 ? view.at(1, ch, band) : view.at(0, ch, band)};
+                    const auto uc = static_cast<std::size_t>(ch);
+                    dq0[ub][uc] = coefficient(view, base, nbands, 0, ch, band);
+                    dq1[ub][uc] = shape.data_points > 1
+                                      ? coefficient(view, base, nbands, 1, ch, band)
+                                      : dq0[ub][uc];
+                }
+            }
+            const RampFractions<Scalar> fraction = ramp_fractions<Scalar>(ts, slots);
+            const std::size_t previous_base =
+                static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) *
+                static_cast<std::size_t>(kQmfSubbands);
+            std::array<Scalar, kMaxChannels> m{};
+            for (int subband = 0; subband < kQmfSubbands; ++subband) {
+                const auto band = static_cast<std::size_t>(mapping[static_cast<std::size_t>(subband)]);
+                for (int ch = 0; ch < channels; ++ch) {
+                    const auto uc = static_cast<std::size_t>(ch);
+                    if (!has_ramp) {
+                        m[uc] = shape.data_points > 1 ? dq1[band][uc] : dq0[band][uc];
+                        continue;
+                    }
                     const std::size_t previous_index =
-                        (static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) +
-                         static_cast<std::size_t>(ch)) *
-                            static_cast<std::size_t>(kQmfSubbands) +
+                        previous_base + uc * static_cast<std::size_t>(kQmfSubbands) +
                         static_cast<std::size_t>(subband);
-                    const double previous =
-                        has_ramp ? static_cast<double>(state.previous_matrix[previous_index])
-                                 : dq[0];
-                    m[static_cast<std::size_t>(ch)] =
-                        has_ramp ? interpolate(shape, previous, dq, ts, slots)
-                                 : dq[static_cast<std::size_t>(shape.data_points - 1)];
+                    const Scalar previous =
+                        static_cast<Scalar>(state.previous_matrix[previous_index]);
+                    m[uc] = interpolate_ramp<Scalar>(shape, previous, dq0[band][uc], dq1[band][uc],
+                                                     fraction, ts, slots);
                 }
                 for (int bin = subband * 4; bin < subband * 4 + 4; ++bin) {
-                    double sum = 0.0;
+                    Scalar sum{0};
                     for (int ch = 0; ch < channels; ++ch) {
                         sum += m[static_cast<std::size_t>(ch)] *
-                               static_cast<double>(bed_mdct[static_cast<std::size_t>(ch)]
+                               static_cast<Scalar>(bed_mdct[static_cast<std::size_t>(ch)]
                                                            [static_cast<std::size_t>(bin)]);
                     }
                     object_mdct[static_cast<std::size_t>(object)][static_cast<std::size_t>(bin)] =
@@ -618,6 +744,7 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
                 }
             }
         }
+        AC3_ZONE_END(mix_zone);
 
         // --- synthesize, same overlap-add eac3_decoder.cpp's own channel
         // reconstruction uses --- four present objects at a time via
@@ -629,6 +756,7 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
         // (mode=reference) always takes the one-at-a-time branch below, at
         // every present object, exactly as it always has.
         int idx = 0;
+        AC3_ZONE_BEGIN(synthesis_zone, "joc_synthesis");
         while (idx < n_present) {
             if (fast_imdct && idx + 4 <= n_present) {
                 const int o0 = present[static_cast<std::size_t>(idx)];
@@ -663,6 +791,7 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
                 history[static_cast<std::size_t>(n)] = xo[static_cast<std::size_t>(256 + n)];
             }
         }
+        AC3_ZONE_END(synthesis_zone);
     }
 
     for (int ch = 0; ch < channels; ++ch) {
@@ -682,6 +811,8 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
         // One offset walk per object, not one per (channel, subband) -
         // see FrameParameters::ObjectMatrixView.
         const auto wb_view = params.object_view(object);
+        const std::size_t wb_base = params.object_offset(object);
+        const int wb_bands = shape.bands();
         for (int ch = 0; ch < channels; ++ch) {
             for (int subband = 0; subband < kQmfSubbands; ++subband) {
                 const std::size_t index =
@@ -689,10 +820,10 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
                      static_cast<std::size_t>(ch)) *
                         static_cast<std::size_t>(kQmfSubbands) +
                     static_cast<std::size_t>(subband);
-                state.previous_matrix[index] =
-                    static_cast<recon_scalar_t>(shape.present ? wb_view.at(shape.data_points - 1, ch,
-                                               mapping[static_cast<std::size_t>(subband)])
-                                  : 0.0);
+                state.previous_matrix[index] = static_cast<recon_scalar_t>(
+                    shape.present ? coefficient(wb_view, wb_base, wb_bands, shape.data_points - 1,
+                                                ch, mapping[static_cast<std::size_t>(subband)])
+                                  : Scalar{0});
             }
         }
     }

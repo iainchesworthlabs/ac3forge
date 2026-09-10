@@ -72,12 +72,36 @@ else()
     add_executable(ac3probe probe.cpp main.cpp)
 endif()
 
+# The stage-timer backend's application half, in EVERY build of the probe and
+# not only the ones configured with AC3FORGE_STAGE_TIMERS: a library built
+# without the option never calls it, --gc-sections drops it, and the probe
+# then prints stage_timers=off instead of a breakdown. Keeping it
+# unconditional means the two builds differ in nothing but the library's
+# include path, which is what makes their timings comparable.
+target_sources(ac3probe PRIVATE stage_timers.cpp)
+
 # ac3probe::now_us(). One implementation per platform, chosen here rather than
 # by a conditional in probe.cpp - the host has std::chrono, newlib on the
 # mps2-an385 has semihosting's std::clock, and ESP-IDF has esp_timer (that third
 # one lives with its own app, under platform/esp32s3/).
+#
+# The mps2-an385 has two: semihosting (the default, host time - shape only,
+# see platform/baremetal/clock.cpp) and the board's 25 MHz CMSDK timer, which
+# under QEMU's -icount counts instructions (platform/baremetal/clock_timer.cpp,
+# read back by run_baremetal_probe.sh --icount). A cache variable rather than
+# a conditional in either file, per the platform-tree rule.
+set(AC3FORGE_BAREMETAL_CLOCK "semihosting" CACHE STRING
+    "Clock behind ac3probe::now_us() on the mps2-an385: semihosting (host time) or timer (CMSDK TIMER0; instructions under QEMU -icount)")
+set_property(CACHE AC3FORGE_BAREMETAL_CLOCK PROPERTY STRINGS semihosting timer)
 if(AC3FORGE_BAREMETAL_PLATFORM STREQUAL "baremetal")
-    target_sources(ac3probe PRIVATE platform/baremetal/clock.cpp)
+    if(AC3FORGE_BAREMETAL_CLOCK STREQUAL "semihosting")
+        target_sources(ac3probe PRIVATE platform/baremetal/clock.cpp)
+    elseif(AC3FORGE_BAREMETAL_CLOCK STREQUAL "timer")
+        target_sources(ac3probe PRIVATE platform/baremetal/clock_timer.cpp)
+    else()
+        message(FATAL_ERROR "AC3FORGE_BAREMETAL_CLOCK must be semihosting or timer, not "
+                            "'${AC3FORGE_BAREMETAL_CLOCK}'")
+    endif()
 else()
     target_sources(ac3probe PRIVATE platform/host/clock.cpp)
 endif()

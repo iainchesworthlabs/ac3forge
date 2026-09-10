@@ -371,6 +371,58 @@ Each fits alone; no two fit together. A build offering both would be offering so
 cannot run, so the option refuses the combination rather than letting it arrive as `out_of_memory`
 on a device. Sequential use is fine — tear one down, build the other.
 
+### What the encode direction costs
+
+Six rows since 2026-09-10, each six frames of the same synthesised programme through one
+encoder, and each printing its peak heap and its time per frame on the terms the decode probe
+uses (`<row>.us_per_frame`, `realtime_permille` against a 32 ms frame). Peaks are the same on
+the `arm-none-eabi` leg and the ESP32-S3 under QEMU; the host's are about one per cent higher
+for its wider pointers. Instructions per frame are the `--encoder --icount` leg's: Thumb-2 on
+the Cortex-M3, `-Os`, soft float throughout, held to the ceilings in
+`run_baremetal_probe.sh`'s `ICOUNT_CEILING_ENCODE` table.
+
+| Row | Peak heap | Allocations per frame | Instructions per frame | Ceiling | Decode row's count |
+|---|---:|---:|---:|---:|---:|
+| `ac3_stereo` 2/0, 192 kbit/s | 82,367 | 34 | 12,623,000 | 16,000,000 | 3,548,000 |
+| `eac3_stereo` 2/0, 192 kbit/s, no tools | 118,962 | 84 | 24,200,000 | 30,000,000 | 4,851,000 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 195,321 | 47 | 24,486,000 | 31,000,000 | - |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 192,573 | 91 | 82,975,000 | 104,000,000 | 28,861,000 |
+| `ac3` 5.1, 448 kbit/s | 162,602 | 67 | 34,286,000 | 43,000,000 | 10,224,000 |
+| `eac3` 5.1, 384 kbit/s | 220,608 | 180 | 62,590,000 | 78,000,000 | 12,928,000 |
+
+Three to five times the decode row's count for the same layout, and the reason is not the
+encoders' search: it is that both encoders are `double` throughout, so on a leg with no FPU
+every operation is a software call, where the decode path has been `float` under this profile
+since 2026-09-09. On an ESP32-S3 the same arithmetic is the mask ROM's software floating point,
+the cost that had a 5.1 E-AC-3 *decode* at 78.8 ms before its conversion; the board figure for
+the encoders is the next hardware run's, and the [ESP32-S3 page](platforms/esp32.md#encoding)
+says what to expect from it.
+
+`eac3_tools` is the row that reaches the coupling, spectral-extension and AHT encoders at all:
+the 5.1 row's default is no tool. It is 2/0 with its band edges pinned (`cplbegf` 0, `spxbegf`
+7), and `encode_fixture.hpp` has the two findings behind that shape, with the host profile's
+numbers:
+
+| Shape | Peak heap (host) | Fits an ESP32-S3's encode build (241,664-byte largest free run)? |
+|---|---:|---|
+| 5.1 at 256 kbit/s, spx alone | 205,718 | Yes |
+| 5.1 at 256 kbit/s, standard coupling alone | 289,202 | No |
+| 5.1 at 256 kbit/s, AHT alone | 312,744 | No |
+| 5.1 at 256 kbit/s, all three | 369,790 | No |
+| 5.1 at 384 kbit/s, §E3.5 enhanced coupling | 343,483 | No (the ecpl row's own finding) |
+| 7.1.4 at 640 kbit/s through `AccessUnitEncoder` (a bed and two dependents, 14 coded channels) | 601,954 | No - three encoders resident at once, 416 allocations a frame |
+| The Atmos object encoder | about 300,000 | No, and it is not in the profile |
+
+And at 2/0 with both merely permitted, the rate defaults start spectral extension below where
+coupling would begin and §E3.3.1 then drops coupling, so the frame is spx + AHT - the pinned
+edges are what keep all three live, which `ac3cli probe` confirms on the frame. The Atmos
+figure is a bench estimate rather than a probe row: `ac3membench` shows `AtmosEncoder`
+constructing with 138,743 bytes live against the plain E-AC-3 encoder's 58,912 and its first
+frame allocating what that encoder's does, which puts it about 80 KB above the 5.1 row - and
+its per-frame QMF analysis of the bed and every object is `double` as well. What the part can
+encode is therefore one substream at a time, 5.1 with no tool or 2/0 with any, in the
+configurations the six rows are.
+
 Two things about the probe differ from the decode one, and both follow from the direction:
 
 - **The input is synthesised.** A decoder's fixture is a 10,752-byte bitstream; an encoder's is the
@@ -385,7 +437,7 @@ Two things about the probe differ from the decode one, and both follow from the 
   FPU at all.
 
 Steady-state churn is **78 allocations per frame for AC-3 and 249 for E-AC-3**, against the
-decoders' 43–126. That gap is in the API rather than the implementation: both encoders return
+decoders' 1–31. That gap is in the API rather than the implementation: both encoders return
 `std::vector<std::byte>` from `encode_frame`, and there is no `encode_frame_into` to match
 `decode_frame_into`. It is the same zero-heap gap [above](#gaps) records for the decode side, wider
 here, and it is the thing to close before this profile is fit for a real-time encode.
@@ -395,12 +447,14 @@ CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`)
 
 ### Gaps
 
-Two of PF7's requirements are not met, and are recorded here rather than half-enforced. The
-third, a float32-only path, is met for the decode path; its scope is described below.
+One of PF7's requirements is not met, and is recorded here rather than half-enforced: no heap
+traffic in the decode loop. The float32-only path is met for the decode path, and the retained
+scratch below has since been closed; both are kept here with what they cost and what closed them.
 
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
-(`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
-the probe uses) and no frame leaks (what stays live after teardown is the bounded scratch below,
+(`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, and the
+`_by_block` forms hand the decoder's own storage over a block at a time, which is what the probe
+uses) and no frame leaks (what stays live after teardown is the bounded scratch below,
 not per-frame growth), but the steady state is **3 allocations per frame for AC-3, 12 for
 E-AC-3 and for E-AC-3 with §E3.5 enhanced coupling, 10 for 2/0, and 41 for Atmos with
 objects**. The per-block geometry vectors inside the decoders no longer account for any of it —
@@ -412,16 +466,22 @@ a design change, not a build option. The runner gates the number at 100 for ever
 no exemption ([the footprint table](performance-trend.md#minimum-footprint-decoder) has the
 detail), so the distance from zero cannot grow while the gap is open.
 
-**Scratch that is never released — newly visible, and bounded.** 34,232 bytes are still live
-when the probe finishes, after every decoder it made has been destroyed: `eac3_tools.cpp`'s
-32,768-byte `EcplSpectrumScratch`, its 1,440-byte bin-angle vector, and 24 bytes of
-`__cxa_thread_atexit` registration for the two. Both are `thread_local`, deliberately, so that
-enhanced coupling neither allocates per call nor puts 32 KB on the stack; on a target whose only
-thread never exits the destructor that would release them never runs. This is not the heap gap
-above — it does not grow, and it is paid once — but on an ESP32-S3 it is 32 KB of 341,760 bytes
-of internal SRAM held for the life of the decoding task. The probe reports it as
-`heap.retained_bytes` and both runners gate it. It could not be measured until a fixture reached
-§E3.5, which none did before the enhanced-coupling stream was added.
+**Scratch that was never released — closed.** `eac3_tools.cpp` kept enhanced coupling's
+32,768-byte `EcplSpectrumScratch` and its 1,440-byte bin-angle vector in `thread_local` storage,
+so §E3.5 neither allocates per call nor puts 32 KB on the stack. On a target whose only thread
+never exits, the destructor that would release them never runs, and 34,232 bytes stayed live for
+the life of the decoding task. That was bounded and paid once, so it was never the heap gap above
+— but on an ESP32-S3 it was 32 KB of internal SRAM that object reconstruction then had nowhere to
+fit into.
+
+`ac3::eac3::release_ecpl_scratch()` hands them back and the next call rebuilds what it needs. The
+probe calls it between fixtures, and retained bytes at exit went from 34,232 to 24, and to **12**
+once the bin-angle vector became a stack array. What is left is one `__cxa_thread_atexit`
+registration record, for the pointer to the spectrum scratch — the one `thread_local` the library
+still declares, and 23,552 bytes on this profile in its float form rather than the 32,768 above.
+Both runners gate it at 1,024 — deliberately tight, because nothing here grows a little: either
+the scratch is handed back or it is not, and the difference is five figures.
+[The ESP32-S3 page](platforms/esp32.md#objects) has what it unblocked.
 
 **A float32-only path — met for the decode path.** `src/forge/src/internal/scalar/`'s
 seam carries `decode_scalar_t`: `float` under this profile, `double` by default in every other
@@ -429,6 +489,22 @@ build, and selectable there with `-DAC3FORGE_DECODE_SCALAR=float`. Both
 decoders' coefficient stores, transform scratch and overlap-add history follow it, and
 `imdct512_windowed`/`imdct256_pair_windowed` have float32 overloads built from the same templated
 body as the double ones, so §7.9.4.1 is implemented once.
+
+For a while that was the buffers only. The arithmetic between the bitstream and them - mantissa
+dequantisation and the 2^-exp scale, dither, coupling and spectral-extension coordinates,
+decoupling, the whole of spectral-extension synthesis, the AHT's dequantiser and six-point
+inverse, and JOC's object mixing - stayed `double` and was narrowed at the store. On a desktop
+that costs nothing; on the ESP32-S3's single-precision FPU every one of those operations was a
+call into the ROM's software routines, and a board profile on 2026-09-09 found them to be 80% of
+a 5.1 E-AC-3 decode ([the ESP32-S3 page](platforms/esp32.md#timing) has the stage table). Those
+paths now run in `decode_scalar_t` too, through templates whose `<double>` instantiations are the
+exported functions the ordinary build always called, so its arithmetic is unchanged. What still
+runs in `double` on this profile is stated rather than hidden: the per-block DRC gain, and the
+output stage's gains and mix coefficients - the stage's per-sample arithmetic, the dialnorm
+scale, the folds, the Hilbert phase shift and RF mode's protection, followed on 2026-09-10.
+Enhanced coupling's reconstruction followed in a second pass - its routines
+are shared with the encoder, so they exist in both scalars now, the double forms being the
+encoder's - and with it the last of the decode path is in `decode_scalar_t`.
 
 No gold-reference number moved, because the choice is per-profile rather than global. The
 ordinary build's `decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite

@@ -10,29 +10,18 @@
 #include <memory>
 #include <numbers>
 #include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "ac3/core/aht_tables.hpp"
+#include "ac3/core/exponents.hpp"
 #include "ac3/core/fft.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/window.hpp"
 #include "ac3/internal/profiling.hpp"
 
 namespace ac3::eac3 {
-
-namespace {
-
-// Bin-indexed angles between the band-to-bin conversion and the per-bin
-// chaos add. Function-local static rather than a per-call vector: ecpl_angles
-// runs once per coupled channel per block, and this is the only allocation on
-// that path.
-std::vector<double>& ecpl_bin_angle_scratch() {
-    thread_local std::vector<double> scratch;
-    return scratch;
-}
-
-}  // namespace
 
 namespace {
 
@@ -57,6 +46,26 @@ struct AhtKernel {
 // fail.
 // NOLINTNEXTLINE(cert-err58-cpp,bugprone-throwing-static-initialization)
 const AhtKernel kKernel{};
+
+// The same kernel narrowed once to float, for the float inverse below: the
+// double table stays the source, so the two agree to a rounding rather than
+// to two separate evaluations of cos.
+struct AhtKernelF {
+    std::array<std::array<float, kBlocksPerFrameSize>, kBlocksPerFrameSize> cell{};
+
+    AhtKernelF() {
+        for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+            for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
+                cell[j][m] = static_cast<float>(kKernel.cell[j][m]);
+            }
+        }
+    }
+};
+
+// Reads kKernel, which is initialised above it in this translation unit;
+// nothing here can throw either.
+// NOLINTNEXTLINE(cert-err58-cpp,bugprone-throwing-static-initialization)
+const AhtKernelF kKernelF{};
 
 // §E3.4.5's synthesis weights. The standard writes
 //     C(k,m) = 2 * sum_j R_j X(k,j) cos(j(2m+1)pi/12),  R_j = 1, R_0 = 1/2
@@ -103,6 +112,21 @@ void aht_inverse(std::span<const double, kBlocksPerFrameSize> coefficients,
     }
 }
 
+void aht_inverse(std::span<const float, kBlocksPerFrameSize> coefficients,
+                 std::span<float, kBlocksPerFrameSize> out) {
+    // The same sum in the same order, in float throughout. kWj narrowed once
+    // here rather than per product.
+    const auto w0 = static_cast<float>(kW0);
+    const auto wj = static_cast<float>(kWj);
+    for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
+        float sum = 0.0F;
+        for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+            sum += (j == 0 ? w0 : wj) * coefficients[j] * kKernelF.cell[j][m];
+        }
+        out[m] = sum;
+    }
+}
+
 int aht_bin_bits(int hebap) {
     if (hebap <= 0) {
         return 0;
@@ -113,13 +137,40 @@ int aht_bin_bits(int hebap) {
     return 6 * aht_mantissa_bits(hebap);
 }
 
+namespace {
+
+// Table E3.14's 96 values, each the std::exp2 the function below used to
+// evaluate on every call. Evaluated once at startup instead: the notch runs
+// at every seam of every extended channel of every block, and on the
+// single-precision FPU the minimum-footprint profile targets a double exp2 is
+// a software routine of some hundreds of cycles. Same expression, same
+// values, so every existing double path reads identically through it.
+struct SpxAttenuationTable {
+    std::array<std::array<double, 3>, kSpxAttenCodes> cell{};
+
+    SpxAttenuationTable() {
+        for (int code = 0; code < kSpxAttenCodes; ++code) {
+            for (int tap = 0; tap < 3; ++tap) {
+                cell[static_cast<std::size_t>(code)][static_cast<std::size_t>(tap)] =
+                    std::exp2(-static_cast<double>(code + 1) * static_cast<double>(tap + 1) /
+                              15.0);
+            }
+        }
+    }
+};
+
+// std::exp2 of a finite argument cannot throw; nothing here allocates.
+// NOLINTNEXTLINE(cert-err58-cpp,bugprone-throwing-static-initialization)
+const SpxAttenuationTable kSpxAttenuation{};
+
+}  // namespace
+
 double spx_attenuation(int spxattencod, int index) {
     assert(spxattencod >= 0 && spxattencod < kSpxAttenCodes);
     // The table's three stored taps are the first three of a symmetric five,
     // so an index past the middle mirrors back.
     const int tap = index < 3 ? index : kSpxAttenTaps - 1 - index;
-    return std::exp2(-static_cast<double>(spxattencod + 1) *
-                     static_cast<double>(tap + 1) / 15.0);
+    return kSpxAttenuation.cell[static_cast<std::size_t>(spxattencod)][static_cast<std::size_t>(tap)];
 }
 
 namespace {
@@ -136,9 +187,13 @@ void spx_apply_notch_impl(std::span<Scalar> synth, int startmant, const BandLayo
             if (at < 0 || at >= static_cast<int>(synth.size())) {
                 continue;
             }
-            synth[static_cast<std::size_t>(at)] = static_cast<Scalar>(
-                static_cast<double>(synth[static_cast<std::size_t>(at)]) *
-                spx_attenuation(spxattencod, tap));
+            // In the spectrum's own type: at double this is the product it
+            // always was; at float it is one float multiply by the
+            // attenuation narrowed, rather than a promotion, a double
+            // multiply and a narrowing back.
+            synth[static_cast<std::size_t>(at)] =
+                synth[static_cast<std::size_t>(at)] *
+                static_cast<Scalar>(spx_attenuation(spxattencod, tap));
         }
     };
     notch(startmant);
@@ -162,21 +217,13 @@ void spx_apply_notch(std::span<float> synth, int startmant, const BandLayout& ba
 }
 
 double spx_noise_ratio(int band_start, int band_size, int endmant, int blend) {
-    const double centre = band_start + 0.5 * band_size;
-    const double ratio = centre / static_cast<double>(endmant) - static_cast<double>(blend) / 32.0;
-    return std::clamp(ratio, 0.0, 1.0);
+    return spx_noise_ratio_as<double>(band_start, band_size, endmant, blend);
 }
 
-double SpxNoise::next() {
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    // sqrt(3): a uniform distribution on [-a, a] has variance a^2/3, so this
-    // is the radius that makes the mapped value unit-variance.
-    constexpr double kRadius = 1.7320508075688772;
-    const double unit = static_cast<double>(state) / static_cast<double>(0xFFFFFFFFU);  // [0,1]
-    return (unit * 2.0 - 1.0) * kRadius;
-}
+// sqrt(3): a uniform distribution on [-a, a] has variance a^2/3, so that is
+// the radius that makes the mapped value unit-variance - see next_as() in
+// the header, which this is at double.
+double SpxNoise::next() { return next_as<double>(); }
 
 std::span<const int> aht_gaq_gains(int gaqmod) {
     // Table E3.3. Mode 1's gains reach only to hebap 11; modes 2 and 3 reach
@@ -251,32 +298,9 @@ AhtMantissaCode aht_quantize_mantissa(double value, int mantissa_bits, int gain)
 
 double aht_dequantize_mantissa(std::uint32_t code, std::uint32_t escape, bool has_escape,
                                int mantissa_bits, int gain) {
-    const auto sign_extend = [](std::uint32_t raw, int bits) {
-        const auto sign_bit = static_cast<std::uint32_t>(1) << (bits - 1);
-        return static_cast<int>((raw ^ sign_bit) - sign_bit);
-    };
-
-    if (gain == 1) {
-        const int levels = (1 << mantissa_bits) - 1;
-        return 2.0 * sign_extend(code, mantissa_bits) / levels;
-    }
-
-    const int small_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2;
-    const int large_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits;
-    const int small_half = 1 << (small_bits - 1);
-    const double dead_zone = 1.0 / gain;
-    const double large_step =
-        gain == 2 ? 1.0 / ((1 << (mantissa_bits - 1)) - 1)
-                  : 3.0 / ((1 << (mantissa_bits + 1)) - 2);
-
-    if (!has_escape) {
-        return static_cast<double>(sign_extend(code, small_bits)) / (small_half * gain);
-    }
-
-    // The mirror image of quantize's `code = value >= 0.0 ? k : -k - 1`.
-    const int large_code = sign_extend(escape, large_bits);
-    const int k = large_code >= 0 ? large_code : -large_code - 1;
-    return (large_code >= 0 ? 1.0 : -1.0) * (dead_zone + k * large_step);
+    // The header's template at double, operation for operation what this
+    // function computed before it existed.
+    return aht_dequantize_mantissa_as<double>(code, escape, has_escape, mantissa_bits, gain);
 }
 
 int aht_bin_gaq_bits(std::span<const double, kBlocksPerFrameSize> values,
@@ -433,16 +457,22 @@ constexpr std::array<std::pair<int, int>, 31> kEcplAmpTab = {{
     {5, 0x10}, {6, 0x1b}, {6, 0x17}, {6, 0x13}, {6, 0x10}, {7, 0x1b}, {7, 0x17},
 }};
 
-}  // namespace
-
-double decode_ecplamp(int ecplamp) {
+// Table E3.10 in the caller's scalar: mant/32, then 2^-exp, both exact in
+// either type, so the float form is the double one narrowed and the double
+// form is the std::ldexp this used to call, value for value.
+template <typename Scalar>
+Scalar decode_ecplamp_as(int ecplamp) {
     assert(ecplamp >= 0 && ecplamp <= 31);
     if (ecplamp == 31) {
-        return 0.0;
+        return Scalar{0};
     }
     const auto [exp, mant] = kEcplAmpTab[static_cast<std::size_t>(ecplamp)];
-    return std::ldexp(static_cast<double>(mant) / 32.0, -exp);
+    return static_cast<Scalar>(mant) / Scalar{32} * exponent_scale<Scalar>(exp);
 }
+
+}  // namespace
+
+double decode_ecplamp(int ecplamp) { return decode_ecplamp_as<double>(ecplamp); }
 
 int quantize_ecplamp(double value) {
     if (!(value > 0.0)) {
@@ -525,15 +555,50 @@ const Xcos3Table& xcos3_table() {
 // It's called from both the encoder and decoder's hot paths though, so
 // heap-allocating per call would trade the stack-size warning for real
 // allocation churn; a thread_local reused buffer avoids both.
-struct EcplSpectrumScratch {
-    std::array<double, 512> x_prev{};
-    std::array<double, 512> x_curr{};
-    std::array<double, 512> x_next{};
-    std::array<double, 512> pcm{};
-    std::array<double, 512> pcm_real{};
-    std::array<double, 512> pcm_imag{};
-    std::array<double, 512> zr{};
-    std::array<double, 512> zi{};
+//
+// One scratch per scalar (roadmap PF7's float32 gap): the double one is the
+// encoder's and a double decoder's, the float one a float decoder's. The
+// float one also carries the tables its transforms read - the analysis
+// window, the xcos3/xsin3 twiddle and §3.5.5.4's y - narrowed once from the
+// double tables on construction. They live here rather than as statics of
+// their own so that a build which never takes the float form (every hosted
+// one) carries no copy, and one that does (the minimum-footprint profile,
+// whose internal SRAM is the scarce thing) holds them only while enhanced
+// coupling is in use and hands them back with the rest of the scratch.
+template <typename Scalar>
+struct EcplTables {};
+
+template <>
+struct EcplTables<float> {
+    std::array<float, 512> window{};
+    std::array<float, 512> cos3{};
+    std::array<float, 512> sin3{};
+    std::array<float, 256> y{};
+
+    EcplTables() {
+        const auto& xcos3 = xcos3_table();
+        for (std::size_t i = 0; i < 512; ++i) {
+            window[i] = static_cast<float>(kAnalysisWindow[i]);
+            cos3[i] = static_cast<float>(xcos3.cos[i]);
+            sin3[i] = static_cast<float>(xcos3.sin[i]);
+        }
+        const auto& y_table = ecpl_y().value;
+        for (std::size_t m = 0; m < 256; ++m) {
+            y[m] = static_cast<float>(y_table[m]);
+        }
+    }
+};
+
+template <typename Scalar>
+struct EcplSpectrumScratch : EcplTables<Scalar> {
+    std::array<Scalar, 512> x_prev{};
+    std::array<Scalar, 512> x_curr{};
+    std::array<Scalar, 512> x_next{};
+    std::array<Scalar, 512> pcm{};
+    std::array<Scalar, 512> pcm_real{};
+    std::array<Scalar, 512> pcm_imag{};
+    std::array<Scalar, 512> zr{};
+    std::array<Scalar, 512> zi{};
 };
 
 // The storage is on the heap and only the POINTER is thread_local. The reason
@@ -554,61 +619,119 @@ struct EcplSpectrumScratch {
 // thread that actually decodes enhanced coupling. std::unique_ptr rather than a
 // raw pointer so it is released at thread exit where there is one.
 //
-// On a bare-metal target there is not one. apps/baremetal's probe measures
-// 34,232 bytes still live when it finishes - this 32,768, the 1,440-byte
-// ecpl_bin_angle_scratch vector above, and 24 bytes of __cxa_thread_atexit
-// registration for the two of them - because the only thread never exits, so
-// the destructor that would release them never runs. That is retention, not a
-// leak: it is bounded, paid once, and the point of caching it. It is still 32 KB
-// of an ESP32-S3's 341,760 bytes of internal SRAM held for the life of the task,
-// which is why the probe reports it as its own number (heap.retained_bytes)
-// against its own ceiling rather than folding it into the peak.
+// On a bare-metal target there is not one. apps/baremetal's probe measured
+// 34,232 bytes still live when it finished - the double scratch's 32,768, a
+// 1,440-byte bin-angle vector that has since become a stack array, and the
+// __cxa_thread_atexit registrations for them - because the only thread never
+// exits, so the destructor that would release them never runs. That is
+// retention, not a leak: it is bounded, paid once, and the point of caching
+// it. It is still 24-32 KB of an ESP32-S3's 341,760 bytes of internal SRAM
+// held for the life of the task, which is why the probe reports it as its own
+// number (heap.retained_bytes) against its own ceiling rather than folding it
+// into the peak - and why release_ecpl_scratch() below exists.
 //
 // The three properties the previous comment was protecting are all kept: no
 // 32 KB stack frame (PREfast C6262, alert #64), no allocation per call, and no
 // sharing between threads.
-std::unique_ptr<EcplSpectrumScratch>& ecpl_spectrum_scratch_slot() {
-    static thread_local std::unique_ptr<EcplSpectrumScratch> scratch;
+// Whether this thread has ever built the scratch of a given scalar. A plain
+// bool, which has no destructor and so registers nothing: release below
+// consults it BEFORE touching the slot, because reaching a thread_local with a
+// destructor for the first time registers it with __cxa_thread_atexit, and on
+// a bare-metal target that registration is the retained byte count the probe
+// reports. A double decoder never builds the float scratch and a float one
+// never builds the double, and neither should acquire the other's record by
+// releasing it.
+template <typename Scalar>
+bool& ecpl_scratch_ever_built() {
+    static thread_local bool built = false;
+    return built;
+}
+
+template <typename Scalar>
+std::unique_ptr<EcplSpectrumScratch<Scalar>>& ecpl_spectrum_scratch_slot() {
+    static thread_local std::unique_ptr<EcplSpectrumScratch<Scalar>> scratch;
     return scratch;
 }
 
-EcplSpectrumScratch& ecpl_spectrum_scratch() {
-    auto& scratch = ecpl_spectrum_scratch_slot();
+template <typename Scalar>
+EcplSpectrumScratch<Scalar>& ecpl_spectrum_scratch() {
+    auto& scratch = ecpl_spectrum_scratch_slot<Scalar>();
     // Built on first use rather than on first entry, so release_ecpl_scratch()
     // below can put it back and the next call rebuilds it. A null check per
-    // call against 32 KB that would otherwise be resident for the life of the
-    // task.
+    // call against 24-32 KB that would otherwise be resident for the life of
+    // the task.
     if (!scratch) {
-        scratch = std::make_unique<EcplSpectrumScratch>();
+        scratch = std::make_unique<EcplSpectrumScratch<Scalar>>();
+        ecpl_scratch_ever_built<Scalar>() = true;
     }
     return *scratch;
 }
 
-}  // namespace
-
-void release_ecpl_scratch() {
-    ecpl_spectrum_scratch_slot().reset();
-    // The bin-angle vector is the other half of the 34,232 bytes the probe
-    // reports retained. Clearing it is not enough - a vector that has been
-    // resized keeps its buffer - so this swaps against an empty one, which is
-    // the idiom that actually returns the storage.
-    std::vector<double>().swap(ecpl_bin_angle_scratch());
+// cos(pi a) and sin(pi a) for a in [-1, 1], in float, without libm. The
+// quadrant nearest 2a is taken exactly; the remainder r, at most an eighth of
+// a turn, goes through the Taylor series to degree 9 (sine) and 8 (cosine),
+// whose truncation errors at |r| = pi/4 are 1.7e-9 and 2.4e-8 - under float's
+// own rounding, and three orders below the pi/32 the angles are transmitted
+// at. The double form of ecpl_channel_coefficients keeps std::cos/std::sin;
+// this exists because on the single-precision FPU the minimum-footprint
+// profile targets a double sine is a software routine of a thousand cycles
+// or so, and the reconstruction ran two of them per bin of every coupled
+// channel of every block (docs/platforms/esp32.md).
+void sincos_pi(float a, float& sine, float& cosine) {
+    const float twice = a * 2.0F;
+    const int q = static_cast<int>(twice + (twice >= 0.0F ? 0.5F : -0.5F));
+    const float r = (a - static_cast<float>(q) * 0.5F) * std::numbers::pi_v<float>;
+    const float r2 = r * r;
+    const float sr =
+        r * (1.0F - r2 * (1.0F / 6.0F -
+                          r2 * (1.0F / 120.0F - r2 * (1.0F / 5040.0F - r2 * (1.0F / 362880.0F)))));
+    const float cr =
+        1.0F - r2 * (0.5F - r2 * (1.0F / 24.0F - r2 * (1.0F / 720.0F - r2 * (1.0F / 40320.0F))));
+    switch (((q % 4) + 4) % 4) {
+        case 0:
+            sine = sr;
+            cosine = cr;
+            break;
+        case 1:
+            sine = cr;
+            cosine = -sr;
+            break;
+        case 2:
+            sine = -sr;
+            cosine = -cr;
+            break;
+        default:
+            sine = -cr;
+            cosine = sr;
+            break;
+    }
 }
 
-void ecpl_channel_spectrum(std::span<const double, 256> prev_mant,
-                           std::span<const double, 256> curr_mant,
-                           std::span<const double, 256> next_mant, std::span<double, 256> real_out,
-                           std::span<double, 256> imag_out, bool fast) {
+template <typename Scalar>
+void ecpl_channel_spectrum_impl(std::span<const Scalar, 256> prev_mant,
+                                std::span<const Scalar, 256> curr_mant,
+                                std::span<const Scalar, 256> next_mant,
+                                std::span<Scalar, 256> real_out, std::span<Scalar, 256> imag_out,
+                                bool fast) {
     AC3_ZONE_SCOPED_N("ecpl_channel_spectrum");
-    auto& s = ecpl_spectrum_scratch();
+    auto& s = ecpl_spectrum_scratch<Scalar>();
     // Step 1: three independent 512-sample normative IMDCTs (§7.9.4.1
     // steps 1-5, the exact machinery every other coefficient set in this
     // decoder already goes through), down `fast`'s branch of that
     // transform - three inverses per coupled channel per block, and the
-    // bulk of this function's cost either way.
-    imdct512_windowed(prev_mant, s.x_prev, fast);
-    imdct512_windowed(curr_mant, s.x_curr, fast);
-    imdct512_windowed(next_mant, s.x_next, fast);
+    // bulk of this function's cost either way. The float inverse takes no
+    // `fast`: the direct form is double-only, and a float caller has
+    // nothing to choose.
+    if constexpr (std::is_same_v<Scalar, float>) {
+        (void)fast;
+        imdct512_windowed(prev_mant, s.x_prev);
+        imdct512_windowed(curr_mant, s.x_curr);
+        imdct512_windowed(next_mant, s.x_next);
+    } else {
+        imdct512_windowed(prev_mant, s.x_prev, fast);
+        imdct512_windowed(curr_mant, s.x_curr, fast);
+        imdct512_windowed(next_mant, s.x_next, fast);
+    }
 
     // Step 2: overlap the second half of the previous block and the first
     // half of the next block with the current one.
@@ -623,22 +746,46 @@ void ecpl_channel_spectrum(std::span<const double, 256> prev_mant,
     // subsequent DFT lands as an oddly-stacked filterbank, matching the
     // MDCT. w[N/2-n-1] mirrors from the OPPOSITE end of the window than
     // w[n] does for the first half - not the same value as w[n] itself.
+    // The double form reads the shared tables; the float form its own
+    // narrowed copies, which came from those same tables.
     const auto& xcos3 = xcos3_table();
+    const auto window = [&](std::size_t i) -> Scalar {
+        if constexpr (std::is_same_v<Scalar, float>) {
+            return s.window[i];
+        } else {
+            return kAnalysisWindow[i];
+        }
+    };
+    const auto cos3 = [&](std::size_t i) -> Scalar {
+        if constexpr (std::is_same_v<Scalar, float>) {
+            return s.cos3[i];
+        } else {
+            return xcos3.cos[i];
+        }
+    };
+    const auto sin3 = [&](std::size_t i) -> Scalar {
+        if constexpr (std::is_same_v<Scalar, float>) {
+            return s.sin3[i];
+        } else {
+            return xcos3.sin[i];
+        }
+    };
     for (int n = 0; n < 256; ++n) {
         const auto un = static_cast<std::size_t>(n);
         const std::size_t un2 = un + 256;
-        const double xcos3_n = xcos3.cos[un];
-        const double xsin3_n = xcos3.sin[un];
-        const double xcos3_n2 = xcos3.cos[un2];
-        const double xsin3_n2 = xcos3.sin[un2];
-        s.pcm_real[un] = s.pcm[un] * kAnalysisWindow[un] * xcos3_n;
-        s.pcm_imag[un] = s.pcm[un] * kAnalysisWindow[un] * xsin3_n;
-        s.pcm_real[un2] = s.pcm[un2] * kAnalysisWindow[255 - un] * xcos3_n2;
-        s.pcm_imag[un2] = s.pcm[un2] * kAnalysisWindow[255 - un] * xsin3_n2;
+        const Scalar xcos3_n = cos3(un);
+        const Scalar xsin3_n = sin3(un);
+        const Scalar xcos3_n2 = cos3(un2);
+        const Scalar xsin3_n2 = sin3(un2);
+        s.pcm_real[un] = s.pcm[un] * window(un) * xcos3_n;
+        s.pcm_imag[un] = s.pcm[un] * window(un) * xsin3_n;
+        s.pcm_real[un2] = s.pcm[un2] * window(255 - un) * xcos3_n2;
+        s.pcm_imag[un2] = s.pcm[un2] * window(255 - un) * xsin3_n2;
     }
 
-    // Step 4: the full complex DFT. Only bins 0..255 are ever consumed
-    // downstream (§3.5.5.4), so only those are copied out.
+    // Step 4: the full complex DFT, in the scratch's own scalar. Only bins
+    // 0..255 are ever consumed downstream (§3.5.5.4), so only those are
+    // copied out.
     dft512(s.pcm_real, s.pcm_imag, s.zr, s.zi);
     for (int k = 0; k < 256; ++k) {
         real_out[static_cast<std::size_t>(k)] = s.zr[static_cast<std::size_t>(k)];
@@ -646,32 +793,44 @@ void ecpl_channel_spectrum(std::span<const double, 256> prev_mant,
     }
 }
 
+}  // namespace
+
+void release_ecpl_scratch() {
+    if (ecpl_scratch_ever_built<double>()) {
+        ecpl_spectrum_scratch_slot<double>().reset();
+    }
+    if (ecpl_scratch_ever_built<float>()) {
+        ecpl_spectrum_scratch_slot<float>().reset();
+    }
+}
+
+void ecpl_channel_spectrum(std::span<const double, 256> prev_mant,
+                           std::span<const double, 256> curr_mant,
+                           std::span<const double, 256> next_mant, std::span<double, 256> real_out,
+                           std::span<double, 256> imag_out, bool fast) {
+    ecpl_channel_spectrum_impl<double>(prev_mant, curr_mant, next_mant, real_out, imag_out, fast);
+}
+
+void ecpl_channel_spectrum(std::span<const float, 256> prev_mant,
+                           std::span<const float, 256> curr_mant,
+                           std::span<const float, 256> next_mant, std::span<float, 256> real_out,
+                           std::span<float, 256> imag_out) {
+    ecpl_channel_spectrum_impl<float>(prev_mant, curr_mant, next_mant, real_out, imag_out,
+                                      /*fast=*/true);
+}
+
 double ecpl_rand_notrans(int channel, int bin) {
-    // A hash of (channel, bin) rather than a stored table - deterministic
-    // and stable for the stream's lifetime (the spec's two requirements),
-    // without needing per-decoder persistent state to satisfy them. The
-    // exact generator is unspecified by the standard, the same freedom
-    // SpxNoise documents for its own noise generator.
-    std::uint32_t state = static_cast<std::uint32_t>(channel) * 0x9E3779B1U ^
-                          static_cast<std::uint32_t>(bin) * 0x85EBCA77U ^ 0xC2B2AE3DU;
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    const double unit = static_cast<double>(state) / static_cast<double>(0xFFFFFFFFU);  // [0,1]
-    return unit * 2.0 - 1.0;  // [-1, 1], matching §3.5.5.3's uniform (not unit-variance)
+    return ecpl_rand_notrans_as<double>(channel, bin);
 }
 
-double EcplNoise::next() {
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    const double unit = static_cast<double>(state) / static_cast<double>(0xFFFFFFFFU);  // [0,1]
-    return unit * 2.0 - 1.0;
-}
+double EcplNoise::next() { return next_as<double>(); }
 
-void ecpl_amplitudes(std::span<const int> ecplamp, std::span<const int> ecplchaos, bool ecpltrans,
-                     bool is_first_channel, int begin_subbnd, int end_subbnd,
-                     std::span<const bool> structure, std::span<double> amp_out) {
+namespace {
+
+template <typename Scalar>
+void ecpl_amplitudes_impl(std::span<const int> ecplamp, std::span<const int> ecplchaos,
+                          bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
+                          std::span<const bool> structure, std::span<Scalar> amp_out) {
     int band = -1;
     std::size_t cursor = 0;
     for (int sbnd = begin_subbnd; sbnd < end_subbnd; ++sbnd) {
@@ -679,12 +838,12 @@ void ecpl_amplitudes(std::span<const int> ecplamp, std::span<const int> ecplchao
             ++band;
         }
         const auto b = static_cast<std::size_t>(band);
-        double amp = decode_ecplamp(ecplamp[b]);
+        Scalar amp = decode_ecplamp_as<Scalar>(ecplamp[b]);
         // §3.5.5.2: the chaos modification is skipped for the first coupled
         // channel (whose chaos is defined as zero) and whenever this
         // channel's block carries a transient.
         if (!is_first_channel && !ecpltrans) {
-            amp *= 1.0 + 0.38 * decode_ecplchaos(ecplchaos[b]);
+            amp *= Scalar{1} + static_cast<Scalar>(0.38) * decode_ecplchaos_as<Scalar>(ecplchaos[b]);
         }
         const int start = kEcplSubBandTab[static_cast<std::size_t>(sbnd)];
         const int width = kEcplSubBandTab[static_cast<std::size_t>(sbnd) + 1] - start;
@@ -694,15 +853,32 @@ void ecpl_amplitudes(std::span<const int> ecplamp, std::span<const int> ecplchao
     }
 }
 
+}  // namespace
+
+void ecpl_amplitudes(std::span<const int> ecplamp, std::span<const int> ecplchaos, bool ecpltrans,
+                     bool is_first_channel, int begin_subbnd, int end_subbnd,
+                     std::span<const bool> structure, std::span<double> amp_out) {
+    ecpl_amplitudes_impl<double>(ecplamp, ecplchaos, ecpltrans, is_first_channel, begin_subbnd,
+                                 end_subbnd, structure, amp_out);
+}
+
+void ecpl_amplitudes(std::span<const int> ecplamp, std::span<const int> ecplchaos, bool ecpltrans,
+                     bool is_first_channel, int begin_subbnd, int end_subbnd,
+                     std::span<const bool> structure, std::span<float> amp_out) {
+    ecpl_amplitudes_impl<float>(ecplamp, ecplchaos, ecpltrans, is_first_channel, begin_subbnd,
+                                end_subbnd, structure, amp_out);
+}
+
 namespace {
 
 // §3.5.5.3: every emitted angle is a fraction of pi on (-1, 1].
-double wrap_angle(double angle) {
-    while (angle > 1.0) {
-        angle -= 2.0;
+template <typename Scalar>
+Scalar wrap_angle(Scalar angle) {
+    while (angle > Scalar{1}) {
+        angle -= Scalar{2};
     }
-    while (angle < -1.0) {
-        angle += 2.0;
+    while (angle < Scalar{-1}) {
+        angle += Scalar{2};
     }
     return angle;
 }
@@ -723,8 +899,9 @@ constexpr bool is_even(int value) {
 // continuing the final slope. Whether a centre falls on a bin or between two
 // is what the even/odd cases are about, and the half-slope offsets are how
 // the pseudocode places the first sample either side of it.
-void interpolate_band_angles(std::span<const double> band_angle,
-                             std::span<const int> band_bins, std::span<double> bin_angle) {
+template <typename Scalar>
+void interpolate_band_angles(std::span<const Scalar> band_angle, std::span<const int> band_bins,
+                             std::span<Scalar> bin_angle) {
     const auto nbands = static_cast<int>(band_angle.size());
     if (nbands <= 0 || bin_angle.empty()) {
         return;
@@ -736,38 +913,38 @@ void interpolate_band_angles(std::span<const double> band_angle,
     }
 
     const auto total = static_cast<int>(bin_angle.size());
-    const auto emit = [&](int at, double value) {
+    const auto emit = [&](int at, Scalar value) {
         if (at >= 0 && at < total) {
             bin_angle[static_cast<std::size_t>(at)] = wrap_angle(value);
         }
     };
 
     int bin = 0;
-    double y = 0.0;
-    double slope = 0.0;
+    Scalar y{0};
+    Scalar slope{0};
     int nbins_curr = band_bins[0];
     for (int bnd = 1; bnd < nbands; ++bnd) {
         const int nbins_prev = band_bins[static_cast<std::size_t>(bnd) - 1];
         nbins_curr = band_bins[static_cast<std::size_t>(bnd)];
-        const double angle_prev = band_angle[static_cast<std::size_t>(bnd) - 1];
-        double angle_curr = band_angle[static_cast<std::size_t>(bnd)];
+        const Scalar angle_prev = band_angle[static_cast<std::size_t>(bnd) - 1];
+        Scalar angle_curr = band_angle[static_cast<std::size_t>(bnd)];
         // Unwrap the pair before differencing: two angles either side of the
         // wrap are adjacent in phase but a whole turn apart as numbers.
-        while (angle_curr - angle_prev > 1.0) {
-            angle_curr -= 2.0;
+        while (angle_curr - angle_prev > Scalar{1}) {
+            angle_curr -= Scalar{2};
         }
-        while (angle_prev - angle_curr > 1.0) {
-            angle_curr += 2.0;
+        while (angle_prev - angle_curr > Scalar{1}) {
+            angle_curr += Scalar{2};
         }
         slope = (angle_curr - angle_prev) /
-                (static_cast<double>(nbins_curr + nbins_prev) / 2.0);
+                (static_cast<Scalar>(nbins_curr + nbins_prev) / Scalar{2});
 
         if (bnd == 1 && nbins_prev > 1) {
             // The first band's lower half, walked DOWNWARD from just below
             // its own centre.
             int cursor = 0;
             if (is_even(nbins_prev)) {
-                y = angle_prev - slope / 2.0;
+                y = angle_prev - slope / Scalar{2};
                 cursor = nbins_prev / 2 - 1;
             } else {
                 y = angle_prev - slope;
@@ -783,7 +960,7 @@ void interpolate_band_angles(std::span<const double> band_angle,
 
         int count = 0;
         if (is_even(nbins_prev)) {
-            y = angle_prev + slope / 2.0;
+            y = angle_prev + slope / Scalar{2};
             count = nbins_curr / 2 + nbins_prev / 2;
         } else {
             y = angle_prev;
@@ -805,29 +982,36 @@ void interpolate_band_angles(std::span<const double> band_angle,
     }
 }
 
-}  // namespace
+// The widest region enhanced coupling can span, in bins: every sub-band of
+// Table E3.9. The per-bin angles between the band-to-bin conversion and the
+// chaos add live on the stack at this size (1 KB at float, 2 at double) -
+// they used to be a thread_local std::vector, which on a bare-metal target
+// was 1,440 bytes retained for the life of the task.
+constexpr std::size_t kEcplMaxBins =
+    static_cast<std::size_t>(kEcplSubBandTab[kEcplSubBands] - kEcplSubBandTab[0]);
 
-void ecpl_angles(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
-                 bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
-                 std::span<const bool> structure, EcplNoise& noise, std::span<double> angle_out,
-                 bool interpolate) {
+template <typename Scalar>
+void ecpl_angles_impl(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
+                      bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
+                      std::span<const bool> structure, EcplNoise& noise,
+                      std::span<Scalar> angle_out, bool interpolate) {
     // Band-indexed state first - the angle a band carries, how many bins it
     // covers, and the per-band chaos and rand_trans that modify it. Both
     // band-to-bin conversions below start from exactly this.
-    std::array<double, kEcplSubBands> band_angle{};
-    std::array<double, kEcplSubBands> band_chaos{};
-    std::array<double, kEcplSubBands> band_rand{};
+    std::array<Scalar, kEcplSubBands> band_angle{};
+    std::array<Scalar, kEcplSubBands> band_chaos{};
+    std::array<Scalar, kEcplSubBands> band_rand{};
     std::array<int, kEcplSubBands> band_bins{};
     int nbands = 0;
     for (int sbnd = begin_subbnd; sbnd < end_subbnd; ++sbnd) {
         if (sbnd == begin_subbnd || !structure[static_cast<std::size_t>(sbnd)]) {
             const auto b = static_cast<std::size_t>(nbands);
-            band_angle[b] = is_first_channel ? 0.0 : decode_ecplangle(ecplangle[b]);
-            band_chaos[b] = is_first_channel ? 0.0 : decode_ecplchaos(ecplchaos[b]);
+            band_angle[b] = is_first_channel ? Scalar{0} : decode_ecplangle_as<Scalar>(ecplangle[b]);
+            band_chaos[b] = is_first_channel ? Scalar{0} : decode_ecplchaos_as<Scalar>(ecplchaos[b]);
             // rand_trans is per-BAND (unlike rand_notrans, which is per-bin
             // and drawn below instead) - one fresh draw per band, every
             // block, then duplicated across that band's bins same as chaos.
-            band_rand[b] = ecpltrans ? noise.next() : 0.0;
+            band_rand[b] = ecpltrans ? noise.template next_as<Scalar>() : Scalar{0};
             ++nbands;
         }
         const int start = kEcplSubBandTab[static_cast<std::size_t>(sbnd)];
@@ -836,11 +1020,13 @@ void ecpl_angles(int channel, std::span<const int> ecplangle, std::span<const in
     }
 
     const auto bands = static_cast<std::size_t>(nbands);
-    auto& bin_angle = ecpl_bin_angle_scratch();
-    bin_angle.assign(angle_out.size(), 0.0);
+    assert(angle_out.size() <= kEcplMaxBins);
+    std::array<Scalar, kEcplMaxBins> bin_angle_store{};
+    const std::span<Scalar> bin_angle{bin_angle_store.data(),
+                                      std::min(angle_out.size(), kEcplMaxBins)};
     if (interpolate) {
-        interpolate_band_angles(std::span{band_angle}.first(bands),
-                                std::span{band_bins}.first(bands), bin_angle);
+        interpolate_band_angles<Scalar>(std::span{band_angle}.first(bands),
+                                        std::span{band_bins}.first(bands), bin_angle);
     } else {
         std::size_t at = 0;
         for (int bnd = 0; bnd < nbands; ++bnd) {
@@ -858,8 +1044,8 @@ void ecpl_angles(int channel, std::span<const int> ecplangle, std::span<const in
     for (int bnd = 0; bnd < nbands; ++bnd) {
         for (int i = 0; i < band_bins[static_cast<std::size_t>(bnd)]; ++i) {
             const int bin = first_bin + static_cast<int>(cursor);
-            const double rand = ecpltrans ? band_rand[static_cast<std::size_t>(bnd)]
-                                          : ecpl_rand_notrans(channel, bin);
+            const Scalar rand = ecpltrans ? band_rand[static_cast<std::size_t>(bnd)]
+                                          : ecpl_rand_notrans_as<Scalar>(channel, bin);
             angle_out[cursor] =
                 wrap_angle(bin_angle[cursor] + band_chaos[static_cast<std::size_t>(bnd)] * rand);
             ++cursor;
@@ -867,27 +1053,78 @@ void ecpl_angles(int channel, std::span<const int> ecplangle, std::span<const in
     }
 }
 
+template <typename Scalar>
+void ecpl_channel_coefficients_impl(std::span<const Scalar, 256> real_in,
+                                    std::span<const Scalar, 256> imag_in,
+                                    std::span<const Scalar> amp_bin,
+                                    std::span<const Scalar> angle_bin, int begin_mant,
+                                    int end_mant, std::span<Scalar, 256> mant_out) {
+    // §3.5.5.4's y, from the shared double table or the float scratch's
+    // narrowed copy (built by ecpl_channel_spectrum, which always runs first
+    // in a decode; built here if it somehow has not).
+    const std::array<Scalar, 256>* y_table = nullptr;
+    if constexpr (std::is_same_v<Scalar, float>) {
+        y_table = &ecpl_spectrum_scratch<float>().y;
+    } else {
+        y_table = &ecpl_y().value;
+    }
+    const auto& y = *y_table;
+    constexpr double kPi = std::numbers::pi;
+    for (int bin = begin_mant; bin < end_mant; ++bin) {
+        const auto idx = static_cast<std::size_t>(bin - begin_mant);
+        const Scalar amp = amp_bin[idx];
+        const Scalar angle = angle_bin[idx];
+        Scalar c{0};
+        Scalar s{0};
+        if constexpr (std::is_same_v<Scalar, float>) {
+            sincos_pi(angle, s, c);
+        } else {
+            c = std::cos(kPi * angle);
+            s = std::sin(kPi * angle);
+        }
+        const Scalar zr = real_in[static_cast<std::size_t>(bin)];
+        const Scalar zi = imag_in[static_cast<std::size_t>(bin)];
+        const Scalar zr_ch = zr * amp * c - zi * amp * s;
+        const Scalar zi_ch = zi * amp * c + zr * amp * s;
+        // N/2 - 1 - bin, N = 512.
+        const auto mirror = static_cast<std::size_t>(255 - bin);
+        mant_out[static_cast<std::size_t>(bin)] =
+            Scalar{-2} * (y[static_cast<std::size_t>(bin)] * zr_ch + y[mirror] * zi_ch);
+    }
+}
+
+}  // namespace
+
+void ecpl_angles(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
+                 bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
+                 std::span<const bool> structure, EcplNoise& noise, std::span<double> angle_out,
+                 bool interpolate) {
+    ecpl_angles_impl<double>(channel, ecplangle, ecplchaos, ecpltrans, is_first_channel,
+                             begin_subbnd, end_subbnd, structure, noise, angle_out, interpolate);
+}
+
+void ecpl_angles(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
+                 bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
+                 std::span<const bool> structure, EcplNoise& noise, std::span<float> angle_out,
+                 bool interpolate) {
+    ecpl_angles_impl<float>(channel, ecplangle, ecplchaos, ecpltrans, is_first_channel,
+                            begin_subbnd, end_subbnd, structure, noise, angle_out, interpolate);
+}
+
 void ecpl_channel_coefficients(std::span<const double, 256> real_in,
                                std::span<const double, 256> imag_in,
                                std::span<const double> amp_bin, std::span<const double> angle_bin,
                                int begin_mant, int end_mant, std::span<double, 256> mant_out) {
-    const auto& y = ecpl_y().value;
-    constexpr double kPi = std::numbers::pi;
-    for (int bin = begin_mant; bin < end_mant; ++bin) {
-        const auto idx = static_cast<std::size_t>(bin - begin_mant);
-        const double amp = amp_bin[idx];
-        const double angle = angle_bin[idx];
-        const double c = std::cos(kPi * angle);
-        const double s = std::sin(kPi * angle);
-        const double zr = real_in[static_cast<std::size_t>(bin)];
-        const double zi = imag_in[static_cast<std::size_t>(bin)];
-        const double zr_ch = zr * amp * c - zi * amp * s;
-        const double zi_ch = zi * amp * c + zr * amp * s;
-        // N/2 - 1 - bin, N = 512.
-        const auto mirror = static_cast<std::size_t>(255 - bin);
-        mant_out[static_cast<std::size_t>(bin)] =
-            -2.0 * (y[static_cast<std::size_t>(bin)] * zr_ch + y[mirror] * zi_ch);
-    }
+    ecpl_channel_coefficients_impl<double>(real_in, imag_in, amp_bin, angle_bin, begin_mant,
+                                           end_mant, mant_out);
+}
+
+void ecpl_channel_coefficients(std::span<const float, 256> real_in,
+                               std::span<const float, 256> imag_in, std::span<const float> amp_bin,
+                               std::span<const float> angle_bin, int begin_mant, int end_mant,
+                               std::span<float, 256> mant_out) {
+    ecpl_channel_coefficients_impl<float>(real_in, imag_in, amp_bin, angle_bin, begin_mant,
+                                          end_mant, mant_out);
 }
 
 }  // namespace ac3::eac3

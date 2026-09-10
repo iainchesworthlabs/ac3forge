@@ -5,8 +5,9 @@
 # --encoder switch for the same reason.
 #
 #   . $IDF_PATH/export.sh
-#   tools/checks/run_esp32s3_probe.sh              # decode (the default)
-#   tools/checks/run_esp32s3_probe.sh --encoder    # encode
+#   tools/checks/run_esp32s3_probe.sh                  # decode (the default)
+#   tools/checks/run_esp32s3_probe.sh --encoder        # encode
+#   tools/checks/run_esp32s3_probe.sh --stage-timers   # plus a per-stage breakdown
 #
 # WHAT THIS GATES, and what it deliberately does not:
 #
@@ -35,11 +36,21 @@ PROJECT="$REPO/apps/baremetal/platform/esp32s3"
 # part, no two of decode / AC-3 encode / E-AC-3 encode fit in internal SRAM at
 # once - so this selects a build rather than adding a fixture to one.
 DIRECTION=decoder
+# --stage-timers builds the library with AC3FORGE_STAGE_TIMERS so the probe
+# prints a per-stage breakdown of each fixture's decode time beside the
+# per-frame figure. Under QEMU that breakdown has the same standing as the
+# per-frame number - shape only, never evidence - but the build and the lines
+# it prints are what a board run uses, and this leg is where they are proven
+# to build and run at all. Passed to CMake explicitly in BOTH states: an
+# option set on one run stays in the cache for the next, and a "plain" run
+# that silently inherited the timers would print numbers nobody asked for.
+STAGE_TIMERS=OFF
 for arg in "$@"; do
     case "$arg" in
         --encoder) DIRECTION=encoder ;;
         --decoder) DIRECTION=decoder ;;
-        *) echo "usage: run_esp32s3_probe.sh [--encoder|--decoder]" >&2; exit 2 ;;
+        --stage-timers) STAGE_TIMERS=ON ;;
+        *) echo "usage: run_esp32s3_probe.sh [--encoder|--decoder] [--stage-timers]" >&2; exit 2 ;;
     esac
 done
 
@@ -83,7 +94,7 @@ fi
 # the arm-none-eabi leg can still fail here. It did: at 267,754, before the
 # scratch was released, this leg died on a 6,144-byte request.
 : "${AC3FORGE_ESP32S3_MAX_HEAP_BYTES:=245000}"
-# One ceiling for all eight fixtures. Enhanced coupling had its own of 140
+# One ceiling for all twelve fixtures. Enhanced coupling had its own of 140
 # until the 60 allocations per frame behind that exemption turned out to be two
 # std::vector<double> in the reconstruction loop rather than anything §E3.5
 # asks for; it now measures 12, level with plain eac3. See
@@ -92,18 +103,20 @@ fi
 # that section is really there for.
 : "${AC3FORGE_ESP32S3_MAX_STEADY_ALLOCS_PER_FRAME:=100}"
 # Bytes still live when the probe finishes, after every decoder it made has been
-# destroyed. 24 - two __cxa_thread_atexit registration records, one per
-# thread_local the library declares.
+# destroyed. 12 - one __cxa_thread_atexit registration record, for the pointer
+# to enhanced coupling's spectrum scratch, the one thread_local the library
+# still declares. (24 while its per-bin angle buffer was a second one; that is
+# a stack array now.)
 #
 # It was 34,232 until the probe started calling ac3::eac3::release_ecpl_scratch()
-# between fixtures. That difference is enhanced coupling's 32,768-byte spectrum
-# scratch and its 1,440-byte bin-angle vector, which are thread_local and so
-# were resident for the life of a task that never exits. Not a leak - bounded,
+# between fixtures. That difference was enhanced coupling's 32,768-byte spectrum
+# scratch (23,552 in its float form) and the 1,440-byte bin-angle vector, which
+# were thread_local and so resident for the life of a task that never exits. Not a leak - bounded,
 # paid once, and the point of caching them - but enough to decide whether
 # something else fits: object reconstruction did not, on an ESP32-S3, whenever
 # it ran after an enhanced-coupling decode.
 #
-# 1,024 against a measured 24 is deliberately tight. There is nothing here that
+# 1,024 against a measured 12 is deliberately tight. There is nothing here that
 # grows a little; either the scratch is being handed back or it is not, and the
 # difference is five figures. A ceiling with room for half of it would report
 # nothing useful.
@@ -181,7 +194,7 @@ if [[ -d build && "$(cat "$STAMP" 2>/dev/null || echo)" != "$DIRECTION" ]]; then
 fi
 
 idf.py set-target esp32s3
-idf.py -DAC3FORGE_ESP_PROFILE="$DIRECTION" build
+idf.py -DAC3FORGE_ESP_PROFILE="$DIRECTION" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS" build
 mkdir -p build && printf '%s' "$DIRECTION" > "$STAMP"
 
 echo

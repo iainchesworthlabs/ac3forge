@@ -32,6 +32,7 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "bitalloc_internal.hpp"
+#include "bitalloc_memo.hpp"
 #include "gain.hpp"
 
 namespace ac3 {
@@ -252,6 +253,13 @@ struct FrameDecoder::Impl {
     // the material the NEXT loss is concealed from. Sized lazily at first
     // use, so a decoder with concealment off never allocates it.
     std::vector<std::array<double, 512>> conceal_scratch_;
+    // decode_frame_by_block's own frame of PCM. AC-3 writes its overlap-add
+    // straight into whatever spans it is given, so the block form - which
+    // promises the caller never needs more than a block - points the core at
+    // this and hands it out in blocks once the output stage has run. Six
+    // channels, the widest AC-3 layout; sized once at first use, so a decoder
+    // that never takes the form never allocates it.
+    std::vector<float> block_scratch_;
 
     // --- per-frame scratch --------------------------------------------------
     // Everything decode_frame_core used to declare as a local before its block
@@ -282,13 +290,17 @@ struct FrameDecoder::Impl {
     std::vector<DeltaSegments> delta_;
     std::vector<bool> chincpl_;
     std::vector<int> subband_band_;
-    std::vector<std::vector<double>> cplco_;
+    std::vector<std::vector<internal::decode_scalar_t>> cplco_;
     std::vector<bool> phsflg_;
-    std::vector<double> band_values_;
+    std::vector<internal::decode_scalar_t> band_values_;
     std::vector<ExpStrategy> strategy_;
     std::vector<std::uint8_t> groups_;
     std::vector<std::vector<std::uint8_t>> bap_;
     std::vector<std::array<int, 50>> mask_;
+    // One per stream, grown with them: see bitalloc_memo.hpp for what it
+    // keeps and why. A block whose inputs are the previous block's keeps the
+    // allocation `bap_` already holds.
+    std::vector<internal::BitAllocMemo> bitalloc_memo_;
     std::vector<std::array<internal::decode_scalar_t, 256>> coeffs_;
 };
 
@@ -380,6 +392,62 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_into(
     }
     if (auto concealed = conceal(decoded.error(), channels)) {
         return std::move(*concealed);
+    }
+    return decoded;
+}
+
+std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_by_block(
+    std::span<const std::byte> frame, BlockSink sink) {
+    // The core and conceal() write through spans; here those spans are the
+    // decoder's own frame (see Impl::block_scratch_), which the sink then
+    // reads a block at a time. Sized once, for the widest AC-3 layout.
+    constexpr std::size_t kChannels = 6;
+    auto& scratch = impl_->block_scratch_;
+    if (scratch.empty()) {
+        scratch.assign(kChannels * static_cast<std::size_t>(kSamplesPerFrame), 0.0F);
+    }
+    std::array<std::span<float>, kChannels> spans{};
+    for (std::size_t ch = 0; ch < kChannels; ++ch) {
+        spans[ch] = std::span<float>(scratch).subspan(ch * static_cast<std::size_t>(kSamplesPerFrame),
+                                                      static_cast<std::size_t>(kSamplesPerFrame));
+    }
+    auto decoded = decode_frame_core(frame, spans);
+    if (!decoded.has_value()) {
+        auto concealed = conceal(decoded.error(), spans);
+        if (!concealed) {
+            return decoded;
+        }
+        decoded = std::move(*concealed);
+    }
+    if (impl_->config_.skip_reconstruction) {
+        return decoded;  // nothing was written, so nothing is delivered
+    }
+    // One or two slots after a fold, the coded channels otherwise - the
+    // count the *_into caller reads its spans by.
+    const std::size_t slots = std::min(
+        kChannels, output_channel_count(impl_->config_.output, decoded->acmod, decoded->lfe));
+    std::array<std::span<const float>, kChannels> block_views{};
+    {
+        // Its own zone, so a caller's sink reads as the caller's time.
+        AC3_ZONE_SCOPED_N("ac3_emit");
+        for (int b = 0; b < kBlocksPerFrame; ++b) {
+            for (std::size_t s = 0; s < slots; ++s) {
+                block_views[s] = spans[s].subspan(
+                    static_cast<std::size_t>(b) * static_cast<std::size_t>(kSamplesPerBlock),
+                    static_cast<std::size_t>(kSamplesPerBlock));
+            }
+            // No objects: AC-3 has no object layer, so the three object
+            // members stay empty - spelled out, since a designated
+            // initializer that omits them is a -Wmissing-field-initializers
+            // error on the profile's toolchain.
+            sink(PcmBlock{.index = b,
+                          .blocks = kBlocksPerFrame,
+                          .channels = std::span<const std::span<const float>>(block_views)
+                                          .first(slots),
+                          .objects = {},
+                          .object_indices = {},
+                          .object_metadata = nullptr});
+        }
     }
     return decoded;
 }
@@ -832,6 +900,12 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     groups.clear();
     auto& bap = impl_->bap_;
     reset_nested(bap, max_streams);
+    // The allocation memo describes what `bap` holds, and `bap` was just
+    // emptied: every stream's first block this frame recomputes, and the memo
+    // saves the blocks after it whose inputs are unchanged.
+    for (auto& memo : impl_->bitalloc_memo_) {
+        memo.valid = false;
+    }
     // Only meaningful when trace != nullptr (see the bit-allocation loop
     // below) - reused across blocks the same way `bap` above is, so tracing
     // a whole file costs one allocation rather than one per block.
@@ -954,12 +1028,13 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 }
                 any_new = true;
                 const int master = static_cast<int>(r.read(2));
-                band_values.assign(static_cast<std::size_t>(ncplbnd), 0.0);
+                band_values.assign(static_cast<std::size_t>(ncplbnd), internal::decode_scalar_t{0});
                 for (int bnd = 0; bnd < ncplbnd; ++bnd) {
                     const auto exp = static_cast<std::uint8_t>(r.read(4));
                     const auto mant = static_cast<std::uint8_t>(r.read(4));
                     band_values[static_cast<std::size_t>(bnd)] =
-                        coupling::decode_coordinate({.exp = exp, .mant = mant}, master);
+                        coupling::decode_coordinate_as<internal::decode_scalar_t>(
+                            {.exp = exp, .mant = mant}, master);
                 }
                 for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
                     cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)] =
@@ -1249,35 +1324,44 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         }
         {
             AC3_ZONE_SCOPED_N("ac3_bit_allocation");
+            if (impl_->bitalloc_memo_.size() < static_cast<std::size_t>(streams)) {
+                impl_->bitalloc_memo_.resize(static_cast<std::size_t>(streams));
+            }
             for (int s = 0; s < streams; ++s) {
                 const bool is_cpl = s == cpl_stream;
-                const int end = endmant[static_cast<std::size_t>(s)];
-                if (static_cast<int>(exps[static_cast<std::size_t>(s)].size()) != end) {
+                const auto us = static_cast<std::size_t>(s);
+                const int end = endmant[us];
+                if (static_cast<int>(exps[us].size()) != end) {
                     return std::unexpected(DecodeError::kInvalidStream);
                 }
                 BitAllocCodes codes = base_codes;
-                codes.fgaincod = fgaincod[static_cast<std::size_t>(s)];
+                codes.fgaincod = fgaincod[us];
                 const BitAllocRegion region{.start = is_cpl ? cplstrtmant : 0,
                                             .coupling = is_cpl,
                                             .cplfleak = cplfleak,
                                             .cplsleak = cplsleak,
                                             .snr_all_zero = snr_all_zero,
-                                            .delta = delta[static_cast<std::size_t>(s)]};
-                bap[static_cast<std::size_t>(s)].assign(static_cast<std::size_t>(end), 0);
+                                            .delta = delta[us]};
+                auto& memo = impl_->bitalloc_memo_[us];
                 // The traced form costs nothing extra to compute - it is the
                 // same routine, and `mask` is a value that routine already
                 // derives internally - so tracing this one call is free
                 // beyond the write into `mask[s]` itself; only bother when a
                 // trace is actually being kept (roadmap AP12).
                 if (impl_->config_.trace != nullptr) {
-                    internal::compute_bit_allocation_traced(
-                        exps[static_cast<std::size_t>(s)], sample_rate, codes, csnroffst,
-                        fsnroffst[static_cast<std::size_t>(s)], bap[static_cast<std::size_t>(s)],
-                        region, mask[static_cast<std::size_t>(s)]);
-                } else {
-                    compute_bit_allocation(exps[static_cast<std::size_t>(s)], sample_rate, codes,
-                                           csnroffst, fsnroffst[static_cast<std::size_t>(s)],
-                                           bap[static_cast<std::size_t>(s)], region);
+                    bap[us].assign(static_cast<std::size_t>(end), 0);
+                    internal::compute_bit_allocation_traced(exps[us], sample_rate, codes, csnroffst,
+                                                            fsnroffst[us], bap[us], region,
+                                                            mask[us]);
+                    memo.valid = false;
+                } else if (!memo.matches(exps[us], sample_rate, codes, csnroffst, fsnroffst[us],
+                                         region)) {
+                    // Unchanged inputs keep the allocation `bap` already holds
+                    // from the block that computed it (bitalloc_memo.hpp).
+                    bap[us].assign(static_cast<std::size_t>(end), 0);
+                    compute_bit_allocation(exps[us], sample_rate, codes, csnroffst, fsnroffst[us],
+                                           bap[us], region);
+                    memo.remember(exps[us], sample_rate, codes, csnroffst, fsnroffst[us], region);
                 }
             }
         }
@@ -1327,7 +1411,11 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         // individual channels are extracted from the coupling channel" so
         // that "the dither applied to each channel's upper frequencies is
         // uncorrelated" - see the decoupling loop below for that half.
+        // Dequantised and scaled in the coefficient store's own type rather
+        // than in double and narrowed - eac3_decoder.cpp's read_stream has the
+        // measurement and the argument that the value is the same.
         const auto read_stream = [&](int s) {
+            using Scalar = internal::decode_scalar_t;
             const int begin = s == cpl_stream ? cplstrtmant : 0;
             const int end = endmant[static_cast<std::size_t>(s)];
             const bool dither_eligible =
@@ -1339,16 +1427,14 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                     exps[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)];
                 if (bap_value == 0) {
                     coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
-                        static_cast<internal::decode_scalar_t>(dither_eligible
-                                             ? impl_->dither_.next() /
-                                                   static_cast<double>(1u << exp)
-                                             : 0.0);
+                        dither_eligible
+                            ? impl_->dither_.next_as<Scalar>() * exponent_scale<Scalar>(exp)
+                            : Scalar{0};
                     continue;
                 }
                 const auto code = mantissa_reader.read(r, bap_value);
                 coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
-                    static_cast<internal::decode_scalar_t>(dequantize_mantissa(code, bap_value) /
-                                     static_cast<double>(1u << exp));
+                    dequantize_mantissa_as<Scalar>(code, bap_value) * exponent_scale<Scalar>(exp);
             }
         };
         // Every stream's quantized mantissas off the wire, in the order
@@ -1384,18 +1470,21 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                     }
                     auto& target = coeffs[static_cast<std::size_t>(ch)];
                     const bool ch_dither = dithflag[static_cast<std::size_t>(ch)];
+                    // In the coefficient store's type, as eac3_decoder.cpp's
+                    // decoupling is, and for the same reason.
+                    using Scalar = internal::decode_scalar_t;
                     for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
-                        const double coordinate =
+                        const Scalar coordinate =
                             cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)];
                         // §7.4.1: a set phase flag negates the right channel of a
                         // 2/0 pair across that band, restoring the phase the
                         // coupling sum discarded.
-                        const double sign =
+                        const Scalar sign =
                             (phsflginu && ch == 1 &&
                              phsflg[static_cast<std::size_t>(
                                  subband_band[static_cast<std::size_t>(bnd)])])
-                                ? -1.0
-                                : 1.0;
+                                ? Scalar{-1}
+                                : Scalar{1};
                         const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
                         const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
                         for (int bin = low; bin < high; ++bin) {
@@ -1409,13 +1498,12 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                             // uncorrelated" rules out. Each channel draws its own
                             // sample and runs it through the same extraction
                             // formula a real coupling coefficient would use.
-                            const double coeff =
+                            const Scalar coeff =
                                 (cpl_bap[ubin] == 0 && ch_dither)
-                                    ? impl_->dither_.next() /
-                                          static_cast<double>(1u << cpl_exps[ubin])
-                                    : static_cast<double>(shared[ubin]);
-                            target[ubin] =
-                                static_cast<internal::decode_scalar_t>(coeff * coordinate * 8.0 * sign);
+                                    ? impl_->dither_.next_as<Scalar>() *
+                                          exponent_scale<Scalar>(cpl_exps[ubin])
+                                    : shared[ubin];
+                            target[ubin] = coeff * coordinate * Scalar{8} * sign;
                         }
                     }
                 }
@@ -1536,6 +1624,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // would read - and, for a caller who also asked for a downmix, silently
     // rewrite - buffers this call promised to leave untouched.
     if (!impl_->config_.skip_reconstruction) {
+        AC3_ZONE_SCOPED_N("ac3_output");
         const auto levels = mix_levels(cmixlev, surmixlev);
         if (external.empty()) {
             impl_->output_.apply(out.channels, acmod, lfe, levels, dialnorm);

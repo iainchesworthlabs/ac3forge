@@ -126,6 +126,12 @@ PanGains pan_azimuth(double azimuth_deg) {
     return gains;
 }
 
+// The widest ring either pan can be handed: every location Table E2.5 names.
+// Stack storage in pan_ring/pan_direction is sized by it, so that placing an
+// object costs no allocation - a part rendering objects calls both once per
+// object per frame.
+constexpr auto kMaxRing = static_cast<std::size_t>(eac3::chanmap::kMaxChannels);
+
 void pan_ring(double azimuth_deg, std::span<const double> ring_azimuth_deg,
               std::span<double> gains) {
     assert(gains.size() == ring_azimuth_deg.size());
@@ -134,9 +140,16 @@ void pan_ring(double azimuth_deg, std::span<const double> ring_azimuth_deg,
         return;
     }
     // Sort a copy by wrapped azimuth, keeping each speaker's caller-side index
-    // so the gains land back where the caller expects them.
-    std::vector<std::size_t> order(ring_azimuth_deg.size());
-    std::vector<double> sorted(ring_azimuth_deg.size());
+    // so the gains land back where the caller expects them. Stack storage,
+    // capped at Table E2.5's sixteen locations: this runs once per object per
+    // frame on a part rendering objects, and a vector a call would be the
+    // render path's only allocation.
+    assert(ring_azimuth_deg.size() <= kMaxRing);
+    const std::size_t members = std::min(ring_azimuth_deg.size(), kMaxRing);
+    std::array<std::size_t, kMaxRing> order_storage{};
+    std::array<double, kMaxRing> sorted_storage{};
+    const std::span<std::size_t> order(order_storage.data(), members);
+    const std::span<double> sorted(sorted_storage.data(), members);
     for (std::size_t i = 0; i < order.size(); ++i) {
         order[i] = i;
     }
@@ -222,19 +235,31 @@ void pan_direction(Direction source, std::span<const Direction> targets,
                    std::span<double> gains) {
     std::ranges::fill(gains, 0.0);
 
-    std::vector<double> low_az;
-    std::vector<std::size_t> low_index;
-    std::vector<double> high_az;
-    std::vector<std::size_t> high_index;
-    for (std::size_t i = 0; i < targets.size(); ++i) {
+    // The two rings, split out of `targets` onto the stack - see pan_ring for
+    // why not a vector each. A target set wider than sixteen is not a layout
+    // Table E2.5 can name; the surplus is left unpanned rather than overrun.
+    assert(targets.size() <= kMaxRing);
+    std::array<double, kMaxRing> low_az_storage{};
+    std::array<std::size_t, kMaxRing> low_index_storage{};
+    std::array<double, kMaxRing> high_az_storage{};
+    std::array<std::size_t, kMaxRing> high_index_storage{};
+    std::size_t low_count = 0;
+    std::size_t high_count = 0;
+    for (std::size_t i = 0; i < std::min(targets.size(), kMaxRing); ++i) {
         if (targets[i].elevation_deg >= kHeightThresholdDeg) {
-            high_az.push_back(targets[i].azimuth_deg);
-            high_index.push_back(i);
+            high_az_storage[high_count] = targets[i].azimuth_deg;
+            high_index_storage[high_count] = i;
+            ++high_count;
         } else {
-            low_az.push_back(targets[i].azimuth_deg);
-            low_index.push_back(i);
+            low_az_storage[low_count] = targets[i].azimuth_deg;
+            low_index_storage[low_count] = i;
+            ++low_count;
         }
     }
+    const std::span<const double> low_az(low_az_storage.data(), low_count);
+    const std::span<const std::size_t> low_index(low_index_storage.data(), low_count);
+    const std::span<const double> high_az(high_az_storage.data(), high_count);
+    const std::span<const std::size_t> high_index(high_index_storage.data(), high_count);
 
     double weight_low = 1.0;
     double weight_high = 0.0;
@@ -247,15 +272,16 @@ void pan_direction(Direction source, std::span<const Direction> targets,
         weight_high = 1.0;
     }
 
+    std::array<double, kMaxRing> ring_storage{};
     if (weight_low > kNegligibleGain && !low_az.empty()) {
-        std::vector<double> ring(low_az.size());
+        const std::span<double> ring(ring_storage.data(), low_az.size());
         pan_ring(source.azimuth_deg, low_az, ring);
         for (std::size_t i = 0; i < ring.size(); ++i) {
             gains[low_index[i]] += weight_low * ring[i];
         }
     }
     if (weight_high > kNegligibleGain && !high_az.empty()) {
-        std::vector<double> ring(high_az.size());
+        const std::span<double> ring(ring_storage.data(), high_az.size());
         pan_ring(source.azimuth_deg, high_az, ring);
         for (std::size_t i = 0; i < ring.size(); ++i) {
             gains[high_index[i]] += weight_high * ring[i];

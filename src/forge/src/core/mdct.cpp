@@ -361,12 +361,15 @@ void mdct512_forward(std::span<const double, 512> windowed, std::span<double, 25
 // Offering a `false` a float32 caller could pass and then ignoring it would be
 // worse than not offering it.
 void apply_analysis_window(std::span<const float, 512> x, std::span<float, 512> windowed) {
-    // A scalar loop, not the arch seam. The window table is constexpr double
-    // (ac3/core/window.hpp) and is the SAME table the double form reads, so the
-    // narrowing happens per element here rather than in a second float copy of
-    // 512 constants that would then have to be kept agreeing with the first.
+    // A scalar loop, not the arch seam, over the float window the inverse
+    // already uses (analysis_window<float>(): the double table narrowed once,
+    // lazily). This used to narrow kAnalysisWindow per element instead, which
+    // is the same value - but on a single-precision FPU each of those 512
+    // narrowings is a software routine, and JOC's bed analysis runs this
+    // thirty times a frame (docs/platforms/esp32.md).
+    const auto& window = analysis_window<float>();
     for (std::size_t n = 0; n < static_cast<std::size_t>(kN); ++n) {
-        windowed[n] = x[n] * static_cast<float>(kAnalysisWindow[n]);
+        windowed[n] = x[n] * window[n];
     }
 }
 

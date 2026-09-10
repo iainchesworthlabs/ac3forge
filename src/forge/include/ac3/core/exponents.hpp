@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cassert>
 #include <cstddef>
@@ -10,6 +11,35 @@
 
 #include "ac3/core/tables.hpp"
 #include "ac3/export.hpp"
+
+namespace ac3 {
+
+// 2^-k for k in [0, 32): the scale a decoded exponent applies to its
+// mantissa (§7.1.3), a coupling coordinate's exponent to its mantissa
+// (§7.4.3), and an AHT bin's exponent to its six reconstructed blocks
+// (§E3.4.5). A table rather than std::ldexp or a division by (1u << k)
+// because on the single-precision FPU the minimum-footprint profile targets
+// both of those are library routines, while a multiply by an exact power of
+// two is one instruction - and produces the same value, since scaling by a
+// power of two is exact in either type at every magnitude a coefficient
+// reaches. Every existing double path reads identically through it.
+template <typename Scalar>
+inline constexpr std::array<Scalar, 32> kPow2Negative = [] {
+    std::array<Scalar, 32> table{};
+    Scalar value{1};
+    for (auto& entry : table) {
+        entry = value;
+        value = value / Scalar{2};
+    }
+    return table;
+}();
+
+template <typename Scalar>
+[[nodiscard]] constexpr Scalar exponent_scale(int exp) {
+    return kPow2Negative<Scalar>[static_cast<std::size_t>(exp)];
+}
+
+}  // namespace ac3
 
 // AC-3 exponent pipeline (A/52 §7.1, §8.2.7-8.2.11).
 //
