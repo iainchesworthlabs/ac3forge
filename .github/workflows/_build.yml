@@ -3871,6 +3871,11 @@ jobs:
             grep -E 'result=|error|Guru Meditation|assert failed' qemu-stream.txt >&2 || true
             exit 1
           fi
+          # And nothing wrong after it. QEMU runs on to the timeout once the
+          # verdict is printed, so a panic or a reset that came later is in the
+          # capture too; tools/checks/check_esp_console.py fails the step on
+          # either, and its header says why that matters.
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 streaming player" qemu-stream.txt
           # Nothing should ever be skipped looking for a sync word: the build
           # tells the player exactly how many bytes of the partition are audio.
           # A non-zero count means either that length is wrong or the framing is.
@@ -3968,6 +3973,8 @@ jobs:
             grep -E 'result=|error|Guru Meditation|assert failed' qemu-capture.txt >&2 || true
             exit 1
           fi
+          # And no panic or reset after it, as in the streaming step above.
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 capture run" qemu-capture.txt
 
           value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-capture.txt | tail -1; }
 
@@ -4027,6 +4034,8 @@ jobs:
 
           fail() { echo "::error title=ESP32-S3 render run::$1" >&2; grep -E 'result=|error|player:|stream:|Guru Meditation|assert failed' qemu-render.txt >&2 || true; exit 1; }
           grep -q '^result=pass' qemu-render.txt || fail "did not report result=pass"
+          # And no panic or reset after it, as in the streaming step above.
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 render run" qemu-render.txt
           grep -q 'onto 7.1.4 (12 slots, objects placed)' qemu-render.txt || fail "the player did not place the objects onto 7.1.4"
           value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-render.txt | tail -1; }
           units=$(value 'stream\.units')
@@ -4116,7 +4125,11 @@ jobs:
           qemu=$!
           trap 'kill "$qemu" 2>/dev/null || true; kill "$server" 2>/dev/null || true' EXIT
 
-          fail() { echo "::error title=ESP32-S3 HTTP source::$1" >&2; grep -E 'result=|error|network|source:|control|Guru Meditation|assert failed' qemu-http.txt >&2 || true; exit 1; }
+          # fail() checks the console first, so a curl that times out or a check
+          # that trips because the part panicked and rebooted is reported as the
+          # panic, beside the check that noticed it.
+          console="$GITHUB_WORKSPACE/tools/checks/check_esp_console.py"
+          fail() { python3 "$console" --title "ESP32-S3 HTTP source" qemu-http.txt || true; echo "::error title=ESP32-S3 HTTP source::$1" >&2; grep -E 'result=|error|network|source:|control|Guru Meditation|assert failed' qemu-http.txt >&2 || true; exit 1; }
           check_rms() {
             local channel="$1" expected="$2"
             local got
@@ -4148,12 +4161,12 @@ jobs:
           # the run ended; /volume and /play must be taken; the replay must
           # play every unit again at half volume, which is a level check on the
           # gain the decode task applies; /stop must answer.
-          status=$(curl -s -m 10 http://127.0.0.1:8080/status)
+          status=$(curl -s -m 10 http://127.0.0.1:8080/status) || fail "GET /status did not answer (curl exit $?)"
           echo "status: $status"
           echo "$status" | grep -q '"state":"finished"' || fail "/status did not report the run as finished"
           echo "$status" | grep -q '"frames":250' || fail "/status did not report 250 frames"
           curl -s -m 10 -X POST -d 0.5 http://127.0.0.1:8080/volume | grep -q '^ok' || fail "POST /volume was not accepted"
-          code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -d http://10.0.2.2:8000/demo.ec3 http://127.0.0.1:8080/play)
+          code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -d http://10.0.2.2:8000/demo.ec3 http://127.0.0.1:8080/play) || fail "POST /play did not answer (curl exit $?)"
           [ "$code" = "202" ] || fail "POST /play answered $code, expected 202"
           for _ in $(seq 1 60); do
             if [ "$(grep -c '^result=' qemu-http.txt)" -ge 2 ]; then break; fi
@@ -4164,6 +4177,18 @@ jobs:
           check_rms 0 28336
           check_rms 1 23673
           curl -s -m 10 -X POST http://127.0.0.1:8080/stop | grep -q '^stopped' || fail "POST /stop was not accepted"
+
+          # Then the console, once the part has nothing left to do. /stop is
+          # answered as soon as it is queued, and /status reads "stopped" only
+          # once app_main has taken it - which is after the replay's teardown,
+          # the code that freed the ring twice on 2026-09-10.
+          stopped=
+          for _ in $(seq 1 30); do
+            if curl -s -m 10 http://127.0.0.1:8080/status | grep -q '"state":"stopped"'; then stopped=1; break; fi
+            sleep 1
+          done
+          [ -n "$stopped" ] || fail "/status did not report the player as stopped"
+          python3 "$console" --title "ESP32-S3 HTTP source" qemu-http.txt
           kill "$qemu" 2>/dev/null || true
       # The web page (planning/esp32-device-ui.md) on the emulated board: the
       # image the step above built, booted again with the same port forward,
