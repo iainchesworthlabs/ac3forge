@@ -211,7 +211,7 @@ layout, in increasing cost, and the configuration names one of them:
 |---|---|---|
 | **2.0** | The §7.8 fold of the bed, in the decoder (`DownmixTarget::kLoRo` or `kLtRt`). | Exists; what both examples play today. |
 | **As coded: 5.1, 7.1** | The bed's channels as decoded, one TDM slot each. An Atmos bed is the complete mix, so objects need not be reconstructed. | The `tdm` sink exists and has never run on hardware. |
-| **With height: 5.0.4, 5.1.4, 7.1.4, 9.2.4, …** | Objects reconstructed from the bed (`skip_object_reconstruction = false`), then each object panned onto the configured speaker set by `ac3::spatial::pan_ring` over two rings, horizontal and upper, with the bed's own channels placed at their nominal positions and the LFE sends summed. | The panner exists and is allocation-free; the renderer over a decoded access unit does not. Object reconstruction is measured at 21 ms of a 32 ms frame on the S3; the pan is small beside it. |
+| **With height: 5.0.4, 5.1.4, 7.1.4, 9.2.4, …** | Objects reconstructed from the bed (`skip_object_reconstruction = false`), then each object panned onto the configured speaker set by `ac3::spatial::pan_direction` over two rings, horizontal and upper, with the bed's own channels placed at their nominal positions and the LFE sends summed. | **Exists on the target as of main's #611, in the probe**: the `eac3_atmos_render` row places a height-object stream onto 7.1.4 through the block form (`decode_access_unit_by_block`, one 256-sample block at a time), every level the host's, the render 5% of the row's instructions, 210,573 bytes of peak heap. `spatial.cpp` is in the profile. What the player still lacks is the wiring: a layout in its configuration, the block-form decode in place of the frame-form, and a sink wide enough. |
 
 The configuration takes a named layout (`5.1.4`) or a speaker list, each with an azimuth, an
 elevation and a slot number, which is what `pan_ring` wants anyway; named layouts are the ITU-R
@@ -221,8 +221,13 @@ a DSP's TDM inputs. Rendering block by block, 256 samples at a time, keeps the o
 15 channels × 256 × 4 bytes rather than a frame's 92 KB, which matters on a part with 280 KB.
 
 What is measured and what is not: the bed-only decode and the object reconstruction both have
-figures from silicon; rendering to a height layout on the S3 has none, and the phase that adds
-it starts by taking one.
+figures from silicon, and so does a 7.1.4 programme carried as a bed with two dependent
+substreams, which decodes at 0.90x real time at 240 MHz, real time with a tenth to spare. The
+render itself has an instruction count from QEMU and a level check against the host, and no
+board timing yet; at 5% of the row it is not where the budget goes. The block form matters
+beyond rendering: a player decoding 256 samples at a time holds a block of PCM per channel
+rather than a frame, which for twelve channels is 12 KB instead of 73 KB, and that is the
+difference between a height layout fitting beside WiFi in internal SRAM or not.
 
 ## Control
 
@@ -272,12 +277,13 @@ object layer and no height channels. A "7.1.4" encode in this library's terms is
 the rears and the four heights carried as objects at fixed positions, JOC-coded; that is the
 Atmos encoder, below. What a 7.1 access unit costs this part was measured on 2026-09-10 with a
 fixture added to the encode probe (`-DAC3FORGE_PROBE_SEVEN_ONE=ON`): on the host the run's peak
-heap goes from 220,608 bytes to 435,263, and under QEMU with the S3's memory map the fixture
+heap goes from 223,020 bytes to 435,263, and under QEMU with the S3's memory map the fixture
 dies on a 73,728-byte request, with 303,656 bytes free and a largest block of 241,664 before the
 run began. **A 7.1 E-AC-3 encode does not fit this part's internal SRAM.** Two encoders at once
-is the cost, and the question that remains is PSRAM, which the N16R8 has 8 MB of and QEMU cannot
-emulate; the fixture stays in the probe as an opt-in so the number can be re-taken on a board
-with PSRAM enabled, or after the encoder core shrinks.
+is the cost - the platform page now says the same of every dependent-substream layout, 601,954
+bytes for 7.1.4 with three resident - and the question that remains is PSRAM, which the N16R8
+has 8 MB of and QEMU cannot emulate; the fixture stays in the probe as an opt-in so the number
+can be re-taken on a board with PSRAM enabled, or after the encoder core shrinks.
 
 **Audio in.** The mirror of the sink seams: an I2S or TDM receive channel, the S3's I2S being
 full duplex and a SigmaDSP's serial outputs carrying TDM8, filling caller-owned planar float one
@@ -489,16 +495,20 @@ handlers against a fake player on the host.
 ### Phase 2: sinks and layouts
 
 32-bit slots as the I2S default and the slave role as a Kconfig choice, carried by the
-component's I2S `PcmSink`. The as-coded layouts on the TDM sink, and the height renderer from
-[Output layouts](#output-layouts) over `ac3::spatial::pan_direction`, measured on the S3 before
-it is promised.
+component's I2S `PcmSink`. The as-coded layouts on the TDM sink. The height layouts by moving
+the player onto the block form and the render the probe's `eac3_atmos_render` row already
+performs on this target - `decode_access_unit_by_block` into a 256-sample block per channel,
+the objects panned by `ac3::spatial::pan_direction` onto the configured speaker set - with a
+layout in `PlayerConfig` and a sink of up to sixteen slots across the S3's two I2S peripherals
+or a DSP's TDM inputs.
 
 **Exit:** the slot layout checked by the `capture` sink on the host, as the TDM layout is today;
-the slave role played against a SigmaDSP as master; a 5.1.4 render's per-frame cost recorded
-beside the object-reconstruction figure it adds to.
+the slave role played against a SigmaDSP as master; a 7.1.4 stream decoded and rendered through
+the player on the board with its per-frame cost recorded beside the probe's 0.90x for the
+decode alone.
 
-**Verified by:** `tests/io/test_interleave.cpp` for the layout and a host test for the render
-against the panner's own gains; hardware for the role and the timing, which have no substitute.
+**Verified by:** `tests/io/test_interleave.cpp` for the layout and the probe's render row for the
+levels; hardware for the role and the timing, which have no substitute.
 
 ### Phase 3: ESPHome
 
