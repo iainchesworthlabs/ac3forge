@@ -58,9 +58,18 @@ test('the board serves the page, and the page drives the board', async ({ page, 
     );
     expect((await status()).layout).toBe('2.0');
 
-    // A play from the form, through to its end, at the volume set above.
+    // A play from the form, through to its end, at the volume set above. While
+    // the new source opens, /status has the new location beside the boot
+    // play's state and figures, which look like this play's end; so first this
+    // play under way, then its end.
     await page.getByRole('textbox', { name: 'Location to play' }).fill(REPLAY);
     await page.getByRole('button', { name: 'Play' }).click();
+    await expect
+        .poll(async () => {
+            const s = await status();
+            return s.location === REPLAY && s.state === 'playing';
+        }, { timeout: 60_000, intervals: [50] })
+        .toBe(true);
     await expect
         .poll(async () => {
             const s = await status();
