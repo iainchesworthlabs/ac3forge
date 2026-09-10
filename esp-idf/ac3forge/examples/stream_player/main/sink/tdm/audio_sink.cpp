@@ -91,7 +91,8 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
     const std::size_t bytes_per_frame = g_slots * sizeof(std::int32_t);
     // The same depth the stereo sink has, in as many descriptors as this
     // width needs - see dma_plan.
-    const DmaPlan plan = dma_plan(kDmaDescriptors, kDmaFrames, bytes_per_frame);
+    const DmaPlan plan =
+        dma_plan(kDmaDescriptors, kDmaFrames, bytes_per_frame, ac3::kSamplesPerBlock);
     const std::size_t dma_bytes = static_cast<std::size_t>(plan.descriptors) *
                                   static_cast<std::size_t>(plan.frames) * bytes_per_frame;
     g_model.open(sample_rate * static_cast<std::uint32_t>(bytes_per_frame), dma_bytes);

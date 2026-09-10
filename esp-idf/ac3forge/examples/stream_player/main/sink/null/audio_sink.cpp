@@ -42,10 +42,15 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
 int sink_slots() { return g_channels; }
 
 void sink_write(std::span<const std::span<const float>> channels) {
+    // Summed in float per channel and block, and added in double once: a
+    // double addition per sample is a soft-float call on this part, which is a
+    // cost the decode it stands behind would be charged for.
     for (const auto channel : channels) {
+        float block = 0.0F;
         for (const float sample : channel) {
-            g_checksum += static_cast<double>(sample);
+            block += sample;
         }
+        g_checksum += static_cast<double>(block);
     }
     ++g_frames;
 }
