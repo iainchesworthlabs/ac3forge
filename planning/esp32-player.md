@@ -1,24 +1,20 @@
 # The ESP32-S3 player: from two examples to a component and an ESPHome media player
 
-!!! note "Status as of 2026-09-10: Phase 0 in progress - QEMU done, the board next"
-    Written 2026-09-10, for a second `ESP32-S3-DevKitC-1-N16R8`. Phase 0 is the hardware run
-    itself: the I2S player and the streaming player on a board, measured, with what each took
-    recorded in its README. What QEMU could establish first, it has: both probe directions pass
-    with their documented footprints, the streaming player decodes E-AC-3 through the
-    `Eac3Decoder`, its `http` source fetches and decodes the demo stream over the emulated
-    Ethernet with levels matching the host's, and the 7.1 encode question is answered (it does
-    not fit internal SRAM). The board supplies what QEMU cannot, which is time and the radio.
-    Phase 1 exists as of the same day: `ac3forge::Player` in the component, the streaming example
-    rewired over it, all three QEMU shapes passing, and `ac3forge::Control` answering `/status`,
-    `/play`, `/stop` and `/volume` over QEMU's Ethernet with a port forward. Its exit criterion
-    that needs a board - ten minutes with zero underruns - waits with the rest of Phase 0.
-    Phase 2's QEMU half exists as of the same day: `ac3forge::OutputLayout` and
-    `LayoutRenderer` in the component, the player on the block form rendering every stream onto
-    a configured layout, 32-bit slots and the slave role in the I2S sinks, sixteen TDM slots,
-    `GET`/`PUT /layout` on the control surface, and a fourth QEMU shape that renders the probe's
-    height-object fixture onto 7.1.4 with every slot's level the probe's to the digit. What
-    Phase 2 still owes is hardware: the slave role against a SigmaDSP and the render's per-frame
-    cost on the board. Nothing from Phase 3 onward exists in the tree.
+!!! note "Status as of 2026-09-10: Phases 0 and 1 met on a board; Phase 2 owes only the DSP board"
+    Written 2026-09-10 for a second `ESP32-S3-DevKitC-1-N16R8`, and run on it the same day - see
+    [What the board showed](#what-the-board-showed). Phase 0: both examples measured on silicon,
+    with the lines in their READMEs. Phase 1: `ac3forge::Player` and `ac3forge::Control` in the
+    component, and its exit criterion met - the E-AC-3 demo over WiFi for ten minutes with no
+    underruns, started by `POST /play` and read back by `GET /status`. Phase 2:
+    `ac3forge::OutputLayout` and `LayoutRenderer` in the component, the player on the block form,
+    32-bit slots, the slave role, sixteen TDM slots and `PUT /layout`, four QEMU shapes in CI, and
+    a 7.1.4 render from objects measured through the player on the board at 26 ms of every 32.
+    What Phase 2 still owes needs the SigmaDSP board: the slave role against a real master, and
+    TDM into a DAC. The board also found five things QEMU could not: the component did not
+    compile the decoder's hot sources at `-O2`, the level meter cost twice the decode, ESP-IDF's
+    I2S write sends the rest of a partly written DMA buffer as silence, every pass ended in a
+    100 ms wait, and the network shape did not fit without PSRAM for the decoder. All five are
+    fixed. Nothing from Phase 3 onward exists in the tree.
 
     Shape follows [the topology](topology.md) and [the appliance plan](player-appliance.md):
     design sections say what changes and why, phases carry exit criteria and how each is
@@ -36,7 +32,7 @@ one that comes later, the HLS client, all sit on the same code.
 | Path | What it is | State |
 |---|---|---|
 | `esp-idf/ac3forge/` | The ESP-IDF component: a wrapper that `add_subdirectory()`s the repo root and links `ac3::forge_minimal`. No sources of its own. | Builds in CI under `espressif/idf:v6.1`; packs and verifies through `tools/packaging/pack_esp_component.py`. |
-| `esp-idf/ac3forge/examples/i2s_player/` | Decodes a flash-resident AC-3 fixture to an I2S DAC and prints per-lap timing. | Phase 0 measures it on a board. |
+| `esp-idf/ac3forge/examples/i2s_player/` | Decodes a flash-resident AC-3 fixture to an I2S DAC and prints per-lap timing. | Measured on a board 2026-09-10: 9.9 ms of every 32 for AC-3 5.1 folded to stereo, paced at exactly 32 ms a frame. |
 | `esp-idf/ac3forge/examples/stream_player/` | Bytes from a `partition`, `sd`, `fatfs` or `http` source through `ac3::io::AccessUnitAccumulator` to an `i2s`, `tdm`, `capture` or `null` sink. One loop, on the main task. | CI runs `partition` and `fatfs` under QEMU with the `capture` sink. Phase 0 runs `http` to `i2s` on a board. |
 | `esphome/components/ac3forge/` | An ESPHome external component: a decoder and the framer, fed bytes by another component. | `esphome config` in CI. Never compiled into firmware by CI. |
 | `docs/platforms/esp32.md` | The platform page. | Being restructured by PR #603; player documentation stays in the example READMEs until it lands. |
@@ -49,10 +45,28 @@ Two things about that table decide the shape of everything below.
 
 ## What the board showed
 
-Filled in from the Phase 0 runs; the READMEs carry the lines themselves.
+Measured on 2026-09-10 on the second DevKitC-1 (an ESP32-S3 rev v0.2 with 8 MB of octal PSRAM and
+16 MB of flash) at 240 MHz, with no DAC wired - the I2S peripheral clocks the audio out regardless,
+so the pacing and the underrun counts are real. The READMEs carry the lines themselves.
 
-- [`i2s_player`](../esp-idf/ac3forge/examples/i2s_player/README.md): the per-lap timing line from silicon, in place of the conditional wording it had.
-- [`stream_player`](../esp-idf/ac3forge/examples/stream_player/README.md): the `http` source to the `i2s` sink, an E-AC-3 5.1 stream at 448 kbit/s, with `realtime_permille`, the sink's underrun count against the DAC's own clock, and the per-channel RMS against the host's decode of the same file.
+- [`i2s_player`](../esp-idf/ac3forge/examples/i2s_player/README.md): AC-3 5.1 folded to stereo in
+  9.9 ms of every 32, paced at exactly 32.000 ms a frame once its DMA descriptors divided the
+  write. With the 240-frame descriptors it had, it paced at 35.000: ESP-IDF v6.1's
+  `i2s_channel_write` abandons a partly written buffer whenever two sent ones are waiting, and
+  the rest of it goes out as silence. The streaming example's sinks had the same exposure.
+- [`stream_player`](../esp-idf/ac3forge/examples/stream_player/README.md#on-the-board), local:
+  `partition` to `i2s`, 150 passes, 28.7 s of wall clock for 28.8 s of audio and no underruns. A
+  7.1.4 render from objects takes 22.8 ms of decode and 3.2 ms of render in each 32 ms frame - the
+  probe's `eac3_atmos_render` row is 25.1 ms for the same work - once the component compiled the
+  decoder's hot sources at `-O2` (it had not: 28.4 ms without) and the level meter stopped
+  squaring every sample in double (it had cost 60 ms a frame, twice the decode it measured).
+- `stream_player` over WiFi: the E-AC-3 demo from a PC on the LAN plays with the host's levels and
+  no underruns once the decoder's larger allocations are in PSRAM and the DMA queue is 64 ms. With
+  the decoder in internal SRAM, as `sdkconfig.psram` had it, it does not fit beside WiFi:
+  `abort()` 31 ms into playback, and a boot loop.
+- `stream_player` for ten minutes over WiFi, started by `POST /play` and read back by
+  `GET /status`: 18,750 access units, no underrun while it played, and the host's levels -
+  Phase 1's exit criterion.
 
 ## The layers a player needs
 
@@ -229,8 +243,9 @@ a DSP's TDM inputs. Rendering block by block, 256 samples at a time, keeps the o
 What is measured and what is not: the bed-only decode and the object reconstruction both have
 figures from silicon, and so does a 7.1.4 programme carried as a bed with two dependent
 substreams, which decodes at 0.90x real time at 240 MHz, real time with a tenth to spare. The
-render itself has an instruction count from QEMU and a level check against the host, and no
-board timing yet; at 5% of the row it is not where the budget goes. The block form matters
+render through the player has board timing too, as of 2026-09-10: 3.2 ms a frame onto twelve
+slots beside 22.8 ms of decode, 26 ms of the frame's 32 (the streaming example's README). The
+block form matters
 beyond rendering: a player decoding 256 samples at a time holds a block of PCM per channel
 rather than a frame, which for twelve channels is 12 KB instead of 73 KB, and that is the
 difference between a height layout fitting beside WiFi in internal SRAM or not.
@@ -498,6 +513,12 @@ on core 0, the decode task on core 1, the ring sized in seconds of stream. The R
 the `partition` source, which exercises the tasks and the ring without a peripheral; the REST
 handlers against a fake player on the host.
 
+**The board's half, met 2026-09-10.** The E-AC-3 demo concatenated seventy-five times - ten
+minutes - over WiFi from a PC on the LAN, started by `POST /play` (`202`) and read back by
+`GET /status` every two minutes: 18,750 access units, 599.9 s of wall clock for 600.0 s of
+audio, the host's levels to the digit, and no underrun while it played, with
+`sdkconfig.psram` as it now stands. The streaming README has the lines.
+
 ### Phase 2: sinks and layouts
 
 32-bit slots as the I2S default and the slave role as a Kconfig choice, carried by the
@@ -537,6 +558,11 @@ every slot's RMS equal to `render_fixture.hpp`'s - one lap, as coded, MDCT-band 
 ring: 31 KB of internal heap left after the reconstruction state is allocated, 22 KB of the
 decode task's 32 KB stack used. The QMF domain a real stream needs is 233 KB more and waits for
 the board's PSRAM, as does everything in the exit criterion that says "board".
+
+**On the board, 2026-09-10.** The 7.1.4 render ran through the player at 22.8 ms of decode and
+3.2 ms of render a frame, MDCT-band domain, through the `capture` sink - inside real time with
+6 ms to spare, where the probe's `eac3_atmos_render` row takes 25.1 ms for the same work. The
+QMF domain is not measured. The slave role and TDM into a DAC still wait for the SigmaDSP board.
 
 ### Phase 3: ESPHome
 
@@ -622,8 +648,9 @@ that tree.
 
 - **WiFi.** Everything above the radio in the `http` source runs under QEMU over its emulated
   Ethernet, and CI runs it (`sdkconfig.ci-http`): 250 access units of the E-AC-3 demo fetched
-  from the host and decoded with levels matching the host's to the digit, 2026-09-10. The radio,
-  and everything timing-shaped, waits for a board.
+  from the host and decoded with levels matching the host's to the digit, 2026-09-10. The radio
+  and the timing have board runs as of the same day ([What the board showed](#what-the-board-showed));
+  CI can hold neither, because neither exists under QEMU.
 - **TDM on hardware.** No TDM DAC. The layout is tested on the host; the peripheral is not.
 - **The I2S slave role.** Needs a bus master, which means the SigmaDSP board. Until it is
   connected, the role compiles and nothing more.
@@ -655,7 +682,9 @@ that tree.
 
 4. **PSRAM in the player builds.** (a) **off, until Phase 0's `heap_free` says otherwise**; (b) on
    for WiFi and LwIP from the start. **Recommend (a)**, because the answer is a measurement this
-   PR makes. Cost: possibly one rebuild.
+   PR makes. Cost: possibly one rebuild. **Answered by the board on 2026-09-10:** the network
+   shape needs PSRAM for the decoder's larger allocations, not only for WiFi and lwIP, and a
+   64 ms DMA queue besides - see `sdkconfig.psram`.
 
 5. **Slot width default.** (a) **32-bit slots**; (b) 16-bit as now. **Recommend (a)**: a superset
    of what the two tested DACs accept, and what a DSP requires. Cost: the CI capture check gains a
