@@ -159,6 +159,10 @@ int sink_slots() { return static_cast<int>(g_slots); }
 
 std::uint64_t sink_frames_written() { return g_model.writes(); }
 
+// As in sink/i2s/: the channel runs on between plays, so only the model starts
+// again. See audio_sink.hpp.
+void sink_begin_play() { g_model.restart(); }
+
 // The DAC's side of the wire is not observable here; sink/capture/ with
 // CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM checks this sink's conversion. Whether
 // the samples arrived in time is - see sink_common.hpp.

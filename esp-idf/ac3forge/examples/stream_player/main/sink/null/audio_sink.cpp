@@ -54,6 +54,10 @@ const char* sink_name() { return "null"; }
 
 std::uint64_t sink_frames_written() { return g_frames; }
 
+// Nothing to start again: this sink reports nothing, and sink_frames_written()
+// counts from sink_open.
+void sink_begin_play() {}
+
 // Nothing to report. This sink deliberately knows nothing about the audio -
 // it is the cheapest thing that can stand in for a peripheral. Use
 // sink/capture/ when the question is whether the samples are right.

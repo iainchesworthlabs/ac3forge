@@ -153,6 +153,16 @@ int sink_slots() { return static_cast<int>(g_slots); }
 
 std::uint64_t sink_frames_written() { return g_writes; }
 
+// A new play's samples are checked from zero, so the line sink_report() prints
+// is about that play, as the player's own levels beside it are.
+void sink_begin_play() {
+    g_low_byte_set = 0;
+    g_padding_nonzero = 0;
+    g_carried_nonzero = 0;
+    g_sum_squares = 0.0;
+    g_samples = 0;
+}
+
 void sink_report() {
     const double rms = g_samples > 0 ? std::sqrt(g_sum_squares / static_cast<double>(g_samples))
                                      : 0.0;

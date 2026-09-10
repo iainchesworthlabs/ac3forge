@@ -165,13 +165,28 @@ The DAC's DMA drains at exactly the sample rate whatever the CPU does, and the
 driver says nothing when it runs dry — it plays zeros and carries on. So the
 sink models the queue from that one fact: what was queued when the last write
 returned, less what has drained since, is what is left when the next block
-arrives. `min_headroom_ms` is the least that was ever left; `underruns` counts
-blocks that arrived to an empty queue, and `dry_ms` is how long it had been
-empty, summed. The model is out by up to one DMA descriptor (5 ms at the
-default depth), which is enough to read a stall and not enough to mistake one
-for a smooth run. `sink.dma_ms` is the queue's depth, from
+arrives. `min_headroom_ms` is the least that was left as a block arrived;
+`underruns` counts blocks that arrived to an empty queue, and `dry_ms` is how
+long it had been empty, summed. The model is out by up to one DMA descriptor
+(5 ms at the default depth), which is enough to read a stall and not enough to
+mistake one for a smooth run. `sink.dma_ms` is the queue's depth, from
 `CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS` and `_DMA_FRAMES`. The `tdm`
 sink prints the same line.
+
+Every figure on that line is the play's own. `begin_play` tells the sink a play
+is starting (`sink_begin_play()` in [`main/audio_sink.hpp`](main/audio_sink.hpp)),
+and the counts start again from zero, with the play's first block exempt as the
+first block after boot always was: the queue has been draining since the last
+play ended, and nothing was owed to it in between. Until 2026-09-10 the model
+counted from boot. A ten-minute play started by `POST /play` over WiFi on a
+DevKitC-1 reported `sink.underruns=1 sink.dry_ms=55400 sink.min_headroom_ms=0`:
+one block, the play's first, arriving to a queue that had been empty for the
+55 seconds the board sat idle. `stream.wall_ms=599866` for
+`stream.audio_ms=600000` showed the play itself had no gaps, and the zero hid
+the least headroom it did have. `stream.sink_frames` still counts from boot,
+across every play, so from the second play on it runs ahead of `sink.writes`.
+The `capture` sink's line starts again with each play too, as the `stream.rms`
+levels always have.
 
 `stream.rms[n]` is the RMS of what was sent to slot `n` of the layout, scaled by
 1e6 — the same form `apps/baremetal/probe.cpp` reports its own levels in. The
@@ -224,7 +239,8 @@ play something else. A `/status` taken under QEMU during the E-AC-3 demo:
 The HTTP server's task never touches the player: `/play`, `/stop`, `/volume`
 and `PUT /layout` go through a queue to `app_main`, which owns the player, and
 `/status` reads a snapshot under a mutex. `stream.sink_frames` in the end-of-run
-line counts since boot, across every play; `stream.units` is the run's own.
+line counts since boot, across every play; `stream.units`, the levels and the
+sink's own line are the run's.
 
 To reach it under QEMU, run the emulator with a port forward rather than
 through `idf.py qemu`, which fixes the network options:
