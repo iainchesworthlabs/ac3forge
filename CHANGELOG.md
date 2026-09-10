@@ -14,6 +14,12 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **`delta_allocation`** on `ac3::EncoderConfig` and `ac3::eac3::FrameConfig` (`delta=off` on
+  the CLI, `nodelta` in `eac3-encode`'s tools string): off, the encoder chooses no §7.2.2.6
+  segments and runs no second search to weigh them. The first level of an effort axis for
+  parts with little time for the search (`planning/arithmetic-tiers.md`): on the ESP32-S3 it
+  removes about 9 ms of an E-AC-3 5.1 frame, and on the five gold streams it costs 0.01 dB on
+  the worst channel of the E-AC-3 ones and nothing on the AC-3 ones.
 - **An `f32x4` lane type in the SIMD arch seam** (roadmap PF7), alongside the `f64x2` and
   `i32x4` already there, in all three of
   `src/forge/src/internal/arch/{generic,x86_64,aarch64}/`. The float32 decode path's IMDCT
@@ -162,6 +168,22 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   `tests/golden/bitstream-hashes.json` pins its three streams under the `encfloat` mode. The
   exported `BasicTransientDetector` instantiations carry their attribute where each compiler wants
   it (three generated macros; GCC's shared build had rejected the earlier placement).
+- **The encoders' rate-control search and exponent-run planner cost less, exactly and not.**
+  Three exact changes - the same candidates, the same answer, gated by the fixture hashes and
+  the golden pins not moving: the planner scores both Annex E frame forms in one pass with a
+  lower bound, only the coded bins and an incremental waste (held to a transcription of the old
+  pass over 400 random inputs); the masking curve is computed once per run per search and only
+  §7.2.2.7's offset applied per probe (`compute_masking_curve` and `allocate_from_curve`, new
+  exports of `ac3/core/bitalloc.hpp`, held to `compute_bit_allocation` over 1,800 offsets);
+  blocks that read the same run of every stream are counted once. And one that is not exact:
+  the delta race's two searches each warm-start from their own previous answer instead of each
+  other's, which halves their probes. That was documented as never changing the answer and
+  does, because the frame's mantissa cost is not monotone in the offset (mantissa grouping), so
+  the probe sequence decides which fitting boundary a rare frame lands on; the E-AC-3 streams
+  moved by a unit of offset here and there, the gold margins did not, and the E-AC-3 golden
+  hashes and profile fixtures are re-pinned (`snr_search.hpp` says why). On the ESP32-S3:
+  E-AC-3 2/0 33.8 -> 23.5 ms a frame (real time), E-AC-3 5.1 81.2 -> 55.5, AC-3 5.1 35.1 ->
+  32.2 (the line), §E3.5 2/0 54.7 -> 42.3.
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has

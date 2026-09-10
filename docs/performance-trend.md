@@ -998,19 +998,21 @@ other gate.
 
 | Row | Instructions per frame | Ceiling | Peak heap | Allocations per frame |
 |---|---:|---:|---:|---:|
-| `ac3_stereo` 2/0, 192 kbit/s | 9,292,000 | 16,000,000 | 51,867 | 34 |
-| `eac3_stereo` 2/0, 192 kbit/s | 14,549,000 | 30,000,000 | 78,222 | 84 |
-| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 17,512,000 | 31,000,000 | 141,365 | 47 |
-| `ac3` 5.1, 448 kbit/s | 25,414,000 | 43,000,000 | 107,166 | 67 |
-| `eac3` 5.1, 384 kbit/s | 37,827,000 | 78,000,000 | 154,932 | 180 |
-| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 50,460,000 | 104,000,000 | 127,417 | 90 |
+| `ac3_stereo` 2/0, 192 kbit/s | 9,136,000 | 16,000,000 | 52,707 | 34 |
+| `eac3_stereo` 2/0, 192 kbit/s | 12,683,000 | 30,000,000 | 79,894 | 76 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 16,920,000 | 31,000,000 | 143,037 | 47 |
+| `ac3` 5.1, 448 kbit/s | 24,866,000 | 43,000,000 | 110,918 | 67 |
+| `eac3` 5.1, 384 kbit/s | 33,207,000 | 78,000,000 | 158,602 | 173 |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 48,217,000 | 104,000,000 | 130,887 | 87 |
 
-The three 2/0 rows are new with the timing; the encode image is 223,941 bytes with them
-(155,720 `.text`, 400 `.data`, 67,821 `.bss`): the rows, the stage timers' application half
+The three 2/0 rows are new with the timing; the encode image is 225,357 bytes with them
+(157,136 `.text`, 400 `.data`, 67,821 `.bss`): the rows, the stage timers' application half
 (an encode image links it now that the probe reports its stages) and the 64-zone table, and the
 encoders' float forms beside the double ones - smaller than the image with the front end alone
 in `float` (242,589), the `double` software routines the rest of the encoder had pulled in
-having gone with it. [Building](building.md#what-the-encode-direction-costs)
+having gone with it. The counts fell a further 8% to 12% when the rate-control search and the
+exponent-run planner were made cheaper (the ESP32-S3 page's Encoding section); the peaks rose
+by the cached masking curves, some 200 bytes a run. [Building](building.md#what-the-encode-direction-costs)
 has what the encode direction cannot fit on an ESP32-S3, with the host profile's numbers.
 
 <div id="memory-trend-app">
