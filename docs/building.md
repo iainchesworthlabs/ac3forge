@@ -383,21 +383,22 @@ the Cortex-M3, `-Os`, soft float throughout, held to the ceilings in
 
 | Row | Peak heap | Allocations per frame | Instructions per frame | Ceiling | Decode row's count |
 |---|---:|---:|---:|---:|---:|
-| `ac3_stereo` 2/0, 192 kbit/s | 51,867 | 34 | 9,292,000 | 16,000,000 | 3,548,000 |
-| `eac3_stereo` 2/0, 192 kbit/s, no tools | 78,222 | 84 | 14,549,000 | 30,000,000 | 4,851,000 |
-| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 141,365 | 47 | 17,512,000 | 31,000,000 | - |
-| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 127,417 | 90 | 50,460,000 | 104,000,000 | 28,861,000 |
-| `ac3` 5.1, 448 kbit/s | 107,166 | 67 | 25,414,000 | 43,000,000 | 10,224,000 |
-| `eac3` 5.1, 384 kbit/s | 154,932 | 180 | 37,827,000 | 78,000,000 | 12,928,000 |
+| `ac3_stereo` 2/0, 192 kbit/s | 52,707 | 34 | 9,136,000 | 16,000,000 | 3,548,000 |
+| `eac3_stereo` 2/0, 192 kbit/s, no tools | 79,894 | 76 | 12,683,000 | 30,000,000 | 4,851,000 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 143,037 | 47 | 16,920,000 | 31,000,000 | - |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 130,887 | 87 | 48,217,000 | 104,000,000 | 28,861,000 |
+| `ac3` 5.1, 448 kbit/s | 110,918 | 67 | 24,866,000 | 43,000,000 | 10,224,000 |
+| `eac3` 5.1, 384 kbit/s | 158,602 | 173 | 33,207,000 | 78,000,000 | 12,928,000 |
 
-Between 1.7 and 3 times the decode row's count for the same layout, with the encoders in
+Between 1.7 and 2.6 times the decode row's count for the same layout, with the encoders in
 `float` end to end since 2026-09-10 (the analysis front end first, then the coefficient store and
-every analysis behind it; the decode path has been `float` under this profile since 2026-09-09).
-What is left of the gap is the search - exponent-run planning, several hundred bit-allocation
-calls a frame, mantissa bit counts - which is integer work the decoder does once a block. On an
-ESP32-S3 the board encodes AC-3 2/0 at 0.38x real time, E-AC-3 2/0 at 1.06x, AC-3 5.1 at 1.10x
-and E-AC-3 5.1 at 2.54x - the [ESP32-S3 page](platforms/esp32.md#encoding) has the six rows and
-the stage table.
+every analysis behind it; the decode path has been `float` under this profile since 2026-09-09)
+and the rate-control search and exponent-run planner made cheaper the same day. What is left of
+the gap is the search - exponent-run planning, the allocation probes, mantissa bit counts -
+which is integer work the decoder does once a block. On an ESP32-S3 the board encodes AC-3 2/0
+at 0.35x real time, E-AC-3 2/0 at 0.73x, AC-3 5.1 at 1.01x and E-AC-3 5.1 at 1.74x - the
+[ESP32-S3 page](platforms/esp32.md#encoding) has the six rows and the stage tables, and the
+first platform choice on the search, `delta_allocation`.
 
 `eac3_tools` is the row that reaches the coupling, spectral-extension and AHT encoders at all:
 the 5.1 row's default is no tool. It is 2/0 with its band edges pinned (`cplbegf` 0, `spxbegf`

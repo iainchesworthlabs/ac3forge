@@ -201,6 +201,10 @@ struct FrameEncoder::Impl {
         // run already shares one exponent set and one bit allocation across its
         // blocks, so its delta correction is constant across them too.
         DeltaSegments delta;
+        // §7.2.2.5's masking curve for `decoded`, computed once per search
+        // and reused by every probe - eac3_frame.cpp's ExponentRun says why.
+        MaskingCurve curve;
+        std::uint32_t curve_generation = 0;
     };
 
     struct StreamPlan {
@@ -257,10 +261,15 @@ struct FrameEncoder::Impl {
     std::uint64_t rate_accumulator_ = 0;  // ideal-bits Bresenham state
     std::uint64_t words_emitted_ = 0;
     // The previous frame's converged SNR-offset composite, warm-starting the
-    // next frame's search (src/forge/src/encoder/snr_search.hpp). Performance
-    // state only: it changes how fast the search converges, never which
-    // offset it converges to. Negative until a frame has been encoded.
+    // next frame's search (src/forge/src/encoder/snr_search.hpp). Negative
+    // until a frame has been encoded. Two, one per predicate of the delta
+    // race - eac3_frame.cpp's Impl says why, and why they are not purely
+    // performance state.
     int snr_search_hint_ = -1;
+    int snr_search_hint_bare_ = -1;
+    // Which search the runs' cached masking curves belong to - see
+    // eac3_frame.cpp's Impl for the same field.
+    std::uint32_t curve_generation_ = 1;
     // The previous frame's winning BitAllocCodes (EncoderConfig::search),
     // unlike the hint above NOT performance-only: it is step 9a's incumbent
     // for THIS frame's comparison, so which candidate wins can depend on it.
@@ -378,6 +387,10 @@ FrameEncoder::FrameEncoder(const EncoderConfig& config) : impl_(std::make_unique
 
 std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     std::span<const std::span<const float>> channels) {
+    // A new frame means new exponents behind every run: whatever masking
+    // curves the runs cached for the last frame's searches are stale, and a
+    // path that evaluates a cost without searching (VBR) must not read them.
+    ++impl_->curve_generation_;
     AC3_ZONE_SCOPED_N("ac3::FrameEncoder::encode_frame");
     // Before the first early return below, so a caller that keeps one trace
     // across a whole file never reads the previous frame's state back out of
@@ -1313,7 +1326,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // stream, if it would make an otherwise-fittable frame fail to
             // fit - so there is no need to withhold it here pre-emptively
             // just because coupling happens to be on this frame.
-            if (!is_lfe) {
+            if (!is_lfe && impl_->config_.delta_allocation) {
                 peak_mag.assign(static_cast<std::size_t>(end), 0.0);
                 for (int block = first; block < last; ++block) {
                     const auto& c = coeffs_at(s, block);
@@ -1864,22 +1877,44 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                             .delta = p.runs[run].delta};
                 auto& bap = run_bap[static_cast<std::size_t>(s)][run];
                 bap.assign(p.runs[run].decoded.size(), 0);
-                compute_bit_allocation(p.runs[run].decoded, impl_->config_.sample_rate, codes,
-                                       composite >> 4, fine, bap, region);
+                // The probe-independent half once per run per search, the
+                // offset per probe (ac3/core/bitalloc.hpp).
+                auto& exponent_run = p.runs[run];
+                if (exponent_run.curve_generation != impl_->curve_generation_) {
+                    exponent_run.curve = compute_masking_curve(
+                        exponent_run.decoded, impl_->config_.sample_rate, codes, region);
+                    exponent_run.curve_generation = impl_->curve_generation_;
+                }
+                allocate_from_curve(exponent_run.decoded, exponent_run.curve, codes,
+                                    composite >> 4, fine, bap, region);
             }
         }
+        // A block whose every stream reads the same run as the block before
+        // it costs what that block cost (the grouping of mantissas into
+        // codewords starts afresh each block), so it is counted once; runs
+        // are contiguous in blocks, so the previous block is the only one to
+        // compare with.
         std::uint32_t total = 0;
+        std::uint32_t block_bits = 0;
         for (int block = 0; block < kBlocksPerFrame; ++block) {
+            bool same_runs_as_previous = block > 0;
             for (int s = 0; s < streams; ++s) {
                 const auto& p = plan[static_cast<std::size_t>(s)];
                 const auto run = static_cast<std::size_t>(
                     p.run_of_block[static_cast<std::size_t>(block)]);
+                if (block > 0 && p.run_of_block[static_cast<std::size_t>(block) - 1] !=
+                                     p.run_of_block[static_cast<std::size_t>(block)]) {
+                    same_runs_as_previous = false;
+                }
                 // Only the stream's own region carries mantissas.
                 const auto& bap = run_bap[static_cast<std::size_t>(s)][run];
                 bap_views[static_cast<std::size_t>(s)] =
                     std::span{bap}.subspan(static_cast<std::size_t>(stream_start(s)));
             }
-            total += static_cast<std::uint32_t>(mantissa_bits_per_block(bap_views));
+            if (!same_runs_as_previous) {
+                block_bits = static_cast<std::uint32_t>(mantissa_bits_per_block(bap_views));
+            }
+            total += block_bits;
         }
         return total;
     };
@@ -1890,17 +1925,19 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // own search already measured on the winning probe (the same "was the
     // last probe already the answer" trick the single-pass search used to
     // apply inline).
-    const auto search = [&](std::uint32_t search_budget) -> SnrSearchResult {
+    const auto search = [&](std::uint32_t search_budget, int& hint) -> SnrSearchResult {
+        ++impl_->curve_generation_;
         int last_eval = -1;
         std::uint32_t last_bits = 0;
         const int found =
             internal::search_max_fitting(
-                1023, impl_->snr_search_hint_,
+                1023, hint,
                 [&last_eval, &last_bits, &bits_at, &search_budget](int composite) {
                     last_eval = composite;
                     last_bits = bits_at(composite);
                     return last_bits <= search_budget;
                 });
+        hint = found;
         return {found, last_eval == found ? last_bits : bits_at(found)};
     };
 
@@ -1936,7 +1973,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 plan[s].runs[r].delta = original_delta[s][r];
             }
         }
-        auto [lo, mantissa_bits] = search(budget);
+        auto [lo, mantissa_bits] = search(budget, impl_->snr_search_hint_);
 
         // §7.2.2.6 says delta is a pure refinement, and step 8 above already
         // guarantees it never costs a frame its FIT. It can still cost a frame
@@ -1987,7 +2024,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // so this cannot be larger than what step 8 already proved fits.
             assert(side_bits_without <= side_bits);
             const std::uint32_t budget_without = total_bits - side_bits_without - detail::kTailBits;
-            const auto without = search(budget_without);
+            const auto without = search(budget_without, impl_->snr_search_hint_bare_);
             if (without.composite > lo) {
                 lo = without.composite;
                 budget = budget_without;
@@ -2223,7 +2260,6 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 
     const int lo = settlement.composite;
     const std::uint32_t mantissa_bits = settlement.mantissa_bits;
-    impl_->snr_search_hint_ = lo;
     csnroffst = lo >> 4;
     fsnroffst = lo & 15;
     assert(mantissa_bits <= budget);

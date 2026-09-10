@@ -231,6 +231,11 @@ struct ExponentRun {
     // §E2.3.2.9's nfchans-bounded deltbae[ch] loop gives no field to carry
     // one in.
     DeltaSegments delta;
+    // §7.2.2.5's masking curve for `decoded`, computed once per search and
+    // reused by every probe (the offset is applied per probe) - see bits_at.
+    // Valid for the search whose generation it carries.
+    MaskingCurve curve;
+    std::uint32_t curve_generation = 0;
 };
 
 // One coded stream: its exponent runs and the allocation they produce. The
@@ -2585,10 +2590,28 @@ struct FrameEncoder::Impl {
     // every frame, so reuse only removes the re-allocation.
     std::vector<std::array<std::int32_t, 256>> fixed_scratch_;
     // The previous frame's converged SNR-offset composite, warm-starting the
-    // next frame's search (src/forge/src/encoder/snr_search.hpp). Performance
-    // state only: it changes how fast the search converges, never which
-    // offset it converges to. Negative until a frame has been encoded.
+    // next frame's search (src/forge/src/encoder/snr_search.hpp). Negative
+    // until a frame has been encoded.
+    //
+    // Two of them, one per predicate. The delta decision runs the search
+    // twice a frame, with the §7.2.2.6 segments and without, and the two
+    // answers sit some thirty composite units apart on ordinary material:
+    // the segments cost side information the bare pass spends on offset
+    // instead. Started from each other's answer, as one shared hint did, each
+    // pass marched ten probes to cross that gap every frame; started from its
+    // own previous answer, which moves by a handful of units, each is two to
+    // four. Not purely performance state: the cost the search fits is not
+    // quite monotone in the offset (snr_search.hpp says why), so the probes
+    // taken decide which boundary a rare frame lands on, and the streams
+    // changed by a unit of offset here and there when the hints were split.
     int snr_search_hint_ = -1;
+    int snr_search_hint_bare_ = -1;
+    // Which search the runs' cached masking curves belong to: bumped at the
+    // start of every search, so a probe recomputes a run's curve at most once
+    // per search and never reads one from before the exponents, codes or
+    // leaks last moved. Starts above the runs' default so a fresh run never
+    // matches.
+    std::uint32_t curve_generation_ = 1;
     // The chbwcod last transmitted, rate-limiting how fast the content-
     // adaptive band edge may fall. Part of the decision rather than a
     // performance hint - the AC-3 FrameEncoder carries the same field for
@@ -2867,6 +2890,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
 std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     std::span<const std::span<const float>> channels, const FrameMetadata& metadata,
     AuxPayload aux) {
+    // A new frame means new exponents behind every run: whatever masking
+    // curves the runs cached for the last frame's searches are stale, and a
+    // path that evaluates a cost without searching (VBR) must not read them.
+    ++impl_->curve_generation_;
     AC3_ZONE_SCOPED_N("FrameEncoder::encode_frame");
     // Before the first early return below, so a caller that keeps one trace
     // across frames never sees a previous frame's blocks left behind by an
@@ -3854,7 +3881,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                    int last_blk) {
         run.delta = {};
         const bool is_lfe = impl_->config_.lfe && s == nfchans;
-        if (plan.aht || is_lfe) {
+        if (plan.aht || is_lfe || !impl_->config_.delta_allocation) {
             return;
         }
         auto& peak_mag = impl_->delta_peak_mag;
@@ -4149,9 +4176,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // against letting the planner decide, because the forced sets are
             // spent whether or not the exponents actually moved. §8.2.2 is
             // §8's basic-encoder guidance, not a decoder requirement.
-            hoisted[static_cast<std::size_t>(s)] = internal::plan_exponent_runs(input);
-            input.free_strategy = true;
-            per_block[static_cast<std::size_t>(s)] = internal::plan_exponent_runs(input);
+            const internal::ExponentRunPlans plans = internal::plan_exponent_runs_both(input);
+            hoisted[static_cast<std::size_t>(s)] = plans.hoisted;
+            per_block[static_cast<std::size_t>(s)] = plans.per_block;
             hoisted_score += hoisted[static_cast<std::size_t>(s)].score;
             per_block_score += per_block[static_cast<std::size_t>(s)].score;
         }
@@ -4444,8 +4471,16 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                             .snr_all_zero = composite == 0,
                                             .high_efficiency = plan.aht,
                                             .delta = run.delta};
-                compute_bit_allocation(run.decoded, impl_->config_.sample_rate, payload.codes,
-                                       composite >> 4, composite & 15, run.bap, region);
+                // The curve is the probe-independent half of the allocation
+                // (ac3/core/bitalloc.hpp): once per run per search, then an
+                // offset per probe.
+                if (run.curve_generation != impl_->curve_generation_) {
+                    run.curve = compute_masking_curve(run.decoded, impl_->config_.sample_rate,
+                                                      payload.codes, region);
+                    run.curve_generation = impl_->curve_generation_;
+                }
+                allocate_from_curve(run.decoded, run.curve, payload.codes, composite >> 4,
+                                    composite & 15, run.bap, region);
             }
             if (plan.aht) {
                 // An AHT stream's cost is a whole-frame figure: six blocks of
@@ -4455,20 +4490,34 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             }
         }
         // A block costs what the allocation of the run it reads costs, so the
-        // per-block sum is over runs rather than one figure multiplied out.
+        // per-block sum is over runs rather than one figure multiplied out -
+        // and a block whose every stream reads the same run as the block
+        // before it costs exactly what that block cost (the grouping of
+        // mantissas into codewords starts afresh each block), so it is
+        // counted once. Runs are contiguous in blocks, which is why the
+        // previous block is the only one to compare with.
         last_bits = aht_bits;
+        std::uint32_t block_bits = 0;
         for (int blk = 0; blk < nblks; ++blk) {
             bap_views.clear();
+            bool same_runs_as_previous = blk > 0;
             for (int s = 0; s < streams; ++s) {
                 const auto& plan = payload.chans[static_cast<std::size_t>(s)];
                 if (plan.aht) {
                     continue;
                 }
+                if (blk > 0 && plan.run_of_block[static_cast<std::size_t>(blk)] !=
+                                   plan.run_of_block[static_cast<std::size_t>(blk) - 1]) {
+                    same_runs_as_previous = false;
+                }
                 // Only the stream's own region carries mantissas.
                 bap_views.push_back(std::span{plan.run_at(blk).bap}.subspan(
                     static_cast<std::size_t>(plan.start)));
             }
-            last_bits += static_cast<std::uint32_t>(mantissa_bits_per_block(bap_views));
+            if (!same_runs_as_previous) {
+                block_bits = static_cast<std::uint32_t>(mantissa_bits_per_block(bap_views));
+            }
+            last_bits += block_bits;
         }
         return last_bits;
     };
@@ -4480,12 +4529,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // the previous converged offset (this frame's provisional one on the
     // AHT re-search, the previous frame's otherwise) - which changes how
     // fast it converges, never where; see snr_search.hpp.
-    const auto search = [&](std::uint32_t budget) {
+    bool searched = false;
+    const auto search = [&](std::uint32_t budget, int& hint) {
         AC3_ZONE_SCOPED_N("search");
+        searched = true;
+        ++impl_->curve_generation_;
         const int found = internal::search_max_fitting(
-            1023, impl_->snr_search_hint_,
+            1023, hint,
             [&bits_at, &budget](int composite) { return bits_at(composite) <= budget; });
-        impl_->snr_search_hint_ = found;
+        hint = found;
         return found;
     };
 
@@ -4608,20 +4660,26 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         }
         fixed_budget = words * 16 - side_bits - kTailBits;
         fixed_budget_engaged = true;
-        lo = search(fixed_budget);
+        lo = search(fixed_budget, impl_->snr_search_hint_);
         if (any_delta_applied) {
             const int lo_with_delta = lo;
             snapshot_delta();
             drop_delta_and_remeasure();
             const std::uint32_t bare_budget = words * 16 - side_bits - kTailBits;
-            const int lo_without_delta = search(bare_budget);
+            const int lo_without_delta = search(bare_budget, impl_->snr_search_hint_bare_);
             if (lo_without_delta > lo_with_delta) {
                 fixed_budget = bare_budget;
                 lo = lo_without_delta;
             } else {
+                // The segments go back, and with them the question the first
+                // search answered: its answer stands rather than being
+                // searched for a third time, and the allocation is
+                // re-established at it below (last_eval is the bare pass's,
+                // so it must not be trusted to be lo's).
                 restore_delta();
                 fixed_budget = words * 16 - side_bits - kTailBits;
-                lo = search(fixed_budget);
+                lo = lo_with_delta;
+                last_eval = -1;
             }
         }
     } else {
@@ -4648,7 +4706,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // cap too small for the frame's own syntax, so this budget is
             // always a real one.
             const std::uint32_t cap = abr_cap_words(vbr);
-            composite = search(cap * 16 - side_bits - kTailBits);
+            composite = search(cap * 16 - side_bits - kTailBits, impl_->snr_search_hint_);
             impl_->abr->seed(composite);
         }
         auto sized = vbr_size_for(bits_at(composite), size_cap(vbr));
@@ -4680,7 +4738,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // separately with this same justification instead.
             fixed_budget = *sized->fallback_budget;                   // NOLINT(bugprone-unchecked-optional-access)
             fixed_budget_engaged = true;
-            lo = search(fixed_budget);
+            lo = search(fixed_budget, impl_->snr_search_hint_);
             if (impl_->abr.has_value()) {
                 // Under ABR the operating point is deliberately NOT pulled
                 // onto `lo` by a delta re-optimization here: the ceiling that
@@ -4729,7 +4787,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 } else {
                     const std::uint32_t bare_budget =
                         bare ? *bare->fallback_budget : fixed_budget;
-                    const int lo_without_delta = search(bare_budget);
+                    const int lo_without_delta =
+                        search(bare_budget, impl_->snr_search_hint_bare_);
                     if (lo_without_delta > lo_with_delta) {
                         fixed_budget = bare_budget;
                         lo = lo_without_delta;
@@ -4737,9 +4796,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                             sized = bare;
                         }
                     } else {
+                        // As in the CBR race above: the first search's own
+                        // predicate is back, and so is its answer.
                         restore_delta();
                         fixed_budget = *sized->fallback_budget;
-                        lo = search(fixed_budget);
+                        lo = lo_with_delta;
+                        last_eval = -1;
                     }
                 }
             }
@@ -4872,7 +4934,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 return false;  // this candidate's side info does not fit
             }
             fixed_budget = words * 16 - side_bits - kTailBits;
-            lo = search(fixed_budget);
+            lo = search(fixed_budget, impl_->snr_search_hint_);
             last_tried = candidate;
             return true;
         };
@@ -4983,7 +5045,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (fixed_budget_engaged) {
             // CBR, or a VBR frame already pinned to its ceiling: the word
             // count cannot move, only which offset fits it can.
-            lo = search(fixed_budget);
+            lo = search(fixed_budget, impl_->snr_search_hint_);
         } else {
             // Free-running VBR (or a bound it was naturally already under):
             // quality (lo) does not change, but the gain modes just chosen
@@ -5008,7 +5070,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 // finding this mirrors for `lo`/`words` a bit further up in
                 // this same VBR path.
                 fixed_budget = *sized->fallback_budget;
-                lo = search(fixed_budget);
+                lo = search(fixed_budget, impl_->snr_search_hint_);
             }
             if (const auto min_words = vbr_min_words(*impl_->config_.vbr)) {
                 words = std::max(words, *min_words);
@@ -5028,10 +5090,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     assert(side_bits + mantissa_bits + kTailBits <= words * 16);
     payload.csnroffst = lo >> 4;
     payload.fsnroffst = lo & 15;
-    // VBR's quality-driven path picks lo without a search; recording it here
-    // unconditionally keeps the hint fresh for whichever path the next frame
-    // takes.
-    impl_->snr_search_hint_ = lo;
+    // VBR's quality-driven path picks lo without a search; recording it
+    // keeps the hint fresh for whichever path the next frame takes. A frame
+    // that searched has already recorded each pass's own answer, and the one
+    // it chose is not necessarily the one the next first pass wants.
+    if (!searched) {
+        impl_->snr_search_hint_ = lo;
+    }
 
     // --- 8a. Dither substitution per channel per block ----------------------
     // §7.3.4, decided from what the allocation above actually left out - see

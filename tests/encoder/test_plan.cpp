@@ -218,7 +218,8 @@ TEST_CASE("tool tokens survive a round trip") {
                                              "cpl:4",   "spx:5",   "aht:0",     "cpl+spx",
                                              "cpl+spx+aht", "cpl:4+spx:5+aht:2",
                                              "nofastmdct", "cpl+nofastmdct",
-                                             "nodither", "cpl+nodither"};
+                                             "nodither", "cpl+nodither",
+                                             "nodelta",  "cpl+nodelta"};
     for (const auto& token : tokens) {
         ac3::plan::Tools tools{};
         INFO("token " << token);

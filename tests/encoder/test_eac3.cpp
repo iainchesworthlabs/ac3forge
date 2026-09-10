@@ -17,6 +17,7 @@
 #include "ac3/core/bitreader.hpp"
 #include "ac3/core/crc16.hpp"
 #include "ac3/core/eac3_tools.hpp"
+#include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 
 namespace {
@@ -1743,5 +1744,32 @@ TEST_CASE("E-AC-3 accepts a bitrate off Table 5.18's nominal list", "[eac3]") {
         REQUIRE(frame.has_value());
         CHECK(frame->size() == 400);  // 200 words
         CHECK(ac3::crc16(std::span{*frame}.subspan(2)) == 0x0000);
+    }
+}
+
+TEST_CASE("delta_allocation off writes a legal stream with dbaflde clear", "[eac3]") {
+    // The encoders' first effort level: no §7.2.2.6 segments are chosen and no
+    // second fit weighs them. The frame that results must still be the
+    // decoder's idea of a frame, and its audfrm dbaflde flag - bit 63 for
+    // this 2/0 no-LFE shape, right after bamode and frmfgaincode (see the
+    // allocation-parameters case above for the walk) - must say no delta was
+    // sent.
+    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192, .delta_allocation = false}};
+    ac3::Eac3Decoder decoder;
+    std::uint64_t n = 0;
+    for (int f = 0; f < 3; ++f) {
+        auto pcm = tone_frame(2, n);
+        n += ac3::kSamplesPerFrame;
+        const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
+        const auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        ac3::BitReader flags{*frame};
+        flags.skip(63);
+        CHECK(flags.read(1) == 0);  // dbaflde
+        const auto units = ac3::split_access_units(*frame);
+        REQUIRE(units.has_value());
+        REQUIRE(units->size() == 1);
+        const auto decoded = decoder.decode_access_unit(units->front());
+        CHECK(decoded.has_value());
     }
 }
