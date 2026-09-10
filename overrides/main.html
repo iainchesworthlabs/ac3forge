@@ -1,12 +1,15 @@
 {#-
   Homepage hero. Everything below only renders on the homepage
-  (page.is_homepage) — every other page falls straight through to
-  Material's own {% block content %}, untouched.
+  (page.url == "") — every other page falls straight through to
+  Material's own {% block content %}, untouched. Checking page.url rather
+  than page.is_homepage is deliberate: Zensical's build of this same
+  override leaves page.is_homepage unpopulated, but page.url is "" on the
+  homepage under both it and mkdocs/Material.
 -#}
 {% extends "base.html" %}
 
 {% block hero %}
-  {% if page.is_homepage %}
+  {% if not page.url %}
     <section class="ac3f-hero">
       <div class="ac3f-hero-inner">
         <p class="ac3f-kicker">AC&#8209;3 &middot; E&#8209;AC&#8209;3 &middot; Dolby Atmos</p>
