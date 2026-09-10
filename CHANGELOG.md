@@ -14,6 +14,21 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Added
 
+- **A fixed-point decode tier**, `-DAC3FORGE_DECODE_SCALAR=fixed`, the third value of the
+  decode scalar axis beside `double` and `float` (`planning/arithmetic-tiers.md`): a Q7.24
+  integer scalar (`src/forge/src/core/fixed32.hpp`), its own §7.9.4 inverse transform pair
+  (`src/forge/src/core/mdct_fixed.hpp`) and a block exponent per stream per block
+  (`src/forge/src/decoder/block_norm.hpp`) that keeps every mantissa's bits where an absolute
+  store lost them. For parts with no FPU - an ESP32-C3, a Cortex-M3 - and the one value the
+  minimum-footprint profile honours over its `float` default. Measured against the double decode
+  at 121 dB and above on the gold streams and at 111 dB and above on every checked-in
+  third-party stream; the gold-reference gate passes with it at the double decoder's floors, and
+  its bitstreams are byte-identical. The bare-metal probe now prints a PCM hash per fixture
+  (`<codec>.pcm_hash`), identical between the host and the Cortex-M3 leg for this tier by
+  construction; the tier's are pinned in `tests/golden/fixed-probe-pcm-hashes.json` and
+  `tools/checks/check_probe_hashes.py` holds a run to them, or two runs to each other; the probe
+  runner takes `--scalar=fixed`. The AHT inverse, enhanced coupling's reconstruction and the
+  spectral extension notch still run through `float` at the seam in this tier.
 - **`delta_allocation`** on `ac3::EncoderConfig` and `ac3::eac3::FrameConfig` (`delta=off` on
   the CLI, `nodelta` in `eac3-encode`'s tools string): off, the encoder chooses no §7.2.2.6
   segments and runs no second search to weigh them. The first level of an effort axis for

@@ -961,7 +961,11 @@ wider than anything downstream can use, and memory was the binding constraint: t
 `src/forge/src/internal/scalar/{float32,float64}/` carries `decode_scalar_t` — `float` under the
 minimum-footprint profile, `double` by default elsewhere, and selectable in any build with
 `-DAC3FORGE_DECODE_SCALAR=float`. Which profile a build is and which scalar its decoder carries
-are independent CMake axes. Since 2026-09-09 the arithmetic between the bitstream and those
+are independent CMake axes. The option's third value, `fixed`, is the tier for a part with no FPU
+at all - an ESP32-C3 or C6 - and the one value the profile honours over its own `float`
+default; [docs/building.md](../building.md#minimum-footprint-decoder-profile) and
+`planning/arithmetic-tiers.md` say what it is and what it measured. It is not this part's tier:
+the S3's FPU makes `float` the right arithmetic here. Since 2026-09-09 the arithmetic between the bitstream and those
 buffers — mantissa dequantisation, dither, coordinates, decoupling, spectral extension, the AHT
 and JOC's mixing — follows the same scalar; it had stayed `double`, which on this FPU is
 software, and [Timing](#timing) has what that cost. The output stage's per-sample arithmetic
@@ -1004,7 +1008,7 @@ cycles on an ESP32-C3 against 121 on an ESP32-S3
 | **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — see below |
 | ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
 | ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
-| ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | Not for E-AC-3: a 5.1 frame is 12.9 M soft-float instructions on the [Cortex-M3 leg](../performance-trend.md#instructions-per-frame), three to six times a 160 MHz budget once RISC-V's compiled soft-float and its IPC are allowed for. AC-3 mono fits at 1.6 M; AC-3 2/0 at 3.5 M is the marginal case. A board measures it next |
+| ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | The fixed-point tier's part (`planning/arithmetic-tiers.md`). On the [Cortex-M3 leg](../performance-trend.md#instructions-per-frame-fixed-point-tier) an E-AC-3 5.1 frame is 6.6 M integer instructions in that tier against 12.9 M soft-float in the float one, AC-3 5.1 3.8 M, AC-3 2/0 1.2 M and mono 0.61 M - against 5.1 M cycles per frame at 160 MHz, so 2/0 and mono fit with room and 5.1 is the marginal case once RISC-V's IPC and the flash cache are allowed for. No target directory, QEMU or board yet; a board measures it next |
 
 Every part with an FPU has a single-precision one, so `double` is soft-float across the family and
 `decode_scalar_t` earns its keep on all of them.
