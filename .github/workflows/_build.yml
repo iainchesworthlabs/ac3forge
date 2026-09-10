@@ -4067,13 +4067,17 @@ jobs:
       # (tests/golden/fixed-probe-pcm-hashes.json), as the gold leg holds its
       # native run's.
       - name: Build and run the FIXED-POINT probe under QEMU
-        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed | tee "${{ runner.temp }}/fixed-arm.txt"
+        # Into the build directory, not ${{ runner.temp }}, for the reason the
+        # -icount steps above give: on this container that expands to a host
+        # path tee cannot create, and tee being last in the pipeline under
+        # `sh -e` turns its failure into the step's.
+        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed | tee "build/config-arm-none-eabi-minimal-fixed/fixed-arm.txt"
 
       - name: Fixed-point hashes against the pinned ones
-        run: python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "${{ runner.temp }}/fixed-arm.txt"
+        run: python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "build/config-arm-none-eabi-minimal-fixed/fixed-arm.txt"
 
       - name: Fixed-point instructions per frame under QEMU -icount
-        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed --icount | tee "${{ runner.temp }}/icount-fixed.txt"
+        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed --icount | tee "build/config-arm-none-eabi-minimal-icount-fixed/icount-fixed.txt"
 
       # The footprint table in docs/performance-trend.md is written by hand
       # from these numbers, so keep the run's own copy: a table nobody can
