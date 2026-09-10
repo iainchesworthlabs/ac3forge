@@ -196,15 +196,21 @@ void print_ring_low(const ac3forge::PlayerStats& s) {
 // queue only absorbs a spike that small - it says how deep. ring_low is the
 // least the ring ever held when the decoder came for more: zero means the
 // decoder waited on the source at least once, and how far above zero it stays
-// is the margin the ring's depth is buying.
+// is the margin the ring's depth is buying. render_us_per_frame and
+// sink_us_per_frame are the parts of us_per_frame spent placing blocks onto the
+// layout and inside the sink's write (meter included); the rest is the
+// decoder's own.
 void report_timing(const char* label, unsigned long value, const ac3forge::PlayerStats& s) {
+    const auto per_frame = [&s](std::uint64_t us) {
+        return static_cast<unsigned long>(s.frames_played > 0 ? us / s.frames_played : 0);
+    };
     const std::uint64_t permille =
         s.frames_played > 0 ? (s.decode_us * 1000) / (kFrameDurationUs * s.frames_played) : 0;
     std::printf("%s=%lu frames=%lu us_per_frame=%lu worst_frame_us=%lu realtime_permille=%lu "
-                "resync=%lu ring_low=",
-                label, value, static_cast<unsigned long>(s.frames_played),
-                static_cast<unsigned long>(s.frames_played > 0 ? s.decode_us / s.frames_played : 0),
+                "render_us_per_frame=%lu sink_us_per_frame=%lu resync=%lu ring_low=",
+                label, value, static_cast<unsigned long>(s.frames_played), per_frame(s.decode_us),
                 static_cast<unsigned long>(s.worst_frame_us), static_cast<unsigned long>(permille),
+                per_frame(s.render_us), per_frame(s.sink_us),
                 static_cast<unsigned long>(s.resync_bytes));
     print_ring_low(s);
     std::printf(" heap_free=%lu\n",

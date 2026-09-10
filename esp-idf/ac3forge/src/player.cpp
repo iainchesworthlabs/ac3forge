@@ -138,6 +138,8 @@ struct Player::Impl {
     std::atomic<std::uint64_t> frames_played{0};
     std::atomic<std::uint64_t> frames_held{0};
     std::atomic<std::uint64_t> decode_us{0};
+    std::atomic<std::uint64_t> render_us{0};
+    std::atomic<std::uint64_t> sink_us{0};
     std::atomic<std::uint64_t> worst_frame_us{0};
     std::atomic<std::uint64_t> fetched_bytes{0};
     std::atomic<std::uint64_t> resync_bytes{0};
@@ -213,6 +215,8 @@ struct Player::Impl {
         s.frames_played = frames_played.load();
         s.frames_held = frames_held.load();
         s.decode_us = decode_us.load();
+        s.render_us = render_us.load();
+        s.sink_us = sink_us.load();
         s.worst_frame_us = worst_frame_us.load();
         s.fetched_bytes = fetched_bytes.load();
         s.resync_bytes = resync_bytes.load();
@@ -316,8 +320,12 @@ struct Player::Impl {
         renderer.set_bed(bed);
     }
 
-    // One block from the decoder to the sink, rendered onto the layout.
+    // One block from the decoder to the sink, rendered onto the layout. Timed
+    // in two parts, because both happen inside the decode call and so inside
+    // decode_us: placing the block, and the sink's write - which on a paced
+    // sink is mostly the wait for the DAC.
     void deliver(const ac3::PcmBlock& pcm) {
+        const std::int64_t entered = esp_timer_get_time();
         const std::size_t slots = config.layout.slots();
         const std::size_t n = pcm.channels.empty() ? 0 : pcm.channels.front().size();
         const float gain = volume.load();
@@ -333,7 +341,10 @@ struct Player::Impl {
         for (std::size_t slot = 0; slot < slots; ++slot) {
             block_views[slot] = std::span<const float>(block[slot].data(), std::min(n, block[slot].size()));
         }
+        const std::int64_t rendered = esp_timer_get_time();
         sink.write(std::span<const std::span<const float>>(block_views.data(), slots));
+        render_us.fetch_add(static_cast<std::uint64_t>(rendered - entered));
+        sink_us.fetch_add(static_cast<std::uint64_t>(esp_timer_get_time() - rendered));
     }
 
     // True when the unit produced audio, false when the decoder held it back
@@ -474,8 +485,9 @@ struct Player::Impl {
 
             // The time is decode AND render AND the sink's wait, because the
             // blocks reach the sink from inside the decode call. On a paced
-            // sink that wait is the DAC's clock, not work; the sink's own
-            // counters say how much of it there was.
+            // sink that wait is the DAC's clock, not work; deliver() times the
+            // render and the sink's part separately, and the sink's own
+            // counters say whether the wait was ever too long.
             const std::int64_t started = esp_timer_get_time();
             const auto decoded = decode_unit(unit.bytes);
             const auto elapsed = static_cast<std::uint64_t>(esp_timer_get_time() - started);

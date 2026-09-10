@@ -149,6 +149,10 @@ struct Control::Impl {
             append_number(out, "us_per_frame",
                           s.frames_played > 0 ? s.decode_us / s.frames_played : 0);
             append_number(out, "worst_frame_us", s.worst_frame_us);
+            append_number(out, "render_us_per_frame",
+                          s.frames_played > 0 ? s.render_us / s.frames_played : 0);
+            append_number(out, "sink_us_per_frame",
+                          s.frames_played > 0 ? s.sink_us / s.frames_played : 0);
             append_number(out, "realtime_permille",
                           s.frames_played > 0 ? (s.decode_us * 1000) / (32000ULL * s.frames_played)
                                               : 0);

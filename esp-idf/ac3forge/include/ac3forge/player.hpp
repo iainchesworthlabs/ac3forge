@@ -158,7 +158,13 @@ struct StreamInfo {
 struct PlayerStats {
     std::uint64_t frames_played = 0;    // access units that produced audio
     std::uint64_t frames_held = 0;      // released one call late (§3.7)
-    std::uint64_t decode_us = 0;        // inside the decoder, summed
+    // The decode call, summed. The blocks reach the renderer and the sink
+    // from inside it, so it includes both: render_us and sink_us are those two
+    // parts on their own, and decode_us minus both is the decoder's. On a
+    // paced sink, sink_us is mostly the wait for the DAC's clock.
+    std::uint64_t decode_us = 0;
+    std::uint64_t render_us = 0;
+    std::uint64_t sink_us = 0;
     std::uint64_t worst_frame_us = 0;
     std::uint64_t fetched_bytes = 0;    // taken from the source
     std::uint64_t resync_bytes = 0;     // skipped looking for a sync word
