@@ -64,7 +64,10 @@ config AC3FORGE_EXAMPLE_I2S_DMA_FRAMES
     range 8 1023
     help
         1023 is the driver's ceiling for stereo 16-bit: a descriptor holds at
-        most 4,092 bytes.
+        most 4,092 bytes. The sinks use the largest descriptor at or under this
+        that divides the player's 256-frame block, and add descriptors to keep
+        the depth: a write that ends part-way through a descriptor can have the
+        rest of it played as silence (see sink/sink_common.hpp).
 
 # WHICH SINK. Kconfig rather than a -D cache variable, because the component's
 # own CMakeLists is evaluated in IDF's separate requirements-expansion process,

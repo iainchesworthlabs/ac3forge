@@ -40,6 +40,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -115,11 +116,28 @@ class SeamSource final : public ac3forge::ByteSource {
 class MeteredSink final : public ac3forge::PcmSink {
    public:
     void write(std::span<const std::span<const float>> slots) override {
+        // Squared and summed in float, sixteen samples at a time, and only the
+        // partial sums added in double. Every double operation on this part is
+        // a call into the soft-float library: done per sample, the meter cost
+        // 60 ms a frame on twelve slots - more than the decode it was
+        // measuring. A float partial of sixteen squares is good to a few parts
+        // in 10^7, far inside CI's tolerance of one digit of RMS x 1e6.
         const std::size_t n = slots.size() < kMaxSlots ? slots.size() : kMaxSlots;
         for (std::size_t slot = 0; slot < n; ++slot) {
-            for (const float sample : slots[slot]) {
-                sum_squares_[slot] += static_cast<double>(sample) * static_cast<double>(sample);
+            const std::span<const float> samples = slots[slot];
+            double sum = 0.0;
+            std::size_t i = 0;
+            for (; i + kStretch <= samples.size(); i += kStretch) {
+                float partial = 0.0F;
+                for (std::size_t k = 0; k < kStretch; ++k) {
+                    partial += samples[i + k] * samples[i + k];
+                }
+                sum += static_cast<double>(partial);
             }
+            for (; i < samples.size(); ++i) {
+                sum += static_cast<double>(samples[i] * samples[i]);
+            }
+            sum_squares_[slot] += sum;
         }
         if (n > slots_) {
             slots_ = n;
@@ -145,6 +163,7 @@ class MeteredSink final : public ac3forge::PcmSink {
     }
 
    private:
+    static constexpr std::size_t kStretch = 16;
     std::array<double, kMaxSlots> sum_squares_{};
     std::size_t samples_ = 0;
     std::size_t slots_ = 0;
@@ -196,15 +215,21 @@ void print_ring_low(const ac3forge::PlayerStats& s) {
 // queue only absorbs a spike that small - it says how deep. ring_low is the
 // least the ring ever held when the decoder came for more: zero means the
 // decoder waited on the source at least once, and how far above zero it stays
-// is the margin the ring's depth is buying.
+// is the margin the ring's depth is buying. render_us_per_frame and
+// sink_us_per_frame are the parts of us_per_frame spent placing blocks onto the
+// layout and inside the sink's write (meter included); the rest is the
+// decoder's own.
 void report_timing(const char* label, unsigned long value, const ac3forge::PlayerStats& s) {
+    const auto per_frame = [&s](std::uint64_t us) {
+        return static_cast<unsigned long>(s.frames_played > 0 ? us / s.frames_played : 0);
+    };
     const std::uint64_t permille =
         s.frames_played > 0 ? (s.decode_us * 1000) / (kFrameDurationUs * s.frames_played) : 0;
     std::printf("%s=%lu frames=%lu us_per_frame=%lu worst_frame_us=%lu realtime_permille=%lu "
-                "resync=%lu ring_low=",
-                label, value, static_cast<unsigned long>(s.frames_played),
-                static_cast<unsigned long>(s.frames_played > 0 ? s.decode_us / s.frames_played : 0),
+                "render_us_per_frame=%lu sink_us_per_frame=%lu resync=%lu ring_low=",
+                label, value, static_cast<unsigned long>(s.frames_played), per_frame(s.decode_us),
                 static_cast<unsigned long>(s.worst_frame_us), static_cast<unsigned long>(permille),
+                per_frame(s.render_us), per_frame(s.sink_us),
                 static_cast<unsigned long>(s.resync_bytes));
     print_ring_low(s);
     std::printf(" heap_free=%lu\n",
@@ -242,12 +267,26 @@ void end_play() {
     }
 }
 
-bool begin_play(Session& session) {
+// `on_source_open` runs once the source is open - and with it the network,
+// where there is one - and before the player's tasks take their memory. The
+// first play at boot starts the control surface there; see app_main.
+bool begin_play(Session& session, const std::function<void()>& on_source_open = {}) {
     end_play();
     if (!player::source_open()) {
         g_state.store("failed");
         return false;
     }
+    if (on_source_open) {
+        on_source_open();
+    }
+    // What the decoder is about to allocate into: the source is open, so a
+    // network stack, where there is one, is already up. Internal RAM is the
+    // constraint on the network shapes, and this is the figure to hold the
+    // decoder's footprint against.
+    std::printf("heap: internal free %u (largest block %u), psram free %u\n",
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
     g_sink.reset();
     session = Session{};
 
@@ -380,7 +419,22 @@ ac3forge::ControlHandlers control_handlers() {
 
 }  // namespace
 
+namespace {
+
+// A failed allocation otherwise shows only as abort() from operator new, which
+// says neither how much was asked for nor how much was left. This says both,
+// once per failure, before the abort that follows it.
+void on_alloc_failed(std::size_t size, std::uint32_t caps, const char* function) {
+    std::printf("heap: %s could not allocate %u bytes (caps 0x%lx); internal free %u, largest %u\n",
+                function, static_cast<unsigned>(size), static_cast<unsigned long>(caps),
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
+}
+
+}  // namespace
+
 extern "C" void app_main() {
+    (void)heap_caps_register_failed_alloc_callback(on_alloc_failed);
     const auto layout = ac3forge::OutputLayout::parse(kLayoutText);
     if (!layout.has_value()) {
         std::printf("error: CONFIG_AC3FORGE_EXAMPLE_LAYOUT \"%s\" is not a layout - a name like "
@@ -404,18 +458,30 @@ extern "C" void app_main() {
 
     // The configured location plays at once, as it always has; the control
     // surface, where there is one, can stop it and play something else.
+    //
+    // The control surface starts inside that first play: after its source
+    // opens, which is what brings the network up, and before the player's
+    // tasks do. The server's task stack has to come from internal RAM, and
+    // once the decoder has allocated its first unit there may not be 4 KB of
+    // it left in one piece - a board on the network shape, starting the server
+    // 41 ms after the player, found the largest free block at 3,328 bytes and
+    // came up with no control surface. A play that fails before its source
+    // opens still gets one afterwards, so that a location can be sent to it.
+    ac3forge::Control control;
+    bool control_started = false;
+    const auto start_control = [&control, &control_started] {
+        if (kControlPort != 0 && !control_started) {
+            control_started = true;
+            (void)control.start(control_handlers(), kControlPort);
+        }
+    };
     Session session;
-    const bool playing = begin_play(session);
+    const bool playing = begin_play(session, start_control);
     if (!playing && kControlPort == 0) {
         std::printf("result=fail\n");
         return;
     }
-
-    ac3forge::Control control;
-    if (kControlPort != 0) {
-        // After the source, which is what brings the network up.
-        (void)control.start(control_handlers(), kControlPort);
-    }
+    start_control();
 
     // Everything from here is reporting and command handling. The player runs
     // on its own two tasks; this task wakes ten times a second.
@@ -494,13 +560,18 @@ extern "C" void app_main() {
             continue;
         }
 
-        report_end(session, stats);
+        // The verdict goes out last. A client that waits for result= and
+        // then asks /status - CI's HTTP step does exactly that - must find the
+        // run recorded as finished or failed, not a player half torn down.
+        // Nothing report_end prints needs the player: the stats are a
+        // snapshot, and the meter and the sink are global.
         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
         g_last_stats = stats;
         g_last_stream = current->stream();
         xSemaphoreGive(g_player_mutex);
         end_play();
         g_state.store(stats.failed ? "failed" : "finished");
+        report_end(session, stats);
         if (kControlPort == 0) {
             vTaskDelay(pdMS_TO_TICKS(200));
             return;
