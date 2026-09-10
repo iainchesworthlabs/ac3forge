@@ -1,0 +1,25 @@
+# ESP-IDF generates these; sdkconfig.defaults beside them is the committed one.
+# The same rules as the esp32s3 project's, which carries the reasoning.
+#
+# build/ is already covered by the repo root's .gitignore and is not repeated
+# here - one place for that rule is enough.
+
+# The resolved configuration. Written by `idf.py set-target` from
+# sdkconfig.defaults and then rewritten by every menuconfig; committing it
+# would freeze one developer's local answers (and their IDF version's Kconfig
+# defaults) into everyone else's build.
+sdkconfig
+sdkconfig.old
+
+# Sibling build directories (`idf.py -B build-qemu ...`), for a machine that
+# builds the hardware and QEMU shapes side by side. Give each its own
+# -DSDKCONFIG=<dir>/sdkconfig, or they share the one above - see
+# docs/platforms/esp32.md's Timing section for how that goes wrong.
+build-*/
+
+# The IDF component manager's lockfile and download cache. Nothing here
+# declares a managed dependency today - the ac3forge component is local, and
+# the codec path deliberately has no third-party runtime dependency - but the
+# moment one is added these appear, and they are build products.
+dependencies.lock
+managed_components/

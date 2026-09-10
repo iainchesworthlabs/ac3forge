@@ -17,7 +17,9 @@ Usage:
     check_probe_hashes.py --expected <pins.json> <run.txt>
 
 Exits non-zero when a fixture's hash differs, or when a fixture hashed on one
-side is missing from the other.
+side is missing from the other without the run having said why. A run that
+prints `<codec>.skipped=<reason>` - a target whose heap cannot hold that
+fixture - is reported as skipped rather than failed.
 """
 
 from __future__ import annotations
@@ -28,15 +30,29 @@ import sys
 from pathlib import Path
 
 LINE = re.compile(r"^([a-z0-9_]+)\.pcm_hash=([0-9a-f]{16})\s*$")
+# A fixture the probe declined to decode, and why - today only the per-target
+# heap budget (apps/baremetal/probe.cpp's over_budget). A run that says so is
+# not a run that is missing a fixture: an ESP32-C3 has 400 KB of internal SRAM
+# and the 7.1.4 programme peaks at 238,094 bytes, so that leg decodes eleven
+# of the twelve and states which one it did not. Absence WITHOUT one of these
+# lines is still a failure - the point is that the skip has to be declared.
+SKIP = re.compile(r"^([a-z0-9_]+)\.skipped=(\S+)")
 
 
-def hashes_of_run(path: Path) -> dict[str, str]:
+def hashes_of_run(path: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """The run's hashes, and the fixtures it declared skipped with the reason."""
     found: dict[str, str] = {}
+    skipped: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        match = LINE.match(line.strip())
+        stripped = line.strip()
+        match = LINE.match(stripped)
         if match:
             found[match.group(1)] = match.group(2)
-    return found
+            continue
+        skip = SKIP.match(stripped)
+        if skip:
+            skipped[skip.group(1)] = skip.group(2)
+    return found, skipped
 
 
 def hashes_of_pins(path: Path) -> dict[str, str]:
@@ -44,10 +60,14 @@ def hashes_of_pins(path: Path) -> dict[str, str]:
     return {str(k): str(v) for k, v in document["hashes"].items()}
 
 
-def compare(a: dict[str, str], a_name: str, b: dict[str, str], b_name: str) -> bool:
+def compare(a: dict[str, str], a_name: str, b: dict[str, str], b_name: str,
+            skipped: dict[str, str] | None = None) -> bool:
     failed = False
-    for codec in sorted(set(a) | set(b)):
-        if codec not in a or codec not in b:
+    declared = skipped or {}
+    for codec in sorted(set(a) | set(b) | set(declared)):
+        if codec in declared and codec not in b:
+            print(f"[skipped]  {codec}: {b_name} declined it ({declared[codec]})")
+        elif codec not in a or codec not in b:
             print(f"::error::{codec}: hashed in {a_name if codec in a else b_name} only",
                   file=sys.stderr)
             failed = True
@@ -64,18 +84,25 @@ def main() -> int:
     args = sys.argv[1:]
     if len(args) == 3 and args[0] == "--expected":
         pins, run = Path(args[1]), Path(args[2])
-        expected, actual = hashes_of_pins(pins), hashes_of_run(run)
+        expected = hashes_of_pins(pins)
+        actual, skipped = hashes_of_run(run)
         if not actual:
             print(f"::error::no pcm_hash lines in {run}", file=sys.stderr)
             return 1
-        return 0 if compare(expected, pins.name, actual, run.name) else 1
+        return 0 if compare(expected, pins.name, actual, run.name, skipped) else 1
     if len(args) == 2:
         a_path, b_path = Path(args[0]), Path(args[1])
-        a, b = hashes_of_run(a_path), hashes_of_run(b_path)
+        a, a_skipped = hashes_of_run(a_path)
+        b, b_skipped = hashes_of_run(b_path)
         if not a or not b:
             print(f"::error::no pcm_hash lines in {a_path if not a else b_path}", file=sys.stderr)
             return 1
-        return 0 if compare(a, a_path.name, b, b_path.name) else 1
+        # A fixture either run declared skipped is excused on that side.
+        ok = compare(a, a_path.name, b, b_path.name, b_skipped)
+        for codec, reason in a_skipped.items():
+            if codec not in a and codec in b:
+                print(f"[skipped]  {codec}: {a_path.name} declined it ({reason})")
+        return 0 if ok else 1
     print(__doc__, file=sys.stderr)
     return 2
 

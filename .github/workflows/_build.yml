@@ -3632,13 +3632,19 @@ jobs:
   # real portability faults that no LP64 leg could have (see the profile's own
   # commit). A leg that only ran before releases would have found them then.
   build-esp32s3:
-    name: Minimum-footprint codec (ESP32-S3, QEMU)
+    name: Minimum-footprint codec (ESP32-S3 and C3, QEMU)
     # Leg 6 of check-runners' Linux fan-out. The sibling of build-footprint
-    # below: same profile, same probe, same fixtures, a different bare-metal
-    # target - an Xtensa LX7 with a single-precision FPU, where the arm-none-eabi
-    # leg is a Cortex-M3 with none at all. Between them they cover both answers
-    # to "does this build have hardware floating point", which is the axis
-    # decode_scalar_t turns on.
+    # below: same profile, same probe, same fixtures, different bare-metal
+    # targets - an Xtensa LX7 with a single-precision FPU and a RISC-V C3 with
+    # none, where the arm-none-eabi leg is a Cortex-M3 with none either.
+    # Between them they cover both answers to "does this build have hardware
+    # floating point", which is the axis decode_scalar_t turns on, and all
+    # three of its values.
+    #
+    # Both parts in one job rather than two, because the cost of a leg here is
+    # a queued runner rather than the minutes it spends: the container already
+    # carries both toolchains and both emulators, and the C3's build and run
+    # add about five minutes to a job that was already doing four of them.
     #
     # espressif/idf is Espressif's own image and carries ESP-IDF, its toolchain
     # AND qemu-xtensa, so this needs no composite action and no multi-gigabyte
@@ -3723,6 +3729,32 @@ jobs:
           set -eu
           . "$IDF_PATH/export.sh"
           ./tools/checks/run_esp32s3_probe.sh --encoder
+
+      # The fixed-point tier's own part and its third architecture
+      # (planning/arithmetic-tiers.md, Phase D). The C3 is a single-core
+      # RV32IMC with no floating-point unit, and its project defaults to
+      # -DAC3FORGE_DECODE_SCALAR=fixed for that reason.
+      #
+      # What this step is FOR is the hash check inside the runner. The tier
+      # promises PCM that is identical on every machine, integer arithmetic
+      # having no rounding mode or library last bit to differ by; the x86 host
+      # and the Cortex-M3 leg already agree, and two architectures agreeing is
+      # a coincidence a third can break. The runner holds this leg's
+      # <codec>.pcm_hash lines to the same pinned values
+      # (tests/golden/fixed-probe-pcm-hashes.json).
+      - name: Ensure QEMU for RISC-V is present
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python "$IDF_PATH/tools/idf_tools.py" install qemu-riscv32
+
+      - name: Build and run the FIXED-POINT probe on ESP32-C3 under QEMU
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          ./tools/checks/run_esp32c3_probe.sh
 
       # BUILD ONLY, and the reason is the peripheral rather than the code:
       # qemu-system-xtensa has no I2S, so there is nothing for the DMA to drain
