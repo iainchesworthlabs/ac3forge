@@ -27,6 +27,7 @@
 #include "ac3/encoder/bandwidth.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/encoder/transient.hpp"
+#include "ac3/internal/encode_scalar.hpp"
 #include "ac3/internal/profiling.hpp"
 #include "ac3/latency.hpp"
 
@@ -38,6 +39,7 @@
 #include "bit_reservoir.hpp"
 #include "dither.hpp"
 #include "exp_strategy.hpp"
+#include "scalar_transform.hpp"
 #include "snr_search.hpp"
 
 namespace ac3::eac3 {
@@ -2512,7 +2514,7 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
 // unit ever completes.
 struct FrameEncoder::Impl {
     FrameConfig config_;
-    std::array<std::array<double, 256>, 6> history_{};  // MDCT overlap per channel
+    std::array<std::array<internal::encode_scalar_t, 256>, 6> history_{};  // MDCT overlap per channel
     // §E2.3.1.64: which frame of every 6 / blocks_per_syncframe(numblkscod)
     // sets convsync - see FrameConfig::numblkscod's own comment. Unused (and
     // left at 0) at the default numblkscod, where convsync is never written
@@ -2520,20 +2522,20 @@ struct FrameEncoder::Impl {
     int convsync_counter_ = 0;
     // One per full-bandwidth channel (§8.2.2 excludes the LFE): stateful
     // across frames, like history_ above.
-    std::vector<TransientDetector> transient_detectors_;
+    std::vector<BasicTransientDetector<internal::encode_scalar_t>> transient_detectors_;
     // Per-(channel, block) scratch for the MDCT pass, reused rather than
     // stack-declared inside encode_frame (PREfast's C6262 flagged the
     // function's stack frame) - see the AC-3 FrameEncoder for why reuse
     // across iterations and calls changes nothing observable.
-    std::array<double, 512> time_scratch_{};
+    std::array<internal::encode_scalar_t, 512> time_scratch_{};
     // Four windowed blocks, not one (ROADMAP PF5 phase 4c): step 2's
     // per-channel loop batches four BLOCKS' forward transforms into one
     // ac3::mdct512_forward_batch4 call, which needs all four to coexist.
     // nblks is 1/2/3/6 (§E2.3.1), so only a six-block frame batches at all;
     // lane 0 doubles as the one-at-a-time path's own buffer.
-    std::array<std::array<double, 512>, 4> windowed_scratch_{};
-    std::array<double, 128> half1_scratch_{};
-    std::array<double, 128> half2_scratch_{};
+    std::array<std::array<internal::encode_scalar_t, 512>, 4> windowed_scratch_{};
+    std::array<internal::encode_scalar_t, 128> half1_scratch_{};
+    std::array<internal::encode_scalar_t, 128> half2_scratch_{};
     // Enhanced-coupling reconstruction scratch for encode_frame's ecpl
     // coordinate search and its spx-blend re-decode check (PREfast's C6262,
     // alert #25) - both run once per (channel, block) and never concurrently
@@ -2748,7 +2750,7 @@ namespace {
 // Also the access-unit measurement, since an access unit measures the
 // independent substream.
 FrameMetadata derive_metadata(const FrameConfig& config,
-                              std::span<const std::array<double, 256>> history,
+                              std::span<const std::array<internal::encode_scalar_t, 256>> history,
                               std::span<const std::span<const float>> channels,
                               std::optional<meta::RangeController>& range,
                               std::optional<meta::HeavyCompressor>& heavy,
@@ -2798,7 +2800,7 @@ FrameMetadata derive_metadata(const FrameConfig& config,
         // Ch1's own signal - so its true peak is measured directly instead.
         const double peak =
             dual_mono
-                ? meta::channel_peak_dbfs(std::span<const double>(history[0]), channels[0])
+                ? meta::channel_peak_dbfs(std::span<const internal::encode_scalar_t>(history[0]), channels[0])
                 : [&] {
                       const double clev = config.mixing
                                               ? meta::coefficient(config.mixing->lorocmixlev)
@@ -2814,7 +2816,7 @@ FrameMetadata derive_metadata(const FrameConfig& config,
     }
     if (dual_mono && heavy2 && *heavy2) {
         const double peak2 =
-            meta::channel_peak_dbfs(std::span<const double>(history[1]), channels[1]);
+            meta::channel_peak_dbfs(std::span<const internal::encode_scalar_t>(history[1]), channels[1]);
         // validate() requires dialnorm2 whenever acmod is kDualMono, and
         // dual_mono is exactly that condition, checked above.
         // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
@@ -2982,7 +2984,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 const int pos = blk * 256 - 256 + n;
                 time[static_cast<std::size_t>(n)] =
                     pos < 0 ? hist[static_cast<std::size_t>(pos + 256)]
-                            : static_cast<double>(pcm[static_cast<std::size_t>(pos)]);
+                            : static_cast<internal::encode_scalar_t>(pcm[static_cast<std::size_t>(pos)]);
             }
             AC3_ZONE_END(zone_gather);
             AC3_ZONE_BEGIN(zone_window, "step2_window");
@@ -3009,9 +3011,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 for (std::size_t lane = 0; lane < 4; ++lane) {
                     gather_and_window(blk + static_cast<int>(lane), lane);
                 }
-                mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3],
-                                       coeffs_at(ch, blk), coeffs_at(ch, blk + 1),
-                                       coeffs_at(ch, blk + 2), coeffs_at(ch, blk + 3));
+                encoder_detail::forward_long_batch4(
+                    windowed[0], windowed[1], windowed[2], windowed[3], coeffs_at(ch, blk),
+                    coeffs_at(ch, blk + 1), coeffs_at(ch, blk + 2),
+                    coeffs_at(ch, blk + 3));
                 blk += 4;
                 continue;
             }
@@ -3021,23 +3024,23 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 // bin-by-bin into one ordinary 256-coefficient set - from
                 // here on, exponent/bitalloc/mantissa code cannot tell this
                 // block apart from a long one.
-                const std::span<const double, 512> full(windowed[0]);
                 auto& first = impl_->half1_scratch_;
                 auto& second = impl_->half2_scratch_;
-                mdct256_forward_first(full.first<256>(), first, impl_->config_.fast_mdct);
-                mdct256_forward_second(full.last<256>(), second, impl_->config_.fast_mdct);
+                encoder_detail::forward_short(windowed[0], first, second,
+                                              impl_->config_.fast_mdct);
                 auto& out = coeffs_at(ch, blk);
                 for (int k = 0; k < 128; ++k) {
                     out[static_cast<std::size_t>(2 * k)] = first[static_cast<std::size_t>(k)];
                     out[static_cast<std::size_t>(2 * k + 1)] = second[static_cast<std::size_t>(k)];
                 }
             } else {
-                mdct512_forward(windowed[0], coeffs_at(ch, blk), impl_->config_.fast_mdct);
+                encoder_detail::forward_long(windowed[0], coeffs_at(ch, blk),
+                                             impl_->config_.fast_mdct);
             }
             ++blk;
         }
         for (int n = 0; n < 256; ++n) {
-            hist[static_cast<std::size_t>(n)] = static_cast<double>(
+            hist[static_cast<std::size_t>(n)] = static_cast<internal::encode_scalar_t>(
                 pcm[static_cast<std::size_t>(frame_samples - kSamplesPerBlock + n)]);
         }
     }
@@ -5631,7 +5634,7 @@ struct AccessUnitEncoder::Impl {
         // encoder keeps the same window for its transform; this copy exists
         // because the peak §7.7.2 bounds has to be measured before any
         // substream runs.
-        std::array<std::array<double, 256>, 6> tail{};
+        std::array<std::array<internal::encode_scalar_t, 256>, 6> tail{};
         // Spans of encode_access_unit's `channels` this programme consumes,
         // settled once in the constructor alongside the substream identities.
         std::size_t channel_offset = 0;
@@ -5755,7 +5758,7 @@ std::expected<AccessUnit, FrameError> AccessUnitEncoder::encode_access_unit(
         for (std::size_t ch = 0; ch < independent_fbw; ++ch) {
             for (int n = 0; n < kSamplesPerBlock; ++n) {
                 programme.tail[ch][static_cast<std::size_t>(n)] =
-                    static_cast<double>(own[ch][static_cast<std::size_t>(
+                    static_cast<internal::encode_scalar_t>(own[ch][static_cast<std::size_t>(
                         frame_samples - kSamplesPerBlock + n)]);
             }
         }

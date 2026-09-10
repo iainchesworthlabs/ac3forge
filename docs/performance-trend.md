@@ -730,8 +730,8 @@ intervening commits.
 |---|---|
 | `.text` (code + read-only data) | 276,188 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 60,669 |
-| **Image total** | **337,257** (329.4 KiB) |
+| `.bss` (zero-initialised) | 62,205 |
+| **Image total** | **338,793** (330.9 KiB) |
 
 These are `arm-none-eabi-size`'s own columns, which is what `AC3FORGE_MAX_IMAGE_BYTES` gates, so
 they group sections rather than list them: `.text` here includes `.init`, `.fini` and
@@ -785,6 +785,8 @@ beside the double one, and `probe.cpp.obj` from 86.0 KiB to 86.3 with the rows. 
 is 33,640 more, for 337,257: the height stream's 10,752 bytes and
 `spatial.cpp` in `.text`, and in `.bss` a 12,288-byte render block - twelve channels of one
 256-sample block, what a player holds - with a 1,536-byte table of each object's gain per slot.
+The stage-timer table's growth from 32 zones to 64, which the encoder's rows needed, is 1,536
+more of `.bss` in every shape of the probe: 338,793.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
@@ -987,22 +989,25 @@ run's own lines, and the ceilings above hold the same headroom the other gates d
 ### Instructions per encoded frame
 
 The same clock on the encode probe, `tools/checks/run_baremetal_probe.sh --encoder --icount`,
-measured 2026-09-10 on the same leg. Both encoders are `double` throughout, so on this FPU-less
-leg every operation is a software call - which is the gap to the decode rows above, three to
-five times for the same layout, rather than anything the encoders' search costs. The ceilings
+measured 2026-09-10 on the same leg. The encoders are `double` behind an analysis front end that runs in the
+profile's scalar since 2026-09-10, so on this FPU-less leg every operation is a software call -
+which is the gap to the decode rows above, three to four and a half times for the same layout,
+rather than anything the encoders' search costs. The ceilings
 are `ICOUNT_CEILING_ENCODE` in the runner, with the same headroom as every other gate.
 
 | Row | Instructions per frame | Ceiling | Peak heap | Allocations per frame |
 |---|---:|---:|---:|---:|
-| `ac3_stereo` 2/0, 192 kbit/s | 12,623,000 | 16,000,000 | 82,367 | 34 |
-| `eac3_stereo` 2/0, 192 kbit/s | 24,200,000 | 30,000,000 | 118,962 | 84 |
-| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 24,486,000 | 31,000,000 | 195,321 | 47 |
-| `ac3` 5.1, 448 kbit/s | 34,286,000 | 43,000,000 | 162,602 | 67 |
-| `eac3` 5.1, 384 kbit/s | 62,590,000 | 78,000,000 | 220,608 | 180 |
-| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 82,975,000 | 104,000,000 | 192,573 | 91 |
+| `ac3_stereo` 2/0, 192 kbit/s | 10,299,000 | 16,000,000 | 64,783 | 34 |
+| `eac3_stereo` 2/0, 192 kbit/s | 21,869,000 | 30,000,000 | 101,378 | 84 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 22,148,000 | 31,000,000 | 177,737 | 47 |
+| `ac3` 5.1, 448 kbit/s | 27,875,000 | 43,000,000 | 144,754 | 67 |
+| `eac3` 5.1, 384 kbit/s | 56,154,000 | 78,000,000 | 202,760 | 180 |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 80,695,000 | 104,000,000 | 174,477 | 90 |
 
-The three 2/0 rows are new with the timing; the encode image is 232,205 bytes with them
-(157,752 `.text`, 400 `.data`, 74,053 `.bss`), 480 more than without. [Building](building.md#what-the-encode-direction-costs)
+The three 2/0 rows are new with the timing; the encode image is 242,589 bytes with them
+(162,856 `.text`, 400 `.data`, 79,333 `.bss`): the rows, the stage timers' application half
+(an encode image links it now that the probe reports its stages) and the 64-zone table, and the
+front end's float forms beside the double ones. [Building](building.md#what-the-encode-direction-costs)
 has what the encode direction cannot fit on an ESP32-S3, with the host profile's numbers.
 
 <div id="memory-trend-app">

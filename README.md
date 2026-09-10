@@ -113,7 +113,7 @@ and what has and has not been confirmed against hardware.
 | macOS arm64 / Intel | Library, `ac3cli`, `ac3gui`; Crucible compiles | Green CI; nothing has captured or played a sound |
 | Android (NVIDIA Shield) | Shield Atmos Demo only | Live objects out HDMI to a receiver, on the device |
 | WebAssembly | Decode and encode in a browser page | Demos published and running |
-| ESP32-S3 | Decode (every layout to 7.1.4, every coding tool, the output stage's folds, Atmos objects reconstructed and placed on loudspeakers) or encode (2/0 and 5.1); reusable ESP-IDF component | Correct under QEMU; real time on the board for every decode fixture it has run (E-AC-3 5.1 in 11.0 ms of its 32, 7.1.4 in 28.8, at 240 MHz), the encoders not yet timed there; two example players drive I2S — [the capability table](docs/platforms/esp32.md#what-the-part-can-and-cannot-do) |
+| ESP32-S3 | Decode (every layout to 7.1.4, every coding tool, the output stage's folds, Atmos objects reconstructed and placed on loudspeakers) or encode (2/0 and 5.1); reusable ESP-IDF component | Correct under QEMU; real time on the board for every decode fixture (E-AC-3 5.1 in 11.0 ms of its 32, 7.1.4 in 28.5, objects onto 7.1.4 in 25.1, at 240 MHz); AC-3 2/0 encodes in real time there (0.88x) and the other encode rows run 2.8x to 13.3x over; two example players drive I2S — [the capability table](docs/platforms/esp32.md#what-the-part-can-and-cannot-do) |
 | Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal` | Correct under QEMU; no real silicon |
 
 What each can encode and decode is the same everywhere — see

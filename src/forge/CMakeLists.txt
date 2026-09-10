@@ -153,6 +153,53 @@ set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
 # tables - that it gets its own file rather than a dozen conditionals through
 # this one. Off by default; the root CMakeLists.txt refuses the combination of
 # this option with anything that would need the full library.
+# Appended to the generated ac3/export.hpp (both the shared library's and the
+# minimum-footprint archive's, below and in minimal.cmake): a class template
+# whose instantiations the library exports needs its own macros, because the
+# two compiler families put the attribute in different places. MSVC accepts
+# dllimport on an explicit-instantiation DECLARATION but refuses dllexport
+# there (C4910), so the `extern template class` line in a public header
+# carries the import decoration for a consumer and nothing for the library's
+# own build, and the definition in the .cpp carries the export. GCC and Clang
+# refuse a visibility attribute on that definition once an extern declaration
+# precedes it ("type attributes ignored after type is already defined") and
+# want it on the class template itself, where MSVC would read a dllexport on
+# every implicit instantiation. Generated rather than written into the header
+# because a conditional directive in a source file is what
+# tools/checks/check_platform_macros.ps1 forbids; this one is the export
+# header's own kind, not a platform branch.
+set(_ac3_export_custom_content [[
+/* Class templates the library exports through explicit instantiations
+   (ac3/encoder/transient.hpp). Each compiler wants the attribute in a
+   different place, so three macros, one per place - see
+   src/forge/CMakeLists.txt for why this is generated rather than written.
+     AC3FORGE_TEMPLATE_CLASS       on the class template's definition
+     AC3FORGE_TEMPLATE_IMPORT      on `extern template class` declarations
+     AC3FORGE_TEMPLATE_INSTANTIATE on `template class` definitions
+   MSVC exports the instantiation definition and imports through the
+   declaration (C4910 forbids dllexport on `extern template`). GCC and Clang
+   take the visibility attribute on the class template itself, and reject it
+   on an instantiation that follows an extern declaration ("type attributes
+   ignored after type is already defined"). */
+#ifdef AC3FORGE_STATIC_DEFINE
+#  define AC3FORGE_TEMPLATE_CLASS
+#  define AC3FORGE_TEMPLATE_IMPORT
+#  define AC3FORGE_TEMPLATE_INSTANTIATE
+#elif defined(_MSC_VER)
+#  define AC3FORGE_TEMPLATE_CLASS
+#  ifdef AC3FORGE_BUILDING_SHARED
+#    define AC3FORGE_TEMPLATE_IMPORT
+#  else
+#    define AC3FORGE_TEMPLATE_IMPORT AC3FORGE_EXPORT
+#  endif
+#  define AC3FORGE_TEMPLATE_INSTANTIATE AC3FORGE_EXPORT
+#else
+#  define AC3FORGE_TEMPLATE_CLASS AC3FORGE_EXPORT
+#  define AC3FORGE_TEMPLATE_IMPORT
+#  define AC3FORGE_TEMPLATE_INSTANTIATE
+#endif
+]])
+
 if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
     include("${CMAKE_CURRENT_SOURCE_DIR}/minimal.cmake")
     return()
@@ -359,6 +406,28 @@ else()
 endif()
 target_include_directories(forge_objects PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac3_scalar_dir}")
+
+# The encoders' analysis front end - transient detection, the block gather,
+# the analysis window and the forward transform - in double or float
+# (src/internal/scalar/encode/{float64,float32}/ac3/internal/encode_scalar.hpp).
+# Its own axis beside the decoder's, for the reason that one was split from the
+# profile: a full build with either scalar float and the other double is what
+# makes the float front end's bitstreams comparable against the double ones
+# through the CLI and the oracles. double is the default and stays it for every
+# ordinary build; forge_minimal picks float32 for both - see minimal.cmake.
+set(AC3FORGE_ENCODE_SCALAR "double" CACHE STRING
+    "Scalar the encoders' analysis front end runs in: double (default) or float")
+set_property(CACHE AC3FORGE_ENCODE_SCALAR PROPERTY STRINGS double float)
+if(AC3FORGE_ENCODE_SCALAR STREQUAL "float")
+    set(_ac3_encode_scalar_dir "float32")
+elseif(AC3FORGE_ENCODE_SCALAR STREQUAL "double")
+    set(_ac3_encode_scalar_dir "float64")
+else()
+    message(FATAL_ERROR
+        "AC3FORGE_ENCODE_SCALAR is 'double' or 'float' (got '${AC3FORGE_ENCODE_SCALAR}')")
+endif()
+target_include_directories(forge_objects PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/encode/${_ac3_encode_scalar_dir}")
 
 # src/core/ on the include path so the CMake-selected
 # src/core/transform/<variant>/reference_transform.cpp can include the
@@ -645,6 +714,7 @@ include(GenerateExportHeader)
 set_target_properties(forge_shared PROPERTIES DEFINE_SYMBOL "AC3FORGE_BUILDING_SHARED")
 generate_export_header(forge_shared
     BASE_NAME AC3FORGE
+    CUSTOM_CONTENT_FROM_VARIABLE _ac3_export_custom_content
     EXPORT_MACRO_NAME AC3FORGE_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3/export.hpp"
     DEFINE_NO_DEPRECATED

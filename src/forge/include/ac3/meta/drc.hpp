@@ -223,6 +223,10 @@ inline constexpr std::string_view kProfileNames =
 // an empty span when there is none to account for.
 [[nodiscard]] AC3FORGE_EXPORT double channel_peak_dbfs(std::span<const double> history,
                                                        std::span<const float> samples);
+// The same, for a history the caller keeps in float - the encoders' analysis
+// front end under ac3/internal/encode_scalar.hpp's float variant.
+[[nodiscard]] AC3FORGE_EXPORT double channel_peak_dbfs(std::span<const float> history,
+                                                       std::span<const float> samples);
 
 // One dynrng word per audio block. State carries across blocks AND frames:
 // the smoothing filter has no idea where a syncframe boundary is, and it must

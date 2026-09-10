@@ -364,6 +364,13 @@ struct LtRtCoefficients {
     std::span<const std::array<double, 256>> history,
     std::span<const std::span<const float>> channels, Acmod acmod, double clev, double slev);
 
+// The same, for a history the caller keeps in float - the encoders' analysis
+// front end under ac3/internal/encode_scalar.hpp's float variant. The sum is
+// double either way.
+[[nodiscard]] AC3FORGE_EXPORT double mono_downmix_peak_dbfs(
+    std::span<const std::array<float, 256>> history,
+    std::span<const std::span<const float>> channels, Acmod acmod, double clev, double slev);
+
 [[nodiscard]] AC3FORGE_EXPORT double mono_downmix_peak_dbfs(
     std::span<const std::span<const float>> channels, Acmod acmod, double clev, double slev);
 
