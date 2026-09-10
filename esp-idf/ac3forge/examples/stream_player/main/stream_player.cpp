@@ -272,6 +272,16 @@ void end_play() {
 // first play at boot starts the control surface there; see app_main.
 bool begin_play(Session& session, const std::function<void()>& on_source_open = {}) {
     end_play();
+    // From here until the player runs, /status describes the play being
+    // started, not the one before it: the location is already the new one,
+    // and the previous run's state and figures beside it would read as this
+    // play having finished before it began. "opening" covers the source
+    // open, which over a network is the slow part.
+    xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+    g_last_stats = {};
+    g_last_stream.reset();
+    xSemaphoreGive(g_player_mutex);
+    g_state.store("opening");
     if (!player::source_open()) {
         g_state.store("failed");
         return false;

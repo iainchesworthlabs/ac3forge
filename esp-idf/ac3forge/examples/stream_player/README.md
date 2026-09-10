@@ -323,7 +323,11 @@ configurations set 80; the default is 0, none), the component's
 | `PUT /layout` | body: a name (`5.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`), the same grammar as `CONFIG_AC3FORGE_EXAMPLE_LAYOUT`. Takes effect at the next play. `400` for text that is not a layout, `409` for one with more slots than the sink's bus. |
 
 The configured location plays at boot as before; the surface can stop it and
-play something else. A `/status` taken under QEMU once the E-AC-3 demo had
+play something else. `state` is `opening` while a play's source opens - by
+then the location is the new one and the previous run's figures are gone -
+then `playing`, and `finished` or `failed` when the run ends; `stopped` after
+`POST /stop` or a location the source refused. A `/status` taken under QEMU
+once the E-AC-3 demo had
 played:
 
 ```
