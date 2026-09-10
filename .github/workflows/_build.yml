@@ -4067,17 +4067,18 @@ jobs:
       # (tests/golden/fixed-probe-pcm-hashes.json), as the gold leg holds its
       # native run's.
       - name: Build and run the FIXED-POINT probe under QEMU
-        # Into the build directory, not ${{ runner.temp }}, for the reason the
-        # -icount steps above give: on this container that expands to a host
-        # path tee cannot create, and tee being last in the pipeline under
-        # `sh -e` turns its failure into the step's.
-        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed | tee "build/config-arm-none-eabi-minimal-fixed/fixed-arm.txt"
+        # Into the FLOAT build directory, which the first step of this job
+        # already created - not ${{ runner.temp }}, for the reason the -icount
+        # steps above give, and not this run's own -fixed directory either:
+        # the shell opens tee's file when it builds the pipeline, before the
+        # script has configured anything, so the target has to exist already.
+        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed | tee "build/config-arm-none-eabi-minimal/fixed-arm.txt"
 
       - name: Fixed-point hashes against the pinned ones
-        run: python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "build/config-arm-none-eabi-minimal-fixed/fixed-arm.txt"
+        run: python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "build/config-arm-none-eabi-minimal/fixed-arm.txt"
 
       - name: Fixed-point instructions per frame under QEMU -icount
-        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed --icount | tee "build/config-arm-none-eabi-minimal-icount-fixed/icount-fixed.txt"
+        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed --icount | tee "build/config-arm-none-eabi-minimal/icount-fixed.txt"
 
       # The footprint table in docs/performance-trend.md is written by hand
       # from these numbers, so keep the run's own copy: a table nobody can
