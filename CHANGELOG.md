@@ -36,6 +36,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   4.8 M. `check_decode_scalar_snr.py` gained a fourth stream, enhanced coupling,
   which neither non-double scalar's gate had measured. JOC's object reconstruction is `float` in
   every build of this library and is not part of this axis.
+- **An ESP32-C3 target for the minimum-footprint profile**
+  (`apps/baremetal/platform/esp32c3/`, `tools/checks/run_esp32c3_probe.sh`), decoding in the
+  fixed-point tier because the part has no floating-point unit, and listed beside `esp32s3` in
+  the ESP-IDF component's manifest. CI builds and runs it under `qemu-riscv32`: 11 of the
+  twelve fixtures decode, peaking at 225,038 bytes of heap, and their PCM is identical to
+  what the x86 host and the Cortex-M3 leg produce - three architectures, three compilers, one
+  pinned set of hashes. 7.1.4 is the exception and needs 238,094 bytes where the part
+  has 249,180 free in a heap whose largest block is 114,688; the probe now
+  takes a per-target heap budget, skips a fixture above it and names it, and the hash check
+  accepts a declared skip while still failing on an undeclared absence. The component packaging
+  check builds the archive for every target the manifest claims rather than only the first.
+  Speed on a C3 is not measured here: QEMU is not cycle-accurate and a board is what settles it.
 - **`delta_allocation`** on `ac3::EncoderConfig` and `ac3::eac3::FrameConfig` (`delta=off` on
   the CLI, `nodelta` in `eac3-encode`'s tools string): off, the encoder chooses no §7.2.2.6
   segments and runs no second search to weigh them. The first level of an effort axis for

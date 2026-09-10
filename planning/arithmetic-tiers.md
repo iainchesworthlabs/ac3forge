@@ -5,9 +5,10 @@
     build; `float`, the ESP32-S3's, for decode since 2026-09-09 and for encode since 2026-09-10
     (#617, #618); and `fixed`, the decoder for parts with no floating-point unit, whose phases
     A to C below are done on the host and the Cortex-M3 leg with the numbers each measured.
-    What is not done: Phase D - no ESP32-C3 target directory, no RISC-V QEMU installed, no
-    board. The effort axis has its first measured point: the search and the planner cost
-    (#619, on the ESP32-S3).
+    What is not done: the timing half of Phase D, which needs an ESP32-C3 board - the target,
+    the RISC-V emulator and the correctness half are done, and the tier's hashes agree across
+    three architectures on the 11 of twelve fixtures that fit in the part's SRAM. The effort
+    axis has its first measured point: the search and the planner cost (#619, on the ESP32-S3).
 
     Design sections say what each tier and each effort level is and what it guarantees; each
     phase carries an exit criterion and how it is verified; [Decisions](#decisions) lists what
@@ -98,7 +99,7 @@ Platform to arithmetic to effort, with the state of each cell. "Real time" is a 
 | WASM | `double` | `double` | `reference` | Shipping ([the WASM page](../docs/platforms/wasm.md)) |
 | ESP32-S3 (LX7, single-precision FPU) | `float` | `float` | `reference` for 2/0; `reduced` is the candidate for 5.1 | Decode: every fixture in real time. Encode: AC-3 2/0 and E-AC-3 2/0 in real time, AC-3 5.1 at the line, E-AC-3 5.1 at 1.7x |
 | ESP32 (LX6, single-precision FPU) | `float` | `float` | as the S3 | Not measured; the S3's arithmetic without the PIE and with a smaller cache |
-| ESP32-C3 / C6 (RV32IMC, no FPU) | `Fixed32` | none at first | `reduced` | The tier is built and measured on the host and the Cortex-M3 leg; the part itself is Phase D, not started |
+| ESP32-C3 / C6 (RV32IMC, no FPU) | `Fixed32` | none at first | `reduced` | Built and gated: a probe target under `qemu-riscv32`, 11 of twelve fixtures decoding to PCM identical to the host's and the Cortex-M3 leg's. 7.1.4 does not fit in the part's SRAM. Time on a board is unmeasured |
 | Cortex-M3 (the CI leg, QEMU) | `float`, soft | `float`, soft | `reference` | Correctness and instruction counts only; the soft-float proxy every embedded estimate rests on |
 | Cortex-M4F / M7 (single-precision FPU) | `float` | `float` | `reference` | Not targeted; would behave as the S3 without its vector loads |
 
@@ -239,13 +240,35 @@ Enhanced coupling also had no SNR measurement until this phase: none of the gold
 the tool. `check_decode_scalar_snr.py` now encodes and checks a fourth stream that does, for
 both non-double scalars.
 
-**Phase D - the part. Not started.** A C3 platform directory beside the S3's under the
-bare-metal probe, the ESP-IDF component's profile extended with the scalar choice, the RISC-V
-QEMU installed beside the Xtensa one, the probe run under it for correctness and, on a board,
-for time. Exit: the fixtures' hashes under QEMU identical to the host's and the M3's; on a
-board, the time per frame per fixture on the ESP32 page's terms. Verified by the same runner
-that gates the S3, with the C3 as a third target. The runner already takes `--scalar=fixed`
-and the minimum-footprint profile already honours it; what is missing is the target.
+**Phase D - the part. Correctness done 2026-09-10; the timing needs a board.**
+`apps/baremetal/platform/esp32c3/` is the probe's third target: an ESP-IDF project like the S3's,
+defaulting to `-DAC3FORGE_DECODE_SCALAR=fixed` because the part has no floating-point unit.
+`qemu-riscv32` is installed beside the Xtensa one, `tools/checks/run_esp32c3_probe.sh` drives the
+leg, and the component's manifest lists `esp32c3` beside `esp32s3` - with the packaging check now
+building the archive for every target the manifest claims rather than only the first, since a
+claimed target nobody links is the failure that list exists to prevent.
+
+The exit criterion is met for 11 of the twelve fixtures: they decode under
+`qemu-system-riscv32` and their PCM is **identical to the x86 host's and the Cortex-M3 leg's**,
+held to the same pinned set (`tests/golden/fixed-probe-pcm-hashes.json`). Three architectures -
+x86-64, Thumb-2, RV32IMC - three compilers, one set of hashes. That is the tier's central claim,
+and until this leg existed it rested on two.
+
+The twelfth is a finding rather than a pass. 7.1.4 needs 238,094 bytes of heap and this
+part does not have them: it reports 249,180 free, but its heap is regioned with a
+largest block of 114,688, and the fixture failed on a 6,144-byte request with eleven
+kilobytes still nominally free. So the probe now takes a per-target heap budget
+(`AC3FORGE_PROBE_HEAP_BUDGET_BYTES`), skips a fixture above it and names it -
+`eac3_714.skipped=heap_budget needed=238094 budget=230000` - and the hash check treats a
+declared skip as a skip while still failing on an undeclared absence. What the C3 does run peaks
+at 225,038 bytes with 12 retained after teardown, leaves 10,688 of
+the main task's 32,768-byte stack, and links to a 523,072-byte image.
+
+What is NOT done, and cannot be here: the time. QEMU is not cycle-accurate and reports a
+fabricated clock, so this leg says the decode is correct on RISC-V and nothing about whether it
+keeps up. A 32 ms frame at 160 MHz is 5.12 M cycles; the Cortex-M3 leg's instruction counts put
+AC-3 2/0 and mono comfortably inside that and E-AC-3 5.1 near it, but instructions are not cycles
+and no leg models this part's 16 KB flash cache. A board settles it.
 
 **Phase E (optional) - the encoder.** Not planned in this round. The encoder's analysis is
 more precision-sensitive than the decoder's synthesis, and the S3's float encoder is the shape

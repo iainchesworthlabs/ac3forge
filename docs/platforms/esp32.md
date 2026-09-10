@@ -100,6 +100,25 @@ idf.py -p <PORT> flash monitor # a real board
 `tools/checks/run_esp32s3_probe.sh` drives that under QEMU and gates on the results;
 `--encoder` runs the encode direction instead.
 
+`apps/baremetal/platform/esp32c3/` is the same harness for the ESP32-C3, which has no
+floating-point unit and therefore decodes in the fixed-point tier
+([the plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)):
+
+```bash
+. $IDF_PATH/export.sh
+python "$IDF_PATH/tools/idf_tools.py" install qemu-riscv32   # once
+cd apps/baremetal/platform/esp32c3
+idf.py set-target esp32c3
+idf.py build                                  # -DAC3FORGE_DECODE_SCALAR=fixed by default
+idf.py qemu
+```
+
+`tools/checks/run_esp32c3_probe.sh` drives that leg. Its distinguishing gate is not a footprint
+ceiling but the PCM itself: the tier's arithmetic is integer, so the probe's per-fixture hashes
+are the same on RISC-V as on the x86 host and the Cortex-M3 leg, and the runner holds all three
+to one pinned set (`tests/golden/fixed-probe-pcm-hashes.json`). `--scalar=float` builds the same
+part with the S3's tier, which is what the two arithmetics are compared with.
+
 Verified against ESP-IDF v6.1.0, which ships Xtensa GCC 15.2.0 and defaults to `-std=gnu++26`.
 The library's C++23 use — `std::expected`, `std::unreachable`, `std::byteswap`, `constexpr
 std::vector` — compiles under `-fno-exceptions -fno-rtti`. The libstdc++ problem in
@@ -1008,7 +1027,7 @@ cycles on an ESP32-C3 against 121 on an ESP32-S3
 | **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — see below |
 | ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
 | ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
-| ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | The fixed-point tier's part (`planning/arithmetic-tiers.md`). On the [Cortex-M3 leg](../performance-trend.md#instructions-per-frame-fixed-point-tier) an E-AC-3 5.1 frame is 4.8 M integer instructions in that tier against 12.9 M soft-float in the float one, enhanced coupling 10.1 M against 28.9 M, AC-3 5.1 3.8 M, AC-3 2/0 1.2 M and mono 0.61 M - against 5.1 M cycles per frame at 160 MHz, so 2/0 and mono fit with room and 5.1 is close once RISC-V's IPC and the flash cache are allowed for. No target directory, QEMU or board yet; a board measures it next |
+| **ESP32-C3**/C6 | 400/512 KB | 160 MHz | **none** | none | **Yes**, in the fixed-point tier (`planning/arithmetic-tiers.md`): `apps/baremetal/platform/esp32c3/` is a probe target and CI runs it under `qemu-riscv32`, where 11 of the twelve fixtures decode to PCM identical to the x86 host's and the Cortex-M3 leg's, peaking at 225,038 bytes of heap. 7.1.4 is the twelfth and does not fit: it needs 238,094 where the part reports 249,180 free in a heap whose largest block is 114,688. Speed is unmeasured - on the [Cortex-M3 leg](../performance-trend.md#instructions-per-frame-fixed-point-tier) an E-AC-3 5.1 frame is 4.8 M integer instructions against 12.9 M soft-float, AC-3 5.1 3.8 M, AC-3 2/0 1.2 M and mono 0.61 M, against 5.12 M cycles per frame at 160 MHz, but instructions are not cycles and no leg models this part's 16 KB flash cache. A board measures it |
 
 Every part with an FPU has a single-precision one, so `double` is soft-float across the family and
 `decode_scalar_t` earns its keep on all of them.
