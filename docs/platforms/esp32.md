@@ -786,7 +786,7 @@ this part is the segments' own stage and the second pass - 4.8 ms and about
 between them - and what it costs on the five gold streams, decoded and
 compared with the source, is 0.01 dB on the worst channel of the two E-AC-3
 streams and nothing on the AC-3 ones: the race was already dropping the
-segments on most of their frames. [The arithmetic-tiers plan](../../planning/arithmetic-tiers.md)
+segments on most of their frames. [The arithmetic-tiers plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)
 is where the axis this is the first point of is written down.
 
 What the part cannot encode, measured on the host profile ([Building](../building.md#what-the-encode-direction-costs)
