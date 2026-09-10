@@ -431,8 +431,15 @@ struct Player::Impl {
                     while (banked < low && !ring_low_water.compare_exchange_weak(low, banked)) {
                     }
                 }
-                const std::size_t got =
-                    xStreamBufferReceive(ring, dst.data(), dst.size(), pdMS_TO_TICKS(100));
+                // Once the source has ended, everything it will ever send is
+                // already in the ring: take what is there without waiting, so
+                // the end of a pass is seen at once. Blocking here - for the
+                // whole timeout, on a ring nothing will refill - added 100 ms
+                // to every pass, which made the six-frame sample take half as
+                // long again as its audio.
+                const bool source_ended = (xEventGroupGetBits(events) & kSourceEnded) != 0;
+                const std::size_t got = xStreamBufferReceive(
+                    ring, dst.data(), dst.size(), source_ended ? 0 : pdMS_TO_TICKS(100));
                 if (got > 0) {
                     accumulator.commit(got);
                     continue;
