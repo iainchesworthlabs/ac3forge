@@ -1588,8 +1588,18 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // [channel][sub-band] - already expanded from bands to sub-bands.
     auto& cplco = impl_->cplco_;
     reset_nested(cplco, static_cast<std::size_t>(nfchans));
+    // The fixed-point tier's coordinate exponents (block_norm.hpp), this
+    // one and spxco_exp_ below. Only that tier reads them, so only that tier
+    // sizes, fills and snapshots them: in the floating tiers they stay
+    // empty. Sized unconditionally they cost every build a deep copy into
+    // each block's tail and, on a programme whose substreams differ in
+    // channel count, reallocations every frame as reset_nested shrank and
+    // regrew them - measured on the default build's probe, 7.1.4 went from
+    // 35 allocations a frame to 42.
     auto& cplco_exp = impl_->cplco_exp_;
-    reset_nested(cplco_exp, static_cast<std::size_t>(nfchans));
+    if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+        reset_nested(cplco_exp, static_cast<std::size_t>(nfchans));
+    }
     auto& phsflg = impl_->phsflg_;
     phsflg.clear();
 
@@ -1651,7 +1661,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     auto& spxco = impl_->spxco_;
     reset_nested(spxco, static_cast<std::size_t>(nfchans));
     auto& spxco_exp = impl_->spxco_exp_;
-    reset_nested(spxco_exp, static_cast<std::size_t>(nfchans));
+    if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+        reset_nested(spxco_exp, static_cast<std::size_t>(nfchans));
+    }
     auto& spxblnd = impl_->spxblnd_;
     spxblnd.assign(static_cast<std::size_t>(nfchans), 0);
     eac3::SpxNoise spx_noise;
@@ -1881,8 +1893,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     channel.assign(static_cast<std::size_t>(spx_bands.count),
                                    internal::decode_scalar_t{0});
                 }
-                for (auto& channel : spxco_exp) {
-                    channel.assign(static_cast<std::size_t>(spx_bands.count), 0);
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    for (auto& channel : spxco_exp) {
+                        channel.assign(static_cast<std::size_t>(spx_bands.count), 0);
+                    }
                 }
             }
         }
@@ -1909,7 +1923,6 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 spxblnd[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(5));
                 const int master = static_cast<int>(r.read(2));
                 auto& co = spxco[static_cast<std::size_t>(ch)];
-                auto& co_exp = spxco_exp[static_cast<std::size_t>(ch)];
                 for (int bnd = 0; bnd < spx_bands.count; ++bnd) {
                     const auto exp = static_cast<std::uint8_t>(r.read(4));
                     const auto mant = static_cast<std::uint8_t>(r.read(2));
@@ -1922,7 +1935,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         co[static_cast<std::size_t>(bnd)] =
                             coupling::coordinate_mantissa_as<internal::decode_scalar_t>(
                                 coordinate, coupling::kSpxMantissaBits);
-                        co_exp[static_cast<std::size_t>(bnd)] =
+                        spxco_exp[uch][static_cast<std::size_t>(bnd)] =
                             coupling::coordinate_exponent(coordinate, master);
                     } else {
                         co[static_cast<std::size_t>(bnd)] =
@@ -2037,8 +2050,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 for (auto& channel : cplco) {
                     channel.assign(static_cast<std::size_t>(subband_count), internal::decode_scalar_t{0});
                 }
-                for (auto& channel : cplco_exp) {
-                    channel.assign(static_cast<std::size_t>(subband_count), 0);
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    for (auto& channel : cplco_exp) {
+                        channel.assign(static_cast<std::size_t>(subband_count), 0);
+                    }
                 }
                 phsflg.assign(static_cast<std::size_t>(ncplbnd), false);
             } else {
@@ -2142,11 +2157,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     }
                 }
                 auto& channel = cplco[static_cast<std::size_t>(ch)];
-                auto& channel_exp = cplco_exp[static_cast<std::size_t>(ch)];
                 for (std::size_t bnd = 0; bnd < channel.size(); ++bnd) {
                     const auto band = static_cast<std::size_t>(subband_band[bnd]);
                     channel[bnd] = band_values[band];
-                    channel_exp[bnd] = band_exps[band];
+                    if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                        cplco_exp[static_cast<std::size_t>(ch)][bnd] = band_exps[band];
+                    }
                 }
             }
             if (phsflginu && any_new) {
@@ -3226,7 +3242,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         tail.chinspx = chinspx;
         tail.spx_bands = spx_bands;
         tail.spxco = spxco;
-        tail.spxco_exp = spxco_exp;
+        if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+            tail.spxco_exp = spxco_exp;
+        }
         tail.spxblnd = spxblnd;
         tail.spx_startmant = spx_startmant;
         tail.spx_endmant = spx_endmant;

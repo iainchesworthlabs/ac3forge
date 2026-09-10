@@ -875,8 +875,14 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // [channel][sub-band] - already expanded from bands to sub-bands.
     auto& cplco = impl_->cplco_;
     reset_nested(cplco, static_cast<std::size_t>(nfchans));
+    // The fixed-point tier's coupling-coordinate exponents (block_norm.hpp).
+    // Only that tier reads them, so only that tier sizes and fills them: in
+    // the floating tiers they stay empty, and cost the default build neither
+    // heap nor an allocation.
     auto& cplco_exp = impl_->cplco_exp_;
-    reset_nested(cplco_exp, static_cast<std::size_t>(nfchans));
+    if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+        reset_nested(cplco_exp, static_cast<std::size_t>(nfchans));
+    }
     auto& band_exps = impl_->band_exps_;
     auto& norm = impl_->norm_;
     norm.assign(max_streams, 0);
@@ -1029,8 +1035,10 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 for (auto& channel : cplco) {
                     channel.resize(static_cast<std::size_t>(ncplsubnd), internal::decode_scalar_t{0});
                 }
-                for (auto& channel : cplco_exp) {
-                    channel.resize(static_cast<std::size_t>(ncplsubnd), 0);
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    for (auto& channel : cplco_exp) {
+                        channel.resize(static_cast<std::size_t>(ncplsubnd), 0);
+                    }
                 }
                 phsflg.resize(static_cast<std::size_t>(ncplbnd), false);
                 // Coupled channels stop carrying their own coefficients here.
@@ -1055,7 +1063,9 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 any_new = true;
                 const int master = static_cast<int>(r.read(2));
                 band_values.assign(static_cast<std::size_t>(ncplbnd), internal::decode_scalar_t{0});
-                band_exps.assign(static_cast<std::size_t>(ncplbnd), 0);
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    band_exps.assign(static_cast<std::size_t>(ncplbnd), 0);
+                }
                 for (int bnd = 0; bnd < ncplbnd; ++bnd) {
                     const auto exp = static_cast<std::uint8_t>(r.read(4));
                     const auto mant = static_cast<std::uint8_t>(r.read(4));
@@ -1081,8 +1091,10 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                         static_cast<std::size_t>(subband_band[static_cast<std::size_t>(bnd)]);
                     cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)] =
                         band_values[band];
-                    cplco_exp[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)] =
-                        band_exps[band];
+                    if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                        cplco_exp[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)] =
+                            band_exps[band];
+                    }
                 }
             }
             if (phsflginu && any_new) {
