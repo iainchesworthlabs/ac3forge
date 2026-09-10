@@ -989,25 +989,28 @@ run's own lines, and the ceilings above hold the same headroom the other gates d
 ### Instructions per encoded frame
 
 The same clock on the encode probe, `tools/checks/run_baremetal_probe.sh --encoder --icount`,
-measured 2026-09-10 on the same leg. The encoders are `double` behind an analysis front end that runs in the
-profile's scalar since 2026-09-10, so on this FPU-less leg every operation is a software call -
-which is the gap to the decode rows above, three to four and a half times for the same layout,
-rather than anything the encoders' search costs. The ceilings
-are `ICOUNT_CEILING_ENCODE` in the runner, with the same headroom as every other gate.
+measured 2026-09-10 on the same leg. The encoders run in the profile's scalar end to end since
+2026-09-10, soft float on this leg as the decoders are; what is left of the gap to the decode
+rows above - 1.7 to 3 times for the same layout - is the search: exponent-run planning, several
+hundred bit-allocation calls a frame, mantissa bit counts, integer work the decoder does once a
+block. The ceilings are `ICOUNT_CEILING_ENCODE` in the runner, with the same headroom as every
+other gate.
 
 | Row | Instructions per frame | Ceiling | Peak heap | Allocations per frame |
 |---|---:|---:|---:|---:|
-| `ac3_stereo` 2/0, 192 kbit/s | 10,299,000 | 16,000,000 | 64,783 | 34 |
-| `eac3_stereo` 2/0, 192 kbit/s | 21,869,000 | 30,000,000 | 101,378 | 84 |
-| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 22,148,000 | 31,000,000 | 177,737 | 47 |
-| `ac3` 5.1, 448 kbit/s | 27,875,000 | 43,000,000 | 144,754 | 67 |
-| `eac3` 5.1, 384 kbit/s | 56,154,000 | 78,000,000 | 202,760 | 180 |
-| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 80,695,000 | 104,000,000 | 174,477 | 90 |
+| `ac3_stereo` 2/0, 192 kbit/s | 9,292,000 | 16,000,000 | 51,867 | 34 |
+| `eac3_stereo` 2/0, 192 kbit/s | 14,549,000 | 30,000,000 | 78,222 | 84 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 17,512,000 | 31,000,000 | 141,365 | 47 |
+| `ac3` 5.1, 448 kbit/s | 25,414,000 | 43,000,000 | 107,166 | 67 |
+| `eac3` 5.1, 384 kbit/s | 37,827,000 | 78,000,000 | 154,932 | 180 |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 50,460,000 | 104,000,000 | 127,417 | 90 |
 
-The three 2/0 rows are new with the timing; the encode image is 242,589 bytes with them
-(162,856 `.text`, 400 `.data`, 79,333 `.bss`): the rows, the stage timers' application half
+The three 2/0 rows are new with the timing; the encode image is 223,941 bytes with them
+(155,720 `.text`, 400 `.data`, 67,821 `.bss`): the rows, the stage timers' application half
 (an encode image links it now that the probe reports its stages) and the 64-zone table, and the
-front end's float forms beside the double ones. [Building](building.md#what-the-encode-direction-costs)
+encoders' float forms beside the double ones - smaller than the image with the front end alone
+in `float` (242,589), the `double` software routines the rest of the encoder had pulled in
+having gone with it. [Building](building.md#what-the-encode-direction-costs)
 has what the encode direction cannot fit on an ESP32-S3, with the host profile's numbers.
 
 <div id="memory-trend-app">
