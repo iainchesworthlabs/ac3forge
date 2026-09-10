@@ -254,6 +254,14 @@ bool begin_play(Session& session) {
         g_state.store("failed");
         return false;
     }
+    // What the decoder is about to allocate into: the source is open, so a
+    // network stack, where there is one, is already up. Internal RAM is the
+    // constraint on the network shapes, and this is the figure to hold the
+    // decoder's footprint against.
+    std::printf("heap: internal free %u (largest block %u), psram free %u\n",
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
     g_sink.reset();
     session = Session{};
 
@@ -386,7 +394,22 @@ ac3forge::ControlHandlers control_handlers() {
 
 }  // namespace
 
+namespace {
+
+// A failed allocation otherwise shows only as abort() from operator new, which
+// says neither how much was asked for nor how much was left. This says both,
+// once per failure, before the abort that follows it.
+void on_alloc_failed(std::size_t size, std::uint32_t caps, const char* function) {
+    std::printf("heap: %s could not allocate %u bytes (caps 0x%lx); internal free %u, largest %u\n",
+                function, static_cast<unsigned>(size), static_cast<unsigned long>(caps),
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
+}
+
+}  // namespace
+
 extern "C" void app_main() {
+    (void)heap_caps_register_failed_alloc_callback(on_alloc_failed);
     const auto layout = ac3forge::OutputLayout::parse(kLayoutText);
     if (!layout.has_value()) {
         std::printf("error: CONFIG_AC3FORGE_EXAMPLE_LAYOUT \"%s\" is not a layout - a name like "

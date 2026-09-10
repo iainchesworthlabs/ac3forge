@@ -555,7 +555,10 @@ bool Player::start() {
 
     // The ring: PSRAM when asked for and present, internal SRAM otherwise. A
     // trigger level of one byte, so the decoder wakes on whatever arrives.
-    if (im.config.ring_in_psram) {
+    // "Present" is asked, not learned from a failed allocation: that failure
+    // reaches any failed-allocation hook the application has registered, and
+    // reads there as running out of memory.
+    if (im.config.ring_in_psram && heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
         im.ring_in_psram = im.make_ring(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     }
     if (im.ring == nullptr) {
