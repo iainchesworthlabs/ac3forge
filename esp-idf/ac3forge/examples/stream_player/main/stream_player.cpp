@@ -1,5 +1,6 @@
-// Decode AC-3 or E-AC-3 from wherever the bytes are and play it - the wiring
-// around ac3forge::Player, which is where the work happens.
+// Decode AC-3 or E-AC-3 from wherever the bytes are and play it onto whatever
+// speakers the room has - the wiring around ac3forge::Player, which is where
+// the work happens.
 //
 // The difference between this and the i2s_player example beside it is where the
 // audio comes from, and that difference is the entire point. That one decodes a
@@ -8,14 +9,16 @@
 // whole stream in memory: a fetch task reads it in blocks from wherever it is,
 // a ring buffer holds what has arrived, and a decode task on the other core
 // frames it with ac3::io::AccessUnitAccumulator, decodes whatever complete
-// access units come out, and writes them to the sink.
+// access units come out a block at a time, renders each block onto the
+// configured layout and writes it to the sink.
 //
-// Both tasks, the ring and the decoders are the component's
-// (esp-idf/ac3forge/include/ac3forge/player.hpp), and so is the control surface
-// (control.hpp) that lets something on the network say what to play. What is
-// left here is what an integrator's own firmware would have to write too: the
-// seams, adapted; a level meter; a command queue between the HTTP server's task
-// and this one, which owns the player; and the reporting.
+// Both tasks, the ring, the decoders and the renderer are the component's
+// (esp-idf/ac3forge/include/ac3forge/player.hpp, layout.hpp, render.hpp), and
+// so is the control surface (control.hpp) that lets something on the network
+// say what to play and onto what. What is left here is what an integrator's
+// own firmware would have to write too: the seams, adapted; a level meter; a
+// command queue between the HTTP server's task and this one, which owns the
+// player; and the reporting.
 //
 // BOTH ENDS ARE SEAMS, and CMake resolves both - see byte_source.hpp and
 // audio_sink.hpp. This file mentions neither a partition nor I2S.
@@ -28,7 +31,7 @@
 //   sink/i2s/          a stereo DAC.
 //   sink/tdm/          multi-channel on one data line.
 //   sink/capture/      converts and checks; what CI runs.
-//   sink/null/         counts frames.
+//   sink/null/         counts blocks.
 
 #include <array>
 #include <atomic>
@@ -52,6 +55,7 @@
 
 #include "ac3/core/tables.hpp"
 #include "ac3forge/control.hpp"
+#include "ac3forge/layout.hpp"
 #include "ac3forge/player.hpp"
 
 #include "audio_sink.hpp"
@@ -61,7 +65,7 @@ namespace {
 
 constexpr std::uint32_t kSampleRate = 48000;
 constexpr std::uint64_t kFrameDurationUs = 32000;  // §5.3.2: 1,536 samples at 48 kHz
-constexpr std::size_t kOutputChannels = 2;
+constexpr std::size_t kMaxSlots = ac3forge::OutputLayout::kMaxSlots;
 
 // From Kconfig, ints so they arrive as plain constants rather than through
 // preprocessor conditionals - see main/Kconfig.projbuild. kMaxLaps of 0 plays
@@ -72,6 +76,20 @@ constexpr std::size_t kOutputChannels = 2;
 constexpr std::uint32_t kMaxLaps = CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS;
 constexpr std::uint64_t kReportEveryFrames = CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES;
 constexpr std::uint16_t kControlPort = CONFIG_AC3FORGE_EXAMPLE_CONTROL_PORT;
+constexpr const char* kLayoutText = CONFIG_AC3FORGE_EXAMPLE_LAYOUT;
+constexpr ac3::DownmixTarget kStereoFold = CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD != 0
+                                               ? ac3::DownmixTarget::kLtRt
+                                               : ac3::DownmixTarget::kLoRo;
+constexpr ac3forge::PlayerConfig::Objects kObjects =
+    CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 1   ? ac3forge::PlayerConfig::Objects::kNever
+    : CONFIG_AC3FORGE_EXAMPLE_OBJECTS == 2 ? ac3forge::PlayerConfig::Objects::kAlways
+                                           : ac3forge::PlayerConfig::Objects::kAuto;
+constexpr ac3::oba::joc::Domain kJocDomain = CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN != 0
+                                                 ? ac3::oba::joc::Domain::kMdctBand
+                                                 : ac3::oba::joc::Domain::kQmf;
+constexpr ac3::OperatingMode kMode = CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 1   ? ac3::OperatingMode::kRf
+                                     : CONFIG_AC3FORGE_EXAMPLE_DRC_MODE == 2 ? ac3::OperatingMode::kCustom
+                                                                             : ac3::OperatingMode::kLine;
 
 BaseType_t core_from_kconfig(int value) { return value < 0 ? tskNO_AFFINITY : value; }
 
@@ -89,41 +107,47 @@ class SeamSource final : public ac3forge::ByteSource {
 //
 // The meter is what turns result=pass from "some units decoded without
 // returning an error" - which a stream decoding to silence satisfies - into an
-// end-to-end check: the RMS of what was actually sent, per channel, scaled by
-// 1e6 the way apps/baremetal/probe.cpp reports levels. The player reports it
-// and does not judge it; what the levels should be is a property of the stream,
-// so CI holds the expectation. Written from the decode task, read from app_main
-// after the run has ended.
+// end-to-end check: the RMS of what was actually sent, per slot, scaled by 1e6
+// the way apps/baremetal/probe.cpp reports levels. The player reports it and
+// does not judge it; what the levels should be is a property of the stream and
+// the layout, so CI holds the expectation. Written from the decode task, read
+// from app_main after the run has ended.
 class MeteredSink final : public ac3forge::PcmSink {
    public:
-    void write(std::span<const std::span<const float>> channels) override {
-        for (std::size_t ch = 0; ch < channels.size() && ch < kOutputChannels; ++ch) {
-            for (const float sample : channels[ch]) {
-                sum_squares_[ch] += static_cast<double>(sample) * static_cast<double>(sample);
+    void write(std::span<const std::span<const float>> slots) override {
+        const std::size_t n = slots.size() < kMaxSlots ? slots.size() : kMaxSlots;
+        for (std::size_t slot = 0; slot < n; ++slot) {
+            for (const float sample : slots[slot]) {
+                sum_squares_[slot] += static_cast<double>(sample) * static_cast<double>(sample);
             }
         }
-        samples_ += channels.empty() ? 0 : channels[0].size();
-        player::sink_write(channels);
+        if (n > slots_) {
+            slots_ = n;
+        }
+        samples_ += slots.empty() ? 0 : slots[0].size();
+        player::sink_write(slots);
     }
 
     void reset() {
         sum_squares_ = {};
         samples_ = 0;
+        slots_ = 0;
     }
 
     void report() const {
-        for (std::size_t ch = 0; ch < kOutputChannels; ++ch) {
+        for (std::size_t slot = 0; slot < slots_; ++slot) {
             const double rms = samples_ == 0 ? 0.0
-                                             : std::sqrt(sum_squares_[ch] /
+                                             : std::sqrt(sum_squares_[slot] /
                                                          static_cast<double>(samples_));
-            std::printf("stream.rms[%u]=%ld\n", static_cast<unsigned>(ch),
+            std::printf("stream.rms[%u]=%ld\n", static_cast<unsigned>(slot),
                         static_cast<long>((rms * 1e6) + 0.5));
         }
     }
 
    private:
-    std::array<double, kOutputChannels> sum_squares_{};
+    std::array<double, kMaxSlots> sum_squares_{};
     std::size_t samples_ = 0;
+    std::size_t slots_ = 0;
 };
 
 // --- what the control surface sees ----------------------------------------------
@@ -131,12 +155,12 @@ class MeteredSink final : public ac3forge::PcmSink {
 // meet in a queue for commands and a mutex for the player's snapshot. Nothing
 // the server's task does touches the player directly.
 
-enum class CommandKind : std::uint8_t { kPlay, kStop, kVolume };
+enum class CommandKind : std::uint8_t { kPlay, kStop, kVolume, kLayout };
 
 struct Command {
     CommandKind kind = CommandKind::kStop;
     float volume = 1.0F;
-    char location[512] = {};
+    char text[512] = {};  // a location for kPlay, a layout for kLayout
 };
 
 QueueHandle_t g_commands = nullptr;
@@ -146,6 +170,9 @@ ac3forge::PlayerStats g_last_stats{};        // of the last run, once it has end
 std::optional<ac3forge::StreamInfo> g_last_stream;
 std::atomic<const char*> g_state{"stopped"};
 std::atomic<float> g_volume{1.0F};
+// The layout the next play uses, and its text for /layout and /status. Written
+// by app_main, read under the mutex by the control surface.
+ac3forge::OutputLayout g_layout;
 
 // --- reporting -------------------------------------------------------------------
 
@@ -160,13 +187,16 @@ void print_ring_low(const ac3forge::PlayerStats& s) {
     }
 }
 
-// realtime_permille is decode time against the audio time it produced: 1000 is
-// exactly real time and anything at or above it cannot play without gaps. The
-// worst SINGLE frame matters as much as the average, because the sink's queue
-// only absorbs a spike that small - it says how deep. ring_low is the least the
-// ring ever held when the decoder came for more: zero means the decoder waited
-// on the source at least once, and how far above zero it stays is the margin
-// the ring's depth is buying.
+// realtime_permille is decode-and-render time against the audio time it
+// produced: 1000 is exactly real time and anything at or above it cannot play
+// without gaps. On a paced sink the figure includes the wait for the DAC, so it
+// reads close to 1000 there by construction and the sink's own counters say
+// whether the wait was ever too long; on a sink with no pacing it is the cost.
+// The worst SINGLE frame matters as much as the average, because the sink's
+// queue only absorbs a spike that small - it says how deep. ring_low is the
+// least the ring ever held when the decoder came for more: zero means the
+// decoder waited on the source at least once, and how far above zero it stays
+// is the margin the ring's depth is buying.
 void report_timing(const char* label, unsigned long value, const ac3forge::PlayerStats& s) {
     const std::uint64_t permille =
         s.frames_played > 0 ? (s.decode_us * 1000) / (kFrameDurationUs * s.frames_played) : 0;
@@ -183,11 +213,11 @@ void report_timing(const char* label, unsigned long value, const ac3forge::Playe
 }
 
 void describe(const ac3forge::StreamInfo& info) {
-    std::printf("stream: %s acmod=%d channels=%d substreams=%d dialnorm=-%d objects=%s, folded to "
-                "%u\n",
+    std::printf("stream: %s acmod=%d channels=%d substreams=%d dialnorm=-%d objects=%s, onto %s "
+                "(%d slots%s)\n",
                 info.eac3 ? "E-AC-3" : "AC-3", info.acmod, info.channels, info.substreams,
-                info.dialnorm, info.objects ? "yes" : "no",
-                static_cast<unsigned>(kOutputChannels));
+                info.dialnorm, info.objects ? "yes" : "no", g_layout.text().data(), info.slots,
+                info.objects_rendered ? ", objects placed" : "");
 }
 
 // One run of the player: from source_open to the verdict.
@@ -222,7 +252,13 @@ bool begin_play(Session& session) {
     session = Session{};
 
     ac3forge::PlayerConfig config;
-    config.output_channels = kOutputChannels;
+    xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+    config.layout = g_layout;
+    xSemaphoreGive(g_player_mutex);
+    config.stereo_fold = kStereoFold;
+    config.objects = kObjects;
+    config.decoder.joc_domain = kJocDomain;
+    config.decoder.output.mode = kMode;
     config.ring_bytes = CONFIG_AC3FORGE_EXAMPLE_RING_BYTES;
     config.ring_in_psram = CONFIG_AC3FORGE_EXAMPLE_RING_IN_PSRAM != 0;
     config.fetch_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_FETCH_CORE);
@@ -243,6 +279,22 @@ bool begin_play(Session& session) {
     return true;
 }
 
+// A layout for the next play, from the control surface: parsed here, on the
+// server's task, so a refusal is answered at once; applied by app_main.
+bool accept_layout(std::string_view text) {
+    const auto layout = ac3forge::OutputLayout::parse(text);
+    if (!layout.has_value() || layout->slots() > static_cast<std::size_t>(player::sink_slots())) {
+        return false;
+    }
+    Command c;
+    c.kind = CommandKind::kLayout;
+    if (text.size() >= sizeof(c.text)) {
+        return false;
+    }
+    std::memcpy(c.text, text.data(), text.size());
+    return xQueueSend(g_commands, &c, 0) == pdTRUE;
+}
+
 // The verdict. stream.audio_ms against stream.wall_ms is the whole-pipeline
 // real-time check: a player that kept up spent as long playing as the audio
 // lasted, one that stalled spent longer by exactly the silence it inserted,
@@ -259,12 +311,14 @@ void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
     const std::int64_t wall_us =
         session.started_us == 0 ? 0 : esp_timer_get_time() - session.started_us;
     std::printf("stream.units=%lu stream.held=%lu stream.resync_bytes=%lu stream.sink=%s "
-                "stream.sink_frames=%lu stream.source=%s stream.fetched=%lu stream.ring_low=",
+                "stream.sink_frames=%lu stream.source=%s stream.fetched=%lu stream.layout=%s "
+                "stream.layout_mismatches=%lu stream.ring_low=",
                 static_cast<unsigned long>(stats.frames_played),
                 static_cast<unsigned long>(stats.frames_held),
                 static_cast<unsigned long>(stats.resync_bytes), player::sink_name(),
                 static_cast<unsigned long>(player::sink_frames_written()), player::source_name(),
-                static_cast<unsigned long>(stats.fetched_bytes));
+                static_cast<unsigned long>(stats.fetched_bytes), g_layout.text().data(),
+                static_cast<unsigned long>(stats.layout_mismatches));
     print_ring_low(stats);
     std::printf(" stream.decode_stack_free=%lu stream.audio_ms=%lu stream.wall_ms=%lu\n",
                 static_cast<unsigned long>(stats.decode_stack_free),
@@ -273,16 +327,17 @@ void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
     std::printf("result=%s\n", (stats.frames_played > 0 && !stats.failed) ? "pass" : "fail");
 }
 
-// The control surface's view, all of it through the mutex or an atomic.
+// The control surface's view, all of it through the mutex, the queue or an
+// atomic.
 ac3forge::ControlHandlers control_handlers() {
     ac3forge::ControlHandlers h;
     h.play = [](std::string_view location) {
         Command c;
         c.kind = CommandKind::kPlay;
-        if (location.size() >= sizeof(c.location)) {
+        if (location.size() >= sizeof(c.text)) {
             return false;
         }
-        std::memcpy(c.location, location.data(), location.size());
+        std::memcpy(c.text, location.data(), location.size());
         return xQueueSend(g_commands, &c, 0) == pdTRUE;
     };
     h.stop = []() {
@@ -297,6 +352,13 @@ ac3forge::ControlHandlers control_handlers() {
         return xQueueSend(g_commands, &c, 0) == pdTRUE;
     };
     h.volume = []() { return g_volume.load(); };
+    h.layout = []() {
+        xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+        std::string text{g_layout.text()};
+        xSemaphoreGive(g_player_mutex);
+        return text;
+    };
+    h.set_layout = accept_layout;
     h.stats = []() {
         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
         const ac3forge::PlayerStats s = g_player ? g_player->stats() : g_last_stats;
@@ -319,12 +381,22 @@ ac3forge::ControlHandlers control_handlers() {
 }  // namespace
 
 extern "C" void app_main() {
-    std::printf("ac3forge stream_player: AC-3 or E-AC-3, folded to stereo\n");
+    const auto layout = ac3forge::OutputLayout::parse(kLayoutText);
+    if (!layout.has_value()) {
+        std::printf("error: CONFIG_AC3FORGE_EXAMPLE_LAYOUT \"%s\" is not a layout - a name like "
+                    "5.1.4, or a speaker list like L,R,C,LFE,Ls,Rs\n",
+                    kLayoutText);
+        std::printf("result=fail\n");
+        return;
+    }
+    g_layout = *layout;
+    std::printf("ac3forge stream_player: AC-3 or E-AC-3 onto %s\n", g_layout.text().data());
 
-    // kOutputChannels, not the coded count: the decoder folds to stereo before
-    // it returns (PlayerConfig's default decoder settings). A player that wanted
-    // 5.1 out would ask for kAsCoded and open the sink with six.
-    if (!player::sink_open(kSampleRate, static_cast<int>(kOutputChannels))) {
+    // The layout's slots, not the coded count: the player renders onto the
+    // layout whatever arrives. A layout too wide for the sink stops here and
+    // says so; the sink's own message names its limit.
+    if (!player::sink_open(kSampleRate, static_cast<int>(g_layout.slots()))) {
+        std::printf("result=fail\n");
         return;
     }
     g_commands = xQueueCreate(4, sizeof(Command));
@@ -353,9 +425,9 @@ extern "C" void app_main() {
             switch (cmd.kind) {
                 case CommandKind::kPlay:
                     end_play();
-                    if (!player::source_set_location(cmd.location)) {
+                    if (!player::source_set_location(cmd.text)) {
                         std::printf("control: %s refused location %s\n", player::source_name(),
-                                    cmd.location);
+                                    cmd.text);
                         g_state.store("stopped");
                         break;
                     }
@@ -372,6 +444,17 @@ extern "C" void app_main() {
                         g_player->set_volume(cmd.volume);
                     }
                     xSemaphoreGive(g_player_mutex);
+                    break;
+                case CommandKind::kLayout:
+                    // Already validated by accept_layout; parsed again here
+                    // because the queue carries text, not a layout.
+                    if (const auto next = ac3forge::OutputLayout::parse(cmd.text)) {
+                        xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+                        g_layout = *next;
+                        xSemaphoreGive(g_player_mutex);
+                        std::printf("control: layout %s for the next play\n",
+                                    g_layout.text().data());
+                    }
                     break;
             }
         }
