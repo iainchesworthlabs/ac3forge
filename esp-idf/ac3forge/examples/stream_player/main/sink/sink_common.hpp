@@ -85,19 +85,34 @@ class DacQueueModel {
     // last play ran out, and nothing was owed to it yet.
     void arriving() {
         arrived_us_ = esp_timer_get_time();
-        // Worked in time rather than bytes: ahead of a play's first block the
-        // gap is however long the player sat idle, and five weeks of that at
-        // a sixteen-slot bus's byte rate would overflow 64 bits.
-        const std::int64_t headroom_us = bytes_to_us(queue_bytes_) - (arrived_us_ - stamp_us_);
-        queue_bytes_ = headroom_us > 0 ? us_to_bytes(headroom_us) : 0;
+        // What the last write left, less what has drained since: in bytes
+        // while the queue lasts, in time once it has run out. In bytes because
+        // only the drain is rounded there, downwards, so the figure can err
+        // high and never low, and the capacity clamp in queued() takes the
+        // error out whenever a write fills the queue; taking the figure itself
+        // through microseconds and back would round it down twice a block with
+        // nothing to correct it. In time once the queue is empty because ahead
+        // of a play's first block the gap is however long the player sat
+        // idle, and five weeks of that as bytes at a sixteen-slot bus's rate
+        // would overflow 64 bits.
+        const std::int64_t elapsed_us = arrived_us_ - stamp_us_;
+        const std::int64_t lasts_us = bytes_to_us(queue_bytes_);
+        std::int64_t headroom = 0;
+        std::int64_t dry_us = 0;
+        if (elapsed_us < lasts_us) {
+            headroom = queue_bytes_ - us_to_bytes(elapsed_us);
+        } else {
+            dry_us = elapsed_us - lasts_us;
+        }
+        queue_bytes_ = headroom;
         if (play_.writes == 0) {
             return;
         }
-        if (headroom_us <= 0) {
+        if (headroom <= 0) {
             ++play_.underruns;
-            play_.dry_us += static_cast<std::uint64_t>(-headroom_us);
+            play_.dry_us += static_cast<std::uint64_t>(dry_us);
         }
-        const std::int64_t left_us = headroom_us < 0 ? 0 : headroom_us;
+        const std::int64_t left_us = bytes_to_us(headroom);
         if (play_.min_headroom_us < 0 || left_us < play_.min_headroom_us) {
             play_.min_headroom_us = left_us;
         }
