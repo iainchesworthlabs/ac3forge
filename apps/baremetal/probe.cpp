@@ -290,9 +290,12 @@ void report_hash(const char* codec, const PcmHash& hash) {
 // the arm-none-eabi leg can still fail there. The budget a target sets should
 // therefore be what it was OBSERVED to manage, not what its allocator reports
 // free.
-#ifndef AC3FORGE_PROBE_HEAP_BUDGET_BYTES
-#define AC3FORGE_PROBE_HEAP_BUDGET_BYTES 0
-#endif
+//
+// The value arrives from CMake and is never defaulted here: every shape that
+// builds this file sets it, the hosted and arm-none-eabi ones through
+// apps/baremetal/CMakeLists.txt's cache variable and each ESP-IDF app through
+// its own main/CMakeLists.txt. A conditional would put the platform back in
+// the translation unit, which is the rule Platform Macros enforces.
 constexpr std::size_t kHeapBudgetBytes = AC3FORGE_PROBE_HEAP_BUDGET_BYTES;
 
 // True when this fixture asks for more than the part has. `needed` is the peak
