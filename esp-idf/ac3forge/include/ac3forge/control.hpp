@@ -12,7 +12,11 @@
 // integrator whose controller is not Home Assistant. planning/esp32-player.md
 // (Control) says why it is REST here and a media_player entity on ESPHome.
 //
-//   GET  /            the routes, as text
+//   GET  /            a web page that shows what the player is doing and drives
+//                     it through the routes below and nothing else, with its
+//                     script at GET /ui.js. Both are sent from flash as the
+//                     component embeds them (planning/esp32-device-ui.md).
+//   GET  /api         the routes, as text
 //   GET  /status      what is playing and how it is going, as JSON
 //   POST /play        body: the location to play - a URL for the HTTP source,
 //                     a path for a file source. 202 when accepted (the owner

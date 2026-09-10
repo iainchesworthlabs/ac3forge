@@ -41,10 +41,18 @@
 # tested on the host by tests/io/test_interleave.cpp, and on its way into the
 # library - see planning/esp32-player.md). freertos, esp_timer and heap are what
 # the player's own sources include.
+#
+# The control surface (include/ac3forge/control.hpp, src/control.cpp) is here
+# too, on esp_http_server, with the web page it serves: ui/ac3forge_ui.html and
+# ui/ac3forge_ui.js, embedded as they are and sent from flash
+# (planning/esp32-device-ui.md). IDF names an embedded file's symbols after its
+# base name, hence the component's name on both. Like the rest of this archive
+# they reach a firmware only when something in it uses Control.
 idf_component_register(
     SRCS "src/player.cpp" "src/control.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES freertos esp_timer heap esp_http_server)
+    REQUIRES freertos esp_timer heap esp_http_server
+    EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
 
 # Where the library's own CMake lives, which depends on how this component was
 # obtained.
