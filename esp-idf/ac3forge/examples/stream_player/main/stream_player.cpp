@@ -115,11 +115,28 @@ class SeamSource final : public ac3forge::ByteSource {
 class MeteredSink final : public ac3forge::PcmSink {
    public:
     void write(std::span<const std::span<const float>> slots) override {
+        // Squared and summed in float, sixteen samples at a time, and only the
+        // partial sums added in double. Every double operation on this part is
+        // a call into the soft-float library: done per sample, the meter cost
+        // 60 ms a frame on twelve slots - more than the decode it was
+        // measuring. A float partial of sixteen squares is good to a few parts
+        // in 10^7, far inside CI's tolerance of one digit of RMS x 1e6.
         const std::size_t n = slots.size() < kMaxSlots ? slots.size() : kMaxSlots;
         for (std::size_t slot = 0; slot < n; ++slot) {
-            for (const float sample : slots[slot]) {
-                sum_squares_[slot] += static_cast<double>(sample) * static_cast<double>(sample);
+            const std::span<const float> samples = slots[slot];
+            double sum = 0.0;
+            std::size_t i = 0;
+            for (; i + kStretch <= samples.size(); i += kStretch) {
+                float partial = 0.0F;
+                for (std::size_t k = 0; k < kStretch; ++k) {
+                    partial += samples[i + k] * samples[i + k];
+                }
+                sum += static_cast<double>(partial);
             }
+            for (; i < samples.size(); ++i) {
+                sum += static_cast<double>(samples[i] * samples[i]);
+            }
+            sum_squares_[slot] += sum;
         }
         if (n > slots_) {
             slots_ = n;
@@ -145,6 +162,7 @@ class MeteredSink final : public ac3forge::PcmSink {
     }
 
    private:
+    static constexpr std::size_t kStretch = 16;
     std::array<double, kMaxSlots> sum_squares_{};
     std::size_t samples_ = 0;
     std::size_t slots_ = 0;
