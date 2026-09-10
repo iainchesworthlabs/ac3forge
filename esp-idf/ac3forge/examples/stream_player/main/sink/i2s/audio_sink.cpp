@@ -9,7 +9,7 @@
 #include <cstdio>
 
 #include "ac3/core/tables.hpp"
-#include "interleave.hpp"
+#include "ac3forge/interleave.hpp"
 #include "driver/i2s_std.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -128,7 +128,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
 void sink_write(std::span<const std::span<const float>> channels) {
     // Through the shared conversion, not a copy of it: sink/capture/ checks
     // this exact code on target, which it could not if each sink had its own.
-    interleave_16(channels, ac3::kSamplesPerFrame, g_interleaved);
+    ac3forge::interleave_16(channels, ac3::kSamplesPerFrame, g_interleaved);
 
     // Where the queue stands as this frame arrives: what was there when the
     // last write returned, less what the DAC has drained since. Not for the

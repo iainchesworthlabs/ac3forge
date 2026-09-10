@@ -35,6 +35,19 @@ for its own platform choices. The player mentions neither a partition nor I2S.
 See [`main/byte_source.hpp`](main/byte_source.hpp) and
 [`main/audio_sink.hpp`](main/audio_sink.hpp).
 
+**Two tasks and a ring, which are the component's.** Since 2026-09-10 the loop
+lives in `esp-idf/ac3forge` as `ac3forge::Player`
+([`include/ac3forge/player.hpp`](../../include/ac3forge/player.hpp)): a fetch
+task on core 0, beside WiFi and TCP/IP, reads the source into a ring buffer; a
+decode task on core 1 drains the ring through the accumulator, decodes, and
+writes to the sink. A source that blocks — a socket waiting on the network —
+blocks the fetch task and nothing else, and the ring's depth is how long a
+stall the DAC never hears. The single loop this replaced had 20 ms of I2S DMA
+between a slow read and silence. `main/stream_player.cpp` is what is left: two
+adapters from the seams to the player's `ByteSource` and `PcmSink`, a level
+meter, and the reporting. The ring's size, its placement in PSRAM, and both
+cores are under *ac3forge stream player* in `idf.py menuconfig`.
+
 | Source | Sink |
 | --- | --- |
 | `partition` — flash (default) | `i2s` — stereo DAC (default) |
@@ -109,6 +122,19 @@ silence it inserted, and a sink with no peripheral runs ahead of the clock, as
 here. With `CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES` set, the same figures
 also print cumulatively every N frames as a `progress=` line, for a source that
 makes one long pass and would otherwise be silent for minutes.
+
+`ring_low` (and `stream.ring_low` at the end) is the least the ring between
+the fetch and decode tasks ever held when the decoder came for more, in bytes,
+measured while the source was still delivering: the first frame's fill and the
+drain after the source ends are both zeros that say nothing, so neither counts,
+and it prints as `-` until there has been something to measure (a stream
+shorter than the ring never gives one). Zero means the decoder waited on the
+source at least once; how far above zero it stays is the margin the ring's
+depth is buying, and the number to read before making the ring bigger. Under QEMU the HTTP source keeps a 16 KB ring
+at 14,336 throughout — the emulator's loopback is faster than the emulated
+decode — so the figure that matters is the board's. `stream.fetched` is what
+the source delivered in total, which should agree with its `Content-Length` or
+file size.
 
 The `i2s` sink adds a line of its own at each report, of this shape (the figures
 a board produced are under [the sources](#the-sources) below):

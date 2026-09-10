@@ -20,3 +20,10 @@ CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE=y
 # stream and MAX_LAPS is not needed. A progress line every 50 frames (1.6 s of
 # audio) so a stall mid-stream shows where it happened.
 CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES=50
+
+# QEMU has no PSRAM, so the ring lives in internal SRAM here, and this shape is
+# the tightest one the example has: WiFi's stand-in, lwIP, the HTTP client, the
+# E-AC-3 decoder and the player's two stacks all in the same 280 KB. Half the
+# default ring; the decoder never waits on QEMU's loopback anyway, and the
+# ring_low it reports says so.
+CONFIG_AC3FORGE_EXAMPLE_RING_BYTES=16384

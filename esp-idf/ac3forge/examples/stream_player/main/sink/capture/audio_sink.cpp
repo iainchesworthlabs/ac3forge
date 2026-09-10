@@ -3,7 +3,7 @@
 // WHY THIS IS NOT THE NULL SINK. The null sink counts frames; it establishes
 // that the player looped and the decode did not error. This one runs the SAME
 // conversion the real sinks run - interleave_16 and interleave_24in32 from
-// ../../interleave.hpp, not copies of them - into a buffer, and then checks
+// ac3forge/interleave.hpp, not copies of them - into a buffer, and then checks
 // what came out.
 //
 // That is the difference between mocking a boundary and skipping it. The
@@ -35,7 +35,7 @@
 
 #include "ac3/core/tables.hpp"
 
-#include "interleave.hpp"
+#include "ac3forge/interleave.hpp"
 
 namespace player {
 namespace {
@@ -87,7 +87,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
 void sink_write(std::span<const std::span<const float>> channels) {
     if (kTdm) {
         const auto padding =
-            interleave_24in32(channels, g_slots, ac3::kSamplesPerFrame,
+            ac3forge::interleave_24in32(channels, g_slots, ac3::kSamplesPerFrame,
                               std::span<std::int32_t>{g_tdm.data(),
                                                       ac3::kSamplesPerFrame * g_slots});
         for (std::size_t frame = 0; frame < ac3::kSamplesPerFrame; ++frame) {
@@ -108,14 +108,14 @@ void sink_write(std::span<const std::span<const float>> channels) {
                     // 24-bit left-justified in 32, so shift down and divide by
                     // the 24-bit maximum.
                     const double sample =
-                        static_cast<double>(value >> 8) / static_cast<double>(kPcm24Max);
+                        static_cast<double>(value >> 8) / static_cast<double>(ac3forge::kPcm24Max);
                     g_sum_squares += sample * sample;
                     ++g_samples;
                 }
             }
         }
     } else {
-        interleave_16(channels, ac3::kSamplesPerFrame, g_stereo);
+        ac3forge::interleave_16(channels, ac3::kSamplesPerFrame, g_stereo);
         for (std::size_t i = 0; i < ac3::kSamplesPerFrame * 2; ++i) {
             const std::int16_t value = g_stereo[i];
             if (value != 0) {

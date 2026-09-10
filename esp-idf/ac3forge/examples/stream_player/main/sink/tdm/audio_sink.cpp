@@ -10,7 +10,7 @@
 // NOT TESTED ON HARDWARE. There is no TDM DAC here, and QEMU has no I2S at all,
 // so what CI establishes about this file is that it compiles and links. The
 // interleave is the exception and it is deliberately elsewhere:
-// ../../interleave.hpp is free of ESP-IDF and is unit-tested on the host
+// ac3forge/interleave.hpp is free of ESP-IDF and is unit-tested on the host
 // (tests/io/test_interleave.cpp), because indexing a planar-to-interleaved
 // transform with slot padding is where the bugs are, and the rest of this file
 // is peripheral setup that either works on a board or does not.
@@ -25,7 +25,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "interleave.hpp"
+#include "ac3forge/interleave.hpp"
 
 namespace player {
 namespace {
@@ -114,7 +114,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
 }
 
 void sink_write(std::span<const std::span<const float>> channels) {
-    interleave_24in32(channels, g_slots, ac3::kSamplesPerFrame,
+    ac3forge::interleave_24in32(channels, g_slots, ac3::kSamplesPerFrame,
                       std::span<std::int32_t>{g_interleaved.data(),
                                               ac3::kSamplesPerFrame * g_slots});
 

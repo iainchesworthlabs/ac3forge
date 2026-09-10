@@ -201,6 +201,38 @@ config AC3FORGE_EXAMPLE_HTTP_URL
     depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
     default "http://example.invalid/sample.ac3"
 
+# THE PLAYER'S TWO TASKS - see esp-idf/ac3forge/include/ac3forge/player.hpp. The
+# fetch task reads the source into a ring; the decode task drains the ring,
+# decodes and writes to the sink. WiFi and TCP/IP run on core 0, so the fetch
+# task goes beside them and the decode task has core 1 to itself. -1 lets the
+# scheduler choose, for a build with one core.
+config AC3FORGE_EXAMPLE_FETCH_CORE
+    int "Core for the fetch task (-1 = any)"
+    default 0
+    range -1 1
+
+config AC3FORGE_EXAMPLE_DECODE_CORE
+    int "Core for the decode task (-1 = any)"
+    default 1
+    range -1 1
+
+config AC3FORGE_EXAMPLE_RING_BYTES
+    int "Ring between fetch and decode, bytes of bitstream"
+    default 32768
+    range 4096 262144
+    help
+        How long a stall in the source the DAC never hears: 32 KB is 0.57 s of
+        a 448 kbit/s stream. In PSRAM when the part has it and the option
+        below says so, in internal SRAM otherwise.
+
+config AC3FORGE_EXAMPLE_RING_IN_PSRAM
+    int "Put the ring in PSRAM when present (1) or internal SRAM (0)"
+    default 1
+    range 0 1
+    help
+        An int rather than a bool so it reaches C++ as a plain constant, the
+        same reason the capture sink's choice is one.
+
 config AC3FORGE_EXAMPLE_MAX_LAPS
     int "Stop after this many passes through the stream (0 = never stop)"
     default 0

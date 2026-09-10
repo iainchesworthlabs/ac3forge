@@ -55,9 +55,9 @@ Seven, and five of them exist. The order is the order bytes take.
 3. **The output stage.** `ac3::OutputConfig`: the §7.8 fold and §7.7 operating mode, applied in the
    decoder's own storage before it returns. Exists.
 4. **Sample format.** Planar float to interleaved 16-bit, or 24-in-32 with slot padding for TDM.
-   Exists as [`interleave.hpp`](../esp-idf/ac3forge/examples/stream_player/main/interleave.hpp)
-   inside the streaming example, free of ESP-IDF, and tested on the host by
-   `tests/io/test_interleave.cpp`. It is library code living in an example.
+   Exists as [`ac3forge/interleave.hpp`](../esp-idf/ac3forge/include/ac3forge/interleave.hpp),
+   moved on 2026-09-10 from inside the streaming example into the component, free of ESP-IDF, and
+   tested on the host by `tests/io/test_interleave.cpp`. It is library code with a temporary home.
 5. **Bytes to PCM.** The loop over 1 to 4: feed bytes, take frames, with hold-back (§3.7) and
    end-of-stream handled once. Written three times, as above. Library code with no home.
 6. **Buffering and tasks.** A fetch task filling a ring buffer, a decode task draining it and
@@ -95,8 +95,9 @@ struct ByteSource {           // an HTTP body, an SD file, a partition, a UART
 };
 
 struct PcmSink {              // an I2S channel, a TDM channel, ESPHome's speaker::Speaker
-    virtual bool open(std::uint32_t sample_rate, int channels) = 0;
-    virtual void write(std::span<const std::int16_t> interleaved) = 0;  // blocks; this paces the player
+    // One folded frame of planar float; the sink converts to its own slot
+    // format (ac3forge/interleave.hpp). Blocks until taken: this paces the player.
+    virtual void write(std::span<const std::span<const float>> channels) = 0;
 };
 
 struct PlayerConfig {
@@ -123,8 +124,12 @@ class Player {                // owns the two tasks and the ring; reports what t
 The sketch is a shape, not a signature freeze. What it fixes is the division of labour: the
 player knows about tasks, cores, the ring and the decoder; the sink knows about a peripheral; the
 source knows about a transport. The example's four sources and four sinks become implementations
-of the two seams, and `stream_player.cpp` becomes the twenty lines that wire a configured pair
-into a `Player`.
+of the two seams, and `stream_player.cpp` becomes the wiring of a configured pair into a
+`Player`. **Built 2026-09-10** as `include/ac3forge/player.hpp` and `src/player.cpp`, with the
+example's seams adapted rather than rewritten (a `SeamSource` and a `MeteredSink` over the
+existing free functions) and the ring's size, placement and both cores in the example's Kconfig.
+The Sendspin shape later needs an interleaved 16-bit entry on the I2S sink beside the planar one;
+that is that sink's, not the seam's.
 
 Registering sources changes how the component is consumed in one respect: it acquires
 `REQUIRES freertos esp_timer`, which every IDF project has. The packing script stages the
@@ -330,6 +335,26 @@ has taken it, and calls `notify_audio_played(frames, timestamp_us)` from its out
 library knows where the DAC is. The decoded-audio ring defaults to 1,000,000 bytes and the
 library expects PSRAM for it. The decoders are FLAC, Opus and PCM, compiled in, with no interface
 for a fourth.
+
+### Where the Atmos would come from
+
+The end state, as put on 2026-09-10: a listener's streaming service is the source, Music
+Assistant fronts it as it does today, the bitstream reaches an E-AC-3-capable node unchanged
+and is rendered into that room, while other rooms take the server's stereo. Read against Music
+Assistant's own provider documentation, the services narrow:
+
+- **Apple Music**: AAC at 256 kbit/s only. Lossless and Dolby Atmos are behind Apple's own
+  encryption, which Music Assistant cannot open. Not a source for this.
+- **Tidal**: FLAC to 24-bit 192 kHz. Tidal carries Atmos as E-AC-3 JOC and its provider does not
+  mention it; whether the Atmos rendition is reachable through the API the provider uses is the
+  question to answer first, and it is a provider change if so. The one plausible service source.
+- **Amazon Music**: no Music Assistant provider.
+- **Files**: E-AC-3 JOC the listener already holds, including what this project's own encoder
+  makes. Works today over the HTTP source, and is the material every phase here is measured with.
+
+So the source side of the end state is, in order of certainty: local files now; Tidal if its
+Atmos rendition can be fetched; Apple Music not at all. The device side is the same whichever
+answers, which is why it is built first.
 
 ### Sendspin as a source, on this player
 

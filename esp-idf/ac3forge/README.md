@@ -4,11 +4,23 @@ Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) decoding, or encoding, for 
 the library's minimum-footprint profile: a static archive built without exceptions or RTTI,
 sized to run out of internal SRAM with no PSRAM.
 
-This directory is the component. It registers no sources of its own: `CMakeLists.txt` pre-seeds
-the repository's options, `add_subdirectory()`s the repository root and links
-`ac3::forge_minimal`, so the library is built from the same target definitions every other
-platform uses and nothing here can drift from `src/forge/minimal.cmake`. `idf_component.yml` is
-the registry manifest, and it is not published yet — see
+This directory is the component. For the codec it is a wrapper: `CMakeLists.txt` pre-seeds the
+repository's options, `add_subdirectory()`s the repository root and links `ac3::forge_minimal`,
+so the library is built from the same target definitions every other platform uses and nothing
+here can drift from `src/forge/minimal.cmake`. What it adds of its own is the layer that cannot
+live in the library because it is made of FreeRTOS:
+
+- **`ac3forge::Player`** ([`include/ac3forge/player.hpp`](include/ac3forge/player.hpp)): a fetch
+  task reading a `ByteSource` into a ring buffer, a decode task draining it through the
+  incremental framer and both decoders into caller-owned storage, and a `PcmSink` taking one
+  folded frame of planar float at a time. Cores, priorities, the ring's size and whether it sits in
+  PSRAM are `PlayerConfig`. It reports frames, decode time, the worst frame, how low the ring ran,
+  and why a run ended. An integrator implements the two seams for their transport and their DAC
+  and gets the rest.
+- **`ac3forge/interleave.hpp`**: planar float to interleaved 16-bit or 24-in-32 with slot padding,
+  free of ESP-IDF and tested on the host. Library code with a temporary home; see the plan below.
+
+`idf_component.yml` is the registry manifest, and it is not published yet — see
 [the CI workflow](../../.github/workflows/esp-component.yml) for why the publish job is gated.
 
 ## Using it

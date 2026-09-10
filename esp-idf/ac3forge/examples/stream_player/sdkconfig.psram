@@ -1,0 +1,28 @@
+# Overlay for a board WITH PSRAM - the ESP32-S3-DevKitC-1-N16R8's 8 MB of octal
+# PSRAM - for the shapes that run a network:
+#
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram" idf.py build
+#
+# The decoder does not need it and does not get it: the whole profile is sized
+# to run out of internal SRAM, and it does. What needs room is everything ELSE
+# a player carries - WiFi's and lwIP's buffers, and the player's ring between
+# the fetch and decode tasks - which with PSRAM off compete with the decoder for
+# the same 280 KB. The first two-task HTTP build lost that competition and
+# aborted on an allocation.
+#
+# So: PSRAM is reachable only through heap_caps_malloc(MALLOC_CAP_SPIRAM)
+# (SPIRAM_USE_CAPS_ALLOC), which is what ac3forge::Player asks for its ring,
+# and the WiFi/lwIP stacks are told to try it first. Plain `new`, which is
+# every allocation the decoder makes, stays in internal SRAM - a decoder
+# with its 147 KB of scratch in PSRAM would be a slower decoder, and the
+# measurement the decode figures rest on would no longer hold.
+#
+# QEMU cannot emulate S3 PSRAM (espressif/qemu#129), so CI never uses this file.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+# Not in the memory test at boot: it takes a second on 8 MB and says nothing
+# a player needs to know.
+CONFIG_SPIRAM_MEMTEST=n
