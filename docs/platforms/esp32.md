@@ -1008,7 +1008,7 @@ cycles on an ESP32-C3 against 121 on an ESP32-S3
 | **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — see below |
 | ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
 | ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
-| ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | The fixed-point tier's part (`planning/arithmetic-tiers.md`). On the [Cortex-M3 leg](../performance-trend.md#instructions-per-frame-fixed-point-tier) an E-AC-3 5.1 frame is 6.6 M integer instructions in that tier against 12.9 M soft-float in the float one, AC-3 5.1 3.8 M, AC-3 2/0 1.2 M and mono 0.61 M - against 5.1 M cycles per frame at 160 MHz, so 2/0 and mono fit with room and 5.1 is the marginal case once RISC-V's IPC and the flash cache are allowed for. No target directory, QEMU or board yet; a board measures it next |
+| ESP32-C3/C6 | 400/512 KB | 160 MHz | **none** | none | The fixed-point tier's part (`planning/arithmetic-tiers.md`). On the [Cortex-M3 leg](../performance-trend.md#instructions-per-frame-fixed-point-tier) an E-AC-3 5.1 frame is 4.8 M integer instructions in that tier against 12.9 M soft-float in the float one, enhanced coupling 10.1 M against 28.9 M, AC-3 5.1 3.8 M, AC-3 2/0 1.2 M and mono 0.61 M - against 5.1 M cycles per frame at 160 MHz, so 2/0 and mono fit with room and 5.1 is close once RISC-V's IPC and the flash cache are allowed for. No target directory, QEMU or board yet; a board measures it next |
 
 Every part with an FPU has a single-precision one, so `double` is soft-float across the family and
 `decode_scalar_t` earns its keep on all of them.

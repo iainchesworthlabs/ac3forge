@@ -516,10 +516,19 @@ or spectral extension coordinate kept as its mantissa and its power of two, so t
 a coefficient is a shift; the §7.9.4 inverse pair as its own kernel
 (`src/forge/src/core/mdct_fixed.hpp` - the same pre-twiddle, N/4-point FFT, post-twiddle and window as the fast
 branch, with no scaling inside the transform: the input's bound gives the seven bits the FFT can
-grow by); and the overlap-add in 64 bits with one float conversion at the end. What it does not
-do yet: the adaptive hybrid transform's inverse, enhanced coupling's reconstruction and the
-spectral extension notch run through `float` copies at the seam, and JOC's object mixing
-converts each coefficient it reads.
+grow by); the overlap-add in 64 bits with one float conversion at the end; and Annex E's own
+tools - the adaptive hybrid transform's dequantisers and six-point inverse, the spectral
+extension notch, and enhanced coupling's spectrum, amplitudes, angles and reconstruction
+(`src/forge/src/core/eac3_tools_fixed.hpp` and the bodies beside the floating ones in
+`eac3_tools.cpp`). Enhanced coupling's 512-point DFT is the one place the tier does scale inside
+a transform: an unscaled one can grow by nine bits where the format has seven, so its stages
+shed bits only where the next would otherwise overflow and what they shed is carried in the
+exponent, the spec's own 1/N with it. On the Cortex-M3 leg that row is
+10.1 M instructions against the float tier's 28.9 M.
+
+What is not in the tier: JOC's object reconstruction, which runs in `float` in every build of
+this library including the double one (`recon_scalar_t`), so it is not a seam of this tier's at
+all - what the tier does with it is convert each matrix coefficient it reads.
 
 What makes the precision is not the word but the exponent. Q7.24 is an absolute format - a
 raw unit is 2^-24 of full scale wherever a value sits - and stored directly, a quiet dense

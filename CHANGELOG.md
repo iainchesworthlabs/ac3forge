@@ -27,8 +27,15 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   (`<codec>.pcm_hash`), identical between the host and the Cortex-M3 leg for this tier by
   construction; the tier's are pinned in `tests/golden/fixed-probe-pcm-hashes.json` and
   `tools/checks/check_probe_hashes.py` holds a run to them, or two runs to each other; the probe
-  runner takes `--scalar=fixed`. The AHT inverse, enhanced coupling's reconstruction and the
-  spectral extension notch still run through `float` at the seam in this tier.
+  runner takes `--scalar=fixed`. Annex E's tools are in the tier too - the adaptive hybrid
+  transform's dequantisers and six-point inverse, the spectral extension notch, and enhanced
+  coupling's spectrum, amplitudes, angles and reconstruction, the last with block floating point
+  across the 512-point DFT's stages and its own sine and cosine. Fidelity is unchanged to a
+  tenth of a decibel; on the Cortex-M3 leg enhanced coupling went from 28.9 M instructions per
+  frame in the float tier to 10.1 M, E-AC-3 5.1 from 12.9 M to
+  4.8 M. `check_decode_scalar_snr.py` gained a fourth stream, enhanced coupling,
+  which neither non-double scalar's gate had measured. JOC's object reconstruction is `float` in
+  every build of this library and is not part of this axis.
 - **`delta_allocation`** on `ac3::EncoderConfig` and `ac3::eac3::FrameConfig` (`delta=off` on
   the CLI, `nodelta` in `eac3-encode`'s tools string): off, the encoder chooses no §7.2.2.6
   segments and runs no second search to weigh them. The first level of an effort axis for

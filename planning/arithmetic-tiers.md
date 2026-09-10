@@ -5,9 +5,9 @@
     build; `float`, the ESP32-S3's, for decode since 2026-09-09 and for encode since 2026-09-10
     (#617, #618); and `fixed`, the decoder for parts with no floating-point unit, whose phases
     A to C below are done on the host and the Cortex-M3 leg with the numbers each measured.
-    What is not done: Phase D - no ESP32-C3 target directory, no RISC-V QEMU installed, no board
-    - and the three tools that still run through `float` copies at the seam. The effort axis
-    has its first measured point: the search and the planner cost (#619, on the ESP32-S3).
+    What is not done: Phase D - no ESP32-C3 target directory, no RISC-V QEMU installed, no
+    board. The effort axis has its first measured point: the search and the planner cost
+    (#619, on the ESP32-S3).
 
     Design sections say what each tier and each effort level is and what it guarantees; each
     phase carries an exit criterion and how it is verified; [Decisions](#decisions) lists what
@@ -212,15 +212,32 @@ twelve fixtures decode on the host and on the Cortex-M3 leg with identical `pcm_
 6.6 M instructions against the float tier's 12.9 M, AC-3 5.1 3.8 M against
 10.2 M, 2/0 1.2 M against 3.5 M (`docs/performance-trend.md` has every row).
 
-**Phase C - the tools. Partly done 2026-09-10.** Standard coupling and spectral extension are
-in the tier with their coordinates split (mantissa and power of two) and the extension's band
-energy summed in 64 bits; the AHT's exponent is exact. Measured on the thirteen checked-in
+**Phase C - the tools. Done 2026-09-10.** Standard coupling and spectral extension went in
+first, with their coordinates split (mantissa and power of two) and the extension's band energy
+summed in 64 bits, and the AHT's exponent made exact. Measured on the thirteen checked-in
 third-party streams (Dolby Encoding Engine and FFmpeg; AC-3 and E-AC-3; coupling, spectral
 extension, the AHT and JOC among them): no channel below 111 dB, the DEE 5.1 stream that had
-been at 74 at 116. Still through `float` copies at the seam: the AHT's six-point inverse,
-enhanced coupling's DFT and reconstruction (two bits of room kept above the coupling channel
-for it), the spectral extension notch, and JOC's per-coefficient reads. Each is a bounded
-piece of work with a measurement waiting for it; none is what the 100 dB target needed.
+been at 74 at 116. The rest followed: the AHT's dequantisers and six-point inverse, the
+spectral extension notch, and enhanced coupling's spectrum, amplitudes, angles and
+reconstruction, with the tier's own sine and cosine. Fidelity did not move - every stream is
+within a tenth of a dB of what the float bridges gave - and the cost did: enhanced coupling on
+the Cortex-M3 leg went from 24.3 M instructions to 10.1 M, E-AC-3 5.1 from
+6.6 M to 4.8 M, 7.1.4 from 17.7 M to 12.1 M.
+
+Two things this phase settled that the plan had wrong. The DFT is where block floating point
+belongs, not the IMDCT: enhanced coupling's 512-point transform can grow by nine bits where the
+format has seven, and taking those bits off its input instead cost the enhanced coupling stream
+seven decibels (109 dB against the double decode, where the float bridge had given 117). With
+the stages shedding bits only where the next would overflow, and the spec's 1/N carried in the
+exponent rather than taken out of the values, it measures 116.6. And JOC is not a bridge of this
+tier's at all: its reconstruction runs in `float` in every build of this library
+(`recon_scalar_t`), so the object rows are a float transform sandwich whatever the decoder's
+scalar is. Bringing JOC into the tier is a fixed forward MDCT and a fixed QMF path - real work,
+with its own quality question, and out of this tier's scope.
+
+Enhanced coupling also had no SNR measurement until this phase: none of the gold streams used
+the tool. `check_decode_scalar_snr.py` now encodes and checks a fourth stream that does, for
+both non-double scalars.
 
 **Phase D - the part. Not started.** A C3 platform directory beside the S3's under the
 bare-metal probe, the ESP-IDF component's profile extended with the scalar choice, the RISC-V
