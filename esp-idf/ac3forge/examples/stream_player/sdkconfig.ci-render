@@ -1,0 +1,45 @@
+# The fourth thing CI runs under QEMU: a height layout, rendered from the
+# stream's objects.
+#
+# stream/height.ec3 is the footprint probe's eac3_atmos_height fixture - the
+# same bytes as apps/baremetal/fixture.hpp's kEac3AtmosHeightStream, written out
+# by hand from that array - five objects over a 5.1 bed, three of them raised to
+# the ceiling and one half way (tools/generators/atmos_height_scene.txt). Played
+# onto 7.1.4 through the player, block by block, it should land on the twelve
+# slots at exactly the levels the probe's eac3_atmos_render row records in
+# apps/baremetal/render_fixture.hpp: the same objects, the same panner, the same
+# arithmetic in the same order. CI checks that it does, slot by slot. That the
+# levels are RIGHT is tests/spatial/'s business on the host; what this
+# establishes is that the player places the objects exactly as the probe does,
+# on the target.
+CONFIG_AC3FORGE_EXAMPLE_SOURCE_FATFS=y
+CONFIG_AC3FORGE_EXAMPLE_FATFS_PATH="/audio/height.ec3"
+
+# Twelve slots of 24-in-32 through the TDM conversion, checked as
+# sdkconfig.ci-tdm checks it: every slot filled here, so padding_nonzero must
+# be 0 with nothing to pad.
+CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE=y
+CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM=1
+CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS=12
+CONFIG_AC3FORGE_EXAMPLE_LAYOUT="7.1.4"
+
+# As coded, with no dialnorm normalisation and no DRC: the probe's references
+# are measured that way, and line mode's dynrng words would move every level
+# by a percent or two and make the comparison approximate.
+CONFIG_AC3FORGE_EXAMPLE_DRC_MODE=2
+
+# The fixture was made by this project's encoder in the MDCT-band domain, so
+# that is the domain that reconstructs it - and the one that fits QEMU's
+# internal SRAM, which is why the QEMU shape can render at all. A board playing
+# real content leaves this at 0 (QMF) and has PSRAM.
+CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN=1
+
+# A quarter of the default ring: the reconstruction state is one 148 KB
+# allocation, and this shape has no PSRAM to put anything in.
+CONFIG_AC3FORGE_EXAMPLE_RING_BYTES=8192
+
+# ONE pass, unlike the other shapes: the probe's reference is one pass from a
+# fresh decoder, and a second lap starts with the overlap-add and filterbank
+# state the first lap's last frame left behind, which moves the levels by a
+# percent or two. The rewind path is the other three shapes' business.
+CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS=1

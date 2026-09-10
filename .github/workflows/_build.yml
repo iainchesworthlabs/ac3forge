@@ -3947,6 +3947,63 @@ jobs:
             exit 1
           fi
 
+      # A height layout, rendered from the stream's objects: the footprint
+      # probe's eac3_atmos_height fixture (stream/height.ec3, the same bytes as
+      # fixture.hpp's kEac3AtmosHeightStream) played onto 7.1.4 through the
+      # player - decode_access_unit_by_block, the objects reconstructed and
+      # placed by ac3::spatial::pan_direction, the bed's LFE passed through -
+      # into the twelve-slot TDM conversion. The reference is the probe's own
+      # eac3_atmos_render row (apps/baremetal/render_fixture.hpp): same
+      # objects, same panner, same float arithmetic in the same order, so the
+      # levels agree to the digit and the tolerance below is one unit of
+      # rounding. sdkconfig.ci-render says why one lap and why the MDCT-band
+      # domain and no DRC.
+      - name: Render a height-object stream onto 7.1.4 under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-render"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/stream_player
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          timeout 300 idf.py qemu 2>&1 | tee qemu-render.txt || true
+
+          fail() { echo "::error title=ESP32-S3 render run::$1" >&2; grep -E 'result=|error|player:|stream:|Guru Meditation|assert failed' qemu-render.txt >&2 || true; exit 1; }
+          grep -q '^result=pass' qemu-render.txt || fail "did not report result=pass"
+          grep -q 'onto 7.1.4 (12 slots, objects placed)' qemu-render.txt || fail "the player did not place the objects onto 7.1.4"
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-render.txt | tail -1; }
+          units=$(value 'stream\.units')
+          resync=$(value 'stream\.resync_bytes')
+          mismatches=$(value 'stream\.layout_mismatches')
+          [ "${units:-0}" = "6" ] || fail "expected 6 access units, got ${units:-none}"
+          [ "${resync:-1}" = "0" ] || fail "${resync} bytes skipped looking for a sync word"
+          [ "${mismatches:-1}" = "0" ] || fail "${mismatches} units decoded to a layout their headers did not announce"
+          # Twelve of twelve slots carried, so nothing to pad; every slot
+          # left-justified 24-in-32.
+          low=$(value 'capture\.low_byte_set')
+          pad=$(value 'capture\.padding_nonzero')
+          carried=$(value 'capture\.carried_nonzero')
+          echo "low_byte_set=$low padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${low:-1}" != "0" ] || [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            fail "TDM slot layout is wrong (low_byte_set=$low padding_nonzero=$pad carried_nonzero=$carried)"
+          fi
+          # The probe's reference, slot by slot: L C R Ls Rs Lrs Rrs Vhl Vhr Lts
+          # Rts LFE. Three objects on the ceiling and one half way up at the
+          # rear, so the heights carry most of it; the front left and the
+          # surrounds have nothing pointing at them and must be exactly silent.
+          slot=0
+          for expected in 0 0 7867 0 104 20201 20201 82431 97537 102185 58776 0; do
+            got=$(value "stream\.rms\[$slot\]")
+            [ -n "$got" ] || fail "no stream.rms[$slot] line"
+            echo "rms[$slot] = $got (probe $expected)"
+            if [ "$got" -lt $(( expected - 1 )) ] || [ "$got" -gt $(( expected + 1 )) ]; then
+              fail "slot $slot rendered to $got, the probe's row says $expected"
+            fi
+            slot=$(( slot + 1 ))
+          done
+
       # The HTTP source, end to end, with no board and no access point. QEMU
       # has no WiFi, but `idf.py qemu` attaches an OpenCores Ethernet MAC to
       # the host's network, so the source's own network seam picks net/openeth/
@@ -4090,6 +4147,7 @@ jobs:
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
             esp-idf/ac3forge/examples/stream_player/qemu-stream.txt
             esp-idf/ac3forge/examples/stream_player/qemu-capture.txt
+            esp-idf/ac3forge/examples/stream_player/qemu-render.txt
             esp-idf/ac3forge/examples/stream_player/qemu-http.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
