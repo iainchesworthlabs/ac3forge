@@ -174,6 +174,11 @@ CI compares the sink's per-channel RMS against the host's answer for the same fi
 same configuration (`ac3cli decode … downmix=loro drcmode=line`). A `result=pass` alone would be
 satisfied by a stream decoding to silence.
 
+Nor does `result=pass` say the run was clean. QEMU runs on until a timeout, the HTTP step plays the
+stream a second time, and a panic at any point resets the chip into a new run that can print
+`result=pass` again. So every QEMU leg, the probes included, also fails if the console shows panic
+output or a second boot after the first boot banner (`tools/checks/check_esp_console.py`).
+
 ## Memory
 
 The datasheet says 512 KB, `idf.py size` says 341,760, and the allocator says 280,792. All three

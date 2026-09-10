@@ -102,6 +102,10 @@ if ! grep -q '^result=pass' "$OUTPUT"; then
     exit 1
 fi
 
+# And nothing wrong after it: no panic output and no second boot, for the
+# reason run_esp32s3_probe.sh gives beside its copy of this line.
+python3 "$REPO/tools/checks/check_esp_console.py" --title "ESP32-C3 probe" "$OUTPUT"
+
 # --- the tier's own check --------------------------------------------------
 # Only for the fixed tier: the float tier's hashes are the compiler's business
 # and vary between legs by design, so there is nothing to pin them to.

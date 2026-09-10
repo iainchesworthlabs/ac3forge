@@ -253,6 +253,15 @@ if ! grep -q '^result=pass' "$OUTPUT"; then
     exit 1
 fi
 
+# And nothing wrong after it. The probe prints result=pass before it has
+# finished, and the run carries on to the timeout above, so the capture also
+# holds whatever the part did next. A panic there - in the closing lines, or
+# on the way out of app_main - resets the part into a second run that prints
+# result=pass again, and every check below would pass it. A clean run boots
+# once and prints no panic output; check_esp_console.py holds the capture to
+# that, from the first boot banner on.
+python3 "$REPO/tools/checks/check_esp_console.py" --title "ESP32-S3 ${DIRECTION} probe" "$OUTPUT"
+
 heap=$(sed -n 's/.*heap\.peak_bytes=\([0-9]*\).*/\1/p' "$OUTPUT" | head -1)
 if [[ -z "$heap" ]]; then
     echo "error: the probe reported no heap.peak_bytes line" >&2
