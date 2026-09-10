@@ -32,7 +32,9 @@
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/internal/decode_scalar.hpp"
 #include "ac3/internal/profile.hpp"
+#include "fixed32.hpp"
 #include "scalar_inverse.hpp"
+#include "block_norm.hpp"
 #include "ac3/internal/profiling.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
@@ -657,6 +659,28 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
 // ac3::io::WavStreamReader/Writer and ac3::FrameEncoder. The lazy per-
 // substream-slot unique_ptr arrays (delay_/joc_state_/retained_) stay
 // exactly as they were - a laziness optimization independent of this pimpl.
+namespace {
+
+// The float copies the fixed-point tier's enhanced coupling bridge works on
+// (ecpl_reconstruct_block, further down): eight blocks of 256, on the decoder rather
+// than in thread-local storage, where they would be twice the bare-metal
+// target's TLS block, and nothing at all in the floating tiers.
+struct EcplBridgeScratch {
+    std::array<float, 256> prev{};
+    std::array<float, 256> curr{};
+    std::array<float, 256> next{};
+    std::array<float, 256> zr{};
+    std::array<float, 256> zi{};
+    std::array<float, 256> out{};
+    std::array<float, 256> amp{};
+    std::array<float, 256> angle{};
+};
+struct NoBridgeScratch {};
+using EcplBridge = std::conditional_t<internal::kNormalisedStore<internal::decode_scalar_t>,
+                                      EcplBridgeScratch, NoBridgeScratch>;
+
+}  // namespace
+
 struct Eac3Decoder::Impl {
     DecoderConfig config_{};
     // §5.4.2.8/§7.8, applied to the assembled program rather than to each
@@ -700,6 +724,10 @@ struct Eac3Decoder::Impl {
     std::array<std::unique_ptr<std::array<std::array<internal::decode_scalar_t, 256>, 6>>,
                kSubstreamSlots>
         delay_;
+    // The exponent each slot's channels' delay halves are stored under
+    // (block_norm.hpp); zero in the floating tiers.
+    std::array<std::array<int, 6>, kSubstreamSlots> delay_norm_ =
+        internal::fresh_delay_norm_slots<kSubstreamSlots, 6>();
     // One per substream identity that has ever carried JOC:
     // oba::joc::reconstruct's own matrix-ramp and per-object/per-channel
     // overlap-add state, so a moving object's audio and the frame-to-frame
@@ -763,6 +791,8 @@ struct Eac3Decoder::Impl {
     // SETS that peak - pays nothing at all rather than 4 KB it never reads.
     std::vector<internal::decode_scalar_t> ecpl_amp_scratch_;
     std::vector<internal::decode_scalar_t> ecpl_angle_scratch_;
+    // The fixed-point tier's enhanced coupling bridge scratch; empty otherwise.
+    EcplBridge ecpl_bridge_{};
     // decode_substream's frame-lifetime coefficient buffers - the AHT
     // stream store (§3.4: all six blocks decoded at block 0) and the
     // enhanced-coupling channel store (§3.5.5.1: a block's reconstruction
@@ -812,6 +842,13 @@ struct Eac3Decoder::Impl {
         // in an E-AC-3 decode: seven streams x 2,048 bytes x one entry per
         // block is 100,352 bytes, which is why it follows decode_scalar_t.
         std::vector<std::array<internal::decode_scalar_t, 256>> coeffs;
+        // Each stream's block exponent (block_norm.hpp): the power of two the
+        // coefficients above are scaled up by; all zero in the floating tiers.
+        std::array<int, kMaxSubstreamStreams> norm{};
+        // Set when pass one already gave a rematrixed pair its shared
+        // exponent with room for the sum, so pass two does not take a
+        // second bit for the same room.
+        bool rematrix_room = false;
         std::vector<bool> chincpl;
         bool cplinu = false;
         bool ecplinu_now = false;
@@ -836,6 +873,9 @@ struct Eac3Decoder::Impl {
         std::vector<bool> chinspx;
         eac3::BandLayout spx_bands{};
         std::vector<std::vector<internal::decode_scalar_t>> spxco;
+        // The fixed-point tier's split of a coordinate: spxco holds the
+        // mantissa and this its power of two; empty in the floating tiers.
+        std::vector<std::vector<int>> spxco_exp;
         std::vector<int> spxblnd;
         int spx_startmant = 0;
         int spx_endmant = 0;
@@ -905,6 +945,17 @@ struct Eac3Decoder::Impl {
     std::vector<int> subband_band_;
     std::vector<bool> cpl_structure_;
     std::vector<std::vector<internal::decode_scalar_t>> cplco_;
+    // The fixed-point tier's split of a coordinate: cplco_ holds the mantissa
+    // and this its power of two (coupling.hpp's coordinate_exponent). Empty
+    // in the floating tiers, whose coordinate carries its own.
+    std::vector<std::vector<int>> cplco_exp_;
+    std::vector<std::vector<int>> spxco_exp_;
+    // An AHT stream's frame exponent (block_norm.hpp): its six blocks are
+    // dequantised at once under one, exact from their reconstructed peaks;
+    // and per bin, the exponent those peaks are actually below, which is
+    // what a tool reading the stream bounds itself by.
+    std::array<int, kMaxSubstreamStreams> aht_norm_{};
+    std::array<std::vector<int>, kMaxSubstreamStreams> aht_eff_exps_;
     std::vector<bool> phsflg_;
     std::vector<bool> chinspx_;
     std::vector<bool> firstspxcos_;
@@ -975,6 +1026,204 @@ void ecpl_spectrum_into(const std::array<Scalar, 256>& prev, const std::array<Sc
         eac3::ecpl_channel_spectrum(prev, curr, next, zr, zi);
     } else {
         eac3::ecpl_channel_spectrum(prev, curr, next, zr, zi, fast);
+    }
+}
+
+// §E3.4.5's inverse DCT in the coefficient store's scalar. The fixed-point
+// tier has no fixed form of it yet (planning/arithmetic-tiers.md, Phase C): it
+// goes through the float one, converted at the seam.
+template <typename In, typename Scalar, std::size_t N>
+void aht_inverse_into(const std::array<In, N>& mantissas,
+                      std::array<Scalar, kBlocksPerFrame>& blocks) {
+    if constexpr (std::is_same_v<In, Scalar>) {
+        eac3::aht_inverse(mantissas, blocks);
+    } else {
+        std::array<In, kBlocksPerFrame> out{};
+        eac3::aht_inverse(mantissas, out);
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            blocks[i] = Scalar{out[i]};
+        }
+    }
+}
+
+// A spectral extension band's RMS in the store's scalar (§E3.6.4.2.4). The
+// floating tiers accumulate in their own type, as this always did - a band
+// is at most a few dozen bins. The fixed tier sums squared raw units in 64
+// bits: a band far below its block's peak has coefficients whose square is
+// under a raw unit, and a Q7.24 accumulator would read it as silent and
+// blend no noise there.
+template <typename Scalar>
+struct BandEnergy {
+    Scalar accum{0};
+    void add(Scalar value) { accum += value * value; }
+    [[nodiscard]] Scalar rms(int size) const {
+        return internal::scalar_sqrt(accum / static_cast<Scalar>(size));
+    }
+};
+
+template <>
+struct BandEnergy<internal::Fixed32> {
+    std::uint64_t sum = 0;
+    void add(internal::Fixed32 value) {
+        const auto raw = static_cast<std::int64_t>(value.raw);
+        sum += static_cast<std::uint64_t>(raw * raw);
+    }
+    [[nodiscard]] internal::Fixed32 rms(int size) const {
+        // raw^2 is the value times 2^48; the root of the mean is the RMS
+        // times 2^24, a raw value again.
+        return internal::Fixed32::from_raw(static_cast<std::int32_t>(
+            internal::isqrt64(sum / static_cast<std::uint64_t>(size))));
+    }
+};
+
+// A trace field is double whatever the store's scalar is, and the fixed-point
+// scalar widens only explicitly: the range assign the two floating tiers could
+// use, spelled out per element.
+template <typename Range>
+void widen_into(std::vector<double>& out, const Range& in) {
+    out.resize(std::size(in));
+    std::transform(std::begin(in), std::end(in), out.begin(),
+                   [](auto v) { return static_cast<double>(v); });
+}
+
+// §E3.6.4.2.3's band-border notch in the store's scalar - the same bridge for
+// the fixed-point tier, over a float copy of the region.
+template <typename Scalar>
+void spx_notch_into(std::span<Scalar> region, int startmant, const eac3::BandLayout& bands,
+                    std::span<const bool> wrapflag, int spxattencod) {
+    if constexpr (std::is_same_v<Scalar, internal::Fixed32>) {
+        std::array<float, 256> scratch{};
+        for (std::size_t i = 0; i < region.size(); ++i) {
+            scratch[i] = static_cast<float>(region[i]);
+        }
+        eac3::spx_apply_notch(std::span<float>{scratch.data(), region.size()}, startmant, bands,
+                              wrapflag, spxattencod);
+        for (std::size_t i = 0; i < region.size(); ++i) {
+            region[i] = Scalar{scratch[i]};
+        }
+    } else {
+        eac3::spx_apply_notch(region, startmant, bands, wrapflag, spxattencod);
+    }
+}
+
+// §3.5.5's reconstruction of every coupled channel of one block, in the
+// coefficient store's scalar. A function template rather than a plain block
+// of the frame decoder for the reason ecpl_spectrum_into gives: only a
+// template's `if constexpr` discards the branch whose calls do not exist for
+// the other scalar. The fixed-point tier has no fixed form of the spectrum,
+// the amplitudes, the angles or the reconstruction yet
+// (planning/arithmetic-tiers.md, Phase C), so for it this runs the float forms
+// over float copies and narrows the coupled bins back into the store; the
+// two floating tiers call the forms in their own scalar directly. `prev` and
+// `next` are the neighbouring blocks' enhanced coupling channels, or zero
+// (§3.5.5.1); `zr`/`zi` and the two scratch vectors are the decoder's own
+// storage, reused block to block.
+template <typename Scalar, typename Tail, typename Bridge>
+void ecpl_reconstruct_block(const Tail& tail, const std::array<Scalar, 256>& prev,
+                            const std::array<Scalar, 256>& curr,
+                            const std::array<Scalar, 256>& next, int prev_norm, int next_norm,
+                            Bridge& bridge, int nfchans,
+                            eac3::EcplNoise& ecpl_noise, std::array<Scalar, 256>& zr,
+                            std::array<Scalar, 256>& zi, std::vector<Scalar>& amp_scratch,
+                            std::vector<Scalar>& angle_scratch, bool fast,
+                            std::vector<std::array<Scalar, 256>>& coeffs) {
+    const auto ubins = static_cast<std::size_t>(tail.cplendmant - tail.cplstrtmant);
+    if constexpr (std::is_same_v<Scalar, internal::Fixed32>) {
+        (void)zr;
+        (void)zi;
+        (void)amp_scratch;
+        (void)angle_scratch;
+        (void)fast;
+        auto& prev_f = bridge.prev;
+        auto& curr_f = bridge.curr;
+        auto& next_f = bridge.next;
+        auto& zr_f = bridge.zr;
+        auto& zi_f = bridge.zi;
+        auto& out_f = bridge.out;
+        auto& amp_f = bridge.amp;
+        auto& angle_f = bridge.angle;
+        // The three blocks at their true scale: each is stored under its
+        // own exponent (block_norm.hpp), and the spectrum spans all three.
+        const int curr_norm = tail.norm[static_cast<std::size_t>(kCplStream)];
+        for (std::size_t i = 0; i < 256; ++i) {
+            prev_f[i] = std::ldexp(static_cast<float>(prev[i]), -prev_norm);
+            curr_f[i] = std::ldexp(static_cast<float>(curr[i]), -curr_norm);
+            next_f[i] = std::ldexp(static_cast<float>(next[i]), -next_norm);
+        }
+        eac3::ecpl_channel_spectrum(prev_f, curr_f, next_f, zr_f, zi_f);
+        for (int ch = 0; ch < nfchans; ++ch) {
+            if (!tail.chincpl[static_cast<std::size_t>(ch)]) {
+                continue;
+            }
+            const auto uch = static_cast<std::size_t>(ch);
+            const bool is_first = ch == tail.firstchincpl;
+            const std::span<float> amp_bin{amp_f.data(), ubins};
+            const std::span<float> angle_bin{angle_f.data(), ubins};
+            std::fill(amp_bin.begin(), amp_bin.end(), 0.0F);
+            std::fill(angle_bin.begin(), angle_bin.end(), 0.0F);
+            eac3::ecpl_amplitudes(tail.ecplamp_raw[uch], tail.ecplchaos_raw[uch],
+                                  tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
+                                  tail.ecpl_end_subbnd, tail.ecpl_structure, amp_bin);
+            eac3::ecpl_angles(ch, tail.ecplangle_raw[uch], tail.ecplchaos_raw[uch],
+                              tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
+                              tail.ecpl_end_subbnd, tail.ecpl_structure, ecpl_noise, angle_bin,
+                              tail.ecplangleintrp);
+            eac3::ecpl_channel_coefficients(zr_f, zi_f, amp_bin, angle_bin, tail.cplstrtmant,
+                                            tail.cplendmant, out_f);
+            // Back under the receiving channel's exponent; the conversion
+            // saturates, so an overshoot past the room block_norm.hpp leaves
+            // clips rather than wraps.
+            const int channel_norm = tail.norm[uch];
+            for (int bin = tail.cplstrtmant; bin < tail.cplendmant; ++bin) {
+                coeffs[uch][static_cast<std::size_t>(bin)] =
+                    Scalar{std::ldexp(out_f[static_cast<std::size_t>(bin)], channel_norm)};
+            }
+        }
+    } else {
+        (void)prev_norm;
+        (void)next_norm;
+        (void)bridge;
+        ecpl_spectrum_into(prev, curr, next, zr, zi, fast);
+        for (int ch = 0; ch < nfchans; ++ch) {
+            if (!tail.chincpl[static_cast<std::size_t>(ch)]) {
+                continue;
+            }
+            const auto uch = static_cast<std::size_t>(ch);
+            const bool is_first = ch == tail.firstchincpl;
+            // Grow to the widest coupling range seen, never shrink. The range
+            // is a property of the stream rather than of the block, so in
+            // practice this allocates on the first coupled block of the first
+            // frame and never again.
+            if (amp_scratch.size() < ubins) {
+                amp_scratch.resize(ubins);
+                angle_scratch.resize(ubins);
+            }
+            // Zeroed to the width in use before each call, because the two
+            // callees write only the bins their band structure covers and the
+            // vectors these replaced were value-initialised. Reusing storage
+            // means that is no longer implied by the construction, so it is
+            // done here - a few hundred stores against an allocation and a
+            // free.
+            const std::span<Scalar> amp_bin{amp_scratch.data(), ubins};
+            const std::span<Scalar> angle_bin{angle_scratch.data(), ubins};
+            std::fill(amp_bin.begin(), amp_bin.end(), Scalar{0});
+            std::fill(angle_bin.begin(), angle_bin.end(), Scalar{0});
+            eac3::ecpl_amplitudes(tail.ecplamp_raw[uch], tail.ecplchaos_raw[uch],
+                                  tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
+                                  tail.ecpl_end_subbnd, tail.ecpl_structure, amp_bin);
+            eac3::ecpl_angles(ch, tail.ecplangle_raw[uch], tail.ecplchaos_raw[uch],
+                              tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
+                              tail.ecpl_end_subbnd, tail.ecpl_structure, ecpl_noise, angle_bin,
+                              tail.ecplangleintrp);
+            // Straight into the store: the callee writes only
+            // [cplstrtmant, cplendmant), so the bins outside it stand as
+            // decoded. This used to round-trip through a double scratch,
+            // because the routine existed only at double; on an ESP32-S3 that
+            // copy alone was 512 software conversions per coupled channel per
+            // block.
+            eac3::ecpl_channel_coefficients(zr, zi, amp_bin, angle_bin, tail.cplstrtmant,
+                                            tail.cplendmant, coeffs[uch]);
+        }
     }
 }
 
@@ -1121,6 +1370,7 @@ std::optional<DecodedSubstream> Eac3Decoder::conceal(DecodeError error, std::siz
         delay_slot = std::make_unique<std::array<std::array<internal::decode_scalar_t, 256>, 6>>();
     }
     auto& delay = *delay_slot;
+    auto& delay_norm = impl_->delay_norm_[slot];
 
     // 20 dB across six blocks, the same decay FrameDecoder::conceal uses - a
     // syncframe coding fewer blocks simply travels less of that curve, which
@@ -1134,11 +1384,15 @@ std::optional<DecodedSubstream> Eac3Decoder::conceal(DecodeError error, std::siz
             const auto& last = retained->last_block[uch];
             auto& history = delay[uch];
             auto& pcm = out.channels[uch];
+            // The delay half's exponent (block_norm.hpp): read through it,
+            // and zero once this loop has written true-scale values.
+            const int history_norm = delay_norm[uch];
+            delay_norm[uch] = repeat ? 0 : internal::kNormCeiling;
             for (int n = 0; n < kSamplesPerBlock; ++n) {
                 const auto un = static_cast<std::size_t>(n);
                 const double head = repeat ? last[un] * gain : 0.0;
                 pcm[static_cast<std::size_t>(blk * kSamplesPerBlock + n)] =
-                    static_cast<float>(2.0 * (head + static_cast<double>(history[un])));
+                    static_cast<float>(2.0 * (head + internal::widen_stored(history[un], history_norm)));
                 history[un] = repeat ? static_cast<internal::decode_scalar_t>(last[un + 256] * gain) : internal::decode_scalar_t{0};
             }
         }
@@ -1340,12 +1594,14 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // - is the pair, never the id alone. First use of an identity engages
     // its slot value-initialized (zeroed history), exactly as the map's
     // operator[] this replaced created it.
-    auto& delay_slot = impl_->delay_[static_cast<std::size_t>(static_cast<int>(bsi->strmtyp) * 8 +
-                                                              bsi->substreamid)];
+    const auto delay_index =
+        static_cast<std::size_t>(static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid);
+    auto& delay_slot = impl_->delay_[delay_index];
     if (!delay_slot) {
         delay_slot = std::make_unique<std::array<std::array<internal::decode_scalar_t, 256>, 6>>();
     }
     auto& delay = *delay_slot;
+    auto& delay_norm = impl_->delay_norm_[delay_index];
 
     std::array<int, kMaxSubstreamStreams> endmant{};
     // Per-frame scratch owned by Impl, re-established here with exactly the
@@ -1408,6 +1664,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // [channel][sub-band] - already expanded from bands to sub-bands.
     auto& cplco = impl_->cplco_;
     reset_nested(cplco, static_cast<std::size_t>(nfchans));
+    auto& cplco_exp = impl_->cplco_exp_;
+    reset_nested(cplco_exp, static_cast<std::size_t>(nfchans));
     auto& phsflg = impl_->phsflg_;
     phsflg.clear();
 
@@ -1468,6 +1726,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // [channel][band]
     auto& spxco = impl_->spxco_;
     reset_nested(spxco, static_cast<std::size_t>(nfchans));
+    auto& spxco_exp = impl_->spxco_exp_;
+    reset_nested(spxco_exp, static_cast<std::size_t>(nfchans));
     auto& spxblnd = impl_->spxblnd_;
     spxblnd.assign(static_cast<std::size_t>(nfchans), 0);
     eac3::SpxNoise spx_noise;
@@ -1697,6 +1957,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     channel.assign(static_cast<std::size_t>(spx_bands.count),
                                    internal::decode_scalar_t{0});
                 }
+                for (auto& channel : spxco_exp) {
+                    channel.assign(static_cast<std::size_t>(spx_bands.count), 0);
+                }
             }
         }
 
@@ -1722,12 +1985,26 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 spxblnd[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(5));
                 const int master = static_cast<int>(r.read(2));
                 auto& co = spxco[static_cast<std::size_t>(ch)];
+                auto& co_exp = spxco_exp[static_cast<std::size_t>(ch)];
                 for (int bnd = 0; bnd < spx_bands.count; ++bnd) {
                     const auto exp = static_cast<std::uint8_t>(r.read(4));
                     const auto mant = static_cast<std::uint8_t>(r.read(2));
-                    co[static_cast<std::size_t>(bnd)] =
-                        coupling::decode_coordinate_as<internal::decode_scalar_t>(
-                            {.exp = exp, .mant = mant}, master, coupling::kSpxMantissaBits);
+                    const coupling::Coordinate coordinate{.exp = exp, .mant = mant};
+                    if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                        // Mantissa and power of two apart (block_norm.hpp), as
+                        // the coupling coordinates are: the synthesis then
+                        // applies the power as a shift, and a coordinate far
+                        // below unity keeps every bit it was sent with.
+                        co[static_cast<std::size_t>(bnd)] =
+                            coupling::coordinate_mantissa_as<internal::decode_scalar_t>(
+                                coordinate, coupling::kSpxMantissaBits);
+                        co_exp[static_cast<std::size_t>(bnd)] =
+                            coupling::coordinate_exponent(coordinate, master);
+                    } else {
+                        co[static_cast<std::size_t>(bnd)] =
+                            coupling::decode_coordinate_as<internal::decode_scalar_t>(
+                                coordinate, master, coupling::kSpxMantissaBits);
+                    }
                 }
             }
         }
@@ -1834,7 +2111,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // change in geometry forces a resize, and only the new entries
                 // start at zero.
                 for (auto& channel : cplco) {
-                    channel.assign(static_cast<std::size_t>(subband_count), 0.0);
+                    channel.assign(static_cast<std::size_t>(subband_count), internal::decode_scalar_t{0});
+                }
+                for (auto& channel : cplco_exp) {
+                    channel.assign(static_cast<std::size_t>(subband_count), 0);
                 }
                 phsflg.assign(static_cast<std::size_t>(ncplbnd), false);
             } else {
@@ -1917,16 +2197,32 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // a fixed array rather than the std::vector this was, which
                 // allocated once per coupled channel per block.
                 std::array<internal::decode_scalar_t, eac3::kMaxSubBands> band_values{};
+                std::array<int, eac3::kMaxSubBands> band_exps{};
                 for (int bnd = 0; bnd < ncplbnd; ++bnd) {
                     const auto exp = static_cast<std::uint8_t>(r.read(4));
                     const auto mant = static_cast<std::uint8_t>(r.read(4));
-                    band_values[static_cast<std::size_t>(bnd)] =
-                        coupling::decode_coordinate_as<internal::decode_scalar_t>(
-                            {.exp = exp, .mant = mant}, master);
+                    const coupling::Coordinate coordinate{.exp = exp, .mant = mant};
+                    if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                        // The fixed-point store keeps the mantissa and the
+                        // power of two apart (block_norm.hpp) - see
+                        // decoder.cpp's own copy of this split.
+                        band_values[static_cast<std::size_t>(bnd)] =
+                            coupling::coordinate_mantissa_as<internal::decode_scalar_t>(
+                                coordinate);
+                        band_exps[static_cast<std::size_t>(bnd)] =
+                            coupling::coordinate_exponent(coordinate, master);
+                    } else {
+                        band_values[static_cast<std::size_t>(bnd)] =
+                            coupling::decode_coordinate_as<internal::decode_scalar_t>(
+                                coordinate, master);
+                    }
                 }
                 auto& channel = cplco[static_cast<std::size_t>(ch)];
+                auto& channel_exp = cplco_exp[static_cast<std::size_t>(ch)];
                 for (std::size_t bnd = 0; bnd < channel.size(); ++bnd) {
-                    channel[bnd] = band_values[static_cast<std::size_t>(subband_band[bnd])];
+                    const auto band = static_cast<std::size_t>(subband_band[bnd]);
+                    channel[bnd] = band_values[band];
+                    channel_exp[bnd] = band_exps[band];
                 }
             }
             if (phsflginu && any_new) {
@@ -2535,8 +2831,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 channel.ecpltrans = false;
                 if (channel.in_coupling && !ecplinu_now) {
                     // The trace keeps its coordinates in double whatever the
-                    // decoder's own store is; a range assign widens.
-                    channel.cplco.assign(cplco[uch].begin(), cplco[uch].end());
+                    // decoder's own store is; widen_into converts each one.
+                    widen_into(channel.cplco, cplco[uch]);
                 } else if (channel.in_coupling) {
                     channel.ecplamp = ecplamp_raw[uch];
                     channel.ecplangle = ecplangle_raw[uch];
@@ -2548,7 +2844,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 channel.spxco.clear();
                 if (channel.in_spx) {
                     channel.spxblnd = spxblnd[uch];
-                    channel.spxco.assign(spxco[uch].begin(), spxco[uch].end());
+                    widen_into(channel.spxco, spxco[uch]);
                 }
             }
             block_trace->allocated = true;
@@ -2575,6 +2871,49 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // one fewer buffer and nothing to swap.
         auto& coeffs = tails[static_cast<std::size_t>(blk)].coeffs;
         coeffs.assign(static_cast<std::size_t>(kMaxSubstreamStreams), {});
+        auto& norm = tails[static_cast<std::size_t>(blk)].norm;
+        norm.fill(0);
+        tails[static_cast<std::size_t>(blk)].rematrix_room = false;
+        // The fixed-point tier's block exponents (block_norm.hpp): each
+        // stream's own coded bins set its exponent here, and a tool that
+        // needs more room - decoupling, the enhanced coupling reconstruction,
+        // spectral extension's synthesis, rematrixing - lowers it where it
+        // runs. An AHT stream's exponent is exact and set where its frame is
+        // dequantised (decode_aht_stream), so it is left alone here. The
+        // floating tiers' stay zero.
+        if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+            const auto ucpl = static_cast<std::size_t>(kCplStream);
+            for (int ch = 0; ch < nfchans; ++ch) {
+                const auto uch = static_cast<std::size_t>(ch);
+                if (!frm->ahtinu[uch]) {
+                    norm[uch] =
+                        internal::store_norm(internal::min_exponent(exps[uch], 0, endmant[uch]));
+                }
+            }
+            if (frm->cplinu[static_cast<std::size_t>(blk)] && !frm->ahtinu[ucpl]) {
+                norm[ucpl] = internal::store_norm(
+                    internal::min_exponent(exps[ucpl], cplstrtmant, cplendmant));
+            }
+            if (bsi->lfe) {
+                const auto ulfe = static_cast<std::size_t>(nfchans);
+                if (!frm->ahtinu[ulfe]) {
+                    norm[ulfe] = internal::store_norm(
+                        internal::min_exponent(exps[ulfe], 0, endmant[ulfe]));
+                }
+            }
+            // A rematrixed pair of ordinary streams can take its shared
+            // exponent now, before either is dequantised, and lose nothing to
+            // the shift the second pass would otherwise apply; an AHT pair
+            // takes it there (its exponents are exact and known only then).
+            if (bsi->acmod == Acmod::k2_0 && !frm->ahtinu[0] && !frm->ahtinu[1] &&
+                std::ranges::any_of(rematflg, [](bool on) { return on; })) {
+                const int shared = std::max(
+                    std::min(norm[0], norm[1]) - internal::kRematrixGuardBits, internal::kNormFloor);
+                norm[0] = shared;
+                norm[1] = shared;
+                tails[static_cast<std::size_t>(blk)].rematrix_room = true;
+            }
+        }
         // §7.3.4, same split as decoder.cpp's own read_stream: only a stream
         // with its OWN dithflag (a full-bandwidth channel, s < nfchans)
         // dithers here. The LFE has no dithflag and always reconstructs as
@@ -2593,19 +2932,22 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             using Scalar = internal::decode_scalar_t;
             const auto index = static_cast<std::size_t>(s);
             const bool dither_eligible = s < nfchans && dithflag[static_cast<std::size_t>(s)];
+            const int stream_norm = norm[index];
             for (int bin = begin; bin < endmant[index]; ++bin) {
                 const int bap_value = bap[index][static_cast<std::size_t>(bin)];
                 const int exp = exps[index][static_cast<std::size_t>(bin)];
                 if (bap_value == 0) {
                     coeffs[index][static_cast<std::size_t>(bin)] =
                         dither_eligible
-                            ? impl_->dither_.next_as<Scalar>() * exponent_scale<Scalar>(exp)
+                            ? impl_->dither_.next_as<Scalar>() *
+                                  exponent_scale<Scalar>(exp - stream_norm)
                             : Scalar{0};
                     continue;
                 }
                 const auto code = mantissa_reader.read(r, bap_value);
                 coeffs[index][static_cast<std::size_t>(bin)] =
-                    dequantize_mantissa_as<Scalar>(code, bap_value) * exponent_scale<Scalar>(exp);
+                    dequantize_mantissa_as<Scalar>(code, bap_value) *
+                    exponent_scale<Scalar>(exp - stream_norm);
             }
         };
 
@@ -2625,6 +2967,15 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
             aht_coeffs[us] = {};
             const int end = endmant[us];
+            // The stream's frame exponent (block_norm.hpp): its six blocks
+            // are dequantised here at once, and their reconstructed peaks
+            // are all known before any is stored, so the exponent is exact -
+            // found once every bin is reconstructed, then applied.
+            auto& effective_exps = impl_->aht_eff_exps_[us];
+            int smallest_effective = internal::kNoExponent;
+            if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                effective_exps.assign(256, internal::kNoExponent);
+            }
             const auto& hebap = bap[us];
 
             const auto gaqmod = static_cast<int>(r.read(2));
@@ -2684,7 +3035,15 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // for why, and eac3_tools.hpp's float aht_inverse for what the
                 // float form of the inverse is and is not.
                 using Scalar = internal::decode_scalar_t;
-                std::array<Scalar, kBlocksPerFrame> mantissas{};
+                // The AHT's dequantisers scale sixteen-bit codes and table
+                // entries that a fixed-point scalar cannot hold before the
+                // scale, so the fixed tier dequantises in float and narrows
+                // the six reconstructed blocks (aht_inverse_into) - its
+                // §E3.4 has no fixed form yet, planning/arithmetic-tiers.md
+                // Phase C. The floating tiers read their own scalar.
+                using AhtScalar =
+                    std::conditional_t<std::is_same_v<Scalar, internal::Fixed32>, float, Scalar>;
+                std::array<AhtScalar, kBlocksPerFrame> mantissas{};
                 if (hb >= 1 && hb <= 7) {
                     const auto book = tables::aht_vq_table(hb);
                     const auto index = r.read(eac3::aht_bin_bits(hb));
@@ -2692,7 +3051,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         return std::unexpected(DecodeError::kInvalidStream);
                     }
                     for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
-                        mantissas[j] = static_cast<Scalar>(book[index][j]) / Scalar{32768};
+                        mantissas[j] = static_cast<AhtScalar>(book[index][j]) / AhtScalar{32768};
                     }
                 } else if (hb >= 8) {
                     const int mantissa_bits = eac3::aht_mantissa_bits(hb);
@@ -2707,7 +3066,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     assert(mantissa_bits >= 3);
                     const int g = gain[ubin];
                     // The bin's constants once, its six codewords through them.
-                    const eac3::AhtGaqDequantizer<Scalar> dequantize{mantissa_bits, g};
+                    const eac3::AhtGaqDequantizer<AhtScalar> dequantize{mantissa_bits, g};
                     const int small_bits = dequantize.small_bits;
                     const int large_bits = dequantize.large_bits;
                     for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
@@ -2724,12 +3083,36 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 }
                 // hb == 0: mantissas stays all-zero.
                 std::array<Scalar, kBlocksPerFrame> blocks{};
-                eac3::aht_inverse(mantissas, blocks);
+                aht_inverse_into(mantissas, blocks);
                 const int exp = exps[us][ubin];
-                for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
-                    aht_coeffs[us][j][ubin] = blocks[j] * exponent_scale<Scalar>(exp);
+                if constexpr (internal::kNormalisedStore<Scalar>) {
+                    // Unscaled for now; the frame's exponent is applied below
+                    // once every bin's peak is known.
+                    for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
+                        aht_coeffs[us][j][ubin] = blocks[j];
+                    }
+                    const int effective = internal::aht_effective_exponent(blocks, exp);
+                    effective_exps[ubin] = effective;
+                    smallest_effective = std::min(smallest_effective, effective);
+                } else {
+                    for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
+                        aht_coeffs[us][j][ubin] = blocks[j] * exponent_scale<Scalar>(exp);
+                    }
                 }
             }
+            int aht_norm = 0;
+            if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                aht_norm = internal::store_norm(smallest_effective);
+                for (int bin = begin; bin < end; ++bin) {
+                    const auto ubin = static_cast<std::size_t>(bin);
+                    const int shift = aht_norm - exps[us][ubin];
+                    for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
+                        aht_coeffs[us][j][ubin] =
+                            internal::scalar_ldexp(aht_coeffs[us][j][ubin], shift);
+                    }
+                }
+            }
+            impl_->aht_norm_[us] = aht_norm;
             return {};
         };
         const auto read_stream_dispatch = [&](int s,
@@ -2747,6 +3130,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     }
                 }
                 coeffs[us] = aht_coeffs[us][static_cast<std::size_t>(blk)];
+                // Under the frame's exact exponent (zero in the floating
+                // tiers); a tool that needs more room lowers it where it
+                // runs (block_norm.hpp's renormalise).
+                norm[us] = impl_->aht_norm_[us];
                 return {};
             }
             read_stream(s, begin);
@@ -2795,6 +3182,16 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             const auto& shared = coeffs[static_cast<std::size_t>(kCplStream)];
             const auto& cpl_bap = bap[static_cast<std::size_t>(kCplStream)];
             const auto& cpl_exps = exps[static_cast<std::size_t>(kCplStream)];
+            const int shared_norm = norm[static_cast<std::size_t>(kCplStream)];
+            // The shared channel's smallest exponent over a band - its exact
+            // ones when it is an AHT stream (block_norm.hpp).
+            const auto shared_min = [&](int low, int high) {
+                return frm->ahtinu[static_cast<std::size_t>(kCplStream)]
+                           ? internal::min_exponent(
+                                 impl_->aht_eff_exps_[static_cast<std::size_t>(kCplStream)], low,
+                                 high)
+                           : internal::min_exponent(cpl_exps, low, high);
+            };
             for (int ch = 0; ch < nfchans; ++ch) {
                 if (!chincpl[static_cast<std::size_t>(ch)]) {
                     continue;
@@ -2807,6 +3204,22 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // coefficient rounds once in either type, and 8 and the sign
                 // are exact.
                 using Scalar = internal::decode_scalar_t;
+                if constexpr (internal::kNormalisedStore<Scalar>) {
+                    // The room this channel's coupled bands need, from the
+                    // shared channel's exponents and each band's coordinate
+                    // (block_norm.hpp); the channel comes down to it first.
+                    int wanted = internal::kNoExponent;
+                    for (std::size_t bnd = 0; bnd < subband_band.size(); ++bnd) {
+                        const int low =
+                            cplstrtmant + static_cast<int>(bnd) * coupling::kBinsPerSubBand;
+                        const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
+                        wanted = std::min(wanted, internal::coupled_exponent(
+                                                      shared_min(low, high),
+                                                      cplco_exp[static_cast<std::size_t>(ch)][bnd]));
+                    }
+                    internal::renormalise(target, norm[static_cast<std::size_t>(ch)],
+                                          internal::store_norm(wanted));
+                }
                 for (int bnd = 0; bnd < static_cast<int>(subband_band.size()); ++bnd) {
                     const Scalar coordinate =
                         cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)];
@@ -2820,6 +3233,15 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                             : Scalar{1};
                     const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
                     const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
+                    // The fixed-point store's shift from the shared channel's
+                    // exponent to this one's, with the coordinate's power of
+                    // two and the eight folded in (block_norm.hpp).
+                    int shift = 0;
+                    if constexpr (internal::kNormalisedStore<Scalar>) {
+                        shift = norm[static_cast<std::size_t>(ch)] - shared_norm -
+                                cplco_exp[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)] +
+                                3;
+                    }
                     for (int bin = low; bin < high; ++bin) {
                         const std::size_t ubin = static_cast<std::size_t>(bin);
                         // §7.3.4: independent per-channel dither for a
@@ -2831,9 +3253,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         const Scalar coeff =
                             (cpl_bap[ubin] == 0 && ch_dither)
                                 ? impl_->dither_.next_as<Scalar>() *
-                                      exponent_scale<Scalar>(cpl_exps[ubin])
+                                      exponent_scale<Scalar>(cpl_exps[ubin] - shared_norm)
                                 : shared[ubin];
-                        target[ubin] = coeff * coordinate * Scalar{8} * sign;
+                        if constexpr (internal::kNormalisedStore<Scalar>) {
+                            target[ubin] = internal::scalar_ldexp(coeff * coordinate * sign, shift);
+                        } else {
+                            target[ubin] = coeff * coordinate * Scalar{8} * sign;
+                        }
                     }
                 }
             }
@@ -2884,6 +3310,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         tail.chinspx = chinspx;
         tail.spx_bands = spx_bands;
         tail.spxco = spxco;
+        tail.spxco_exp = spxco_exp;
         tail.spxblnd = spxblnd;
         tail.spx_startmant = spx_startmant;
         tail.spx_endmant = spx_endmant;
@@ -2950,55 +3377,34 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             const auto& next = (blk + 1 < nblks && ecpl_active[static_cast<std::size_t>(blk + 1)])
                                    ? ecpl_all_coeffs[static_cast<std::size_t>(blk + 1)]
                                    : kZero;
-            auto& zr = impl_->ecpl_spectrum_real_;
-            auto& zi = impl_->ecpl_spectrum_imag_;
-            ecpl_spectrum_into(prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)], next, zr, zi,
-                               impl_->config_.fast_imdct);
-
-            const int bins = tail.cplendmant - tail.cplstrtmant;
-            for (int ch = 0; ch < nfchans; ++ch) {
-                if (!tail.chincpl[static_cast<std::size_t>(ch)]) {
-                    continue;
+            const int prev_norm = (blk > 0 && ecpl_active[static_cast<std::size_t>(blk - 1)])
+                                      ? tails[static_cast<std::size_t>(blk - 1)]
+                                            .norm[static_cast<std::size_t>(kCplStream)]
+                                      : 0;
+            const int next_norm =
+                (blk + 1 < nblks && ecpl_active[static_cast<std::size_t>(blk + 1)])
+                    ? tails[static_cast<std::size_t>(blk + 1)].norm[static_cast<std::size_t>(kCplStream)]
+                    : 0;
+            if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                // The room each coupled channel needs for the reconstruction
+                // (block_norm.hpp): the shared channel's own exponent, less
+                // kEcplGuardBits for what the reconstruction can add.
+                const int wanted = std::max(
+                    tail.norm[static_cast<std::size_t>(kCplStream)] - internal::kEcplGuardBits,
+                    internal::kNormFloor);
+                for (int ch = 0; ch < nfchans; ++ch) {
+                    const auto uch = static_cast<std::size_t>(ch);
+                    if (tail.chincpl[uch]) {
+                        internal::renormalise(coeffs[uch], tail.norm[uch], wanted);
+                    }
                 }
-                const auto uch = static_cast<std::size_t>(ch);
-                const bool is_first = ch == tail.firstchincpl;
-                // Grow to the widest coupling range seen, never shrink. The
-                // range is a property of the stream rather than of the block,
-                // so in practice this allocates on the first coupled block of
-                // the first frame and never again.
-                const auto ubins = static_cast<std::size_t>(bins);
-                if (impl_->ecpl_amp_scratch_.size() < ubins) {
-                    impl_->ecpl_amp_scratch_.resize(ubins);
-                    impl_->ecpl_angle_scratch_.resize(ubins);
-                }
-                // Zeroed to the width in use before each call, because the two
-                // callees write only the bins their band structure covers and
-                // the vectors these replaced were value-initialised. Reusing
-                // storage means that is no longer implied by the construction,
-                // so it is done here - a few hundred stores against an
-                // allocation and a free.
-                const std::span<internal::decode_scalar_t> amp_bin{
-                    impl_->ecpl_amp_scratch_.data(), ubins};
-                const std::span<internal::decode_scalar_t> angle_bin{
-                    impl_->ecpl_angle_scratch_.data(), ubins};
-                std::fill(amp_bin.begin(), amp_bin.end(), internal::decode_scalar_t{0});
-                std::fill(angle_bin.begin(), angle_bin.end(), internal::decode_scalar_t{0});
-                eac3::ecpl_amplitudes(tail.ecplamp_raw[uch], tail.ecplchaos_raw[uch],
-                                      tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
-                                      tail.ecpl_end_subbnd, tail.ecpl_structure, amp_bin);
-                eac3::ecpl_angles(ch, tail.ecplangle_raw[uch], tail.ecplchaos_raw[uch],
-                                  tail.ecpltrans[uch], is_first, tail.ecpl_begin_subbnd,
-                                  tail.ecpl_end_subbnd, tail.ecpl_structure, ecpl_noise, angle_bin,
-                                  tail.ecplangleintrp);
-                // Straight into the store: the callee writes only
-                // [cplstrtmant, cplendmant), so the bins outside it stand as
-                // decoded. This used to round-trip through a double scratch,
-                // because the routine existed only at double; on an ESP32-S3
-                // that copy alone was 512 software conversions per coupled
-                // channel per block.
-                eac3::ecpl_channel_coefficients(zr, zi, amp_bin, angle_bin, tail.cplstrtmant,
-                                                tail.cplendmant, coeffs[uch]);
             }
+            ecpl_reconstruct_block(tail, prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)],
+                                   next, prev_norm, next_norm, impl_->ecpl_bridge_, nfchans,
+                                   ecpl_noise, impl_->ecpl_spectrum_real_,
+                                   impl_->ecpl_spectrum_imag_, impl_->ecpl_amp_scratch_,
+                                   impl_->ecpl_angle_scratch_, impl_->config_.fast_imdct,
+                                   coeffs);
         }
 
         // §3.6.4 spectral extension synthesis: translate the low band up,
@@ -3015,6 +3421,20 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     continue;
                 }
                 auto& tc = coeffs[static_cast<std::size_t>(ch)];
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    // The room the synthesis needs (block_norm.hpp's
+                    // spx_room), from the copy source as it stands and this
+                    // channel's smallest coordinate exponent.
+                    const auto& exponents = tail.spxco_exp[static_cast<std::size_t>(ch)];
+                    int smallest = internal::kNoExponent;
+                    for (const int value : exponents) {
+                        smallest = std::min(smallest, value);
+                    }
+                    const int room = internal::spx_room(tc, tail.spx_copystart,
+                                                        tail.spx_startmant, smallest);
+                    internal::renormalise(tc, tail.norm[static_cast<std::size_t>(ch)],
+                                          tail.norm[static_cast<std::size_t>(ch)] - room);
+                }
 
                 // §3.6.4.1 Transform Coefficient Translation: copy low-band
                 // coefficients up into the extension region, banded, wrapping
@@ -3041,24 +3461,22 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         copyindex = tail.spx_copystart;
                         wrapflag[ubnd] = true;
                     }
-                    Scalar accum{0};
+                    BandEnergy<Scalar> energy;
                     for (int i = 0; i < size; ++i) {
                         if (copyindex == tail.spx_startmant) {
                             copyindex = tail.spx_copystart;
                         }
-                        // A band is at most a few dozen bins, so the energy
-                        // accumulator follows the coefficients' type too.
                         const auto value = tc[static_cast<std::size_t>(copyindex++)];
                         tc[static_cast<std::size_t>(low + i)] = value;
-                        accum += value * value;
+                        energy.add(value);
                     }
-                    band_rms[ubnd] = std::sqrt(accum / static_cast<Scalar>(size));
+                    band_rms[ubnd] = energy.rms(size);
                 }
 
                 // §3.6.4.2.3 Band Border Filtering: the notch runs on the
                 // already-translated, not-yet-blended region, using RMS
                 // measured before it (matching the encoder's own order).
-                eac3::spx_apply_notch(
+                spx_notch_into(
                     std::span{tc}.subspan(
                         static_cast<std::size_t>(tail.spx_startmant),
                         static_cast<std::size_t>(tail.spx_endmant - tail.spx_startmant)),
@@ -3074,20 +3492,46 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     const int low = tail.spx_bands.start[ubnd];
                     const Scalar nratio =
                         eac3::spx_noise_ratio_as<Scalar>(low, size, tail.spx_endmant, blend);
-                    const Scalar nscale = band_rms[ubnd] * std::sqrt(nratio);
-                    const Scalar sscale = std::sqrt(Scalar{1} - nratio);
-                    const Scalar coordinate =
-                        tail.spxco[static_cast<std::size_t>(ch)][ubnd] * Scalar{32};
-                    for (int i = 0; i < size; ++i) {
-                        const auto at = static_cast<std::size_t>(low + i);
-                        tc[at] = (tc[at] * sscale + spx_noise.next_as<Scalar>() * nscale) *
-                                 coordinate;
+                    const Scalar nscale = band_rms[ubnd] * internal::scalar_sqrt(nratio);
+                    const Scalar sscale = internal::scalar_sqrt(Scalar{1} - nratio);
+                    if constexpr (internal::kNormalisedStore<Scalar>) {
+                        // The coordinate's mantissa, then its power of two and
+                        // §E3.6.4.3's thirty-two as one shift (block_norm.hpp).
+                        const Scalar mantissa = tail.spxco[static_cast<std::size_t>(ch)][ubnd];
+                        const int shift = 5 - tail.spxco_exp[static_cast<std::size_t>(ch)][ubnd];
+                        for (int i = 0; i < size; ++i) {
+                            const auto at = static_cast<std::size_t>(low + i);
+                            tc[at] = internal::scalar_ldexp(
+                                (tc[at] * sscale + spx_noise.next_as<Scalar>() * nscale) *
+                                    mantissa,
+                                shift);
+                        }
+                    } else {
+                        const Scalar coordinate =
+                            tail.spxco[static_cast<std::size_t>(ch)][ubnd] * Scalar{32};
+                        for (int i = 0; i < size; ++i) {
+                            const auto at = static_cast<std::size_t>(low + i);
+                            tc[at] = (tc[at] * sscale + spx_noise.next_as<Scalar>() * nscale) *
+                                     coordinate;
+                        }
                     }
                 }
             }
         }
 
         if (bsi->acmod == Acmod::k2_0) {
+            if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                // One exponent for the pair, with room for the sum
+                // (block_norm.hpp).
+                if (!tail.rematrix_room &&
+                    std::ranges::any_of(tail.rematflg, [](bool on) { return on; })) {
+                    const int shared = std::max(
+                        std::min(tail.norm[0], tail.norm[1]) - internal::kRematrixGuardBits,
+                        internal::kNormFloor);
+                    internal::renormalise(coeffs[0], tail.norm[0], shared);
+                    internal::renormalise(coeffs[1], tail.norm[1], shared);
+                }
+            }
             // §7.5.4: L = L' + R', R = L' - R' in flagged bands, up to the
             // lower bandwidth of the two channels.
             const int cap = std::min(tail.endmant[0], tail.endmant[1]) - 1;
@@ -3129,10 +3573,19 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     : internal::block_gain(impl_->config_,
                                            out.dynrng[static_cast<std::size_t>(blk)], out.compr);
             if (drc != 1.0) {
+                double gain = drc;
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    // The gain's power of two goes into the block exponent
+                    // and only its mantissa, in [0.5, 1), into the
+                    // coefficients (block_norm.hpp).
+                    int power = 0;
+                    gain = std::frexp(drc, &power);
+                    tail.norm[static_cast<std::size_t>(ch)] -= power;
+                }
                 // Narrowed once, not per coefficient: the gain is one number
                 // for the whole block, and rounding it here costs a single
                 // rounding step instead of 256 round trips through double.
-                const auto block_scale = static_cast<internal::decode_scalar_t>(drc);
+                const auto block_scale = static_cast<internal::decode_scalar_t>(gain);
                 for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
                     value *= block_scale;
                 }
@@ -3157,12 +3610,21 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                                        impl_->config_.fast_imdct);
                 auto& history = delay[index];
                 auto& pcm = out.channels[index];
-                for (int n = 0; n < kSamplesPerBlock; ++n) {
-                    pcm[static_cast<std::size_t>(blk * kSamplesPerBlock + n)] =
-                        static_cast<float>(internal::decode_scalar_t{2} *
-                                           (x[static_cast<std::size_t>(n)] +
-                                            history[static_cast<std::size_t>(n)]));
-                    history[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    // The two halves under their own exponents, aligned and
+                    // scaled once (block_norm.hpp).
+                    internal::overlap_add_normalised(
+                        x, history, delay_norm[index], tail.norm[index],
+                        std::span<float>{pcm}.subspan(
+                            static_cast<std::size_t>(blk) * kSamplesPerBlock, kSamplesPerBlock));
+                } else {
+                    for (int n = 0; n < kSamplesPerBlock; ++n) {
+                        pcm[static_cast<std::size_t>(blk * kSamplesPerBlock + n)] =
+                            static_cast<float>(internal::decode_scalar_t{2} *
+                                               (x[static_cast<std::size_t>(n)] +
+                                                history[static_cast<std::size_t>(n)]));
+                        history[static_cast<std::size_t>(n)] = x[static_cast<std::size_t>(256 + n)];
+                    }
                 }
                 // §7.10's raw material, captured into scratch rather than
                 // straight into impl_->retained_: this frame may still be refused
@@ -3170,7 +3632,14 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // NEXT loss is reconstructed from.
                 if (retain_last_block && blk == nblks - 1 &&
                     index < impl_->conceal_scratch_.size()) {
-                    std::copy(x.begin(), x.end(), impl_->conceal_scratch_[index].begin());
+                    // Element-wise: the retained block is double whatever the
+                    // store's scalar is (a loss path, not the decode's), and the
+                    // fixed-point scalar widens only explicitly.
+                    const int stored_norm = tail.norm[index];
+                    std::transform(x.begin(), x.end(), impl_->conceal_scratch_[index].begin(),
+                                   [stored_norm](internal::decode_scalar_t v) {
+                                       return internal::widen_stored(v, stored_norm);
+                                   });
                 }
             }
         }

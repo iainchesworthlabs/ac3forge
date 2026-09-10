@@ -57,7 +57,8 @@ for arg in "$@"; do
         --decoder) DIRECTION=decoder ;;
         --stage-timers) STAGE_TIMERS=ON ;;
         --icount) ICOUNT=1 ;;
-        *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder] [--stage-timers] [--icount]" >&2; exit 2 ;;
+        --scalar=*) SCALAR="${arg#--scalar=}" ;;
+        *) echo "usage: run_baremetal_probe.sh [--host] [--encoder|--decoder] [--stage-timers] [--icount] [--scalar=float|fixed]" >&2; exit 2 ;;
     esac
 done
 if [[ "$ICOUNT" == "1" && "$HOST" == "1" ]]; then
@@ -86,6 +87,26 @@ declare -A ICOUNT_CEILING=(
     [ac3_fold]=13500000
     [eac3_fold]=17000000
     [eac3_atmos_render]=36000000
+)
+# The fixed-point tier's (--scalar=fixed --icount), measured 2026-09-10 on the
+# same leg with the same headroom rule (planning/arithmetic-tiers.md). Integer
+# arithmetic where the float tier's is software floating point, so the plain
+# rows are a half to a third of the float table's; enhanced coupling and the
+# objects rows come down less, their reconstruction and mixing still running
+# through float at the seam - what Phase C has left to bring into the tier.
+declare -A ICOUNT_CEILING_FIXED=(
+    [ac3_mono]=1000000
+    [ac3_stereo]=2000000
+    [eac3_stereo]=3500000
+    [eac3_atmos_bed]=4500000
+    [ac3]=5000000
+    [ac3_fold]=7000000
+    [eac3]=8500000
+    [eac3_fold]=12500000
+    [eac3_atmos_objects]=31500000
+    [eac3_atmos_render]=32000000
+    [eac3_ecpl]=30500000
+    [eac3_714]=22500000
 )
 # The encode direction's, from --encoder --icount: Thumb-2 instructions per
 # ENCODED frame, measured 2026-09-10 on the same leg with the same headroom
@@ -187,6 +208,11 @@ else
     PRESET=config-arm-none-eabi-minimal
     BUILD_PRESET=build-arm-none-eabi-minimal
 fi
+if [[ "${SCALAR:-}" == "fixed" && "$DIRECTION" == "decoder" ]]; then
+    for key in "${!ICOUNT_CEILING_FIXED[@]}"; do
+        ICOUNT_CEILING[$key]=${ICOUNT_CEILING_FIXED[$key]}
+    done
+fi
 if [[ "$DIRECTION" == "encoder" ]]; then
     PRESET="${PRESET}-encoder"
     BUILD_PRESET="${BUILD_PRESET}-encoder"
@@ -213,10 +239,22 @@ if [[ "$ICOUNT" == "1" ]]; then
     QEMU_ICOUNT=(-icount shift=0,sleep=off)
 fi
 
-cmake --preset "$PRESET" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS"
-cmake --build --preset "$BUILD_PRESET"
+# --scalar=<float|fixed>: the decode arithmetic (planning/arithmetic-tiers.md).
+# The profile's default is float; `fixed` is the tier for a part with no FPU,
+# and its probe is the same probe in its own build directory, so the two never
+# share a cache. Its PCM hashes (<codec>.pcm_hash) are identical on every leg
+# by construction - integer arithmetic - which is what a fixed run is for.
+BUILD_DIR="build/$PRESET"
+if [[ -n "${SCALAR:-}" ]]; then
+    BUILD_DIR="build/$PRESET-$SCALAR"
+    cmake --preset "$PRESET" -B "$BUILD_DIR" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS" -DAC3FORGE_DECODE_SCALAR="$SCALAR"
+    cmake --build "$BUILD_DIR" --parallel
+else
+    cmake --preset "$PRESET" -DAC3FORGE_STAGE_TIMERS="$STAGE_TIMERS"
+    cmake --build --preset "$BUILD_PRESET"
+fi
 
-BIN="build/$PRESET/bin/ac3probe"
+BIN="$BUILD_DIR/bin/ac3probe"
 if [[ ! -f "$BIN" ]]; then
     echo "error: $BIN was not produced" >&2
     exit 1

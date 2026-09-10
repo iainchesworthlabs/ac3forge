@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -250,6 +251,33 @@ struct LevelAccumulator {
     }
 };
 
+// Every delivered sample's bit pattern, in delivery order, through FNV-1a:
+// printed beside the levels as <codec>.pcm_hash. For the fixed-point tier
+// (planning/arithmetic-tiers.md) the decode is integer arithmetic and this
+// value is the same on every leg - the host, the Cortex-M3, a RISC-V part -
+// which is the tier's own gate; for the floating tiers it varies with the
+// compiler and is informative only. Runs inside the sinks, whose time the
+// rows above take back out of the decode figure.
+struct PcmHash {
+    std::uint64_t state = 14695981039346656037ULL;
+
+    void add(std::span<const float> pcm) {
+        for (const float sample : pcm) {
+            const auto bits = std::bit_cast<std::uint32_t>(sample);
+            for (int shift = 0; shift < 32; shift += 8) {
+                state ^= (bits >> shift) & 0xFFU;
+                state *= 1099511628211ULL;
+            }
+        }
+    }
+};
+
+void report_hash(const char* codec, const PcmHash& hash) {
+    std::printf("%s.pcm_hash=%08lx%08lx\n", codec,
+                static_cast<unsigned long>(hash.state >> 32),
+                static_cast<unsigned long>(hash.state & 0xFFFFFFFFULL));
+}
+
 bool g_failed = false;
 
 void fail(const char* what, long got, long expected) {
@@ -396,6 +424,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
     config.output = output;
     ac3::FrameDecoder decoder{config};
     LevelAccumulator levels;
+    PcmHash hash;
     Churn churn;
     churn.frames = static_cast<int>(frames->size());
     g_fixture_peak_bytes = g_live_bytes;
@@ -415,6 +444,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
             const std::uint64_t entered_us = ac3probe::now_us();
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 levels.add(ch, block.channels[ch]);
+                hash.add(block.channels[ch]);
             }
             delivered = static_cast<int>(block.channels.size());
             sink_us += ac3probe::now_us() - entered_us;
@@ -447,6 +477,7 @@ int decode_ac3(const char* codec, std::span<const std::uint8_t> bytes,
         fail(codec, "channels", channels, static_cast<long>(expected.size()));
     }
     report_levels(codec, levels, expected);
+    report_hash(codec, hash);
     report_churn(codec, churn);
     report_churn_buckets(codec, churn);
     report_timing(codec, churn);
@@ -482,6 +513,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     config.skip_object_reconstruction = bed_only;
     ac3::Eac3Decoder decoder{config};
     LevelAccumulator levels;
+    PcmHash hash;
     Churn churn;
     churn.frames = static_cast<int>(units->size());
     g_fixture_peak_bytes = g_live_bytes;
@@ -498,6 +530,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
             const std::uint64_t entered_us = ac3probe::now_us();
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 levels.add(ch, block.channels[ch]);
+                hash.add(block.channels[ch]);
             }
             delivered = static_cast<int>(block.channels.size());
             sink_us += ac3probe::now_us() - entered_us;
@@ -537,6 +570,7 @@ int decode_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         fail(codec, "channels", channels, static_cast<long>(expected.size()));
     }
     report_levels(codec, levels, expected);
+    report_hash(codec, hash);
     report_churn(codec, churn);
     report_churn_buckets(codec, churn);
     report_timing(codec, churn);
@@ -617,6 +651,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
     config.joc_domain = domain;
     ac3::Eac3Decoder decoder{config};
     LevelAccumulator levels;
+    PcmHash hash;
     // The bed's own slots, so the LFE can be picked out of them once the
     // layout is known - the block carries the samples in the layout's order
     // but not the layout, which the call returns afterwards.
@@ -687,6 +722,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
             const std::uint64_t levels_started_us = ac3probe::now_us();
             for (std::size_t t = 0; t < panned; ++t) {
                 levels.add(t, std::span<const float>(g_render_block[t].data(), n));
+                hash.add(std::span<const float>(g_render_block[t].data(), n));
             }
             for (std::size_t ch = 0; ch < block.channels.size() && ch < kMaxChannels; ++ch) {
                 bed_levels.add(ch, block.channels[ch]);
@@ -736,6 +772,7 @@ int render_eac3(const char* codec, std::span<const std::uint8_t> bytes,
         fail(codec, "channels", channels, static_cast<long>(expected.size()));
     }
     report_levels(codec, levels, expected);
+    report_hash(codec, hash);
     report_churn(codec, churn);
     report_churn_buckets(codec, churn);
     report_timing(codec, churn);

@@ -1,4 +1,8 @@
-"""Gate the float32 decode path against the double one (roadmap PF7).
+"""Gate a second decode scalar's path against the double one (roadmap PF7).
+
+Written for the float32 path and used for the fixed-point one too
+(planning/arithmetic-tiers.md): --float-cli names whichever build is under
+test, and --min-snr-db the floor that build is held to.
 
 `AC3FORGE_DECODE_SCALAR=float` builds the decoder's coefficient stores,
 transform scratch and overlap-add history as `float` instead of `double` - the
@@ -116,8 +120,8 @@ def main() -> int:
                   f"(floor {args.min_snr_db:.0f})")
         else:
             print(f"::error::[FAIL] {name}: worst channel {channel} at {snr:.2f} dB, "
-                  f"floor is {args.min_snr_db:.0f} dB - the float32 decode has diverged "
-                  f"from the double one by more than precision alone accounts for",
+                  f"floor is {args.min_snr_db:.0f} dB - the decode under test has diverged "
+                  f"from the double one by more than its precision accounts for",
                   file=sys.stderr)
             failed = True
 

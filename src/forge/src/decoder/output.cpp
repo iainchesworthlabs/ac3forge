@@ -14,6 +14,7 @@
 #include "ac3/core/eac3_tables.hpp"  // eac3::chanmap::Location/Layout
 #include "ac3/core/tables.hpp"
 #include "ac3/internal/decode_scalar.hpp"
+#include "fixed32.hpp"
 #include "ac3/meta/drc.hpp"  // to_db
 #include "ac3/meta/mixing.hpp"
 
@@ -69,7 +70,12 @@ const std::vector<Scalar>& hilbert_kernel_as() {
     } else {
         static const std::vector<Scalar> narrowed = [] {
             const auto& wide = hilbert_kernel();
-            return std::vector<Scalar>(wide.begin(), wide.end());
+            std::vector<Scalar> out;
+            out.reserve(wide.size());
+            for (const double tap : wide) {
+                out.push_back(static_cast<Scalar>(tap));
+            }
+            return out;
         }();
         return narrowed;
     }
@@ -494,9 +500,10 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
     if (config_.mode == OperatingMode::kRf) {
         Scalar scanned{0};
         for (std::size_t i = 0; i < length; ++i) {
-            scanned = std::max(scanned, std::abs(static_cast<Scalar>(out_left_[i])));
+            scanned = std::max(scanned, internal::scalar_abs(static_cast<Scalar>(out_left_[i])));
             if (stereo) {
-                scanned = std::max(scanned, std::abs(static_cast<Scalar>(out_right_[i])));
+                scanned = std::max(scanned,
+                                   internal::scalar_abs(static_cast<Scalar>(out_right_[i])));
             }
         }
         const auto peak = static_cast<double>(scanned);
@@ -513,14 +520,27 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
         const double start = protection_gain_;
         // The ramp and the clamp per sample, in the decode scalar; the
         // frame's own gains above stay double.
-        const auto span = static_cast<Scalar>(length);
         const auto ramp_start = static_cast<Scalar>(start);
         const auto ramp_end = static_cast<Scalar>(frame_gain);
         const auto ceiling = static_cast<Scalar>(config_.rf_ceiling);
+        // The position along the ramp per sample. The floating tiers divide
+        // by the length as they always did; the fixed one cannot hold a
+        // sample count (Q7.24 stops at 128), so it walks the ramp in steps
+        // sized once in double.
+        [[maybe_unused]] const auto span = static_cast<Scalar>(length);
+        [[maybe_unused]] const auto step = static_cast<Scalar>(
+            (frame_gain - start) / static_cast<double>(std::max<std::size_t>(length, 2) - 1));
+        Scalar walked = ramp_start;
         for (std::size_t i = 0; i < length; ++i) {
-            const Scalar t =
-                span > Scalar{1} ? static_cast<Scalar>(i) / (span - Scalar{1}) : Scalar{1};
-            const Scalar gain = ramp_start + (ramp_end - ramp_start) * t;
+            Scalar gain{};
+            if constexpr (std::is_same_v<Scalar, internal::Fixed32>) {
+                gain = walked;
+                walked += step;
+            } else {
+                const Scalar t =
+                    span > Scalar{1} ? static_cast<Scalar>(i) / (span - Scalar{1}) : Scalar{1};
+                gain = ramp_start + (ramp_end - ramp_start) * t;
+            }
             const auto limited = [&](float sample) {
                 return static_cast<float>(
                     std::clamp(static_cast<Scalar>(sample) * gain, -ceiling, ceiling));

@@ -1407,6 +1407,53 @@ jobs:
           build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
           python3 tools/checks/check_decode_scalar_snr.py               --double-cli build/config-${{ matrix.preset }}/bin/ac3cli               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
 
+      # The third scalar (planning/arithmetic-tiers.md): the fixed-point
+      # decoder, Q7.24 in an int32, for parts with no FPU. The same two
+      # questions as the float32 build's, with its own floor: 110 dB against a
+      # measured 121 on these three streams (and 110.8 on the widest of the
+      # checked-in third-party streams) - the tier's precision is that of the
+      # block exponent the store carries, not of the absolute format, and a
+      # drop to 100 would be a lost bit somewhere in that machinery.
+      - name: Build a fixed-point decoder
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-${{ matrix.preset }} -B build/decode-scalar-fixed -DAC3FORGE_DECODE_SCALAR=fixed
+          cmake --build build/decode-scalar-fixed --target ac3cli
+
+      - name: Gold reference gate (fixed-point decode)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          EXTRA_LABEL_SUFFIX: _fixed
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh build/decode-scalar-fixed/bin/ac3cli
+
+      - name: Fixed-point vs double decode
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          build/config-${{ matrix.preset }}/bin/ac3cli encode tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py --double-cli build/config-${{ matrix.preset }}/bin/ac3cli --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
+
+      # The tier's own gate, natively: the same twelve fixtures the bare-metal
+      # leg decodes under QEMU, decoded here on x86, their PCM hashes held to
+      # the pinned ones (tests/golden/fixed-probe-pcm-hashes.json). Two
+      # architectures, two compilers, one set of hashes - integer arithmetic
+      # has nothing to differ by, and this is what says so every run.
+      - name: Fixed-point probe natively, hashes against the pinned ones
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/checks/run_baremetal_probe.sh --host --scalar=fixed | tee "${{ runner.temp }}/fixed-host.txt"
+          python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "${{ runner.temp }}/fixed-host.txt"
+
       # The same two questions for the ENCODE path's scalar. AC3FORGE_ENCODE_SCALAR
       # (src/forge/src/internal/scalar/encode/) is the axis the minimum-footprint
       # profile encodes on for the ESP32-S3, and a float encoder is a different
@@ -3970,6 +4017,23 @@ jobs:
       # integrator sizing an encoder for a part without an FPU actually needs.
       - name: Instructions per ENCODED frame under QEMU -icount
         run: ./tools/checks/run_baremetal_probe.sh --encoder --icount | tee "${{ runner.temp }}/icount-encode.txt"
+
+      # The fixed-point tier on the same leg (planning/arithmetic-tiers.md):
+      # the probe built with -DAC3FORGE_DECODE_SCALAR=fixed, every fixture's
+      # levels gated as the float build's are, and its <codec>.pcm_hash lines
+      # kept: the tier is integer arithmetic, so those hashes are the same on
+      # this leg, on the host and on a RISC-V part by construction, and the
+      # step below holds this leg's to the pinned ones
+      # (tests/golden/fixed-probe-pcm-hashes.json), as the gold leg holds its
+      # native run's.
+      - name: Build and run the FIXED-POINT probe under QEMU
+        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed | tee "${{ runner.temp }}/fixed-arm.txt"
+
+      - name: Fixed-point hashes against the pinned ones
+        run: python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "${{ runner.temp }}/fixed-arm.txt"
+
+      - name: Fixed-point instructions per frame under QEMU -icount
+        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed --icount | tee "${{ runner.temp }}/icount-fixed.txt"
 
       # The footprint table in docs/performance-trend.md is written by hand
       # from these numbers, so keep the run's own copy: a table nobody can

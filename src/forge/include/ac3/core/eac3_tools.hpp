@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -168,11 +169,20 @@ AC3FORGE_EXPORT void spx_apply_notch(std::span<float> synth, int startmant,
 template <typename Scalar>
 [[nodiscard]] constexpr Scalar spx_noise_ratio_as(int band_start, int band_size, int endmant,
                                                   int blend) {
-    const Scalar centre =
-        static_cast<Scalar>(band_start) + static_cast<Scalar>(0.5) * static_cast<Scalar>(band_size);
-    const Scalar ratio =
-        centre / static_cast<Scalar>(endmant) - static_cast<Scalar>(blend) / Scalar{32};
-    return std::clamp(ratio, Scalar{0}, Scalar{1});
+    if constexpr (std::floating_point<Scalar>) {
+        const Scalar centre = static_cast<Scalar>(band_start) +
+                              static_cast<Scalar>(0.5) * static_cast<Scalar>(band_size);
+        const Scalar ratio =
+            centre / static_cast<Scalar>(endmant) - static_cast<Scalar>(blend) / Scalar{32};
+        return std::clamp(ratio, Scalar{0}, Scalar{1});
+    } else {
+        // The same ratio from its integers: a bin index does not fit a scalar
+        // with a fixed point, so the division is done on the integers and
+        // the quotient is what the scalar holds.
+        const Scalar ratio = Scalar::from_integer_ratio(2 * band_start + band_size, 2 * endmant) -
+                             Scalar::from_integer_ratio(blend, 32);
+        return std::clamp(ratio, Scalar{0}, Scalar{1});
+    }
 }
 
 // §E3.6.4.2.4's noise(): "a pseudo-random number generated from a zero-mean,
@@ -208,6 +218,11 @@ struct AC3FORGE_EXPORT SpxNoise {
             constexpr float kUnit = 1.0F / 4294967295.0F;
             const float unit = static_cast<float>(state) * kUnit;  // [0,1]
             return (unit * 2.0F - 1.0F) * kRadius;
+        } else if constexpr (!std::floating_point<Scalar>) {
+            // The fixed-point tier's own reading of the state - see
+            // DitherGenerator::next_as.
+            const Scalar unit = Scalar::unit_from_state(state);  // [0,1)
+            return (unit * Scalar{2} - Scalar{1}) * kRadius;
         } else {
             const Scalar unit =
                 static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
@@ -402,6 +417,8 @@ template <typename Scalar>
     if constexpr (std::is_same_v<Scalar, float>) {
         constexpr float kUnit = 1.0F / 4294967295.0F;
         return static_cast<float>(state) * kUnit * 2.0F - 1.0F;  // [-1, 1]
+    } else if constexpr (!std::floating_point<Scalar>) {
+        return Scalar::unit_from_state(state) * Scalar{2} - Scalar{1};  // [-1, 1)
     } else {
         const Scalar unit =
             static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]
@@ -427,6 +444,8 @@ struct AC3FORGE_EXPORT EcplNoise {
         if constexpr (std::is_same_v<Scalar, float>) {
             constexpr float kUnit = 1.0F / 4294967295.0F;
             return static_cast<float>(state) * kUnit * 2.0F - 1.0F;
+        } else if constexpr (!std::floating_point<Scalar>) {
+            return Scalar::unit_from_state(state) * Scalar{2} - Scalar{1};
         } else {
             const Scalar unit =
                 static_cast<Scalar>(state) / static_cast<Scalar>(0xFFFFFFFFU);  // [0,1]

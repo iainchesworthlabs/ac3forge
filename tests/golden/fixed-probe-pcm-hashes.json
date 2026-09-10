@@ -1,0 +1,17 @@
+{
+  "_comment": "The fixed-point decode tier's PCM hashes (planning/arithmetic-tiers.md): FNV-1a over every sample the bare-metal probe delivers for each fixture, as <codec>.pcm_hash prints them. Integer arithmetic, so the same on every platform by construction; measured 2026-09-10 on the x86 host and the Cortex-M3 leg, identical. Re-pin when the tier's arithmetic changes on purpose (tools/checks/check_probe_hashes.py --expected).",
+  "hashes": {
+    "ac3": "8f7d5808b491918b",
+    "ac3_fold": "ff1bbde115d92a04",
+    "ac3_mono": "f59c1377e63445b7",
+    "ac3_stereo": "2578f400c1d05742",
+    "eac3": "49e8fe085894e6b6",
+    "eac3_714": "e58a95263438e13f",
+    "eac3_atmos_bed": "e4c2eba7e2382503",
+    "eac3_atmos_objects": "e4c2eba7e2382503",
+    "eac3_atmos_render": "71f913e0af50e56c",
+    "eac3_ecpl": "34d93ef1954f46e3",
+    "eac3_fold": "ef6c12b33d38bb31",
+    "eac3_stereo": "238018404fa27fd8"
+  }
+}
