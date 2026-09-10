@@ -99,7 +99,7 @@
     s.failed === true
       ? 'Stopped by a ' + (str(s.why) || 'player') + ' error' + (num(s.error) ? ' (' + s.error + ')' : '') + '.'
       : state === 'failed'
-        ? "The location may not have opened; the figures are the previous play's."
+        ? 'The location may not have opened.'
         : '';
 
   function stream(s) {

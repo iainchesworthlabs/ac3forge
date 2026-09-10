@@ -6,7 +6,7 @@
     already has, and calling only those routes. The design below was committed before the code;
     the same pull request built it as designed, with the tests and the CI that run them, and
     this page now records what the measurements said. Under QEMU the two new routes hold 76 bytes
-    of internal heap and the page and its script are 16,227 bytes of a 16,384-byte flash budget.
+    of internal heap and the page and its script are 16,190 bytes of a 16,384-byte flash budget.
     The per-request heap targets were missed there, by lwIP's buffers rather than by the page's
     own code, and the measuring found a fault that was there before the page: `PUT /layout`
     overflowed the server task's stack. On a board playing over WiFi the page's requests did not
@@ -92,9 +92,10 @@ settle whether a paced sink ever ran dry is the sink's underrun count, and `/sta
 carry it: the sinks print it on the console. See [decision 8](#decisions).
 
 **A failed play with no error.** The streaming example sets `state` to `failed` when a source does
-not open, and the stats it reports are then the previous run's, whose `failed` is false. So the
-page shows the reason (`why`, `error`) only when `failed` is true, and otherwise says that the
-location may not have opened and the figures are the previous play's.
+not open, and `failed` - the run's own verdict - is then false, since no run began. Since #638 the
+example clears the last play's figures when a play begins, so a location that did not open shows
+none; before it, the figures beside it were the previous play's. So the page shows the reason
+(`why`, `error`) only when `failed` is true, and otherwise says the location may not have opened.
 
 **An accepted play.** `202 Accepted` means the location went onto the queue, not that it plays.
 A location the source refuses - anything but `http://` for the `http` source - leaves `state` at
@@ -104,10 +105,11 @@ location the player took, whatever comes of the play; the old `location` still t
 seconds is one it did not take, and the page says so.
 
 **A stopped play.** After `POST /stop`, `/status` reports the location of the play that was stopped
-beside the stream and the figures of the last play that ended by itself, because the example
-keeps a player's figures only when its play ends (`payloads/stopped.json`, recorded). While a new
-source opens the same mix shows for a moment, the new location beside the old state. The page
-shows what the firmware reports.
+beside the figures of the last play that ended by itself - none, if it was stopped part-way, since
+the example clears them when a play begins (#638) and keeps a player's own only when its play
+ends. While a source opens, `state` is `opening`, with the new location and no figures yet; the
+page shows the firmware's word, "Opening". `payloads/stopped.json` was recorded before #638 and
+shows the older mix: the stopped play's location beside an earlier play's figures.
 
 ## What the page does
 
@@ -225,7 +227,7 @@ mark after each handler, then reverted.
 
 | Item | Budget | Measured |
 |---|---|---|
-| Flash: the page and its script together, as stored | 16,384 bytes | 16,227 (5,808 + 10,419); a host test fails above the budget |
+| Flash: the page and its script together, as stored | 16,384 bytes | 16,190 (5,808 + 10,382); a host test fails above the budget |
 | Internal heap held once the server is up: two more route registrations and handler slots | 256 bytes | 76, from the `heap:` line: 290,428 free against the base's 290,504 |
 | Internal heap held while a browser has the page open | - | 376, the keep-alive connection |
 | Internal heap at the peak of one `GET /status` | 3,072 bytes | 4,700 to 7,700 from the page's keep-alive connection; 5,100 from `curl`, a new connection each time |
@@ -392,7 +394,7 @@ run as root, so Playwright can install Chromium's system libraries).
    change shows, and one request a second per open page, headers and all. **Taken, (a).**
 
 2. **Compression.** (a) **none, within a 16,384-byte budget**; (b) gzip at build time, sent with
-   `Content-Encoding: gzip`. **Recommend (a).** Gzip takes these files to 6,117 bytes, saving about
+   `Content-Encoding: gzip`. **Recommend (a).** Gzip takes these files to 5,796 bytes, saving about
    10 KB of flash in an image with over 400 KB of room; it would not lower a page load's peak by
    much, since that is set by send windows filling at once; and it needs a generator in the
    component's CMake, a second copy or a refusal for a client that does not accept gzip, and

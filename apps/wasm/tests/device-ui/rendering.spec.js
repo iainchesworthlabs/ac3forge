@@ -78,10 +78,27 @@ test('a play the decoder stopped', async ({ page, stub }) => {
     await expect(page.locator('#reason')).toHaveClass(/error/);
 });
 
-test('a location that did not open, beside the previous play', async ({ page, stub }) => {
+test('a location that did not open', async ({ page, stub }) => {
+    // Recorded before the example cleared the last play's figures when a
+    // play begins, so the figures beside it are the previous play's.
     await show(page, stub, recorded('failed-open.json'));
     await expect(page.locator('#state')).toHaveText('Failed');
-    await expect(page.locator('#reason')).toHaveText("The location may not have opened; the figures are the previous play's.");
+    await expect(page.locator('#reason')).toHaveText('The location may not have opened.');
+});
+
+test("a location that did not open, the last play's figures cleared", async ({ page, stub }) => {
+    // The same, as the example reports it since it clears them.
+    const s = parsed('failed-open.json');
+    Object.assign(s, {
+        stream: null, frames: 0, held: 0, us_per_frame: 0, worst_frame_us: 0, render_us_per_frame: 0,
+        sink_us_per_frame: 0, realtime_permille: 0, fetched_bytes: 0, ring_low: null, passes: 0,
+        finished: false, why: '',
+    });
+    await show(page, stub, s);
+    await expect(page.locator('#state')).toHaveText('Failed');
+    await expect(page.locator('#reason')).toHaveText('The location may not have opened.');
+    await expect(page.locator('#codec')).toHaveText('Not known yet');
+    await expect(page.locator('#timing-note')).toHaveText('Nothing decoded yet.');
 });
 
 test('a stopped player, and one that did not take a location', async ({ page, stub }) => {

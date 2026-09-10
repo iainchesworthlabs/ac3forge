@@ -77,7 +77,7 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   its codec, channels and objects, the layout, the volume, each frame's decode, render and sink
   time, how low the ring ran and why a play ended; and play, stop, volume and layout, each one
   request to the REST routes beside it, which are unchanged. The list of routes `/` used to send
-  is at `/api`. Both files go out from where the linker put them, 16,227 bytes against the
+  is at `/api`. Both files go out from where the linker put them, 16,190 bytes against the
   design's budget of 16,384, and the two routes hold 76 bytes of internal heap under QEMU. Tested
   in Chromium against a stand-in for the routes, with the script's coverage gated by c8, and on
   the emulated board in the ESP32 job.

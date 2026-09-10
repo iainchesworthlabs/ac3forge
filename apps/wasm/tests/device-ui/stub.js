@@ -6,10 +6,10 @@
 // the firmware's status codes and reply texts, over a model of the streaming
 // example's player (esp-idf/ac3forge/examples/stream_player/main/
 // stream_player.cpp): POST /play hands a location to the http source, which
-// takes it only if it starts with http://; a play runs for a few /status
-// polls and finishes; a location that does not open leaves the state "failed"
-// beside the previous play's figures. contract.spec.js holds the replies, the
-// headers and the routes to control.cpp's own.
+// takes it only if it starts with http://; a play clears the last one's
+// figures, runs for a few /status polls and finishes; a location that does not
+// open leaves the state "failed" with no figures. contract.spec.js holds the
+// replies, the headers and the routes to control.cpp's own.
 //
 // One per test, in the test's own process, on a port of its own: tests reach
 // into it directly to script a reply, hold one back, or read what was sent.
@@ -141,7 +141,7 @@ async function startStub() {
         layout: '2.0',
         volume: 1,
         player: null, // the play in progress: {stream, stats, total, fails}
-        lastStats: idleStats(), // the last play that ended by itself
+        lastStats: idleStats(), // the last play that ended by itself, until another begins
         lastStream: null,
         framesPerPoll: 50,
     };
@@ -207,6 +207,11 @@ async function startStub() {
             return;
         }
         device.location = location;
+        // begin_play: the last play's figures go before the source opens.
+        // Here it opens at once, so "opening" never shows; the firmware
+        // reports it while the open takes, and rendering.spec.js covers it.
+        device.lastStats = idleStats();
+        device.lastStream = null;
         if (location.includes('unreachable')) {
             device.state = 'failed';
             return;
