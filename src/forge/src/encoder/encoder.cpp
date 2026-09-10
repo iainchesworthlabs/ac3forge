@@ -242,7 +242,7 @@ struct FrameEncoder::Impl {
     // their per-slot offsets; block_tokens_ each block's mantissa tokens,
     // filled through MantissaBlockWriter::take_tokens_into so the token
     // storage cycles between the writer and these slots without copies.
-    std::vector<std::array<double, 256>> coeffs_;
+    std::vector<std::array<internal::encode_scalar_t, 256>> coeffs_;
     std::vector<std::int32_t> fixed_;
     std::vector<std::size_t> fixed_base_;
     std::vector<std::vector<std::uint8_t>> block_exps_;
@@ -310,7 +310,7 @@ struct FrameEncoder::Impl {
     std::vector<StreamPlan> plan;
     std::vector<int> starts;
     std::vector<std::uint8_t> raw;
-    std::vector<double> peak_mag;
+    std::vector<internal::encode_scalar_t> peak_mag;
 
     // --- step 9a's decision search (EncoderConfig::search) ------------------
     // All unused, and the model unconstructed, when the search is off.
@@ -540,7 +540,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // index where it was.
     auto& coeffs = impl_->coeffs_;
     coeffs.assign(static_cast<std::size_t>(nchans) * kBlocksPerFrame, {});
-    const auto coeffs_at = [&](int s, int block) -> std::array<double, 256>& {
+    const auto coeffs_at = [&](int s, int block) -> std::array<internal::encode_scalar_t, 256>& {
         return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
                       static_cast<std::size_t>(block)];
     };
@@ -903,14 +903,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             const int low = cplbands.start[static_cast<std::size_t>(bnd)];
             const int high =
                 std::min(low + cplbands.size[static_cast<std::size_t>(bnd)], cplendmant);
-            double correlation = 0.0;
+            internal::encode_scalar_t correlation = 0;
             for (int block = 0; block < kBlocksPerFrame; ++block) {
                 for (int bin = low; bin < high; ++bin) {
                     correlation += coeffs_at(0, block)[static_cast<std::size_t>(bin)] *
                                    coeffs_at(1, block)[static_cast<std::size_t>(bin)];
                 }
             }
-            phsflg[static_cast<std::size_t>(bnd)] = correlation < 0.0;
+            phsflg[static_cast<std::size_t>(bnd)] = correlation < 0;
             phsflginu = phsflginu || phsflg[static_cast<std::size_t>(bnd)];
         }
         if (!phsflginu) {
@@ -963,10 +963,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // nfchans: with a block-switching channel left out, averaging by
         // nfchans would put the shared channel a level step below where the
         // allocator's absolute psd model expects it.
-        const double scale = static_cast<double>(coupled_count);
+        const auto scale = static_cast<internal::encode_scalar_t>(coupled_count);
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             auto& cpl = coeffs_at(cpl_stream, block);
-            cpl.fill(0.0);
+            cpl.fill(0);
             // The raw sum for now; the division by `scale` comes after the
             // coordinates, which are measured against that same raw sum.
             // Each channel enters with the sign the decoder will reconstruct
@@ -976,12 +976,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 const int high =
                     std::min(low + cplbands.size[static_cast<std::size_t>(bnd)], cplendmant);
                 for (int bin = low; bin < high; ++bin) {
-                    double sum = 0.0;
+                    internal::encode_scalar_t sum = 0;
                     for (int ch = 0; ch < nfchans; ++ch) {
                         if (!chincpl[static_cast<std::size_t>(ch)]) {
                             continue;
                         }
-                        sum += coupling_sign(ch, bnd) *
+                        sum += static_cast<internal::encode_scalar_t>(coupling_sign(ch, bnd)) *
                                coeffs_at(ch, block)[static_cast<std::size_t>(bin)];
                     }
                     cpl[static_cast<std::size_t>(bin)] = sum;
@@ -996,18 +996,19 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     const int low = cplbands.start[static_cast<std::size_t>(bnd)];
                     const int high =
                         std::min(low + cplbands.size[static_cast<std::size_t>(bnd)], cplendmant);
-                    double power_ch = 0.0;
-                    double power_sum = 0.0;
+                    internal::encode_scalar_t power_ch = 0;
+                    internal::encode_scalar_t power_sum = 0;
                     for (int bin = low; bin < high; ++bin) {
-                        const double value =
+                        const internal::encode_scalar_t value =
                             coeffs_at(ch, block)[static_cast<std::size_t>(bin)];
-                        const double summed = cpl[static_cast<std::size_t>(bin)];
+                        const internal::encode_scalar_t summed = cpl[static_cast<std::size_t>(bin)];
                         power_ch += value * value;
                         power_sum += summed * summed;
                     }
-                    const double ratio =
-                        power_sum > 0.0 ? std::sqrt(power_ch / power_sum) : 0.0;
-                    values[static_cast<std::size_t>(bnd)] = ratio * scale / 8.0;
+                    const auto ratio =
+                        power_sum > 0 ? std::sqrt(power_ch / power_sum) : internal::encode_scalar_t{0};
+                    values[static_cast<std::size_t>(bnd)] =
+                        static_cast<double>(ratio * scale) / 8.0;
                 }
                 const int chosen = coupling::choose_master(values);
                 // Quantize into this block's own slots, then ask whether the
@@ -1041,7 +1042,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 // Above the coupling frequency the channel carries nothing of
                 // its own any more.
                 for (int bin = cplstrtmant; bin < 256; ++bin) {
-                    coeffs_at(ch, block)[static_cast<std::size_t>(bin)] = 0.0;
+                    coeffs_at(ch, block)[static_cast<std::size_t>(bin)] = 0;
                 }
             }
             for (int bin = cplstrtmant; bin < cplendmant; ++bin) {
@@ -1066,13 +1067,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 if (low > high) {
                     continue;
                 }
-                double power_l = 0.0;
-                double power_r = 0.0;
-                double power_sum = 0.0;
-                double power_diff = 0.0;
+                internal::encode_scalar_t power_l = 0;
+                internal::encode_scalar_t power_r = 0;
+                internal::encode_scalar_t power_sum = 0;
+                internal::encode_scalar_t power_diff = 0;
                 for (int bin = low; bin <= high; ++bin) {
-                    const double l = left[static_cast<std::size_t>(bin)];
-                    const double r = right[static_cast<std::size_t>(bin)];
+                    const internal::encode_scalar_t l = left[static_cast<std::size_t>(bin)];
+                    const internal::encode_scalar_t r = right[static_cast<std::size_t>(bin)];
                     power_l += l * l;
                     power_r += r * r;
                     power_sum += (l + r) * (l + r);
@@ -1081,11 +1082,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 if (std::min(power_sum, power_diff) < std::min(power_l, power_r)) {
                     rematflg[static_cast<std::size_t>(block)][static_cast<std::size_t>(band)] =
                         true;
+                    constexpr auto kHalf = static_cast<internal::encode_scalar_t>(0.5);
                     for (int bin = low; bin <= high; ++bin) {
-                        const double l = left[static_cast<std::size_t>(bin)];
-                        const double r = right[static_cast<std::size_t>(bin)];
-                        left[static_cast<std::size_t>(bin)] = 0.5 * (l + r);
-                        right[static_cast<std::size_t>(bin)] = 0.5 * (l - r);
+                        const internal::encode_scalar_t l = left[static_cast<std::size_t>(bin)];
+                        const internal::encode_scalar_t r = right[static_cast<std::size_t>(bin)];
+                        left[static_cast<std::size_t>(bin)] = kHalf * (l + r);
+                        right[static_cast<std::size_t>(bin)] = kHalf * (l - r);
                     }
                 }
             }
@@ -1145,7 +1147,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             cursor += count;
             block_exps[slot].resize(count);
             to_fixed25_block(
-                std::span<const double>{coeffs_at(s, block)}.subspan(
+                std::span<const internal::encode_scalar_t>{coeffs_at(s, block)}.subspan(
                     static_cast<std::size_t>(begin), count),
                 std::span<std::int32_t>{fixed}.subspan(base, count));
             extract_exponents(std::span<const std::int32_t>{fixed}.subspan(base, count),
@@ -2252,7 +2254,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto run = static_cast<std::size_t>(
                 p.run_of_block[static_cast<std::size_t>(block)]);
-            internal::DitherBallot ballot;
+            internal::BasicDitherBallot<internal::encode_scalar_t> ballot;
             ballot.weigh(coeffs_at(ch, block), p.runs[run].decoded,
                          run_bap[static_cast<std::size_t>(ch)][run], 0, stream_end(ch));
             if (cplinu) {

@@ -1407,6 +1407,44 @@ jobs:
           build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
           python3 tools/checks/check_decode_scalar_snr.py               --double-cli build/config-${{ matrix.preset }}/bin/ac3cli               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
 
+      # The same two questions for the ENCODE path's scalar. AC3FORGE_ENCODE_SCALAR
+      # (src/forge/src/internal/scalar/encode/) is the axis the minimum-footprint
+      # profile encodes on for the ESP32-S3, and a float encoder is a different
+      # thing from a float decoder: it makes its own decisions at its own
+      # thresholds and rounds its own coefficients, so it produces a different,
+      # equally valid stream rather than a near-identical decode. Two checks,
+      # then: its streams through the gold-reference gate, decoded by FFmpeg and
+      # by this project's decoder against the same floors as the double
+      # encoder's, and its worst channel held to within half a dB of the double
+      # encoder's by tools/checks/check_encode_scalar_quality.py. Again ac3cli
+      # only, again one leg, for the reasons given above.
+      - name: Build a float32 encoder
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-${{ matrix.preset }} -B build/encode-scalar-float \
+                -DAC3FORGE_ENCODE_SCALAR=float
+          cmake --build build/encode-scalar-float --target ac3cli
+
+      - name: Gold reference gate (float32 encode)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          EXTRA_LABEL_SUFFIX: _encfloat
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh build/encode-scalar-float/bin/ac3cli
+
+      - name: Float32 vs double encode
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/checks/check_encode_scalar_quality.py \
+              --double-cli build/config-${{ matrix.preset }}/bin/ac3cli \
+              --float-cli build/encode-scalar-float/bin/ac3cli \
+              --workdir "$(mktemp -d)"
+
       # Handed off to the quality-trend job below, which runs once (not once
       # per leg) after every gold_reference leg has passed - see that job's
       # own header comment for why it is a separate job rather than each leg

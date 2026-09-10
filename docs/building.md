@@ -383,21 +383,21 @@ the Cortex-M3, `-Os`, soft float throughout, held to the ceilings in
 
 | Row | Peak heap | Allocations per frame | Instructions per frame | Ceiling | Decode row's count |
 |---|---:|---:|---:|---:|---:|
-| `ac3_stereo` 2/0, 192 kbit/s | 64,783 | 34 | 10,299,000 | 16,000,000 | 3,548,000 |
-| `eac3_stereo` 2/0, 192 kbit/s, no tools | 101,378 | 84 | 21,869,000 | 30,000,000 | 4,851,000 |
-| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 177,737 | 47 | 22,148,000 | 31,000,000 | - |
-| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 174,477 | 90 | 80,695,000 | 104,000,000 | 28,861,000 |
-| `ac3` 5.1, 448 kbit/s | 144,754 | 67 | 27,875,000 | 43,000,000 | 10,224,000 |
-| `eac3` 5.1, 384 kbit/s | 202,760 | 180 | 56,154,000 | 78,000,000 | 12,928,000 |
+| `ac3_stereo` 2/0, 192 kbit/s | 51,867 | 34 | 9,292,000 | 16,000,000 | 3,548,000 |
+| `eac3_stereo` 2/0, 192 kbit/s, no tools | 78,222 | 84 | 14,549,000 | 30,000,000 | 4,851,000 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 141,365 | 47 | 17,512,000 | 31,000,000 | - |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 127,417 | 90 | 50,460,000 | 104,000,000 | 28,861,000 |
+| `ac3` 5.1, 448 kbit/s | 107,166 | 67 | 25,414,000 | 43,000,000 | 10,224,000 |
+| `eac3` 5.1, 384 kbit/s | 154,932 | 180 | 37,827,000 | 78,000,000 | 12,928,000 |
 
-Three to four and a half times the decode row's count for the same layout, and the reason is
-not the encoders' search: it is that the encoders are `double` behind their analysis front end,
-so on a leg with no FPU every operation is a software call, where the decode path has been
-`float` under this profile since 2026-09-09 (the front end followed on 2026-09-10 - the
-numbers above are with it in `float`). On an ESP32-S3 the same arithmetic is the mask ROM's software floating point,
-the cost that had a 5.1 E-AC-3 *decode* at 78.8 ms before its conversion, and on that board the
-encoders run 2.3x (AC-3 2/0) to 14.8x (§E3.5 2/0) over real time - the
-[ESP32-S3 page](platforms/esp32.md#encoding) has the six rows.
+Between 1.7 and 3 times the decode row's count for the same layout, with the encoders in
+`float` end to end since 2026-09-10 (the analysis front end first, then the coefficient store and
+every analysis behind it; the decode path has been `float` under this profile since 2026-09-09).
+What is left of the gap is the search - exponent-run planning, several hundred bit-allocation
+calls a frame, mantissa bit counts - which is integer work the decoder does once a block. On an
+ESP32-S3 the board encodes AC-3 2/0 at 0.38x real time, E-AC-3 2/0 at 1.06x, AC-3 5.1 at 1.10x
+and E-AC-3 5.1 at 2.54x - the [ESP32-S3 page](platforms/esp32.md#encoding) has the six rows and
+the stage table.
 
 `eac3_tools` is the row that reaches the coupling, spectral-extension and AHT encoders at all:
 the 5.1 row's default is no tool. It is 2/0 with its band edges pinned (`cplbegf` 0, `spxbegf`
@@ -509,26 +509,43 @@ encoder's - and with it the last of the decode path is in `decode_scalar_t`.
 
 **And the encoders' analysis front end, on its own axis.**
 `src/forge/src/internal/scalar/encode/{float64,float32}/` carries `encode_scalar_t`: the type
-the two encoders run transient detection, the block gather, the analysis window and the forward
-transform in - `double` by default, `float` under this profile, and selectable in any build with
-`-DAC3FORGE_ENCODE_SCALAR=float`. A second axis rather than a second alias beside
+the two encoders run in, from transient detection and the forward transform through the
+coefficient store, the coupling, spectral-extension and enhanced-coupling analyses and fits, the
+dither and delta-segment decisions and the fixed-point conversion - `double` by default, `float`
+under this profile, and selectable in any build with `-DAC3FORGE_ENCODE_SCALAR=float`. A second axis rather than a second alias beside
 `decode_scalar_t`, for the reason that one was split from the profile: a full build with either
 scalar `float` and the other `double` is what lets the float front end's bitstreams be decoded
-and measured against the double encoder's through the CLI and the oracles. The coefficients the
-transform produces are widened to `double` on their way into the rest of the encoder, which is
-unchanged: the allocation search, the quantisers and every coding tool still run in `double`.
-`TransientDetector` is the `double` instantiation of `BasicTransientDetector<Scalar>` now, the
-short-block forward pair has `float` forms beside the long transform's, and the two peak meters
-that read the overlap history take either. Every `<double>` instantiation is the function the
-ordinary build always called, so `tests/golden/bitstream-hashes.json` holds; the profile's own
-fixtures (`apps/baremetal/encode_fixture.hpp`) are the float front end's streams, identical on
-the x86 host, the Cortex-M3 leg and the ESP32-S3.
+and measured against the double encoder's through the CLI and the oracles. What is not in it:
+the adaptive hybrid transform (its six-block DCT and vector quantiser are `double`), the masking
+model's own arithmetic, and the allocation search, which is integer. `TransientDetector` is the
+`double` instantiation of `BasicTransientDetector<Scalar>` and `DitherBallot` of
+`BasicDitherBallot<Scalar>`; `to_fixed25` is a template, exact in either scalar for the same
+reasons; `to_fixed25_block`, `accumulate_peak_exponents`, `choose_delta_segments` and
+`PerceptualModel::analyse` have `float` overloads; the short-block forward pair and the two peak
+meters that read the overlap history take either. The float path's `log2` and `exp` are the
+project's own (`src/forge/src/core/scalar_math.hpp`: a bit-level `frexp` and a short series,
+Cody-Waite reduction and a short series), because the profile's fixture hashes are checked on
+the x86 host, the Cortex-M3 leg and the ESP32-S3 and three C libraries' `logf` do not agree in
+their last bit; the `double` overloads are libm's, called as before. Every `<double>`
+instantiation is the function the ordinary build always called, so
+`tests/golden/bitstream-hashes.json` holds; the profile's own fixtures
+(`apps/baremetal/encode_fixture.hpp`) are the float encoder's streams, identical on the x86
+host, the Cortex-M3 leg and the ESP32-S3 - and the same bytes the float front end alone had
+produced, so converting everything behind it moved no fixture's hash.
 
 Why the front end first: on the ESP32-S3, with the encoders wholly in `double`, the forward
 transform and transient detection were 64% of an AC-3 5.1 frame and 36% of an E-AC-3 one. With
-them in `float` the board encodes AC-3 2/0 in 28.3 ms of its 32 (0.88x, from 2.34x over) and
-AC-3 5.1 in 71.0 ms (2.22x, from 6.25x); E-AC-3 5.1 went from 349 ms to 220. The
-[ESP32-S3 page](platforms/esp32.md#encoding) has every row and what remains, which is the search.
+them in `float` the board encoded AC-3 2/0 in 28.3 ms of its 32 (0.88x, from 2.34x over) and
+AC-3 5.1 in 71.0 ms (2.22x, from 6.25x); E-AC-3 5.1 went from 349 ms to 220. With the rest
+converted the same day: AC-3 2/0 in 12.1 ms (0.38x), E-AC-3 2/0 in 33.8 (1.06x), AC-3 5.1 in 35.1
+(1.10x), E-AC-3 5.1 in 81.2 (2.54x), and the §E3.5 row from 426 ms to 55. The
+[ESP32-S3 page](platforms/esp32.md#encoding) has every row and the stage table; what remains
+is the integer search. CI's `linux-gcc` leg builds this scalar's full CLI beside the float
+decoder's to run its streams through the gold-reference gate and
+`tools/checks/check_encode_scalar_quality.py`, which holds the float encoder's worst channel to
+within 0.5 dB of the double encoder's on five gold streams (they are identical to the hundredth
+of a decibel), and `tests/golden/bitstream-hashes.json` pins its three streams on x86-64 under
+the `encfloat` mode.
 
 No gold-reference number moved, because the choice is per-profile rather than global. The
 ordinary build's `decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite

@@ -121,6 +121,7 @@ add_executable(ac3tests
     spatial/test_spatial.cpp
     core/test_simd_kernels.cpp
     core/test_tables.cpp
+    encoder/test_scalar_math.cpp
     encoder/test_transient.cpp
     decoder/test_transient_prenoise.cpp
     audio/test_watchdog.cpp
@@ -166,6 +167,12 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/signing/src
 # account on inputs chosen to make the right answer obvious rather than only
 # through a whole encode. Same pattern as the signing headers above.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/encoder")
+
+# test_scalar_math.cpp includes src/forge/src/core/scalar_math.hpp, the float
+# encode path's own log2/log/exp - internal for the same reason as the
+# exponent-run planner above, and worth holding to accuracy bounds on its own
+# rather than only through the fixture hashes that depend on it.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/core")
 
 # test_simd_kernels.cpp (roadmap PF5) needs the ONE architecture directory
 # CMake selected in src/forge/CMakeLists.txt, so the test exercises the

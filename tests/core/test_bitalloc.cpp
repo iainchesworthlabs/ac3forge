@@ -208,3 +208,39 @@ TEST_CASE("compute_bit_allocation refuses a region outside its own contract", "[
         CHECK(std::ranges::all_of(bap, [](std::uint8_t b) { return b == 0; }));
     }
 }
+
+// The float form (the float encode path's), on the same shapes as the double
+// cases above. Its log2 is the project's own (src/forge/src/core/
+// scalar_math.hpp), exact at powers of two, so the +6 dB boost lands on the
+// same psd unit and the same Table 5.17 code.
+TEST_CASE("choose_delta_segments' float form finds the same divergence", "[bitalloc]") {
+    constexpr int kExp = 10;
+    constexpr int kEnd = 20;
+    const std::vector<std::uint8_t> exps(kEnd, kExp);
+    const float baseline = std::ldexp(1.0f, -1 - kExp);
+    std::vector<float> coeffs(kEnd, baseline);
+    for (int bin = 5; bin < 10; ++bin) {
+        coeffs[static_cast<std::size_t>(bin)] = baseline * 2.0f;
+    }
+    const auto segs = ac3::choose_delta_segments(std::span<const float>{coeffs}, exps, 0);
+    REQUIRE(segs.deltnseg == 1);
+    CHECK(segs.deltoffst[0] == 5);
+    CHECK(segs.deltlen[0] == 5);
+    CHECK(segs.deltba[0] == 4);  // +6 dB
+
+    const std::vector<double> as_double(coeffs.begin(), coeffs.end());
+    const auto reference = ac3::choose_delta_segments(as_double, exps, 0);
+    CHECK(reference.deltnseg == segs.deltnseg);
+    CHECK(reference.deltoffst[0] == segs.deltoffst[0]);
+    CHECK(reference.deltlen[0] == segs.deltlen[0]);
+    CHECK(reference.deltba[0] == segs.deltba[0]);
+}
+
+TEST_CASE("choose_delta_segments' float form is silent when content matches its exponents",
+          "[bitalloc]") {
+    constexpr int kExp = 8;
+    constexpr int kEnd = 30;
+    const std::vector<std::uint8_t> exps(kEnd, kExp);
+    const std::vector<float> coeffs(kEnd, std::ldexp(1.0f, -1 - kExp));
+    CHECK(ac3::choose_delta_segments(std::span<const float>{coeffs}, exps, 0).deltnseg == 0);
+}

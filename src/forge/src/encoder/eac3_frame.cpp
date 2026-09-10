@@ -11,6 +11,7 @@
 #include <numbers>
 #include <optional>
 #include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -39,6 +40,7 @@
 #include "bit_reservoir.hpp"
 #include "dither.hpp"
 #include "exp_strategy.hpp"
+#include "scalar_math.hpp"
 #include "scalar_transform.hpp"
 #include "snr_search.hpp"
 
@@ -676,20 +678,21 @@ struct EcplBandFit {
 // recon_scratch on the stack, and a Cortex-M3 running out of a hand-written
 // linker script is not the place to add 4 KB more to a frame nested three loops
 // deep.
-[[nodiscard]] EcplBandFit fit_ecpl_band(std::span<const double> channel,
-                                        std::span<const double> baseline_a,
-                                        std::span<const double> baseline_b,
-                                        std::span<const double, 256> zr,
-                                        std::span<const double, 256> zi, int ch, int low,
-                                        std::span<double> amp_scratch,
-                                        std::span<double> angle_scratch) {
+[[nodiscard]] EcplBandFit fit_ecpl_band(std::span<const internal::encode_scalar_t> channel,
+                                        std::span<const internal::encode_scalar_t> baseline_a,
+                                        std::span<const internal::encode_scalar_t> baseline_b,
+                                        std::span<const internal::encode_scalar_t, 256> zr,
+                                        std::span<const internal::encode_scalar_t, 256> zi, int ch,
+                                        int low, std::span<internal::encode_scalar_t> amp_scratch,
+                                        std::span<internal::encode_scalar_t> angle_scratch) {
     AC3_ZONE_SCOPED_N("fit_ecpl_band");
+    using Scalar = internal::encode_scalar_t;
     const std::size_t n = channel.size();
-    double saa = 0.0;
-    double sab = 0.0;
-    double sbb = 0.0;
-    double sac = 0.0;
-    double sbc = 0.0;
+    Scalar saa = 0;
+    Scalar sab = 0;
+    Scalar sbb = 0;
+    Scalar sac = 0;
+    Scalar sbc = 0;
     for (std::size_t i = 0; i < n; ++i) {
         saa += baseline_a[i] * baseline_a[i];
         sab += baseline_a[i] * baseline_b[i];
@@ -697,54 +700,68 @@ struct EcplBandFit {
         sac += baseline_a[i] * channel[i];
         sbc += baseline_b[i] * channel[i];
     }
-    const double det = saa * sbb - sab * sab;
+    const Scalar det = saa * sbb - sab * sab;
     // A near-singular system means this band's shared-channel content is too
     // small, or too close to a single real direction, to trust a two-degree
     // fit - the same "not enough signal" case the old amplitude-only fit
     // guarded with a single division, just at the tolerance a 2x2 solve
     // needs. Falls back to that same energy-ratio answer, angle/chaos left
     // at zero.
-    if (!(det > 1e-12 * std::max(saa * sbb, 1e-30))) {
-        double power_ch = 0.0;
-        for (const double c : channel) {
+    //
+    // The tolerance is the scalar's own: 1e-12 is some 4,500 double ulps,
+    // and a float determinant that small is rounding noise, so the float
+    // build asks the same question at the same distance in its own ulps.
+    constexpr auto kSingular =
+        static_cast<Scalar>(std::is_same_v<Scalar, double> ? 1e-12 : 5e-4);
+    constexpr auto kTiny = static_cast<Scalar>(1e-30);
+    if (!(det > kSingular * std::max(saa * sbb, kTiny))) {
+        Scalar power_ch = 0;
+        for (const Scalar c : channel) {
             power_ch += c * c;
         }
-        return {.amp = saa > 0.0 ? std::sqrt(power_ch / saa) : 0.0, .angle = 0.0, .chaos_code = 0};
+        return {.amp = saa > 0 ? std::sqrt(power_ch / saa) : Scalar{0},
+                .angle = 0.0,
+                .chaos_code = 0};
     }
-    const double g_re = (sac * sbb - sbc * sab) / det;
-    const double g_im = (saa * sbc - sab * sac) / det;
-    const double amp0 = std::hypot(g_re, g_im);
-    const double angle0 = std::atan2(g_im, g_re) / std::numbers::pi;
+    const Scalar g_re = (sac * sbb - sbc * sab) / det;
+    const Scalar g_im = (saa * sbc - sab * sac) / det;
+    const Scalar amp0 = std::hypot(g_re, g_im);
+    const Scalar angle0 = std::atan2(g_im, g_re) / std::numbers::pi_v<Scalar>;
 
     // The vectors these replaced were (n, amp0) and (n) - filled and
     // zero-filled respectively. Reused storage carries the previous band's
     // values, so both are re-established here rather than being implied by
     // construction. angle_scratch is written in full by the loop below before
     // it is read, so only the amplitude actually needs the fill.
-    const std::span<double> amp_band = amp_scratch.first(n);
-    const std::span<double> angle_band = angle_scratch.first(n);
+    const std::span<Scalar> amp_band = amp_scratch.first(n);
+    const std::span<Scalar> angle_band = angle_scratch.first(n);
     std::fill(amp_band.begin(), amp_band.end(), amp0);
-    std::array<double, 256> recon_scratch{};
+    std::array<Scalar, 256> recon_scratch{};
     int best_code = 0;
-    double best_err = 0.0;
+    Scalar best_err = 0;
     bool have_best = false;
+    constexpr Scalar kOne = 1;
+    constexpr Scalar kTwo = 2;
     for (int code = 0; code < 8; ++code) {
-        const double chaos_val = decode_ecplchaos(code);
+        // The decoder's own sequence in the store's scalar: the float form
+        // is what the float decoder draws (eac3_tools.hpp), the double form
+        // is ecpl_rand_notrans itself.
+        const Scalar chaos_val = decode_ecplchaos_as<Scalar>(code);
         for (std::size_t i = 0; i < n; ++i) {
             const int bin = low + static_cast<int>(i);
-            double angle = angle0 + chaos_val * ecpl_rand_notrans(ch, bin);
-            if (angle < -1.0) {
-                angle += 2.0;
-            } else if (angle >= 1.0) {
-                angle -= 2.0;
+            Scalar angle = angle0 + chaos_val * ecpl_rand_notrans_as<Scalar>(ch, bin);
+            if (angle < -kOne) {
+                angle += kTwo;
+            } else if (angle >= kOne) {
+                angle -= kTwo;
             }
             angle_band[i] = angle;
         }
         ecpl_channel_coefficients(zr, zi, amp_band, angle_band, low,
                                   low + static_cast<int>(n), recon_scratch);
-        double err = 0.0;
+        Scalar err = 0;
         for (std::size_t i = 0; i < n; ++i) {
-            const double d = channel[i] - recon_scratch[static_cast<std::size_t>(low) + i];
+            const Scalar d = channel[i] - recon_scratch[static_cast<std::size_t>(low) + i];
             err += d * d;
         }
         if (!have_best || err < best_err) {
@@ -759,7 +776,7 @@ struct EcplBandFit {
     // transmitted has to be pre-divided by that same factor for the
     // amplitude the decoder reconstructs to land on amp0 - never near zero
     // (1 + 0.38*chaos spans [0.62, 1.0] over chaos's own [-1, 0] range).
-    const double final_amp = amp0 / (1.0 + 0.38 * chosen_chaos);
+    const double final_amp = static_cast<double>(amp0) / (1.0 + 0.38 * chosen_chaos);
     return {.amp = final_amp, .angle = angle0, .chaos_code = best_code};
 }
 
@@ -860,8 +877,8 @@ constexpr int kToolOff = -1;
 
 // A frame's coefficients, indexed the way encode_frame lays them out.
 struct CoeffView {
-    std::span<const std::array<double, 256>> coeffs;
-    [[nodiscard]] const std::array<double, 256>& at(int stream, int blk) const {
+    std::span<const std::array<internal::encode_scalar_t, 256>> coeffs;
+    [[nodiscard]] const std::array<internal::encode_scalar_t, 256>& at(int stream, int blk) const {
         return coeffs[static_cast<std::size_t>(stream) * kBlocksPerFrame +
                       static_cast<std::size_t>(blk)];
     }
@@ -914,16 +931,17 @@ struct CouplingContent {
 
 [[nodiscard]] CouplingContent coupling_content(const CoeffView& view, int nfchans,
                                                const BandLayout& bands, int endmant) {
-    double energy = 0.0;
-    double residual = 0.0;
-    std::array<double, 256> summed{};
+    using Scalar = internal::encode_scalar_t;
+    Scalar energy = 0;
+    Scalar residual = 0;
+    std::array<Scalar, 256> summed{};
     for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
         for (int bnd = 0; bnd < bands.count; ++bnd) {
             const int low = bands.start[static_cast<std::size_t>(bnd)];
             const int high = low + bands.size[static_cast<std::size_t>(bnd)];
-            double power_sum = 0.0;
+            Scalar power_sum = 0;
             for (int bin = low; bin < high; ++bin) {
-                double total = 0.0;
+                Scalar total = 0;
                 for (int ch = 0; ch < nfchans; ++ch) {
                     total += view.at(ch, blk)[static_cast<std::size_t>(bin)];
                 }
@@ -931,15 +949,15 @@ struct CouplingContent {
                 power_sum += total * total;
             }
             for (int ch = 0; ch < nfchans; ++ch) {
-                double power_ch = 0.0;
+                Scalar power_ch = 0;
                 for (int bin = low; bin < high; ++bin) {
-                    const double value = view.at(ch, blk)[static_cast<std::size_t>(bin)];
+                    const Scalar value = view.at(ch, blk)[static_cast<std::size_t>(bin)];
                     power_ch += value * value;
                 }
-                const double alpha =
-                    power_sum > 0.0 ? std::sqrt(power_ch / power_sum) : 0.0;
+                const Scalar alpha =
+                    power_sum > 0 ? std::sqrt(power_ch / power_sum) : Scalar{0};
                 for (int bin = low; bin < high; ++bin) {
-                    const double error = view.at(ch, blk)[static_cast<std::size_t>(bin)] -
+                    const Scalar error = view.at(ch, blk)[static_cast<std::size_t>(bin)] -
                                          alpha * summed[static_cast<std::size_t>(bin)];
                     residual += error * error;
                 }
@@ -947,7 +965,7 @@ struct CouplingContent {
             }
         }
     }
-    double total = 0.0;
+    Scalar total = 0;
     for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
         for (int ch = 0; ch < nfchans; ++ch) {
             const auto& bins = view.at(ch, blk);
@@ -957,10 +975,11 @@ struct CouplingContent {
         }
     }
     CouplingContent out;
-    out.energy_share = total > 0.0 ? energy / total : 0.0;
+    out.energy_share = total > 0 ? static_cast<double>(energy / total) : 0.0;
     // Nothing up here at all: no fit to speak of either way, so it reads as
     // the neutral decorrelated answer and energy_share carries the decision.
-    out.fit = energy > 0.0 ? 1.0 - residual / energy : coupling_fit_reference(nfchans);
+    out.fit = energy > 0 ? 1.0 - static_cast<double>(residual / energy)
+                         : coupling_fit_reference(nfchans);
     return out;
 }
 
@@ -979,33 +998,36 @@ struct ExtensionContent {
 
 [[nodiscard]] ExtensionContent extension_content(const CoeffView& view, int nfchans,
                                                  int startmant, int endmant) {
-    double total = 0.0;
-    double region = 0.0;
-    double log_sum = 0.0;
+    using Scalar = internal::encode_scalar_t;
+    Scalar total = 0;
+    Scalar region = 0;
+    Scalar log_sum = 0;
     int count = 0;
     for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
         for (int ch = 0; ch < nfchans; ++ch) {
             const auto& bins = view.at(ch, blk);
             for (int bin = 0; bin < endmant; ++bin) {
-                const double power = bins[static_cast<std::size_t>(bin)] *
+                const Scalar power = bins[static_cast<std::size_t>(bin)] *
                                      bins[static_cast<std::size_t>(bin)];
                 total += power;
                 if (bin >= startmant) {
                     region += power;
-                    log_sum += std::log(power + 1e-30);
+                    log_sum += internal::scalar_log(power + static_cast<Scalar>(1e-30));
                     ++count;
                 }
             }
         }
     }
     ExtensionContent out;
-    if (!(total > 0.0) || count == 0) {
+    if (!(total > 0) || count == 0) {
         return out;
     }
-    out.energy_share = region / total;
-    const double geometric = std::exp(log_sum / static_cast<double>(count));
-    const double arithmetic = region / static_cast<double>(count);
-    out.flatness = arithmetic > 0.0 ? std::clamp(geometric / arithmetic, 0.0, 1.0) : 0.0;
+    out.energy_share = static_cast<double>(region / total);
+    const Scalar geometric = internal::scalar_exp(log_sum / static_cast<Scalar>(count));
+    const Scalar arithmetic = region / static_cast<Scalar>(count);
+    out.flatness = arithmetic > 0
+                       ? std::clamp(static_cast<double>(geometric / arithmetic), 0.0, 1.0)
+                       : 0.0;
     return out;
 }
 
@@ -1216,22 +1238,24 @@ inline constexpr double kCouplingEmptyRegionShare = 1.0e-4;
                                         blend);
 }
 
-[[nodiscard]] int spx_blend(std::span<const double> region) {
-    double log_sum = 0.0;
-    double sum = 0.0;
+[[nodiscard]] int spx_blend(std::span<const internal::encode_scalar_t> region) {
+    using Scalar = internal::encode_scalar_t;
+    Scalar log_sum = 0;
+    Scalar sum = 0;
     int count = 0;
-    for (const double value : region) {
-        const double power = value * value + 1e-30;
-        log_sum += std::log(power);
+    for (const Scalar value : region) {
+        const Scalar power = value * value + static_cast<Scalar>(1e-30);
+        log_sum += internal::scalar_log(power);
         sum += power;
         ++count;
     }
-    if (count == 0 || !(sum > 0.0)) {
+    if (count == 0 || !(sum > 0)) {
         return 31;  // nothing up here to blend; copying costs nothing either
     }
-    const double flatness =
-        std::exp(log_sum / count) / (sum / static_cast<double>(count));
-    return std::clamp(static_cast<int>(std::lround((1.0 - flatness) * 32.0)), 0, 31);
+    const Scalar flatness = internal::scalar_exp(log_sum / static_cast<Scalar>(count)) /
+                            (sum / static_cast<Scalar>(count));
+    return std::clamp(
+        static_cast<int>(std::lround((Scalar{1} - flatness) * static_cast<Scalar>(32))), 0, 31);
 }
 
 // Table E1.2's mixdef element (§E2.3.1.18-52). The four options differ in how
@@ -2541,19 +2565,19 @@ struct FrameEncoder::Impl {
     // alert #25) - both run once per (channel, block) and never concurrently
     // with each other, so this one set covers both call sites the same way
     // the MDCT scratch above covers every (channel, block) MDCT call.
-    std::array<double, 256> ecpl_zr_scratch_{};
-    std::array<double, 256> ecpl_zi_scratch_{};
-    std::array<double, 256> ecpl_baseline_a_scratch_{};
-    std::array<double, 256> ecpl_baseline_b_scratch_{};
-    std::array<double, 256> ecpl_prev_scratch_{};
-    std::array<double, 256> ecpl_curr_scratch_{};
-    std::array<double, 256> ecpl_next_scratch_{};
-    std::array<double, 256> ecpl_recon_scratch_{};
+    std::array<internal::encode_scalar_t, 256> ecpl_zr_scratch_{};
+    std::array<internal::encode_scalar_t, 256> ecpl_zi_scratch_{};
+    std::array<internal::encode_scalar_t, 256> ecpl_baseline_a_scratch_{};
+    std::array<internal::encode_scalar_t, 256> ecpl_baseline_b_scratch_{};
+    std::array<internal::encode_scalar_t, 256> ecpl_prev_scratch_{};
+    std::array<internal::encode_scalar_t, 256> ecpl_curr_scratch_{};
+    std::array<internal::encode_scalar_t, 256> ecpl_next_scratch_{};
+    std::array<internal::encode_scalar_t, 256> ecpl_recon_scratch_{};
     // fit_ecpl_band's per-band amplitude and angle - see that function for what
     // they cost as locals. 256 for the same reason as every array above: the
     // spectrum is 256 bins and a band is a subset of it.
-    std::array<double, 256> ecpl_fit_amp_scratch_{};
-    std::array<double, 256> ecpl_fit_angle_scratch_{};
+    std::array<internal::encode_scalar_t, 256> ecpl_fit_amp_scratch_{};
+    std::array<internal::encode_scalar_t, 256> ecpl_fit_angle_scratch_{};
     // encode_frame's per-(stream, block) fixed-point spectra (~43 KB at
     // 5.1+coupling), a frame-lifetime work buffer under the same reasoning
     // and single-instance contract as the scratch above: re-assign()ed
@@ -2595,13 +2619,13 @@ struct FrameEncoder::Impl {
     // it only stops encode_frame re-allocating them every 32 ms. coeffs is
     // the per-(stream, block) MDCT spectrum set (~86 KB at 5.1), the
     // largest single per-frame allocation this encoder had left.
-    std::vector<std::array<double, 256>> coeffs;
+    std::vector<std::array<internal::encode_scalar_t, 256>> coeffs;
     std::vector<std::array<bool, kBlocksPerFrame>> blksw;
     std::vector<bool> channel_switched;
     std::vector<double> cpl_values;
-    std::vector<double> ecpl_unity_amp;
-    std::vector<double> ecpl_zero_angle;
-    std::vector<double> ecpl_half_angle;
+    std::vector<internal::encode_scalar_t> ecpl_unity_amp;
+    std::vector<internal::encode_scalar_t> ecpl_zero_angle;
+    std::vector<internal::encode_scalar_t> ecpl_half_angle;
     std::vector<std::uint8_t> exp_raw;
     std::vector<std::uint8_t> exp_axis;
     // Per-(stream, block) raw exponents, one kCoefficientsPerBlock-wide slot
@@ -2612,16 +2636,16 @@ struct FrameEncoder::Impl {
     // the precision it gives up.
     std::vector<std::uint8_t> exp_coded;
     std::vector<std::int32_t> aht_column;
-    std::vector<double> delta_peak_mag;
+    std::vector<internal::encode_scalar_t> delta_peak_mag;
     // §7.2.2.6 segments held aside while the frame is fitted without them, so
     // the keep/drop comparison in encode_frame can put them back - one entry
     // per active run of each stream, since a run carries its own correction
     // now rather than the whole channel carrying one.
     std::vector<std::vector<DeltaSegments>> delta_snapshot;
-    std::vector<double> spx_recon;
+    std::vector<internal::encode_scalar_t> spx_recon;
     std::vector<double> spx_gains;
-    std::vector<double> spx_synth;
-    std::vector<double> spx_band_rms;
+    std::vector<internal::encode_scalar_t> spx_synth;
+    std::vector<internal::encode_scalar_t> spx_band_rms;
     // EQ13's codes search (encode_frame, FrameConfig::search): one
     // BandNoise accumulator per (stream, block), same reuse contract as
     // every vector above - resize()d and every active slot reset() at the
@@ -2967,7 +2991,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // rather than sizing for the maximum keeps a no-coupling frame's
     // footprint where it was.
     coeffs.assign(static_cast<std::size_t>(nchans) * kBlocksPerFrame, {});
-    const auto coeffs_at = [&](int s, int blk) -> std::array<double, 256>& {
+    const auto coeffs_at = [&](int s, int blk) -> std::array<internal::encode_scalar_t, 256>& {
         return coeffs[static_cast<std::size_t>(s) * kBlocksPerFrame +
                       static_cast<std::size_t>(blk)];
     };
@@ -3072,9 +3096,11 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         std::clamp(impl_->config_.spxbegf >= 0 ? impl_->config_.spxbegf
                                         : spxbegf_geometry(tool_reference_kbps, nfchans),
                    0, 7);
+    AC3_ZONE_BEGIN(zone_spx_content, "step2b_spx_content");
     const ExtensionContent extension = extension_content(
         content, nfchans, spx_band_start(spx_begin_subbnd(spx_candidate_begf)),
         spx_band_start(spx_end_subbnd(kSpxTopSubBandCode)));
+    AC3_ZONE_END(zone_spx_content);
     spx.in_use = impl_->config_.auto_tools
                      ? auto_spxbegf(tool_reference_kbps, nfchans, extension) != kToolOff
                      : impl_->config_.spx;
@@ -3137,6 +3163,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     const int cpl_candidate_endf = spx.in_use ? derived_cplendf(spx.begf) : 15;
     CouplingContent cpl_content{.fit = coupling_fit_reference(nfchans), .energy_share = 0.0};
     if (cpl_candidate_endf + 2 >= cpl_candidate_begf) {
+        AC3_ZONE_SCOPED_N("step2c_cpl_content");
         const auto candidate_structure = kDefaultCplBandStructure;
         const int candidate_subbnd = 3 + cpl_candidate_endf - cpl_candidate_begf;
         cpl_content = coupling_content(
@@ -3342,6 +3369,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // something real to glide from on the frame it is next needed.
     int chbwcod = impl_->config_.chbwcod;
     if (chbwcod < 0) {
+        AC3_ZONE_SCOPED_N("step2d_bandwidth");
         std::array<std::uint8_t, 253> peak_exponents{};
         peak_exponents.fill(static_cast<std::uint8_t>(kMaxExponent));
         for (int ch = 0; ch < nfchans; ++ch) {
@@ -3404,9 +3432,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         for (int blk = 0; blk < nblks; ++blk) {
             cpl.send[static_cast<std::size_t>(blk)] = blk % 2 == 0;
             auto& shared = coeffs_at(cpl_stream, blk);
-            shared.fill(0.0);
+            shared.fill(0);
             for (int bin = cpl.strtmant; bin < cpl.endmant; ++bin) {
-                double sum = 0.0;
+                internal::encode_scalar_t sum = 0;
                 for (int ch = 0; ch < nfchans; ++ch) {
                     sum += coeffs_at(ch, blk)[static_cast<std::size_t>(bin)];
                 }
@@ -3423,12 +3451,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     for (int bnd = 0; bnd < cpl.bands.count; ++bnd) {
                         const int low = cpl.bands.start[static_cast<std::size_t>(bnd)];
                         const int high = low + cpl.bands.size[static_cast<std::size_t>(bnd)];
-                        double power_ch = 0.0;
-                        double power_sum = 0.0;
+                        internal::encode_scalar_t power_ch = 0;
+                        internal::encode_scalar_t power_sum = 0;
                         for (int bin = low; bin < high; ++bin) {
-                            const double value =
+                            const internal::encode_scalar_t value =
                                 coeffs_at(ch, blk)[static_cast<std::size_t>(bin)];
-                            const double summed = shared[static_cast<std::size_t>(bin)];
+                            const internal::encode_scalar_t summed = shared[static_cast<std::size_t>(bin)];
                             power_ch += value * value;
                             power_sum += summed * summed;
                         }
@@ -3436,9 +3464,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                         // * 8 and the stored coupling is sum / scale, so the
                         // coordinate that restores this band's energy is
                         // sqrt(E_ch / E_sum) * scale / 8.
-                        const double ratio =
-                            power_sum > 0.0 ? std::sqrt(power_ch / power_sum) : 0.0;
-                        values[static_cast<std::size_t>(bnd)] = ratio * scale / 8.0;
+                        const auto ratio =
+                            power_sum > 0 ? std::sqrt(power_ch / power_sum) : internal::encode_scalar_t{0};
+                        values[static_cast<std::size_t>(bnd)] =
+                            static_cast<double>(ratio) * scale / 8.0;
                     }
                     const int chosen = coupling::choose_master(values);
                     cpl.master[coord_slot(blk, ch)] = chosen;
@@ -3478,9 +3507,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // itself.
             for (int bin = cpl.strtmant; bin < cpl.endmant; ++bin) {
                 if (cpl.enhanced) {
-                    shared[static_cast<std::size_t>(bin)] *= 2.0;
+                    shared[static_cast<std::size_t>(bin)] *= 2;
                 } else {
-                    shared[static_cast<std::size_t>(bin)] /= scale;
+                    shared[static_cast<std::size_t>(bin)] /= static_cast<internal::encode_scalar_t>(scale);
                 }
             }
         }
@@ -3504,14 +3533,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                        static_cast<std::size_t>(ch)) *
                       nbnd_e;
             };
-            static constexpr std::array<double, 256> kZero{};
+            static constexpr std::array<internal::encode_scalar_t, 256> kZero{};
             const int bins = cpl.endmant - cpl.strtmant;
             auto& unity_amp = impl_->ecpl_unity_amp;
-            unity_amp.assign(static_cast<std::size_t>(bins), 1.0);
+            unity_amp.assign(static_cast<std::size_t>(bins), static_cast<internal::encode_scalar_t>(1));
             auto& zero_angle = impl_->ecpl_zero_angle;
-            zero_angle.assign(static_cast<std::size_t>(bins), 0.0);
+            zero_angle.assign(static_cast<std::size_t>(bins), static_cast<internal::encode_scalar_t>(0));
             auto& half_angle = impl_->ecpl_half_angle;
-            half_angle.assign(static_cast<std::size_t>(bins), 0.5);
+            half_angle.assign(static_cast<std::size_t>(bins), static_cast<internal::encode_scalar_t>(0.5));
             for (int blk = 0; blk < nblks; ++blk) {
                 const auto& prev = blk > 0 ? coeffs_at(cpl_stream, blk - 1) : kZero;
                 const auto& curr = coeffs_at(cpl_stream, blk);
@@ -3519,7 +3548,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     blk + 1 < nblks ? coeffs_at(cpl_stream, blk + 1) : kZero;
                 auto& zr = impl_->ecpl_zr_scratch_;
                 auto& zi = impl_->ecpl_zi_scratch_;
-                ecpl_channel_spectrum(prev, curr, next, zr, zi, impl_->config_.fast_mdct);
+                encoder_detail::ecpl_spectrum(prev, curr, next, zr, zi, impl_->config_.fast_mdct);
                 auto& baseline_a = impl_->ecpl_baseline_a_scratch_;
                 auto& baseline_b = impl_->ecpl_baseline_b_scratch_;
                 ecpl_channel_coefficients(zr, zi, unity_amp, zero_angle, cpl.strtmant,
@@ -3534,25 +3563,25 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                             const int width = cpl.ecpl_bands.size[static_cast<std::size_t>(bnd)];
                             const auto ulow = static_cast<std::size_t>(low);
                             const auto uwidth = static_cast<std::size_t>(width);
-                            const std::span<const double> channel_band{
+                            const std::span<const internal::encode_scalar_t> channel_band{
                                 &coeffs_at(ch, blk)[ulow], uwidth};
                             const auto slot = ecpl_slot(blk, ch) + static_cast<std::size_t>(bnd);
                             if (ch == 0) {
-                                double power_ch = 0.0;
-                                double power_f = 0.0;
+                                internal::encode_scalar_t power_ch = 0;
+                                internal::encode_scalar_t power_f = 0;
                                 for (std::size_t i = 0; i < uwidth; ++i) {
                                     power_ch += channel_band[i] * channel_band[i];
                                     power_f += baseline_a[ulow + i] * baseline_a[ulow + i];
                                 }
-                                const double ratio =
-                                    power_f > 0.0 ? std::sqrt(power_ch / power_f) : 0.0;
-                                cpl.ecplamp[slot] = quantize_ecplamp(ratio);
+                                const auto ratio =
+                                    power_f > 0 ? std::sqrt(power_ch / power_f) : internal::encode_scalar_t{0};
+                                cpl.ecplamp[slot] = quantize_ecplamp(static_cast<double>(ratio));
                                 cpl.ecplangle[slot] = 0;
                                 cpl.ecplchaos[slot] = 0;
                             } else {
-                                const std::span<const double> baseline_a_band{
+                                const std::span<const internal::encode_scalar_t> baseline_a_band{
                                     &baseline_a[ulow], uwidth};
-                                const std::span<const double> baseline_b_band{
+                                const std::span<const internal::encode_scalar_t> baseline_b_band{
                                     &baseline_b[ulow], uwidth};
                                 const auto fit = fit_ecpl_band(
                                     channel_band, baseline_a_band, baseline_b_band, zr, zi, ch,
@@ -3598,15 +3627,15 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             // nothing for it - only channels 1.. can move the answer.
             if (nfchans > 1) {
                 AC3_ZONE_SCOPED_N("step3b_ecplangleintrp_decide");
-                double err_direct = 0.0;
-                double err_interp = 0.0;
+                internal::encode_scalar_t err_direct = 0;
+                internal::encode_scalar_t err_interp = 0;
                 EcplNoise scratch_noise;
                 std::vector<int> band_codes(nbnd_e);
                 std::vector<int> chaos_codes(nbnd_e);
                 std::vector<int> angle_codes(nbnd_e);
-                std::vector<double> angle_bin(static_cast<std::size_t>(bins));
-                std::vector<double> amp_bin(static_cast<std::size_t>(bins));
-                std::array<double, 256> recon{};
+                std::vector<internal::encode_scalar_t> angle_bin(static_cast<std::size_t>(bins));
+                std::vector<internal::encode_scalar_t> amp_bin(static_cast<std::size_t>(bins));
+                std::array<internal::encode_scalar_t, 256> recon{};
                 for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
                     const auto& prev = blk > 0 ? coeffs_at(cpl_stream, blk - 1) : kZero;
                     const auto& curr = coeffs_at(cpl_stream, blk);
@@ -3631,7 +3660,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     // had no enhanced-coupling fixture until the one this commit
                     // adds, and on a hosted NDEBUG build the stub's assert
                     // compiles out and it silently zero-fills instead.
-                    ecpl_channel_spectrum(prev, curr, next, zr, zi, impl_->config_.fast_mdct);
+                    encoder_detail::ecpl_spectrum(prev, curr, next, zr, zi,
+                                                  impl_->config_.fast_mdct);
                     for (int ch = 1; ch < nfchans; ++ch) {
                         for (std::size_t bnd = 0; bnd < nbnd_e; ++bnd) {
                             const auto slot = ecpl_slot(blk, ch) + bnd;
@@ -3650,10 +3680,10 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                                        angle_bin, interpolate);
                             ecpl_channel_coefficients(zr, zi, amp_bin, angle_bin, cpl.strtmant,
                                                       cpl.endmant, recon);
-                            double err = 0.0;
+                            internal::encode_scalar_t err = 0;
                             for (int bin = cpl.strtmant; bin < cpl.endmant; ++bin) {
                                 const auto ubin = static_cast<std::size_t>(bin);
-                                const double d = channel[ubin] - recon[ubin];
+                                const internal::encode_scalar_t d = channel[ubin] - recon[ubin];
                                 err += d * d;
                             }
                             (interpolate ? err_interp : err_direct) += err;
@@ -3690,13 +3720,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 if (low > high) {
                     continue;
                 }
-                double power_l = 0.0;
-                double power_r = 0.0;
-                double power_sum = 0.0;
-                double power_diff = 0.0;
+                internal::encode_scalar_t power_l = 0;
+                internal::encode_scalar_t power_r = 0;
+                internal::encode_scalar_t power_sum = 0;
+                internal::encode_scalar_t power_diff = 0;
                 for (int bin = low; bin <= high; ++bin) {
-                    const double l = left[static_cast<std::size_t>(bin)];
-                    const double r = right[static_cast<std::size_t>(bin)];
+                    const internal::encode_scalar_t l = left[static_cast<std::size_t>(bin)];
+                    const internal::encode_scalar_t r = right[static_cast<std::size_t>(bin)];
                     power_l += l * l;
                     power_r += r * r;
                     power_sum += (l + r) * (l + r);
@@ -3705,11 +3735,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 if (std::min(power_sum, power_diff) < std::min(power_l, power_r)) {
                     payload.rematflg[static_cast<std::size_t>(blk)]
                                     [static_cast<std::size_t>(band)] = true;
+                    constexpr auto kHalf = static_cast<internal::encode_scalar_t>(0.5);
                     for (int bin = low; bin <= high; ++bin) {
-                        const double l = left[static_cast<std::size_t>(bin)];
-                        const double r = right[static_cast<std::size_t>(bin)];
-                        left[static_cast<std::size_t>(bin)] = 0.5 * (l + r);
-                        right[static_cast<std::size_t>(bin)] = 0.5 * (l - r);
+                        const internal::encode_scalar_t l = left[static_cast<std::size_t>(bin)];
+                        const internal::encode_scalar_t r = right[static_cast<std::size_t>(bin)];
+                        left[static_cast<std::size_t>(bin)] = kHalf * (l + r);
+                        right[static_cast<std::size_t>(bin)] = kHalf * (l - r);
                     }
                 }
             }
@@ -3961,7 +3992,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 // Two coefficients at a time through the architecture seam
                 // (ROADMAP PF5), identical values to the bin-by-bin form -
                 // see to_fixed25_block in exponents.cpp.
-                to_fixed25_block(std::span<const double>{source}.subspan(
+                to_fixed25_block(std::span<const internal::encode_scalar_t>{source}.subspan(
                                      static_cast<std::size_t>(plan.start), span),
                                  std::span{out}.subspan(static_cast<std::size_t>(plan.start),
                                                         span));
@@ -5046,7 +5077,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         for (int ch = 0; ch < nfchans; ++ch) {
             const auto& plan = payload.chans[static_cast<std::size_t>(ch)];
             for (int blk = 0; blk < nblks; ++blk) {
-                internal::DitherBallot ballot;
+                internal::BasicDitherBallot<internal::encode_scalar_t> ballot;
                 if (!plan.aht) {
                     const auto& run = plan.run_at(blk);
                     ballot.weigh(coeffs_at(ch, blk), run.decoded, run.bap, plan.start,
@@ -5215,7 +5246,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // coupling's own copy-source reconstruction below reuses this same
         // logic for a NEIGHBORING block, which must not disturb `recon`
         // (this block's own reconstruction) while doing so.
-        const auto rebuild = [&](int s, int blk, int from, int to, std::span<double> dst) {
+        const auto rebuild = [&](int s, int blk, int from, int to, std::span<internal::encode_scalar_t> dst) {
             const auto& plan = payload.chans[static_cast<std::size_t>(s)];
             const auto& run = plan.run_at(blk);
             if (plan.aht) {
@@ -5225,9 +5256,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 for (int bin = from; bin < to; ++bin) {
                     std::array<double, kBlocksPerFrameSize> blocks{};
                     aht_inverse(plan.aht_coeffs[static_cast<std::size_t>(bin)], blocks);
-                    dst[static_cast<std::size_t>(bin)] =
+                    dst[static_cast<std::size_t>(bin)] = static_cast<internal::encode_scalar_t>(
                         std::ldexp(blocks[static_cast<std::size_t>(blk)],
-                                   -run.decoded[static_cast<std::size_t>(bin)]);
+                                   -run.decoded[static_cast<std::size_t>(bin)]));
                 }
                 return;
             }
@@ -5245,9 +5276,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 const int exp = run.decoded[static_cast<std::size_t>(bin)];
                 const auto mantissa = static_cast<std::int32_t>(
                     static_cast<std::int64_t>(block[static_cast<std::size_t>(bin)]) << exp);
-                dst[static_cast<std::size_t>(bin)] =
-                    std::ldexp(dequantize_mantissa(quantize_mantissa(mantissa, bap), bap),
-                               -exp);
+                dst[static_cast<std::size_t>(bin)] = std::ldexp(
+                    dequantize_mantissa_as<internal::encode_scalar_t>(quantize_mantissa(mantissa, bap), bap),
+                    -exp);
             }
         };
 
@@ -5281,8 +5312,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                             cpl.master[at]);
                         const int low = cpl.bands.start[static_cast<std::size_t>(bnd)];
                         const int high = low + cpl.bands.size[static_cast<std::size_t>(bnd)];
+                        const auto gain = static_cast<internal::encode_scalar_t>(coord * 8.0);
                         for (int bin = low; bin < high; ++bin) {
-                            recon[static_cast<std::size_t>(bin)] *= coord * 8.0;
+                            recon[static_cast<std::size_t>(bin)] *= gain;
                         }
                     }
                 } else if (cpl.in_use) {
@@ -5294,24 +5326,25 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     // where the decoder's own reconstruction treats it as
                     // zero: outside this frame, or a block that did not
                     // itself couple.
-                    static constexpr std::array<double, 256> kZero{};
-                    const auto neighbor = [&](int b, std::array<double, 256>& dst) -> auto& {
+                    static constexpr std::array<internal::encode_scalar_t, 256> kZero{};
+                    const auto neighbor = [&](int b, std::array<internal::encode_scalar_t, 256>& dst) -> auto& {
                         if (b < 0 || b >= nblks) {
                             return kZero;
                         }
                         rebuild(cpl_stream, b, cpl.strtmant, cpl.endmant, dst);
-                        return static_cast<const std::array<double, 256>&>(dst);
+                        return static_cast<const std::array<internal::encode_scalar_t, 256>&>(dst);
                     };
                     const auto& prev = neighbor(blk - 1, impl_->ecpl_prev_scratch_);
                     const auto& curr = neighbor(blk, impl_->ecpl_curr_scratch_);
                     const auto& next = neighbor(blk + 1, impl_->ecpl_next_scratch_);
                     auto& zr = impl_->ecpl_zr_scratch_;
                     auto& zi = impl_->ecpl_zi_scratch_;
-                    ecpl_channel_spectrum(prev, curr, next, zr, zi, impl_->config_.fast_mdct);
+                    encoder_detail::ecpl_spectrum(prev, curr, next, zr, zi,
+                                                  impl_->config_.fast_mdct);
 
                     const int bins = cpl.endmant - cpl.strtmant;
-                    std::vector<double> amp_bin(static_cast<std::size_t>(bins));
-                    std::vector<double> angle_bin(static_cast<std::size_t>(bins), 0.0);
+                    std::vector<internal::encode_scalar_t> amp_bin(static_cast<std::size_t>(bins));
+                    std::vector<internal::encode_scalar_t> angle_bin(static_cast<std::size_t>(bins), 0);
                     const auto nbnd_e = static_cast<std::size_t>(std::max(cpl.ecpl_bands.count, 1));
                     const auto ecpl_at =
                         (static_cast<std::size_t>(blk) * static_cast<std::size_t>(nfchans) +
@@ -5319,8 +5352,8 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                        nbnd_e;
                     std::size_t cursor = 0;
                     for (int bnd = 0; bnd < cpl.ecpl_bands.count; ++bnd) {
-                        const double amp =
-                            decode_ecplamp(cpl.ecplamp[ecpl_at + static_cast<std::size_t>(bnd)]);
+                        const auto amp = static_cast<internal::encode_scalar_t>(
+                            decode_ecplamp(cpl.ecplamp[ecpl_at + static_cast<std::size_t>(bnd)]));
                         const int width = cpl.ecpl_bands.size[static_cast<std::size_t>(bnd)];
                         for (int i = 0; i < width; ++i) {
                             amp_bin[cursor++] = amp;
@@ -5354,13 +5387,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                         copyindex = spx.copystart;
                         spx.wrapflag[static_cast<std::size_t>(bnd)] = true;
                     }
-                    double accum = 0.0;
+                    internal::encode_scalar_t accum = 0;
                     const int low = spx.bands.start[static_cast<std::size_t>(bnd)];
                     for (int i = 0; i < size; ++i) {
                         if (copyindex == spx.startmant) {
                             copyindex = spx.copystart;
                         }
-                        const double value = recon[static_cast<std::size_t>(copyindex++)];
+                        const internal::encode_scalar_t value = recon[static_cast<std::size_t>(copyindex++)];
                         synth[static_cast<std::size_t>(low - spx.startmant + i)] = value;
                         accum += value * value;
                     }
@@ -5368,7 +5401,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     // noise is scaled by it, so the notch does not quieten the
                     // noise the way it quietens the copied signal.
                     band_rms[static_cast<std::size_t>(bnd)] =
-                        std::sqrt(accum / size);
+                        std::sqrt(accum / static_cast<internal::encode_scalar_t>(size));
                 }
 
                 // §E3.6.4.2.3, after the banded RMS and before the blend.
@@ -5380,9 +5413,9 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 for (int bnd = 0; bnd < spx.bands.count; ++bnd) {
                     const int size = spx.bands.size[static_cast<std::size_t>(bnd)];
                     const int low = spx.bands.start[static_cast<std::size_t>(bnd)];
-                    double target = 0.0;
+                    internal::encode_scalar_t target = 0;
                     for (int bin = low; bin < low + size; ++bin) {
-                        const double value =
+                        const internal::encode_scalar_t value =
                             coeffs_at(ch, blk)[static_cast<std::size_t>(bin)];
                         target += value * value;
                     }
@@ -5392,18 +5425,20 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                     // that band's RMS and the two factors are complementary -
                     // but the notch quietens the signal side only, so once it
                     // is in play the blend has to be modelled outright.
-                    const double ratio = spx_noise_ratio(spx, bnd, spx.blend[at]);
-                    double blended = 0.0;
+                    const auto ratio =
+                        static_cast<internal::encode_scalar_t>(spx_noise_ratio(spx, bnd, spx.blend[at]));
+                    internal::encode_scalar_t blended = 0;
                     for (int i = 0; i < size; ++i) {
-                        const double value =
+                        const internal::encode_scalar_t value =
                             synth[static_cast<std::size_t>(low - spx.startmant + i)];
-                        blended += value * value * (1.0 - ratio);
+                        blended += value * value * (static_cast<internal::encode_scalar_t>(1) - ratio);
                     }
-                    blended += size * band_rms[static_cast<std::size_t>(bnd)] *
+                    blended += static_cast<internal::encode_scalar_t>(size) * band_rms[static_cast<std::size_t>(bnd)] *
                                band_rms[static_cast<std::size_t>(bnd)] * ratio;
                     // The decoder applies the coordinate as spxco * 32.
                     gains[static_cast<std::size_t>(bnd)] =
-                        blended > 0.0 ? std::sqrt(target / blended) / 32.0 : 0.0;
+                        blended > 0 ? static_cast<double>(std::sqrt(target / blended)) / 32.0
+                                    : 0.0;
                 }
                 const int chosen = coupling::choose_master(gains);
                 spx.master[at] = chosen;

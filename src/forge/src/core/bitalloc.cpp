@@ -17,6 +17,7 @@
 #include "ac3/internal/arch/simd.hpp"
 #include "ac3/internal/profiling.hpp"
 #include "bitalloc_internal.hpp"
+#include "scalar_math.hpp"
 
 namespace ac3 {
 
@@ -424,8 +425,11 @@ void compute_bit_allocation(std::span<const std::uint8_t> exps, SampleRate sampl
                                 nullptr);
 }
 
-DeltaSegments choose_delta_segments(std::span<const double> coefficients,
-                                    std::span<const std::uint8_t> exps, int start) {
+namespace {
+
+template <typename Scalar>
+DeltaSegments choose_delta_segments_over(std::span<const Scalar> coefficients,
+                                         std::span<const std::uint8_t> exps, int start) {
     AC3_ZONE_SCOPED_N("choose_delta_segments");
     assert(coefficients.size() == exps.size());
     const int end = static_cast<int>(exps.size());
@@ -445,12 +449,17 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
     exponents_to_psd(exps, start, end, psd_wide);
     std::array<int, kMaxMantissas> psd{};
     std::ranges::copy(psd_wide, psd.begin());
+    // The log is the scalar's own (scalar_math.hpp): libm's for double, the
+    // project's for float, so the float encode path rounds the same psd unit
+    // on every platform it runs on.
     std::array<int, kMaxMantissas> real_psd{};
     for (int bin = start; bin < end; ++bin) {
         const auto i = static_cast<std::size_t>(bin);
-        const double magnitude = std::abs(static_cast<double>(coefficients[i]));
-        real_psd[i] = magnitude > 0.0
-                          ? static_cast<int>(std::lround(3200.0 + 128.0 * std::log2(magnitude)))
+        const Scalar magnitude = std::abs(coefficients[i]);
+        real_psd[i] = magnitude > 0
+                          ? static_cast<int>(std::lround(
+                                static_cast<Scalar>(3200) +
+                                static_cast<Scalar>(128) * internal::scalar_log2(magnitude)))
                           : psd[i];  // silence: nothing to correct
     }
 
@@ -532,6 +541,18 @@ DeltaSegments choose_delta_segments(std::span<const double> coefficients,
         }
     }
     return out;
+}
+
+}  // namespace
+
+DeltaSegments choose_delta_segments(std::span<const double> coefficients,
+                                    std::span<const std::uint8_t> exps, int start) {
+    return choose_delta_segments_over<double>(coefficients, exps, start);
+}
+
+DeltaSegments choose_delta_segments(std::span<const float> coefficients,
+                                    std::span<const std::uint8_t> exps, int start) {
+    return choose_delta_segments_over<float>(coefficients, exps, start);
 }
 
 }  // namespace ac3

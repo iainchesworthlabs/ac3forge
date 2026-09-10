@@ -141,6 +141,27 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   0.88x - AC-3 5.1 from 199.9 to 71.0, E-AC-3 5.1 from 348.9 to 219.7 and 2/0 from 137.2 to 90.4;
   the peaks fell with the halved scratch, and the profile's encode fixtures are the float front
   end's streams, identical on host, Cortex-M3 and ESP32-S3.
+- **The rest of the encoders in the profile's scalar** (roadmap PF7), the same day. The
+  coefficient store and every analysis behind it - the coupling, spectral-extension and
+  enhanced-coupling analyses and fits, the dither and delta-segment decisions, the fixed-point
+  conversion, the rematrix - run in `encode_scalar_t`, with `float` overloads of the exported
+  functions the store feeds (`to_fixed25` is a template; `to_fixed25_block`,
+  `accumulate_peak_exponents`, `choose_delta_segments` and `PerceptualModel::analyse` take
+  `float`; `DitherBallot` is `BasicDitherBallot<double>`) and the project's own `log2` and `exp`
+  for the float path (`src/forge/src/core/scalar_math.hpp`: the profile's fixture hashes are
+  checked on three C libraries whose `logf` differ in the last bit). Only the adaptive hybrid
+  transform and the masking model's internals are still `double`; the allocation search is
+  integer. Every `<double>` instantiation is the function the ordinary build called, so the golden
+  hashes hold, and no fixture hash moved either. On the ESP32-S3: AC-3 2/0 in 12.1 ms a frame
+  (0.38x), E-AC-3 2/0 in 33.8 (1.06x), AC-3 5.1 in 35.1 (1.10x), E-AC-3 5.1 in 81.2 (2.54x) and
+  the §E3.5 2/0 row from 425.5 to 54.7; peaks fell a further 50 KB (E-AC-3 5.1: 202,760 to
+  154,932). CI's `linux-gcc` leg builds `-DAC3FORGE_ENCODE_SCALAR=float` beside the float decoder
+  and runs its streams through the gold-reference gate and the new
+  `tools/checks/check_encode_scalar_quality.py`, which holds the float encoder's worst channel to
+  within 0.5 dB of the double encoder's (on the five gold streams they are identical);
+  `tests/golden/bitstream-hashes.json` pins its three streams under the `encfloat` mode. The
+  exported `BasicTransientDetector` instantiations carry their attribute where each compiler wants
+  it (three generated macros; GCC's shared build had rejected the earlier placement).
 - **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
   there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
   `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has
