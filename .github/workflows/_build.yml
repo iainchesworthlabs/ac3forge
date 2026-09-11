@@ -4387,6 +4387,7 @@ jobs:
             esp-idf/ac3forge/examples/stream_player/qemu-capture.txt
             esp-idf/ac3forge/examples/stream_player/qemu-render.txt
             esp-idf/ac3forge/examples/stream_player/qemu-http.txt
+            esp-idf/ac3forge/examples/stream_player/qemu-set.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.
