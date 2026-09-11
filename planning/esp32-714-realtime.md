@@ -685,6 +685,16 @@ merged in and nothing else added:
   page's Playwright check in that step was not run.
 - **On the host**, `[unit_hold]` and `[block_ring]` pass under MSVC, and both test files compile
   under clang-cl 22 with the warning set CI uses, `-Wdouble-promotion` and `-Werror` among it.
+- **Internal RAM under load**, run by the board-validation session on the branch at baa633fd,
+  with a 16 KB instruction cache as a control, and with #654 merged. Each image loaded the page
+  and `ui.js`, polled `/status`, sent `PUT /layout` mid-play and an invalid layout, and started a
+  second play of `714-walk` repeated twelve times, with the internal heap's local minimum taken
+  each second. Nothing failed: every request was answered, with no allocation failure and no
+  abort. The least free internal heap, counting the 32 KB reserved for internal-only allocations,
+  fell to 935 and 979 bytes at a play's start with #654 merged, and the requests did not lower
+  it. Mid-play it moved little with the cache size; the cache's 16 KB shows at a play's start and
+  in the largest free block. The margin is thin: it is about what the image with both caches at
+  their largest lost when a FreeRTOS mutex could not be allocated.
 
 ## What cannot be verified
 
