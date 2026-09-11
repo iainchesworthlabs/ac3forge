@@ -61,7 +61,7 @@ cores are under *ac3forge stream player* in `idf.py menuconfig`.
 | Source | Sink |
 | --- | --- |
 | `partition` — flash (default) | `i2s` — stereo DAC (default); 32-bit slots, master or slave |
-| `sd` — SD card over SDMMC | `tdm` — up to sixteen channels on one data line |
+| `sd` — SD card over SDMMC | `tdm` — TDM on one data line, at most four 32-bit slots on an ESP32-S3 |
 | `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
 | `http` — an HTTP body over WiFi | `null` — counts blocks |
 
@@ -525,13 +525,21 @@ reason the QEMU shape runs an 8 KB ring.
 
 ### The TDM sink
 
-`tdm` puts up to sixteen channels on one data line: three pins (BCLK, WS, DATA)
-instead of eight data lines, at a 12.3 MHz bit clock for 8 slots × 32 bits ×
-48 kHz and 24.6 MHz for 16. It needs a DAC that speaks TDM — a PCM3168A does, a
-SigmaDSP does on its serial inputs, the common MAX98357A and PCM5102 breakouts
-do not. `CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS` is the bus width, a property of the
-board; the layout must have no more slots than that, and the slots it leaves
-are written as zeros.
+`tdm` puts several channels on one data line: three pins (BCLK, WS, DATA)
+rather than a data line per pair. On an ESP32-S3 a TDM frame holds at most 128
+bits, because the peripheral's half-frame length is a 6-bit register field, so
+this sink's 32-bit slots stop at four - a 6.1 MHz bit clock at 48 kHz - and it
+refuses more when it opens. ESP-IDF v6.1 refuses them as well, and its I2S
+guide gives the same limits: four slots at 32 bits, eight at 16. A 7.1.4
+layout's twelve slots of 24-bit audio need both I2S controllers at 16 bits, or
+a TDM device fed by several lines (`planning/esp32-714-realtime.md` in the
+repository, "Twelve slots on this part"). It needs a DAC that speaks TDM — a
+PCM3168A does, a SigmaDSP does on its serial inputs, the common MAX98357A and
+PCM5102 breakouts do not. `CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS` is the bus width,
+a property of the board; the layout must have no more slots than that, and the
+slots it leaves are written as zeros. The `capture` sink converts up to
+sixteen with no peripheral behind it, which is how CI checks a twelve-slot
+conversion.
 
 Both sinks with a peripheral take `CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE`, which
 hands BCLK and WS to the other end — how an ADAU1452 or ADAU1467 that is the
@@ -547,9 +555,10 @@ partly written buffer whenever two or more sent ones are waiting, and the rest
 of it goes out as silence. [`i2s_player`](../i2s_player/README.md) measured
 what that costs a player that writes across descriptors: 3 ms in every 35.
 
-**Neither TDM nor the slave role has run on hardware.** There is no TDM DAC or
-DSP here and QEMU has no I2S, so what CI establishes is that they compile and
-link. The exception is the part worth testing:
+**Neither TDM into a DAC nor the slave role has run on hardware.** There is no
+TDM DAC or DSP here and QEMU has no I2S, so what CI establishes is that they
+compile and link. On a board, the one TDM shape tried - twelve slots - was
+refused by the frame limit above. The exception is the part worth testing:
 [`ac3forge/interleave.hpp`](../../include/ac3forge/interleave.hpp) is free of
 ESP-IDF and is unit-tested on the host (`tests/io/test_interleave.cpp`), because
 planar-to-interleaved indexing with slot padding is where the bugs are and the

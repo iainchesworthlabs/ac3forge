@@ -22,9 +22,10 @@ does `POST /play`.
 
 ## What plays where
 
-- A 7.1.4 output needs a sink of twelve slots or more: the `tdm` sink, or `capture` with
+- A 7.1.4 output needs a sink of twelve slots: `capture` with
   `CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM=1`, which converts and checks with no peripheral behind
-  it. `sdkconfig.ci-http714` is that shape under QEMU, and CI plays the set on it.
+  it. `sdkconfig.ci-http714` is that shape under QEMU, and CI plays the set on it. The `tdm`
+  sink cannot: one ESP32-S3 I2S line carries at most four 32-bit slots.
 - On a two-slot sink every stream plays too, folded to 2.0 by the decoder.
 - `streams.json` marks `"psram": true` the streams measured to need more internal RAM than a
   network shape has without PSRAM: 7.1.4 with AHT, enhanced coupling or TPN, and the Dolby

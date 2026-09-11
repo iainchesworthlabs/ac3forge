@@ -120,9 +120,12 @@ config AC3FORGE_EXAMPLE_TDM_SLOTS
         How many slots the TDM frame carries - a property of the BOARD, not of
         the audio. A DAC is wired for a fixed number and does not renegotiate
         because a layout happens to be 5.1, so slots the layout does not fill
-        are written as zeros rather than skipped. Eight slots of 32 bits at
-        48 kHz is a 12.3 MHz bit clock and sixteen is 24.6 MHz; the S3's
-        peripheral does both, the DAC's datasheet says whether it follows. The
+        are written as zeros rather than skipped. The tdm sink sends 32-bit
+        slots, and an ESP32-S3 TDM frame holds at most 128 bits, so the tdm
+        sink takes at most 4 and refuses more when it opens. The capture sink,
+        which converts without a peripheral, takes up to 16, which is how CI
+        checks a twelve-slot conversion. Four slots of 32 bits at 48 kHz is a
+        6.1 MHz bit clock; the DAC's datasheet says whether it follows. The
         layout (AC3FORGE_EXAMPLE_LAYOUT) must have no more slots than this.
 
 # WHERE THE BYTES COME FROM. A directory CMake picks, the mirror of the sink

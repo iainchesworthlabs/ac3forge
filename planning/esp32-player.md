@@ -7,7 +7,7 @@
     component, and its exit criterion met - the E-AC-3 demo over WiFi for ten minutes with no
     underruns, started by `POST /play` and read back by `GET /status`. Phase 2:
     `ac3forge::OutputLayout` and `LayoutRenderer` in the component, the player on the block form,
-    32-bit slots, the slave role, sixteen TDM slots and `PUT /layout`, four QEMU shapes in CI, and
+    32-bit slots, the slave role, a TDM sink and `PUT /layout`, four QEMU shapes in CI, and
     a 7.1.4 render from objects measured through the player on the board at 26 ms of every 32.
     What Phase 2 still owes needs the SigmaDSP board: the slave role against a real master, and
     TDM into a DAC. The board also found five things QEMU could not: the component did not
@@ -231,14 +231,15 @@ layout, in increasing cost, and the configuration names one of them:
 |---|---|---|
 | **2.0** | The §7.8 fold of the bed, in the decoder (`DownmixTarget::kLoRo` or `kLtRt`). | Exists; what both examples play today. |
 | **As coded: 5.1, 7.1** | The bed's channels as decoded, one TDM slot each. An Atmos bed is the complete mix, so objects need not be reconstructed. | The `tdm` sink exists and has never run on hardware. |
-| **With height: 5.0.4, 5.1.4, 7.1.4, 9.2.4, …** | Objects reconstructed from the bed (`skip_object_reconstruction = false`), then each object panned onto the configured speaker set by `ac3::spatial::pan_direction` over two rings, horizontal and upper, with the bed's own channels placed at their nominal positions and the LFE sends summed. | **Exists on the target as of main's #611, in the probe**: the `eac3_atmos_render` row places a height-object stream onto 7.1.4 through the block form (`decode_access_unit_by_block`, one 256-sample block at a time), every level the host's, the render 5% of the row's instructions, 210,573 bytes of peak heap. `spatial.cpp` is in the profile. **Wired the same day** (Phase 2): a layout in `PlayerConfig`, the block-form decode, `LayoutRenderer`, and a TDM sink of sixteen slots; the QEMU shape `sdkconfig.ci-render` plays this row's stream through the player onto 7.1.4 at the row's own levels. |
+| **With height: 5.0.4, 5.1.4, 7.1.4, 9.2.4, …** | Objects reconstructed from the bed (`skip_object_reconstruction = false`), then each object panned onto the configured speaker set by `ac3::spatial::pan_direction` over two rings, horizontal and upper, with the bed's own channels placed at their nominal positions and the LFE sends summed. | **Exists on the target as of main's #611, in the probe**: the `eac3_atmos_render` row places a height-object stream onto 7.1.4 through the block form (`decode_access_unit_by_block`, one 256-sample block at a time), every level the host's, the render 5% of the row's instructions, 210,573 bytes of peak heap. `spatial.cpp` is in the profile. **Wired the same day** (Phase 2): a layout in `PlayerConfig`, the block-form decode, `LayoutRenderer`, and a TDM sink (at most four 32-bit slots on one S3 line, a board found on 2026-09-11); the QEMU shape `sdkconfig.ci-render` plays this row's stream through the player onto 7.1.4 at the row's own levels. |
 
 The configuration takes a named layout (`5.1.4`) or a speaker list, each with an azimuth, an
 elevation and a slot number, which is what `pan_ring` wants anyway; named layouts are the ITU-R
-BS.2051 positions written out. The channel count decides the sink: two slots on standard I2S, up
-to eight on one TDM line, up to sixteen across the S3's two I2S peripherals at 12.3 MHz each, or
-a DSP's TDM inputs. Rendering block by block, 256 samples at a time, keeps the output storage at
-15 channels × 256 × 4 bytes rather than a frame's 92 KB, which matters on a part with 280 KB.
+BS.2051 positions written out. The channel count decides the sink: two slots on standard I2S; on
+one TDM line four of 32 bits or eight of 16, because an ESP32-S3 TDM frame holds 128 bits; twice
+that across the S3's two I2S peripherals; or a DSP's TDM inputs. Rendering block by block, 256
+samples at a time, keeps the output storage at 15 channels × 256 × 4 bytes rather than a frame's
+92 KB, which matters on a part with 280 KB.
 
 What is measured and what is not: the bed-only decode and the object reconstruction both have
 figures from silicon, and so does a 7.1.4 programme carried as a bed with two dependent
@@ -526,8 +527,8 @@ component's I2S `PcmSink`. The as-coded layouts on the TDM sink. The height layo
 the player onto the block form and the render the probe's `eac3_atmos_render` row already
 performs on this target - `decode_access_unit_by_block` into a 256-sample block per channel,
 the objects panned by `ac3::spatial::pan_direction` onto the configured speaker set - with a
-layout in `PlayerConfig` and a sink of up to sixteen slots across the S3's two I2S peripherals
-or a DSP's TDM inputs.
+layout in `PlayerConfig` and a sink of up to sixteen 16-bit slots across the S3's two I2S
+peripherals (one line holds four 32-bit slots) or a DSP's TDM inputs.
 
 **Exit:** the slot layout checked by the `capture` sink on the host, as the TDM layout is today;
 the slave role played against a SigmaDSP as master; a 7.1.4 stream decoded and rendered through
@@ -550,7 +551,8 @@ renderer places is read from the unit's headers before the decode (the block for
 samples before it reports the layout) and confirmed against the decoded layout after; a
 disagreement is counted in `layout_mismatches`, and none has been seen. The example's I2S sink
 runs 32-bit slots by default and takes the slave role from Kconfig, the TDM sink carries up to
-sixteen slots with its DMA descriptors sized from the bus width, and `PUT /layout` changes the
+four 32-bit slots (an S3 TDM frame holds 128 bits) with its DMA descriptors sized from the bus
+width, and `PUT /layout` changes the
 layout for the next play. Host tests: `tests/io/test_layout.cpp`, eleven cases. QEMU: the
 stereo, TDM and HTTP shapes unchanged to the digit, and a fourth, `sdkconfig.ci-render`, that
 plays the probe's height-object fixture onto 7.1.4 through the twelve-slot TDM conversion with

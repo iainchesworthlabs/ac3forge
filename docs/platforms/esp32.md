@@ -150,7 +150,7 @@ neither a partition nor I2S:
 | Source | Sink |
 |---|---|
 | `partition` — flash (default) | `i2s` — stereo DAC (default), 32-bit slots, master or slave |
-| `sd` — SD card over SDMMC | `tdm` — up to sixteen channels on one data line |
+| `sd` — SD card over SDMMC | `tdm` — TDM on one data line, at most four 32-bit slots on an ESP32-S3 |
 | `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
 | `http` — an HTTP body over WiFi | `null` — counts blocks |
 
@@ -863,9 +863,12 @@ run, under QEMU.
   still structural: a dependent's channels go through the access unit's
   own vectors, 73 KB at the peak, where writing them straight into their
   output slots would remove them; PSRAM for the staging remains the blunt
-  alternative. A TDM16 sink's DMA ring is 16 KB a block and WiFi wants
-  50 KB, and at 0.90x the second core stops being optional for anything
-  that decodes 7.1.4 and does something else.
+  alternative. One S3 I2S line carries at most four 32-bit TDM slots, because a
+  frame holds 128 bits, so twelve need both controllers at 16 bits or a TDM
+  device fed by several lines; a twelve-slot DMA queue competes with WiFi for
+  internal RAM; and at 0.90x the second core stops being optional for anything
+  that decodes 7.1.4 and does something else
+  (`planning/esp32-714-realtime.md` in the repository).
 - **The second core** was the lever the earlier estimates ranked first. It was
   not needed for stereo or 5.1, and the breakdown says why it would have
   disappointed: the stages that dominated were serial software floating point,

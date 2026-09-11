@@ -669,6 +669,15 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data line; an
+  ESP32-S3 carries four** (`esp-idf/ac3forge/examples/stream_player/main/sink/tdm/`). An S3 TDM
+  frame holds at most 128 bits, because the peripheral's half-frame length is a 6-bit register
+  field, and ESP-IDF v6.1 refuses more. The sink had never run on hardware, and CI's eight- and
+  twelve-slot shapes use the `capture` sink, which configures no peripheral, so a board run on
+  2026-09-11 was the first to try one. The sink now refuses a frame over 128 bits and says why,
+  and the Kconfig help, both READMEs, `docs/platforms/esp32.md` and the ESP32 planning pages say
+  what the part carries: four slots of 32 bits or eight of 16 on a line, twice that across the
+  two I2S controllers.
 - **A panic or a reset after `result=pass` passed every ESP32 leg CI runs under QEMU**
   (`tools/checks/check_esp_console.py`). The two probe runners, `run_esp32s3_probe.sh` and
   `run_esp32c3_probe.sh`, and the streaming player's streaming, capture, render and HTTP steps in

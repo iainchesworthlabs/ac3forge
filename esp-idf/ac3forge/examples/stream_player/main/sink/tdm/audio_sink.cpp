@@ -1,12 +1,17 @@
 // Multi-channel out of one data line: I2S in TDM mode.
 //
-// Standard I2S carries two slots, so anything wider needs this. The ESP32-S3's
-// I2S packs up to 16 slots onto a single data line, which means a whole 7.1.4
-// needs THREE pins - BCLK, WS and DATA - rather than six data lines. Eight
-// slots of 32 bits at 48 kHz is a 12.3 MHz bit clock and sixteen is 24.6 MHz,
-// both inside what the peripheral will do; whether the DAC follows is the
-// DAC's datasheet. It has to speak TDM: a PCM3168A does, an ADAU1452 or
-// ADAU1467 does on its serial inputs (TDM2/4/8/16), the common stereo breakouts
+// Standard I2S carries two slots, so anything wider needs this. An ESP32-S3
+// TDM frame holds at most 128 bits: the peripheral's half-frame length is a
+// 6-bit register field (tx_half_sample_bits), so one data line carries four
+// slots of 32 bits - the width this sink sends, 24-bit samples left-justified -
+// or eight of 16, and sixteen only at 8 bits. ESP-IDF v6.1 refuses anything
+// larger at i2s_channel_init_tdm_mode, and so does sink_open below, first and
+// with the reason. A 7.1.4 layout's twelve slots of 24-bit audio therefore do
+// not fit on one line of this part: that needs two I2S controllers at 16 bits,
+// or a TDM device fed by several lines (planning/esp32-714-realtime.md). Four
+// slots of 32 bits at 48 kHz is a 6.1 MHz bit clock; whether the DAC follows is
+// its datasheet. It has to speak TDM: a PCM3168A does, an ADAU1452 or ADAU1467
+// does on its serial inputs (TDM2/4/8/16), the common stereo breakouts
 // (MAX98357A, PCM5102) do not.
 //
 // Master by default; CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE hands the clocks to the
@@ -86,6 +91,20 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
     if (g_slots > kMaxSlots || static_cast<std::size_t>(channels) > g_slots) {
         std::printf("error: %d channels do not fit %u TDM slots\n", channels,
                     static_cast<unsigned>(g_slots));
+        return false;
+    }
+    // At most 128 bits a frame, so four of these 32-bit slots - see the top of
+    // this file. Refused here, with what to do instead, rather than left to the
+    // driver, whose own line names the limit and nothing else.
+    constexpr std::size_t kFrameBitsMax = 128;
+    constexpr std::size_t kSlotBits = 32;
+    if (g_slots * kSlotBits > kFrameBitsMax) {
+        std::printf("error: an ESP32-S3 I2S TDM frame holds at most %u bits, so %u slots of %u "
+                    "bits, and CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS is %u - more channels need a "
+                    "second I2S controller or a TDM device fed by several lines\n",
+                    static_cast<unsigned>(kFrameBitsMax),
+                    static_cast<unsigned>(kFrameBitsMax / kSlotBits),
+                    static_cast<unsigned>(kSlotBits), static_cast<unsigned>(g_slots));
         return false;
     }
     const std::size_t bytes_per_frame = g_slots * sizeof(std::int32_t);
