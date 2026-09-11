@@ -627,7 +627,7 @@ passthrough path in Music Assistant. Not schedulable here; the exit is the answe
 
 ### Hand-over to the decoder core
 
-Six items for the session that owns `src/forge`; this page describes them and does not touch
+Six items for whoever owns `src/forge`; this page describes them and does not touch
 that tree.
 
 1. **A defect, found by the streaming example's CI shape on 2026-09-10.**
