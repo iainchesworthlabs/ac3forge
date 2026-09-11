@@ -89,7 +89,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
         return false;
     }
     std::printf("sink: capture %lu Hz %s x%d in %u slots (no peripheral, no pacing)\n",
-                static_cast<unsigned long>(sample_rate), kTdm ? "24-in-32" : "16-bit", channels,
+                static_cast<unsigned long>(sample_rate), kWide ? "24-in-32" : "16-bit", channels,
                 static_cast<unsigned>(g_slots));
     return true;
 }
@@ -102,6 +102,12 @@ void sink_write(std::span<const std::span<const float>> channels) {
     if (frames > ac3::kSamplesPerBlock) {
         frames = ac3::kSamplesPerBlock;
     }
+    // The level in integers, per write, and in double once per write: the
+    // slots already hold integers, their squares sum exactly in 64 bits over a
+    // block (256 x 12 x 2^46 is under 2^58), and the soft-float library is
+    // called once instead of four times a sample - which cost more than the
+    // decode on a 12-slot bus.
+    std::int64_t block_sum = 0;
     if (kTdm) {
         const auto padding = ac3forge::interleave_24in32(
             channels, g_slots, frames, std::span<std::int32_t>{g_tdm.data(), frames * g_slots});
@@ -119,29 +125,54 @@ void sink_write(std::span<const std::span<const float>> channels) {
                     ++g_carried_nonzero;
                 }
                 if (!is_padding) {
-                    // Back to the same scale the float RMS is in: the slot is
-                    // 24-bit left-justified in 32, so shift down and divide by
-                    // the 24-bit maximum.
-                    const double sample =
-                        static_cast<double>(value >> 8) / static_cast<double>(ac3forge::kPcm24Max);
-                    g_sum_squares += sample * sample;
+                    // The slot is 24-bit left-justified in 32: shift down to
+                    // the sample, and scale by the 24-bit maximum once, below.
+                    const std::int64_t sample = value >> 8;
+                    block_sum += sample * sample;
                     ++g_samples;
                 }
             }
         }
+        constexpr double kFullScale = static_cast<double>(ac3forge::kPcm24Max);
+        g_sum_squares += static_cast<double>(block_sum) / (kFullScale * kFullScale);
     } else {
-        // A mono layout to both slots, as the i2s sink does.
+        // A mono layout to both slots, as the i2s sink does, converted the way
+        // that sink is configured to: 24-in-32 when its slots are 32 bits wide
+        // (the default), 16-bit when they are not. Until 2026-09-10 this
+        // always took the 16-bit path, so CI checked a conversion the default
+        // board shape does not run.
         const std::array<std::span<const float>, 2> pair = {
             channels[0], channels.size() > 1 ? channels[1] : channels[0]};
-        ac3forge::interleave_16(pair, frames, std::span<std::int16_t>{g_stereo.data(), frames * 2});
-        for (std::size_t i = 0; i < frames * 2; ++i) {
-            const std::int16_t value = g_stereo[i];
-            if (value != 0) {
-                ++g_carried_nonzero;
+        if (kWide) {
+            ac3forge::interleave_24in32(pair, 2, frames,
+                                        std::span<std::int32_t>{g_tdm.data(), frames * 2});
+            for (std::size_t i = 0; i < frames * 2; ++i) {
+                const std::int32_t value = g_tdm[i];
+                if ((value & 0xFF) != 0) {
+                    ++g_low_byte_set;
+                }
+                if (value != 0) {
+                    ++g_carried_nonzero;
+                }
+                const std::int64_t sample = value >> 8;
+                block_sum += sample * sample;
+                ++g_samples;
             }
-            const double sample = static_cast<double>(value) / 32767.0;
-            g_sum_squares += sample * sample;
-            ++g_samples;
+            constexpr double kFullScale = static_cast<double>(ac3forge::kPcm24Max);
+            g_sum_squares += static_cast<double>(block_sum) / (kFullScale * kFullScale);
+        } else {
+            ac3forge::interleave_16(pair, frames,
+                                    std::span<std::int16_t>{g_stereo.data(), frames * 2});
+            for (std::size_t i = 0; i < frames * 2; ++i) {
+                const std::int16_t value = g_stereo[i];
+                if (value != 0) {
+                    ++g_carried_nonzero;
+                }
+                const std::int64_t sample = value;
+                block_sum += sample * sample;
+                ++g_samples;
+            }
+            g_sum_squares += static_cast<double>(block_sum) / (32767.0 * 32767.0);
         }
     }
     ++g_writes;
@@ -152,6 +183,16 @@ const char* sink_name() { return kTdm ? "capture-tdm" : "capture-i2s"; }
 int sink_slots() { return static_cast<int>(g_slots); }
 
 std::uint64_t sink_frames_written() { return g_writes; }
+
+// A new play's samples are checked from zero, so the line sink_report() prints
+// is about that play, as the player's own levels beside it are.
+void sink_begin_play() {
+    g_low_byte_set = 0;
+    g_padding_nonzero = 0;
+    g_carried_nonzero = 0;
+    g_sum_squares = 0.0;
+    g_samples = 0;
+}
 
 void sink_report() {
     const double rms = g_samples > 0 ? std::sqrt(g_sum_squares / static_cast<double>(g_samples))

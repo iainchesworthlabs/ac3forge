@@ -141,16 +141,18 @@ configured, so a DAC needing one has to have it added. Written against a MAX9835
 
 ### Streaming player
 
-`stream_player` decodes AC-3 out of a flash partition without ever holding more than 16 KB of the
-stream in memory. Where bytes come from and where audio goes are directories CMake picks, not
-flags the player branches on — the player itself names neither a partition nor I2S:
+`stream_player` decodes AC-3 and E-AC-3 from a flash partition, an SD card, a FAT volume in flash
+or an HTTP body. It reads the stream a piece at a time, through a ring between the player's fetch
+and decode tasks (32 KB by default) and a 16 KB framing buffer. Where bytes come from and where
+audio goes are directories CMake picks, not flags the player branches on — the player itself names
+neither a partition nor I2S:
 
 | Source | Sink |
 |---|---|
 | `partition` — flash (default) | `i2s` — stereo DAC (default), 32-bit slots, master or slave |
 | `sd` — SD card over SDMMC | `tdm` — up to sixteen channels on one data line |
-| `http` — an HTTP body over WiFi | `capture` — converts and checks; what CI runs |
-| | `null` — counts blocks |
+| `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
+| `http` — an HTTP body over WiFi | `null` — counts blocks |
 
 Chosen under *ac3forge stream player* in `idf.py menuconfig`, along with the output layout — a
 name such as `5.1.4` or a speaker list — that the player renders every stream onto
@@ -159,20 +161,49 @@ name such as `5.1.4` or a speaker list — that the player renders every stream 
 It exists to exercise the incremental input path. `ac3::split_frames` takes a span over a whole
 stream, which nothing streaming can produce; `ac3::io::AccessUnitAccumulator` applies the same
 boundary rule over a caller-owned buffer, allocating nothing. It hands the decoder access units
-rather than syncframes, because `decode_access_unit_into` wants an independent substream together
+rather than syncframes, because `decode_access_unit_by_block` wants an independent substream together
 with the dependents that extend it (§E3.8.2).
 
-Only `partition` runs without hardware, so it is the default and the one CI drives end to end.
-`sd` and `http` are compiled and no further — QEMU has no SD host and no network. `tdm` has never
-run on hardware either; what is tested is `main/interleave.hpp`, on the host
-(`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing with slot padding is
-where the bugs are. A 5.1 programme on an 8-slot bus leaves two slots that must be written as
-zeros rather than skipped: the DMA buffer is reused, so whatever the previous frame left is what
-the DAC clocks out.
+CI runs the example under QEMU in four shapes, each a step of `build-esp32s3` in
+`.github/workflows/_build.yml` with its own overlay on `sdkconfig.defaults`. All four write to the
+`capture` sink, since QEMU has no I2S peripheral. The capture sink calls the same conversion
+functions as the `i2s` and `tdm` sinks (`esp-idf/ac3forge/include/ac3forge/interleave.hpp`) and
+checks what they produce:
+
+- `sdkconfig.ci`: the `partition` source and the AC-3 5.1 sample, folded to Lo/Ro. Two passes, so
+  the rewind at the end of the stream runs as well.
+- `sdkconfig.ci-tdm`: the `fatfs` source, into the TDM conversion on an 8-slot bus. QEMU has no SD
+  host, so a FAT volume in flash stands in for the card. The `sd` and `fatfs` sources share their
+  file code (`main/source/file_common.hpp`) and differ only in the mount, so the part of `sd` that
+  CI does not run is its mount over the SDMMC host. The capture sink checks the integers: every
+  sample left-justified 24-in-32, and zeros in the six slots a two-channel programme does not fill.
+- `sdkconfig.ci-render`: the `fatfs` source playing the probe's height-object fixture onto
+  `7.1.4`, its objects reconstructed and placed, into twelve TDM slots. Each slot's level has to be
+  within one unit of the probe's `eac3_atmos_render` row
+  ([Placed on loudspeakers](#placed-on-loudspeakers)).
+- `sdkconfig.ci-http`: the `http` source over QEMU's OpenCores Ethernet MAC in place of WiFi
+  (`main/source/http/net/openeth/`), fetching the E-AC-3 demo stream (`apps/wasm/assets/demo.ec3`)
+  from a server on the runner; the guest is 10.0.2.15 and the host 10.0.2.2. The same step drives
+  the control surface through a port forward: `GET /status`, `POST /volume` with 0.5, a replay
+  through `POST /play` whose levels must come out at half, and `POST /stop`.
+
+Another step, *Build every sink and source combination*, builds `tdm`, `i2s`, `sd`, `http` and
+`null`, one build each, and runs none of them. The `i2s` and `tdm` sinks drive the I2S peripheral
+and `sd` the SDMMC host, and `http` is built with WiFi (`main/source/http/net/wifi/`); QEMU
+emulates none of the three. `tdm` has not run on hardware either. Its conversion is also
+unit-tested on the host (`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing
+with slot padding is where the bugs are. A 5.1 programme on an 8-slot bus leaves two slots that
+must be written as zeros rather than skipped: the DMA buffer is reused, so whatever the previous
+block left is what the DAC clocks out.
 
 CI compares the sink's per-channel RMS against the host's answer for the same file through the
 same configuration (`ac3cli decode … downmix=loro drcmode=line`). A `result=pass` alone would be
 satisfied by a stream decoding to silence.
+
+Nor does `result=pass` say the run was clean. QEMU runs on until a timeout, the HTTP step plays the
+stream a second time, and a panic at any point resets the chip into a new run that can print
+`result=pass` again. So every QEMU leg, the probes included, also fails if the console shows panic
+output or a second boot after the first boot banner (`tools/checks/check_esp_console.py`).
 
 ## Memory
 

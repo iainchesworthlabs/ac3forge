@@ -7,9 +7,6 @@ edit_uri: edit/main/docs/
 
 docs_dir: docs
 
-exclude_docs: |
-  spec/
-
 theme:
   name: material
   custom_dir: overrides

@@ -91,7 +91,8 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
     const std::size_t bytes_per_frame = g_slots * sizeof(std::int32_t);
     // The same depth the stereo sink has, in as many descriptors as this
     // width needs - see dma_plan.
-    const DmaPlan plan = dma_plan(kDmaDescriptors, kDmaFrames, bytes_per_frame);
+    const DmaPlan plan =
+        dma_plan(kDmaDescriptors, kDmaFrames, bytes_per_frame, ac3::kSamplesPerBlock);
     const std::size_t dma_bytes = static_cast<std::size_t>(plan.descriptors) *
                                   static_cast<std::size_t>(plan.frames) * bytes_per_frame;
     g_model.open(sample_rate * static_cast<std::uint32_t>(bytes_per_frame), dma_bytes);
@@ -158,6 +159,10 @@ const char* sink_name() { return "tdm"; }
 int sink_slots() { return static_cast<int>(g_slots); }
 
 std::uint64_t sink_frames_written() { return g_model.writes(); }
+
+// As in sink/i2s/: the channel runs on between plays, so only the model starts
+// again. See audio_sink.hpp.
+void sink_begin_play() { g_model.restart(); }
 
 // The DAC's side of the wire is not observable here; sink/capture/ with
 // CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM checks this sink's conversion. Whether

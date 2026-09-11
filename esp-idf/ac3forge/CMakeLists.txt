@@ -128,6 +128,19 @@ set(AC3FORGE_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_AC4 OFF CACHE BOOL "" FORCE)
 
+# The decode-critical sources at -O2. src/forge/minimal.cmake lists them, with
+# what each one measured, and the probe under apps/baremetal/platform/esp32s3/
+# has always been built this way - so the timing docs/platforms/esp32.md
+# quotes is this build, and a player built from this component without it
+# decodes slower than those figures. The cost is flash, not SRAM. Not FORCEd:
+# a project that needs the flash back says so before project(),
+#
+#     set(AC3FORGE_MINIMAL_HOT_O2 OFF CACHE BOOL "")
+#
+# or on the command line, `idf.py -DAC3FORGE_MINIMAL_HOT_O2=OFF build`.
+set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
+    "Decode-critical sources at -O2; see src/forge/minimal.cmake")
+
 # Tells apps/baremetal/CMakeLists.txt that an external build system owns the
 # application. Without it that file would see CMAKE_SYSTEM_NAME "Generic" -
 # which ESP-IDF's own toolchain.cmake sets, exactly as the arm-none-eabi one

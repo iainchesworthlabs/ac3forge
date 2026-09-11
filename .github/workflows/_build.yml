@@ -1453,8 +1453,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./tools/checks/run_baremetal_probe.sh --host --scalar=fixed | tee "${{ runner.temp }}/fixed-host.txt"
-          python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "${{ runner.temp }}/fixed-host.txt"
+          ./tools/checks/run_baremetal_probe.sh --host --scalar=fixed | tee "$RUNNER_TEMP/fixed-host.txt"
+          python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "$RUNNER_TEMP/fixed-host.txt"
 
       # The same two questions for the ENCODE path's scalar. AC3FORGE_ENCODE_SCALAR
       # (src/forge/src/internal/scalar/encode/) is the axis the minimum-footprint
@@ -1861,10 +1861,14 @@ jobs:
             exit 1
           fi
           dpkg-deb -I "${debs[0]}" | grep -E '^ (Package|Version|Section|Depends):'
-          dpkg-deb -I "${debs[0]}" | grep -q '^ Package: ac3forge-crucible$' || {
+          # The field itself, not `dpkg-deb -I | grep -q`: this step runs under
+          # bash -eo pipefail, grep -q exits at its first match, and dpkg-deb,
+          # still writing the Depends line after it, dies of SIGPIPE - so the
+          # pipeline failed on a package that was named correctly.
+          if [ "$(dpkg-deb -f "${debs[0]}" Package)" != "ac3forge-crucible" ]; then
             echo "::error::the Crucible .deb is not named ac3forge-crucible - CPACK_DEBIAN_CRUCIBLE_PACKAGE_NAME (cmake/Packaging.cmake) is not reaching the generator"
             exit 1
-          }
+          fi
 
       # packages-*, because that is the pattern release.yml downloads
       # (release.yml's "pattern: packages-*"). Under the old name the Linux
@@ -3790,13 +3794,17 @@ jobs:
       # the i2s_player one above it. The streaming path - reading a partition a
       # block at a time, assembling access units across those block boundaries,
       # decoding them - is all ordinary code with no peripheral behind it, so it
-      # runs under QEMU perfectly well. What it needs is a sink that is not
-      # I2S, because qemu-system-xtensa has none and the real sink's first write
-      # blocks on a DMA that never drains.
+      # runs under QEMU perfectly well. What it needs is a sink that does not
+      # use the I2S peripheral, because qemu-system-xtensa has none and the real
+      # sink's first write blocks on a DMA that never drains.
       #
-      # sdkconfig.ci supplies exactly that: the null sink, and a two-lap limit
-      # so the application stops with a verdict instead of playing forever. Two
-      # laps rather than one so the rewind at end of stream is exercised.
+      # sdkconfig.ci supplies exactly that: the capture sink, which converts
+      # with the code the sinks share (ac3forge/interleave.hpp) and checks the
+      # result with no peripheral behind it, and a two-lap limit so the
+      # application stops with a verdict instead of playing forever. Two laps
+      # rather than one so the rewind at end of stream is exercised. This step
+      # does not gate on the capture sink's figures; the capture and render
+      # steps below do.
       - name: Build and run the streaming player example under QEMU
         env:
           SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci"
@@ -3816,6 +3824,11 @@ jobs:
             grep -E 'result=|error|Guru Meditation|assert failed' qemu-stream.txt >&2 || true
             exit 1
           fi
+          # And nothing wrong after it. QEMU runs on to the timeout once the
+          # verdict is printed, so a panic or a reset that came later is in the
+          # capture too; tools/checks/check_esp_console.py fails the step on
+          # either, and its header says why that matters.
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 streaming player" qemu-stream.txt
           # Nothing should ever be skipped looking for a sync word: the build
           # tells the player exactly how many bytes of the partition are audio.
           # A non-zero count means either that length is wrong or the framing is.
@@ -3863,23 +3876,6 @@ jobs:
           check_rms 0 107370
           check_rms 1 106234
 
-      # BUILD ONLY, and that is the whole point of the step.
-      #
-      # Three of the example's four sink/source combinations cannot RUN without
-      # hardware: QEMU has no I2S, no TDM, no SD host and no network. What can
-      # go wrong in them anyway is that they stop compiling - an IDF component
-      # gets renamed, a driver API changes shape - and an integrator finding
-      # that out is strictly worse than CI finding it.
-      #
-      # It has already paid for itself: the SD and HTTP sources compiled their
-      # own sources against a REQUIRES list that had silently resolved to the
-      # partition branch, because IDF expands REQUIRES in an earlier pass than
-      # the source list and CONFIG_ is not reliably set in it.
-      #
-      # The interleave inside the TDM sink is the one part of this that gets a
-      # real test rather than a compile - it is free of ESP-IDF and unit-tested
-      # on the host (tests/io/test_interleave.cpp), because slot padding and
-      # planar-to-interleaved indexing are where the bugs are.
       # The second runnable configuration, and the one that covers the
       # boundaries the first cannot.
       #
@@ -3913,6 +3909,8 @@ jobs:
             grep -E 'result=|error|Guru Meditation|assert failed' qemu-capture.txt >&2 || true
             exit 1
           fi
+          # And no panic or reset after it, as in the streaming step above.
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 capture run" qemu-capture.txt
 
           value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-capture.txt | tail -1; }
 
@@ -3972,6 +3970,8 @@ jobs:
 
           fail() { echo "::error title=ESP32-S3 render run::$1" >&2; grep -E 'result=|error|player:|stream:|Guru Meditation|assert failed' qemu-render.txt >&2 || true; exit 1; }
           grep -q '^result=pass' qemu-render.txt || fail "did not report result=pass"
+          # And no panic or reset after it, as in the streaming step above.
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 render run" qemu-render.txt
           grep -q 'onto 7.1.4 (12 slots, objects placed)' qemu-render.txt || fail "the player did not place the objects onto 7.1.4"
           value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-render.txt | tail -1; }
           units=$(value 'stream\.units')
@@ -4061,7 +4061,11 @@ jobs:
           qemu=$!
           trap 'kill "$qemu" 2>/dev/null || true; kill "$server" 2>/dev/null || true' EXIT
 
-          fail() { echo "::error title=ESP32-S3 HTTP source::$1" >&2; grep -E 'result=|error|network|source:|control|Guru Meditation|assert failed' qemu-http.txt >&2 || true; exit 1; }
+          # fail() checks the console first, so a curl that times out or a check
+          # that trips because the part panicked and rebooted is reported as the
+          # panic, beside the check that noticed it.
+          console="$GITHUB_WORKSPACE/tools/checks/check_esp_console.py"
+          fail() { python3 "$console" --title "ESP32-S3 HTTP source" qemu-http.txt || true; echo "::error title=ESP32-S3 HTTP source::$1" >&2; grep -E 'result=|error|network|source:|control|Guru Meditation|assert failed' qemu-http.txt >&2 || true; exit 1; }
           check_rms() {
             local channel="$1" expected="$2"
             local got
@@ -4093,12 +4097,12 @@ jobs:
           # the run ended; /volume and /play must be taken; the replay must
           # play every unit again at half volume, which is a level check on the
           # gain the decode task applies; /stop must answer.
-          status=$(curl -s -m 10 http://127.0.0.1:8080/status)
+          status=$(curl -s -m 10 http://127.0.0.1:8080/status) || fail "GET /status did not answer (curl exit $?)"
           echo "status: $status"
           echo "$status" | grep -q '"state":"finished"' || fail "/status did not report the run as finished"
           echo "$status" | grep -q '"frames":250' || fail "/status did not report 250 frames"
           curl -s -m 10 -X POST -d 0.5 http://127.0.0.1:8080/volume | grep -q '^ok' || fail "POST /volume was not accepted"
-          code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -d http://10.0.2.2:8000/demo.ec3 http://127.0.0.1:8080/play)
+          code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -d http://10.0.2.2:8000/demo.ec3 http://127.0.0.1:8080/play) || fail "POST /play did not answer (curl exit $?)"
           [ "$code" = "202" ] || fail "POST /play answered $code, expected 202"
           for _ in $(seq 1 60); do
             if [ "$(grep -c '^result=' qemu-http.txt)" -ge 2 ]; then break; fi
@@ -4109,8 +4113,50 @@ jobs:
           check_rms 0 28336
           check_rms 1 23673
           curl -s -m 10 -X POST http://127.0.0.1:8080/stop | grep -q '^stopped' || fail "POST /stop was not accepted"
+
+          # Then the console, once the part has nothing left to do. /stop is
+          # answered as soon as it is queued, and /status reads "stopped" only
+          # once app_main has taken it - which is after the replay's teardown,
+          # the code that freed the ring twice on 2026-09-10.
+          stopped=
+          for _ in $(seq 1 30); do
+            if curl -s -m 10 http://127.0.0.1:8080/status | grep -q '"state":"stopped"'; then stopped=1; break; fi
+            sleep 1
+          done
+          [ -n "$stopped" ] || fail "/status did not report the player as stopped"
+          python3 "$console" --title "ESP32-S3 HTTP source" qemu-http.txt
           kill "$qemu" 2>/dev/null || true
 
+      # BUILD ONLY, for the five combinations no step above runs: tdm, i2s,
+      # sd, http and null. Each entry sets one choice over sdkconfig.defaults
+      # and leaves the others at their Kconfig defaults: the I2S sink, the
+      # partition source, WiFi under the HTTP source.
+      #
+      # Four of them drive hardware QEMU does not emulate. The code they share
+      # with the runnable configurations already runs in the QEMU steps above:
+      #
+      #   * tdm and i2s drive the I2S peripheral, in TDM and in standard mode.
+      #     The conversion both sinks call (ac3forge/interleave.hpp) runs
+      #     through the capture sink - stereo in the streaming and HTTP steps,
+      #     8 and 12 TDM slots in the capture and render steps - and is
+      #     unit-tested on the host (tests/io/test_interleave.cpp).
+      #   * sd drives the SDMMC host. The file layer it shares with the
+      #     flash-backed FAT source (main/source/file_common.hpp) runs in the
+      #     capture and render steps.
+      #   * http drives WiFi (net/wifi/). The HTTP client, the framer and the
+      #     decode run over QEMU's OpenCores Ethernet MAC (net/openeth/) in
+      #     the HTTP step.
+      #
+      # The fifth, null, drives no hardware. It is built here because the
+      # four QEMU runs above all use the capture sink in its place.
+      #
+      # What can go wrong in a build nothing runs is that it stops compiling -
+      # an IDF component is renamed, a driver API changes shape - and CI should
+      # find that before an integrator does. It has found one: the SD and HTTP
+      # sources compiled against a REQUIRES list that had silently resolved to
+      # the partition branch, because IDF expands REQUIRES in an earlier pass
+      # than the source list and CONFIG_ is not reliably set in it.
+      # main/CMakeLists.txt now lists every component unconditionally.
       - name: Build every sink and source combination
         run: |
           set -eu

@@ -680,6 +680,21 @@ release packaging.
 
 ### Fixed
 
+**ESP32 / bare-metal**
+
+- **A panic or a reset after `result=pass` passed every ESP32 leg CI runs under QEMU**
+  (`tools/checks/check_esp_console.py`). The two probe runners, `run_esp32s3_probe.sh` and
+  `run_esp32c3_probe.sh`, and the streaming player's streaming, capture, render and HTTP steps in
+  `_build.yml` end QEMU on a timeout and passed on `result=pass` in the console, looking for panic
+  output only when that line was missing. The application prints it before it has finished, and
+  a panic in what follows resets the part into a second run that prints it again. On 2026-09-10
+  the HTTP step's player freed its ring buffer twice after its verdict, and the heap's assert, the
+  backtrace and the reboot reached the step only as a `/status` that still read "playing". Each
+  of those places now also fails on panic output or a second boot banner anywhere after the first
+  boot, and lists the offending lines. The HTTP step checks its console once `/status` reports the
+  stop, which comes after the replay's teardown, and its other failures now report a panic first
+  when there is one.
+
 **Codec correctness**
 
 - **The AC-4 parser dereferenced a null pointer on a legal bitstream, and could be made to ask
