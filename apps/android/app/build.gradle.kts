@@ -192,3 +192,13 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:core:1.7.0")
 }
+
+// SonarCloud text:S8569 - pin resolved dependency versions (including
+// transitives) so a build is reproducible from the committed lockfile
+// rather than whatever Google/Maven Central happen to resolve to on a
+// given day. Regenerate with `./gradlew --write-locks` after changing a
+// dependency above; a normal build fails if the resolution then drifts
+// from the committed gradle.lockfile without a matching lockfile update.
+dependencyLocking {
+    lockAllConfigurations()
+}
