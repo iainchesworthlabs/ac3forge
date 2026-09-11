@@ -1,6 +1,6 @@
 # The ESP32 player's stream set
 
-!!! note "Status as of 2026-09-11: built; played under QEMU in CI's twelve-slot shape, not yet on a board"
+!!! note "Status as of 2026-09-11: built; played under QEMU in CI's twelve-slot shape, and on a board"
     Streams for the player's `http` source, in one directory a device can be pointed at: 7.1.4
     streams that decode to all twelve slots of a 7.1.4 output, and beside them a range across the
     layouts the player renders onto, both codecs, dependent substreams, two programmes, dual
@@ -14,6 +14,11 @@
     transient pre-noise processing loses its last access unit; and folding a stream with a
     four-channel dependent substream to 2.0 does not fit a network shape's internal RAM without
     PSRAM. The last two are the decoder core's, handed over in the player plan.
+
+    On a board with PSRAM ([On a board](#on-a-board)) every stream in the set played with the
+    host's levels, and the wide folds fit. What the board found is time: over WiFi a 7.1.4
+    stream folded to 2.0 takes longer to decode than it lasts, and so does a 7.1.4 stream using
+    AHT or enhanced coupling.
 
     Written beside [the web UI's output layout](esp32-device-ui.md#the-output-layout), which
     uses these streams to show what a layout does, and in the shape of [the player
@@ -224,7 +229,8 @@ stream played 9% fast and its pitch a semitone and a half high. The player now r
 
 **Folding a wide programme to 2.0 does not fit without PSRAM**, as [the network shape's
 figures](#what-the-network-shape-holds-at-714) show: 7.1, 5.1.4 and 7.1.4 abort in the fold's
-scratch. That is the decoder core's to change ([decision 8](#decisions)), and the player plan
+scratch. A board with PSRAM folds them ([On a board](#on-a-board)), but cannot fold 7.1.4 in
+real time. Both are the decoder core's to change ([decision 8](#decisions)), and the player plan
 records the hand-over.
 
 **Dual mono reported no channels.** `stream.channels` for E-AC-3 1+1 was the decoder's layout
@@ -232,27 +238,82 @@ count, which is 0 because 1+1 has no Table E2.5 layout; the player now reports 2
 
 ## On a board
 
-The streams marked "no" wait for a board with PSRAM, and none has played them yet. A 7.1.4
-output on a board also needs a TDM DAC, and the network shape's internal RAM is not enough for
-its DMA queue as the shapes stand: at twelve 32-bit slots the queue takes 2,304 bytes of internal
-RAM per millisecond - about 46 KB at the example's default depth and about 147 KB at
-`sdkconfig.psram`'s 64 ms - where the network shape keeps 14 to 16 KB free while it plays stereo,
-in blocks of 6,144 bytes at most. That is a calculation, not a measurement. A local source (FAT,
-SD, a partition) leaves out WiFi's share of internal RAM, and is where a board would first play
-7.1.4 into a DAC.
+Played on 2026-09-11 on the second ESP32-S3-DevKitC-1 (N16R8, 240 MHz, no DAC wired: the I2S
+peripheral clocks out whether or not anything listens, so its pacing and its counters are real),
+from this directory served over the LAN, in the board's network shape
+(`sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram` with the source, its URL and the network's
+credentials). Two images of this branch:
+
+- **2.0 on the I2S sink**, the shape the board already ran: fifteen streams, 5.1 to 7.1.4, the
+  Annex E tools at 5.1, AC-3, dual mono, two programmes and the 44.1 kHz stream.
+- **7.1.4 on the null sink**, levels as coded and objects as their bed, as CI's shape has them:
+  every stream in the set, one `POST /play` at a time. The null sink paces nothing, so a frame's
+  time is the decode and the render.
+
+**Every stream played, and the levels are the host's.** At 2.0 each fold's two levels are the
+host's `ac3cli decode ... downmix=loro drcmode=line` to the digit, the four wide streams
+included. At 7.1.4, 34 of 38 plays have every slot the host's to the digit, two are one unit
+out, and the two TPN streams differ by the access unit the block form holds back. The five
+streams marked "no" played at 7.1.4 with the rest. Each play started with 169 KB of internal RAM
+free, the largest block 90 to 94 KB, and 8.3 MB of PSRAM; nothing failed to allocate, and the
+board did not restart. `GET /status` reported each play as the page shows it: `loro` at 2.0,
+`channels` at 7.1.4, the coded channels by location, and the speakers left silent - ten of
+twelve for the Dolby Encoding Engine's stereo music at 7.1.4.
+
+**The folds fit; the time does not.** Per 32 ms frame, where allocations of 16 KB and over are
+in PSRAM:
+
+| Stream | 2.0: decode with the fold | Blocks to an empty queue at 2.0 | 7.1.4: decode | 7.1.4: render |
+|---|---|---|---|---|
+| `layout-51` (5.1) | 13.8 ms | 0 of 192 | 9.3 ms | 1.4 ms |
+| `layout-512` (5.1.2) | 20.6 ms | 0 of 192 | 14.5 ms | 1.5 ms |
+| `layout-71` (7.1) | 23.5 ms | 4 of 192 | 16.2 ms | 1.5 ms |
+| `layout-514` (5.1.4) | 23.7 ms | 3 of 192 | 16.1 ms | 1.7 ms |
+| `714-walk` (7.1.4) | 36.0 ms | 149 of 900 | 27.4 ms | 2.2 ms |
+| `714-tones` (7.1.4) | 35.6 ms | 62 of 378 | 27.1 ms | 2.2 ms |
+
+At 2.0 the decode includes the decoder's output stage - the fold, with the example's line-mode
+DRC and dialnorm - which the 7.1.4 image, playing levels as coded, does not run: 4.5 ms of the
+frame for 5.1 and 8.6 ms for 7.1.4, where the renderer places the same channels on twelve slots
+in 1.4 to 2.2 ms. So a 7.1.4 stream at 2.0 falls behind: `714-walk` put 149 of its 900 blocks
+into an empty queue, 940 ms of silence in 4.8 s. Behind, the decode task never waits on the
+sink, so core 1's idle task missed the five-second task watchdog, which printed a backtrace in
+`Eac3Decoder::decode_substream_core` and let the play go on (`CONFIG_ESP_TASK_WDT_PANIC` is
+off). 7.1 and 5.1.4 keep up, a few blocks short at the start of a one-second play.
+
+Onto twelve slots a 7.1.4 stream with no coding tools decodes and renders in 26.7 to 29.6 ms,
+inside the frame before any sink converts a sample. The coding tools take it to the edge of the
+frame and past it:
+
+| 7.1.4 with | Decode and render | Of the frame |
+|---|---|---|
+| no tools (`714-none`) | 26.7 ms | 0.83 |
+| TPN | 30.4 ms | 0.95 |
+| coupling | 30.7 ms | 0.96 |
+| spectral extension | 31.1 ms | 0.97 |
+| AHT | 35.2 ms | 1.10 |
+| all of them | 39.1 ms | 1.22 |
+| enhanced coupling | 59.2 ms | 1.85 |
+
+A 7.1.4 output also needs a TDM DAC, which this board does not have, and a sink that converts
+twelve slots in what is left of the frame. The network shape's internal RAM is not enough for a
+twelve-slot DMA queue as the shapes stand: at twelve 32-bit slots the queue takes 2,304 bytes of
+internal RAM per millisecond - about 46 KB at the example's default depth and about 147 KB at
+`sdkconfig.psram`'s 64 ms - where the network shape keeps 14 to 16 KB free while it plays
+stereo. That is a calculation, not a measurement. A local source (FAT, SD, a partition) leaves
+out WiFi's share of internal RAM, and is where a board would first play 7.1.4 into a DAC.
 
 ## What cannot be verified
 
-- **Every stream marked "no", and object placement over the network,** until a board with PSRAM
-  plays them. CI's shape plays objects as their bed; `sdkconfig.ci-render` places objects from
-  FAT.
-- **7.1.4 into a TDM DAC.** There is none here, and QEMU has no I2S.
-- **A wide stream at 2.0 on a board.** The fold's 6 KB scratch is below `sdkconfig.psram`'s
-  16 KB threshold, so it comes from internal RAM, where a stereo play leaves blocks of 6,144 at
-  most. It is likely to fail as it does under QEMU, and has not been tried.
-- **The decode stack with objects placed over the network.** `demo.ec3` left 1,872 bytes of the
-  24 KB stack the QEMU network shape gives the decode task. A board's network shape gives it
-  32 KB.
+- **Object placement over the network.** CI's shape and the board's 7.1.4 image play objects
+  as their bed; `sdkconfig.ci-render` places objects from FAT. Under QEMU `demo.ec3` placed its
+  objects with 1,872 bytes of the 24 KB decode stack left; a board's network shape gives the
+  task 32 KB, and has not placed objects over the network.
+- **7.1.4 into a TDM DAC.** There is none here, and QEMU has no I2S. The board's figures are the
+  decode and the render; a TDM sink's conversion of twelve slots, and its DMA queue, are not
+  measured.
+- **The streams marked "no", in CI.** They played on the board on 2026-09-11, and CI's shape
+  has no PSRAM, so a change that breaks them shows only on a board.
 
 ## Decisions
 
@@ -296,8 +357,8 @@ SD, a partition) leaves out WiFi's share of internal RAM, and is where a board w
 
 7. **The coding tools 7.1.4 cannot carry without PSRAM.** (a) **in the set at 7.1.4, marked
    PSRAM-only, and at 5.1, which CI plays**; (b) left out of the set. **Recommend (a).** A board
-   has the 7.1.4 ones to play, and CI still decodes AHT, enhanced coupling and TPN through the
-   player. Cost: 72 KB for the 5.1 streams.
+   with PSRAM plays the 7.1.4 ones, as one did on 2026-09-11, and CI still decodes AHT, enhanced
+   coupling and TPN through the player. Cost: 72 KB for the 5.1 streams.
 
 8. **A wide programme folded to 2.0.** (a) **record it, and hand it to the decoder core**, with
    CI's folds at 2.0 made of 5.1 streams; (b) the player places a wide stream at `2.0` with its own
@@ -305,4 +366,5 @@ SD, a partition) leaves out WiFi's share of internal RAM, and is where a board w
    refuses a stream wider than 5.1.2 at `2.0`. **Recommend (a).** (b) would give two downmixes
    for one layout, §7.8's for some streams and a panner's for others, and (c) takes away a
    layout that works on a board with room. Cost: until the decoder changes, a 7.1, 5.1.4 or 7.1.4
-   stream at `2.0` aborts a player without the internal RAM for the fold, and a board may be one.
+   stream at `2.0` aborts a player without the internal RAM for the fold - QEMU's network shape
+   is one, the board's is not - and a 7.1.4 stream at `2.0` falls behind real time over WiFi.

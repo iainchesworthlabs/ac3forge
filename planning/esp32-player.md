@@ -625,7 +625,7 @@ passthrough path in Music Assistant. Not schedulable here; the exit is the answe
 
 ### Hand-over to the decoder core
 
-Five items for the session that owns `src/forge`; this page describes them and does not touch
+Six items for the session that owns `src/forge`; this page describes them and does not touch
 that tree.
 
 1. **A defect, found by the streaming example's CI shape on 2026-09-10.**
@@ -652,15 +652,26 @@ that tree.
    assembles what is held and delivers it as the unit's blocks would close it; a test is a TPN
    stream decoded block by block, whose samples then match `decode_access_unit` followed by
    `flush()`.
-5. **The fold of a wide programme's memory, found the same day.** Played to `2.0`, a stream with
-   a four-channel dependent substream - 7.1, 5.1.4, 7.1.4 - runs out of internal RAM in the
-   emulated network shape, which has no PSRAM: `OutputStage::apply` (`output.cpp`, the fold's
+5. **The fold of a wide programme, found the same day.** Played to `2.0` in the emulated
+   network shape, which has no PSRAM, a stream with a four-channel dependent substream - 7.1,
+   5.1.4, 7.1.4 - runs out of internal RAM: `OutputStage::apply` (`output.cpp`, the fold's
    scratch) asks for 6,144 bytes with about 8 KB left and no block that large, where the same
-   streams play as coded onto twelve slots with 147 KB to spare. 5.1 and 5.1.2 fold. A board's
-   network shape puts allocations under 16 KB in internal RAM, where a play of stereo leaves
-   blocks of 6,144 at most, so it is likely to fail there too; that has not been tried. Folding
-   the assembled programme with scratch sized to it once, or seat by seat without it, would close
-   it; a test is the peak heap of a 7.1.4 fold against a 5.1 one.
+   streams play as coded onto twelve slots with 147 KB to spare. 5.1 and 5.1.2 fold. On the
+   board, with PSRAM, the fold fits - each play started with 169 KB of internal RAM free and a
+   94 KB block - and what it costs is time: with the example's line-mode DRC and dialnorm, the
+   decoder's output stage takes 4.5 ms of a 32 ms frame for 5.1 and 8.6 ms for 7.1.4, where the
+   player's renderer places the same channels on twelve slots in 1.4 to 2.2 ms. So a 7.1.4
+   stream at `2.0` over WiFi decodes in 36 ms a frame and falls behind ([the stream set on a
+   board](esp32-stream-set.md#on-a-board)). Folding the assembled programme with scratch sized
+   to it once, or seat by seat without it, would close the memory; the time wants the output
+   stage measured on the board with `AC3FORGE_STAGE_TIMERS`. The tests are the peak heap of a
+   7.1.4 fold against a 5.1 one, and the board's time a frame for `714-walk.ec3` at `2.0`.
+6. **The Annex E tools at 7.1.4, found the same day.** Decoded and rendered onto twelve slots
+   over WiFi, a 32 ms frame of 7.1.4 takes 26.7 ms with no coding tools, 30.4 with TPN, 30.7
+   with coupling, 31.1 with spectral extension, 35.2 with AHT, 39.1 with all of them and 59.2 with
+   enhanced coupling. So a 7.1.4 stream from an encoder that uses AHT or enhanced coupling cannot
+   play in real time on this part as the decoder stands, and the rest leave a sink 1 to 2 ms. The
+   figures are the board run in [the stream set](esp32-stream-set.md#on-a-board).
 
 ## What cannot be verified, and why
 

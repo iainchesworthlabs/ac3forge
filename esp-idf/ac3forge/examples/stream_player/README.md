@@ -496,13 +496,16 @@ in Ls or Rs, each at -3 dB - and leaves the LFE out, as §7.8 does by default.
 speakers it has sent nothing, and the web page puts both into words
 ([Controlling it](#controlling-it)).
 
-The fold costs memory the as-coded render does not. Under QEMU's network shape,
-which has no PSRAM, a stream with a four-channel dependent substream - 7.1,
-5.1.4, 7.1.4 - aborts at `2.0` for want of 6 KB in the fold's scratch, where the
-same stream plays as coded onto twelve slots with 147 KB to spare; 5.1 and 5.1.2
-fold. A board's network shape keeps allocations of that size in internal RAM, so
-it is likely to fail there too; see
-[`planning/esp32-stream-set.md`](../../../../planning/esp32-stream-set.md#what-the-network-shape-holds-at-714).
+The fold costs memory and time the as-coded render does not. Under QEMU's
+network shape, which has no PSRAM, a stream with a four-channel dependent
+substream - 7.1, 5.1.4, 7.1.4 - aborts at `2.0` for want of 6 KB in the fold's
+scratch, where the same stream plays as coded onto twelve slots with 147 KB to
+spare; 5.1 and 5.1.2 fold. The board's network shape, with PSRAM, folds all of
+them, to the host's levels, and runs short of time instead: over WiFi a 7.1.4
+stream at `2.0` takes 36 ms to decode each 32 ms frame, the fold included, and
+falls behind, where 7.1 and 5.1.4 keep up. The same 7.1.4 stream decodes and
+renders onto twelve slots in about 30 ms. See
+[`planning/esp32-stream-set.md`](../../../../planning/esp32-stream-set.md#on-a-board).
 
 All of it is [`ac3forge/render.hpp`](../../include/ac3forge/render.hpp), one
 256-sample block at a time, which is why a 7.1.4 layout costs the player 16 KB
