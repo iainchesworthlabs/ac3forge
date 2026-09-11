@@ -27,6 +27,12 @@ apps/crucible/notices/** text eol=lf
 # on a Windows one, for two sets of files that are concatenated together.
 apps/notices/** text eol=lf
 
+# The ESP32 player's web page. The component embeds these files in firmware
+# byte for byte (esp-idf/ac3forge/CMakeLists.txt, EMBED_FILES), and the host
+# tests hold them to a size budget and map coverage onto their offsets, so all
+# three need the same bytes on every checkout.
+esp-idf/ac3forge/ui/** text eol=lf
+
 # ESP-IDF example stream assets. Binary: git must not touch line endings in an
 # elementary bitstream, where 0x0D 0x0A is audio data like any other pair of
 # bytes - see the fixture-hash note above for the same failure caught once

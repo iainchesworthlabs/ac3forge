@@ -329,6 +329,8 @@ configurations set 80; the default is 0, none), the component's
 
 | | |
 | --- | --- |
+| `GET /` | a web page that shows what the player is doing and drives it through the routes below and nothing else (below) |
+| `GET /api` | these routes, as text - what `GET /` answered before the page |
 | `GET /status` | what is playing and how it is going, as JSON |
 | `POST /play` | body: a URL for the `http` source, a path for `fatfs` or `sd`. `202 Accepted` — the location is handed to the task that owns the player, and `/status` says how the open went. `409` from `partition`, which has one thing in it. |
 | `POST /stop` | |

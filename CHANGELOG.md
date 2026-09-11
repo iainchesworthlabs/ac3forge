@@ -87,6 +87,15 @@ release packaging.
   is a view onto the substream vector that supplies it); AC-3 keeps one frame of its own. The
   footprint probe decodes through the forms and holds no PCM, which took 73,824 bytes out of its
   `.bss`. Both forms are pinned against the value forms sample for sample.
+- **A web page on the ESP32 player** (`esp-idf/ac3forge/ui/`, `planning/esp32-device-ui.md`).
+  `ac3forge::Control` serves it at `/`, with its script at `/ui.js`: the state, what is playing,
+  its codec, channels and objects, the layout, the volume, each frame's decode, render and sink
+  time, how low the ring ran and why a play ended; and play, stop, volume and layout, each one
+  request to the REST routes beside it, which are unchanged. The list of routes `/` used to send
+  is at `/api`. Both files go out from where the linker put them, 16,190 bytes against the
+  design's budget of 16,384, and the two routes hold 76 bytes of internal heap under QEMU. Tested
+  in Chromium against a stand-in for the routes, with the script's coverage gated by c8, and on
+  the emulated board in the ESP32 job.
 
 **Crucible desktop application**
 
@@ -694,6 +703,13 @@ release packaging.
   boot, and lists the offending lines. The HTTP step checks its console once `/status` reports the
   stop, which comes after the replay's teardown, and its other failures now report a panic first
   when there is one.
+- **`PUT /layout` overflowed the ESP32 control surface's stack** (`esp-idf/ac3forge/src/control.cpp`).
+  esp_http_server runs every handler on its one task, with 4,096 bytes of stack by default, and the
+  streaming example's layout handler parses the layout there: its deepest use was 4,596 bytes under
+  QEMU. The stack's canary did not catch it, and the part panicked in FreeRTOS's list code in that
+  request or a few after it, on the base branch as well as with the web page. `Control::start` takes
+  the stack's size, 6,144 bytes by default, which on a board playing over WiFi costs 2,192 bytes of
+  internal heap and left 13,619 free at the play's lowest.
 
 **Codec correctness**
 
