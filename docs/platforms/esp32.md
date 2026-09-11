@@ -291,6 +291,13 @@ configuration had nothing further to give; anything more had to come out of the
 code. (The `ac3` row is from the stage-timed run described next, whose markers
 cost it about 0.2 ms; the other seven are from a plain build.)
 
+The instruction cache stayed at its default 16 KB for all of this, and in the
+probe that held. In the streaming player's network shape, where WiFi and the
+rest of the player run beside the decoder, it did not: at 32 KB a 7.1.4 frame
+decoded 3.1 ms faster folded to 2.0 and 3.8 ms faster onto twelve slots
+([7.1.4 in real time](../../planning/esp32-714-realtime.md)). The probe has not
+been measured at 32 KB.
+
 ### Where the time went
 
 Nothing in the table says which stage is slow, and the estimates that had been
