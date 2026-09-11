@@ -7,7 +7,7 @@
     A to C below are done on the host and the Cortex-M3 leg with the numbers each measured.
     What is not done: the timing half of Phase D, which needs an ESP32-C3 board - the target,
     the RISC-V emulator and the correctness half are done, and the tier's hashes agree across
-    three architectures on the 11 of twelve fixtures that fit in the part's SRAM. The effort
+    three architectures on the 12 of fourteen fixtures that fit in the part's SRAM. The effort
     axis has its first measured point: the search and the planner cost (#619, on the ESP32-S3).
 
     Design sections say what each tier and each effort level is and what it guarantees; each
@@ -99,7 +99,7 @@ Platform to arithmetic to effort, with the state of each cell. "Real time" is a 
 | WASM | `double` | `double` | `reference` | Shipping ([the WASM page](../docs/platforms/wasm.md)) |
 | ESP32-S3 (LX7, single-precision FPU) | `float` | `float` | `reference` for 2/0; `reduced` is the candidate for 5.1 | Decode: every fixture in real time. Encode: AC-3 2/0 and E-AC-3 2/0 in real time, AC-3 5.1 at the line, E-AC-3 5.1 at 1.7x |
 | ESP32 (LX6, single-precision FPU) | `float` | `float` | as the S3 | Not measured; the S3's arithmetic without the PIE and with a smaller cache |
-| ESP32-C3 / C6 (RV32IMC, no FPU) | `Fixed32` | none at first | `reduced` | Built and gated: a probe target under `qemu-riscv32`, 11 of twelve fixtures decoding to PCM identical to the host's and the Cortex-M3 leg's. 7.1.4 does not fit in the part's SRAM. Time on a board is unmeasured |
+| ESP32-C3 / C6 (RV32IMC, no FPU) | `Fixed32` | none at first | `reduced` | Built and gated: a probe target under `qemu-riscv32`, 12 of fourteen fixtures decoding to PCM identical to the host's and the Cortex-M3 leg's. The two 7.1.4 rows do not fit in the part's SRAM. Time on a board is unmeasured |
 | Cortex-M3 (the CI leg, QEMU) | `float`, soft | `float`, soft | `reference` | Correctness and instruction counts only; the soft-float proxy every embedded estimate rests on |
 | Cortex-M4F / M7 (single-precision FPU) | `float` | `float` | `reference` | Not targeted; would behave as the S3 without its vector loads |
 
@@ -209,7 +209,7 @@ per-stage scaling, the store under its block exponent, the overlap-add in 64 bit
 121.2, 122.5 and 122.3 dB on the gold streams; the gold gate passes with the fixed CLI at the
 double decoder's floors and its bitstreams are the pinned ones byte for byte; the probe's
 twelve fixtures decode on the host and on the Cortex-M3 leg with identical `pcm_hash` lines
-(all twelve); the Catch2 suite is unchanged in the double build. On the M3 leg an E-AC-3 5.1 frame is
+(all twelve; fourteen since the 7.1.4 fold and line-mode rows); the Catch2 suite is unchanged in the double build. On the M3 leg an E-AC-3 5.1 frame is
 6.6 M instructions against the float tier's 12.9 M, AC-3 5.1 3.8 M against
 10.2 M, 2/0 1.2 M against 3.5 M (`docs/performance-trend.md` has every row).
 
@@ -248,7 +248,7 @@ leg, and the component's manifest lists `esp32c3` beside `esp32s3` - with the pa
 building the archive for every target the manifest claims rather than only the first, since a
 claimed target nobody links is the failure that list exists to prevent.
 
-The exit criterion is met for 11 of the twelve fixtures: they decode under
+The exit criterion is met for 12 of the fourteen fixtures: they decode under
 `qemu-system-riscv32` and their PCM is **identical to the x86 host's and the Cortex-M3 leg's**,
 held to the same pinned set (`tests/golden/fixed-probe-pcm-hashes.json`). Three architectures -
 x86-64, Thumb-2, RV32IMC - three compilers, one set of hashes. That is the tier's central claim,
