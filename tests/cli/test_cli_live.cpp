@@ -1,10 +1,19 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <numbers>
+#include <span>
 #include <string>
+#include <vector>
+
+#include "ac3/core/crc16.hpp"
+#include "ac3/core/tables.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
 
 // The device-facing half of ac3cli: devices/outputs/record/live/monitor.
 //
@@ -80,6 +89,35 @@ void check_spoke_either_way(int rc, const std::string& output) {
     CHECK(output.find("ThreadSanitizer") == std::string::npos);
     CHECK(output.find("AddressSanitizer") == std::string::npos);
     CHECK(output.find("runtime error:") == std::string::npos);
+}
+
+void write_bytes(const fs::path& path, const std::vector<std::byte>& data) {
+    std::ofstream out{path, std::ios::binary};
+    REQUIRE(out.is_open());
+    out.write(reinterpret_cast<const char*>(data.data()),
+             static_cast<std::streamsize>(data.size()));
+}
+
+// Overwrite `count` bits at `offset` and restore the syncframe's trailing
+// crc2, so a patched frame is still a legal, CRC-clean syncframe and the
+// decoder's own semantic checks (not a CRC failure) are what reject it.
+// Copied from tests/decoder/test_eac3_decoder.cpp's own helper of the same
+// name - see that file's "the E-AC-3 decoder rejects malformed spectral
+// extension streams" test, which this file's own "monitor reports a decode
+// failure" test below reuses field-for-field.
+void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
+                std::uint32_t value) {
+    for (int i = 0; i < count; ++i) {
+        const std::size_t bit = offset + static_cast<std::size_t>(i);
+        const auto mask = static_cast<std::uint8_t>(0x80U >> (bit & 7U));
+        const auto set = (value >> (count - 1 - i)) & 1U;
+        auto& target = frame[bit >> 3];
+        target = set != 0 ? (target | std::byte{mask}) : (target & static_cast<std::byte>(~mask));
+    }
+    const auto bytes = frame.size();
+    const std::uint16_t crc2 = ac3::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
+    frame[bytes - 2] = static_cast<std::byte>(crc2 >> 8);
+    frame[bytes - 1] = static_cast<std::byte>(crc2 & 0xFF);
 }
 
 }  // namespace
@@ -234,4 +272,140 @@ TEST_CASE("monitor either plays a stream or refuses by name", "[cli][audio-io][c
 
     const auto rc = run_cli("monitor \"" + stream.string() + "\"", log);
     check_spoke_either_way(rc, read_log(log));
+}
+
+// 'play' (apps/cli/commands/audio_io.cpp's run_play) had no test in this
+// suite at all until this one - unlike devices/outputs/record/live/monitor
+// above, added when this file was, roadmap VX15 never reached it.
+
+TEST_CASE("play either streams to a device or refuses by name", "[cli][audio-io][concurrency]") {
+    const auto dir = scratch_dir();
+    const auto stream = dir / "play_in.ac3";
+    REQUIRE(run_cli("silence \"" + stream.string() + "\" 1", dir / "play_silence.log") == 0);
+    REQUIRE(fs::exists(stream));
+
+    const auto log = dir / "play.log";
+    const auto rc = run_cli("play \"" + stream.string() + "\"", log);
+    check_spoke_either_way(rc, read_log(log));
+}
+
+TEST_CASE("play refuses a stream too short to hold a syncframe, before any device is touched",
+          "[cli][audio-io]") {
+    // 3 bytes: not empty (read_elementary_stream's own "nothing at all"
+    // refusal is a different, already-covered branch), but short of the 6
+    // stream_bsid() needs. run_play reads this off the file before
+    // enumerating or opening anything, so this holds identically on a
+    // machine with real render hardware and on one with none at all.
+    //
+    // run_spatial has the identical check (live_audio.cpp's own line, one
+    // read_all()/apply_object_verification() call ahead of it) but it is not
+    // exercised here: main.cpp's Needs::kSpatial gate refuses the whole
+    // 'spatial' command before run_spatial() is ever called on any build
+    // without a real spatial backend - "this build has no spatial backend:
+    // ISpatialAudioObjectRenderStream is a Windows-only API" (confirmed
+    // against this exact build). Every line inside run_spatial() is
+    // therefore unreachable through the CLI on the Linux/ALSA build this
+    // suite runs on, and on any other non-Windows build - not merely
+    // untested here, but dead from this entry point on every platform this
+    // repository's CI actually runs a coverage job on. There is no
+    // Windows coverage leg to reach it from either.
+    const auto path = scratch_dir() / "too_short.ac3";
+    write_bytes(path, {std::byte{0x0B}, std::byte{0x77}, std::byte{0x00}});
+
+    const auto log = scratch_dir() / "play_too_short.log";
+    const auto rc = run_cli("play \"" + path.string() + "\"", log);
+    const auto out = read_log(log);
+    INFO(out);
+    CHECK(rc != 0);
+    CHECK(out.find("too short to hold a syncframe") != std::string::npos);
+}
+
+TEST_CASE("play refuses a stream that claims E-AC-3/AC-3 but does not split into valid units",
+          "[cli][audio-io]") {
+    // run_play reads bsid straight off byte 5 to decide which of
+    // split_access_units/split_frames to call, then reports whichever of
+    // them fails - both checks run well before device enumeration, so
+    // neither depends on what render hardware the machine running this test
+    // has. A bad sync word (bytes 0-1) is enough to fail either split call
+    // regardless of the rest of the header, which is why the two vectors
+    // below only need to differ in the one byte (5) that decides bsid.
+    SECTION("bsid > 8 (E-AC-3): split_access_units finds no valid access unit") {
+        const auto path = scratch_dir() / "play_bad_eac3.ec3";
+        write_bytes(path, {std::byte{0x0B}, std::byte{0x77}, std::byte{0x00}, std::byte{0x00},
+                           std::byte{0x00}, std::byte{0x50}});
+        const auto log = scratch_dir() / "play_bad_eac3.log";
+        const auto rc = run_cli("play \"" + path.string() + "\"", log);
+        const auto out = read_log(log);
+        INFO(out);
+        CHECK(rc != 0);
+        CHECK(out.find("is not a valid E-AC-3 stream") != std::string::npos);
+    }
+
+    SECTION("bsid <= 8 (AC-3): split_frames finds no valid frame") {
+        const auto path = scratch_dir() / "play_bad_ac3.ac3";
+        // byte 4's top two bits (fscod) are 0b11, A/52's own reserved value -
+        // syncframe_bytes() refuses it outright rather than looking up a
+        // frame size.
+        write_bytes(path, {std::byte{0x0B}, std::byte{0x77}, std::byte{0x00}, std::byte{0x00},
+                           std::byte{0xFF}, std::byte{0x08}});
+        const auto log = scratch_dir() / "play_bad_ac3.log";
+        const auto rc = run_cli("play \"" + path.string() + "\"", log);
+        const auto out = read_log(log);
+        INFO(out);
+        CHECK(rc != 0);
+        CHECK(out.find("is not a valid AC-3 stream") != std::string::npos);
+    }
+}
+
+TEST_CASE("monitor reports a decode failure by name, distinct from a device refusal",
+          "[cli][audio-io]") {
+    // A semantically invalid but framing-correct, CRC-correct E-AC-3 access
+    // unit - spxbegf placed past spxendf, collapsing the spectral extension
+    // region to nothing (see ac3::describe(DecodeError::kInvalidStream)) -
+    // the exact vector tests/decoder/test_eac3_decoder.cpp's "the E-AC-3
+    // decoder rejects malformed spectral extension streams" test already
+    // validates bit-for-bit at the library level, reused here through the
+    // CLI. run_monitor decodes its first access unit before ever calling
+    // MonitorSink::start() (that only happens once a decode actually
+    // succeeds), so unlike every other 'monitor' case in this file, this one
+    // never depends on what render hardware is present.
+    ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 448,
+                                                          .acmod = ac3::Acmod::k3_2,
+                                                          .lfe = true,
+                                                          .spx = true,
+                                                          .spx_atten = false}}};
+    REQUIRE(encoder.channel_count() == 6);
+    std::vector<std::vector<float>> pcm(
+        6, std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+    const double tones[6] = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
+    for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                0.3 * std::sin(2.0 * std::numbers::pi * tones[ch] * static_cast<double>(i) /
+                              48000.0));
+        }
+    }
+    const std::vector<std::span<const float>> views{pcm[0], pcm[1], pcm[2], pcm[3], pcm[4], pcm[5]};
+    const auto unit = encoder.encode_access_unit(views);
+    REQUIRE(unit.has_value());
+    auto broken = unit->bytes;
+    // Bit offsets straight from test_eac3_decoder.cpp's own comment: bsi (54
+    // bits) + audfrm (85 bits, spx on / attenuation off / nothing else
+    // coupled) + block 0's dithflag(5)/dynrnge(1) prefix (6 bits) puts
+    // spxinu at bit 145, followed by chinspx[0..4] (5), spxstrtf (2),
+    // spxbegf (3), spxendf (3).
+    constexpr std::size_t kSpxinuBit = 145;
+    constexpr std::size_t kSpxbegfBit = kSpxinuBit + 1 + 5 + 2;
+    constexpr std::size_t kSpxendfBit = kSpxbegfBit + 3;
+    patch_bits(broken, kSpxbegfBit, 3, 7);  // begin_subbnd = 11
+    patch_bits(broken, kSpxendfBit, 3, 0);  // end_subbnd = 5
+
+    const auto path = scratch_dir() / "monitor_decode_fail.ec3";
+    write_bytes(path, broken);
+    const auto log = scratch_dir() / "monitor_decode_fail.log";
+    const auto rc = run_cli("monitor \"" + path.string() + "\"", log);
+    const auto out = read_log(log);
+    INFO(out);
+    CHECK(rc != 0);
+    CHECK(out.find("error: decode failed:") != std::string::npos);
 }
