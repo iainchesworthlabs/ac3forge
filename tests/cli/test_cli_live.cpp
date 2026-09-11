@@ -317,7 +317,18 @@ TEST_CASE("play refuses a stream too short to hold a syncframe, before any devic
     const auto out = read_log(log);
     INFO(out);
     CHECK(rc != 0);
-    CHECK(out.find("too short to hold a syncframe") != std::string::npos);
+    // Unlike 'spatial', 'play' can be genuinely available (Needs::kPassthrough
+    // - real ALSA/IEC 61937 hardware on this build), in which case run_play
+    // does reach its own too-short check first. But a build with no
+    // passthrough capability at all (the "no-alsa" CI leg) hits main.cpp's
+    // gate before run_play ever runs, same branch the 'outputs' test above
+    // already handles - accept either refusal rather than assuming this
+    // build always has the capability.
+    if (out.find("is unavailable on this platform") != std::string::npos) {
+        CHECK(out.find("ac3cli spdif") != std::string::npos);
+    } else {
+        CHECK(out.find("too short to hold a syncframe") != std::string::npos);
+    }
 }
 
 TEST_CASE("play refuses a stream that claims E-AC-3/AC-3 but does not split into valid units",
@@ -338,7 +349,14 @@ TEST_CASE("play refuses a stream that claims E-AC-3/AC-3 but does not split into
         const auto out = read_log(log);
         INFO(out);
         CHECK(rc != 0);
-        CHECK(out.find("is not a valid E-AC-3 stream") != std::string::npos);
+        // See the "too short to hold a syncframe" test above for why both
+        // branches are accepted: a no-passthrough-capability build refuses
+        // at main.cpp's gate before run_play's own split check ever runs.
+        if (out.find("is unavailable on this platform") != std::string::npos) {
+            CHECK(out.find("ac3cli spdif") != std::string::npos);
+        } else {
+            CHECK(out.find("is not a valid E-AC-3 stream") != std::string::npos);
+        }
     }
 
     SECTION("bsid <= 8 (AC-3): split_frames finds no valid frame") {
@@ -353,7 +371,11 @@ TEST_CASE("play refuses a stream that claims E-AC-3/AC-3 but does not split into
         const auto out = read_log(log);
         INFO(out);
         CHECK(rc != 0);
-        CHECK(out.find("is not a valid AC-3 stream") != std::string::npos);
+        if (out.find("is unavailable on this platform") != std::string::npos) {
+            CHECK(out.find("ac3cli spdif") != std::string::npos);
+        } else {
+            CHECK(out.find("is not a valid AC-3 stream") != std::string::npos);
+        }
     }
 }
 
@@ -407,5 +429,11 @@ TEST_CASE("monitor reports a decode failure by name, distinct from a device refu
     const auto out = read_log(log);
     INFO(out);
     CHECK(rc != 0);
-    CHECK(out.find("error: decode failed:") != std::string::npos);
+    // Same caveat as 'play' above: a build with no monitor capability at all
+    // (Needs::kMonitor) refuses at main.cpp's gate before run_monitor's own
+    // decode ever runs, rather than reaching the decode-failure path this
+    // test is really after.
+    if (out.find("is unavailable on this platform") == std::string::npos) {
+        CHECK(out.find("error: decode failed:") != std::string::npos);
+    }
 }
