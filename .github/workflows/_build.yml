@@ -1443,7 +1443,7 @@ jobs:
           build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
           python3 tools/checks/check_decode_scalar_snr.py --double-cli build/config-${{ matrix.preset }}/bin/ac3cli --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
 
-      # The tier's own gate, natively: the same twelve fixtures the bare-metal
+      # The tier's own gate, natively: the same fourteen fixtures the bare-metal
       # leg decodes under QEMU, decoded here on x86, their PCM hashes held to
       # the pinned ones (tests/golden/fixed-probe-pcm-hashes.json). Two
       # architectures, two compilers, one set of hashes - integer arithmetic

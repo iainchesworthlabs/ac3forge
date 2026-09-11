@@ -101,9 +101,9 @@ to use both.
 **The library, `src/forge`.** Layers 4 and 5. `ac3::io::interleave` is a move of code that already
 has host tests. A `StreamDecoder` over the accumulator, the E-AC-3 decoder and the output stage,
 with `feed()` and `next()` into caller-owned spans, is the loop written three times, written once.
-Both are hand-over items: the decoder core (`src/forge`) changes only in its own pull requests, so
-this page describes them and does not touch it. Until they land, the component carries copies,
-marked as such, and the day they land is the day the copies are deleted.
+Both are hand-over items for whoever owns `src/forge`, so this page describes them and does not
+touch that tree. Until they land, the component carries copies, marked as
+such, and the day they land is the day the copies are deleted.
 
 **The component, `esp-idf/ac3forge/`.** Layer 6, and the seams for 7. The component today registers
 no sources; it gains `include/ac3forge/player.hpp` and `src/player.cpp`, registered as component
@@ -665,12 +665,14 @@ that tree.
    as-coded image's for 5.1 and 8.6 ms more for 7.1.4, where the player's renderer places the
    same channels on twelve slots in 1.4 to 2.2 ms. So a 7.1.4 stream at `2.0` over WiFi decodes
    in 36 ms a frame and falls behind ([the stream set on a board](esp32-stream-set.md#on-a-board)).
-   Folding the assembled programme with scratch sized to it once, or seat by seat without it,
-   would close the memory. The time is not profiled: the fold's arithmetic is already float
-   (`decode_scalar_t`), `Eac3Decoder::apply_output` times the stage as the `eac3_output` zone,
-   and the probe, whose stage timers report it, folds 5.1 (`eac3_fold`) but no 7.1.4 stream. The
-   tests are the peak heap of a 7.1.4 fold against a 5.1 one, and the board's time a frame for
-   `714-walk.ec3` at `2.0`.
+   Both halves changed on 2026-09-11: the output stage folds 256 samples at a time, its largest
+   allocation 1,024 bytes where it was 6,144, and `714-walk.ec3` at `2.0` on the board went from
+   35.3 to 30.0 ms of decode a frame, 1.00x real time, with 18 of 900 blocks still reaching an
+   empty queue ([Folded to stereo](../docs/platforms/esp32.md#folded-to-stereo)). Under QEMU on
+   2026-09-12 the network shapes then folded 7.1, 5.1.4 and 7.1.4 at `2.0`; one play, the fuzz
+   seed's 7.1.4 as the fifth after boot, still aborted on the decoder's frame-long channel
+   buffers (`Eac3Decoder::decode_substream_core`, 6,144 bytes with no block that large). What is
+   left is that, and the time of the 7.1.4 decode itself.
 6. **The Annex E tools at 7.1.4, found the same day.** Decoded and rendered onto twelve slots
    over WiFi, a 32 ms frame of 7.1.4 takes 26.7 ms with no coding tools, 30.4 with TPN, 30.7
    with coupling, 31.1 with spectral extension, 35.2 with AHT, 39.1 with all of them and 59.2 with
