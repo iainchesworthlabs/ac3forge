@@ -530,7 +530,7 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
         [[maybe_unused]] const auto span = static_cast<Scalar>(length);
         [[maybe_unused]] const auto step = static_cast<Scalar>(
             (frame_gain - start) / static_cast<double>(std::max<std::size_t>(length, 2) - 1));
-        Scalar walked = ramp_start;
+        [[maybe_unused]] Scalar walked = ramp_start;
         for (std::size_t i = 0; i < length; ++i) {
             Scalar gain{};
             if constexpr (std::is_same_v<Scalar, internal::Fixed32>) {
