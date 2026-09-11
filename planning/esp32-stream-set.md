@@ -32,7 +32,7 @@ demo, E-AC-3 5.1 with objects, played onto two slots every time. What reaches a 
 from a 7.1.4 stream over the network had not been played; nor a 5.1 stream on 7.1.4, which shows
 the heights left silent; nor most of Annex E through the player rather than through the
 footprint probe. The page's report of a layout (the web UI's design) needs streams whose
-reports differ, and a board session needs something to point a device at.
+reports differ, and a test on a board needs something to point a device at.
 
 ## What was in the tree
 
