@@ -283,8 +283,9 @@ and PSRAM holding the ring alone. Per frame, in microseconds:
 The twelve levels are the same in all three, to the digit. The decode and the
 render together take 26 ms of the frame's 32, the same work as the probe's
 `eac3_atmos_render` row at 25.1 ms. What is left over is the `capture` sink,
-which checks every sample it converts; a `tdm` sink driving a DAC converts and
-does not check. The table found two things. The component had never compiled
+which checks every sample it converts. The `tdm` sink converts without
+checking, but on this part one I2S line carries at most four 32-bit slots, so
+twelve slots cannot leave through it. The table found two things. The component had never compiled
 the decoder's hot sources at `-O2` as the probe does; it does now, for 48.6 KB
 of flash and no SRAM. And the level meter that makes `result=pass` mean
 something squared every sample in double - a soft-float call on this part -
