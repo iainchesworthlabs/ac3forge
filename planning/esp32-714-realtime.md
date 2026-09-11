@@ -378,8 +378,16 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    the decoder core's owner that day, with #654's changes to the same file as the reason to build
    them after it lands or on top of it. Nothing in `src/forge` changes before the owner answers.
 
-   No answer yet. With decisions 13 and 14, `714-walk` and `714-tones` play without F or G. G is
-   what `714-aht` would need: it takes 33.9 ms at 2.0 and 32.9 ms onto twelve slots.
+   With decisions 13 and 14, `714-walk` and `714-tones` play without F or G. The decoder core's
+   session built both as #656, and the user had them measured on the board on 2026-09-11, each
+   merged onto this branch with #654 (the tables are on #656):
+   - G did not bring `714-aht` inside the frame: 33.2 ms onto twelve slots and 35.2 at 2.0. At 2.0
+     over WiFi it made `714-aht` and `714-all` 1.7 ms slower, likely because its 6 KB blocks fall
+     under `sdkconfig.psram`'s 16 KB always-internal threshold, where the one 43 KB block went to
+     PSRAM.
+   - F took 1.0 to 1.4 ms a frame off `714-walk` and `714-tones` at 2.0, and 0.7 to 1.0 ms onto
+     twelve slots. WiFi was unaffected in ten plays, but the least free internal heap during a
+     7.1.4 play at 2.0 fell to 703 to 895 bytes, against 975 to 2,419 without it.
 
 5. **Two cores inside the decode (B).**
    - (a) **Record it with the stage shares, as the next step if 7.1.4 streams with AHT must
@@ -635,7 +643,8 @@ and the data cache took another 0.8 to 2 ms off each twelve-slot frame.
   takes 55.9 ms onto twelve slots. Split across two cores (B) it would still be about half that
   before any output work. It does not fit on this part.
 - **7.1.4 with AHT.** 33.9 ms at 2.0 and 32.9 ms onto twelve slots, 30.9 where the internal SRAM
-  allows the 64 KB data cache as well. G is the change aimed at it.
+  allows the 64 KB data cache as well. G, measured on the board, does not bring it in on its own:
+  33.2 ms onto twelve slots and 35.2 at 2.0.
 - **Coupling, spectral extension and AHT together.** 36.8 ms at 2.0 and 36.3 onto twelve slots.
   B and G together might bring it in.
 - **Twelve 32-bit slots on one data line.** The I2S register does not allow it.
