@@ -150,8 +150,8 @@ set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
     "Decode-critical sources at -O2; see src/forge/minimal.cmake")
 
 # The player's own source with them, under the same switch: the render onto the
-# layout, the copies into the output task's ring and the calls into the sink
-# run there, six times a frame. Measured on a board with the example's sinks
+# layout and the calls into the sink run there, six times a frame, and the
+# header-only renderer compiles into it. Measured on a board with the example's sinks
 # alongside it: 1.5 ms a frame less at twelve slots, for 4,400 bytes of flash
 # (planning/esp32-714-realtime.md, decision 11).
 if(AC3FORGE_MINIMAL_HOT_O2)

@@ -146,30 +146,30 @@ here. With `CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES` set, the same figures
 also print cumulatively every N frames as a `progress=` line, for a source that
 makes one long pass and would otherwise be silent for minutes.
 
-`render_us_per_frame` and `sink_us_per_frame` are the time spent placing each
-block onto the layout and inside the sink's write, the level meter included.
-Without an output task they are parts of `us_per_frame`, and the rest is the
-decoder's own; on a paced sink the sink's part is mostly the wait for the DAC.
-With one (`CONFIG_AC3FORGE_EXAMPLE_OUTPUT_BLOCKS`, below) they are the output
-task's, on the other core, and `us_per_frame` is the decode, the copy of each
-block into the ring, and any wait for a free slot - which on a paced sink is
-where the DAC's wait shows up instead.
+`render_us_per_frame` and `sink_us_per_frame` are the parts of `us_per_frame`
+spent placing each block onto the layout and inside the sink's write, the level
+meter included; the rest is the decoder's own. On a paced sink the sink's part
+is mostly the wait for the DAC.
 
-**The output task.** With `CONFIG_AC3FORGE_EXAMPLE_OUTPUT_BLOCKS` set, the
-render, the level meter and the sink's conversion and write run in a task of
-their own (`CONFIG_AC3FORGE_EXAMPLE_OUTPUT_CORE`, core 0 by default, beside
-WiFi), fed by a ring of that many decoded blocks - 5.3 ms of audio each - in
-PSRAM when the part has it (`CONFIG_AC3FORGE_EXAMPLE_OUTPUT_IN_PSRAM`). The
-decode task decodes and copies each block in; a full ring makes it wait, which
-is what paces it. At the end of a play the output task plays out what the ring
-still holds before the verdict is printed. `sdkconfig.psram` turns it on with
-sixteen blocks for the network shapes, and `sdkconfig.ci` and
-`sdkconfig.ci-tdm` run CI through it; `planning/esp32-714-realtime.md` in the
-repository has why. With it, the last `stream.` line also carries
-`stream.output_low`, the least number of blocks the ring held when the output
-task came for one once a ring's worth had played (`-` before then; zero means
-the output task waited on the decode, with only the sink's DMA queue left
-playing), and `stream.output_stack_free`, the output task's spare stack.
+**A play's start.** With `CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT` set, the
+player holds a play's first access unit until the second has decoded, so the
+sink starts with two frames queued rather than one. A play's first frames
+decode more slowly than the rest, and without the hold a 7.1.4 stream played
+over WiFi ran the DAC dry in them. It costs 32 ms before a play is heard, and a
+copy of that one unit while it waits. `sdkconfig.psram` turns it on for the
+network shapes, together with a 32 KB instruction cache, and `sdkconfig.ci`
+runs CI through it; `planning/esp32-714-realtime.md` in the repository has the
+measurements.
+
+**A local 7.1.4 stream folded to 2.0** fits without PSRAM once the output stage
+folds a block at a time, and it needs a DMA queue that holds a whole frame:
+twelve descriptors of 256 frames, 64 ms, as `sdkconfig.psram` sets them
+(`CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12`,
+`CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES=256`), for 16 KB more of internal SRAM
+than the default. A frame's six blocks arrive together, and the default queue
+cannot hold them and cover the next frame's decode as well: on a DevKitC-1 with
+no PSRAM, `714-tones.ec3` played from the partition had 251 of its 1,512
+blocks reach an empty queue with the default, and none with twelve.
 
 `heap:` is the internal RAM free once the source
 has opened and before the decoder has allocated anything - with a network stack

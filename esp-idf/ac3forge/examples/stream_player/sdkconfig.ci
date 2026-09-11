@@ -17,9 +17,8 @@ CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE=y
 # the first read, and then the application stops with a verdict.
 CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS=2
 
-# The render and the sink in the player's output task, as a board's network
-# shape runs them (sdkconfig.psram), so CI plays through the ring, the second
-# task and the drain at the end of a play. At 2.0 a slot is the fold's two
-# channels, 2 KB, so sixteen fit in internal SRAM, which is where they go with
-# no PSRAM.
-CONFIG_AC3FORGE_EXAMPLE_OUTPUT_BLOCKS=16
+# A play's first unit held until its second has decoded, as sdkconfig.psram
+# has it on a board, so CI plays through the hold and its release - at a play's
+# second unit, and at its end. At 2.0 the held unit is the fold's two channels,
+# 12 KB, which fits in internal SRAM, where it goes with no PSRAM.
+CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT=1

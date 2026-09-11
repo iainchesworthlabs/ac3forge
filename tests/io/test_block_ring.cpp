@@ -1,12 +1,11 @@
-// The ring between the player's decode task and its output task, tested on the
-// host.
+// The block ring, tested on the host: the storage the player keeps a play's
+// first unit in (ac3forge/unit_hold.hpp).
 //
 // ac3forge/block_ring.hpp is the index arithmetic and the storage layout of a
-// single-producer, single-consumer ring; the waiting is FreeRTOS's, in the
-// component's player.cpp, and is not here. What can be wrong here is an
-// off-by-one between slots, a slot overwritten before it is released, or a
-// span that overlaps its neighbour - all silent in audio until the wrong block
-// plays.
+// ring with at most one producer and one consumer; nothing in it waits. What
+// can be wrong here is an off-by-one between slots, a slot overwritten before
+// it is released, or a span that overlaps its neighbour - all silent in audio
+// until the wrong block plays.
 
 #include <array>
 #include <atomic>
@@ -118,10 +117,10 @@ TEST_CASE("reset empties a ring that held blocks", "[io][block_ring]") {
 
 TEST_CASE("a producer thread and a consumer thread see every block once, in order",
           "[io][block_ring]") {
-    // What the two tasks do on a board, with threads: the producer fills a
-    // slot and publishes it, the consumer takes it and checks it is the next
-    // block, not a stale or a skipped one. The spinning stands in for the
-    // player's semaphores.
+    // A producer and a consumer on two threads, which the ring allows: the
+    // producer fills a slot and publishes it, the consumer takes it and checks
+    // it is the next block, not a stale or a skipped one. The spinning stands
+    // in for whatever a caller would wait on.
     constexpr std::size_t kBlocks = 4;
     constexpr std::size_t kSpans = 2;
     constexpr std::size_t kSamples = 16;

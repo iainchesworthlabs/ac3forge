@@ -78,6 +78,7 @@ add_executable(ac3tests
     io/test_stream_accumulator.cpp
     io/test_interleave.cpp
     io/test_block_ring.cpp
+    io/test_unit_hold.cpp
     io/test_layout.cpp
     io/test_metadata_edit.cpp
     io/test_probe.cpp

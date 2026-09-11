@@ -98,18 +98,21 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   holds each slot to the host's level within 1% + 20, the silent ones at exactly zero. Playing it found two faults in the player,
   fixed: a stream with two programmes had both played, a frame of each, and now plays its first;
   and a stream at 44.1 or 32 kHz played at the wrong speed, and is now refused.
-- **The ESP32 player can render and write on the other core** (`planning/esp32-714-realtime.md`,
-  which also has a stage-by-stage profile of a 7.1.4 frame on the board). With
-  `PlayerConfig::output_blocks` set, an output task takes the render onto the layout, the level
-  meter and the sink's write off the decode task, fed by a ring of decoded blocks
-  (`ac3forge/block_ring.hpp`, tested on the host) in PSRAM when the part has it; the decode task
-  waits on a full ring, and a play ends only when the ring has played out. The streaming
-  example's `CONFIG_AC3FORGE_EXAMPLE_OUTPUT_BLOCKS` selects it, `sdkconfig.psram` turns it on with
-  sixteen blocks and takes the I2S DMA queue back from 64 ms to 21 ms, and CI's `sdkconfig.ci`
-  and `sdkconfig.ci-tdm` run through it. The component's `player.cpp` joins the `-O2` sources
-  under `AC3FORGE_MINIMAL_HOT_O2`, and the example compiles the bare-metal probe's stage-timer
-  backend where the repository has it, so `idf.py -DAC3FORGE_STAGE_TIMERS=ON build` gives each play
-  a line per decoder stage.
+- **The ESP32 player can hold a play's first unit** (`planning/esp32-714-realtime.md`, which also
+  has a stage-by-stage profile of a 7.1.4 frame on the board and what each change measured
+  there). With `PlayerConfig::hold_first_unit` set, the first access unit waits until the second
+  has decoded, so the sink starts with two frames queued rather than one
+  (`ac3forge/unit_hold.hpp`, and the `ac3forge/block_ring.hpp` it keeps the unit in, both tested
+  on the host). A play's first frames decode more slowly than the rest, and on an ESP32-S3
+  playing 7.1.4 over WiFi they ran the DAC dry. The streaming example's
+  `CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT` selects it, and `sdkconfig.psram` turns it on together
+  with a 32 KB instruction cache, which takes 3.1 ms off the decode of a 7.1.4 frame at 2.0 and
+  3.8 ms off a twelve-slot frame for 16 KB of internal SRAM. With the output stage folding a block
+  at a time, `714-walk.ec3` and `714-tones.ec3` then play at 2.0 over WiFi with no block reaching
+  an empty queue. CI's `sdkconfig.ci` plays through the hold. The component's `player.cpp` joins
+  the `-O2` sources under `AC3FORGE_MINIMAL_HOT_O2`, and the example compiles the bare-metal
+  probe's stage-timer backend where the repository has it, so
+  `idf.py -DAC3FORGE_STAGE_TIMERS=ON build` gives each play a line per decoder stage.
 
 ### Changed
 

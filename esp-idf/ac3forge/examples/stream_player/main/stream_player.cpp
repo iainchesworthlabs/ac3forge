@@ -331,9 +331,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     config.fetch_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_FETCH_CORE);
     config.decode_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE);
     config.decode_stack_bytes = CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES;
-    config.output_blocks = CONFIG_AC3FORGE_EXAMPLE_OUTPUT_BLOCKS;
-    config.output_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_OUTPUT_CORE);
-    config.output_in_psram = CONFIG_AC3FORGE_EXAMPLE_OUTPUT_IN_PSRAM != 0;
+    config.hold_first_unit = CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT != 0;
     config.max_passes = kMaxLaps;
     config.volume = g_volume.load();
     config.sample_rate_hz = kSampleRate;
@@ -391,24 +389,10 @@ void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
                 static_cast<unsigned long>(stats.fetched_bytes), g_layout.text().data(),
                 static_cast<unsigned long>(stats.layout_mismatches));
     print_ring_low(stats);
-    std::printf(" stream.decode_stack_free=%lu stream.audio_ms=%lu stream.wall_ms=%lu",
+    std::printf(" stream.decode_stack_free=%lu stream.audio_ms=%lu stream.wall_ms=%lu\n",
                 static_cast<unsigned long>(stats.decode_stack_free),
                 static_cast<unsigned long>((stats.frames_played * kFrameDurationUs) / 1000),
                 static_cast<unsigned long>(wall_us / 1000));
-    // The output task's figures, when the player has one: the least the ring
-    // held as the task came for a block ("-" before a ring's worth had
-    // played), and the task's spare stack.
-    if constexpr (CONFIG_AC3FORGE_EXAMPLE_OUTPUT_BLOCKS != 0) {
-        std::printf(" stream.output_low=");
-        if (stats.output_low_valid) {
-            std::printf("%lu", static_cast<unsigned long>(stats.output_low_blocks));
-        } else {
-            std::printf("-");
-        }
-        std::printf(" stream.output_stack_free=%lu",
-                    static_cast<unsigned long>(stats.output_stack_free));
-    }
-    std::printf("\n");
     // Where the play's frames went, stage by stage, when the library was built
     // with AC3FORGE_STAGE_TIMERS; nothing otherwise.
     ac3probe::report_stages("play", static_cast<int>(stats.frames_played));
