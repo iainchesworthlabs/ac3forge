@@ -273,9 +273,13 @@ in PSRAM:
 | `714-tones` (7.1.4) | 35.6 ms | 62 of 378 | 27.1 ms | 2.2 ms |
 
 At 2.0 the decode includes the decoder's output stage - the fold, with the example's line-mode
-DRC and dialnorm - which the 7.1.4 image, playing levels as coded, does not run: 4.5 ms of the
-frame for 5.1 and 8.6 ms for 7.1.4, where the renderer places the same channels on twelve slots
-in 1.4 to 2.2 ms. So a 7.1.4 stream at 2.0 falls behind: `714-walk` put 149 of its 900 blocks
+DRC and dialnorm - which the 7.1.4 image, playing levels as coded, does not run. The two images'
+decode differs by 4.5 ms of the frame for 5.1 and 8.6 ms for 7.1.4, where the renderer places
+the same channels on twelve slots in 1.4 to 2.2 ms. Nothing has profiled that difference: the
+fold's arithmetic is already float in this build (`decode_scalar_t`), the decoder times its
+output stage as the `eac3_output` zone, and the probe, whose stage timers report zones like it
+(`AC3FORGE_STAGE_TIMERS`), folds 5.1 (`eac3_fold`) but no 7.1.4 stream. So a 7.1.4 stream at
+2.0 falls behind: `714-walk` put 149 of its 900 blocks
 into an empty queue, 940 ms of silence in 4.8 s. Behind, the decode task never waits on the
 sink, so core 1's idle task missed the five-second task watchdog, which printed a backtrace in
 `Eac3Decoder::decode_substream_core` and let the play go on (`CONFIG_ESP_TASK_WDT_PANIC` is

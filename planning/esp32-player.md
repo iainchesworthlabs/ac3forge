@@ -658,14 +658,17 @@ that tree.
    scratch) asks for 6,144 bytes with about 8 KB left and no block that large, where the same
    streams play as coded onto twelve slots with 147 KB to spare. 5.1 and 5.1.2 fold. On the
    board, with PSRAM, the fold fits - each play started with 169 KB of internal RAM free and a
-   94 KB block - and what it costs is time: with the example's line-mode DRC and dialnorm, the
-   decoder's output stage takes 4.5 ms of a 32 ms frame for 5.1 and 8.6 ms for 7.1.4, where the
-   player's renderer places the same channels on twelve slots in 1.4 to 2.2 ms. So a 7.1.4
-   stream at `2.0` over WiFi decodes in 36 ms a frame and falls behind ([the stream set on a
-   board](esp32-stream-set.md#on-a-board)). Folding the assembled programme with scratch sized
-   to it once, or seat by seat without it, would close the memory; the time wants the output
-   stage measured on the board with `AC3FORGE_STAGE_TIMERS`. The tests are the peak heap of a
-   7.1.4 fold against a 5.1 one, and the board's time a frame for `714-walk.ec3` at `2.0`.
+   94 KB block - and what it costs is time. The 2.0 image's decode, which runs the output stage
+   with the example's line-mode DRC and dialnorm, takes 4.5 ms more of a 32 ms frame than the
+   as-coded image's for 5.1 and 8.6 ms more for 7.1.4, where the player's renderer places the
+   same channels on twelve slots in 1.4 to 2.2 ms. So a 7.1.4 stream at `2.0` over WiFi decodes
+   in 36 ms a frame and falls behind ([the stream set on a board](esp32-stream-set.md#on-a-board)).
+   Folding the assembled programme with scratch sized to it once, or seat by seat without it,
+   would close the memory. The time is not profiled: the fold's arithmetic is already float
+   (`decode_scalar_t`), `Eac3Decoder::apply_output` times the stage as the `eac3_output` zone,
+   and the probe, whose stage timers report it, folds 5.1 (`eac3_fold`) but no 7.1.4 stream. The
+   tests are the peak heap of a 7.1.4 fold against a 5.1 one, and the board's time a frame for
+   `714-walk.ec3` at `2.0`.
 6. **The Annex E tools at 7.1.4, found the same day.** Decoded and rendered onto twelve slots
    over WiFi, a 32 ms frame of 7.1.4 takes 26.7 ms with no coding tools, 30.4 with TPN, 30.7
    with coupling, 31.1 with spectral extension, 35.2 with AHT, 39.1 with all of them and 59.2 with
