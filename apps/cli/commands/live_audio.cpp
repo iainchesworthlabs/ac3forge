@@ -191,29 +191,17 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 status_println(status_stream(), "monitoring {} ({} channels, {} Hz) on \"{}\"…",
                                in_path, order.size(), sample_rate_hz(out.sample_rate),
                                device_name);
-                // Same object-count line run_decode_eac3 reports (see
-                // report_decoded_objects) - this path still only plays the
-                // 5.1 bed (this function's own header comment), so it says
-                // so rather than implying object playback is coming.
-                if (out.object_metadata.has_value()) {
-                    // Guarded by the if above; clang-tidy's
-                    // bugprone-unchecked-optional-access doesn't trace the
-                    // guard through into a multi-argument call like the
-                    // status_println below, and flags each
-                    // out.object_metadata-> spelled out among its arguments.
-                    // Binding once here leaves one dereference to suppress -
-                    // the same check commands/analysis.cpp suppresses on
-                    // print_channel_summary(*meter).
-                    const auto& metadata = *out.object_metadata;  // NOLINT(bugprone-unchecked-optional-access)
-                    status_println(
-                        status_stream(),
-                        "  {} dynamic objects + the bed's LFE = {} objects, OAMD present{}",
-                        metadata.objects.size(), ac3::oba::object_count(metadata.program),
-                        out.object_audio.empty()
-                            ? " (JOC audio not reconstructed)"
-                            : ", JOC audio reconstructed (bed-only playback here; see "
-                              "'ac3cli decode' with objects_dir to export it)");
-                }
+                // The object layer, in the lines run_decode_eac3 reports it
+                // with (print_object_summary, which prints nothing for a
+                // stream without one). Only the JOC note is this command's
+                // own: this path plays the decoded channels and never the
+                // reconstructed objects (this function's own header comment),
+                // so it says so rather than implying object playback is coming.
+                print_object_summary(status_stream(), out.object_metadata,
+                                     out.object_audio.empty()
+                                         ? " (JOC audio not reconstructed)"
+                                         : ", JOC audio reconstructed (not played here; see "
+                                           "'ac3cli decode' with objects_dir to export it)");
             }
             play(interleave_reordered(out.channels, order));
             ++units_played;
