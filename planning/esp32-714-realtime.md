@@ -607,7 +607,10 @@ takes about 22.4 ms a frame, all of it in internal SRAM. The default queue, four
 frames, is shorter than the six blocks a frame arrives in: the decode waits in the sink for part of
 every frame, and the queue runs dry before the next. Twelve descriptors hold a whole frame with
 room to spare, for 16 KB more of internal SRAM; 18,752 bytes of internal heap were free at the end
-of the second lap.
+of the second lap. Repeated plays without PSRAM can still fail on fragmentation rather
+than on the total free: under QEMU on the same tree, a fifth play after boot stopped on the
+decoder's frame-long channel buffers, 6,144 bytes asked for with the largest free block 5,632
+([the player plan](esp32-player.md), hand-over item 5).
 
 ### Why the second core did not help
 
