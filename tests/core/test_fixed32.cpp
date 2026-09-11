@@ -320,3 +320,71 @@ TEST_CASE("the noise generators draw in Fixed32 from the same state sequence", "
     STATIC_CHECK(ac3::eac3::ecpl_rand_notrans_as<Fixed32>(0, 0) >= Fixed32{-1});
     STATIC_CHECK(ac3::eac3::ecpl_rand_notrans_as<Fixed32>(0, 0) < Fixed32{1});
 }
+
+TEST_CASE("ecpl_channel_spectrum_fixed of all-zero neighbors is all zero", "[fixed32]") {
+    // The tier's own block-floating-point form of ecpl_channel_spectrum
+    // (eac3_tools_fixed.hpp/.cpp), exercised for the first time here: every
+    // existing ecpl_channel_spectrum test (test_enhanced_coupling.cpp) calls
+    // the double or float overload, never this one, and it is the only one
+    // of the three with its own DFT (dft512_fixed) and its own
+    // block-exponent bookkeeping (prev_norm/curr_norm/next_norm in,
+    // out_norm out) rather than a plain uniform scale.
+    std::array<Fixed32, 256> zero{};
+    std::array<Fixed32, 256> real_out{};
+    std::array<Fixed32, 256> imag_out{};
+    real_out.fill(Fixed32{1});  // poison, so the function must actually write zero
+    imag_out.fill(Fixed32{1});
+    int out_norm = -1;
+    ac3::eac3::ecpl_channel_spectrum_fixed(zero, 0, zero, 0, zero, 0, real_out, imag_out,
+                                           out_norm);
+    for (int k = 0; k < 256; ++k) {
+        CAPTURE(k);
+        CHECK(real_out[static_cast<std::size_t>(k)].raw == 0);
+        CHECK(imag_out[static_cast<std::size_t>(k)].raw == 0);
+    }
+}
+
+TEST_CASE("ecpl_channel_coefficients_fixed: zero amplitude silences a channel; "
+          "unity amplitude and zero angle is a plain fold",
+          "[fixed32]") {
+    // The tier's form of ecpl_channel_coefficients (eac3_tools_fixed.hpp/
+    // .cpp) - untested before this. Mirrors the two cases
+    // test_enhanced_coupling.cpp pins for the double form of the same
+    // function, at values Fixed32 holds exactly (5 and -3 are well inside
+    // the format's +-127 range, and out_shift = 0 keeps the raw value as the
+    // exact same fixed-point number the double form computes).
+    using ac3::eac3::ecpl_channel_coefficients_fixed;
+    std::array<Fixed32, 256> real_in{};
+    std::array<Fixed32, 256> imag_in{};
+    real_in[20] = Fixed32{5.0};
+    imag_in[20] = Fixed32{-3.0};
+
+    {
+        const std::array<Fixed32, 1> amp = {Fixed32{0.0}};
+        const std::array<Fixed32, 1> angle = {Fixed32{0.0}};
+        std::array<Fixed32, 256> mant_out{};
+        mant_out.fill(Fixed32{1});  // poison
+        ecpl_channel_coefficients_fixed(real_in, imag_in, amp, angle, 20, 21, /*out_shift=*/0,
+                                        mant_out);
+        CHECK(mant_out[20].raw == 0);
+    }
+    {
+        // angle == 0 -> cos(0) == 1, sin(0) == 0, so Zr[ch] == Zr, Zi[ch] ==
+        // Zi exactly - amp == 1 leaves the complex value untouched.
+        const std::array<Fixed32, 1> amp = {Fixed32{1.0}};
+        const std::array<Fixed32, 1> angle = {Fixed32{0.0}};
+        std::array<Fixed32, 256> mant_out{};
+        ecpl_channel_coefficients_fixed(real_in, imag_in, amp, angle, 20, 21, /*out_shift=*/0,
+                                        mant_out);
+        CHECK(mant_out[20].raw != 0);
+        // Every other bin must stay untouched (the function only writes
+        // [begin_mant, end_mant)).
+        for (int bin = 0; bin < 256; ++bin) {
+            if (bin == 20) {
+                continue;
+            }
+            CAPTURE(bin);
+            CHECK(mant_out[static_cast<std::size_t>(bin)].raw == 0);
+        }
+    }
+}
