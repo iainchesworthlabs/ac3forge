@@ -228,13 +228,15 @@ class AC3FORGE_EXPORT OutputStage {
     // span form costs no allocation after the first frame.
     std::vector<std::span<float>> views_;
     // The rendered-layout form's own working storage: the wide Table E2.5
-    // layout reduced to the §7.8 acmod layout nearest it, and views onto the
-    // seats that reduction filled. Members so a steady-state decode allocates
-    // nothing; empty unless that overload is actually used.
+    // layout reduced to the §7.8 acmod layout nearest it, a block of each
+    // seat at a time, and views onto the seats that reduction filled. Members
+    // so a steady-state decode allocates nothing; empty unless that overload
+    // is actually used.
     std::vector<std::vector<float>> fold_scratch_;
     std::vector<std::span<float>> fold_views_;
-    // Reused across frames so a steady-state decode allocates nothing: the
-    // fold's two output channels, and the surround sum feeding the shifter.
+    // Reused across frames so a steady-state decode allocates nothing: a
+    // block of the fold's two output channels, and of the surround sum
+    // feeding the shifter. A block, not a frame - see the .cpp's kFoldBlock.
     std::vector<float> out_left_;
     std::vector<float> out_right_;
     std::vector<float> surround_sum_;

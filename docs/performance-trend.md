@@ -687,18 +687,21 @@ soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`
 [Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
 for what the profile changes and why.
 
-`apps/baremetal/probe.cpp` decodes six frames each of nine real streams — 5.1 AC-3 (448 kbit/s,
+`apps/baremetal/probe.cpp` decodes six frames each of ten real streams — 5.1 AC-3 (448 kbit/s,
 coupling), 2/0 AC-3 (192 kbit/s) and 1/0 AC-3 (128 kbit/s); 5.1 E-AC-3 (384 kbit/s, AHT + spx +
 standard coupling), 5.1 E-AC-3 with §E3.5 enhanced coupling (384 kbit/s, `cpl+ecpl`), E-AC-3
 Atmos (448 kbit/s, six objects over a 5.1 bed) and 2/0 E-AC-3 (192 kbit/s, which is the only
 layout §7.5.4 rematrixing exists in) and E-AC-3 7.1.4 (640 kbit/s, a bed and two dependent
-substreams) and a second Atmos stream with three of its objects raised to the ceiling — and
-reports what it cost. That is twelve fixtures: the first Atmos stream is decoded twice, bed-only
-and with its objects reconstructed, the two 5.1 streams are decoded a second time through the
-§7.8 output stage, folded to Lo/Ro stereo in line mode (`ac3_fold`, `eac3_fold`), and the
-height stream's objects are reconstructed and placed onto 7.1.4 (`eac3_atmos_render`). Numbers
-below are from a run against `feature/baremetal-encode-timing` on 2026-09-10, `arm-none-eabi`
-GCC 14.2.1 under QEMU 10.2.1's `mps2-an385`; `build-footprint` in
+substreams) and a second Atmos stream with three of its objects raised to the ceiling, and the
+5.1 E-AC-3 stream again with film-standard dynrng words and dialnorm 24 — and reports what it
+cost. That is fourteen fixtures: the first Atmos stream is decoded twice, bed-only and with its
+objects reconstructed, the two 5.1 streams and the 7.1.4 one are decoded a second time through
+the §7.8 output stage, folded to Lo/Ro stereo in line mode (`ac3_fold`, `eac3_fold`,
+`eac3_714_fold`), the dynrng stream is decoded in line mode without a fold (`eac3_line`, the
+one fixture where line mode has work to do), and the height stream's objects are reconstructed
+and placed onto 7.1.4 (`eac3_atmos_render`). Numbers below are from runs of
+`feature/esp32-output-stage-profile` on 2026-09-11, `arm-none-eabi` GCC 14.2.1 under QEMU
+10.2.1's `mps2-an385`; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
@@ -728,15 +731,18 @@ intervening commits.
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 276,188 |
+| `.text` (code + read-only data) | 289,484 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 62,205 |
-| **Image total** | **338,793** (330.9 KiB) |
+| `.bss` (zero-initialised) | 62,217 |
+| **Image total** | **352,101** (343.8 KiB) |
 
 These are `arm-none-eabi-size`'s own columns, which is what `AC3FORGE_MAX_IMAGE_BYTES` gates, so
 they group sections rather than list them: `.text` here includes `.init`, `.fini` and
 `.ARM.exidx`, `.data` includes `.init_array` and `.fini_array`, and `.bss` includes `.tbss`. Read
-per-section with `arm-none-eabi-size -A`, `.text` is 256,340, `.data` 388 and `.bss` 46,824.
+per-section with `arm-none-eabi-size -A`, `.text` is 289,452, `.data` 388 and `.bss` 62,184.
+`main` at `7bdb58e7` measured 340,821 on the same leg: the 11,280 bytes since are all `.text`,
+9,216 of them the dynrng stream `eac3_line` decodes and the rest the output stage's block-wise
+fold.
 
 `.bss` fell from 237,592 bytes in two steps. Moving `ecpl_channel_spectrum`'s 32 KB scratch off
 thread-local storage — it made the library unlinkable into any FreeRTOS application, see
@@ -852,7 +858,7 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 229,630 bytes (224.2 KiB), the 7.1.4 fixture; 210,203 with Atmos objects |
+| Peak heap | 237,206 bytes (231.6 KiB), the 7.1.4 fixture folded to stereo; 230,798 as coded, 211,371 with Atmos objects |
 | Retained after teardown | 12 bytes |
 | `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
 | `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
@@ -905,29 +911,34 @@ below the 236,391 `main` carried before this stack, and the lowest peak the prob
 since objects were first reconstructed, with a quarter of the part's free SRAM unused at it.
 The 7.1.4 fixture then set a new one: 229,630, the widest programme the format has, against the
 257,572 bytes the probe's twelve-channel PCM block leaves free on the part - 27,942 to spare.
-The peak by fixture, identical on both legs:
+The same stream folded to stereo is the peak now, 237,206. The peak by fixture, identical on
+both legs, measured on 2026-09-11:
 
 | Fixture | Peak heap | Allocations per frame |
 |---|---:|---:|
-| `ac3_mono` | 47,524 | 1 |
-| `ac3_stereo` | 49,228 | 1 |
-| `ac3` 5.1 | 56,329 | 3 |
-| `ac3_fold` | 68,617 | 3 |
-| `eac3_atmos_bed` | 123,735 | 20 |
-| `eac3_stereo` | 140,534 | 10 |
-| `eac3_ecpl` | 157,493 | 12 |
-| `eac3` 5.1 | 167,042 | 12 |
-| `eac3_atmos_objects` | 210,203 | 31 |
-| `eac3_fold` | 216,406 | 12 |
-| `eac3_atmos_render` | 210,573 | 36 |
-| `eac3_714` | 229,630 | 35 |
+| `ac3_mono` | 47,596 | 1 |
+| `ac3_stereo` | 49,304 | 1 |
+| `ac3` 5.1 | 56,421 | 3 |
+| `ac3_fold` | 58,469 | 3 |
+| `eac3_atmos_bed` | 124,903 | 20 |
+| `eac3_stereo` | 141,702 | 10 |
+| `eac3_ecpl` | 158,661 | 12 |
+| `eac3` 5.1 | 168,210 | 12 |
+| `eac3_line` | 168,286 | 12 |
+| `eac3_fold` | 174,566 | 12 |
+| `eac3_atmos_objects` | 211,371 | 31 |
+| `eac3_atmos_render` | 211,741 | 36 |
+| `eac3_714` | 230,798 | 35 |
+| `eac3_714_fold` | 237,206 | 35 |
 
 The AC-3 rows carry the 36,872 bytes of the block form's own frame (`decode_frame_by_block`: AC-3 has
 no substream vectors to hand out views of, so it keeps one frame, sized once); the E-AC-3 rows did
 not move, since that form copies nothing. Before the block forms the AC-3 rows were 10,652, 12,356
-and 19,457. The two fold rows are the 5.1 rows plus the output stage's own buffers: the stereo
-frame it writes (12,288 bytes) and, for E-AC-3, the six seats its layout fold stages the
-substreams' channels into (36,864) - neither of them the probe's peak.
+and 19,457. The fold rows are their streams' rows plus the output stage's own buffers, a block of
+each and not a frame: for AC-3 a block of the two outputs (2,048 bytes), and for E-AC-3 a block
+of the six seats its layout fold stages the substreams' channels into (6,144), the fold itself
+going straight into the caller's first two channels. Until 2026-09-11 both were frame-long, and
+the fold rows peaked at 68,709, 217,574 and 280,214 bytes.
  [The ESP32-S3 page](platforms/esp32.md#objects) has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
@@ -956,29 +967,33 @@ output rather than a list in the script, so a fixture added and forgotten cannot
 `tools/checks/run_baremetal_probe.sh --icount` builds the probe with its clock on the
 mps2-an385's 25 MHz timer and runs QEMU under `-icount shift=0`, where the guest clock advances
 one nanosecond per executed instruction; the probe's microseconds are then thousands of Thumb-2
-instructions, the same on every host. Measured on the arm-none-eabi leg at `b28e4869`, `-Os`,
+instructions, the same on every host. Measured on the arm-none-eabi leg on 2026-09-11, `-Os`,
 soft float throughout (the leg has no FPU, so this is what a part without one pays):
 
 | Fixture | Instructions per frame | Ceiling |
 |---|---:|---:|
-| `ac3_mono` | 1,625,000 | 2,000,000 |
-| `ac3_stereo` | 3,548,000 | 4,500,000 |
-| `eac3_stereo` | 4,851,000 | 6,000,000 |
-| `eac3_atmos_bed` | 8,940,000 | 11,000,000 |
-| `ac3` 5.1 | 10,224,000 | 13,000,000 |
-| `ac3_fold` | 10,782,000 | 13,500,000 |
-| `eac3` 5.1 | 12,928,000 | 16,000,000 |
-| `eac3_fold` | 14,280,000 | 17,000,000 |
-| `eac3_atmos_objects` | 28,213,000 | 35,000,000 |
-| `eac3_atmos_render` | 28,938,000 | 36,000,000 |
-| `eac3_ecpl` | 28,861,000 | 36,000,000 |
-| `eac3_714` | 33,793,000 | 42,000,000 |
+| `ac3_mono` | 1,626,000 | 2,000,000 |
+| `ac3_stereo` | 3,550,000 | 4,500,000 |
+| `eac3_stereo` | 4,858,000 | 6,000,000 |
+| `eac3_atmos_bed` | 8,945,000 | 11,000,000 |
+| `ac3` 5.1 | 10,228,000 | 13,000,000 |
+| `ac3_fold` | 10,770,000 | 13,500,000 |
+| `eac3` 5.1 | 12,965,000 | 16,000,000 |
+| `eac3_line` | 13,595,000 | 17,000,000 |
+| `eac3_fold` | 14,244,000 | 17,000,000 |
+| `eac3_atmos_objects` | 28,218,000 | 35,000,000 |
+| `eac3_atmos_render` | 28,941,000 | 36,000,000 |
+| `eac3_ecpl` | 28,863,000 | 36,000,000 |
+| `eac3_714` | 33,900,000 | 42,000,000 |
+| `eac3_714_fold` | 36,040,000 | 45,000,000 |
 
-The two fold rows were measured at `195ba37c` on 2026-09-10, in a run that reproduced every
-other row to within the microsecond the probe prints - 1,000 instructions; the fold itself is
-558,000 instructions over plain AC-3 5.1 and 1,352,000 over E-AC-3 5.1, 5% and 10%. The render
-row is the objects row plus the placing: 5% of its count is the render, the
-rest the same reconstruction.
+The fold is 542,000 instructions over plain AC-3 5.1, 1,279,000 over E-AC-3 5.1 and 2,140,000
+over 7.1.4: 5%, 10% and 6%. `eac3_line` is 630,000 over `eac3`, which is §7.7.1's gain and
+§5.4.2.8's normalisation on a stream carrying dynrng words and dialnorm 24; its stream is the
+5.1 one encoded with those two added. On the other rows' streams, at dialnorm 31 and with no
+dynrng words, line mode does no per-sample work, so the fold rows count the fold. The render
+row is the objects row plus the placing: 5% of its count is the render, the rest the same
+reconstruction.
 
 Not cycles on any real part: a Cortex-M3 would take more, an ESP32-S3 with its FPU takes a fifth
 of a 5.1 frame's count in cycles. What the column is for is that it is deterministic — two runs
@@ -993,22 +1008,30 @@ The same clock on the same leg with the decoder built as its fixed-point tier
 `planning/arithmetic-tiers.md`), measured 2026-09-10. Integer arithmetic where the
 row above it is software floating point: a Q7.24 multiply is one `smull` and a
 shift where a soft-float one is a call. The ceilings are `ICOUNT_CEILING_FIXED`
-in the runner, with the same headroom rule as every other gate here.
+in the runner, with the same headroom rule as every other gate here. Both
+columns re-measured on 2026-09-11.
 
 | Fixture | Fixed tier | Float tier | Ratio | Ceiling |
 |---|---:|---:|---:|---:|
-| `ac3_mono` | 615,000 | 1,625,000 | 0.38x | 1,000,000 |
-| `ac3_stereo` | 1,246,000 | 3,548,000 | 0.35x | 2,000,000 |
-| `eac3_stereo` | 1,818,000 | 4,851,000 | 0.37x | 2,500,000 |
-| `eac3_atmos_bed` | 3,540,000 | 8,940,000 | 0.40x | 4,500,000 |
-| `ac3` 5.1 | 3,807,000 | 10,224,000 | 0.37x | 5,000,000 |
-| `ac3_fold` | 5,327,000 | 10,782,000 | 0.49x | 7,000,000 |
-| `eac3` 5.1 | 4,827,000 | 12,928,000 | 0.37x | 6,500,000 |
-| `eac3_fold` | 8,053,000 | 14,280,000 | 0.56x | 10,500,000 |
-| `eac3_atmos_objects` | 25,093,000 | 28,213,000 | 0.89x | 31,500,000 |
-| `eac3_atmos_render` | 25,525,000 | 28,938,000 | 0.88x | 32,000,000 |
-| `eac3_ecpl` | 10,088,000 | 28,861,000 | 0.35x | 13,000,000 |
-| `eac3_714` | 12,092,000 | 33,793,000 | 0.36x | 15,500,000 |
+| `ac3_mono` | 615,000 | 1,626,000 | 0.38x | 1,000,000 |
+| `ac3_stereo` | 1,245,000 | 3,550,000 | 0.35x | 2,000,000 |
+| `eac3_stereo` | 1,817,000 | 4,858,000 | 0.37x | 2,500,000 |
+| `eac3_atmos_bed` | 3,538,000 | 8,945,000 | 0.40x | 4,500,000 |
+| `ac3` 5.1 | 3,804,000 | 10,228,000 | 0.37x | 5,000,000 |
+| `ac3_fold` | 5,301,000 | 10,770,000 | 0.49x | 7,000,000 |
+| `eac3` 5.1 | 4,825,000 | 12,965,000 | 0.37x | 6,500,000 |
+| `eac3_line` | 6,273,000 | 13,595,000 | 0.46x | 7,000,000 |
+| `eac3_fold` | 7,985,000 | 14,244,000 | 0.56x | 10,500,000 |
+| `eac3_atmos_objects` | 25,091,000 | 28,218,000 | 0.89x | 31,500,000 |
+| `eac3_atmos_render` | 25,522,000 | 28,941,000 | 0.88x | 32,000,000 |
+| `eac3_ecpl` | 10,086,000 | 28,863,000 | 0.35x | 13,000,000 |
+| `eac3_714` | 12,087,000 | 33,900,000 | 0.36x | 15,500,000 |
+| `eac3_714_fold` | 17,019,000 | 36,040,000 | 0.47x | 21,500,000 |
+
+The output stage is where this tier gains least: its samples are `float` in and out, so
+every multiply-add converts a sample to Q7.24 and back and the add is software floating
+point, which is why the fold rows and `eac3_line` sit at 0.46x to 0.56x where the decode
+alone is 0.35x to 0.40x.
 
 The Annex E rows were measured twice. The tier reached them in two steps: the
 store and the transform first, with the adaptive hybrid transform, enhanced
@@ -1037,10 +1060,11 @@ it in would be a fixed forward MDCT and a fixed QMF path - a separate piece of
 work with its own quality question, and one that would change nothing for the
 other two tiers.
 
-The image is 353,413 bytes against the float tier's 338,793 - the fixed
+The image is 364,685 bytes against the float tier's 352,101 - the fixed
 transform's tables and kernel beside the float ones the object path still
-needs - and the peak heap 238,094 on this leg. The `pcm_hash` lines
-are identical on this leg and on the x86 host for all twelve fixtures and are
+needs - and the peak heap 244,502 on this leg, the 7.1.4 fold (238,094 for
+7.1.4 as coded). The `pcm_hash` lines
+are identical on this leg and on the x86 host for all fourteen fixtures and are
 pinned in `tests/golden/fixed-probe-pcm-hashes.json`
 (`tools/checks/check_probe_hashes.py`); with the scalar's conversions from
 `float` and `double` written as floating expressions the two legs had differed
