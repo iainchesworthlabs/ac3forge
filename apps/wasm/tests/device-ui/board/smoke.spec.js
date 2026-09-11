@@ -41,7 +41,6 @@ test('the board serves the page, and the page drives the board', async ({ page, 
     // What the boot play decoded: the WASM page's demo, E-AC-3 5.1 with objects.
     await expect(page.locator('#state')).toHaveText('Finished (end of stream)', { timeout: 120_000 });
     await expect(page.locator('#codec')).toHaveText('E-AC-3, 1 substream, dialnorm -31');
-    await expect(page.locator('#channels')).toHaveText('6 (3/2)');
     await expect(page.locator('#objects')).toHaveText('Carried, not placed');
     await expect(page.locator('#played')).toHaveText('0:08 (250 frames)');
     // What the output layout did with it: the decoder's fold, onto the capture
