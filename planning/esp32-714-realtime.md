@@ -8,7 +8,9 @@ because of that session's PR #654 (see decision 1). On the board, decision 1's o
 pay, and two things the profile had not tried did: a 32 KB instruction cache, and holding a play's
 first unit until its second is decoded. With both, and #654, `714-walk.ec3` and `714-tones.ec3` play
 at 2.0 over WiFi with no block reaching an empty queue ([the decisions on the
-board](#the-decisions-on-the-board)). Decisions 12 to 15 follow from that and await the user.
+board](#the-decisions-on-the-board)). Decisions 12 to 15 follow from that, and the user took the
+recommendation on each the same day: the output task withdrawn, the 32 KB instruction cache in
+`sdkconfig.psram`, the first unit held by the player, and the local shape's queue documented.
 Nothing in `src/forge` has changed.
 
 The player decodes a 7.1.4 E-AC-3 stream on the ESP32-S3 with every slot at the host decoder's
@@ -472,6 +474,8 @@ decode's, and the levels would stop matching the host's to the digit. J would al
     Cost of (a): the commits that added it come out; the block ring and its host test stay only if
     decision 14 holds its unit in them.
 
+    **Taken 2026-09-11.** The block ring and its host test stay: the held unit is kept in one.
+
 13. **The instruction cache.**
     - (a) **32 KB in `sdkconfig.psram`** (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`).
     - (b) Keep the default, 16 KB.
@@ -481,6 +485,8 @@ decode's, and the levels would stop matching the host's to the digit. J would al
     slots with 12 to 26% of the frame to spare. Cost: 16 KB of internal SRAM; the heap at a 2.0
     play's start went from 170,095 to 153,367 bytes. Builds without PSRAM keep 16 KB: their heap
     is shorter, and their decode has time to spare.
+
+    **Taken 2026-09-11.**
 
 14. **A play's start.**
     - (a) **The player holds a play's first unit until the second is decoded**, so the sink
@@ -499,6 +505,8 @@ decode's, and the levels would stop matching the host's to the digit. J would al
     where there is PSRAM; about 60 lines in the player, and a host test of the order the held
     blocks come out in.
 
+    **Taken 2026-09-11.**
+
 15. **The local shape's DMA queue.**
     - (a) **The README and the Kconfig help say that a local 7.1.4 play folded to 2.0 needs twelve
       descriptors, and the default stays at four.**
@@ -506,6 +514,8 @@ decode's, and the levels would stop matching the host's to the digit. J would al
 
     **Recommend (a).** (b) takes 16 KB of internal SRAM from every build without PSRAM, whatever
     it plays. Cost of (a): a paragraph in each.
+
+    **Taken 2026-09-11.**
 
 ## The decisions on the board
 
