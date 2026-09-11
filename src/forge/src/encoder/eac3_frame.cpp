@@ -2649,6 +2649,14 @@ struct FrameEncoder::Impl {
     std::vector<internal::encode_scalar_t> ecpl_unity_amp;
     std::vector<internal::encode_scalar_t> ecpl_zero_angle;
     std::vector<internal::encode_scalar_t> ecpl_half_angle;
+    // step3b_ecplangleintrp_decide's per-band codes and per-bin scratch -
+    // same reuse contract as the rest of this group, just added later and
+    // originally left as locals (each a fresh allocation every frame).
+    std::vector<int> ecpl_decide_band_codes;
+    std::vector<int> ecpl_decide_chaos_codes;
+    std::vector<int> ecpl_decide_angle_codes;
+    std::vector<internal::encode_scalar_t> ecpl_decide_angle_bin;
+    std::vector<internal::encode_scalar_t> ecpl_decide_amp_bin;
     std::vector<std::uint8_t> exp_raw;
     std::vector<std::uint8_t> exp_axis;
     // Per-(stream, block) raw exponents, one kCoefficientsPerBlock-wide slot
@@ -3657,11 +3665,20 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 internal::encode_scalar_t err_direct = 0;
                 internal::encode_scalar_t err_interp = 0;
                 EcplNoise scratch_noise;
-                std::vector<int> band_codes(nbnd_e);
-                std::vector<int> chaos_codes(nbnd_e);
-                std::vector<int> angle_codes(nbnd_e);
-                std::vector<internal::encode_scalar_t> angle_bin(static_cast<std::size_t>(bins));
-                std::vector<internal::encode_scalar_t> amp_bin(static_cast<std::size_t>(bins));
+                // Caller-owned like every other per-frame ecpl_* scratch
+                // member above (coeffs, ecpl_unity_amp, ...): these were
+                // locals, a fresh allocation every frame with nothing to
+                // amortize against.
+                auto& band_codes = impl_->ecpl_decide_band_codes;
+                band_codes.resize(nbnd_e);
+                auto& chaos_codes = impl_->ecpl_decide_chaos_codes;
+                chaos_codes.resize(nbnd_e);
+                auto& angle_codes = impl_->ecpl_decide_angle_codes;
+                angle_codes.resize(nbnd_e);
+                auto& angle_bin = impl_->ecpl_decide_angle_bin;
+                angle_bin.resize(static_cast<std::size_t>(bins));
+                auto& amp_bin = impl_->ecpl_decide_amp_bin;
+                amp_bin.resize(static_cast<std::size_t>(bins));
                 std::array<internal::encode_scalar_t, 256> recon{};
                 for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
                     const auto& prev = blk > 0 ? coeffs_at(cpl_stream, blk - 1) : kZero;
