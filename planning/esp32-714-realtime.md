@@ -653,9 +653,29 @@ and the data cache took another 0.8 to 2 ms off each twelve-slot frame.
   player. These are the `capture` sink at 2.0 and at twelve slots, the render shape, and the stream
   set over QEMU's Ethernet (`tools/checks/check_stream_set.py`). The host tests also run.
 
-The board items were measured on 2026-09-11 with a scratch combination of this branch, #654, the
-32 KB instruction cache and the held unit ([the decisions on the board](#the-decisions-on-the-board)).
-They are to be run again on the branch as built after decisions 12 to 15.
+The board items were first measured with a scratch combination of this branch, #654, the 32 KB
+instruction cache and the held unit ([the decisions on the board](#the-decisions-on-the-board)).
+They were run again on 2026-09-11 on the branch as built after decisions 12 to 15, with #654
+merged in and nothing else added:
+
+- **2.0 over WiFi**, `sdkconfig.psram` as committed: `714-walk` played five times and `714-tones`
+  four, with no block reaching an empty queue in any play, at 31.2 to 31.4 ms a frame of which
+  about 3 ms was waiting for the DAC. `layout-714`, `layout-51`, the demo, `714-none`, `714-spx`,
+  `714-cpl` and `714-tpn` had none either, and every level was the host's Lo/Ro to the digit.
+  `714-aht`, `714-all` and `714-ecpl` still ran dry: 7, 10 and 13 blocks.
+- **Onto twelve slots over WiFi**, through the null sink: `714-walk` 27.0 ms a frame, `714-tones`
+  26.9, `714-none` 24.9, `layout-714` 23.7, `714-spx` 28.5, `714-cpl` 28.8 and `714-tpn` 27.7;
+  `714-aht` 33.4, `714-all` 36.8 and `714-ecpl` 55.7. Every slot of every play had the base
+  image's level.
+- **A local source**, `714-tones.ec3` from the partition with no PSRAM: folded to 2.0 with twelve
+  DMA descriptors, none of 1,512 blocks reached an empty queue; onto twelve slots, 23.9 ms a
+  frame.
+- **Under QEMU**, as CI runs them: `sdkconfig.ci` with the hold on and `sdkconfig.ci-tdm`, with
+  their levels, the capture checks and the console check; and the stream set over QEMU's
+  Ethernet, where `check_stream_set.py check` and `play` passed with every stream `ok`. The web
+  page's Playwright check in that step was not run.
+- **On the host**, `[unit_hold]` and `[block_ring]` pass under MSVC, and both test files compile
+  under clang-cl 22 with the warning set CI uses, `-Wdouble-promotion` and `-Werror` among it.
 
 ## What cannot be verified
 
