@@ -13,6 +13,14 @@
     lower the least free internal heap, and the larger stack held. [Budget](#budget) and
     [What the measurements found](#what-the-measurements-found) have the figures.
 
+    **The output layout, proposed 2026-09-11, not built yet.** Seen on a board, the page's
+    Layout field did not say that it sets the speakers the player drives, what the player does
+    with a stream whose channels differ from them, or that nothing is upmixed. [The output
+    layout](#the-output-layout) is what the page says and does about that, and the fields
+    `/status` gains so that it can; [the stream set](esp32-stream-set.md) is the 7.1.4 streams,
+    and the range of layouts, codecs and coding tools beside them, that the device can fetch to
+    show it. Decisions 14 to 18 are that work's.
+
     Shape follows [the player plan](esp32-player.md): what exists, what changes and why, a
     budget with how each figure is measured, [Decisions](#decisions) with a recommendation and
     a cost each, and [what cannot be verified](#what-cannot-be-verified).
@@ -133,6 +141,89 @@ emptied every 100 ms, and a full queue is answered `409` with "this sink has no 
 which would be a false report. So the page keeps at most one volume request in flight, sends the
 latest value when it returns, and leaves at least 200 ms between sends. While a change is
 pending, `/status` does not move the slider under the user's hand.
+
+## The output layout
+
+Seen on a board on 2026-09-11, playing a looped demo stream at `2.0`, the Layout field left
+three things unsaid that a person using it needs: that it sets the speakers the player drives,
+one per output slot, and says nothing about the stream; what the player does with a stream whose
+channels differ from those speakers; and what "the next play uses it" changes. This section is
+what the page says instead, and what `/status` adds so that the page can take it from the
+device's answers rather than work out the player's rules in the script.
+
+### What a layout does
+
+From the code - `esp-idf/ac3forge/src/player.cpp`, `include/ac3forge/render.hpp` and the
+decoder's output stage, `src/forge/src/decoder/output.cpp` - and checked under QEMU with the
+[stream set](esp32-stream-set.md):
+
+| The layout | What the player does, whatever the stream |
+|---|---|
+| Two full-range speakers and nothing else (`2.0`), or one (`1.0`) | The decoder folds (§7.8): Lo/Ro, or Lt/Rt where `CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD` says so; mono for one speaker. Every channel but the LFE is in the fold. The output stage first puts each Table E2.5 location in a §7.8 seat - a height in L or R, a rear or top surround in Ls or Rs, each at -3 dB - and then folds, so a 7.1.4 stream at `2.0` plays its heights and rear surrounds in the two channels. The LFE is left out, which is §7.8's default and the player does not change it (`OutputConfig::mix_lfe`). |
+| Anything wider, without height speakers | As coded. Each coded channel goes to the slot of its own location at unit gain. A channel whose location the layout has no slot for is spread over the layout's speakers by `ac3::spatial::pan_direction`. The LFE goes to LFE slots and nowhere else, and a layout with none drops it. |
+| With height speakers | The same, for a stream without objects. For a stream with objects, when the player reconstructs them (`CONFIG_AC3FORGE_EXAMPLE_OBJECTS`, by default whenever the layout has a height speaker), each object is placed by its own position, the bed's LFE passes through, and the bed's other channels are not added. |
+
+**Nothing is upmixed.** The renderer never derives a signal for a speaker from other channels. A
+slot gets audio from a coded channel at its location, from a coded channel with no slot of its
+own that is spread onto it, from an object placed near it, or, for an LFE slot, from the LFE,
+and from nothing else. Under QEMU a 5.1 stream played onto `7.1.4` left the rear surrounds and
+all four heights at exactly zero, and a 7.1 stream left the four heights at zero.
+
+### What the page says
+
+In **Now**, for a 5.1 stream playing on a twelve-slot sink at `7.1.4`:
+
+| Row | From `/status` | Shown as |
+|---|---|---|
+| Sink | `sink`, `sink_slots` | `capture-tdm, 12 slots` |
+| Channels | `stream.channels`, `stream.coded` | `6: L C R Ls Rs LFE`; from a firmware without `coded`, `6 (3/2)` as now |
+| Output | `stream.layout`, `stream.slots`, `stream.render` | `7.1.4, 12 slots: each channel on the speaker at its location` |
+| Silent | `stream.silent` | `Lrs, Rrs, Vhl, Vhr, Lts, Rts: nothing in the stream for these`; not shown when empty |
+| Next play | `layout` | Shown while it differs from `stream.layout`, or before a play has a stream: `5.1` after a `PUT /layout` |
+
+The Output row's words, one for each value of `stream.render`: `folded to two channels by the
+decoder (Lo/Ro)`, the same with `(Lt/Rt)`, `folded to one channel by the decoder`, `each channel
+on the speaker at its location`, and `objects placed by their positions`.
+
+In **Control**, the field is **Output layout**, described as the speakers the player drives, one
+per output slot, given as a name or a speaker per slot, and taking effect at the next play; the
+description adds the sink's slot count when `/status` gives one. Its suggestions are the named
+layouts that fit that count: `1.0` and `2.0` on a two-slot sink, up to `7.1.4` on twelve,
+`9.1.6` on sixteen. Under the form, a closed **What an output layout does** says the table above
+in four sentences, the last of them that nothing is upmixed. A refused layout is explained with
+the page's own count where it can make one - `Output layout 5.1 refused (409): it needs 6 slots
+and this sink has 2.` - and with the firmware's reply otherwise; an accepted one reads `Output
+layout 5.1 from the next play.` The page still sends every layout and lets `OutputLayout::parse`
+decide ([decision 16](#decisions)); it counts slots only to explain an answer.
+
+### What `/status` adds
+
+Five fields. All are additive: no existing field changes its name, type or meaning, and none
+moves relative to the others.
+
+| Field | What it is | Where it comes from |
+|---|---|---|
+| `sink_slots` | An integer, after `sink`: the slots on the sink's bus, and so the widest layout `PUT /layout` accepts | A new `ControlHandlers::sink_slots`; the example answers with `player::sink_slots()` |
+| `stream.layout` | The output layout this play renders onto, as its text. `layout` stays the next play's. | `StreamInfo`, which the player fills at the first access unit |
+| `stream.render` | How this play serves it: `loro`, `ltrt` or `mono` for the decoder's fold, `channels` for as coded, `objects` for objects placed | The same |
+| `stream.coded` | The stream's channels by Table E2.5 location, comma-separated in the decoder's order; `Ch1,Ch2` for dual mono | The same, from the headers the player already reads to place the bed |
+| `stream.silent` | The output layout's speakers this play has sent nothing to, comma-separated by their slot names; empty when every speaker has had something | The player, from the renderer's gains: fixed for `channels`, a running union over each access unit's object positions for `objects`, empty for a fold |
+
+For the 5.1 stream above, the changed parts of the body:
+
+```json
+"sink":"capture-tdm","sink_slots":12,
+"stream":{"codec":"E-AC-3","acmod":7,"channels":6,"substreams":1,"dialnorm":-31,"objects":false,
+ "objects_rendered":false,"slots":12,"layout":"7.1.4","render":"channels","coded":"L,C,R,Ls,Rs,LFE",
+ "silent":"Lrs,Rrs,Vhl,Vhr,Lts,Rts"}
+```
+
+What it costs, measured the way [Budget](#budget) measures once it is built: about 170 bytes
+more JSON per `GET /status`, in the handler's `std::string` and freed with the request; three
+text fields in `StreamInfo`, copied under the player mutex onto the server task's stack for each
+poll (the `/status` handler's deepest use was 2,020 bytes of 6,144); the code's flash; and a mask
+the decode task updates once per access unit. Nothing is allocated during a play that was not
+allocated before.
 
 ## How the page updates
 
@@ -472,3 +563,42 @@ run as root, so Playwright can install Chromium's system libraries).
     2026-09-11:** the page's requests left the least free internal heap where the play puts it,
     13,635 against 13,619, so neither (b) nor (c) is needed. What the board showed instead is a
     largest free internal block of 6,144 bytes throughout the play.
+
+14. **What `/status` says about the layout.** (a) **`sink_slots`, and in `stream` the play's
+    `layout`, `render`, `coded` and `silent`**; (b) `sink_slots` and `stream.render` only; (c)
+    nothing new, the page working the rest out from `layout` and the stream's fields.
+    **Recommend (a).** (c) would put `OutputLayout`'s grammar, the fold's seats and the
+    renderer's exact-or-spread rule into the script, where they would drift from the firmware's;
+    and `acmod` cannot name a dependent substream's channels, so a 7.1.4 stream reads
+    `12 (3/2)`. (b) says how a play is rendered but not which speakers it leaves silent, which is
+    what "can it upmix?" asks. Cost of (a): about 170 bytes more JSON per poll, three text fields
+    in `StreamInfo` (up to 320 bytes) copied onto the server task's stack per poll, and a mask
+    the decode task updates once per access unit.
+
+15. **How the page explains a layout.** (a) **rows in Now for this play's output, the speakers
+    it leaves silent and the next play's layout; a description on the field; and a closed "What
+    an output layout does" under it**; (b) the explanation always open; (c) a select of fixed
+    layouts in place of the text field. **Recommend (a).** The rows answer for the play in front
+    of the user, and the closed block keeps the explanation one press away without pushing the
+    controls down the page. (c) would drop speaker lists, which a DAC wired in WAV order needs.
+    Cost: about 700 bytes of text and 1 KB of script, within decision 18's budget.
+
+16. **Checking a layout against the sink.** (a) **send it, and explain a `409` with the page's
+    own slot count when it can make one**; (b) refuse it in the page, without a request, when the
+    count is over `sink_slots`. **Recommend (a).** The firmware stays the one judge of the
+    grammar. The page's count - a name's three figures added, a list's tokens counted - is only
+    used to say why. Cost: one request for a layout the page could have known would be refused.
+
+17. **Which layouts the field suggests.** (a) **the named layouts whose slots fit
+    `sink_slots`, and all of them from a firmware that does not report it**; (b) the same five for
+    every sink, as now. **Recommend (a).** Cost: the suggestions can change after the first
+    `/status`, and no speaker list is suggested.
+
+18. **The flash budget.** (a) **20,480 bytes for the two files**; (b) 16,384 as now, paid for
+    by cutting the page's existing text and CSS; (c) gzip, decision 2's option (b). **Recommend
+    (a).** The files are 16,190 bytes and this adds about 2 KB. What the budget protects is
+    flash, and the image has over 400 KB of its application partition free. The heap is not
+    affected: the files are sent from flash, lwIP's send buffer bounds what one connection holds
+    whatever a file's length, and on the board a page load did not lower the least free internal
+    heap. (b) would cut wording that readers and the tests rely on. Cost: up to 4,096 bytes more
+    flash in every firmware that mounts Control, and about 2 KB more sent per page load.

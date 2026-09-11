@@ -625,7 +625,7 @@ passthrough path in Music Assistant. Not schedulable here; the exit is the answe
 
 ### Hand-over to the decoder core
 
-Three items for the session that owns `src/forge`; this page describes them and does not touch
+Four items for the session that owns `src/forge`; this page describes them and does not touch
 that tree.
 
 1. **A defect, found by the streaming example's CI shape on 2026-09-10.**
@@ -643,6 +643,15 @@ that tree.
 3. `ac3::io::StreamDecoder` over the accumulator, both decoders and the output stage, with
    `feed()` and `next()` into caller-owned spans, tested over both generations. The component's
    copy goes when it lands.
+4. **A flush in the block form, found by [the stream set](esp32-stream-set.md#what-the-set-found)
+   on 2026-09-11.** A stream using §3.7's transient pre-noise processing ends with its last
+   access unit held back, and `Eac3Decoder::flush()` releases it only as raw per-substream
+   results, not assembled and not through a `BlockSink`. The player decodes through
+   `decode_access_unit_by_block`, so it cannot release that unit: a TPN stream's play ends one
+   access unit short (15 of 16 for the set's `51-tpn.ec3`). A `flush_by_block(BlockSink)` that
+   assembles what is held and delivers it as the unit's blocks would close it; a test is a TPN
+   stream decoded block by block, whose samples then match `decode_access_unit` followed by
+   `flush()`.
 
 ## What cannot be verified, and why
 
