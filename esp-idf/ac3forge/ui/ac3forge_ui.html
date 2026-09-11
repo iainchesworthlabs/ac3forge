@@ -59,8 +59,9 @@ a{color:var(--accent)}
 <dt hidden>Codec</dt><dd id="codec" hidden></dd>
 <dt hidden>Channels</dt><dd id="channels" hidden></dd>
 <dt hidden>Objects</dt><dd id="objects" hidden></dd>
-<dt hidden>Layout</dt><dd id="layout" hidden></dd>
-<dt hidden>Output slots</dt><dd id="slots" hidden></dd>
+<dt hidden>Output</dt><dd id="output" hidden></dd>
+<dt hidden>Silent</dt><dd id="silent" hidden></dd>
+<dt hidden>Next play</dt><dd id="next" hidden></dd>
 <dt hidden>Played</dt><dd id="played" hidden></dd>
 </dl>
 </section>
@@ -78,12 +79,19 @@ a{color:var(--accent)}
 <span id="volume-out">100%</span>
 </div>
 <form id="layout-form">
-<label for="layout-input">Layout</label>
+<label for="layout-input">Output layout</label>
 <input id="layout-input" type="text" list="layouts" required autocomplete="off" spellcheck="false" aria-describedby="layout-help">
 <button type="submit" class="secondary">Apply</button>
-<datalist id="layouts"><option value="2.0"><option value="5.1"><option value="7.1"><option value="5.1.4"><option value="7.1.4"></datalist>
-<p id="layout-help" class="muted">A name such as 5.1.4, or a speaker per slot such as L,R,C,LFE,Ls,Rs. The next play uses it.</p>
+<datalist id="layouts"><option value="1.0"><option value="2.0"><option value="5.1"><option value="7.1"><option value="5.1.2"><option value="5.1.4"><option value="7.1.4"><option value="9.1.6"></datalist>
+<p id="layout-help" class="muted">The speakers this player drives, one per output slot: a name such as 5.1 or 7.1.4, or one speaker per slot such as L,R,C,LFE,Ls,Rs. It takes effect at the next play.<span id="layout-fit"></span></p>
 </form>
+<details>
+<summary>What an output layout does</summary>
+<p>2.0 or 1.0: the decoder folds every channel but the LFE into two channels, or one, heights and rear surrounds included.</p>
+<p>Wider: each channel plays on the speaker at its location. A channel the layout has no speaker for is spread over the nearest ones, and the LFE goes only to LFE outputs.</p>
+<p>With height speakers, a stream's objects are placed by their positions.</p>
+<p>Nothing is upmixed. A speaker the stream has nothing for stays silent, so a 5.1 stream on 7.1.4 leaves the rear surrounds and heights silent; Now lists them.</p>
+</details>
 <p id="outcome" role="status"></p>
 </section>
 <section aria-labelledby="timing-heading">

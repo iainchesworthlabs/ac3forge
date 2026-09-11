@@ -44,18 +44,22 @@ test('the board serves the page, and the page drives the board', async ({ page, 
     await expect(page.locator('#channels')).toHaveText('6 (3/2)');
     await expect(page.locator('#objects')).toHaveText('Carried, not placed');
     await expect(page.locator('#played')).toHaveText('0:08 (250 frames)');
+    // What the output layout did with it: the decoder's fold, onto the capture
+    // sink's two slots.
+    await expect(page.locator('#sink')).toHaveText('capture-i2s, 2 slots');
+    await expect(page.locator('#channels')).toHaveText('6: L C R Ls Rs LFE');
+    await expect(page.locator('#output')).toHaveText('2.0, 2 slots: folded to two channels by the decoder (Lo/Ro)');
+    await expect(page.locator('#silent')).toBeHidden();
 
     // The volume, set with the slider and read back from the device.
     await page.getByRole('slider', { name: 'Volume' }).fill('25');
     await expect.poll(async () => (await status()).volume, { timeout: 10_000 }).toBe(0.25);
 
-    // A layout the capture sink's two slots cannot carry, refused by the
-    // firmware in its own words; the layout stays.
-    await page.getByRole('combobox', { name: 'Layout' }).fill('5.1');
+    // A layout the capture sink's two slots cannot carry: refused by the
+    // firmware, explained by the page; the layout stays.
+    await page.getByRole('combobox', { name: 'Output layout' }).fill('5.1');
     await page.getByRole('button', { name: 'Apply' }).click();
-    await expect(page.getByRole('status')).toHaveText(
-        /^Layout 5\.1 refused \(409\): not a layout this player can play/,
-    );
+    await expect(page.getByRole('status')).toHaveText('Output layout 5.1 refused (409): it needs 6 slots and this sink has 2.');
     expect((await status()).layout).toBe('2.0');
 
     // A play from the form, through to its end, at the volume set above. While

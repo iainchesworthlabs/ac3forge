@@ -1,8 +1,9 @@
 // @ts-check
 'use strict';
 
-// The flash budget planning/esp32-device-ui.md sets for the page: the page and
-// its script together, as the firmware embeds them, within 16,384 bytes. LF
+// The flash budget planning/esp32-device-ui.md sets for the page (decision 18):
+// the page and its script together, as the firmware embeds them, within
+// 20,480 bytes. LF
 // line endings too (.gitattributes pins them), so a Windows checkout embeds,
 // budgets and maps coverage onto the same bytes CI does.
 
@@ -11,7 +12,7 @@ const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { UI_DIR } = require('./stub');
 
-const BUDGET = 16384;
+const BUDGET = 20480;
 
 test('the page and its script fit the flash budget', () => {
     const files = ['ac3forge_ui.html', 'ac3forge_ui.js'].map((name) => fs.readFileSync(path.join(UI_DIR, name)));

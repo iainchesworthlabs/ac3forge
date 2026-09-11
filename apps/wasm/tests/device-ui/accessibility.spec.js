@@ -29,8 +29,11 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
     await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
     await expect(page.getByRole('slider', { name: 'Volume' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Layout' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Layout' })).toHaveAccessibleDescription(/A name such as 5\.1\.4/);
+    await expect(page.getByRole('combobox', { name: 'Output layout' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Output layout' })).toHaveAccessibleDescription(
+        /^The speakers this player drives, one per output slot: .+ It takes effect at the next play\. This sink has 2 slots\.$/,
+    );
+    await expect(page.locator('summary', { hasText: 'What an output layout does' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Apply' })).toBeVisible();
     await expect(page.getByRole('status')).toHaveCount(1);
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -38,7 +41,7 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
 
 test('every action from the keyboard, in page order', async ({ page, stub }) => {
     await page.locator('body').click({ position: { x: 1, y: 1 } });
-    const order = ['location-input', 'Play', 'stop', 'volume', 'layout-input', 'Apply'];
+    const order = ['location-input', 'Play', 'stop', 'volume', 'layout-input', 'Apply', 'What an output layout does', 'Counters'];
     const focused = () =>
         page.evaluate(() => {
             const el = /** @type {HTMLElement} */ (document.activeElement);
@@ -61,16 +64,19 @@ test('every action from the keyboard, in page order', async ({ page, stub }) => 
     await page.keyboard.press('ArrowLeft');
     await expect.poll(() => stub.sent('POST /volume').map((r) => r.body)).toEqual(['0.99']);
 
-    const layout = page.getByRole('combobox', { name: 'Layout' });
+    const layout = page.getByRole('combobox', { name: 'Output layout' });
     await layout.focus();
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('1.0');
     await page.keyboard.press('Enter');
     await expect.poll(() => stub.sent('PUT /layout').map((r) => r.body)).toEqual(['1.0']);
 
-    await page.locator('summary').focus();
-    await page.keyboard.press('Enter');
-    await expect(page.locator('details')).toHaveAttribute('open', '');
+    for (const name of ['What an output layout does', 'Counters']) {
+        const summary = page.locator('summary', { hasText: name });
+        await summary.focus();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('details', { has: summary })).toHaveAttribute('open', '');
+    }
 });
 
 for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
@@ -79,17 +85,19 @@ for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
         // A page with everything showing: a failed play has the most text.
         stub.device.framesPerPoll = 50;
         await page.getByRole('button', { name: 'Stop' }).click();
-        await page.locator('summary').click();
         stub.setStatus({
-            state: 'failed', location: 'http://10.0.2.2:8000/demo.ec3', source: 'http', sink: 'capture-i2s',
-            layout: '2.0', volume: 1, stream: { codec: 'E-AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31,
-                objects: true, objects_rendered: false, slots: 2 },
+            state: 'failed', location: 'http://10.0.2.2:8000/demo.ec3', source: 'http', sink: 'capture-tdm',
+            sink_slots: 12, layout: '5.1', volume: 1, stream: { codec: 'E-AC-3', acmod: 7, channels: 6, substreams: 1,
+                dialnorm: -31, objects: true, objects_rendered: false, slots: 12, layout: '7.1.4', render: 'channels',
+                coded: 'L,C,R,Ls,Rs,LFE', silent: 'Lrs,Rrs,Vhl,Vhr,Lts,Rts' },
             frames: 100, held: 0, us_per_frame: 5404, worst_frame_us: 7617, render_us_per_frame: 115,
             sink_us_per_frame: 362, realtime_permille: 168, resync_bytes: 0, fetched_bytes: 190464, ring_low: 2048,
             passes: 0, layout_mismatches: 0, finished: true, failed: true, why: 'decode', error: 2,
         });
         await page.reload();
-        await page.locator('summary').click();
+        // Both closed sections open, so their text is measured too.
+        await page.locator('summary', { hasText: 'What an output layout does' }).click();
+        await page.locator('summary', { hasText: 'Counters' }).click();
         await page.getByRole('slider', { name: 'Volume' }).fill('30');
         await expect(page.locator('#reason')).toBeVisible();
         const worst = await page.evaluate(() => {
@@ -149,9 +157,10 @@ test('controls at least 44 CSS pixels tall', async ({ page }) => {
         page.getByRole('button', { name: 'Play' }),
         page.getByRole('button', { name: 'Stop' }),
         page.getByRole('slider', { name: 'Volume' }),
-        page.getByRole('combobox', { name: 'Layout' }),
+        page.getByRole('combobox', { name: 'Output layout' }),
         page.getByRole('button', { name: 'Apply' }),
-        page.locator('summary'),
+        page.locator('summary', { hasText: 'What an output layout does' }),
+        page.locator('summary', { hasText: 'Counters' }),
     ]) {
         const box = await control.boundingBox();
         expect(box && box.height, await control.evaluate((el) => el.outerHTML.slice(0, 60))).toBeGreaterThanOrEqual(44);
