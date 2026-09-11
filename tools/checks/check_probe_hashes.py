@@ -33,8 +33,8 @@ LINE = re.compile(r"^([a-z0-9_]+)\.pcm_hash=([0-9a-f]{16})\s*$")
 # A fixture the probe declined to decode, and why - today only the per-target
 # heap budget (apps/baremetal/probe.cpp's over_budget). A run that says so is
 # not a run that is missing a fixture: an ESP32-C3 has 400 KB of internal SRAM
-# and the 7.1.4 programme peaks at 238,094 bytes, so that leg decodes eleven
-# of the twelve and states which one it did not. Absence WITHOUT one of these
+# and the two 7.1.4 rows peak at 238,094 and 244,502 bytes, so that leg decodes
+# twelve of the fourteen and states which two it did not. Absence WITHOUT one of these
 # lines is still a failure - the point is that the skip has to be declared.
 SKIP = re.compile(r"^([a-z0-9_]+)\.skipped=(\S+)")
 
