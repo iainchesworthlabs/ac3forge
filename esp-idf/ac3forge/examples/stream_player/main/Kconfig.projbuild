@@ -81,11 +81,13 @@ choice AC3FORGE_EXAMPLE_SINK
     prompt "Audio sink"
     default AC3FORGE_EXAMPLE_SINK_I2S
     help
-        Where decoded audio goes. The null sink is what CI builds:
-        qemu-system-xtensa has no I2S peripheral, so the real sink's first
-        write blocks on a DMA that never drains, while everything this example
-        exists to exercise - the partition reads, the access-unit framing, the
-        decode - runs perfectly well without one.
+        Where decoded audio goes. The capture sink is what CI runs:
+        qemu-system-xtensa has no I2S peripheral, so the I2S and TDM sinks'
+        first write blocks on a DMA that never drains. The capture sink
+        converts with the code those two share (ac3forge/interleave.hpp) and
+        checks the result, with no peripheral behind it, so the source, the
+        access-unit framing and the decode run as they do on a board. CI
+        builds the other three and runs none of them.
 
 config AC3FORGE_EXAMPLE_SINK_I2S
     bool "I2S DAC"
@@ -129,9 +131,12 @@ choice AC3FORGE_EXAMPLE_SOURCE
     prompt "Bitstream source"
     default AC3FORGE_EXAMPLE_SOURCE_PARTITION
     help
-        Only the partition source can be RUN without hardware, which is why it
-        is the default and the one CI exercises end to end. The other two are
-        compiled by CI and no further: QEMU has no SD host and no network.
+        CI runs three of the four under QEMU: the partition, the FAT volume in
+        flash, and HTTP over QEMU's OpenCores Ethernet MAC (see
+        AC3FORGE_EXAMPLE_NETWORK). The SD source needs an SDMMC host, which
+        QEMU does not have, so CI builds it and runs its file layer
+        (main/source/file_common.hpp) through the FAT volume instead. HTTP
+        over WiFi is built and not run.
 
 config AC3FORGE_EXAMPLE_SOURCE_PARTITION
     bool "Flash partition"

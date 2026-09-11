@@ -146,10 +146,14 @@ class MeteredSink final : public ac3forge::PcmSink {
         player::sink_write(slots);
     }
 
+    // A play is beginning: the meter starts again, and so do the sink's own
+    // figures, so the levels and the sink's line both describe the play they
+    // end (audio_sink.hpp).
     void reset() {
         sum_squares_ = {};
         samples_ = 0;
         slots_ = 0;
+        player::sink_begin_play();
     }
 
     void report() const {

@@ -50,7 +50,7 @@ wheelhouse/
 .lintvenv/
 
 # Downloaded standards documents (free from ATSC/ETSI; not redistributed here)
-docs/spec/
+spec/
 
 # The signing key MUST NOT reach a public remote. The EMDF object signer itself
 # (src/signing) is committed clean-room - only the key is secret, supplied at

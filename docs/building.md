@@ -925,7 +925,7 @@ APIs/targets. A consumer uses the installed package via `find_package(ac3forge)`
 
 ## The standards documents
 
-`docs/spec/` is gitignored: the standards are free to download but are not redistributed here.
+`spec/` is gitignored: the standards are free to download but are not redistributed here.
 The build does not need them — every table is already transcribed into the source. They are
 needed only to re-run the generators in `tools/`.
 
