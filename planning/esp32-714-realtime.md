@@ -2,9 +2,9 @@
 
 **Status, 2026-09-11:** profiled on a board, then the component's side built and measured on
 the same board. The user took the decisions the same day: the component's side (decisions 1, 2, 6,
-9 and 11) to be built, F and G to be proposed to the decoder core's owner now, and the probe row
-(decision 10) left to the session profiling the fold. Decision 1 was built as (c) rather than (a),
-because of that session's PR #654 (see decision 1). On the board, decision 1's output task did not
+9 and 11) to be built, F and G to be proposed for the decoder core now, and the probe row
+(decision 10) left to PR #654, which profiles the fold. Decision 1 was built as (c) rather than (a),
+because of #654 (see decision 1). On the board, decision 1's output task did not
 pay, and two things the profile had not tried did: a 32 KB instruction cache, and holding a play's
 first unit until its second is decoded. With both, and #654, `714-walk.ec3` and `714-tones.ec3` play
 at 2.0 over WiFi with no block reaching an empty queue ([the decisions on the
@@ -27,8 +27,8 @@ the decisions, each with a recommendation and a cost.
   way.
 - The whole path: the decode, the Annex E coding tools, the output stage, the render, the sink,
   where memory is placed, and the second core.
-- Two constraints. `src/forge` belongs to the decoder core's session, and changes there need its
-  agreement and the user's. The gold standard (the host's double-precision decode, and the hashes
+- Two constraints. Changes in `src/forge` need the user's agreement, and are coordinated with the
+  other work in progress there. The gold standard (the host's double-precision decode, and the hashes
   and levels held to it) and the other platforms must not change.
 
 ## How it was measured
@@ -113,7 +113,7 @@ streams carry dialnorm −31, which normalises by a gain of exactly 1, so the ou
 skipping that multiply and its time here is the fold's. Line-mode DRC is applied to each block's
 coefficients inside the substream decode. Its share of that stage is not separated here: the
 substream decode at 2.0 is 1.2 ms longer than in the as-coded image, and placement and DRC are
-both in that difference. The session profiling the fold, DRC and dialnorm owns that split.
+both in that difference. PR #654 profiles the fold, DRC and dialnorm, and separates them.
 
 ### In the player over WiFi, onto twelve slots, by coding tool
 
@@ -267,7 +267,7 @@ than measured.
 |---|---|---|---|---|
 | A | An output task on core 0, fed by a ring of decoded blocks in PSRAM. The fold, the render, the meter and the sink leave the decode's core | the component | 2.0: 9.5 ms, less about 1 ms of copying (estimate). Twelve slots: 4.3 ms, or 6.7 ms with a TDM conversion, less the copy | measured stages |
 | B | Two cores inside the decode: each substream's reconstruction (spectral extension, IMDCT) in parallel, and the parse kept in bitstream order | `src/forge` | 8 to 11 ms at 7.1.4 (estimate) | the stage shares above |
-| C | The output stage's own cost: `-O2`, and one pass per block | `src/forge`, the fold session's | up to about 6 of the 7.9 ms at 2.0 (estimate) | 18 cycles an element at `-Os` |
+| C | The output stage's own cost: `-O2`, and one pass per block | `src/forge`, in #654 | up to about 6 of the 7.9 ms at 2.0 (estimate) | 18 cycles an element at `-Os` |
 | D | The fold's scratch sized to a block rather than a frame. With A, that is 8 KB on the output task instead of 49 KB on the decoder | the component, with A | 1 to 1.5 ms of placement at 2.0 (estimate) | PSRAM per frame 48 KB at 2.0, against 25 KB with no fold |
 | E | A 64 KB data cache with 64-byte lines | `sdkconfig.psram` | 2.0 ms at 2.0 | measured |
 | F | Per-frame channel buffers kept by the decoder, where today they are allocated each frame | `src/forge` | up to 3 to 4 ms in the network shape (estimate), and fourteen fewer allocations a frame | network shape against probe |
@@ -317,7 +317,7 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    Host tests would cover the ring's index arithmetic, and a 7.1.4 stream decoded both ways (the
    decoder's own fold, and as coded then `OutputStage` per block) to identical samples.
 
-   **Taken 2026-09-11, and built as (c) for now.** The session profiling the fold opened PR #654
+   **Taken 2026-09-11, and built as (c) for now.** PR #654, which profiles the fold, opened
    the same day, held for the user's OK. It makes `OutputStage` work in 256-sample blocks, bit-exact
    in every tier, and puts `output.cpp` on the `-O2` list. On the board the 7.1.4 fold's own time
    fell from 4.06 to 1.12 ms, its 43 KB of frame-long scratch went, and `714-walk` at 2.0 over WiFi
@@ -369,17 +369,17 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    **Recommend (a).** Decisions 1 and 2 are expected to bring `714-walk` and `714-tones` to about
    28 ms a frame on core 1. That is real time with a margin of about 10%. F and G widen that
    margin, and bring the 7.1.4 streams that use AHT closer, but a board figure should say how much
-   is still needed before `src/forge` changes. Cost of F and G: each needs the owner's agreement
-   and the user's. Each must leave the double build's arithmetic textually untouched and must not
+   is still needed before `src/forge` changes. Cost of F and G: each needs the user's agreement.
+   Each must leave the double build's arithmetic textually untouched and must not
    raise the probe's peak heap on any target. F keeps up to 84 KB of channel buffers between
    frames that today are freed between frames, so its peak is unchanged but its low point rises.
 
-   **Taken 2026-09-11 as (b):** the user asked for F and G to be proposed now, and they went to
-   the decoder core's owner that day, with #654's changes to the same file as the reason to build
-   them after it lands or on top of it. Nothing in `src/forge` changes before the owner answers.
+   **Taken 2026-09-11 as (b):** the user asked for F and G to be proposed now, and they were
+   proposed that day, with #654's changes to the same file as the reason to build them after it
+   lands or on top of it. Nothing in `src/forge` changed before the user's answer.
 
-   With decisions 13 and 14, `714-walk` and `714-tones` play without F or G. The decoder core's
-   session built both as #656, and the user had them measured on the board on 2026-09-11, each
+   With decisions 13 and 14, `714-walk` and `714-tones` play without F or G. Both were built
+   as #656, and the user had them measured on the board on 2026-09-11, each
    merged onto this branch with #654 (the tables are on #656):
    - G did not bring `714-aht` inside the frame: 33.2 ms onto twelve slots and 35.2 at 2.0. At 2.0
      over WiFi it made `714-aht` and `714-all` 1.7 ms slower, likely because its 6 KB blocks fall
@@ -416,9 +416,9 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    `sink_open`, a narrower Kconfig range, and the sink's comment and README section rewritten.
    Cost of (b): two controllers kept in step on one clock, which cannot be verified without a DAC.
 
-7. **The output stage's own speed (C).** This is not decided here. It belongs to the session
-   profiling the fold, DRC and dialnorm ("Profile the S3's 7.1.4 fold, DRC and dialnorm cost").
-   Decision 1 calls the same `OutputStage`, so whatever that session changes reaches the player
+7. **The output stage's own speed (C).** This is not decided here. It is PR #654's, which
+   profiles the fold, DRC and dialnorm.
+   Decision 1 calls the same `OutputStage`, so whatever #654 changes reaches the player
    with no change here.
 
 8. **The local-source shape.**
@@ -443,7 +443,7 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    linker drops it.
 
 10. **A 7.1.4 fold row in the bare-metal probe.**
-    - (a) **Add `eac3_714_fold`, whichever of this session and the fold session commits first.**
+    - (a) **Add `eac3_714_fold`, in this branch or in #654, whichever commits first.**
     - (b) Leave the probe as it is.
 
     **Recommend (a).** It gates the 7.1.4 fold's peak heap on every leg. Cost: the probe's
@@ -452,7 +452,7 @@ decode's, and the levels would stop matching the host's to the digit. J would al
     `tools/checks/run_baremetal_probe.sh`). The C3 leg skips the row by heap budget, as it skips
     the other 7.1.4 row. The generator's decode variant adds a levels array and no bitstream.
 
-    **Taken 2026-09-11: left to the fold session.** Its PR #654 adds `eac3_714_fold` together with
+    **Taken 2026-09-11: left to #654**, which adds `eac3_714_fold` together with
     the block-wise fold, which brings the row's peak to 237,206.
 
 11. **The component's own sources at `-O2` (H).**
@@ -685,7 +685,7 @@ merged in and nothing else added:
   page's Playwright check in that step was not run.
 - **On the host**, `[unit_hold]` and `[block_ring]` pass under MSVC, and both test files compile
   under clang-cl 22 with the warning set CI uses, `-Wdouble-promotion` and `-Werror` among it.
-- **Internal RAM under load**, run by the board-validation session on the branch at baa633fd,
+- **Internal RAM under load**, measured on the board on 2026-09-11 on the branch at baa633fd,
   with a 16 KB instruction cache as a control, and with #654 merged. Each image loaded the page
   and `ui.js`, polled `/status`, sent `PUT /layout` mid-play and an invalid layout, and started a
   second play of `714-walk` repeated twelve times, with the internal heap's local minimum taken
