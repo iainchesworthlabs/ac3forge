@@ -126,7 +126,7 @@ QVariantList eac3_bitrates_for_rate(ac3::SampleRate sample_rate) {
 // rate this format accepts, all the way down to 16 kHz.
 std::uint32_t clamp_to_framable_eac3_bitrate(std::uint32_t kbps, ac3::SampleRate sample_rate) {
     std::uint32_t best = 96;
-    for (const auto candidate : eac3_bitrates_for_rate(sample_rate)) {
+    for (const auto &candidate : eac3_bitrates_for_rate(sample_rate)) {
         const auto rung = static_cast<std::uint32_t>(candidate.toInt());
         if (rung <= kbps) {
             best = rung;
