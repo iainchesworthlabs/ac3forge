@@ -114,7 +114,7 @@ and what has and has not been confirmed against hardware.
 | Android (NVIDIA Shield) | Shield Atmos Demo only | Live objects out HDMI to a receiver, on the device |
 | WebAssembly | Decode and encode in a browser page | Demos published and running |
 | ESP32-S3 | Decode (every layout to 7.1.4, every coding tool, the output stage's folds, Atmos objects reconstructed and placed on loudspeakers) or encode (2/0 and 5.1); reusable ESP-IDF component | Correct under QEMU; real time on the board for every decode fixture (E-AC-3 5.1 in 11.0 ms of its 32, 7.1.4 in 28.5, objects onto 7.1.4 in 25.1, at 240 MHz); AC-3 2/0 and E-AC-3 2/0 encode in real time there (0.35x, 0.73x), AC-3 5.1 sits at the line (1.01x) and the other encode rows run 1.3x to 1.7x over; two example players drive I2S — [the capability table](docs/platforms/esp32.md#what-the-part-can-and-cannot-do) |
-| ESP32-C3 | Decode only, in the fixed-point tier - the part has no floating-point unit - through the same ESP-IDF component | Correct under `qemu-riscv32`: eleven of twelve fixtures, each producing PCM identical to the x86 host's and the Cortex-M3 leg's. 7.1.4 does not fit in its SRAM; speed on a board is unmeasured |
+| ESP32-C3 | Decode only, in the fixed-point tier - the part has no floating-point unit - through the same ESP-IDF component | Correct under `qemu-riscv32`: twelve of fourteen fixtures, each producing PCM identical to the x86 host's and the Cortex-M3 leg's. The two 7.1.4 rows do not fit in its SRAM; speed on a board is unmeasured |
 | Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal` | Correct under QEMU; no real silicon |
 
 What each can encode and decode is the same everywhere — see

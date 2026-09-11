@@ -287,6 +287,17 @@ STREAMS = (
         layout="714",
         encode=("eac3-encode", "640", "all", "714"),
     ),
+    # The 5.1 stream again, encoded WITH §7.7.1 dynrng words (the film-standard
+    # profile) and dialnorm 24: the metadata line mode acts on, which no other
+    # stream here carries - at dialnorm 31 and no dynrng words line mode has
+    # nothing to do. Only its line-mode decode is a probe row (eac3_line).
+    Stream(
+        cxx="Eac3Drc",
+        key="eac3_drc",
+        label="E-AC-3 5.1 384 kbit/s, tools=all, film-standard dynrng words, dialnorm 24",
+        layout="51",
+        encode=("eac3-encode", "384", "all", "51", "drc=film-standard", "dialnorm=24"),
+    ),
     # The §7.8 output stage, which a player folding 5.1 to a stereo DAC runs
     # every frame: the two 5.1 streams above decoded again through a Lo/Ro fold
     # in line mode (dialnorm normalised), the same ac3cli options the ESP32-S3
@@ -310,6 +321,31 @@ STREAMS = (
         reuse="eac3",
         decode=("downmix=loro", "drcmode=line"),
         decoded_layout="stereo",
+    ),
+    # The 7.1.4 stream through the same fold: the output stage's layout form at
+    # its widest, twelve locations seated into §7.8's six before it folds them.
+    Stream(
+        cxx="Eac3714Fold",
+        key="eac3_714_fold",
+        label="the E-AC-3 7.1.4 stream folded to Lo/Ro in line mode (§7.8.1 + §5.4.2.8)",
+        layout="714",
+        encode=(),
+        reuse="eac3_714",
+        decode=("downmix=loro", "drcmode=line"),
+        decoded_layout="stereo",
+    ),
+    # Line mode without a fold: the dynrng-carrying stream above, as coded,
+    # with §7.7.1's gain and §5.4.2.8's normalisation on every channel - the
+    # half of a stereo player's line-mode frame the fold rows cannot show.
+    Stream(
+        cxx="Eac3Line",
+        key="eac3_line",
+        label="the dynrng-carrying E-AC-3 5.1 stream in line mode, not folded (§7.7.1 + §5.4.2.8)",
+        layout="51",
+        encode=(),
+        reuse="eac3_drc",
+        decode=("drcmode=line",),
+        decoded_layout="51",
     ),
 )
 

@@ -1659,31 +1659,50 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         // programmes, so Ch2 gets its own gain from its own words rather than
         // sharing Ch1's - applying one programme's compression to the other
         // would be exactly the cross-talk 1+1 exists to avoid.
-        for (int ch = 0; ch < nchans; ++ch) {
-            const bool second_programme = acmod == Acmod::kDualMono && ch == 1;
-            const double drc = second_programme
-                                    ? internal::block_gain(impl_->config_, dynrng2_word, compr2)
-                                    : internal::block_gain(impl_->config_, dynrng_word, compr);
+        AC3_ZONE_BEGIN(drc_zone, "ac3_drc_gain");
+        // Resolved once per programme per block rather than once per channel:
+        // every channel of a programme takes the same gain, and resolving it
+        // is double arithmetic - a run of software floating-point calls on a
+        // part whose FPU has no double.
+        const auto resolve = [&](double drc) {
+            internal::BlockScale scale;
             if (drc != 1.0) {
+                scale.apply = true;
                 double gain = drc;
                 if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
                     // The gain's power of two goes into the block exponent
                     // and only its mantissa, in [0.5, 1), into the
                     // coefficients: a boost cannot leave the format and a
                     // cut costs no bits (block_norm.hpp).
-                    int power = 0;
-                    gain = std::frexp(drc, &power);
-                    norm[static_cast<std::size_t>(ch)] -= power;
+                    gain = std::frexp(drc, &scale.power);
                 }
                 // Narrowed once, not per coefficient: one number for the whole
                 // block, so this is a single rounding step rather than 256
                 // round trips through double.
-                const auto block_scale = static_cast<internal::decode_scalar_t>(gain);
-                for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
-                    value *= block_scale;
-                }
+                scale.scale = static_cast<internal::decode_scalar_t>(gain);
+            }
+            return scale;
+        };
+        const internal::BlockScale first_programme =
+            resolve(internal::block_gain(impl_->config_, dynrng_word, compr));
+        const internal::BlockScale second_programme =
+            acmod == Acmod::kDualMono
+                ? resolve(internal::block_gain(impl_->config_, dynrng2_word, compr2))
+                : internal::BlockScale{};
+        for (int ch = 0; ch < nchans; ++ch) {
+            const auto& scale = acmod == Acmod::kDualMono && ch == 1 ? second_programme
+                                                                    : first_programme;
+            if (!scale.apply) {
+                continue;
+            }
+            if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                norm[static_cast<std::size_t>(ch)] -= scale.power;
+            }
+            for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
+                value *= scale.scale;
             }
         }
+        AC3_ZONE_END(drc_zone);
         // Everything above this point read the wire; everything below turns
         // what it read into audio. impl_->config_.skip_reconstruction stops here -
         // see its own comment for why an inspection pass wants exactly that
