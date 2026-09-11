@@ -151,9 +151,9 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   now works in 256-sample blocks, folds a rendered layout straight into the caller's first two
   channels and copies with `memcpy` where it has to; `output.cpp` joins the `-O2` list; both
   decoders resolve the §7.7 gain once per programme per block rather than once per channel.
-  No result changes: the double build's decode of 25 streams under 17 output configurations is
-  byte-identical, the float probe's PCM hashes are unchanged and the fixed tier's pinned ones
-  hold. On the board the 7.1.4 fold went from 4.1 ms a frame to 1.1 and the 5.1 one from 3.2
+  No result changes: the double build's decode of 24 streams under 17 output configurations,
+  408 decodes, is byte-identical, the float probe's PCM hashes are unchanged and the fixed
+  tier's pinned ones hold. On the board the 7.1.4 fold went from 4.1 ms a frame to 1.1 and the 5.1 one from 3.2
   to 0.8, and `stream_player` folding 7.1.4 to stereo over WiFi from 35.3 ms of decode a frame
   to 30.0, with 18 of 900 blocks reaching an empty queue where 149 did. The fold's working
   storage went from 49 KB to 6 KB. The probe gains `eac3_714_fold`, now its peak at 237,206

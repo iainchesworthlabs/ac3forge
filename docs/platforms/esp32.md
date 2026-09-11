@@ -593,8 +593,8 @@ list, for 2,688 bytes of flash. Both decoders resolve the §7.7 gain once
 per programme per block rather than once per channel. None of it changes a
 result: each sample is its own sum, taken in the same order, and the Lt/Rt
 shifter's history and RF mode's per-frame gain carry across blocks as they
-did across frames. The double build's decode of 25 streams under 17 output
-configurations is identical byte for byte, the float build's PCM hashes
+did across frames. The double build's decode of 24 streams under 17 output
+configurations, 408 decodes, is identical byte for byte, the float build's PCM hashes
 are unchanged on the Cortex-M3 leg and on this board, and so are the fixed
 tier's pinned ones.
 
