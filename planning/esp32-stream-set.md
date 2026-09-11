@@ -299,13 +299,12 @@ frame and past it:
 | all of them | 39.1 ms | 1.22 |
 | enhanced coupling | 59.2 ms | 1.85 |
 
-A 7.1.4 output also needs a TDM DAC, which this board does not have, and a sink that converts
-twelve slots in what is left of the frame. The network shape's internal RAM is not enough for a
-twelve-slot DMA queue as the shapes stand: at twelve 32-bit slots the queue takes 2,304 bytes of
-internal RAM per millisecond - about 46 KB at the example's default depth and about 147 KB at
-`sdkconfig.psram`'s 64 ms - where the network shape keeps 14 to 16 KB free while it plays
-stereo. That is a calculation, not a measurement. A local source (FAT, SD, a partition) leaves
-out WiFi's share of internal RAM, and is where a board would first play 7.1.4 into a DAC.
+A 7.1.4 output also needs a way out of the part for twelve channels, and one TDM line is not
+it: the S3's I2S carries at most 128 bits a frame - four 32-bit slots or eight 16-bit ones on a
+data line - and ESP-IDF v6.1 refuses a larger slot configuration when the channel is set up
+(`i2s_tdm_set_slot`). The example's twelve-slot shapes use the `capture` sink's conversion,
+which has no peripheral behind it. So these figures are the decode and the render; how twelve
+channels leave an S3, and what that costs in time and internal RAM, is still open.
 
 ## What cannot be verified
 
@@ -313,9 +312,9 @@ out WiFi's share of internal RAM, and is where a board would first play 7.1.4 in
   as their bed; `sdkconfig.ci-render` places objects from FAT. Under QEMU `demo.ec3` placed its
   objects with 1,872 bytes of the 24 KB decode stack left; a board's network shape gives the
   task 32 KB, and has not placed objects over the network.
-- **7.1.4 into a TDM DAC.** There is none here, and QEMU has no I2S. The board's figures are the
-  decode and the render; a TDM sink's conversion of twelve slots, and its DMA queue, are not
-  measured.
+- **7.1.4 out of the part.** One TDM line on the S3 carries at most four 32-bit or eight 16-bit
+  slots, so no sink here sends twelve channels to a DAC; QEMU has no I2S, and the board has no
+  DAC. The board's figures are the decode and the render.
 - **The streams marked "no", in CI.** They played on the board on 2026-09-11, and CI's shape
   has no PSRAM, so a change that breaks them shows only on a board.
 
