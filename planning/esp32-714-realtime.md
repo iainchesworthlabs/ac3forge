@@ -1,10 +1,15 @@
 # 7.1.4 in real time on the ESP32-S3 player
 
-**Status, 2026-09-11:** profiled on a board. The user took the decisions the same day: the
-component's side (decisions 1, 2, 6, 9 and 11) to be built, F and G to be proposed to the decoder
-core's owner now, and the probe row (decision 10) left to the session profiling the fold. Decision
-1 is being built as (c) rather than (a), because of that session's PR #654 (see decision 1). The
-component's side is under way; nothing in `src/forge` has changed.
+**Status, 2026-09-11:** profiled on a board, then the component's side built and measured on
+the same board. The user took the decisions the same day: the component's side (decisions 1, 2, 6,
+9 and 11) to be built, F and G to be proposed to the decoder core's owner now, and the probe row
+(decision 10) left to the session profiling the fold. Decision 1 was built as (c) rather than (a),
+because of that session's PR #654 (see decision 1). On the board, decision 1's output task did not
+pay, and two things the profile had not tried did: a 32 KB instruction cache, and holding a play's
+first unit until its second is decoded. With both, and #654, `714-walk.ec3` and `714-tones.ec3` play
+at 2.0 over WiFi with no block reaching an empty queue ([the decisions on the
+board](#the-decisions-on-the-board)). Decisions 12 to 15 follow from that and await the user.
+Nothing in `src/forge` has changed.
 
 The player decodes a 7.1.4 E-AC-3 stream on the ESP32-S3 with every slot at the host decoder's
 level, and over WiFi it does so too slowly. Folded to 2.0, a frame of `714-walk.ec3` took 36 ms of
@@ -246,6 +251,10 @@ the decode alone takes 33 ms. With coupling, spectral extension and AHT together
 and with enhanced coupling 58 ms. Those do not fit on one core, whatever happens on the output
 side.
 
+The board runs of the decisions found a fourth: the 16 KB instruction cache. The stage times could
+not show it, since each stage's cache misses are part of that stage's time ([why the second core
+did not help](#why-the-second-core-did-not-help)).
+
 ## Options, by expected saving
 
 Each saving is per frame on core 1, the decode's core, for `714-walk` over WiFi unless the row
@@ -264,6 +273,8 @@ than measured.
 | H | The component's sources at `-O2`: render, conversion, meter | the component | 1.5 ms onto twelve slots, less at 2.0; 4,400 bytes of flash | measured |
 | I | A hand-written Xtensa FFT for the IMDCT, as esp-dsp does it | `src/forge` | about 2 ms (estimate) | esp-dsp's published cycle counts |
 | J | The dependent substreams decoded by a second `Eac3Decoder` on core 0 | the component | as B | |
+| K | A 32 KB instruction cache | `sdkconfig.psram` | 3.1 ms of a 2.0 frame's decode, 3.8 ms of a twelve-slot frame | measured, [on the board](#the-decisions-on-the-board) |
+| L | A play's first unit held until the second is decoded | the component | the underruns in a play's first frames | measured, on the board |
 
 I and J are listed so they can be ruled out. I adds a kernel tier built on fused multiply-adds,
 which round differently from the scalar reference the tiers are held to. J gives the dependents a
@@ -314,6 +325,10 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    2.0), and the output task renders and writes them. If #654 does not land, (a)'s player-side
    fold is the next step.
 
+   **Measured 2026-09-11: it did not pay.** At 2.0 the decode task took as long with the output
+   task as without it, and onto twelve slots 1.8 to 3.2 ms a frame longer ([why the second core did
+   not help](#why-the-second-core-did-not-help)). Decision 12 asks whether to withdraw it.
+
 2. **How deep the ring and the DMA queue are.**
    - (a) **A sixteen-block ring (85 ms) in PSRAM, and a 21 ms DMA queue at 2.0**: eight
      descriptors of 128 frames, 8 KB of internal RAM.
@@ -327,6 +342,9 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    today's 64 ms queue. These depths are reasoned from the profile, and the board run has to
    confirm them.
 
+   **Measured:** with the output task, the underruns at 2.0 were those of the 64 ms queue without
+   it. Decision 12 would take the queue back to 64 ms, which decision 14's held unit relies on.
+
 3. **The data cache.**
    - (a) **Decide once decision 1 has been measured.**
    - (b) A 64 KB cache with 64-byte lines in `sdkconfig.psram` now.
@@ -335,6 +353,10 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    **Recommend (a).** Most of the 2 ms came from the output stage, which decision 1 moves to
    core 0 and shrinks. The 32 KB the cache costs comes out of the internal RAM the decoder is
    short of. Cost: one more board run.
+
+   **Measured, and now recommend (c).** With #654 the data cache takes 0.4 ms off a 2.0 frame, and
+   beside decision 13's instruction cache it leaves too little internal SRAM for a 2.0 play over
+   WiFi ([the data cache, again](#the-data-cache-again)).
 
 4. **Small changes to ask of the decoder core.**
    - (a) **Once decisions 1 and 2 are on the board, propose G's AHT buffer split and F's kept
@@ -353,6 +375,9 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    **Taken 2026-09-11 as (b):** the user asked for F and G to be proposed now, and they went to
    the decoder core's owner that day, with #654's changes to the same file as the reason to build
    them after it lands or on top of it. Nothing in `src/forge` changes before the owner answers.
+
+   No answer yet. With decisions 13 and 14, `714-walk` and `714-tones` play without F or G. G is
+   what `714-aht` would need: it takes 33.9 ms at 2.0 and 32.9 ms onto twelve slots.
 
 5. **Two cores inside the decode (B).**
    - (a) **Record it with the stage shares, as the next step if 7.1.4 streams with AHT must
@@ -393,6 +418,9 @@ decode's, and the levels would stop matching the host's to the digit. J would al
 
    **Recommend (a).** Cost: one board run.
 
+   **Measured:** with #654 the local 2.0 play fits, and plays without underruns once the DMA queue
+   holds a whole frame ([a local source](#a-local-source)). Decision 15 asks how.
+
 9. **Keeping the stage timers in the example.**
    - (a) **The example links the stage-timer backend and prints a play's stages when the library
      is built with `AC3FORGE_STAGE_TIMERS`, as the probe does.** The heap and task counters stay
@@ -427,13 +455,179 @@ decode's, and the levels would stop matching the host's to the digit. J would al
     per-source option, and a project that needs the flash back has to opt out, as
     `AC3FORGE_MINIMAL_HOT_O2` already allows for the decoder.
 
+    **Measured:** the renderer is header-only (`include/ac3forge/render.hpp`) and compiles into
+    `player.cpp`, so it runs at `-O2` with it. Onto twelve slots the render took 2.1 to 2.7 ms a
+    frame in the base image and 1.5 to 2.2 ms with `player.cpp` at `-O2` (#654 does not touch the
+    render).
+
+12. **The output task (decision 1, as built).**
+    - (a) **Withdraw it.** The player renders and writes in the decode task again. The output
+      task, its ring and its three Kconfig options go, and `sdkconfig.psram`'s DMA queue goes back
+      to 64 ms.
+    - (b) Keep it, off in every configuration.
+    - (c) Keep it on in `sdkconfig.psram`.
+
+    **Recommend (a).** On this part it saved nothing at 2.0 and cost 1.4 to 3.2 ms a frame onto
+    twelve slots, and it is about 300 lines and a third task. (b) keeps code that nothing runs.
+    Cost of (a): the commits that added it come out; the block ring and its host test stay only if
+    decision 14 holds its unit in them.
+
+13. **The instruction cache.**
+    - (a) **32 KB in `sdkconfig.psram`** (`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`).
+    - (b) Keep the default, 16 KB.
+
+    **Recommend (a).** It takes 3.1 ms off the decode of a 2.0 frame and 3.8 ms off a twelve-slot
+    frame. With it, every 7.1.4 stream in the set without AHT or enhanced coupling fits onto twelve
+    slots with 12 to 26% of the frame to spare. Cost: 16 KB of internal SRAM; the heap at a 2.0
+    play's start went from 170,095 to 153,367 bytes. Builds without PSRAM keep 16 KB: their heap
+    is shorter, and their decode has time to spare.
+
+14. **A play's start.**
+    - (a) **The player holds a play's first unit until the second is decoded**, so the sink
+      starts with two frames queued. A `PlayerConfig` option, off by default, and on in
+      `sdkconfig.psram` and in `sdkconfig.ci` so that QEMU plays through it.
+    - (b) A pre-roll in the I2S sink: the channel stopped as a play begins, its DMA preloaded, and
+      then started again.
+    - (c) Neither.
+
+    **Recommend (a).** Measured on the scratch combination: no underruns in twelve plays of
+    `714-walk` and `714-tones`, against 2 to 6 a play without it, and no change onto twelve slots.
+    It works the same for every sink. (b) stops the I2S clocks between plays, and there is no DAC
+    here to show what a DAC makes of that. (c) leaves gaps adding up to as much as 28 ms in a
+    play's first third of a second. Cost of (a): 32 ms more before a play is heard; a buffer of one
+    unit's channels for the first unit only, 12 KB at 2.0 and 72 KB at twelve slots, from PSRAM
+    where there is PSRAM; about 60 lines in the player, and a host test of the order the held
+    blocks come out in.
+
+15. **The local shape's DMA queue.**
+    - (a) **The README and the Kconfig help say that a local 7.1.4 play folded to 2.0 needs twelve
+      descriptors, and the default stays at four.**
+    - (b) Twelve descriptors in `sdkconfig.defaults`.
+
+    **Recommend (a).** (b) takes 16 KB of internal SRAM from every build without PSRAM, whatever
+    it plays. Cost of (a): a paragraph in each.
+
+## The decisions on the board
+
+The component's side was built as decided and played on the same board. Every image below has
+PR #654 merged into this branch, except the first row of each table, which is this branch's base
+(PR #649) with nothing added. All are the network shape, each built fresh, with no instruments.
+A frame is `us_per_frame`, the decode task's time per 32 ms frame; once the decode is ahead of the
+DAC it includes the wait for the DAC. Where the render and the sink run in the decode task, the
+decode alone is that figure less `render_us_per_frame` and `sink_us_per_frame`, and it is given in
+brackets. Underruns are the blocks that reached an empty DMA queue, and dry is how long the queue
+had been empty, in all.
+
+### Folded to 2.0 over WiFi
+
+| Image | `714-walk` frame | Underruns, dry ms | `714-tones` frame | Underruns, dry ms | `layout-714` underruns |
+|---|---|---|---|---|---|
+| Before: #649 | 38,432 (36,910) | 149, 1,057 | 37,899 (36,365) | 62, 388 | 10 |
+| #654, render and sink in the decode task, 64 ms DMA queue | 32,540 (30,728) | 27, 221 | 32,687 (30,483) | 9, 99 | 5 |
+| #654 and the output task: sixteen blocks in PSRAM, 21 ms queue | 32,558 | 27, 243 | 32,326 | 12, 112 | 7 |
+| The same, eight blocks in internal SRAM | 33,101 | 35, 300 | 33,040 | 12, 140 | 5 |
+| The same, sixteen in PSRAM, 64 KB data cache | 31,963 | 24, 153 | 31,681 | 7, 75 | 5 |
+| #654, no output task, 64 KB data cache | 32,133 (30,267) | 22, 135 | 32,450 (29,917) | 8, 88 | 5 |
+| #654, no output task, lwIP's tcpip task pinned to core 0 | 32,423 (30,626) | 27, 186 | 32,473 (30,091) | 10, 92 | 5 |
+| #654 and the output task, 32 KB instruction cache | 30,925 | 4, 12 | 30,566 | 2, 18 | 0 |
+| #654, no output task, 32 KB instruction cache | 31,271 (27,560) | 2, 18 | 31,340 (27,357) | 4, 19 | 3 |
+| The same, and a play's first unit held | 31,334 (27,508) | 0, 0 | 31,413 (27,123) | 0, 0 | 0 |
+
+In the last row the decode is ahead, so each frame includes about 3 ms of waiting for the DAC.
+`714-walk` was played seven times and `714-tones` five on that image, and no block reached an
+empty queue in any of them; the least headroom as a block arrived was 4 to 5 ms. `layout-51`, the
+demo, and the 7.1.4 streams without AHT or enhanced coupling had none either. The levels were the
+same in every image, and they are the host's Lo/Ro levels to the digit: 36,190 and 36,190 for
+`714-walk`, 129,016 and 128,870 for `714-tones` (`ac3cli decode ... downmix=loro drcmode=line`).
+
+With the instruction cache at 32 KB and nothing held, every remaining underrun fell in a play's
+first ten frames. A scratch print in the sink's queue model put each one on the first block of a
+frame, at writes 6 to 60, and none later. A play's first frames decode more slowly than the rest,
+and a play starts with one frame, 32 ms, queued. Holding the first unit until the second is
+decoded starts the DAC with two frames queued, which is what the 64 ms queue holds.
+
+The rest of the 7.1.4 set at 2.0 on the last image: `714-none`, `714-spx`, `714-cpl` and `714-tpn`
+had no underruns. `714-aht` decodes in 33.9 ms and ran dry from its twelfth frame, `714-all` in
+36.8 ms, and `714-ecpl` in 60.1 ms, dry from its third.
+
+### Onto twelve slots over WiFi, by coding tool
+
+The null sink, levels as coded, objects as their bed. Nothing paces this sink, so a frame is the
+whole of it on the decode's core: the decode, and without the output task the render (1.5 to
+2.2 ms) and the level meter (about 1.8 ms) too.
+
+| Stream | Before: #649 | #654 | #654 and the output task | #654, 32 KB instruction cache | The same, 64 KB data cache | #654 and the output task, 32 KB instruction cache |
+|---|---|---|---|---|---|---|
+| `layout-714` | 27,610 | 27,244 | 30,004 | 23,790 | 22,630 | 25,156 |
+| `714-none` | 29,315 | 28,720 | 31,089 | 24,699 | 23,810 | 26,479 |
+| `714-walk` | 31,402 | 30,834 | 33,982 | 27,041 | 26,253 | 28,928 |
+| `714-tones` | 30,934 | 30,656 | 33,743 | 26,848 | 25,932 | 28,573 |
+| `714-spx` | 32,685 | 32,411 | 35,607 | 28,210 | 27,155 | 29,658 |
+| `714-tpn` | 32,034 | 31,877 | 34,423 | 27,638 | 26,411 | 29,912 |
+| `714-cpl` | 32,579 | 32,591 | 35,663 | 28,230 | 27,454 | 30,006 |
+| `714-aht` | 37,179 | 36,651 | 39,092 | 32,943 | 30,949 | 34,832 |
+| `714-all` | 40,482 | 39,985 | 42,700 | 36,336 | 33,929 | 37,967 |
+| `714-ecpl` | 62,629 | 61,395 | 63,206 | 55,932 | 50,298 | 59,958 |
+
+Holding the first unit moved these by less than 0.6 ms (`714-walk` 27,262 with it). Every slot of
+every play had the same level in every image. Three streams differ from `streams.json` in every
+image, the base included: one slot of `714-tones` and the LFE of `714-none` by one in the last
+digit, and `714-tpn` in every slot, because the player plays 15 of its 16 units ([the stream
+set](esp32-stream-set.md)).
+
+### A local source
+
+The partition source with `714-tones.ec3`, no network and no PSRAM, four laps:
+
+| | Before: #649 | #654, the default 21 ms queue | #654, a 64 ms queue |
+|---|---|---|---|
+| Folded to 2.0 | aborts at the first unit | 251 of 1,512 blocks to an empty queue | none of 1,512 |
+| Onto twelve slots, null sink | not measured | 23.9 ms a frame | |
+
+With #654 the fold no longer needs its frame-long scratch, so the local 2.0 play fits. Its decode
+takes about 22.4 ms a frame, all of it in internal SRAM. The default queue, four descriptors of 256
+frames, is shorter than the six blocks a frame arrives in: the decode waits in the sink for part of
+every frame, and the queue runs dry before the next. Twelve descriptors hold a whole frame with
+room to spare, for 16 KB more of internal SRAM; 18,752 bytes of internal heap were free at the end
+of the second lap.
+
+### Why the second core did not help
+
+At 2.0 the decode task took as long with the output task as without it, and the underruns were the
+same. Onto twelve slots it took 1.8 to 3.2 ms a frame longer, about what the render and the meter
+it no longer ran had cost. With the ring in internal SRAM, 2.0 was worse.
+
+The S3's two cores share one instruction cache, one data cache, and the SPI bus behind both to
+flash and PSRAM. The decoder's code runs from flash through the instruction cache. What the output
+task ran on core 0, the renderer, the meter and the I2S driver, took cache lines and bus time from
+the decoder on core 1, and copying each block into the ring added traffic of its own: 72 KB a frame
+onto twelve slots, written to PSRAM and read back. At 32 KB the instruction cache took 3.1 ms off
+the decode of a 2.0 frame and 3.8 ms off a twelve-slot frame, and the output task's cost onto
+twelve slots fell to 1.4 to 1.9 ms. The stage timers put each stage's cache misses inside that
+stage, which is why the profile above could not show that a larger instruction cache would shorten
+all of them.
+
+Pinning lwIP's tcpip task, which can run on either core, to core 0 made no difference.
+
+### The data cache, again
+
+At 64 KB with 64-byte lines the data cache now takes 0.4 ms off a 2.0 frame: #654 took away most of
+the fold's work, which is where it saved before. With the 32 KB instruction cache as well, the two
+caches hold 48 KB of internal SRAM between them, and at 2.0 over WiFi the internal heap at a play's
+start fell to 121 KB. Two 7.1.4 plays, each the first after a boot, aborted at the decoder's first
+IMDCT, where FreeRTOS could not allocate the mutex that guards a function-local static; the plays
+after them ran. Through the null sink, which has no I2S DMA queue, 150 KB was free, every play ran,
+and the data cache took another 0.8 to 2 ms off each twelve-slot frame.
+
 ## What stays out of reach
 
-- **Enhanced coupling at 7.1.4.** The decode alone takes 58 ms on one core. Split across two
-  cores (B) it is still about 30 ms, before any output work. It does not fit on this part.
-- **7.1.4 with AHT, and with coupling, spectral extension and AHT together.** These decode in 33
-  and 37 ms on one core, and remain over the frame after A to D. B and G together might bring
-  them in.
+- **Enhanced coupling at 7.1.4.** With decisions 13 and 14 it decodes in 60.1 ms at 2.0 and
+  takes 55.9 ms onto twelve slots. Split across two cores (B) it would still be about half that
+  before any output work. It does not fit on this part.
+- **7.1.4 with AHT.** 33.9 ms at 2.0 and 32.9 ms onto twelve slots, 30.9 where the internal SRAM
+  allows the 64 KB data cache as well. G is the change aimed at it.
+- **Coupling, spectral extension and AHT together.** 36.8 ms at 2.0 and 36.3 onto twelve slots.
+  B and G together might bring it in.
 - **Twelve 32-bit slots on one data line.** The I2S register does not allow it.
 
 ## Verification, for the implementation
@@ -445,9 +639,13 @@ decode's, and the levels would stop matching the host's to the digit. J would al
     slot at the host's level;
   - the per-tool table again;
   - the local shape.
-- **In CI:** the ESP32 job's QEMU steps pass through the new output task unchanged. These are the
-  `capture` sink at 2.0 and at twelve slots, the render shape, and the stream set over QEMU's
-  Ethernet (`tools/checks/check_stream_set.py`). The host tests above also run.
+- **In CI:** the ESP32 job's QEMU steps pass through whatever decisions 12 and 14 leave in the
+  player. These are the `capture` sink at 2.0 and at twelve slots, the render shape, and the stream
+  set over QEMU's Ethernet (`tools/checks/check_stream_set.py`). The host tests also run.
+
+The board items were measured on 2026-09-11 with a scratch combination of this branch, #654, the
+32 KB instruction cache and the held unit ([the decisions on the board](#the-decisions-on-the-board)).
+They are to be run again on the branch as built after decisions 12 to 15.
 
 ## What cannot be verified
 
