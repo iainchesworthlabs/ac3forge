@@ -68,11 +68,25 @@ endif()
 # sdmmc_host.h in the latter. fatfs carries esp_vfs_fat.h. esp_eth for the
 # QEMU network under the HTTP source, listed for every build for the reason
 # above.
+# The stage-timer backend the bare-metal probe links (apps/baremetal/
+# stage_timers.cpp), when the repository is here to provide it. With the
+# library built with AC3FORGE_STAGE_TIMERS it gives each play a
+# play.stage[<zone>] line per decoder stage - `idf.py -DAC3FORGE_STAGE_TIMERS=ON
+# build` - and without that option nothing calls it and the linker drops it, so
+# a plain build is unchanged. A component archive carries no apps/, and there
+# stream_player.cpp's own no-op stand-ins are what links.
+set(AC3FORGE_STAGE_TIMER_SRCS "")
+set(AC3FORGE_STAGE_TIMER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../apps/baremetal")
+if(EXISTS "${AC3FORGE_STAGE_TIMER_DIR}/stage_timers.cpp")
+    set(AC3FORGE_STAGE_TIMER_SRCS "${AC3FORGE_STAGE_TIMER_DIR}/stage_timers.cpp")
+endif()
+
 idf_component_register(
     SRCS "stream_player.cpp"
          "${AC3FORGE_SINK_DIR}/audio_sink.cpp"
          "${AC3FORGE_SOURCE_DIR}/byte_source.cpp"
          ${AC3FORGE_NETWORK_SRCS}
+         ${AC3FORGE_STAGE_TIMER_SRCS}
     INCLUDE_DIRS "." "source/http"
     REQUIRES ac3forge esp_driver_i2s esp_timer freertos
              esp_partition
