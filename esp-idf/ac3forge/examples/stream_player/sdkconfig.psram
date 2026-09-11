@@ -15,16 +15,21 @@
 # internal SRAM. The WiFi and lwIP stacks try PSRAM first too, and the player
 # puts its ring there.
 #
-# A decoder with part of its state in PSRAM is slower in bursts. With the render
-# and the sink in the decode task, the default 21 ms DMA queue did not ride them
-# out: 484 of 12,000 blocks arrived to an empty queue over the demo looped for
-# 64 s, and it took a 64 ms queue - twelve descriptors of 256 frames, 24 KB of
-# internal SRAM - for none to. Now the render and the sink run in the player's
-# output task on core 0 (planning/esp32-714-realtime.md, decisions 1 and 2), fed
-# by sixteen decoded blocks - 85 ms - in PSRAM, and that ring rides out the
-# bursts. The DMA queue only has to cover the output task being held off by
-# WiFi on its own core, so it is back to 21 ms: four descriptors of 256 frames,
-# 8 KB.
+# A decoder with part of its state in PSRAM is slower in bursts, which the
+# default 21 ms DMA queue does not ride out: 484 of 12,000 blocks arrived to an
+# empty queue over the demo looped for 64 s. With 64 ms - twelve descriptors of
+# 256 frames - none did, and the queue never fell below 3 ms. That is 43 ms more
+# latency, on a source that has network latency anyway.
+#
+# For a 7.1.4 stream, two things more (planning/esp32-714-realtime.md,
+# decisions 13 and 14). A 32 KB instruction cache, where the default is 16 KB:
+# the decoder's code runs from flash through it, and at 32 KB a 7.1.4 frame
+# decodes 3.1 ms faster folded to 2.0 and 3.8 ms faster onto twelve slots, for
+# 16 KB of internal SRAM. And a play's first unit held until its second has
+# decoded, so the DAC starts with two frames queued: a play's first frames
+# decode more slowly than the rest, and with one frame queued they ran it dry.
+# Measured on a DevKitC-1 with the output stage folding a block at a time:
+# 714-walk.ec3 and 714-tones.ec3 at 2.0 over WiFi, no block to an empty queue.
 #
 # A local source (partition, fatfs, sd) needs none of this: its decoder, a
 # 7.1.4 render included, runs out of internal SRAM.
@@ -39,6 +44,7 @@ CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 # Not in the memory test at boot: it takes a second on 8 MB and says nothing
 # a player needs to know.
 CONFIG_SPIRAM_MEMTEST=n
-CONFIG_AC3FORGE_EXAMPLE_OUTPUT_BLOCKS=16
-CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=4
+CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12
 CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES=256
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT=1
