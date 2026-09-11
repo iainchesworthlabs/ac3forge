@@ -784,8 +784,15 @@ struct Eac3Decoder::Impl {
     // (bins past its endmant must read zero), and enhanced-coupling reads
     // are whole-array assignments from this call or gated by this call's
     // ecpl_active flags, so a previous frame's contents are never visible.
-    std::vector<std::array<std::array<internal::decode_scalar_t, 256>, kBlocksPerFrame>>
-        aht_coeffs_;
+    // One buffer per stream, each sized on that stream's first AHT use: all
+    // seven streams' six blocks in one vector made a single 43,008-byte
+    // allocation in the float build (86,016 in double) whether one stream
+    // used the AHT or all seven, and on a regioned heap the largest free
+    // block is what limits an allocation, not the total. The outer vector is
+    // still sized on the decoder's first AHT use rather than held as a
+    // fixed array, which keeps this object the size it was: a decoder that
+    // never meets the AHT carries one empty vector, as before.
+    std::vector<std::vector<std::array<internal::decode_scalar_t, 256>>> aht_coeffs_;
     std::vector<std::array<internal::decode_scalar_t, 256>> ecpl_all_coeffs_;
     // §7.1.3's packed exponent groups, for one stream of one block.
     //
@@ -2898,14 +2905,17 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // because its BitAllocRegion was built with high_efficiency=true.
         const auto decode_aht_stream = [&](int s, int begin) -> std::expected<void, DecodeError> {
             const auto us = static_cast<std::size_t>(s);
-            // First AHT use on this decoder sizes the frame-lifetime buffer;
-            // the slot clear keeps the read side's invariant that bins this
-            // decode does not write - past endmant, below `begin` - read
-            // zero, which the freshly-allocated buffer used to provide.
+            // The decoder's first AHT use sizes the outer vector and the
+            // stream's first use its own frame-lifetime buffer; every later
+            // use reuses it, assign() zero-filling without reallocating once
+            // the capacity is there. The zero fill keeps the read side's
+            // invariant that bins this decode does not write - past endmant,
+            // below `begin` - read zero. (`= {}` would EMPTY the stream's
+            // vector, and the writes below would run past its end.)
             if (aht_coeffs.size() < static_cast<std::size_t>(kMaxSubstreamStreams)) {
                 aht_coeffs.resize(static_cast<std::size_t>(kMaxSubstreamStreams));
             }
-            aht_coeffs[us] = {};
+            aht_coeffs[us].assign(static_cast<std::size_t>(kBlocksPerFrame), {});
             const int end = endmant[us];
             // The stream's frame exponent (block_norm.hpp): its six blocks
             // are dequantised here at once, and their reconstructed peaks
