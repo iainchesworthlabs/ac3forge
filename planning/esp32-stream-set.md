@@ -1,6 +1,6 @@
 # The ESP32 player's stream set
 
-!!! note "Status as of 2026-09-11: proposed; the streams made and played under QEMU, nothing committed but this page"
+!!! note "Status as of 2026-09-11: built; played under QEMU in CI's twelve-slot shape, not yet on a board"
     Streams for the player's `http` source, in one directory a device can be pointed at: 7.1.4
     streams that decode to all twelve slots of a 7.1.4 output, and beside them a range across the
     layouts the player renders onto, both codecs, dependent substreams, two programmes, dual
@@ -8,10 +8,12 @@
     object audio. A manifest says what each stream is and the level each slot of a 7.1.4 output
     should get from it. CI plays the set under QEMU onto 7.1.4 and holds every slot to its level.
 
-    Playing the set before building anything found two faults in the player and one gap: a
-    stream carrying two programmes has both played, a frame of each in turn; a stream using
-    transient pre-noise processing loses its last access unit; and nothing checks a stream's
-    sample rate against the sink's ([What the set found](#what-the-set-found)).
+    Playing the set found four things in the player ([What the set found](#what-the-set-found)):
+    a stream carrying two programmes had both played, a frame of each, and now plays its first;
+    a stream at 44.1 or 32 kHz played at the wrong speed, and is now refused; a stream using
+    transient pre-noise processing loses its last access unit; and folding a stream with a
+    four-channel dependent substream to 2.0 does not fit a network shape's internal RAM without
+    PSRAM. The last two are the decoder core's, handed over in the player plan.
 
     Written beside [the web UI's output layout](esp32-device-ui.md#the-output-layout), which
     uses these streams to show what a layout does, and in the shape of [the player
@@ -82,6 +84,7 @@ shape holds at 7.1.4](#what-the-network-shape-holds-at-714).
 | `51-drc.ec3` | 5.1 with DRC words (film standard) and dialnorm -24 | E-AC-3, 6 | 1 | spx, blksw | 6 | 384 | 0.5 s | 24 KB | yes |
 | `ac3-51.ac3` | AC-3 5.1 | AC-3, 6 | 1 | blksw | 6 | 448 | 0.5 s | 28 KB | yes |
 | `ac3-51-cpl.ac3` | AC-3 5.1 with coupling, a tone per speaker | AC-3, 6 | 1 | cpl | 6 | 448 | 1.0 s | 56 KB | yes |
+| `ac3-51-44k.ac3` | AC-3 5.1 at 44.1 kHz, which the player refuses: its sink runs at 48 kHz | AC-3, 6 | 1 | blksw | 6 | 448 | 0.5 s | 29 KB | refused |
 | `ac3-20.ac3` | AC-3 2/0 | AC-3, 2: L R | 1 | blksw, remat | 6 | 192 | 0.5 s | 12 KB | yes |
 | `eac3-dualmono.ec3` | E-AC-3 1+1: two mono programmes in one substream | E-AC-3, 2: Ch1 Ch2 | 1 | blksw | 6 | 192 | 1.0 s | 24 KB | yes |
 | `eac3-programmes.ec3` | E-AC-3 with two programmes: 5.1, and a mono second programme | E-AC-3, 6, and 1 | 1 per unit, 2 programmes | blksw | 6 | 240 | 1.0 s each | 60 KB | yes |
@@ -90,13 +93,12 @@ shape holds at 7.1.4](#what-the-network-shape-holds-at-714).
 | `dee-ac3-51.ac3` | Dolby Encoding Engine, AC-3 5.1 at 448 kbit/s | AC-3, 6 | 1 | cpl, blksw | 6 | 448 | 2.5 s | 138 KB | yes |
 | `dee-eac3-music.ec3` | Dolby Encoding Engine, E-AC-3 2/0 music at 96 kbit/s | E-AC-3, 2 | 1 | cpl, spx, aht, remat | 6 | 96 | 30.0 s | 352 KB | yes |
 
-Every stream is at 48 kHz: [What the set found](#what-the-set-found) says why none is at 44.1
-or 32 kHz yet.
+Every stream but `ac3-51-44k.ac3` is at 48 kHz; that one is in the set to be refused.
 
 ## How the streams are made
 
-A generator in `tools/generators/`, `gen_device_streams.py`, run with `--ac3cli <a host ac3cli>`,
-writes the directory and its manifest, `streams.json`. It synthesises four signals and encodes them with this repository's
+`tools/generators/gen_device_streams.py --ac3cli <a host ac3cli>` writes the directory and its
+manifest, `streams.json`. It synthesises four signals and encodes them with this repository's
 encoder:
 
 - a tone per speaker, a third of an octave apart (L 250 Hz up to Rts 2,500 Hz, the LFE at
@@ -106,7 +108,8 @@ encoder:
 - for the coding tools, each speaker's tone with a second tone above where coupling and spectral
   extension start, a little noise across the band, and a click every quarter second so that
   block switching has transients to switch on: the `714-*` and `51-*` streams and the AC-3 ones;
-- two mono tones, for dual mono and the second programme.
+- two mono tones, for dual mono and the second programme;
+- the 5.1 tones at 44.1 kHz, for the stream the player refuses.
 
 The objects stream is `ac3cli atmos` - four objects orbiting at different heights - with
 `joc-domain=mdct`. The rest are copies of the streams in the table above, left as they are.
@@ -120,7 +123,7 @@ coded (no dialnorm normalisation and no DRC, the player's `CONFIG_AC3FORGE_EXAMP
 objects decoded bed-only, and each channel's level placed on the slot of its own location. A 0
 is a slot that nothing in the stream is at, and the player must leave it at exactly 0.
 
-The 23 streams made are 1.2 MB; the directory is 2.7 MB with the fourteen copies, which cost the
+The 24 streams made are 1.2 MB; the directory is 2.7 MB with the fourteen copies, which cost the
 repository nothing, since git keeps one copy of identical content whatever its path.
 
 ## Where the set lives, and how it is served
@@ -141,19 +144,20 @@ A new shape, `sdkconfig.ci-http714`: `sdkconfig.ci-http`'s source, network and c
 with the capture sink's twelve-slot TDM conversion, the layout `7.1.4`, levels as coded
 (`CONFIG_AC3FORGE_EXAMPLE_DRC_MODE=2`) and objects played as their bed
 (`CONFIG_AC3FORGE_EXAMPLE_OBJECTS=1`, [decision 4](#decisions)), booting on `714-walk.ec3`. A
-step in the ESP32 job, after "Drive the web page on the emulated board":
+step in the ESP32 job, "Play the stream set onto 7.1.4 over QEMU's Ethernet", after "Drive the
+web page on the emulated board":
 
 1. builds the shape, serves the set on port 8000 and boots it under QEMU with the control
    surface forwarded, as the HTTP step does;
-2. plays every stream not marked PSRAM-only through `POST /play`, one at a time, and a checker
-   in `tools/checks/`, `check_stream_set.py`, holds each play to the manifest: `result=pass`, no bytes
+2. plays every stream not marked PSRAM-only through `POST /play`, one at a time, and
+   `tools/checks/check_stream_set.py` holds each play to the manifest: `result=pass`, no bytes
    skipped for sync, the stream's access units (played and held together, see below), and every
    slot's level within 1% + 20 of the host's, a slot at 0 at exactly 0 - and, from
    `GET /status`, the play's `stream.layout`, `render`, `coded` and `silent` against what the
    manifest's levels imply;
 3. drives the web page on this twelve-slot board (`device-ui/board/layouts.spec.js`): the Output,
-   Silent and Next play rows through a 5.1 stream on 7.1.4, a 7.1.4 stream on 5.1 and a fold to
-   2.0;
+   Silent and Next play rows through a 5.1 stream on 7.1.4, a 7.1.4 stream on 5.1, a 5.1 stream
+   folded to 2.0, a layout wider than the bus, and the 44.1 kHz stream refused;
 4. checks the console for a panic or a second boot (`tools/checks/check_esp_console.py`).
 
 The tolerance is tighter than the 5% + 200 the other ESP32 steps allow, on the evidence of the
@@ -163,8 +167,8 @@ every fault a level can show - a channel in the wrong slot, a silent one, a doub
 a fold where there should be none - with a hundredfold margin over the arithmetic.
 
 Cost: one more build of the example in the ESP32 job, a few minutes on the fleet's runners, and
-about two minutes of plays and page. A unit test beside the checker tests its parsing and rules
-on the host, in the Oracle unit tests step.
+about two minutes of plays and page. `tools/checks/test_check_stream_set.py` tests the
+checker's parsing and rules on the host, in the Oracle unit tests step.
 
 ## What the network shape holds at 7.1.4
 
@@ -180,6 +184,14 @@ block 200 KB, no PSRAM.
 | AHT at 7.1.4 (`714-aht`, `714-all`) | `abort()`: 43,008 bytes asked for, 24,316 free, largest block 13,312. That is the decoder's per-frame AHT buffer for one substream: 256 bins, six blocks, seven channels, four bytes. |
 | The Dolby Encoding Engine's 5.1 (`dee-eac3-51`: coupling, spectral extension and AHT) | `abort()`: the same 43,008 bytes, with 86,036 free but no block larger than 39,936. The 5.1 AHT stream this set makes, with no coupling channel, asks for 36,864 and plays. |
 | Enhanced coupling and TPN at 7.1.4 | `abort()`: 6,144 bytes, 8,212 and 8,140 free, largest blocks 4,480 and 1,792 |
+
+**At 2.0 the fold is what does not fit.** In the two-slot HTTP shape, the same streams played
+to `2.0`: 5.1 and 5.1.2 fold, and 7.1, 5.1.4 and 7.1.4 abort - `OutputStage::apply`, the
+fold's scratch, asks for 6,144 bytes with 7,564 to 8,844 free and no block larger than 5,632.
+The twelve-slot shape does the same for 7.1.4 at `2.0` (3,212 free). Played as coded onto twelve
+slots those streams leave 147 KB free, so it is folding a programme with a four-channel
+dependent substream that costs the memory. The page's twelve-slot test folds a 5.1 stream for
+that reason.
 
 The allocations that failed are the decoder's, which are the same whatever the output layout:
 the player's block storage is sixteen slots at every layout, and the capture sink converts one
@@ -205,11 +217,18 @@ releases it, but as raw per-substream results rather than through the block form
 and adding a flush to the block form is the decoder core's to do. So the set's checker counts a
 play's units played and held together, and the player plan records the hand-over.
 
-**Nothing checks a stream's sample rate against the sink's.** The example opens its sink at
-48 kHz once, and no part of the player compares a stream's rate with it, so a 44.1 kHz AC-3
-stream would play 9% fast and its pitch a semitone and a half high. The set has no stream at
-another rate until the player refuses one ([decision 6](#decisions)); when it does, a 44.1 kHz
-stream joins the set as the stream that is refused.
+**Nothing checked a stream's sample rate against the sink's.** The example opens its sink at
+48 kHz once, and no part of the player compared a stream's rate with it, so a 44.1 kHz AC-3
+stream played 9% fast and its pitch a semitone and a half high. The player now refuses one
+([decision 6](#decisions)), and `ac3-51-44k.ac3` is in the set as the stream it refuses.
+
+**Folding a wide programme to 2.0 does not fit without PSRAM**, as [the network shape's
+figures](#what-the-network-shape-holds-at-714) show: 7.1, 5.1.4 and 7.1.4 abort in the fold's
+scratch. That is the decoder core's to change ([decision 8](#decisions)), and the player plan
+records the hand-over.
+
+**Dual mono reported no channels.** `stream.channels` for E-AC-3 1+1 was the decoder's layout
+count, which is 0 because 1+1 has no Table E2.5 layout; the player now reports 2.
 
 ## On a board
 
@@ -228,6 +247,9 @@ SD, a partition) leaves out WiFi's share of internal RAM, and is where a board w
   plays them. CI's shape plays objects as their bed; `sdkconfig.ci-render` places objects from
   FAT.
 - **7.1.4 into a TDM DAC.** There is none here, and QEMU has no I2S.
+- **A wide stream at 2.0 on a board.** The fold's 6 KB scratch is below `sdkconfig.psram`'s
+  16 KB threshold, so it comes from internal RAM, where a stereo play leaves blocks of 6,144 at
+  most. It is likely to fail as it does under QEMU, and has not been tried.
 - **The decode stack with objects placed over the network.** `demo.ec3` left 1,872 bytes of the
   24 KB stack the QEMU network shape gives the decode task. A board's network shape gives it
   32 KB.
@@ -276,3 +298,11 @@ SD, a partition) leaves out WiFi's share of internal RAM, and is where a board w
    PSRAM-only, and at 5.1, which CI plays**; (b) left out of the set. **Recommend (a).** A board
    has the 7.1.4 ones to play, and CI still decodes AHT, enhanced coupling and TPN through the
    player. Cost: 72 KB for the 5.1 streams.
+
+8. **A wide programme folded to 2.0.** (a) **record it, and hand it to the decoder core**, with
+   CI's folds at 2.0 made of 5.1 streams; (b) the player places a wide stream at `2.0` with its own
+   renderer, panning each channel onto the pair, instead of the decoder's fold; (c) the player
+   refuses a stream wider than 5.1.2 at `2.0`. **Recommend (a).** (b) would give two downmixes
+   for one layout, §7.8's for some streams and a panner's for others, and (c) takes away a
+   layout that works on a board with room. Cost: until the decoder changes, a 7.1, 5.1.4 or 7.1.4
+   stream at `2.0` aborts a player without the internal RAM for the fold, and a board may be one.

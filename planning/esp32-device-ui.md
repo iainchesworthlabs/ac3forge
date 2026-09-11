@@ -13,13 +13,14 @@
     lower the least free internal heap, and the larger stack held. [Budget](#budget) and
     [What the measurements found](#what-the-measurements-found) have the figures.
 
-    **The output layout, proposed 2026-09-11, not built yet.** Seen on a board, the page's
-    Layout field did not say that it sets the speakers the player drives, what the player does
-    with a stream whose channels differ from them, or that nothing is upmixed. [The output
-    layout](#the-output-layout) is what the page says and does about that, and the fields
-    `/status` gains so that it can; [the stream set](esp32-stream-set.md) is the 7.1.4 streams,
-    and the range of layouts, codecs and coding tools beside them, that the device can fetch to
-    show it. Decisions 14 to 18 are that work's.
+    **The output layout, built 2026-09-11.** Seen on a board, the page's Layout field did not
+    say that it sets the speakers the player drives, what the player does with a stream whose
+    channels differ from them, or that nothing is upmixed. [The output
+    layout](#the-output-layout) is what the page says and does about that now, and the five
+    fields `/status` gained so that it can; [the stream set](esp32-stream-set.md) is the 7.1.4
+    streams, and the range of layouts, codecs and coding tools beside them, that CI plays onto a
+    twelve-slot emulated board with the page driven on it. Decisions 14 to 18 are that work's.
+    The page and its script are 19,187 bytes of a 20,480-byte budget.
 
     Shape follows [the player plan](esp32-player.md): what exists, what changes and why, a
     budget with how each figure is measured, [Decisions](#decisions) with a recommendation and
@@ -76,10 +77,10 @@ Everything comes from one `GET /status`. A field the firmware does not report is
 | What | From `/status` | Shown as |
 |---|---|---|
 | State | `state`; `finished`, `failed`, `why`, `error` | The headline: Playing, Stopped, Finished and why, Failed and why |
-| What is playing | `location`, `source`, `sink` | The location as text, the source it came through and the sink it goes to |
+| What is playing | `location`, `source`, `sink`, `sink_slots` | The location as text, the source it came through, and the sink it goes to with its slots |
 | Codec | `stream.codec`, `stream.substreams`, `stream.dialnorm` | `E-AC-3, 1 substream, dialnorm -31` |
-| Channels and objects | `stream.channels`, `stream.acmod`, `stream.objects`, `stream.objects_rendered` | `6 (3/2)`; objects carried, and whether they are placed onto the layout |
-| Layout | `layout`, `stream.slots` | The layout the next play uses, and the slots this play renders onto |
+| Channels and objects | `stream.channels`, `stream.coded` (`stream.acmod` from a firmware without it), `stream.objects`, `stream.objects_rendered` | `12: L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE`; objects carried, and whether they are placed onto the layout |
+| Output layout | `stream.layout`, `stream.slots`, `stream.render`, `stream.silent`, `layout` | This play's output and how it is served, the speakers it leaves silent, and the next play's layout while it differs: [The output layout](#the-output-layout) |
 | Volume | `volume` | The volume slider's position and a percentage |
 | Real-time margin | `us_per_frame`, `render_us_per_frame`, `sink_us_per_frame`, `worst_frame_us`, `realtime_permille` | Each frame's 32 ms split into decoder, render and sink, the worst frame, and `realtime_permille` as reported |
 | Ring low-water | `ring_low` | Bytes, or "not measured yet" for `null` |
@@ -218,12 +219,15 @@ For the 5.1 stream above, the changed parts of the body:
  "silent":"Lrs,Rrs,Vhl,Vhr,Lts,Rts"}
 ```
 
-What it costs, measured the way [Budget](#budget) measures once it is built: about 170 bytes
-more JSON per `GET /status`, in the handler's `std::string` and freed with the request; three
-text fields in `StreamInfo`, copied under the player mutex onto the server task's stack for each
-poll (the `/status` handler's deepest use was 2,020 bytes of 6,144); the code's flash; and a mask
-the decode task updates once per access unit. Nothing is allocated during a play that was not
-allocated before.
+What it costs, measured under QEMU on 2026-09-11 in the twelve-slot shape, with the server
+task's stack high-water mark printed after each request and the print then taken out: 115 bytes
+more JSON per `GET /status` for a 7.1.4 stream, a body of up to 680 bytes, and at most 420 more
+when every field is full; the JSON is built in the handler's `std::string` and freed with the
+request. `StreamInfo` grows by 356 bytes, three text fields and a name, copied under the player
+mutex onto the server task's stack for each poll: the `/status` handler's deepest use went from
+2,020 bytes to 2,288 of 6,144, and `PUT /layout` is still the deepest at 4,576. Then the code's
+flash, and a mask the decode task updates once per access unit. Nothing is allocated during a
+play that was not allocated before. The heap at the peak of a poll was not measured again.
 
 ## How the page updates
 
@@ -318,12 +322,12 @@ mark after each handler, then reverted.
 
 | Item | Budget | Measured |
 |---|---|---|
-| Flash: the page and its script together, as stored | 16,384 bytes | 16,190 (5,808 + 10,382); a host test fails above the budget |
+| Flash: the page and its script together, as stored | 20,480 bytes ([decision 18](#decisions)); 16,384 before the output layout | 19,187 (6,643 + 12,544); 16,190 before. A host test fails above the budget |
 | Internal heap held once the server is up: two more route registrations and handler slots | 256 bytes | 76, from the `heap:` line: 290,428 free against the base's 290,504 |
 | Internal heap held while a browser has the page open | - | 376, the keep-alive connection |
 | Internal heap at the peak of one `GET /status` | 3,072 bytes | 4,700 to 7,700 from the page's keep-alive connection; 5,100 from `curl`, a new connection each time |
 | Internal heap at the peak of one page load | 8,192 bytes | 18,008: the page, the script and the first poll, over two or three connections |
-| The server task's stack | 4,096, unchanged | The page's routes and `/status` use at most 2,020 bytes. `PUT /layout`, which the page calls and which predates it, used 4,596 - see below |
+| The server task's stack | 4,096, unchanged | The page's routes and `/status` use at most 2,020 bytes; 2,288 with the output layout's fields. `PUT /layout`, which the page calls and which predates it, used 4,596 - see below |
 
 Flash has room. On the base branch the CI shape's image is 778,064 bytes and the board's network
 shape's 1,136,064, in a 1,572,864-byte application partition; this branch adds 18,000 to the CI
@@ -431,7 +435,7 @@ server stands in for the device (`device-ui/stub.js`), one per test: it serves t
 script with the headers Control sends, and implements the REST contract - routes, methods, status
 codes, reply texts, content types, and the state a play goes through. `contract.spec.js` compares
 its reply texts, headers and routes with the literals in `control.cpp`, and checks that every
-request the script makes is to a route the firmware registers. Sixty tests drive every action
+request the script makes is to a route the firmware registers. Seventy-seven tests drive every action
 through the page and assert on the requests the stand-in received; every error path (`400` and
 `409` replies, a connection closed unanswered, a device that does not answer, a malformed or
 partial `/status`); the polling rules on Playwright's clock (one request in flight, none while
@@ -441,14 +445,19 @@ bodies recorded from the emulated board (`device-ui/payloads/`) - playing, finis
 the decoder, a location that did not open, stopped, refused, objects carried and not - plus
 payloads with fields changed or left out, as an older firmware or one with fewer handlers would
 send. Objects placed on a height layout need PSRAM the emulator lacks, so that payload is a
-recorded one changed, and says so.
+recorded one changed, and says so. Since the output layout, bodies from the twelve-slot shape as
+well (`sdkconfig.ci-http714`): a 7.1.4 stream playing and finished, a 5.1 one with the rears and
+heights silent, a 7.1.4 one spread onto 5.1, a 5.1 one folded to 2.0, dual mono, objects played as
+their bed, the next play's layout beside this one's, and a stream refused for its sample rate;
+the field's suggestions and its explanation of a refusal; and a check that the stand-in writes
+`/status`'s keys in `control.cpp`'s order.
 
 **Coverage.** Chromium's V8 coverage of the script, collected by Playwright per test, written in
 the form Node's own coverage takes, and reported by c8 (`npm run coverage:device-ui`), which fails
 below 98% of statements, lines and functions and 90% of branches. The suite reaches 100, 100, 100
 and 93.6.
 
-**Budget.** A host test sums the two files, fails above 16,384 bytes, and fails on a carriage
+**Budget.** A host test sums the two files, fails above 20,480 bytes, and fails on a carriage
 return.
 
 **On the target.** A step in the ESP32 job, after the HTTP step and without changing it, boots the
@@ -458,7 +467,11 @@ stream the boot play decoded; the volume set with the slider reads back through 
 layout the capture sink cannot carry is refused with the firmware's own reply; a play started
 from the form finishes, and its levels on the console come out at a quarter of the boot play's;
 Stop reads back as `stopped`; `GET /api` lists the routes. Then the step checks the console for a
-panic or a second boot. This is what runs the new handlers in the firmware; the host suite is what
+panic or a second boot. A second step plays [the stream set](esp32-stream-set.md) onto 7.1.4 on a
+twelve-slot image (`sdkconfig.ci-http714`) and runs `device-ui/board/layouts.spec.js` on it: the
+Output, Silent and Next play rows through a 5.1 stream on 7.1.4, a 7.1.4 stream on 5.1 and a 5.1
+stream folded to 2.0, a layout wider than the bus refused and explained, and a 44.1 kHz stream
+refused. This is what runs the new handlers in the firmware; the host suite is what
 exercises the script.
 
 **Where CI runs them.** The host suite in a job of its own in `_build.yml`, `device-ui`, on
@@ -475,6 +488,9 @@ run as root, so Playwright can install Chromium's system libraries).
 - **Other browsers.** CI runs Chromium. The page uses nothing newer than what current Firefox and
   Safari support, which is a statement about the code, not a test.
 - **Screen readers.** The structure is what the tests check; no screen reader is run.
+- **The output layout's report on a board.** The twelve-slot board is emulated, has no PSRAM, and
+  plays objects as their bed. What the page says of objects placed over the network, or of a
+  7.1.4 output into a TDM DAC, is from host tests and recorded bodies changed, not from a board.
 
 ## Decisions
 
@@ -571,9 +587,10 @@ run as root, so Playwright can install Chromium's system libraries).
     renderer's exact-or-spread rule into the script, where they would drift from the firmware's;
     and `acmod` cannot name a dependent substream's channels, so a 7.1.4 stream reads
     `12 (3/2)`. (b) says how a play is rendered but not which speakers it leaves silent, which is
-    what "can it upmix?" asks. Cost of (a): about 170 bytes more JSON per poll, three text fields
-    in `StreamInfo` (up to 320 bytes) copied onto the server task's stack per poll, and a mask
-    the decode task updates once per access unit.
+    what "can it upmix?" asks. Cost of (a), as built: 115 bytes more JSON per poll
+    for a 7.1.4 stream and at most 420; 356 bytes more in `StreamInfo`, copied onto the server
+    task's stack per poll, which took the `/status` handler's deepest use from 2,020 to 2,288
+    bytes of 6,144; and a mask the decode task updates once per access unit.
 
 15. **How the page explains a layout.** (a) **rows in Now for this play's output, the speakers
     it leaves silent and the next play's layout; a description on the field; and a closed "What
