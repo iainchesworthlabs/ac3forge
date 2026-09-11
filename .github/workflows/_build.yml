@@ -29,7 +29,7 @@
 # consecutive clean runs including the gold-reference gate
 # (tools/checks/verify_gold_reference.sh). windows-msvc-arm64 (a separate
 # DR8 half, Windows ARM64, unrelated to this file's own macOS work) is the
-# one leg still experimental, on its own runner label (windows-11-arm-2026)
+# one leg still experimental, on its own runner label (windows-11-vs2026-arm)
 # nothing here had used before it either - same bar, not yet met. See the
 # table in ci.yml.
 #
@@ -342,7 +342,7 @@ jobs:
             # step's condition).
             crucible: true
 
-          # ARM64 - GitHub's hosted windows-11-arm-2026 runner (roadmap DR8). Real
+          # ARM64 - GitHub's hosted windows-11-vs2026-arm runner (roadmap DR8). Real
           # ARM64 hardware, not emulation. Deliberately NOT routed through
           # check-runners' self-hosted/hosted fan-out (the windows_runner_1/2
           # outputs the two legs above use) - that logic is sized for exactly
@@ -385,7 +385,7 @@ jobs:
           # not a redundant same-arch compiler variant like windows-llvm
           # above (which stays non-canonical: no release_package there).
           - name: "Windows MSVC (arm64)"
-            runner: '["windows-11-arm-2026"]'
+            runner: '["windows-11-vs2026-arm"]'
             preset: windows-msvc-arm64
             experimental: true
             msvc: true
