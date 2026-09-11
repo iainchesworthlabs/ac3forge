@@ -665,6 +665,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   stop, which comes after the replay's teardown, and its other failures now report a panic first
   when there is one.
 
+- **`quiet` left three of `monitor`'s status lines on stdout, and `decode` wrote its object
+  signature summary into a `-` output** (`apps/cli/commands/live_audio.cpp`,
+  `apps/cli/support.cpp`). `monitor` printed the §7.8 fold note, the object-count line and the
+  `verify-objects` summary with plain `fmt::println`, which `quiet` does not reach. The summary is
+  shared with `decode`, where it also went to stdout when a `-` output put the WAV there, ahead of
+  the RIFF header. `live` printed the blank line that ends its level meter the same way before
+  refusing an IEC 61937 capture. All four now go to the command's status stream: nowhere under
+  `quiet`, and stderr when a `-` output owns stdout. `tests/cli` plays a signed object stream
+  through `monitor` with and without `quiet` and checks that stdout stays empty under it - on a
+  machine with no render endpoint only the summary is reached - and decodes one under `quiet`
+  and to `-`.
+
 - **A Crucible re-probe asked for while one was already running was dropped**
   (`apps/crucible/engine/engine.cpp`). The frame loop tested `want_reprobe` before it tested
   whether an enumeration was in flight, so a request that arrived during one was cleared by that
