@@ -22,10 +22,11 @@ does `POST /play`.
 
 ## What plays where
 
-- A 7.1.4 output needs a sink of twelve slots: `capture` with
-  `CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM=1`, which converts and checks with no peripheral behind
-  it. `sdkconfig.ci-http714` is that shape under QEMU, and CI plays the set on it. The `tdm`
-  sink cannot: one ESP32-S3 I2S line carries at most four 32-bit slots.
+- A 7.1.4 output needs a sink of twelve slots or more. On the ESP32-S3 only `capture` with
+  `CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM=1` reaches twelve: it converts and checks with no
+  peripheral behind it. The S3's I2S carries at most 128 bits a TDM frame - four 32-bit slots or
+  eight 16-bit ones on a data line - and ESP-IDF refuses more, so the `tdm` sink cannot carry
+  7.1.4. `sdkconfig.ci-http714` is the capture shape under QEMU, and CI plays the set on it.
 - On a two-slot sink every stream plays too, folded to 2.0 by the decoder.
 - `streams.json` marks `"psram": true` the streams measured to need more internal RAM than a
   network shape has without PSRAM: 7.1.4 with AHT, enhanced coupling or TPN, and the Dolby

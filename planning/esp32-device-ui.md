@@ -488,9 +488,12 @@ run as root, so Playwright can install Chromium's system libraries).
 - **Other browsers.** CI runs Chromium. The page uses nothing newer than what current Firefox and
   Safari support, which is a statement about the code, not a test.
 - **Screen readers.** The structure is what the tests check; no screen reader is run.
-- **The output layout's report on a board.** The twelve-slot board is emulated, has no PSRAM, and
-  plays objects as their bed. What the page says of objects placed over the network, or of a
-  7.1.4 output into a TDM DAC, is from host tests and recorded bodies changed, not from a board.
+- **The output layout's report on a board.** On 2026-09-11 a board's `/status` gave the new
+  fields for every stream in the set, at `2.0` on its I2S sink and at `7.1.4` on the null sink,
+  and its page showed a 7.1.4 stream folded to 2.0. The twelve-slot page itself was read on the
+  emulated board only, and what it says of objects placed over the network is from host tests
+  and recorded bodies. No S3 sink sends 7.1.4 to a DAC: one TDM line carries at most four 32-bit
+  slots.
 
 ## Decisions
 
