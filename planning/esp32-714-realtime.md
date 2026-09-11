@@ -1,8 +1,10 @@
 # 7.1.4 in real time on the ESP32-S3 player
 
-**Status, 2026-09-11:** profiled on a board; the design below is proposed and nothing in it is
-built. The decisions are for the user to take before any of it is implemented, and the ones that
-touch `src/forge` also need the decoder core's owner.
+**Status, 2026-09-11:** profiled on a board. The user took the decisions the same day: the
+component's side (decisions 1, 2, 6, 9 and 11) to be built, F and G to be proposed to the decoder
+core's owner now, and the probe row (decision 10) left to the session profiling the fold. Decision
+1 is being built as (c) rather than (a), because of that session's PR #654 (see decision 1). The
+component's side is under way; nothing in `src/forge` has changed.
 
 The player decodes a 7.1.4 E-AC-3 stream on the ESP32-S3 with every slot at the host decoder's
 level, and over WiFi it does so too slowly. Folded to 2.0, a frame of `714-walk.ec3` took 36 ms of
@@ -302,6 +304,16 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    Host tests would cover the ring's index arithmetic, and a 7.1.4 stream decoded both ways (the
    decoder's own fold, and as coded then `OutputStage` per block) to identical samples.
 
+   **Taken 2026-09-11, and built as (c) for now.** The session profiling the fold opened PR #654
+   the same day, held for the user's OK. It makes `OutputStage` work in 256-sample blocks, bit-exact
+   in every tier, and puts `output.cpp` on the `-O2` list. On the board the 7.1.4 fold's own time
+   fell from 4.06 to 1.12 ms, its 43 KB of frame-long scratch went, and `714-walk` at 2.0 over WiFi
+   fell from 35.3 to 30.0 ms a frame. With the fold that cheap, moving it to core 0 would save
+   about 2 ms and cost the 72 KB-a-frame copy and a second caller of the fold. So the fold stays in
+   the decoder, the ring carries the decoder's blocks as they come (the fold's two channels at
+   2.0), and the output task renders and writes them. If #654 does not land, (a)'s player-side
+   fold is the next step.
+
 2. **How deep the ring and the DMA queue are.**
    - (a) **A sixteen-block ring (85 ms) in PSRAM, and a 21 ms DMA queue at 2.0**: eight
      descriptors of 128 frames, 8 KB of internal RAM.
@@ -337,6 +349,10 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    and the user's. Each must leave the double build's arithmetic textually untouched and must not
    raise the probe's peak heap on any target. F keeps up to 84 KB of channel buffers between
    frames that today are freed between frames, so its peak is unchanged but its low point rises.
+
+   **Taken 2026-09-11 as (b):** the user asked for F and G to be proposed now, and they went to
+   the decoder core's owner that day, with #654's changes to the same file as the reason to build
+   them after it lands or on top of it. Nothing in `src/forge` changes before the owner answers.
 
 5. **Two cores inside the decode (B).**
    - (a) **Record it with the stage shares, as the next step if 7.1.4 streams with AHT must
@@ -397,6 +413,9 @@ decode's, and the levels would stop matching the host's to the digit. J would al
     230,798 to 280,214, against the ARM leg's ceiling of 300,000 (`AC3FORGE_MAX_HEAP_BYTES` in
     `tools/checks/run_baremetal_probe.sh`). The C3 leg skips the row by heap budget, as it skips
     the other 7.1.4 row. The generator's decode variant adds a levels array and no bitstream.
+
+    **Taken 2026-09-11: left to the fold session.** Its PR #654 adds `eac3_714_fold` together with
+    the block-wise fold, which brings the row's peak to 237,206.
 
 11. **The component's own sources at `-O2` (H).**
     - (a) **Compile `player.cpp` and the example's sinks and meter at `-O2`**, as the decoder's hot
