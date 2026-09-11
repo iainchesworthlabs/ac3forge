@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/internal/decode_scalar.hpp"
 #include "ac3/meta/drc.hpp"
 
 // The §7.7 gain math both decoders apply, shared so a future correction to
@@ -69,5 +70,16 @@ namespace ac3::internal {
     // power. Doing it here rather than on the bits avoids re-quantising.
     return config.drc_scale == 1.0 ? gain : std::pow(gain, config.drc_scale);
 }
+
+// One programme's block_gain() as its coefficients take it: whether there is
+// anything to apply, the number they are multiplied by (the gain narrowed once
+// to the decode scalar, or a normalised store's mantissa of it), and the power
+// of two a normalised store moves into the block exponent instead. Both
+// decoders resolve one of these per programme per block.
+struct BlockScale {
+    bool apply = false;
+    int power = 0;
+    decode_scalar_t scale{};
+};
 
 }  // namespace ac3::internal

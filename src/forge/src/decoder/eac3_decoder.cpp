@@ -3498,33 +3498,51 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // channels are independent programmes, so Ch2 gets its own gain
         // from its own words (out.dynrng2/out.compr2) rather than sharing
         // Ch1's.
-        for (int ch = 0; ch < nchans; ++ch) {
-            const bool second_programme = bsi->acmod == Acmod::kDualMono && ch == 1;
-            const double drc =
-                second_programme
-                    ? internal::block_gain(impl_->config_,
-                                           out.dynrng2[static_cast<std::size_t>(blk)], out.compr2)
-                    : internal::block_gain(impl_->config_,
-                                           out.dynrng[static_cast<std::size_t>(blk)], out.compr);
+        AC3_ZONE_BEGIN(drc_zone, "eac3_drc_gain");
+        // Resolved once per programme per block rather than once per channel:
+        // every channel of a programme takes the same gain, and resolving it
+        // is double arithmetic - a run of software floating-point calls on a
+        // part whose FPU has no double.
+        const auto resolve = [&](double drc) {
+            internal::BlockScale scale;
             if (drc != 1.0) {
+                scale.apply = true;
                 double gain = drc;
                 if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
                     // The gain's power of two goes into the block exponent
                     // and only its mantissa, in [0.5, 1), into the
                     // coefficients (block_norm.hpp).
-                    int power = 0;
-                    gain = std::frexp(drc, &power);
-                    tail.norm[static_cast<std::size_t>(ch)] -= power;
+                    gain = std::frexp(drc, &scale.power);
                 }
                 // Narrowed once, not per coefficient: the gain is one number
                 // for the whole block, and rounding it here costs a single
                 // rounding step instead of 256 round trips through double.
-                const auto block_scale = static_cast<internal::decode_scalar_t>(gain);
-                for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
-                    value *= block_scale;
-                }
+                scale.scale = static_cast<internal::decode_scalar_t>(gain);
+            }
+            return scale;
+        };
+        const internal::BlockScale first_programme = resolve(internal::block_gain(
+            impl_->config_, out.dynrng[static_cast<std::size_t>(blk)], out.compr));
+        const internal::BlockScale second_programme =
+            bsi->acmod == Acmod::kDualMono
+                ? resolve(internal::block_gain(impl_->config_,
+                                               out.dynrng2[static_cast<std::size_t>(blk)],
+                                               out.compr2))
+                : internal::BlockScale{};
+        for (int ch = 0; ch < nchans; ++ch) {
+            const auto& scale =
+                bsi->acmod == Acmod::kDualMono && ch == 1 ? second_programme : first_programme;
+            if (!scale.apply) {
+                continue;
+            }
+            if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                tail.norm[static_cast<std::size_t>(ch)] -= scale.power;
+            }
+            for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
+                value *= scale.scale;
             }
         }
+        AC3_ZONE_END(drc_zone);
 
         // The transform pair plus the overlap-add that reconstructs PCM from it -
         // where a decode frame spends most of its time, and the stage
