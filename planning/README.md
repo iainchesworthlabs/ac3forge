@@ -18,6 +18,7 @@ What is on the site instead: [the documentation](../docs/index.md) describes wha
 | [esp32-player.md](esp32-player.md) | The ESP32-S3 player: a component layer under the examples, and an ESPHome media player | Phases 1 and 2 built and QEMU-verified; Phase 0 and Phase 2's hardware half wait on the board |
 | [esp32-device-ui.md](esp32-device-ui.md) | The player's web UI: a page the board serves from flash beside the REST API, and calls it | Built 2026-09-11; tested on the host and under QEMU, and its requests measured on a board. What it says about the output layout proposed 2026-09-11 |
 | [esp32-stream-set.md](esp32-stream-set.md) | Streams the player can fetch over HTTP: 7.1.4 streams for a 7.1.4 output, and a range of layouts, codecs and coding tools, with the level each slot should get | Proposed 2026-09-11; the streams made and played under QEMU |
+| [esp32-714-realtime.md](esp32-714-realtime.md) | 7.1.4 E-AC-3 in real time on the player: a stage-by-stage profile of the frame on a board, the options with what each saves, and the decisions | Profiled on a board 2026-09-11; proposed, not started |
 
 Two phase records stayed on the site because the reference pages cite them as evidence rather
 than as plans: [the Crucible promotion record](../docs/crucible/promotion.md), which carries the
