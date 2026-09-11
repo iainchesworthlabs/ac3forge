@@ -3832,13 +3832,13 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         run.decoded.assign(static_cast<std::size_t>(plan.endmant), kMaxExponent);
         if (is_cpl) {
             run.coded = {};
-            run.cpl_coded = encode_coupling_exponents(raw, run.strategy);
+            encode_coupling_exponents_into(raw, run.strategy, run.cpl_coded);
             decode_coupling_exponents(
                 run.cpl_coded.cplabsexp, run.cpl_coded.groups, run.strategy,
                 std::span{run.decoded}.subspan(static_cast<std::size_t>(plan.start)));
         } else {
             run.cpl_coded = {};
-            run.coded = encode_exponents(raw, run.strategy);
+            encode_exponents_into(raw, run.strategy, run.coded);
             decode_exponents(run.coded.absolute, run.coded.groups, run.strategy, run.decoded);
         }
         run.bap.assign(static_cast<std::size_t>(plan.endmant), 0);
