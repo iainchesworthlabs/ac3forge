@@ -160,6 +160,23 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   leg, 0.56 M and 1.35 M over the plain 5.1 rows; `run_baremetal_probe.sh --icount` gates
   both. `tools/generators/gen_baremetal_fixture.py` can now emit a fixture that decodes an
   existing stream under a decoder setting rather than encoding a new one.
+- **The output stage folds a block at a time.** Stage-timer zones inside `OutputStage::apply`
+  (seating, the fold, dialnorm, the Lt/Rt shift, RF mode's limiter) and around both decoders'
+  §7.7 gain showed where a 7.1.4 frame folded to stereo spent 4.1 ms on an ESP32-S3: seating
+  twelve locations into §7.8's six, the fold, and two `std::copy` calls that lowered to the mask
+  ROM's `memmove`, in loops that reloaded their base pointers every sample at `-Os`. The stage
+  now works in 256-sample blocks, folds a rendered layout straight into the caller's first two
+  channels and copies with `memcpy` where it has to; `output.cpp` joins the `-O2` list; both
+  decoders resolve the §7.7 gain once per programme per block rather than once per channel.
+  No result changes: the double build's decode of 24 streams under 17 output configurations,
+  408 decodes, is byte-identical, the float probe's PCM hashes are unchanged and the fixed
+  tier's pinned ones hold. On the board the 7.1.4 fold went from 4.1 ms a frame to 1.1 and the 5.1 one from 3.2
+  to 0.8, and `stream_player` folding 7.1.4 to stereo over WiFi from 35.3 ms of decode a frame
+  to 30.0, with 18 of 900 blocks reaching an empty queue where 149 did. The fold's working
+  storage went from 49 KB to 6 KB. The probe gains `eac3_714_fold`, now its peak at 237,206
+  bytes, and `eac3_line`, a 5.1 stream with dynrng words and dialnorm 24 decoded in line mode:
+  the one fixture where line mode has per-sample work, 0.67 ms of a 5.1 frame on the board.
+  `run_baremetal_probe.sh --icount --stage-timers` no longer reads the stage lines as fixtures.
 - **The encode probe times its frames, and three more rows.** `apps/baremetal/encode_probe.cpp`
   prints `<row>.us_per_frame` and `realtime_permille` on the decode probe's terms and a peak
   heap per row; `run_baremetal_probe.sh --encoder --icount` counts instructions per encoded
