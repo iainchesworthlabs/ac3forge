@@ -295,8 +295,8 @@ The instruction cache stayed at its default 16 KB for all of this, and in the
 probe that held. In the streaming player's network shape, where WiFi and the
 rest of the player run beside the decoder, it did not: at 32 KB a 7.1.4 frame
 decoded 3.1 ms faster folded to 2.0 and 3.8 ms faster onto twelve slots
-([7.1.4 in real time](../../planning/esp32-714-realtime.md)). The probe has not
-been measured at 32 KB.
+([7.1.4 in real time](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md)).
+The probe has not been measured at 32 KB.
 
 ### Where the time went
 
