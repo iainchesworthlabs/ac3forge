@@ -4357,7 +4357,7 @@ jobs:
       #     the HTTP step.
       #
       # The fifth, null, drives no hardware. It is built here because the
-      # four QEMU runs above all use the capture sink in its place.
+      # QEMU runs above all use the capture sink in its place.
       #
       # What can go wrong in a build nothing runs is that it stops compiling -
       # an IDF component is renamed, a driver API changes shape - and CI should
