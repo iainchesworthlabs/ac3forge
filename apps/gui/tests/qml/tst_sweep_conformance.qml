@@ -93,6 +93,30 @@ TestCase {
         verify(EncoderController.bitrates.indexOf(768) < 0);
     }
 
+    function test_lowRateSourceDropsUnframableEac3Rungs() {
+        const win = createTemporaryObject(mainWindowComponent, testCase);
+        verify(win !== null);
+        EncoderController.atmosEnabled = false;
+        EncoderController.applyChannelPreset("stereo");
+        EncoderController.codecIndex = 1;
+
+        // No source loaded yet - every rung is still offered, 768 included.
+        EncoderController.bitrateKbps = 768;
+        compare(EncoderController.bitrateKbps, 768);
+
+        // A 16 kHz syncframe holds at most 320 kbit/s: frmsiz is 11 bits
+        // (E2.3.1.3), so the same word ceiling that tops AC-3 out at 640 for
+        // 48 kHz falls with the rate. Loading a 16 kHz source drops every
+        // rung above that, and clamps the previously-selected 768 down to
+        // the top one still offered - the same way switching to AC-3 clamps
+        // 768 back to 640 above.
+        EncoderController.loadSourceFile(Qt.resolvedUrl("../fixtures/16khz-stereo.wav"));
+        compare(EncoderController.bitrateKbps, 320);
+        verify(EncoderController.bitrates.indexOf(320) >= 0);
+        verify(EncoderController.bitrates.indexOf(384) < 0);
+        verify(EncoderController.bitrates.indexOf(768) < 0);
+    }
+
     function test_atmosEnableFloorsTheRate() {
         const win = createTemporaryObject(mainWindowComponent, testCase);
         verify(win !== null);

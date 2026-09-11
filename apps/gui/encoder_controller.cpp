@@ -97,6 +97,44 @@ QString to_qstring(std::string_view text) {
     return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
 }
 
+// The Table 5.18 rungs (>=96) plus 768, filtered to what `sample_rate`'s
+// syncframe can actually hold - see plan.cpp's own framable() check, which
+// applies the same ac3::eac3::frame_words()/kMaxFrameWords rule to the
+// independent substream (the binding one: eac3_config() gives it the whole
+// rate and halves it for each dependent).
+QVariantList eac3_bitrates_for_rate(ac3::SampleRate sample_rate) {
+    QVariantList out;
+    const auto framable = [&](std::uint32_t kbps) {
+        return ac3::eac3::frame_words(sample_rate, kbps) <= ac3::eac3::kMaxFrameWords;
+    };
+    for (const auto kbps : ac3::kBitratesKbps) {
+        if (kbps >= 96 && framable(kbps)) {
+            out.append(static_cast<int>(kbps));
+        }
+    }
+    if (framable(768)) {
+        out.append(768);
+    }
+    return out;
+}
+
+// The top rung `eac3_bitrates_for_rate(sample_rate)` still offers at or
+// below `kbps` - what a previously-selected rate has to fall back to when a
+// newly loaded, lower-rate source can no longer frame it, the same way
+// setCodecIndex() clamps 768 back to 640 when AC-3 can't express it at all.
+// Always a legal rung: the lowest one offered (96) frames at every sample
+// rate this format accepts, all the way down to 16 kHz.
+std::uint32_t clamp_to_framable_eac3_bitrate(std::uint32_t kbps, ac3::SampleRate sample_rate) {
+    std::uint32_t best = 96;
+    for (const auto candidate : eac3_bitrates_for_rate(sample_rate)) {
+        const auto rung = static_cast<std::uint32_t>(candidate.toInt());
+        if (rung <= kbps) {
+            best = rung;
+        }
+    }
+    return best;
+}
+
 // Corner of the LFE low-pass bundle C's assignment table applies to an
 // explicitly LFE/LFE2-routed full-bandwidth channel - see docs/gui/
 // source-assignment.md's LFE note and ac3::dsp::LfeLowpass's own header
@@ -1035,19 +1073,24 @@ QString EncoderController::metaTokens() const {
 }
 
 QVariantList EncoderController::bitrates() const {
+    // AC-3 indexes Table 5.18 and cannot express anything else - its 19
+    // nominal rates are legal at all three of AC-3's sample rates by
+    // construction, so no per-rate filtering applies. E-AC-3 signals frmsiz
+    // directly instead, so a rung otherwise expressible - a Table 5.18 entry
+    // for A/B parity, or 768 for a wide object/7.2.4 session - still has to
+    // fit the loaded source's syncframe; see eac3_bitrates_for_rate(). With
+    // no source loaded yet, every rung stays offered.
+    if (codec_ == plan::Codec::kEac3 && source_) {
+        if (const auto sr = to_sample_rate_for_file(source_->wav.sample_rate, codec_)) {
+            return eac3_bitrates_for_rate(*sr);
+        }
+    }
     QVariantList out;
-    // AC-3 indexes Table 5.18 and cannot express anything else. E-AC-3 signals
-    // frmsiz directly, so the same list is a convenience there rather than a
-    // constraint - but offering the same rungs keeps an A/B honest.
     for (const auto kbps : ac3::kBitratesKbps) {
         if (kbps >= 96) {
             out.append(static_cast<int>(kbps));
         }
     }
-    // E-AC-3 signals frmsiz directly rather than indexing the table, so
-    // rungs past AC-3's 640 ceiling are legal there - 768 is what a wide
-    // object/7.2.4 session actually wants. setCodecIndex clamps back down
-    // when a switch to AC-3 would leave a rate Table 5.18 cannot express.
     if (codec_ == plan::Codec::kEac3) {
         out.append(768);
     }
@@ -5671,8 +5714,9 @@ void EncoderController::loadSourceFile(const QUrl& url) {
     const double seconds =
         rate > 0 ? static_cast<double>(wav->frame_count()) / static_cast<double>(rate) : 0.0;
 
+    const auto sample_rate_for_encode = to_sample_rate_for_file(rate, codec_);
     QString problem;
-    if (!to_sample_rate_for_file(rate, codec_)) {
+    if (!sample_rate_for_encode) {
         problem = codec_ == plan::Codec::kEac3
                       ? QStringLiteral("sample rate %1 Hz is not legal here "
                                        "(need 32, 44.1 or 48 kHz, or 16, 22.05 or 24 kHz)")
@@ -5684,6 +5728,19 @@ void EncoderController::loadSourceFile(const QUrl& url) {
         problem = QStringLiteral("%1 channels — %2")
                       .arg(channels)
                       .arg(to_qstring(plan::describe(plan::PlanError::kNoSourceLayout)));
+    }
+
+    // A rung the previous source's (possibly higher) rate could carry may
+    // not fit this one's syncframe - clamp down to the top rung bitrates()
+    // will still offer at the new rate, the same way setCodecIndex() clamps
+    // 768 back to 640 when AC-3 can't express it at all.
+    if (codec_ == plan::Codec::kEac3 && sample_rate_for_encode) {
+        const auto clamped = clamp_to_framable_eac3_bitrate(
+            static_cast<std::uint32_t>(bitrate_kbps_), *sample_rate_for_encode);
+        if (static_cast<int>(clamped) != bitrate_kbps_) {
+            bitrate_kbps_ = static_cast<int>(clamped);
+            emit planChanged();
+        }
     }
 
     // A newly loaded file picks the bed+extras that match it, which is what a
