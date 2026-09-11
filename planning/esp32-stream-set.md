@@ -12,13 +12,14 @@
     a stream carrying two programmes had both played, a frame of each, and now plays its first;
     a stream at 44.1 or 32 kHz played at the wrong speed, and is now refused; a stream using
     transient pre-noise processing loses its last access unit; and folding a stream with a
-    four-channel dependent substream to 2.0 does not fit a network shape's internal RAM without
-    PSRAM. The last two are the decoder core's, handed over in the player plan.
+    four-channel dependent substream to 2.0 did not fit a network shape's internal RAM without
+    PSRAM until the output stage began folding 256 samples at a time on 2026-09-11. Both of the
+    last two are the decoder core's, handed over in the player plan.
 
     On a board with PSRAM ([On a board](#on-a-board)) every stream in the set played with the
     host's levels, and the wide folds fit. What the board found is time: over WiFi a 7.1.4
-    stream folded to 2.0 takes longer to decode than it lasts, and so does a 7.1.4 stream using
-    AHT or enhanced coupling.
+    stream folded to 2.0 took longer to decode than it lasts, until that change brought it to
+    real time, and a 7.1.4 stream using AHT or enhanced coupling still does.
 
     Written beside [the web UI's output layout](esp32-device-ui.md#the-output-layout), which
     uses these streams to show what a layout does, and in the shape of [the player
@@ -196,7 +197,12 @@ fold's scratch, asks for 6,144 bytes with 7,564 to 8,844 free and no block large
 The twelve-slot shape does the same for 7.1.4 at `2.0` (3,212 free). Played as coded onto twelve
 slots those streams leave 147 KB free, so it is folding a programme with a four-channel
 dependent substream that costs the memory. The page's twelve-slot test folds a 5.1 stream for
-that reason.
+that reason. Since 2026-09-11 the output stage folds 256 samples at a time, and its largest
+allocation is 1,024 bytes where it was 6,144 ([Folded to stereo](../docs/platforms/esp32.md#folded-to-stereo)).
+Run again on 2026-09-12, the two-slot shape folded 7.1, 5.1.4 and 7.1.4 to `2.0` and the
+twelve-slot shape 7.1 and 7.1.4, and one play still aborted: the fuzz seed's 7.1.4, fifth after
+boot in the two-slot shape, on the decoder's own frame-long channel buffers
+(`Eac3Decoder::decode_substream_core`), 6,144 bytes with 17,088 free and no block over 5,632.
 
 The allocations that failed are the decoder's, which are the same whatever the output layout:
 the player's block storage is sixteen slots at every layout, and the capture sink converts one
@@ -227,11 +233,13 @@ play's units played and held together, and the player plan records the hand-over
 stream played 9% fast and its pitch a semitone and a half high. The player now refuses one
 ([decision 6](#decisions)), and `ac3-51-44k.ac3` is in the set as the stream it refuses.
 
-**Folding a wide programme to 2.0 does not fit without PSRAM**, as [the network shape's
-figures](#what-the-network-shape-holds-at-714) show: 7.1, 5.1.4 and 7.1.4 abort in the fold's
-scratch. A board with PSRAM folds them ([On a board](#on-a-board)), but cannot fold 7.1.4 in
-real time. Both are the decoder core's to change ([decision 8](#decisions)), and the player plan
-records the hand-over.
+**Folding a wide programme to 2.0 did not fit without PSRAM**, as [the network shape's
+figures](#what-the-network-shape-holds-at-714) show: 7.1, 5.1.4 and 7.1.4 aborted in the fold's
+scratch. A board with PSRAM folded them ([On a board](#on-a-board)), but not 7.1.4 in real
+time. Both were the decoder core's to change ([decision 8](#decisions)). Since 2026-09-11 the
+output stage folds a block at a time: its scratch fits a shape without PSRAM, and on the board
+7.1.4 at 2.0 decodes at 1.00x real time, 18 of 900 blocks still reaching an empty queue. The
+player plan records what is left.
 
 **Dual mono reported no channels.** `stream.channels` for E-AC-3 1+1 was the decoder's layout
 count, which is 0 because 1+1 has no Table E2.5 layout; the player now reports 2.
@@ -275,15 +283,19 @@ in PSRAM:
 At 2.0 the decode includes the decoder's output stage - the fold, with the example's line-mode
 DRC and dialnorm - which the 7.1.4 image, playing levels as coded, does not run. The two images'
 decode differs by 4.5 ms of the frame for 5.1 and 8.6 ms for 7.1.4, where the renderer places
-the same channels on twelve slots in 1.4 to 2.2 ms. Nothing has profiled that difference: the
-fold's arithmetic is already float in this build (`decode_scalar_t`), the decoder times its
-output stage as the `eac3_output` zone, and the probe, whose stage timers report zones like it
-(`AC3FORGE_STAGE_TIMERS`), folds 5.1 (`eac3_fold`) but no 7.1.4 stream. So a 7.1.4 stream at
-2.0 falls behind: `714-walk` put 149 of its 900 blocks
-into an empty queue, 940 ms of silence in 4.8 s. Behind, the decode task never waits on the
-sink, so core 1's idle task missed the five-second task watchdog, which printed a backtrace in
-`Eac3Decoder::decode_substream_core` and let the play go on (`CONFIG_ESP_TASK_WDT_PANIC` is
-off). 7.1 and 5.1.4 keep up, a few blocks short at the start of a one-second play.
+the same channels on twelve slots in 1.4 to 2.2 ms. The difference is the fold: on these
+streams, which carry no dynrng words and a dialnorm of -31, line-mode DRC and dialnorm do no
+per-sample work. Most of the fold's cost was two copies through the mask ROM's `memmove`, loops
+compiled at `-Os`, and frame-long buffers ([Folded to
+stereo](../docs/platforms/esp32.md#folded-to-stereo)). So a 7.1.4 stream at 2.0 fell behind:
+`714-walk` put 149 of its 900 blocks into an empty queue, 940 ms of silence in 4.8 s. Behind, the
+decode task never waits on the sink, so core 1's idle task missed the five-second task
+watchdog, which printed a backtrace in `Eac3Decoder::decode_substream_core` and let the play go
+on (`CONFIG_ESP_TASK_WDT_PANIC` is off). 7.1 and 5.1.4 kept up, a few blocks short at the start
+of a one-second play. Since 2026-09-11 the output stage folds 256 samples at a time: built
+before and after that change and played on one board, `714-walk` at 2.0 went from 35.3 to 30.0
+ms of decode a frame, 1.00x real time, and from 149 to 18 of 900 blocks to an empty queue, with
+the watchdog quiet and the levels unchanged. What is left at 2.0 is the 7.1.4 decode itself.
 
 Onto twelve slots a 7.1.4 stream with no coding tools decodes and renders in 26.7 to 29.6 ms,
 inside the frame before any sink converts a sample. The coding tools take it to the edge of the
@@ -371,3 +383,5 @@ channels leave an S3, and what that costs in time and internal RAM, is still ope
    layout that works on a board with room. Cost: until the decoder changes, a 7.1, 5.1.4 or 7.1.4
    stream at `2.0` aborts a player without the internal RAM for the fold - QEMU's network shape
    is one, the board's is not - and a 7.1.4 stream at `2.0` falls behind real time over WiFi.
+   Since 2026-09-11 the output stage folds 256 samples at a time, its largest allocation 1,024
+   bytes, and 7.1.4 at `2.0` decodes at 1.00x real time on the board.
