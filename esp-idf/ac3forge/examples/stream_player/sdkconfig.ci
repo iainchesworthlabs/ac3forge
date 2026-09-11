@@ -16,3 +16,10 @@ CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE=y
 # Two passes, so the rewind path at end of stream is exercised rather than only
 # the first read, and then the application stops with a verdict.
 CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS=2
+
+# The render and the sink in the player's output task, as a board's network
+# shape runs them (sdkconfig.psram), so CI plays through the ring, the second
+# task and the drain at the end of a play. At 2.0 a slot is the fold's two
+# channels, 2 KB, so sixteen fit in internal SRAM, which is where they go with
+# no PSRAM.
+CONFIG_AC3FORGE_EXAMPLE_OUTPUT_BLOCKS=16

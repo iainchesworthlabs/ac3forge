@@ -6,7 +6,9 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstring>
 #include <expected>
+#include <new>
 #include <optional>
 #include <vector>
 
@@ -15,6 +17,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/idf_additions.h"
+#include "freertos/semphr.h"
 #include "freertos/stream_buffer.h"
 #include "freertos/task.h"
 
@@ -22,7 +25,9 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/stream_accumulator.hpp"
+#include "ac3/oba/oamd.hpp"
 
+#include "ac3forge/block_ring.hpp"
 #include "ac3forge/render.hpp"
 
 namespace ac3forge {
@@ -43,7 +48,36 @@ constexpr EventBits_t kRewindFailed = BIT3;   // fetch -> decode: it could not
 constexpr EventBits_t kStop = BIT4;           // caller -> both
 constexpr EventBits_t kFetchExited = BIT5;
 constexpr EventBits_t kDecodeExited = BIT6;
-constexpr EventBits_t kFinished = BIT7;       // decode -> caller
+constexpr EventBits_t kFinished = BIT7;       // decode (or output) -> caller
+constexpr EventBits_t kOutputExited = BIT8;
+
+// One decoded block as the renderer needs it, wherever it came from: straight
+// from the decoder's PcmBlock (no output task), or out of a ring slot (the
+// output task). `bed` is the coded layout the channels are in; `objects` and
+// `places` are the object signals and, on a unit's first block, what the
+// renderer places them by.
+constexpr std::size_t kMaxObjects = LayoutRenderer::kMaxObjects;
+
+struct BlockView {
+    int index = 0;
+    std::span<const std::span<const float>> channels;
+    std::span<const std::span<const float>> objects;
+    const ac3::eac3::chanmap::Layout* bed = nullptr;
+    std::span<const ac3::oba::DisplayObject> places;
+};
+
+// What travels with a slot's samples through the ring. The object
+// descriptions are kept apart (Impl::out_places) because only a unit's first
+// block carries them and only a play placing objects needs the room.
+struct SlotInfo {
+    int index = 0;
+    std::uint16_t samples = 0;
+    std::uint8_t channels = 0;
+    std::uint8_t objects = 0;
+    std::uint8_t places = 0;
+    bool has_bed = false;
+    ac3::eac3::chanmap::Layout bed{};
+};
 
 bool same_layout(const ac3::eac3::chanmap::Layout& a, const ac3::eac3::chanmap::Layout& b) {
     if (a.count != b.count) {
@@ -145,6 +179,38 @@ struct Player::Impl {
     std::optional<ac3::FrameDecoder> ac3_decoder;
     std::optional<ac3::Eac3Decoder> eac3_decoder;
 
+    // The renderer's bed as last set - by whichever task renders, which is the
+    // only task that touches the renderer. A block carries the bed it was
+    // decoded against, and the renderer is set up again when that changes.
+    ac3::eac3::chanmap::Layout renderer_bed{};
+    bool renderer_has_bed = false;
+    // A unit's object descriptions, gathered on its first block for a render
+    // in this task (no output task); a ring slot carries its own.
+    std::array<ac3::oba::DisplayObject, kMaxObjects> places{};
+
+    // The output task and its ring (PlayerConfig::output_blocks); all unused
+    // without one. A slot is `out_spans` spans of one block: the channels
+    // first, `out_channel_spans` of them, then the objects.
+    BlockRing out_ring;
+    float* out_storage = nullptr;
+    SlotInfo* out_info = nullptr;                  // one per slot
+    ac3::oba::DisplayObject* out_places = nullptr;  // kMaxObjects per slot, placing objects only
+    std::size_t out_spans = 0;
+    std::size_t out_channel_spans = 0;
+    // Given by the output task as it frees a slot, and by the decode task as it
+    // fills one; each taken by the other side when it finds nothing to do.
+    SemaphoreHandle_t out_space = nullptr;
+    SemaphoreHandle_t out_data = nullptr;
+    TaskHandle_t output_task = nullptr;
+    // Set by the decode task when it has handed over its last block, so the
+    // output task knows an empty ring means the play is over.
+    std::atomic<bool> decode_done{false};
+    std::atomic<std::size_t> output_low{SIZE_MAX};
+    std::atomic<std::size_t> output_stack_free{0};
+    // The output task's views onto a slot.
+    std::array<std::span<const float>, kMaxSlots> out_channel_views{};
+    std::array<std::span<const float>, kMaxObjects> out_object_views{};
+
     // Written by the tasks, read by anyone.
     std::atomic<std::uint64_t> frames_played{0};
     std::atomic<std::uint64_t> frames_held{0};
@@ -241,6 +307,10 @@ struct Player::Impl {
         s.ring_low_valid = low != SIZE_MAX;
         s.ring_low_water = s.ring_low_valid ? low : 0;
         s.decode_stack_free = decode_stack_free.load();
+        const std::size_t out_low = output_low.load();
+        s.output_low_valid = out_low != SIZE_MAX;
+        s.output_low_blocks = s.output_low_valid ? out_low : 0;
+        s.output_stack_free = output_stack_free.load();
         s.finished = finished.load();
         s.failed = failed.load();
         s.failure = failure.load();
@@ -253,6 +323,10 @@ struct Player::Impl {
 
     [[nodiscard]] bool stopping() const { return (xEventGroupGetBits(events) & kStop) != 0; }
 
+    // The decode is over: the last pass played, the source could not rewind,
+    // or something failed. Without an output task the play is over with it.
+    // With one, what the ring still holds is audio the sink has yet to play,
+    // so the output task plays it out and ends the play itself (complete()).
     void finish(const char* why, bool is_failure, int code) {
         sample_decode_stack();
         failure.store(why);
@@ -260,6 +334,15 @@ struct Player::Impl {
         if (is_failure) {
             failed.store(true);
         }
+        if (output_task != nullptr) {
+            decode_done.store(true);
+            (void)xSemaphoreGive(out_data);
+            return;
+        }
+        complete();
+    }
+
+    void complete() {
         finished.store(true);
         // Stopping the fetch task too: a finished player has no more use for
         // bytes, and a source blocked in read() would otherwise sit there.
@@ -305,10 +388,154 @@ struct Player::Impl {
         vTaskDelete(nullptr);
     }
 
+    // --- the output task -----------------------------------------------------
+    // Takes the blocks the decode task put in the ring, in order, renders each
+    // onto the layout and writes it to the sink - whose write is what paces
+    // this task, and through a full ring the decode. Ends the play itself once
+    // the decode is done and the ring is empty, so the last blocks have been
+    // played before finished() says so.
+    static void output_entry(void* self) { static_cast<Impl*>(self)->output_loop(); }
+
+    void output_loop() {
+        std::size_t taken = 0;
+        for (;;) {
+            if (stopping()) {
+                break;
+            }
+            // decode_done before the ring: the decode task publishes its last
+            // block before it sets decode_done, so an empty ring seen after
+            // decode_done was seen set has nothing more coming.
+            const bool done = decode_done.load();
+            const std::size_t queued = out_ring.queued();
+            // How close the sink came to playing its DMA queue dry: the ring's
+            // level each time this task came for a block, once a ring's worth
+            // has played - before that the ring is still filling.
+            if (!done && taken >= out_ring.capacity()) {
+                std::size_t low = output_low.load();
+                while (queued < low && !output_low.compare_exchange_weak(low, queued)) {
+                }
+            }
+            if (queued == 0) {
+                if (done) {
+                    output_stack_free.store(
+                        static_cast<std::size_t>(uxTaskGetStackHighWaterMark(nullptr)));
+                    complete();
+                    break;
+                }
+                (void)xSemaphoreTake(out_data, pdMS_TO_TICKS(50));
+                continue;
+            }
+            const std::size_t slot = out_ring.read_slot();
+            const SlotInfo& info = out_info[slot];
+            for (std::size_t ch = 0; ch < info.channels; ++ch) {
+                out_channel_views[ch] =
+                    std::span<const float>(out_ring.span(slot, ch).data(), info.samples);
+            }
+            for (std::size_t o = 0; o < info.objects; ++o) {
+                out_object_views[o] = std::span<const float>(
+                    out_ring.span(slot, out_channel_spans + o).data(), info.samples);
+            }
+            const std::span<const ac3::oba::DisplayObject> slot_places =
+                out_places != nullptr
+                    ? std::span<const ac3::oba::DisplayObject>(out_places + (slot * kMaxObjects),
+                                                               info.places)
+                    : std::span<const ac3::oba::DisplayObject>{};
+            output_block(BlockView{
+                .index = info.index,
+                .channels = std::span<const std::span<const float>>(out_channel_views.data(),
+                                                                    info.channels),
+                .objects =
+                    std::span<const std::span<const float>>(out_object_views.data(), info.objects),
+                .bed = info.has_bed ? &info.bed : nullptr,
+                .places = slot_places});
+            out_ring.release();
+            (void)xSemaphoreGive(out_space);
+            ++taken;
+        }
+        output_stack_free.store(static_cast<std::size_t>(uxTaskGetStackHighWaterMark(nullptr)));
+        xEventGroupSetBits(events, kOutputExited);
+        vTaskDelete(nullptr);
+    }
+
+    // The ring, its slots' descriptions, and the two semaphores between the
+    // tasks; in PSRAM when asked for and present, as the bitstream ring is.
+    bool make_output() {
+        const std::size_t blocks = config.output_blocks;
+        // What a slot has to hold: the decoder's channels - the fold's two, or
+        // up to a rendered programme's sixteen - and the objects when they are
+        // placed.
+        out_channel_spans = fold.has_value() ? 2 : kMaxSlots;
+        out_spans = out_channel_spans + (reconstruct ? kMaxObjects : 0);
+        const bool psram =
+            config.output_in_psram && heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0;
+        const std::uint32_t caps =
+            psram ? (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        const std::size_t floats =
+            BlockRing::storage_floats(blocks, out_spans, ac3::kSamplesPerBlock);
+        out_storage = static_cast<float*>(heap_caps_malloc(floats * sizeof(float), caps));
+        void* const info_memory = heap_caps_malloc(blocks * sizeof(SlotInfo), caps);
+        void* const places_memory =
+            reconstruct ? heap_caps_malloc(blocks * kMaxObjects * sizeof(ac3::oba::DisplayObject), caps)
+                        : nullptr;
+        out_space = xSemaphoreCreateBinary();
+        out_data = xSemaphoreCreateBinary();
+        if (out_storage == nullptr || info_memory == nullptr ||
+            (reconstruct && places_memory == nullptr) || out_space == nullptr ||
+            out_data == nullptr) {
+            heap_caps_free(info_memory);
+            heap_caps_free(places_memory);
+            free_output();
+            std::printf("player: no memory for an output ring of %u blocks of %u spans\n",
+                        static_cast<unsigned>(blocks), static_cast<unsigned>(out_spans));
+            return false;
+        }
+        out_info = static_cast<SlotInfo*>(info_memory);
+        for (std::size_t i = 0; i < blocks; ++i) {
+            new (out_info + i) SlotInfo{};
+        }
+        if (places_memory != nullptr) {
+            out_places = static_cast<ac3::oba::DisplayObject*>(places_memory);
+            for (std::size_t i = 0; i < blocks * kMaxObjects; ++i) {
+                new (out_places + i) ac3::oba::DisplayObject{};
+            }
+        }
+        out_ring.reset(std::span<float>(out_storage, floats), blocks, out_spans,
+                       ac3::kSamplesPerBlock);
+        std::printf("player: output task on core %d at priority %u, a ring of %u blocks of %u "
+                    "spans (%u bytes) in %s\n",
+                    static_cast<int>(config.output_core),
+                    static_cast<unsigned>(config.output_priority), static_cast<unsigned>(blocks),
+                    static_cast<unsigned>(out_spans),
+                    static_cast<unsigned>(floats * sizeof(float)),
+                    psram ? "PSRAM" : "internal SRAM");
+        return true;
+    }
+
+    // SlotInfo and DisplayObject hold nothing that needs destroying, so the
+    // memory goes back as it is.
+    void free_output() {
+        if (out_space != nullptr) {
+            vSemaphoreDelete(out_space);
+            out_space = nullptr;
+        }
+        if (out_data != nullptr) {
+            vSemaphoreDelete(out_data);
+            out_data = nullptr;
+        }
+        heap_caps_free(out_storage);
+        heap_caps_free(out_info);
+        heap_caps_free(out_places);
+        out_storage = nullptr;
+        out_info = nullptr;
+        out_places = nullptr;
+    }
+
     // --- the decode task -----------------------------------------------------
 
-    // The renderer's bed, from the unit's headers. Only when it changes, which
-    // for a stream is once.
+    // The coded layout a unit's blocks are placed by, from its headers. Only
+    // when it changes, which for a stream is once. The renderer itself is set
+    // up by whichever task renders, when a block arrives with a bed other
+    // than the one it has (output_block).
     void prepare_bed(std::span<const std::byte> unit) {
         if (fold.has_value()) {
             return;  // the decoder's output stage does the placing
@@ -320,12 +547,11 @@ struct Player::Impl {
         if (!have_bed || !same_layout(bed, *peeked)) {
             bed = *peeked;
             have_bed = true;
-            renderer.set_bed(bed);
-            bed_fed = renderer.bed_slots();
         }
     }
 
-    // What the decoder returned afterwards, against what the headers said.
+    // What the decoder returned afterwards, against what the headers said. A
+    // disagreement places the next unit by the decoded layout.
     void confirm_bed(const ac3::eac3::chanmap::Layout& decoded) {
         if (fold.has_value() || same_layout(bed, decoded)) {
             return;
@@ -333,34 +559,66 @@ struct Player::Impl {
         layout_mismatches.fetch_add(1);
         bed = decoded;
         have_bed = true;
-        renderer.set_bed(bed);
-        bed_fed = renderer.bed_slots();
     }
 
-    // One block from the decoder to the sink, rendered onto the layout. Timed
-    // in two parts, because both happen inside the decode call and so inside
-    // decode_us: placing the block, and the sink's write - which on a paced
-    // sink is mostly the wait for the DAC.
-    void deliver(const ac3::PcmBlock& pcm) {
+    // The objects a unit's first block is placed by, as describe_objects
+    // gives them, into `into` (kMaxObjects room): the first of the object
+    // signals the block carries, at most kMaxObjects. Only what the renderer
+    // reads is kept - the label views the decoder's storage, which is gone
+    // once the decode call returns, so it is cleared.
+    static std::size_t gather_places(const ac3::PcmBlock& pcm, ac3::oba::DisplayObject* into) {
+        if (pcm.object_metadata == nullptr || pcm.objects.empty()) {
+            return 0;
+        }
+        const std::vector<ac3::oba::DisplayObject> described =
+            ac3::oba::describe_objects(*pcm.object_metadata);
+        const std::size_t count = std::min({described.size(), pcm.objects.size(), kMaxObjects});
+        for (std::size_t i = 0; i < count; ++i) {
+            into[i] = described[i];
+            into[i].label = {};
+        }
+        return count;
+    }
+
+    // One block onto the layout and into the sink, timed in two parts:
+    // placing it, and the sink's write - which on a paced sink is mostly the
+    // wait for the DAC. Runs in the one task that renders: the decode task,
+    // inside the decode call, without an output task; the output task with
+    // one.
+    void output_block(const BlockView& view) {
         const std::int64_t entered = esp_timer_get_time();
         const std::size_t slots = config.layout.slots();
-        const std::size_t n = pcm.channels.empty() ? 0 : pcm.channels.front().size();
+        const std::size_t n = view.channels.empty() ? 0 : view.channels.front().size();
         const float gain = volume.load();
         const std::span<const std::span<float>> out(block_spans.data(), slots);
+        // The renderer reads the block's samples; the object description has
+        // already reached it through `places`.
+        const ac3::PcmBlock pcm{.index = view.index,
+                                .blocks = 0,
+                                .channels = view.channels,
+                                .objects = view.objects,
+                                .object_indices = {},
+                                .object_metadata = nullptr};
         if (fold.has_value()) {
             renderer.render_folded(pcm, gain, out);
-            if (pcm.index == 0) {
+            if (view.index == 0) {
                 fed_slots.fetch_or(config.layout.connected_slots());
             }
         } else {
-            if (reconstruct && pcm.index == 0) {
-                renderer.set_objects(pcm.object_metadata, pcm.objects.size());
+            if (view.bed != nullptr && (!renderer_has_bed || !same_layout(renderer_bed, *view.bed))) {
+                renderer_bed = *view.bed;
+                renderer_has_bed = true;
+                renderer.set_bed(renderer_bed);
+                bed_fed = renderer.bed_slots();
+            }
+            if (reconstruct && view.index == 0) {
+                renderer.set_objects(view.places);
             }
             renderer.render(pcm, reconstruct, gain, out);
-            if (pcm.index == 0) {
+            if (view.index == 0) {
                 // What render() placed: the objects and the bed's LFE when it
                 // placed objects, the bed when it did not.
-                const bool placed = reconstruct && renderer.object_count() > 0 && !pcm.objects.empty();
+                const bool placed = reconstruct && renderer.object_count() > 0 && !view.objects.empty();
                 fed_slots.fetch_or(placed ? static_cast<std::uint16_t>(renderer.object_slots() |
                                                                        renderer.bed_slots(true))
                                           : bed_fed);
@@ -373,6 +631,69 @@ struct Player::Impl {
         sink.write(std::span<const std::span<const float>>(block_views.data(), slots));
         render_us.fetch_add(static_cast<std::uint64_t>(rendered - entered));
         sink_us.fetch_add(static_cast<std::uint64_t>(esp_timer_get_time() - rendered));
+    }
+
+    // One block from the decoder: rendered and written here, or copied into
+    // the ring for the output task.
+    void deliver(const ac3::PcmBlock& pcm) {
+        if (output_task == nullptr) {
+            const std::size_t count =
+                reconstruct && pcm.index == 0 ? gather_places(pcm, places.data()) : 0;
+            output_block(BlockView{.index = pcm.index,
+                                   .channels = pcm.channels,
+                                   .objects = pcm.objects,
+                                   .bed = have_bed ? &bed : nullptr,
+                                   .places = std::span<const ac3::oba::DisplayObject>(places.data(),
+                                                                                      count)});
+            return;
+        }
+        enqueue(pcm);
+    }
+
+    // Into the ring. A full ring is the decode running ahead of the sink,
+    // which drains it at the DAC's rate: the wait here is what paces the
+    // decode now, as the sink's write did before. The views the decoder hands
+    // over last only for this call, so the samples are copied - memcpy rather
+    // than std::copy, since std::copy lowers to the S3 mask ROM's memmove at
+    // about twelve cycles a byte (eac3_decoder.cpp's write_slot says the same).
+    // A stop while waiting drops the block.
+    void enqueue(const ac3::PcmBlock& pcm) {
+        while (out_ring.full()) {
+            if (stopping()) {
+                return;
+            }
+            (void)xSemaphoreTake(out_space, pdMS_TO_TICKS(50));
+        }
+        const std::size_t slot = out_ring.write_slot();
+        SlotInfo& info = out_info[slot];
+        const std::size_t channels = std::min(pcm.channels.size(), out_channel_spans);
+        const std::size_t objects = std::min(pcm.objects.size(), out_spans - out_channel_spans);
+        std::size_t samples = channels > 0 ? pcm.channels.front().size()
+                                           : (objects > 0 ? pcm.objects.front().size() : 0);
+        samples = std::min(samples, out_ring.samples_per_span());
+        const auto copy = [&](std::span<const float> from, std::size_t span) {
+            std::memcpy(out_ring.span(slot, span).data(), from.data(),
+                        std::min(samples, from.size()) * sizeof(float));
+        };
+        for (std::size_t ch = 0; ch < channels; ++ch) {
+            copy(pcm.channels[ch], ch);
+        }
+        for (std::size_t o = 0; o < objects; ++o) {
+            copy(pcm.objects[o], out_channel_spans + o);
+        }
+        info.index = pcm.index;
+        info.samples = static_cast<std::uint16_t>(samples);
+        info.channels = static_cast<std::uint8_t>(channels);
+        info.objects = static_cast<std::uint8_t>(objects);
+        info.has_bed = have_bed;
+        info.bed = bed;
+        info.places = 0;
+        if (reconstruct && pcm.index == 0 && out_places != nullptr) {
+            info.places = static_cast<std::uint8_t>(
+                gather_places(pcm, out_places + (slot * kMaxObjects)));
+        }
+        out_ring.publish();
+        (void)xSemaphoreGive(out_data);
     }
 
     // StreamInfo's account of how the layout is served (see player.hpp), once
@@ -682,6 +1003,24 @@ bool Player::start() {
     std::printf("player: layout %s, %u slots, %s\n", im.config.layout.text().data(),
                 static_cast<unsigned>(slots), how);
 
+    // The output task before the decoder, so a decoded block always has
+    // somewhere to go. Without one the decode task renders and writes itself,
+    // as the player always did. A failure here leaves the rest to stop(),
+    // which the destructor calls.
+    if (im.config.output_blocks > 0) {
+        if (!im.make_output()) {
+            return false;
+        }
+        if (xTaskCreatePinnedToCore(&Impl::output_entry, "ac3-output", im.config.output_stack_bytes,
+                                    &im, im.config.output_priority, &im.output_task,
+                                    im.config.output_core) != pdPASS) {
+            std::printf("player: could not start the output task\n");
+            im.output_task = nullptr;
+            im.free_output();
+            return false;
+        }
+    }
+
     // The decoder first, so the ring never fills before anything can drain it.
     if (xTaskCreatePinnedToCore(&Impl::decode_entry, "ac3-decode", im.config.decode_stack_bytes,
                                 &im, im.config.decode_priority, &im.decode_task,
@@ -715,6 +1054,9 @@ void Player::stop() {
     if (im.decode_task != nullptr) {
         want |= kDecodeExited;
     }
+    if (im.output_task != nullptr) {
+        want |= kOutputExited;
+    }
     if (want != 0) {
         const EventBits_t bits =
             xEventGroupWaitBits(im.events, want, pdFALSE, pdTRUE, pdMS_TO_TICKS(15000));
@@ -725,7 +1067,9 @@ void Player::stop() {
     }
     im.fetch_task = nullptr;
     im.decode_task = nullptr;
+    im.output_task = nullptr;
     im.free_ring();
+    im.free_output();
     vEventGroupDelete(im.events);
     im.events = nullptr;
 }

@@ -18,3 +18,8 @@ CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS=8
 CONFIG_AC3FORGE_EXAMPLE_SOURCE_FATFS=y
 
 CONFIG_AC3FORGE_EXAMPLE_MAX_LAPS=2
+
+# Through the player's output task too, with a ring only four blocks deep: the
+# capture sink never waits, so this is the ring filling and draining at the
+# decode's pace rather than the DAC's.
+CONFIG_AC3FORGE_EXAMPLE_OUTPUT_BLOCKS=4

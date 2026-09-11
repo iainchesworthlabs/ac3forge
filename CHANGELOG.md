@@ -98,6 +98,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
   holds each slot to the host's level within 1% + 20, the silent ones at exactly zero. Playing it found two faults in the player,
   fixed: a stream with two programmes had both played, a frame of each, and now plays its first;
   and a stream at 44.1 or 32 kHz played at the wrong speed, and is now refused.
+- **The ESP32 player can render and write on the other core** (`planning/esp32-714-realtime.md`,
+  which also has a stage-by-stage profile of a 7.1.4 frame on the board). With
+  `PlayerConfig::output_blocks` set, an output task takes the render onto the layout, the level
+  meter and the sink's write off the decode task, fed by a ring of decoded blocks
+  (`ac3forge/block_ring.hpp`, tested on the host) in PSRAM when the part has it; the decode task
+  waits on a full ring, and a play ends only when the ring has played out. The streaming
+  example's `CONFIG_AC3FORGE_EXAMPLE_OUTPUT_BLOCKS` selects it, `sdkconfig.psram` turns it on with
+  sixteen blocks and takes the I2S DMA queue back from 64 ms to 21 ms, and CI's `sdkconfig.ci`
+  and `sdkconfig.ci-tdm` run through it. The component's `player.cpp` joins the `-O2` sources
+  under `AC3FORGE_MINIMAL_HOT_O2`, and the example compiles the bare-metal probe's stage-timer
+  backend where the repository has it, so `idf.py -DAC3FORGE_STAGE_TIMERS=ON build` gives each play
+  a line per decoder stage.
 
 ### Changed
 

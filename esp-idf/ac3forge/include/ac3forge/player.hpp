@@ -68,8 +68,9 @@ class ByteSource {
 
 // Where decoded audio goes. One BLOCK per call: one planar span of float per
 // slot of the configured OutputLayout, in slot order, each ac3::kSamplesPerBlock
-// samples long or fewer, nominally in [-1, 1). Called from the decode task
-// only, six times per frame at 48 kHz.
+// samples long or fewer, nominally in [-1, 1). Called from one task only, six
+// times per frame at 48 kHz: the decode task, or the output task when
+// PlayerConfig::output_blocks gives the player one.
 //
 // Planar float rather than interleaved integers because the sample format is
 // the sink's business: standard I2S wants two slots of 16 or 32 bits, a TDM bus
@@ -133,6 +134,30 @@ struct PlayerConfig {
     std::uint32_t decode_stack_bytes = 32768;
     std::uint32_t fetch_stack_bytes = 8192;
 
+    // The output task: rendering onto the layout and writing to the sink on a
+    // core of its own, fed by a ring of this many decoded blocks. 0 keeps both
+    // inside the decode task, as the player did before the task existed.
+    //
+    // Why it exists. The render, the level meter a sink may run and the sink's
+    // conversion all used to run on the decode's core, after the decode, while
+    // the other core - WiFi's - sat three quarters idle (planning/
+    // esp32-714-realtime.md). Moved there, they stop adding to the decode's
+    // time, and the ring, not the DMA queue, rides out a slow frame: sixteen
+    // blocks is 85 ms of audio, and the sink's DMA queue can shrink to what
+    // covers the output task being held off by WiFi.
+    //
+    // A slot holds the decoder's own block - the coded channels, or the two a
+    // fold leaves, and the objects when they are placed - so a slot is 1 KB a
+    // channel and sixteen slots of sixteen channels are 256 KB: PSRAM, where
+    // the part has it (`output_in_psram`), is where a ring that size belongs.
+    std::size_t output_blocks = 0;
+    bool output_in_psram = true;
+    BaseType_t output_core = 0;
+    // Above the fetch task: a block late to the sink is heard, a read late to
+    // the ring is not.
+    UBaseType_t output_priority = 7;
+    std::uint32_t output_stack_bytes = 6144;
+
     // Passes through the stream before stopping. 0 plays until the source
     // cannot rewind. A source that cannot rewind ends the run after one pass
     // whatever this says.
@@ -177,10 +202,14 @@ struct StreamInfo {
 struct PlayerStats {
     std::uint64_t frames_played = 0;    // access units that produced audio
     std::uint64_t frames_held = 0;      // released one call late (§3.7)
-    // The decode call, summed. The blocks reach the renderer and the sink
-    // from inside it, so it includes both: render_us and sink_us are those two
-    // parts on their own, and decode_us minus both is the decoder's. On a
-    // paced sink, sink_us is mostly the wait for the DAC's clock.
+    // The decode call, summed. Without an output task the blocks reach the
+    // renderer and the sink from inside it, so it includes both: render_us and
+    // sink_us are those two parts on their own, and decode_us minus both is the
+    // decoder's. With one, render_us and sink_us are the output task's, on its
+    // own core, and decode_us is the decoder's plus copying each block into
+    // the ring and any wait for a free slot. Either way, on a paced sink the
+    // wait for the DAC's clock lands in it: in sink_us directly, or as the
+    // decode waiting on a ring the sink is draining at the DAC's rate.
     std::uint64_t decode_us = 0;
     std::uint64_t render_us = 0;
     std::uint64_t sink_us = 0;
@@ -206,6 +235,15 @@ struct PlayerStats {
     // pass boundary and when the run ends: PlayerConfig::decode_stack_bytes
     // minus this is what the decode actually used. Zero until sampled.
     std::size_t decode_stack_free = 0;
+    // With an output task (PlayerConfig::output_blocks): the least number of
+    // blocks the ring held as the output task came for the next one, once a
+    // ring's worth had played - zero means the task waited on the decode at
+    // least once, with only the sink's own queue left playing; and the least
+    // stack that task has had spare. `output_low_valid` is false without an
+    // output task or before the first measurement.
+    std::size_t output_low_blocks = 0;
+    bool output_low_valid = false;
+    std::size_t output_stack_free = 0;
     bool finished = false;
     bool failed = false;
     // Why the run ended, once `finished`: "passes" (max_passes reached), "end

@@ -350,6 +350,33 @@ config AC3FORGE_EXAMPLE_DECODE_STACK_BYTES
         spare. The default keeps the probe's margin; a shape that is short of
         heap can spend some of it, knowing the number.
 
+# THE OUTPUT TASK - PlayerConfig::output_blocks. The render onto the layout,
+# the level meter and the sink's conversion and write, in a task of their own on
+# the other core, fed by a ring of decoded blocks. 0 keeps them in the decode
+# task, as the player always did; planning/esp32-714-realtime.md has why a
+# 7.1.4 stream over WiFi wants them moved.
+config AC3FORGE_EXAMPLE_OUTPUT_BLOCKS
+    int "Output task's ring, in 256-sample blocks (0 = no output task)"
+    default 0
+    range 0 64
+    help
+        A block is 5.3 ms of audio, so sixteen are 85 ms: what the ring can
+        absorb of a frame that decodes slower than the DAC plays it, before the
+        sink's own DMA queue has to. A slot holds the decoder's block, 1 KB
+        per channel - two for a fold, sixteen otherwise, and sixteen more when
+        objects are placed - so a ring for anything wider than stereo belongs in
+        PSRAM.
+
+config AC3FORGE_EXAMPLE_OUTPUT_CORE
+    int "Core for the output task (-1 = any)"
+    default 0
+    range -1 1
+
+config AC3FORGE_EXAMPLE_OUTPUT_IN_PSRAM
+    int "Put the output task's ring in PSRAM when present (1) or internal SRAM (0)"
+    default 1
+    range 0 1
+
 # THE CONTROL SURFACE - ac3forge::Control, esp-idf/ac3forge/include/ac3forge/
 # control.hpp: GET /status, POST /play with a location, POST /stop, POST /volume.
 # Only worth having where there is a network, so 0 (off) by default; the HTTP
