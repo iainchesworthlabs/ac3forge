@@ -101,9 +101,9 @@ to use both.
 **The library, `src/forge`.** Layers 4 and 5. `ac3::io::interleave` is a move of code that already
 has host tests. A `StreamDecoder` over the accumulator, the E-AC-3 decoder and the output stage,
 with `feed()` and `next()` into caller-owned spans, is the loop written three times, written once.
-Both are hand-over items: the decoder core is owned by another session, so this page describes
-them and does not touch `src/forge`. Until they land, the component carries copies, marked as
-such, and the day they land is the day the copies are deleted.
+Both are hand-over items: the decoder core (`src/forge`) changes only in its own pull requests, so
+this page describes them and does not touch it. Until they land, the component carries copies,
+marked as such, and the day they land is the day the copies are deleted.
 
 **The component, `esp-idf/ac3forge/`.** Layer 6, and the seams for 7. The component today registers
 no sources; it gains `include/ac3forge/player.hpp` and `src/player.cpp`, registered as component
