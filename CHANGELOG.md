@@ -652,6 +652,18 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ### Fixed
 
+- **`quiet` crashed `decode` on a stream with more than one programme or whose report has
+  Annex D, infomdat, mixing metadata or a concealed frame, and crashed `transcode`, `metadata`,
+  `normalize`, `cut` and `cat` on every stream** (`apps/cli/commands/decode.cpp`,
+  `apps/cli/commands/stream_tools.cpp`). `quiet` makes the status stream a null `FILE*`, which
+  `status_println` skips; those report lines called `fmt::println` on it directly. On Windows the
+  C runtime's parameter check ended the process with 0xC0000409, in most cases after the output
+  had been written in full. It was seen first on
+  `fuzz/seeds/fuzz_eac3_decode/external-eac3-51-256-dee.ec3`, whose report carries copyright and
+  a `dsurexmod`; FFmpeg's encode of the same programme carries neither and decoded quietly. Every
+  status line in the two files now goes through `status_println`, and `tests/cli` runs each of
+  these paths under `quiet` and compares the output with a run without it.
+
 - **A panic or a reset after `result=pass` passed every ESP32 leg CI runs under QEMU**
   (`tools/checks/check_esp_console.py`). The two probe runners, `run_esp32s3_probe.sh` and
   `run_esp32c3_probe.sh`, and the streaming player's streaming, capture, render and HTTP steps in
