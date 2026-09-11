@@ -1,4 +1,5 @@
-// The REST control surface. See ../include/ac3forge/control.hpp.
+// The REST control surface, and the web UI it serves. See
+// ../include/ac3forge/control.hpp and planning/esp32-device-ui.md.
 
 #include "ac3forge/control.hpp"
 
@@ -6,9 +7,19 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <string>
 
 #include "esp_http_server.h"
+
+// The web UI's two files. CMakeLists.txt embeds them (EMBED_FILES) and they stay
+// in flash. ESP-IDF names each symbol after the file's base name, which is why
+// the files carry the component's name: a firmware that embeds an index.html of
+// its own would otherwise have two definitions of one symbol.
+extern const char ac3forge_ui_html_start[] asm("_binary_ac3forge_ui_html_start");
+extern const char ac3forge_ui_html_end[] asm("_binary_ac3forge_ui_html_end");
+extern const char ac3forge_ui_js_start[] asm("_binary_ac3forge_ui_js_start");
+extern const char ac3forge_ui_js_end[] asm("_binary_ac3forge_ui_js_end");
 
 namespace ac3forge {
 namespace {
@@ -76,6 +87,22 @@ esp_err_t send_text(httpd_req_t* req, const char* status, const char* text) {
     return httpd_resp_send(req, text, HTTPD_RESP_USE_STRLEN);
 }
 
+// A file of the web UI, sent from where the linker put it: httpd_resp_send
+// builds the headers in a small buffer of its own and sends the body from this
+// pointer, so no part of the file is copied to the heap. no-cache has a browser
+// ask again rather than keep a script from before a firmware update. The
+// policy lets the page run script from the device alone and style from its own
+// <style> element, and allows the empty data: icon the page declares so that a
+// browser does not ask for /favicon.ico.
+esp_err_t send_file(httpd_req_t* req, const char* type, const char* begin, const char* end) {
+    httpd_resp_set_type(req, type);
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(req, "Content-Security-Policy",
+                       "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:; "
+                       "frame-ancestors 'none'");
+    return httpd_resp_send(req, begin, static_cast<ssize_t>(end - begin));
+}
+
 }  // namespace
 
 struct Control::Impl {
@@ -84,9 +111,23 @@ struct Control::Impl {
 
     static Impl* self(httpd_req_t* req) { return static_cast<Impl*>(req->user_ctx); }
 
-    static esp_err_t on_root(httpd_req_t* req) {
+    // The web UI: a page and its script, which read /status and drive the
+    // routes below like any other client.
+    static esp_err_t on_page(httpd_req_t* req) {
+        return send_file(req, "text/html; charset=utf-8", ac3forge_ui_html_start,
+                         ac3forge_ui_html_end);
+    }
+
+    static esp_err_t on_script(httpd_req_t* req) {
+        return send_file(req, "text/javascript; charset=utf-8", ac3forge_ui_js_start,
+                         ac3forge_ui_js_end);
+    }
+
+    static esp_err_t on_api(httpd_req_t* req) {
         return send_text(req, "200 OK",
                          "ac3forge player\n"
+                         "GET  /              a web page that shows and drives the player\n"
+                         "GET  /api           this list\n"
                          "GET  /status        what is playing, as JSON\n"
                          "POST /play          body: a URL or path to play\n"
                          "POST /stop\n"
@@ -240,29 +281,17 @@ struct Control::Impl {
 
 Control::~Control() { stop(); }
 
-bool Control::start(const ControlHandlers& handlers, std::uint16_t port) {
+bool Control::start(const ControlHandlers& handlers, std::uint16_t port, std::size_t stack_bytes) {
     if (impl_ != nullptr) {
         return true;
     }
     impl_ = new Impl{};
     impl_->handlers = handlers;
 
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = port;
-    // A handful of routes and one client at a time is the whole job; the
-    // defaults size the server for more than that and this part has less.
-    config.max_uri_handlers = 7;
-    config.max_open_sockets = 3;
-    config.lru_purge_enable = true;
-    if (httpd_start(&impl_->server, &config) != ESP_OK) {
-        std::printf("control: could not start the HTTP server on port %u\n",
-                    static_cast<unsigned>(port));
-        delete impl_;
-        impl_ = nullptr;
-        return false;
-    }
     const httpd_uri_t routes[] = {
-        {.uri = "/", .method = HTTP_GET, .handler = &Impl::on_root, .user_ctx = impl_},
+        {.uri = "/", .method = HTTP_GET, .handler = &Impl::on_page, .user_ctx = impl_},
+        {.uri = "/ui.js", .method = HTTP_GET, .handler = &Impl::on_script, .user_ctx = impl_},
+        {.uri = "/api", .method = HTTP_GET, .handler = &Impl::on_api, .user_ctx = impl_},
         {.uri = "/status", .method = HTTP_GET, .handler = &Impl::on_status, .user_ctx = impl_},
         {.uri = "/play", .method = HTTP_POST, .handler = &Impl::on_play, .user_ctx = impl_},
         {.uri = "/stop", .method = HTTP_POST, .handler = &Impl::on_stop, .user_ctx = impl_},
@@ -270,11 +299,31 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port) {
         {.uri = "/layout", .method = HTTP_GET, .handler = &Impl::on_layout_get, .user_ctx = impl_},
         {.uri = "/layout", .method = HTTP_PUT, .handler = &Impl::on_layout_put, .user_ctx = impl_},
     };
-    for (const auto& route : routes) {
-        httpd_register_uri_handler(impl_->server, &route);
+
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = port;
+    // The routes above and one or two clients at a time are the whole job;
+    // the defaults size the server for more than that and this part has less.
+    // Each handler slot is a pointer the server allocates when it starts, so
+    // there is one per route and none spare.
+    config.max_uri_handlers = static_cast<decltype(config.max_uri_handlers)>(std::size(routes));
+    config.max_open_sockets = 3;
+    config.lru_purge_enable = true;
+    // The owner's callbacks run on this task too: see kDefaultStackBytes.
+    config.stack_size = stack_bytes;
+    if (httpd_start(&impl_->server, &config) != ESP_OK) {
+        std::printf("control: could not start the HTTP server on port %u\n",
+                    static_cast<unsigned>(port));
+        delete impl_;
+        impl_ = nullptr;
+        return false;
     }
-    std::printf("control: http on port %u - GET /status, POST /play, /stop, /volume, GET/PUT "
-                "/layout\n",
+    for (const auto& route : routes) {
+        if (httpd_register_uri_handler(impl_->server, &route) != ESP_OK) {
+            std::printf("control: could not register %s\n", route.uri);
+        }
+    }
+    std::printf("control: http on port %u - a web page at /, the REST routes listed at /api\n",
                 static_cast<unsigned>(port));
     return true;
 }

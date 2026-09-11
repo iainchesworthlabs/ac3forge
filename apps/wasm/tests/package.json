@@ -6,9 +6,13 @@
   "type": "commonjs",
   "license": "GPL-3.0-only",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "test:device-ui": "playwright test --config device-ui.config.js --project host",
+    "coverage:device-ui": "c8 report --temp-directory test-results/device-ui-coverage/tmp --reports-dir test-results/device-ui-coverage --reporter text --reporter lcov --allowExternal --src ../../../esp-idf/ac3forge/ui --all --check-coverage --statements 98 --lines 98 --functions 98 --branches 90",
+    "test:board": "playwright test --config device-ui.config.js --project board"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0"
+    "@playwright/test": "^1.55.0",
+    "c8": "^12.0.0"
   }
 }
