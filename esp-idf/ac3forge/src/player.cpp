@@ -19,6 +19,7 @@
 #include "freertos/task.h"
 
 #include "ac3/core/eac3_tables.hpp"
+#include "ac3/core/tables.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/stream_accumulator.hpp"
 
@@ -106,6 +107,16 @@ struct Player::Impl {
     // last one when the two disagreed.
     ac3::eac3::chanmap::Layout bed{};
     bool have_bed = false;
+    // The slots that bed reaches, kept with it; see StreamInfo::silent.
+    std::uint16_t bed_fed = 0;
+    // The word StreamInfo::render reports for a fold, set at start(); null when
+    // the layout is rendered rather than folded.
+    const char* fold_word = nullptr;
+    // Which programme plays: the first E-AC-3 access unit's. A stream may
+    // carry up to eight, as independent substreams (§E2.3.1.2), and they are
+    // alternatives rather than layers - a second language, a commentary - so
+    // the other programmes' units are skipped before they are decoded.
+    std::optional<int> programme;
 
     EventGroupHandle_t events = nullptr;
     StreamBufferHandle_t ring = nullptr;
@@ -153,6 +164,10 @@ struct Player::Impl {
     std::atomic<int> error{0};
     std::atomic<float> volume{1.0F};
     std::atomic<std::size_t> decode_stack_free{0};
+    // The slots this play has sent something to, bit n for slot n - what
+    // StreamInfo::silent names the rest of. Or-ed in by the decode task once
+    // per unit.
+    std::atomic<std::uint16_t> fed_slots{0};
     StreamInfo stream{};  // written once, before have_stream is set
 
     // The ring, allocated by hand rather than through
@@ -306,6 +321,7 @@ struct Player::Impl {
             bed = *peeked;
             have_bed = true;
             renderer.set_bed(bed);
+            bed_fed = renderer.bed_slots();
         }
     }
 
@@ -318,6 +334,7 @@ struct Player::Impl {
         bed = decoded;
         have_bed = true;
         renderer.set_bed(bed);
+        bed_fed = renderer.bed_slots();
     }
 
     // One block from the decoder to the sink, rendered onto the layout. Timed
@@ -332,11 +349,22 @@ struct Player::Impl {
         const std::span<const std::span<float>> out(block_spans.data(), slots);
         if (fold.has_value()) {
             renderer.render_folded(pcm, gain, out);
+            if (pcm.index == 0) {
+                fed_slots.fetch_or(config.layout.connected_slots());
+            }
         } else {
             if (reconstruct && pcm.index == 0) {
                 renderer.set_objects(pcm.object_metadata, pcm.objects.size());
             }
             renderer.render(pcm, reconstruct, gain, out);
+            if (pcm.index == 0) {
+                // What render() placed: the objects and the bed's LFE when it
+                // placed objects, the bed when it did not.
+                const bool placed = reconstruct && renderer.object_count() > 0 && !pcm.objects.empty();
+                fed_slots.fetch_or(placed ? static_cast<std::uint16_t>(renderer.object_slots() |
+                                                                       renderer.bed_slots(true))
+                                          : bed_fed);
+            }
         }
         for (std::size_t slot = 0; slot < slots; ++slot) {
             block_views[slot] = std::span<const float>(block[slot].data(), std::min(n, block[slot].size()));
@@ -345,6 +373,37 @@ struct Player::Impl {
         sink.write(std::span<const std::span<const float>>(block_views.data(), slots));
         render_us.fetch_add(static_cast<std::uint64_t>(rendered - entered));
         sink_us.fetch_add(static_cast<std::uint64_t>(esp_timer_get_time() - rendered));
+    }
+
+    // StreamInfo's account of how the layout is served (see player.hpp), once
+    // the first unit has said what the stream is: `silent` is filled in by
+    // Player::stream(), since it grows as the play goes on.
+    void describe_stream(const std::optional<ac3::eac3::chanmap::Layout>& coded, bool dual_mono) {
+        const std::string_view text = config.layout.text();
+        const std::size_t n = std::min(text.size(), stream.layout.size() - 1);
+        std::copy_n(text.data(), n, stream.layout.data());
+        stream.layout[n] = '\0';
+        stream.render = fold_word != nullptr ? fold_word : (stream.objects_rendered ? "objects" : "channels");
+        std::size_t used = 0;
+        const auto add = [&](std::string_view name) {
+            if (used + name.size() + 2 > stream.coded.size()) {
+                return;
+            }
+            if (used > 0) {
+                stream.coded[used++] = ',';
+            }
+            std::copy_n(name.data(), name.size(), stream.coded.data() + used);
+            used += name.size();
+            stream.coded[used] = '\0';
+        };
+        if (dual_mono) {
+            add("Ch1");
+            add("Ch2");
+        } else if (coded.has_value()) {
+            for (const auto location : *coded) {
+                add(ac3::eac3::chanmap::name(location));
+            }
+        }
     }
 
     // True when the unit produced audio, false when the decoder held it back
@@ -377,6 +436,7 @@ struct Player::Impl {
                           .objects = false,
                           .objects_rendered = false,
                           .slots = static_cast<int>(config.layout.slots())};
+                describe_stream(peek_layout(unit), decoded->acmod == ac3::Acmod::kDualMono);
                 have_stream.store(true);
             }
             return delivered;
@@ -394,14 +454,18 @@ struct Player::Impl {
         const auto& au = **decoded;
         confirm_bed(au.layout);
         if (!have_stream.load()) {
+            // Dual mono has no Table E2.5 layout, so its count is 0; it is two
+            // channels all the same.
+            const bool dual_mono = au.acmod == ac3::Acmod::kDualMono;
             stream = {.eac3 = true,
                       .acmod = static_cast<int>(au.acmod),
-                      .channels = au.layout.count,
+                      .channels = dual_mono ? 2 : au.layout.count,
                       .substreams = au.substream_count,
                       .dialnorm = au.dialnorm,
                       .objects = au.object_metadata.has_value(),
                       .objects_rendered = reconstruct && au.object_metadata.has_value(),
                       .slots = static_cast<int>(config.layout.slots())};
+            describe_stream(au.layout, dual_mono);
             have_stream.store(true);
         }
         return delivered;
@@ -490,6 +554,24 @@ struct Player::Impl {
                 break;
             }
 
+            // Before anything is decoded: a stream at a rate the sink does not
+            // run at is refused (PlayerConfig::sample_rate_hz), and a unit of a
+            // programme other than the one playing is skipped, uncounted.
+            if (const auto header = ac3::io::read_frame_header(unit.bytes)) {
+                const std::uint32_t hz = ac3::sample_rate_hz(header->sample_rate);
+                if (hz != config.sample_rate_hz) {
+                    finish("sample rate", true, static_cast<int>(hz));
+                    break;
+                }
+                if (header->kind == ac3::io::StreamKind::kEac3) {
+                    if (!programme.has_value()) {
+                        programme = header->substreamid;
+                    } else if (header->substreamid != *programme) {
+                        continue;
+                    }
+                }
+            }
+
             // The time is decode AND render AND the sink's wait, because the
             // blocks reach the sink from inside the decode call. On a paced
             // sink that wait is the DAC's clock, not work; deliver() times the
@@ -543,6 +625,10 @@ bool Player::start() {
     // mono room, the renderer for everything else, with the objects
     // reconstructed when the layout asks for what the bed cannot give.
     im.fold = im.config.layout.fold(im.config.stereo_fold);
+    im.fold_word = im.fold == ac3::DownmixTarget::kMono   ? "mono"
+                   : im.fold == ac3::DownmixTarget::kLtRt ? "ltrt"
+                   : im.fold.has_value()                  ? "loro"
+                                                          : nullptr;
     im.config.decoder.output.target = im.fold.value_or(ac3::DownmixTarget::kAsCoded);
     switch (im.config.objects) {
         case PlayerConfig::Objects::kNever: im.reconstruct = false; break;
@@ -655,10 +741,17 @@ PlayerStats Player::last_pass() const {
 }
 
 std::optional<StreamInfo> Player::stream() const {
-    if (!impl_->have_stream.load()) {
+    const auto& im = *impl_;
+    if (!im.have_stream.load()) {
         return std::nullopt;
     }
-    return impl_->stream;
+    StreamInfo info = im.stream;
+    // The connected slots nothing has reached yet, named as the layout names
+    // them; the decode task keeps adding to what has been reached.
+    im.config.layout.names_of(
+        static_cast<std::uint16_t>(im.config.layout.connected_slots() & ~im.fed_slots.load()),
+        info.silent);
+    return info;
 }
 
 bool Player::finished() const { return impl_->finished.load(); }

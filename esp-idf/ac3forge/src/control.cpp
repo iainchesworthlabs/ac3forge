@@ -153,6 +153,9 @@ struct Control::Impl {
             append_key(out, "sink");
             append_json_string(out, h.sink_name());
         }
+        if (h.sink_slots) {
+            append_number(out, "sink_slots", static_cast<unsigned long long>(h.sink_slots()));
+        }
         if (h.layout) {
             append_key(out, "layout");
             append_json_string(out, h.layout());
@@ -178,6 +181,16 @@ struct Control::Impl {
                 append_bool(out, "objects", info->objects);
                 append_bool(out, "objects_rendered", info->objects_rendered);
                 append_number(out, "slots", static_cast<unsigned long long>(info->slots));
+                // How this play serves the layout (planning/esp32-device-ui.md,
+                // "The output layout").
+                append_key(out, "layout");
+                append_json_string(out, info->layout.data());
+                append_key(out, "render");
+                append_json_string(out, info->render);
+                append_key(out, "coded");
+                append_json_string(out, info->coded.data());
+                append_key(out, "silent");
+                append_json_string(out, info->silent.data());
                 out += '}';
             } else {
                 out += "null";

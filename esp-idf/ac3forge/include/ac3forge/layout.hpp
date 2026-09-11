@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
 #include <optional>
@@ -258,6 +259,75 @@ class OutputLayout {
 
     // The text this was parsed from, or the list form of what it holds.
     [[nodiscard]] std::string_view text() const { return std::string_view{text_.data()}; }
+
+    // The slots something is connected to - a speaker or a low-frequency
+    // feed, not a "-" - with bit n for slot n.
+    [[nodiscard]] std::uint16_t connected_slots() const {
+        std::uint16_t mask = 0;
+        for (std::size_t i = 0; i < count_; ++i) {
+            if (speakers_[i].kind != Speaker::Kind::kEmpty) {
+                mask = static_cast<std::uint16_t>(mask | (1U << i));
+            }
+        }
+        return mask;
+    }
+
+    // A slot's name as a speaker list writes it: its location ("Lrs"), "lfe"
+    // for a low-frequency feed with none, azimuth/elevation ("30/0") for a
+    // speaker placed by angle, "-" for an empty slot. Into `out`,
+    // NUL-terminated and cut to fit; returns the length written.
+    std::size_t slot_name(std::size_t index, std::span<char> out) const {
+        if (out.empty()) {
+            return 0;
+        }
+        const Speaker& speaker = speakers_[index];
+        std::array<char, 32> angle{};
+        std::string_view name = "-";
+        if (speaker.location.has_value()) {
+            name = ac3::eac3::chanmap::name(*speaker.location);
+        } else if (speaker.kind == Speaker::Kind::kLfe) {
+            name = "lfe";
+        } else if (speaker.kind == Speaker::Kind::kSpeaker) {
+            const int written = std::snprintf(angle.data(), angle.size(), "%g/%g",
+                                              speaker.direction.azimuth_deg,
+                                              speaker.direction.elevation_deg);
+            name = std::string_view{angle.data(), written > 0 ? static_cast<std::size_t>(written) : 0U};
+        }
+        const std::size_t n = name.size() < out.size() - 1 ? name.size() : out.size() - 1;
+        for (std::size_t i = 0; i < n; ++i) {
+            out[i] = name[i];
+        }
+        out[n] = '\0';
+        return n;
+    }
+
+    // The names of the slots in `slots` (bit n for slot n), comma-separated,
+    // into `out`, NUL-terminated. A name that would not fit whole is left out,
+    // with every one after it.
+    void names_of(std::uint16_t slots, std::span<char> out) const {
+        if (out.empty()) {
+            return;
+        }
+        std::size_t used = 0;
+        out[0] = '\0';
+        for (std::size_t i = 0; i < count_; ++i) {
+            if ((slots & (1U << i)) == 0) {
+                continue;
+            }
+            std::array<char, 32> name{};
+            const std::size_t n = slot_name(i, name);
+            if (used + n + (used > 0 ? 1 : 0) + 1 > out.size()) {
+                break;
+            }
+            if (used > 0) {
+                out[used++] = ',';
+            }
+            for (std::size_t k = 0; k < n; ++k) {
+                out[used++] = name[k];
+            }
+            out[used] = '\0';
+        }
+    }
 
    private:
     static bool is_lfe(Location location) {
