@@ -41,10 +41,18 @@
 # tested on the host by tests/io/test_interleave.cpp, and on its way into the
 # library - see planning/esp32-player.md). freertos, esp_timer and heap are what
 # the player's own sources include.
+#
+# The control surface (include/ac3forge/control.hpp, src/control.cpp) is here
+# too, on esp_http_server, with the web page it serves: ui/ac3forge_ui.html and
+# ui/ac3forge_ui.js, embedded as they are and sent from flash
+# (planning/esp32-device-ui.md). IDF names an embedded file's symbols after its
+# base name, hence the component's name on both. Like the rest of this archive
+# they reach a firmware only when something in it uses Control.
 idf_component_register(
     SRCS "src/player.cpp" "src/control.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES freertos esp_timer heap esp_http_server)
+    REQUIRES freertos esp_timer heap esp_http_server
+    EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
 
 # Where the library's own CMake lives, which depends on how this component was
 # obtained.
@@ -127,6 +135,19 @@ set(AC3FORGE_BUILD_ADM OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_AC4 OFF CACHE BOOL "" FORCE)
+
+# The decode-critical sources at -O2. src/forge/minimal.cmake lists them, with
+# what each one measured, and the probe under apps/baremetal/platform/esp32s3/
+# has always been built this way - so the timing docs/platforms/esp32.md
+# quotes is this build, and a player built from this component without it
+# decodes slower than those figures. The cost is flash, not SRAM. Not FORCEd:
+# a project that needs the flash back says so before project(),
+#
+#     set(AC3FORGE_MINIMAL_HOT_O2 OFF CACHE BOOL "")
+#
+# or on the command line, `idf.py -DAC3FORGE_MINIMAL_HOT_O2=OFF build`.
+set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
+    "Decode-critical sources at -O2; see src/forge/minimal.cmake")
 
 # Tells apps/baremetal/CMakeLists.txt that an external build system owns the
 # application. Without it that file would see CMAKE_SYSTEM_NAME "Generic" -

@@ -30,7 +30,11 @@ live in the library because it is made of FreeRTOS:
 - **`ac3forge::Control`** ([`include/ac3forge/control.hpp`](include/ac3forge/control.hpp)): a REST
   surface over whatever owns a player - `GET /status`, `POST /play` with a location, `POST /stop`,
   `POST /volume`, `GET`/`PUT /layout` - on `esp_http_server`, with callbacks the owner supplies so
-  the server's task never touches the player itself.
+  the server's task never touches the player itself. `GET /` is a web page for the same routes,
+  and the only client they need: the state, the stream, the layout, the volume and the decode's
+  timing, and the four actions, from two files in [`ui/`](ui) sent from flash as they are
+  ([`planning/esp32-device-ui.md`](../../planning/esp32-device-ui.md)). `GET /api` lists the
+  routes.
 - **`ac3forge/interleave.hpp`**: planar float to interleaved 16-bit or 24-in-32 with slot padding,
   free of ESP-IDF and tested on the host. Library code with a temporary home; see the plan below.
 

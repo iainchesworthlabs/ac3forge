@@ -242,9 +242,11 @@ target_compile_features(forge_minimal PUBLIC cxx_std_23)
 # exponents.cpp and mantissas.cpp (under a tenth of a millisecond between
 # them). What it bought at 240 MHz, per frame of the 5.1 Atmos fixture:
 # bit allocation 4.55 -> 2.09 ms, the JOC mixing 11.0 -> 8.2 ms, the
-# E-AC-3 stages in eac3_decoder.cpp about 1.5 ms between them. The cost is
-# flash, not SRAM - the code lives in flash on every part this profile
-# targets - and it is stated on the board page beside the gain.
+# E-AC-3 stages in eac3_decoder.cpp about 1.5 ms between them; and, per frame
+# of the 7.1.4 stream folded to stereo, the output stage's seating and fold
+# 1.53 -> 0.83 ms for 2,688 bytes of flash. The cost is flash, not SRAM -
+# the code lives in flash on every part this profile targets - and it is
+# stated on the board page beside the gain.
 option(AC3FORGE_MINIMAL_HOT_O2
     "Minimum-footprint profile: compile the decode-critical sources at -O2 (costs flash, not SRAM)"
     OFF)
@@ -255,6 +257,7 @@ if(AC3FORGE_MINIMAL_HOT_O2)
         src/core/fft.cpp
         src/decoder/decoder.cpp
         src/decoder/eac3_decoder.cpp
+        src/decoder/output.cpp
         src/oba/joc.cpp
         PROPERTIES COMPILE_OPTIONS "-O2")
     message(STATUS "Minimum-footprint profile: decode-critical sources at -O2")

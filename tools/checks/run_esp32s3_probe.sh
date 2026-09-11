@@ -94,7 +94,7 @@ fi
 # the arm-none-eabi leg can still fail here. It did: at 267,754, before the
 # scratch was released, this leg died on a 6,144-byte request.
 : "${AC3FORGE_ESP32S3_MAX_HEAP_BYTES:=245000}"
-# One ceiling for all twelve fixtures. Enhanced coupling had its own of 140
+# One ceiling for all fourteen fixtures. Enhanced coupling had its own of 140
 # until the 60 allocations per frame behind that exemption turned out to be two
 # std::vector<double> in the reconstruction loop rather than anything §E3.5
 # asks for; it now measures 12, level with plain eac3. See
@@ -252,6 +252,15 @@ if ! grep -q '^result=pass' "$OUTPUT"; then
     grep -E 'result=|reason=|Guru Meditation|assert failed' "$OUTPUT" >&2 || true
     exit 1
 fi
+
+# And nothing wrong after it. The probe prints result=pass before it has
+# finished, and the run carries on to the timeout above, so the capture also
+# holds whatever the part did next. A panic there - in the closing lines, or
+# on the way out of app_main - resets the part into a second run that prints
+# result=pass again, and every check below would pass it. A clean run boots
+# once and prints no panic output; check_esp_console.py holds the capture to
+# that, from the first boot banner on.
+python3 "$REPO/tools/checks/check_esp_console.py" --title "ESP32-S3 ${DIRECTION} probe" "$OUTPUT"
 
 heap=$(sed -n 's/.*heap\.peak_bytes=\([0-9]*\).*/\1/p' "$OUTPUT" | head -1)
 if [[ -z "$heap" ]]; then

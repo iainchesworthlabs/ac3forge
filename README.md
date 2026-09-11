@@ -104,7 +104,8 @@ Every target builds and tests green in CI. Beyond that:
 7. Real time on the board for every decode fixture; AC-3 5.1 encode sits at the real-time line,
    the other encode rows run 1.3x to 1.7x over — see
    [the capability table](docs/platforms/esp32.md#what-the-part-can-and-cannot-do).
-8. Correct under `qemu-riscv32`; no board has run it, and 7.1.4 does not fit in its SRAM.
+8. Correct under `qemu-riscv32`: twelve of fourteen fixtures, byte-identical to the x86 host and
+   Cortex-M3 leg; no board has run it, and the two 7.1.4 rows don't fit in its SRAM.
 9. Correct under QEMU's `mps2-an385`; no real silicon.
 
 What each can encode and decode is the same everywhere — see
@@ -232,7 +233,7 @@ packaging/      vcpkg port, winget manifest, Conan recipe (staged, pending upstr
 docs/           the site source — see Documentation below
 ```
 
-The standards documents are not redistributed; `docs/spec/` is gitignored. See
+The standards documents are not redistributed; `spec/` is gitignored. See
 [docs/building.md](docs/building.md#the-standards-documents) if you need to re-run the table
 generators in `tools/`.
 

@@ -34,6 +34,8 @@ that each pass alone and fail merged.
 Run: python3 -m unittest discover -s tools/checks -p 'test_*.py'
 """
 
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -651,12 +653,17 @@ class PlanningAnchors(unittest.TestCase):
 
 class Main(unittest.TestCase):
     def test_exit_code_follows_findings(self) -> None:
+        """main() prints an ::error:: line for the deliberately broken link below;
+        captured rather than left on stdout so it doesn't read as a real CI
+        annotation when this suite runs inside the script-lint job."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write(root, "docs/a.md", "[b](b.md)\n")
-            self.assertEqual(check_doc_paths.main(["check", "--root", tmp]), 1)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(check_doc_paths.main(["check", "--root", tmp]), 1)
             _write(root, "docs/b.md", "# b\n")
-            self.assertEqual(check_doc_paths.main(["check", "--root", tmp]), 0)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(check_doc_paths.main(["check", "--root", tmp]), 0)
 
 
 if __name__ == "__main__":

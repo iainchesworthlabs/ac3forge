@@ -110,6 +110,16 @@ jobs:
 
       - run: mkdocs build --strict
 
+      # Advisory only: Material for MkDocs is in maintenance mode and its own maintainers'
+      # answer to what replaces it is Zensical (github.com/zensical/zensical), not MkDocs 2.0 -
+      # see requirements/requirements-docs.in's comment above the zensical pin. This step builds
+      # this same site tree with it on every docs-touching PR so a real migration decision has
+      # real, current evidence behind it, without depending on an immature (pre-1.0) tool for a
+      # required check or changing what the deploy job below actually publishes.
+      - name: Build with Zensical (canary, non-blocking)
+        continue-on-error: true
+        run: zensical build --strict
+
   deploy:
     name: Publish to GitHub Pages
     needs: build

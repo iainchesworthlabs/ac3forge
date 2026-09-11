@@ -23,6 +23,7 @@
 // playing.
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -92,17 +93,49 @@ std::int16_t to_pcm16(float sample) {
     return static_cast<std::int16_t>(scaled);
 }
 
+// Four descriptors of 256 frames: see start_i2s for why so few, and why 256.
+constexpr std::uint32_t kDmaDescriptors = 4;
+constexpr std::uint32_t kDmaFrames = 256;
+
+// What the driver saw, counted in the I2S interrupt: every DMA buffer the
+// peripheral finished sending, and every one it came to with nothing new
+// written into it - the send queue overflowed, which is an underrun, played as
+// zeros because of auto_clear. The first gives the clock the DAC is actually
+// driven at; the second, the silence the loop let in. Neither depends on the
+// loop's own idea of time.
+std::atomic<std::uint32_t> g_buffers_sent{0};
+std::atomic<std::uint32_t> g_buffers_starved{0};
+
+bool on_sent(i2s_chan_handle_t /*handle*/, i2s_event_data_t* /*event*/, void* /*ctx*/) {
+    g_buffers_sent.fetch_add(1, std::memory_order_relaxed);
+    return false;
+}
+
+bool on_send_q_ovf(i2s_chan_handle_t /*handle*/, i2s_event_data_t* /*event*/, void* /*ctx*/) {
+    g_buffers_starved.fetch_add(1, std::memory_order_relaxed);
+    return false;
+}
+
 bool start_i2s() {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
-    // Four descriptors of 240 frames each: 3,840 bytes of DMA buffer holding
-    // 20 ms of audio. Small on purpose. The decode peaks at 233,546 bytes of a
+    // Four descriptors of 256 frames each: 4,096 bytes of DMA buffer holding
+    // 21 ms of audio. Small on purpose. The decode peaks at 233,546 bytes of a
     // part with 277,400 free (docs/platforms/esp32.md), so what is left for
     // buffering is about 43,000 - and every millisecond of I2S buffer is also a
-    // millisecond of latency. 20 ms rides out the jitter between one frame's
+    // millisecond of latency. 21 ms rides out the jitter between one frame's
     // decode and the next without hiding a decoder that is genuinely too slow,
     // which is the thing this example exists to reveal.
-    chan_cfg.dma_desc_num = 4;
-    chan_cfg.dma_frame_num = 240;
+    //
+    // 256 because it divides the 1,536-frame write. ESP-IDF v6.1's
+    // i2s_channel_write starts a fresh buffer whenever two or more sent ones
+    // are waiting for it, and the rest of the buffer in hand goes out
+    // unwritten - zeros, with auto_clear. After a 10 ms decode that is every
+    // frame, so with 240-frame buffers each frame ended part-way through one
+    // and 144 frames of silence went out with it: measured on a DevKitC-1, the
+    // loop paced at 35 ms a frame instead of 32, with the clock at exactly
+    // 48 kHz and not one buffer starved.
+    chan_cfg.dma_desc_num = kDmaDescriptors;
+    chan_cfg.dma_frame_num = kDmaFrames;
     chan_cfg.auto_clear = true;  // send zeros on underrun, not the last buffer again
     if (i2s_new_channel(&chan_cfg, &g_tx, nullptr) != ESP_OK) {
         std::printf("error: could not allocate an I2S channel\n");
@@ -126,6 +159,14 @@ bool start_i2s() {
 
     if (i2s_channel_init_std_mode(g_tx, &std_cfg) != ESP_OK) {
         std::printf("error: could not configure I2S in standard mode\n");
+        return false;
+    }
+    // Before enabling: the driver refuses DMA callbacks on a running channel.
+    i2s_event_callbacks_t callbacks = {};
+    callbacks.on_sent = on_sent;
+    callbacks.on_send_q_ovf = on_send_q_ovf;
+    if (i2s_channel_register_event_callback(g_tx, &callbacks, nullptr) != ESP_OK) {
+        std::printf("error: could not register the I2S callbacks\n");
         return false;
     }
     if (i2s_channel_enable(g_tx) != ESP_OK) {
@@ -186,6 +227,9 @@ extern "C" void app_main() {
     std::uint64_t worst_frame_us = 0;
     std::uint64_t played = 0;
     std::uint32_t laps = 0;
+    std::int64_t first_lap_us = 0;
+    std::uint32_t first_lap_sent = 0;
+    std::uint64_t first_lap_played = 0;
 
     // Loops forever. The I2S write below blocks until the DMA has room, so the
     // loop is paced by the DAC's own clock rather than by a delay - which is
@@ -232,14 +276,43 @@ extern "C" void app_main() {
         // is exactly real time and anything at or above it cannot play without
         // gaps. The worst SINGLE frame matters as much as the average, because
         // 20 ms of DMA buffer only absorbs a spike that small.
+        //
+        // i2s_hz is the clock the peripheral is really running at: buffers the
+        // driver reported sent since the first lap, times their length, over
+        // the time between. starved_buffers is how many of those the DMA came
+        // to with nothing new in them, each one kDmaFrames of silence.
+        // wall_us_per_frame is the loop's own pace over the same stretch, by
+        // the part's clock: 32,000 when every frame went out whole and on
+        // time. Read it rather than the arrival times of these lines, which
+        // USB-Serial-JTAG delivers in bursts.
         const std::uint64_t permille = (decode_us * 1000) / (kFrameDurationUs * played);
+        const std::int64_t now_us = esp_timer_get_time();
+        const std::uint32_t sent = g_buffers_sent.load(std::memory_order_relaxed);
+        if (laps == 1) {
+            first_lap_us = now_us;
+            first_lap_sent = sent;
+            first_lap_played = played;
+        }
+        const std::uint64_t wall_us_per_frame =
+            played > first_lap_played
+                ? static_cast<std::uint64_t>(now_us - first_lap_us) / (played - first_lap_played)
+                : 0;
+        const std::uint64_t i2s_hz =
+            now_us > first_lap_us
+                ? (static_cast<std::uint64_t>(sent - first_lap_sent) * kDmaFrames * 1000000ULL) /
+                      static_cast<std::uint64_t>(now_us - first_lap_us)
+                : 0;
         std::printf("lap=%lu frames=%lu us_per_frame=%lu worst_frame_us=%lu "
-                    "realtime_permille=%lu heap_free=%lu\n",
+                    "realtime_permille=%lu heap_free=%lu i2s_hz=%lu starved_buffers=%lu "
+                    "wall_us_per_frame=%lu\n",
                     static_cast<unsigned long>(laps), static_cast<unsigned long>(played),
                     static_cast<unsigned long>(decode_us / played),
                     static_cast<unsigned long>(worst_frame_us),
                     static_cast<unsigned long>(permille),
                     static_cast<unsigned long>(
-                        heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+                        heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                    static_cast<unsigned long>(i2s_hz),
+                    static_cast<unsigned long>(g_buffers_starved.load(std::memory_order_relaxed)),
+                    static_cast<unsigned long>(wall_us_per_frame));
     }
 }

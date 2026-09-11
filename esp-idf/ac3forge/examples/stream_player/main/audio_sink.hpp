@@ -101,6 +101,19 @@ namespace player {
 // narrower layout leaves), a wider one cannot.
 [[nodiscard]] int sink_slots();
 
+// A play is beginning, and the next write is its first block. Called with no
+// write in progress: the player that made the last play has stopped, and the
+// next has not started. From here on sink_report() is about this play alone;
+// sink_frames_written() goes on counting from sink_open.
+//
+// For the two sinks with a DAC it restarts the model of the DMA queue
+// (sink/sink_common.hpp), and the play's first block is exempt from its
+// underrun count, as the first block after sink_open always was: the queue has
+// been draining since the last play ended, and the time between two plays is
+// not a gap in either of them. sink/capture/ checks the new play's samples
+// from zero, and sink/null/ has nothing to restart.
+void sink_begin_play();
+
 // One block: one span per slot, each up to ac3::kSamplesPerBlock samples,
 // nominally in [-1, 1). Blocks until the sink has taken it, which for I2S is
 // the back-pressure that paces the whole player at real time.
@@ -109,17 +122,20 @@ void sink_write(std::span<const std::span<const float>> channels);
 // For the log line, so a run says which sink produced its numbers.
 [[nodiscard]] const char* sink_name();
 
-// Blocks accepted since sink_open. The null sink's reason for existing: it
-// gives CI something to gate on that the real sink cannot report.
+// Blocks accepted since sink_open, across every play. The null sink's reason
+// for existing: it gives CI something to gate on that the real sink cannot
+// report.
 [[nodiscard]] std::uint64_t sink_frames_written();
 
-// Anything the sink wants to say at the end of a run, as key=value lines.
+// What the sink has to say about the play so far, as key=value lines: at the
+// end of a play, and with each progress line.
 //
-// Empty for the sinks with a peripheral behind them: what a DAC did with the
-// samples is not something this side of the wire can report. sink/capture/ is
-// where it earns its place - it runs the same conversion the real sinks run and
-// then checks the result, so CI has something to gate on that is about the
-// AUDIO rather than about the loop having turned over.
+// The two sinks with a DAC say whether the samples reached it in time, from
+// the queue model in sink/sink_common.hpp; what the DAC then did with them is
+// not something this side of the wire can report. sink/capture/ is where this
+// earns its place - it runs the same conversion the real sinks run and then
+// checks the result, so CI has something to gate on that is about the AUDIO
+// rather than about the loop having turned over. sink/null/ says nothing.
 void sink_report();
 
 }  // namespace player

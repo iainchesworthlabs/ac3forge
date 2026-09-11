@@ -61,7 +61,22 @@ android {
                 // process ever pulled in libc++ too - shared avoids that
                 // question entirely rather than relying on there being
                 // nothing else to collide with today.
-                arguments += listOf("-DANDROID_STL=c++_shared")
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    // The NDK's LLVM toolchain does not ship clang-scan-deps,
+                    // so Ninja's C++20 module-dependency prescan (which
+                    // cmake_minimum_required(VERSION 3.28...4.3)'s policy
+                    // range enables by default) fails outright on every
+                    // source file with CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS-
+                    // NOTFOUND before a single object file compiles. This
+                    // project has no C++20 `import`/`export module` usage
+                    // anywhere, so there is nothing for the scan to find -
+                    // disabling it is a build-system no-op, not a behavior
+                    // change, and is scoped to this Android build only so
+                    // desktop/other-platform builds (whose host toolchains
+                    // do ship clang-scan-deps) are unaffected.
+                    "-DCMAKE_CXX_SCAN_FOR_MODULES=OFF"
+                )
             }
         }
 
@@ -140,7 +155,7 @@ android {
             }
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Real release keystore when one is provisioned (see
             // releaseSigningAvailable above); debug-keystore signed
@@ -191,4 +206,14 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:core:1.7.0")
+}
+
+// SonarCloud text:S8569 - pin resolved dependency versions (including
+// transitives) so a build is reproducible from the committed lockfile
+// rather than whatever Google/Maven Central happen to resolve to on a
+// given day. Regenerate with `./gradlew --write-locks` after changing a
+// dependency above; a normal build fails if the resolution then drifts
+// from the committed gradle.lockfile without a matching lockfile update.
+dependencyLocking {
+    lockAllConfigurations()
 }
