@@ -55,6 +55,47 @@
 //   channel at that location reaches the slot exactly rather than through
 //   the panner; an angle token is placed by geometry alone.
 //
+//   A location or angle token may carry one or more ':'-separated suffixes,
+//   in any order:
+//     :small                       this full-bandwidth speaker cannot
+//                                   reproduce the bottom two octaves;
+//                                   LayoutRenderer redirects its bass to the
+//                                   LFE feed instead (see render.hpp). Only
+//                                   valid on a speaker, and only when the
+//                                   layout has an LFE feed to send the bass
+//                                   to - there is nowhere else for it to go.
+//     :height, :top, :upfiring      which physical thing realizes a height
+//                                   position - Vhl, Vhr, Vhc, Lts or Rts
+//                                   only, the height channels a Dolby-style
+//                                   5.1.x/7.1.x installation actually has.
+//                                   ":top" is a true in-ceiling speaker and
+//                                   moves this slot's elevation to 90
+//                                   degrees, ITU-R BS.2051's Top tier,
+//                                   overriding the location's own nominal
+//                                   ~45-degree Upper-tier angle. ":height"
+//                                   (a wall-mounted, angled speaker) and
+//                                   ":upfiring" (a Dolby "Atmos-enabled"
+//                                   module bouncing sound off the ceiling)
+//                                   both leave the angle exactly where it
+//                                   is: BS.2051 has one Upper tier, not a
+//                                   separate one for each way of physically
+//                                   reaching it, so today the two render
+//                                   identically and exist as labels a
+//                                   configuration and /status can carry
+//                                   truthfully. An angle token accepts these
+//                                   too, purely as a label - the degrees you
+//                                   typed always win over what a suffix
+//                                   would otherwise imply.
+//   "L:small,R:small,C,LFE,Ls,Rs" is a 5.1 DAC with small fronts;
+//   "Vhl:top,Vhr:top,Lts,Rts,L,C,R,Ls,Rs,LFE" is a 7.1.4 room with in-ceiling
+//   front heights and wall-mounted rears.
+//
+// The NAME form takes the same three realization suffixes too, applied to
+// every height slot the name expands to: "7.1.4:top" is a 7.1.4 room where
+// all four heights are in-ceiling. There is no per-slot control this way -
+// that needs the list form - but it is the one-token spelling for the
+// ordinary case of one installation, one realization.
+//
 // Where a named location sits is ac3::spatial::direction_of's answer, which
 // depends on the company it keeps: Ls and Rs are at +-110 degrees on a 5.1
 // ring and move to +-90 when a layout also has rear surrounds (Lrs Rrs), the
@@ -69,7 +110,34 @@ struct Speaker {
         kSpeaker,  // a full-bandwidth speaker at `direction`
         kLfe,      // a low-frequency feed; the bed's LFE, never panned audio
     };
+    // What physically realizes a height-tier speaker - see the header
+    // comment's ":height"/":top"/":upfiring" suffixes. Meaningless, and left
+    // at kDefault, on anything that isn't one of the five Dolby height
+    // locations (Vhl, Vhr, Vhc, Lts, Rts).
+    enum class Realization : std::uint8_t {
+        kDefault,   // this location's own nominal angle, untouched
+        kHeight,    // wall-mounted, angled - numerically the same as kDefault
+        kTop,       // true in-ceiling: elevation forced to 90 degrees
+        kUpFiring,  // Dolby "Atmos-enabled" module - numerically the same as
+                    // kHeight; BS.2051 draws no separate tier for it
+    };
     Kind kind = Kind::kEmpty;
+    // A full-bandwidth speaker whose bass LayoutRenderer should redirect to
+    // the LFE feed rather than send here. Only meaningful on kSpeaker, and
+    // only valid when the layout has an LFE feed - see OutputLayout::listed().
+    bool small = false;
+    Realization realization = Realization::kDefault;
+    // Deliberately placed right after `kind`, ahead of `direction`: `kind`
+    // alone leaves alignment padding before `direction` (whose Direction
+    // holds two doubles) on any ABI, so these two one-byte fields land in
+    // padding that already existed rather than growing Speaker. Putting them
+    // after `location` instead measured as free on x86-64 MSVC (padding
+    // Direction's own eight-byte alignment already left at the end of the
+    // struct), but that was this one ABI's padding, not a portable
+    // guarantee - a narrower alignment for double elsewhere could leave
+    // none there. Growing Speaker is exactly what boot-looped the ESP32
+    // example once already, kMaxSlots copies of it held by value on a tight
+    // FreeRTOS stack - see kTextBytes's own comment for that incident.
     ac3::spatial::Direction direction{};
     // The Table E2.5 location this slot was named by, when it was. A coded
     // channel of the same location goes to this slot with unit gain; a slot
@@ -85,7 +153,22 @@ class OutputLayout {
     // carries at 32 bits, and the panner's own ring limit.
     static constexpr std::size_t kMaxSlots = 16;
     // The text a layout keeps of itself, for logs and /status. Longer input is
-    // still parsed; only the echo is cut.
+    // still parsed - parsing reads the caller's string directly, never this
+    // buffer - only the echo is cut, gracefully, at whatever this holds.
+    // Left at 96 deliberately even though ":small"/":top"/":height"/
+    // ":upfiring" suffixes can make a fully spelled-out list longer than
+    // that: raising it to 224 to fit a worst-case sixteen-slot list once
+    // measured on the board (QEMU, 2026-09-12) - PlayerConfig holds an
+    // OutputLayout by value on the ESP-IDF example's main task, whose stack
+    // is tight enough that the extra 128 bytes boot-looped it with a stack
+    // overflow before a single request was served. A realistic decorated
+    // list - a handful of small/re-tiered slots, not all sixteen at once -
+    // fits well inside 96 regardless (a 7.1.4 room with two small fronts and
+    // two in-ceiling heights is under 50 characters); only a pathological
+    // list that names and decorates every slot loses its tail in the echo,
+    // which is a truncation, not a defect - text() is a report, not the
+    // configuration itself, which OutputLayout has already parsed in full
+    // by the time anything reads it back.
     static constexpr std::size_t kTextBytes = 96;
 
     OutputLayout() = default;
@@ -109,7 +192,19 @@ class OutputLayout {
 
     // The name form only.
     [[nodiscard]] static std::optional<OutputLayout> named(std::string_view name) {
-        const std::string_view trimmed = trim(name);
+        const std::string_view original = trim(name);
+        std::string_view trimmed = original;
+        // An optional trailing modifier applied to every height slot the
+        // name expands to - "7.1.4:top" - see the header comment.
+        Speaker::Realization realization = Speaker::Realization::kDefault;
+        if (const std::size_t colon = trimmed.rfind(':'); colon != std::string_view::npos) {
+            const auto found = realization_named(trim(trimmed.substr(colon + 1)));
+            if (!found) {
+                return std::nullopt;  // an unrecognised trailing token
+            }
+            realization = *found;
+            trimmed = trim(trimmed.substr(0, colon));
+        }
         // F.L or F.L.H, every field a single digit.
         std::array<int, 3> fields = {-1, -1, 0};
         std::size_t field = 0;
@@ -183,9 +278,24 @@ class OutputLayout {
             default: return std::nullopt;
         }
         auto out = from_locations(std::span<const Location>(locations.data(), count));
-        if (out) {
-            out->set_text(trimmed);
+        if (!out) {
+            return std::nullopt;
         }
+        if (realization != Speaker::Realization::kDefault) {
+            bool touched_any = false;
+            for (std::size_t i = 0; i < out->count_; ++i) {
+                Speaker& speaker = out->speakers_[i];
+                if (speaker.location.has_value() && is_realizable_height(*speaker.location)) {
+                    speaker.realization = realization;
+                    touched_any = true;
+                }
+            }
+            if (!touched_any) {
+                return std::nullopt;  // e.g. "5.1:top" - no height slots to realize
+            }
+            out->resolve_directions();  // re-applies elevation with the realization set
+        }
+        out->set_text(original);
         return out;
     }
 
@@ -225,6 +335,16 @@ class OutputLayout {
         for (const Speaker& speaker : speakers()) {
             if (speaker.kind == Speaker::Kind::kSpeaker &&
                 speaker.direction.elevation_deg >= ac3::spatial::kHeightThresholdDeg) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Any speaker marked ":small" - see LayoutRenderer's bass management.
+    [[nodiscard]] bool has_small() const {
+        for (const Speaker& speaker : speakers()) {
+            if (speaker.small) {
                 return true;
             }
         }
@@ -334,6 +454,34 @@ class OutputLayout {
         return location == Location::kLfe || location == Location::kLfe2;
     }
 
+    // The five Dolby-style height locations a ":height"/":top"/":upfiring"
+    // suffix may re-tier - see the header comment. Ts (a true overhead
+    // centre-rear, already at 90 degrees) is deliberately not among them:
+    // it has no "which physical thing realizes it" question to answer.
+    static bool is_realizable_height(Location location) {
+        switch (location) {
+            case Location::kVhl:
+            case Location::kVhr:
+            case Location::kVhc:
+            case Location::kLts:
+            case Location::kRts: return true;
+            default: return false;
+        }
+    }
+
+    static std::optional<Speaker::Realization> realization_named(std::string_view token) {
+        if (equals_ignoring_case(token, "height")) {
+            return Speaker::Realization::kHeight;
+        }
+        if (equals_ignoring_case(token, "top")) {
+            return Speaker::Realization::kTop;
+        }
+        if (equals_ignoring_case(token, "upfiring")) {
+            return Speaker::Realization::kUpFiring;
+        }
+        return std::nullopt;
+    }
+
     static std::string_view trim(std::string_view s) {
         while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '\r' ||
                               s.front() == '\n')) {
@@ -397,29 +545,76 @@ class OutputLayout {
             if (token.empty() || out.count_ >= kMaxSlots) {
                 return std::nullopt;
             }
+            // Peel ':'-separated suffixes off the right, in any order, each
+            // at most once - see the header comment. What is left is the
+            // base token: a location name, an angle pair, "-" or "lfe".
+            std::string_view base = token;
+            bool small = false;
+            Speaker::Realization realization = Speaker::Realization::kDefault;
+            for (;;) {
+                const std::size_t colon = base.rfind(':');
+                if (colon == std::string_view::npos) {
+                    break;
+                }
+                const std::string_view suffix = trim(base.substr(colon + 1));
+                if (equals_ignoring_case(suffix, "small")) {
+                    if (small) {
+                        return std::nullopt;  // ":small" twice
+                    }
+                    small = true;
+                } else if (const auto found = realization_named(suffix)) {
+                    if (realization != Speaker::Realization::kDefault) {
+                        return std::nullopt;  // two realization suffixes
+                    }
+                    realization = *found;
+                } else {
+                    return std::nullopt;  // an unrecognised suffix
+                }
+                base = trim(base.substr(0, colon));
+                if (base.empty()) {
+                    return std::nullopt;
+                }
+            }
             Speaker speaker;
-            if (token == "-") {
+            if (base == "-") {
+                if (small || realization != Speaker::Realization::kDefault) {
+                    return std::nullopt;  // a suffix on an empty slot means nothing
+                }
                 speaker.kind = Speaker::Kind::kEmpty;
-            } else if (const auto location = location_named(token)) {
+            } else if (const auto location = location_named(base)) {
                 // "lfe" and "LFE2" arrive here too: they are Table E2.5
                 // locations, and keep their names like any other.
                 if (out.index_of(*location) >= 0) {
                     return std::nullopt;
                 }
+                const bool lfe = is_lfe(*location);
+                if (lfe && (small || realization != Speaker::Realization::kDefault)) {
+                    return std::nullopt;  // an LFE feed has no bass to redirect or re-tier
+                }
+                if (realization != Speaker::Realization::kDefault &&
+                    !is_realizable_height(*location)) {
+                    return std::nullopt;  // only a height location can be re-tiered
+                }
                 speaker.location = *location;
-                speaker.kind = is_lfe(*location) ? Speaker::Kind::kLfe : Speaker::Kind::kSpeaker;
+                speaker.kind = lfe ? Speaker::Kind::kLfe : Speaker::Kind::kSpeaker;
+                speaker.small = small;
+                speaker.realization = realization;
             } else {
-                const std::size_t slash = token.find('/');
+                const std::size_t slash = base.find('/');
                 if (slash == std::string_view::npos) {
                     return std::nullopt;
                 }
-                const auto azimuth = number(trim(token.substr(0, slash)));
-                const auto elevation = number(trim(token.substr(slash + 1)));
+                const auto azimuth = number(trim(base.substr(0, slash)));
+                const auto elevation = number(trim(base.substr(slash + 1)));
                 if (!azimuth || !elevation || *elevation < -90.0 || *elevation > 90.0) {
                     return std::nullopt;
                 }
                 speaker.kind = Speaker::Kind::kSpeaker;
                 speaker.direction = {.azimuth_deg = *azimuth, .elevation_deg = *elevation};
+                speaker.small = small;
+                // A realization suffix on an explicit angle is a label only
+                // - the degrees already given win over anything it implies.
+                speaker.realization = realization;
             }
             out.speakers_[out.count_++] = speaker;
             if (comma == std::string_view::npos) {
@@ -429,6 +624,9 @@ class OutputLayout {
         }
         if (out.speaker_count() == 0 && out.lfe_count() == 0) {
             return std::nullopt;  // a bus of empty slots is not a layout
+        }
+        if (out.has_small() && out.lfe_count() == 0) {
+            return std::nullopt;  // nowhere to send a small speaker's redirected bass
         }
         out.resolve_directions();
         out.set_text(text);
@@ -445,6 +643,9 @@ class OutputLayout {
             if (speaker.location.has_value() && speaker.kind == Speaker::Kind::kSpeaker) {
                 speaker.direction =
                     ac3::spatial::direction_of(*speaker.location, has_rears, has_side_discrete);
+                if (speaker.realization == Speaker::Realization::kTop) {
+                    speaker.direction.elevation_deg = 90.0;
+                }
             }
         }
     }
