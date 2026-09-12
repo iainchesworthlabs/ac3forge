@@ -107,11 +107,11 @@ namespace player {
 // sink_frames_written() goes on counting from sink_open.
 //
 // For the two sinks with a DAC it restarts the model of the DMA queue
-// (sink/sink_common.hpp), and the play's first block is exempt from its
-// underrun count, as the first block after sink_open always was: the queue has
-// been draining since the last play ended, and the time between two plays is
-// not a gap in either of them. sink/capture/ checks the new play's samples
-// from zero, and sink/null/ has nothing to restart.
+// (ac3forge/dac_queue_model.hpp), and the play's first block is exempt from
+// its underrun count, as the first block after sink_open always was: the
+// queue has been draining since the last play ended, and the time between two
+// plays is not a gap in either of them. sink/capture/ checks the new play's
+// samples from zero, and sink/null/ has nothing to restart.
 void sink_begin_play();
 
 // One block: one span per slot, each up to ac3::kSamplesPerBlock samples,
@@ -131,11 +131,12 @@ void sink_write(std::span<const std::span<const float>> channels);
 // end of a play, and with each progress line.
 //
 // The two sinks with a DAC say whether the samples reached it in time, from
-// the queue model in sink/sink_common.hpp; what the DAC then did with them is
-// not something this side of the wire can report. sink/capture/ is where this
-// earns its place - it runs the same conversion the real sinks run and then
-// checks the result, so CI has something to gate on that is about the AUDIO
-// rather than about the loop having turned over. sink/null/ says nothing.
+// the queue model in ac3forge/dac_queue_model.hpp; what the DAC then did with
+// them is not something this side of the wire can report. sink/capture/ is
+// where this earns its place - it runs the same conversion the real sinks run
+// and then checks the result, so CI has something to gate on that is about
+// the AUDIO rather than about the loop having turned over. sink/null/ says
+// nothing.
 void sink_report();
 
 }  // namespace player

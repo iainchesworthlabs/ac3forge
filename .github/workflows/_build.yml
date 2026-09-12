@@ -4276,7 +4276,11 @@ jobs:
       #     The conversion both sinks call (ac3forge/interleave.hpp) runs
       #     through the capture sink - stereo in the streaming and HTTP steps,
       #     8 and 12 TDM slots in the capture and render steps - and is
-      #     unit-tested on the host (tests/io/test_interleave.cpp).
+      #     unit-tested on the host (tests/io/test_interleave.cpp). The model
+      #     of the DMA queue both keep for their sink.* line
+      #     (ac3forge/dac_queue_model.hpp) runs in no QEMU step, since the
+      #     capture sink has no DMA, and is unit-tested on the host as well
+      #     (tests/io/test_dac_queue_model.cpp).
       #   * sd drives the SDMMC host. The file layer it shares with the
       #     flash-backed FAT source (main/source/file_common.hpp) runs in the
       #     capture and render steps.

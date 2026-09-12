@@ -494,11 +494,15 @@ what that costs a player that writes across descriptors: 3 ms in every 35.
 
 **Neither TDM nor the slave role has run on hardware.** There is no TDM DAC or
 DSP here and QEMU has no I2S, so what CI establishes is that they compile and
-link. The exception is the part worth testing:
-[`ac3forge/interleave.hpp`](../../include/ac3forge/interleave.hpp) is free of
-ESP-IDF and is unit-tested on the host (`tests/io/test_interleave.cpp`), because
-planar-to-interleaved indexing with slot padding is where the bugs are and the
-rest of that sink is peripheral setup that either works on a board or does not.
+link. The exceptions are the two parts worth testing, both free of ESP-IDF and
+unit-tested on the host:
+[`ac3forge/interleave.hpp`](../../include/ac3forge/interleave.hpp)
+(`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing with
+slot padding is where the bugs are, and the queue model behind the `sink.*`
+line, [`ac3forge/dac_queue_model.hpp`](../../include/ac3forge/dac_queue_model.hpp)
+(`tests/io/test_dac_queue_model.cpp`), which runs there against a simulated DMA.
+The rest of that sink is peripheral setup that either works on a board or does
+not.
 
 The padding is the part that bites. A TDM frame is a fixed shape, so a 5.1
 layout on an 8-slot bus leaves two slots with nothing to carry — and they must
