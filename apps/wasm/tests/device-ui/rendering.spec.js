@@ -220,6 +220,21 @@ test("a state the page has no word for is shown as the firmware's own", async ({
     await expect(page.locator('#state')).toHaveText('Unknown');
 });
 
+test('a layout text the device may have cut is not offered for editing', async ({ page, stub }) => {
+    // OutputLayout keeps 95 characters of a layout's text, so a text that long
+    // may be part of a longer one - a sixteen-slot list of angles is. Applying
+    // the part would set a shorter layout than the device has.
+    const s = parsed('finished-714.json');
+    s.layout = '-110/30,'.repeat(12).slice(0, 95);
+    await show(page, stub, s);
+    await expect(page.getByLabel('Output layout')).toHaveValue('');
+    // One character shorter is whole, and the field offers it for editing.
+    s.layout = s.layout.slice(0, 94);
+    stub.setStatus(s);
+    await page.reload();
+    await expect(page.getByLabel('Output layout')).toHaveValue(s.layout);
+});
+
 test('the figures that come in ones, and a coded layout outside the table', async ({ page, stub }) => {
     const s = parsed('playing-eac3.json');
     Object.assign(s, { frames: 1, location: '' });
