@@ -839,6 +839,18 @@ release packaging.
   status line in the two files now goes through `status_println`, and `tests/cli` runs each of
   these paths under `quiet` and compares the output with a run without it.
 
+- **`quiet` left three of `monitor`'s status lines on stdout, and `decode` wrote its object
+  signature summary into a `-` output** (`apps/cli/commands/live_audio.cpp`,
+  `apps/cli/support.cpp`). `monitor` printed the §7.8 fold note, the object-count line and the
+  `verify-objects` summary with plain `fmt::println`, which `quiet` does not reach. The summary is
+  shared with `decode`, where it also went to stdout when a `-` output put the WAV there, ahead of
+  the RIFF header. `live` printed the blank line that ends its level meter the same way before
+  refusing an IEC 61937 capture. All four now go to the command's status stream: nowhere under
+  `quiet`, and stderr when a `-` output owns stdout. `tests/cli` plays a signed object stream
+  through `monitor` with and without `quiet` and checks that stdout stays empty under it - on a
+  machine with no render endpoint only the summary is reached - and decodes one under `quiet`
+  and to `-`.
+
 **Crucible desktop application**
 
 - **A Crucible re-probe asked for while one was already running was dropped**

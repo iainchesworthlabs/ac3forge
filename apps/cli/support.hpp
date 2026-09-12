@@ -902,8 +902,10 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 // nothing checked, stream untouched either way: this only reads bytes, it
 // never signs. A signed stream is either fully verified or the command
 // refuses - matching this project's own "graceful 5.1 fallback is
-// either/or" stance - never a silent partial pass.
+// either/or" stance - never a silent partial pass. The summary line goes to
+// `status`, the caller's status stream: nowhere under quiet, and stderr when
+// a "-" output owns stdout (see status_stream above).
 std::optional<ac3::signing::VerifySummary> apply_object_verification(
-    std::span<const std::byte> stream, const Options& meta);
+    std::span<const std::byte> stream, const Options& meta, FILE* status);
 
 }  // namespace ac3cli

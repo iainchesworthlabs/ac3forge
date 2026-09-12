@@ -1247,6 +1247,31 @@ TEST_CASE("verify-objects checks a decode against the signer's own tag",
         CHECK(text.find("needs a key") != std::string::npos);
     }
 
+    SECTION("the summary is a status line: quiet silences it and a '-' output keeps it off stdout") {
+        // It went to stdout through plain fmt::println, so quiet left it in
+        // place, and with the WAV going to stdout it landed ahead of the
+        // RIFF header.
+        const auto file_wav = dir / "verify_objects_quiet.wav";
+        const auto log = dir / "verify_objects_quiet.log";
+        CHECK(run_cli("decode \"" + signed_ec3.string() + "\" \"" + file_wav.string() +
+                          "\" verify-objects signing-key=\"" + key_path.string() + "\" quiet",
+                      log) == 0);
+        CHECK(read_log(log).empty());
+
+        const auto piped_wav = dir / "verify_objects_piped.wav";
+        const auto piped_log = dir / "verify_objects_piped.log";
+        CHECK(run_cli_stdout("decode \"" + signed_ec3.string() +
+                                 "\" - verify-objects signing-key=\"" + key_path.string() + "\"",
+                             piped_wav, piped_log) == 0);
+        CHECK(read_log(piped_log).find("object signature") != std::string::npos);
+        // Compared as a bool: on a mismatch Catch2 would otherwise print both
+        // WAVs, a megabyte each, and take minutes over it.
+        const auto piped = read_log(piped_wav);
+        CHECK(piped.substr(0, 4) == "RIFF");
+        const bool same_wav = piped == read_log(file_wav);
+        CHECK(same_wav);
+    }
+
     SECTION("decoding the same signed stream WITHOUT verify-objects still succeeds - the "
            "bypass") {
         const auto out_wav = dir / "verify_objects_bypass.wav";

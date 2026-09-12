@@ -55,15 +55,26 @@ fs::path scratch_dir() {
 // Same subprocess shape, and the same Windows cmd.exe quoting workaround, as
 // tests/cli/test_cli.cpp's own run_cli - see that file for why the extra
 // outer quote pair is needed there and must not be used on POSIX.
-int run_cli(const std::string& args, const fs::path& log) {
-    const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+// `redirects` follows the arguments on the command line.
+int run_cli_redirected(const std::string& args, const std::string& redirects) {
+    const std::string command = "\"" + std::string(AC3CLI_EXE) + "\" " + args + redirects;
 #ifdef _WIN32
     const std::string wrapped = "\"" + command + "\"";
     return std::system(wrapped.c_str());
 #else
     return std::system(command.c_str());
 #endif
+}
+
+int run_cli(const std::string& args, const fs::path& log) {
+    return run_cli_redirected(args, " > \"" + log.string() + "\" 2>&1");
+}
+
+// stdout and stderr in separate files. quiet's contract is about which of the
+// two a line reaches - nothing on stdout, errors still on stderr - and the one
+// log run_cli merges them into cannot show that.
+int run_cli_split(const std::string& args, const fs::path& out, const fs::path& err) {
+    return run_cli_redirected(args, " > \"" + out.string() + "\" 2> \"" + err.string() + "\"");
 }
 
 std::string read_log(const fs::path& log) {
@@ -257,6 +268,61 @@ TEST_CASE("live mode=atmos positions=osc either runs a live-driven session or re
         CHECK(fs::exists(out_path));
     } else {
         CHECK_FALSE(fs::exists(out_path));
+    }
+}
+
+TEST_CASE("monitor prints nothing on stdout under quiet, whichever way it goes",
+          "[cli][audio-io][quiet][concurrency]") {
+    // Three of monitor's status lines went to stdout through plain
+    // fmt::println, so quiet did not silence them: the verify-objects
+    // summary, printed before any device is touched; the §7.8 fold note,
+    // printed when the endpoint has fewer channels than the programme; and
+    // the object-count line, printed once the sink has started. A signed
+    // object stream reaches the first on any build with a monitor backend,
+    // and the object-count line wherever a render endpoint opens - the fold
+    // note too when that endpoint is narrower than the 5.1 bed. Silent, like
+    // the case below: on a machine with speakers this plays out loud.
+    const auto dir = scratch_dir();
+    const auto key = dir / "monitor_quiet.key";
+    {
+        std::ofstream out{key, std::ios::binary};
+        REQUIRE(out.is_open());
+        out << "not-a-real-key-just-test-material";
+    }
+    const auto bed = dir / "monitor_quiet_bed.ac3";
+    const auto pcm = dir / "monitor_quiet.wav";
+    const auto stream = dir / "monitor_quiet.ec3";
+    const auto setup = dir / "monitor_quiet_setup.log";
+    REQUIRE(run_cli("silence \"" + bed.string() + "\" 1", setup) == 0);
+    REQUIRE(run_cli("decode \"" + bed.string() + "\" \"" + pcm.string() + "\"", setup) == 0);
+    REQUIRE(run_cli("atmos-encode \"" + pcm.string() + "\" \"" + stream.string() +
+                        "\" 448 sign-objects signing-key=\"" + key.string() + "\"",
+                    setup) == 0);
+
+    const std::string monitor = "monitor \"" + stream.string() +
+                                "\" verify-objects signing-key=\"" + key.string() + "\"";
+    const auto out = dir / "monitor_quiet.out";
+    const auto err = dir / "monitor_quiet.err";
+
+    // Without quiet first, to show the lines are there to silence. A build
+    // with no monitor backend refuses the command before it reads the stream.
+    const auto loud_rc = run_cli_split(monitor, out, err);
+    const auto loud = read_log(out);
+    const auto loud_err = read_log(err);
+    INFO("without quiet, stdout:\n" + loud + "\nstderr:\n" + loud_err);
+    if (loud_err.find("is unavailable on this platform") == std::string::npos) {
+        CHECK(loud.find("object signature") != std::string::npos);
+    }
+    if (loud_rc == 0) {
+        CHECK(loud.find("OAMD present") != std::string::npos);
+    }
+
+    const auto rc = run_cli_split(monitor + " quiet", out, err);
+    const auto quiet_err = read_log(err);
+    INFO("with quiet, stderr:\n" + quiet_err);
+    CHECK(read_log(out).empty());
+    if (rc != 0) {
+        CHECK(quiet_err.find("error") != std::string::npos);
     }
 }
 

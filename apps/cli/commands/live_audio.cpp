@@ -51,7 +51,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     if (stream.empty()) {
         return kExitInput;
     }
-    if (!apply_object_verification(stream, meta)) {
+    if (!apply_object_verification(stream, meta, status_stream())) {
         return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
@@ -113,9 +113,10 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         if (scanned && scanned->channels > static_cast<int>(device_channels)) {
             output.target = device_channels == 1 ? ac3::DownmixTarget::kMono
                                                  : ac3::DownmixTarget::kLoRo;
-            fmt::println("  {} channels on a {}-channel output: folding to {} (§7.8)",
-                         scanned->channels, device_channels,
-                         output.target == ac3::DownmixTarget::kMono ? "mono" : "Lo/Ro stereo");
+            status_println(status_stream(),
+                           "  {} channels on a {}-channel output: folding to {} (§7.8)",
+                           scanned->channels, device_channels,
+                           output.target == ac3::DownmixTarget::kMono ? "mono" : "Lo/Ro stereo");
         }
     }
 
@@ -197,12 +198,15 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 if (out.object_metadata.has_value()) {
                     // Guarded by the if above; clang-tidy's
                     // bugprone-unchecked-optional-access doesn't trace the
-                    // guard through into a multi-argument fmt::println call,
-                    // the same false positive print_channel_summary(*meter)
-                    // elsewhere in this file works around - binding once here
-                    // instead of repeating out.object_metadata-> twice sidesteps it.
+                    // guard through into a multi-argument call like the
+                    // status_println below, and flags each
+                    // out.object_metadata-> spelled out among its arguments.
+                    // Binding once here leaves one dereference to suppress -
+                    // the same check commands/analysis.cpp suppresses on
+                    // print_channel_summary(*meter).
                     const auto& metadata = *out.object_metadata;  // NOLINT(bugprone-unchecked-optional-access)
-                    fmt::println(
+                    status_println(
+                        status_stream(),
                         "  {} dynamic objects + the bed's LFE = {} objects, OAMD present{}",
                         metadata.objects.size(), ac3::oba::object_count(metadata.program),
                         out.object_audio.empty()
@@ -316,7 +320,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
         fmt::println(stderr, "error: cannot read {}", in_path);
         return kExitInput;
     }
-    if (!apply_object_verification(stream, meta)) {
+    if (!apply_object_verification(stream, meta, status_stream())) {
         return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
@@ -991,7 +995,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             passthrough_probe.push(interleaved, static_cast<std::uint16_t>(channels));
             if (const auto type = passthrough_probe.detected()) {
                 capture.stop();
-                fmt::println("");
+                status_println(status);
                 fmt::println(stderr,
                              "error: \"{}\" is bitstreaming {} over IEC 61937, not delivering "
                              "PCM - a live encode of it would be noise",

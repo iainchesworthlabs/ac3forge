@@ -2439,7 +2439,7 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 }
 
 std::optional<ac3::signing::VerifySummary> apply_object_verification(
-    std::span<const std::byte> stream, const Options& meta) {
+    std::span<const std::byte> stream, const Options& meta, FILE* status) {
     if (!meta.verify_objects) {
         return ac3::signing::VerifySummary{};
     }
@@ -2455,8 +2455,8 @@ std::optional<ac3::signing::VerifySummary> apply_object_verification(
         return std::nullopt;
     }
     const auto summary = ac3::signing::verify_atmos_stream(stream, *key);
-    fmt::println("  object signature: {} valid, {} mismatched, {} unsigned frame(s)",
-                 summary.valid, summary.mismatch, summary.no_container);
+    status_println(status, "  object signature: {} valid, {} mismatched, {} unsigned frame(s)",
+                   summary.valid, summary.mismatch, summary.no_container);
     if (summary.mismatch > 0) {
         fmt::println(stderr,
                      "error: object signature verification failed ({} of {} signed frames did "

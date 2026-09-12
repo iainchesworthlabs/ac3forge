@@ -845,7 +845,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     if (stream.empty()) {
         return kExitInput;
     }
-    if (!apply_object_verification(stream, meta)) {
+    if (!apply_object_verification(stream, meta, status_stream(out_path))) {
         return kExitInput;
     }
     // bsid at bit 40 says which syntax this is, before either is assumed.
