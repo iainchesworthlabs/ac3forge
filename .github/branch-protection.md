@@ -61,8 +61,12 @@ ruleset edit, and the list above is deliberately unchanged:
   gates through the required check that exists. Selecting it as a required
   check in its own right is optional - it would only make a lint failure name
   itself in the merge box rather than showing up as `CI Status` failing.
-- `Linux LLVM TSan` is a `_build.yml` matrix leg, and `CI Status` covers the
-  whole matrix by design - that is what the parenthetical above means.
+- `Linux LLVM TSan` is a `_build.yml` library-matrix leg, and `CI Status`
+  covers it. The OS, CPU-architecture and embedded matrix lives in the
+  visible `Platform Validation` workflow instead: it is selected for
+  platform-facing PRs, runs after main changes, and receives a complete
+  weekly baseline. It is intentionally not a merge-queue check, so scarce
+  macOS and ARM runners cannot turn every library-only merge into a queue.
 - `Performance vs merge base` (`ci.yml`) must NOT be made required. It is
   informational, carries `continue-on-error`, and is deliberately absent from
   `CI Status`'s `needs`; requiring it would turn hosted-runner timing noise

@@ -1,7 +1,7 @@
 # Reusable configure/build/test workflow — the single definition of how ac3forge
-# is built and tested on each platform. Called by ci.yml (do_package defaults
-# false: only windows-msvc packages, continuously, as a packaging smoke test)
-# and by release.yml (do_package: true: the release_package legs — one
+# is built and tested on each platform. Called by ci.yml for the portable
+# library lane, by platform-validation.yml for the OS/architecture/target
+# lane, and by release.yml (do_package: true: the release_package legs — one
 # canonical leg per OS/arch — package, and a packaging failure there blocks
 # the release). macOS (DR8) is the one platform that no longer fits that
 # "one release_package leg" shape: neither macos-llvm nor macos-llvm-x64
@@ -46,6 +46,13 @@ on:
         description: "Package every packageable matrix leg (best-effort), not just windows-msvc. Set by release.yml."
         type: boolean
         default: false
+      validation_scope:
+        description: >-
+          Select the validation lane. "library" runs the portable compiler and
+          sanitizer matrix; "platform" runs the OS, architecture and target
+          integration matrix; "all" retains the complete release behaviour.
+        type: string
+        default: all
       version_tag:
         description: "Resolved v* tag, threaded into configure as DERIVED_VERSION_OVERRIDE so the build stamps it deterministically. Empty in CI -> `git describe` (see GitVersionDerivation.cmake)."
         type: string
@@ -280,7 +287,9 @@ jobs:
     # Fork PRs never reach self-hosted (check-runners' own fork-PR branch
     # already forces hosted labels for them) - this is belt-and-braces so a
     # gap in that logic can't silently hand a fork PR a self-hosted runner.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (inputs.validation_scope == 'all' || matrix.validation_lane == inputs.validation_scope)
     runs-on: ${{ fromJSON(matrix.runner) }}
     # A backstop against GitHub's own 360-minute default: the macos-llvm
     # leg's first-ever GUI run hung in the Test step and silently consumed
@@ -310,6 +319,7 @@ jobs:
       matrix:
         include:
           - name: "Windows MSVC"
+            validation_lane: platform
             runner: ${{ needs.check-runners.outputs.windows_runner_1 }}
             preset: windows-msvc
             # Declared once, here, so `matrix.experimental` in continue-on-error
@@ -339,6 +349,7 @@ jobs:
             crucible: true
 
           - name: "Windows LLVM (clang-cl)"
+            validation_lane: platform
             runner: ${{ needs.check-runners.outputs.windows_runner_2 }}
             preset: windows-llvm
             msvc: true          # clang-cl targets the MSVC ABI: same headers, same libs
@@ -394,6 +405,7 @@ jobs:
           # not a redundant same-arch compiler variant like windows-llvm
           # above (which stays non-canonical: no release_package there).
           - name: "Windows MSVC (arm64)"
+            validation_lane: platform
             runner: '["windows-11-vs2026-arm"]'
             preset: windows-msvc-arm64
             experimental: true
@@ -412,6 +424,7 @@ jobs:
           # neither switch (Qt present/absent, ALSA present/absent) differs
           # between compilers, so paying for either twice would buy nothing.
           - name: "Linux GCC"
+            validation_lane: library
             runner: ${{ needs.check-runners.outputs.linux_runner_1 }}
             container: ubuntu:26.04
             preset: linux-gcc
@@ -424,6 +437,7 @@ jobs:
             conformance_vectors: true
 
           - name: "Linux LLVM (clang)"
+            validation_lane: library
             runner: ${{ needs.check-runners.outputs.linux_runner_2 }}
             container: ubuntu:26.04
             preset: linux-llvm
@@ -448,6 +462,7 @@ jobs:
           # carries alsa_fallback (compiler and architecture both don't affect
           # that switch - see linux-gcc's own comment).
           - name: "Linux GCC (arm64)"
+            validation_lane: platform
             runner: '["ubuntu-24.04-arm"]'
             container: ubuntu:26.04
             preset: linux-gcc-arm64
@@ -459,6 +474,7 @@ jobs:
             gold_reference: true
 
           - name: "Linux LLVM (arm64)"
+            validation_lane: platform
             runner: '["ubuntu-24.04-arm"]'
             container: ubuntu:26.04
             preset: linux-llvm-arm64
@@ -507,6 +523,7 @@ jobs:
           # and there should not be one - a sanitizer-instrumented debug build
           # is a diagnostic tool, not something to ship.
           - name: "Linux LLVM ASan+UBSan"
+            validation_lane: library
             runner: ${{ needs.check-runners.outputs.linux_runner_3 }}
             container: ubuntu:26.04
             preset: linux-llvm-asan-ubsan
@@ -547,6 +564,7 @@ jobs:
           # per-job fallback is container options --security-opt
           # seccomp=unconfined, which is a much blunter instrument.
           - name: "Linux LLVM TSan"
+            validation_lane: library
             runner: ${{ needs.check-runners.outputs.linux_runner_4 }}
             container: ubuntu:26.04
             preset: linux-llvm-tsan
@@ -593,6 +611,7 @@ jobs:
           # below use, so package-macos-universal can download each leg's
           # tree by exact name.
           - name: "macOS LLVM (Homebrew)"
+            validation_lane: platform
             runner: '["macos-latest"]'
             preset: macos-llvm
             # Crucible compiles here and cannot be run here; see the Configure
@@ -622,6 +641,7 @@ jobs:
           # compiled." Same promotion process macos-llvm and build-android
           # went through before it - see this file's own header.
           - name: "macOS LLVM x64 (Homebrew, Intel)"
+            validation_lane: platform
             runner: '["macos-15-intel"]'
             preset: macos-llvm-x64
             crucible: true
@@ -2594,6 +2614,7 @@ jobs:
   linux-appimage:
     name: Linux AppImage (ac3gui)
     needs: [toolchain-versions]
+    if: inputs.validation_scope != 'library'
     runs-on: ubuntu-latest
     # See the `build` matrix's own container comment for why this is pinned
     # at all; unlike that matrix, this is the one Linux leg that pins an
@@ -3120,6 +3141,7 @@ jobs:
   # pushes after it) before this line came off - see this file's header.
   build-android:
     name: Android (Shield)
+    if: inputs.validation_scope != 'library'
     runs-on: ubuntu-latest
     # Unset elsewhere in this file's `build` matrix (which sets 90 for the
     # slowest desktop legs, see its own header) - this job had no bound at
@@ -3368,6 +3390,7 @@ jobs:
   # shipped from here (see that workflow and docs/platforms/wasm.md).
   build-wasm:
     name: WASM (browser demos)
+    if: inputs.validation_scope != 'library'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -3488,6 +3511,7 @@ jobs:
   # build-esp32s3 runs the same page against the emulated board.
   device-ui:
     name: Device web page (Chromium)
+    if: inputs.validation_scope != 'library'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -3548,6 +3572,7 @@ jobs:
   # _toolchain-versions.yml's own header states for the C/C++ toolchains.
   build-rust:
     name: Rust bindings (${{ matrix.os }})
+    if: inputs.validation_scope != 'library'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -3605,6 +3630,7 @@ jobs:
   # signing on, and shipping it waits on the EV certificate (Phase 6).
   windows-driver:
     name: Windows null-sink driver (WDK NuGet)
+    if: inputs.validation_scope != 'library'
     runs-on: windows-latest
     permissions:
       contents: read
@@ -3697,6 +3723,7 @@ jobs:
   # commit). A leg that only ran before releases would have found them then.
   build-esp32s3:
     name: Minimum-footprint codec (ESP32-S3, QEMU)
+    if: inputs.validation_scope != 'library'
     # Leg 6 of check-runners' Linux fan-out. The sibling of build-footprint
     # below and of build-esp32c3 further down: same profile, same probe, same
     # fixtures, different bare-metal targets - an Xtensa LX7 with a
@@ -4468,6 +4495,7 @@ jobs:
 
   build-esp32c3:
     name: Minimum-footprint codec (ESP32-C3, QEMU)
+    if: inputs.validation_scope != 'library'
     # Leg 7 of check-runners' Linux fan-out - split out of build-esp32s3 (leg
     # 6) into its own job; see check-runners' comment beside LINUX_LEGS for
     # why they were one job and why that stopped applying. Same profile, same
@@ -4532,6 +4560,7 @@ jobs:
 
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)
+    if: inputs.validation_scope != 'library'
     # Leg 5 of check-runners' Linux fan-out: everything here runs inside the
     # pinned ubuntu:26.04 container (arm-none-eabi + QEMU apt-installed into
     # it below), so the job is runner-agnostic the same way the matrix's

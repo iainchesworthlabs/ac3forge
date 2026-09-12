@@ -1,0 +1,60 @@
+name: Platform Validation
+
+on:
+  # A platform-facing PR gets the complete non-library surface before merge.
+  # Generic library edits are covered by CI's portable library lane, then by
+  # the post-merge and weekly platform runs below.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'packaging/**'
+      - 'src/audio/**'
+      - 'src/capi/**'
+      - 'src/platform/**'
+      - 'esp-idf/**'
+      - 'esphome/**'
+      - 'rust/**'
+      - '.github/actions/**'
+      - '.github/toolchain/**'
+      - '.github/workflows/_build.yml'
+      - '.github/workflows/platform-validation.yml'
+  # Full validation continues after integration, but latest-wins avoids a
+  # merge burst creating an unbounded hosted-runner backlog.
+  push:
+    branches: [main]
+  schedule:
+    # Weekly complete baseline, deliberately outside the nightly
+    # analysis and fuzz windows documented in ci-self-hosted-runners.md.
+    - cron: '11 1 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: platform-validation-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  platform:
+    name: Platform matrix
+    uses: ./.github/workflows/_build.yml
+    permissions:
+      # The scheduled all-lanes baseline publishes its verified quality sample.
+      # The reusable workflow's remaining jobs narrow this on their own.
+      contents: write
+      actions: read
+    with:
+      # Scheduled runs cover every lane and are the source of the retained
+      # cross-platform quality baseline. PR and main runs reserve scarce
+      # platform runners for the platform lane alone.
+      validation_scope: ${{ github.event_name == 'schedule' && 'all' || 'platform' }}
+      persist_quality_trend: ${{ github.event_name == 'schedule' }}
+      quality_trend_branch: main
+    secrets:
+      ATMOS_SIGNING_KEY: ${{ secrets.ATMOS_SIGNING_KEY }}
+      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}

@@ -1,11 +1,13 @@
 # Self-hosted CI runners
 
-The six plain Windows/Linux legs in [`_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)'s
-`build` matrix (Windows MSVC, Windows LLVM, Linux GCC, Linux LLVM, Linux LLVM ASan+UBSan,
-Linux LLVM TSan) can each run on a
+The portable-library lane in [`_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)'s
+`build` matrix (Linux GCC, Linux LLVM, Linux LLVM ASan+UBSan and Linux LLVM TSan) runs in
+the required `CI` workflow. The separate `Platform Validation` workflow owns the Windows,
+macOS and ARM matrix plus the target-specific jobs; it runs for platform-facing PRs, after
+main changes and as a complete weekly baseline. Linux and Windows eligible legs can each run on a
 self-hosted runner instead of a GitHub-hosted one - whenever the fleet is *online* at all,
 and up to however many runners are online: with the fleet at its normal size (13 Linux, 7
-Windows) that means every leg, and the per-leg fan-out only reappears as graceful
+Windows) that means every eligible leg, and the per-leg fan-out only reappears as graceful
 degradation when most of the fleet is gone (one surviving runner takes one leg,
 the rest overflow to GitHub-hosted). macOS and the arm64 legs always stay on GitHub-hosted
 runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
@@ -163,13 +165,14 @@ today, plus per-PR and push runs; the move into 04:xx has not been made yet).
 
 | UTC | Repo | Workflow | Fleet use |
 |---|---|---|---|
+| Sun 01:11 | ac3forge | `platform-validation.yml` (complete baseline) | Linux / Windows; macOS and ARM hosted |
 | 02:17 | ac3forge | `codeql.yml` (C++ on self-hosted Linux ~9 min; Python/JS ~2 min) | Linux |
 | 02:23 | ac3forge | `msvc-analysis.yml` (PREfast, ~35 min) | Windows |
 | 02:29 | ac3forge | `static-analysis.yml` (clang-tidy, ~8 min) | Linux |
 | 02:35 | ac3forge | `sonarcloud.yml` (unmeasured here; 43-58 min on the sibling) | none (`ubuntu-latest`) |
 | 03:17 | ac3forge | `fuzz.yml` nightly jobs | none (hosted) |
 | 04:43 | ac3forge | `interop.yml` | none (hosted) |
-| Mon 03:45 / 03:50 / 04:00 | ac3forge | `osv-scanner.yml` / `zizmor.yml` / `scorecard.yml` | none (hosted) |
+| Daily 03:45 / 03:50; Mon 04:00 | ac3forge | `osv-scanner.yml` / `zizmor.yml` / `scorecard.yml` | none (hosted) |
 | Tue 21:42 / 22:17 / 22:27 / 22:37 | aqualink-automate | `automated-codescanning.yml` (CodeQL and MSVC on the `big` runners; SonarCloud hosted) / trivy / osv / scorecard - weekly today; code scanning is to move to 04:07, the minute that repo picked | Linux big, Windows big |
 
 When either repo adds or moves a cron that touches the fleet, update this table and the copy
