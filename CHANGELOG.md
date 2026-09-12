@@ -706,6 +706,19 @@ release packaging.
 
 ### Fixed
 
+**Command line and GUI**
+
+- **The GUI offered E-AC-3 bitrates a source's sample rate could not frame**
+  (`apps/gui/encoder_controller.cpp`). `bitrates()` branched on the codec but not on the loaded
+  source's rate, so a 16 kHz file (reachable in the GUI via the three Annex E `fscod2` half rates)
+  offered every rung above 320 kbit/s though none of them fit an 11-bit `frmsiz`'s `kMaxFrameWords`
+  ceiling — even a 32 kHz source couldn't take the 768 the list always added. Picking one of those
+  rungs and encoding was refused at the encode button with a correct but avoidable error. The list
+  is now filtered per-rate with the same `ac3::eac3::frame_words()`/`kMaxFrameWords` rule
+  `plan::validate()` already applies to the independent substream, and loading a lower-rate source
+  clamps a selection that no longer fits down to the top rung still offered, the same way switching
+  to AC-3 already clamped 768 back to 640.
+
 **ESP32 / bare-metal**
 
 - **A panic or a reset after `result=pass` passed every ESP32 leg CI runs under QEMU**
