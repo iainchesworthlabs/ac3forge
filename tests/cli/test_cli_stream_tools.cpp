@@ -414,3 +414,42 @@ TEST_CASE("transcode also goes the other way, DD into DD+", "[cli][transcode]") 
     CHECK(after->kind == ac3::io::StreamKind::kEac3);
     CHECK(after->dialnorm == 27);
 }
+
+// All five printed their reports with plain fmt::println on the status
+// stream, which `quiet` makes nullptr, so under quiet each of them wrote its
+// output and then failed on the null FILE* - on Windows the runtime's
+// parameter check exits 0xC0000409 - whatever the input. The run without
+// quiet goes first: its report shows there is something to silence, and its
+// output is what the quiet run's has to match byte for byte.
+TEST_CASE("every stream tool says nothing under quiet and writes the same output",
+          "[cli][quiet]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "quiet_tools.log";
+    const auto source =
+        make_stream("quiet_tools_source.ec3", "eac3-encode", "none 51 off dialnorm=23 heavy");
+    const auto immersive = dir / "quiet_tools_714.ec3";
+    REQUIRE(run_cli("eac3-sine " + quoted(immersive) + " 1 768 500 60 714", log) == 0);
+
+    // `before` and `after` are the command line either side of the output
+    // path: cat takes its output first, the other four take it second.
+    const auto both = [&](const std::string& tag, const std::string& before,
+                          const std::string& suffix, const std::string& after) {
+        INFO(tag);
+        const auto loud = dir / ("quiet_" + tag + "_loud" + suffix);
+        const auto quiet = dir / ("quiet_" + tag + suffix);
+        REQUIRE(run_cli(before + quoted(loud) + after, log) == 0);
+        REQUIRE_FALSE(read_log(log).empty());
+        fs::remove(quiet);
+        CHECK(run_cli(before + quoted(quiet) + after + " quiet", log) == 0);
+        CHECK(read_log(log).empty());
+        CHECK(read_bytes(quiet) == read_bytes(loud));
+    };
+    both("transcode", "transcode " + quoted(source) + " ", ".ac3", " 448");
+    // The fold note is printed before anything is encoded, from a different
+    // place than the summary is.
+    both("transcode_fold", "transcode " + quoted(immersive) + " ", ".ac3", " 448");
+    both("metadata", "metadata " + quoted(source) + " ", ".ec3", " dialnorm=20");
+    both("normalize", "normalize " + quoted(source) + " ", ".ec3", "");
+    both("cut", "cut " + quoted(source) + " ", ".ec3", " 0.512 0.512");
+    both("cat", "cat ", ".ec3", " " + quoted(source) + " " + quoted(source));
+}

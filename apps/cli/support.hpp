@@ -541,7 +541,9 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
 // fmt::println with a "nowhere" destination: a no-op when `out` is nullptr
 // (see status_stream above), an ordinary println otherwise. Every status line
 // in this CLI goes through this, so `quiet` is honoured in one place rather
-// than at each site.
+// than at each site. A status stream must never reach plain fmt::println:
+// under quiet it is nullptr, which fmt passes on to the C runtime, and MSVC's
+// runtime ends the process on it (0xC0000409).
 template <typename... Args>
 void status_println(FILE* out, fmt::format_string<Args...> format, Args&&... args) {
     if (out != nullptr) {

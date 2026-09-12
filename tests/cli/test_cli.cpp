@@ -3090,6 +3090,117 @@ TEST_CASE("quiet silences status output without touching the payload", "[cli][qu
     }
 }
 
+// The report lines a stream has to earn - a second programme, Annex D and the
+// informational fields, a mixing metadata group, a concealed frame - were
+// printed with plain fmt::println on the status stream instead of through
+// status_println, and `quiet` makes that stream nullptr. The test above never
+// reaches one: a sine carries none of them. On Windows the runtime's
+// parameter check then ended the process with 0xC0000409 - for every line but
+// the programme one, which comes first, after the WAV had been written in full.
+TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][quiet]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "quiet_earned.log";
+
+    // Decodes `stream` without quiet, then with it. The first run has to
+    // report `marker`, which shows the stream still reaches the lines under
+    // test - a decoder change that stopped printing them would otherwise
+    // leave this checking nothing. The second has to print nothing and write
+    // the same WAV (read_log reads in binary mode).
+    const auto decode_both = [&](const fs::path& stream, const std::string& options,
+                                 const std::string& marker, const std::string& tag) {
+        const auto loud = dir / (tag + "_loud.wav");
+        const auto quiet = dir / (tag + ".wav");
+        const std::string decode = "decode \"" + stream.string() + "\" \"";
+        REQUIRE(run_cli(decode + loud.string() + "\" " + options, log) == 0);
+        const auto report = read_log(log);
+        INFO(report);
+        REQUIRE(report.find(marker) != std::string::npos);
+        fs::remove(quiet);
+        CHECK(run_cli(decode + quiet.string() + "\" " + options + " quiet", log) == 0);
+        CHECK(read_log(log).empty());
+        CHECK(read_log(quiet) == read_log(loud));
+    };
+
+    SECTION("E-AC-3: the infomdat of the DEE-encoded seed it was found on") {
+        // Copyright asserted, and a dsurexmod saying the programme is not
+        // Surround EX or Pro Logic IIx/IIz encoded. FFmpeg's encode of the
+        // same programme, external-eac3-51-256-ffmpeg.ec3 in the same
+        // directory, carries neither and decoded quietly throughout.
+        const auto seed = fs::path{AC3FORGE_FUZZ_SEED_DIR} / "fuzz_eac3_decode" /
+                          "external-eac3-51-256-dee.ec3";
+        REQUIRE(fs::exists(seed));
+        decode_both(seed, "", "copyright asserted", "quiet_dee");
+    }
+
+    SECTION("AC-3: Annex D, both xbsi words and the informational fields") {
+        // The token set the bit stream information test above encodes with.
+        const auto wav_path = dir / "quiet_annexd_in.wav";
+        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
+                                       48000)
+                    .has_value());
+        const auto stream = dir / "quiet_annexd.ac3";
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + stream.string() +
+                            "\" 384 51 dmixmod=ltrt ltrtcmixlev=-1.5 lorosurmixlev=off "
+                            "dsurexmod=ex adconvtyp=hdcd bsmod=vi mixlevel=105 roomtyp=large "
+                            "copyright origbs=off langcod",
+                        log) == 0);
+        decode_both(stream, "", "bsid 6", "quiet_annexd");
+    }
+
+    SECTION("E-AC-3: a mixing metadata group and nothing else") {
+        // pgmscl alone, so the mixing summary is the only line in the report
+        // that a plain stream would not also print.
+        const auto wav_path = dir / "quiet_mixmeta_in.wav";
+        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
+                                       48000)
+                    .has_value());
+        const auto stream = dir / "quiet_mixmeta.ec3";
+        REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + stream.string() +
+                            "\" 448 none 51 mixmeta pgmscl=-6",
+                        log) == 0);
+        decode_both(stream, "", "programme scale", "quiet_mixmeta");
+    }
+
+    SECTION("AC-3: a frame concealed under conceal=") {
+        const auto clean = dir / "quiet_conceal.ac3";
+        REQUIRE(run_cli("sine \"" + clean.string() + "\" 2 192 440 70 stereo", log) == 0);
+        // One payload byte flipped in the middle of the fourth frame, sync
+        // word and frame size left alone - the damage
+        // tests/decoder/test_concealment.cpp uses. 192 kbps at 48 kHz is a
+        // 768-byte syncframe.
+        constexpr std::size_t kFrameBytes = 768;
+        auto bytes = read_log(clean);
+        REQUIRE(bytes.size() > 4 * kFrameBytes);
+        auto& hit = bytes[(3 * kFrameBytes) + (kFrameBytes / 2)];
+        hit = static_cast<char>(static_cast<unsigned char>(hit) ^ 0xFFU);
+        const auto damaged = dir / "quiet_conceal_damaged.ac3";
+        {
+            std::ofstream out{damaged, std::ios::binary};
+            out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        }
+        decode_both(damaged, "conceal=repeat", "concealed 1 of", "quiet_conceal");
+    }
+
+    SECTION("E-AC-3: a second programme, named before the decode starts") {
+        // The programme2= tokens test_cli_containers.cpp's multi-programme
+        // mkv test builds with.
+        const auto primary = dir / "quiet_programme0.wav";
+        const auto second = dir / "quiet_programme1.wav";
+        REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 48000, 48000),
+                                       48000)
+                    .has_value());
+        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 48000, 48000),
+                                       48000)
+                    .has_value());
+        const auto stream = dir / "quiet_programmes.ec3";
+        REQUIRE(run_cli("eac3-encode \"" + primary.string() + "\" \"" + stream.string() +
+                            "\" 448 none 51 off programme2=\"" + second.string() +
+                            "\" programme2-layout=mono programme2-bitrate=96",
+                        log) == 0);
+        decode_both(stream, "", "programme 0 of 2", "quiet_programmes");
+    }
+}
+
 TEST_CASE("verbose puts a progress line on stderr, never on stdout", "[cli][verbose]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "verbose_in.wav";

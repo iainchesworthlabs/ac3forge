@@ -422,6 +422,12 @@ if(TARGET ac3cli)
     # tree, nowhere near the fixtures.
     target_compile_definitions(ac3tests PRIVATE
         "AC3FORGE_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
+    # cli/test_cli.cpp decodes one fuzz seed under `quiet`: the DEE-encoded
+    # E-AC-3 stream a quiet decode was first seen failing on, whose report
+    # carries infomdat lines that FFmpeg's encode of the same programme does
+    # not. A path for the same reason AC3FORGE_EXTERNAL_BASELINE_DIR is one.
+    target_compile_definitions(ac3tests PRIVATE
+        "AC3FORGE_FUZZ_SEED_DIR=\"${CMAKE_SOURCE_DIR}/fuzz/seeds\"")
 endif()
 
 # RecordingSink (gui/test_recording_sink.cpp) is deliberately Qt-free - std::
