@@ -1,10 +1,23 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <numbers>
+#include <span>
 #include <string>
+#include <vector>
+
+#include "ac3/core/crc16.hpp"
+#include "ac3/core/tables.hpp"
+#include "ac3/emdf/emdf.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/oba/oamd.hpp"
 
 // The device-facing half of ac3cli: devices/outputs/record/live/monitor.
 //
@@ -46,9 +59,9 @@ fs::path scratch_dir() {
 // Same subprocess shape, and the same Windows cmd.exe quoting workaround, as
 // tests/cli/test_cli.cpp's own run_cli - see that file for why the extra
 // outer quote pair is needed there and must not be used on POSIX.
-int run_cli(const std::string& args, const fs::path& log) {
-    const std::string command =
-        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+// `redirects` follows the arguments on the command line.
+int run_cli_redirected(const std::string& args, const std::string& redirects) {
+    const std::string command = "\"" + std::string(AC3CLI_EXE) + "\" " + args + redirects;
 #ifdef _WIN32
     const std::string wrapped = "\"" + command + "\"";
     return std::system(wrapped.c_str());
@@ -57,9 +70,47 @@ int run_cli(const std::string& args, const fs::path& log) {
 #endif
 }
 
+int run_cli(const std::string& args, const fs::path& log) {
+    return run_cli_redirected(args, " > \"" + log.string() + "\" 2>&1");
+}
+
+// stdout and stderr in separate files. quiet's contract is about which of the
+// two a line reaches - nothing on stdout, errors still on stderr - and the one
+// log run_cli merges them into cannot show that.
+int run_cli_split(const std::string& args, const fs::path& out, const fs::path& err) {
+    return run_cli_redirected(args, " > \"" + out.string() + "\" 2> \"" + err.string() + "\"");
+}
+
 std::string read_log(const fs::path& log) {
     std::ifstream in{log, std::ios::binary};
     return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+}
+
+// Half a second of silent 5.1 E-AC-3 whose every frame carries `program` as an
+// OAMD payload (TS 103 420 §5.5) in an EMDF container, with no JOC payload
+// beside it: a decoder reads the object layer and reconstructs no object
+// audio. This is for the program shapes this project's own encoder never
+// writes - AtmosEncoder's programs are always dynamic objects plus the bed's
+// LFE.
+void write_oamd_stream(const fs::path& path, const ac3::oba::Program& program,
+                       std::span<const ac3::oba::DynamicObject> objects) {
+    const auto payload = ac3::oba::build_payload(program, objects);
+    const std::vector<ac3::emdf::Payload> payloads = {
+        {.id = ac3::emdf::kPayloadIdOamd, .bytes = payload}};
+    const auto container = ac3::emdf::build_container(payloads);
+
+    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    const std::vector<float> silence(static_cast<std::size_t>(encoder.samples_per_frame()), 0.0F);
+    const std::vector<std::span<const float>> channels(
+        static_cast<std::size_t>(encoder.channel_count()), silence);
+    std::ofstream out{path, std::ios::binary};
+    REQUIRE(out.is_open());
+    for (int frame_index = 0; frame_index < 16; ++frame_index) {
+        const auto frame = encoder.encode_frame(channels, container);
+        REQUIRE(frame.has_value());
+        out.write(reinterpret_cast<const char*>(frame->data()),
+                  static_cast<std::streamsize>(frame->size()));
+    }
 }
 
 // A device command has two legitimate outcomes and no third one: it did the
@@ -80,6 +131,35 @@ void check_spoke_either_way(int rc, const std::string& output) {
     CHECK(output.find("ThreadSanitizer") == std::string::npos);
     CHECK(output.find("AddressSanitizer") == std::string::npos);
     CHECK(output.find("runtime error:") == std::string::npos);
+}
+
+void write_bytes(const fs::path& path, const std::vector<std::byte>& data) {
+    std::ofstream out{path, std::ios::binary};
+    REQUIRE(out.is_open());
+    out.write(reinterpret_cast<const char*>(data.data()),
+             static_cast<std::streamsize>(data.size()));
+}
+
+// Overwrite `count` bits at `offset` and restore the syncframe's trailing
+// crc2, so a patched frame is still a legal, CRC-clean syncframe and the
+// decoder's own semantic checks (not a CRC failure) are what reject it.
+// Copied from tests/decoder/test_eac3_decoder.cpp's own helper of the same
+// name - see that file's "the E-AC-3 decoder rejects malformed spectral
+// extension streams" test, which this file's own "monitor reports a decode
+// failure" test below reuses field-for-field.
+void patch_bits(std::vector<std::byte>& frame, std::size_t offset, int count,
+                std::uint32_t value) {
+    for (int i = 0; i < count; ++i) {
+        const std::size_t bit = offset + static_cast<std::size_t>(i);
+        const auto mask = static_cast<std::uint8_t>(0x80U >> (bit & 7U));
+        const auto set = (value >> (count - 1 - i)) & 1U;
+        auto& target = frame[bit >> 3];
+        target = set != 0 ? (target | std::byte{mask}) : (target & static_cast<std::byte>(~mask));
+    }
+    const auto bytes = frame.size();
+    const std::uint16_t crc2 = ac3::crc16(std::span<const std::byte>{frame}.subspan(2, bytes - 4));
+    frame[bytes - 2] = static_cast<std::byte>(crc2 >> 8);
+    frame[bytes - 1] = static_cast<std::byte>(crc2 & 0xFF);
 }
 
 }  // namespace
@@ -222,6 +302,117 @@ TEST_CASE("live mode=atmos positions=osc either runs a live-driven session or re
     }
 }
 
+TEST_CASE("monitor describes a stream's object layer the way decode does",
+          "[cli][audio-io][atmos][concurrency]") {
+    // monitor printed its own copy of decode's object-count line, and the copy
+    // kept only the form this project's own streams need - "N dynamic objects
+    // + the bed's LFE = M objects" - whatever the program was. decode names a
+    // bed program's channels instead, and counts the LFE only when there is
+    // one, so monitor misdescribed both programs below. Each stream is built
+    // here because AtmosEncoder writes neither, and each is silent, like the
+    // cases below, because on a machine with speakers monitor plays it.
+    //
+    // decode's report is checked on every machine. monitor prints its own only
+    // once a render endpoint opens; without one, the check is that it spoke.
+    const auto dir = scratch_dir();
+    const auto check_both = [&dir](const std::string& name, const ac3::oba::Program& program,
+                                   std::span<const ac3::oba::DynamicObject> objects,
+                                   const std::string& line) {
+        const auto stream = dir / (name + ".ec3");
+        write_oamd_stream(stream, program, objects);
+
+        const auto decode_log = dir / (name + "_decode.log");
+        REQUIRE(run_cli("decode \"" + stream.string() + "\" \"" +
+                            (dir / (name + ".wav")).string() + "\"",
+                        decode_log) == 0);
+        const auto decoded = read_log(decode_log);
+        INFO("decode:\n" + decoded);
+        CHECK(decoded.find(line) != std::string::npos);
+
+        const auto monitor_log = dir / (name + "_monitor.log");
+        const auto rc = run_cli("monitor \"" + stream.string() + "\"", monitor_log);
+        const auto monitored = read_log(monitor_log);
+        INFO("monitor:\n" + monitored);
+        check_spoke_either_way(rc, monitored);
+        if (rc == 0) {
+            CHECK(monitored.find(line) != std::string::npos);
+        }
+    };
+    const std::array<ac3::oba::DynamicObject, 2> objects{{
+        {.position = {.x = 0.25, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
+        {.position = {.x = 0.75, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
+    }};
+
+    SECTION("a bed program, as channel-based immersive content is, names its bed") {
+        constexpr auto k514 = static_cast<std::uint16_t>(
+            ac3::oba::bed::k51 | ac3::oba::bed::kTflTfr | ac3::oba::bed::kTblTbr);
+        check_both("monitor_bed_program",
+                   {.dynamic_only = false, .bed = k514, .dynamic_objects = 2}, objects,
+                   "  bed [L R C LFE Ls Rs Tfl Tfr Tbl Tbr] + 2 dynamic objects = 12 objects, "
+                   "OAMD present (JOC audio not reconstructed)");
+    }
+    SECTION("a dynamic-object-only program with no LFE object does not claim one") {
+        check_both("monitor_no_lfe", {.dynamic_only = true, .lfe = false, .dynamic_objects = 2},
+                   objects,
+                   "  2 dynamic objects = 2 objects, OAMD present (JOC audio not reconstructed)");
+    }
+}
+
+TEST_CASE("monitor prints nothing on stdout under quiet, whichever way it goes",
+          "[cli][audio-io][quiet][concurrency]") {
+    // Three of monitor's status lines went to stdout through plain
+    // fmt::println, so quiet did not silence them: the verify-objects
+    // summary, printed before any device is touched; the §7.8 fold note,
+    // printed when the endpoint has fewer channels than the programme; and
+    // the object-count line, printed once the sink has started. A signed
+    // object stream reaches the first on any build with a monitor backend,
+    // and the object-count line wherever a render endpoint opens - the fold
+    // note too when that endpoint is narrower than the 5.1 bed. Silent, like
+    // the case below: on a machine with speakers this plays out loud.
+    const auto dir = scratch_dir();
+    const auto key = dir / "monitor_quiet.key";
+    {
+        std::ofstream out{key, std::ios::binary};
+        REQUIRE(out.is_open());
+        out << "not-a-real-key-just-test-material";
+    }
+    const auto bed = dir / "monitor_quiet_bed.ac3";
+    const auto pcm = dir / "monitor_quiet.wav";
+    const auto stream = dir / "monitor_quiet.ec3";
+    const auto setup = dir / "monitor_quiet_setup.log";
+    REQUIRE(run_cli("silence \"" + bed.string() + "\" 1", setup) == 0);
+    REQUIRE(run_cli("decode \"" + bed.string() + "\" \"" + pcm.string() + "\"", setup) == 0);
+    REQUIRE(run_cli("atmos-encode \"" + pcm.string() + "\" \"" + stream.string() +
+                        "\" 448 sign-objects signing-key=\"" + key.string() + "\"",
+                    setup) == 0);
+
+    const std::string monitor = "monitor \"" + stream.string() +
+                                "\" verify-objects signing-key=\"" + key.string() + "\"";
+    const auto out = dir / "monitor_quiet.out";
+    const auto err = dir / "monitor_quiet.err";
+
+    // Without quiet first, to show the lines are there to silence. A build
+    // with no monitor backend refuses the command before it reads the stream.
+    const auto loud_rc = run_cli_split(monitor, out, err);
+    const auto loud = read_log(out);
+    const auto loud_err = read_log(err);
+    INFO("without quiet, stdout:\n" + loud + "\nstderr:\n" + loud_err);
+    if (loud_err.find("is unavailable on this platform") == std::string::npos) {
+        CHECK(loud.find("object signature") != std::string::npos);
+    }
+    if (loud_rc == 0) {
+        CHECK(loud.find("OAMD present") != std::string::npos);
+    }
+
+    const auto rc = run_cli_split(monitor + " quiet", out, err);
+    const auto quiet_err = read_log(err);
+    INFO("with quiet, stderr:\n" + quiet_err);
+    CHECK(read_log(out).empty());
+    if (rc != 0) {
+        CHECK(quiet_err.find("error") != std::string::npos);
+    }
+}
+
 TEST_CASE("monitor either plays a stream or refuses by name", "[cli][audio-io][concurrency]") {
     const auto dir = scratch_dir();
     const auto stream = dir / "monitor_in.ac3";
@@ -234,4 +425,168 @@ TEST_CASE("monitor either plays a stream or refuses by name", "[cli][audio-io][c
 
     const auto rc = run_cli("monitor \"" + stream.string() + "\"", log);
     check_spoke_either_way(rc, read_log(log));
+}
+
+// 'play' (apps/cli/commands/audio_io.cpp's run_play) had no test in this
+// suite at all until this one - unlike devices/outputs/record/live/monitor
+// above, added when this file was, roadmap VX15 never reached it.
+
+TEST_CASE("play either streams to a device or refuses by name", "[cli][audio-io][concurrency]") {
+    const auto dir = scratch_dir();
+    const auto stream = dir / "play_in.ac3";
+    REQUIRE(run_cli("silence \"" + stream.string() + "\" 1", dir / "play_silence.log") == 0);
+    REQUIRE(fs::exists(stream));
+
+    const auto log = dir / "play.log";
+    const auto rc = run_cli("play \"" + stream.string() + "\"", log);
+    check_spoke_either_way(rc, read_log(log));
+}
+
+TEST_CASE("play refuses a stream too short to hold a syncframe, before any device is touched",
+          "[cli][audio-io]") {
+    // 3 bytes: not empty (read_elementary_stream's own "nothing at all"
+    // refusal is a different, already-covered branch), but short of the 6
+    // stream_bsid() needs. run_play reads this off the file before
+    // enumerating or opening anything, so this holds identically on a
+    // machine with real render hardware and on one with none at all.
+    //
+    // run_spatial has the identical check (live_audio.cpp's own line, one
+    // read_all()/apply_object_verification() call ahead of it) but it is not
+    // exercised here: main.cpp's Needs::kSpatial gate refuses the whole
+    // 'spatial' command before run_spatial() is ever called on any build
+    // without a real spatial backend - "this build has no spatial backend:
+    // ISpatialAudioObjectRenderStream is a Windows-only API" (confirmed
+    // against this exact build). Every line inside run_spatial() is
+    // therefore unreachable through the CLI on the Linux/ALSA build this
+    // suite runs on, and on any other non-Windows build - not merely
+    // untested here, but dead from this entry point on every platform this
+    // repository's CI actually runs a coverage job on. There is no
+    // Windows coverage leg to reach it from either.
+    const auto path = scratch_dir() / "too_short.ac3";
+    write_bytes(path, {std::byte{0x0B}, std::byte{0x77}, std::byte{0x00}});
+
+    const auto log = scratch_dir() / "play_too_short.log";
+    const auto rc = run_cli("play \"" + path.string() + "\"", log);
+    const auto out = read_log(log);
+    INFO(out);
+    CHECK(rc != 0);
+    // Unlike 'spatial', 'play' can be genuinely available (Needs::kPassthrough
+    // - real ALSA/IEC 61937 hardware on this build), in which case run_play
+    // does reach its own too-short check first. But a build with no
+    // passthrough capability at all (the "no-alsa" CI leg) hits main.cpp's
+    // gate before run_play ever runs, same branch the 'outputs' test above
+    // already handles - accept either refusal rather than assuming this
+    // build always has the capability.
+    if (out.find("is unavailable on this platform") != std::string::npos) {
+        CHECK(out.find("ac3cli spdif") != std::string::npos);
+    } else {
+        CHECK(out.find("too short to hold a syncframe") != std::string::npos);
+    }
+}
+
+TEST_CASE("play refuses a stream that claims E-AC-3/AC-3 but does not split into valid units",
+          "[cli][audio-io]") {
+    // run_play reads bsid straight off byte 5 to decide which of
+    // split_access_units/split_frames to call, then reports whichever of
+    // them fails - both checks run well before device enumeration, so
+    // neither depends on what render hardware the machine running this test
+    // has. A bad sync word (bytes 0-1) is enough to fail either split call
+    // regardless of the rest of the header, which is why the two vectors
+    // below only need to differ in the one byte (5) that decides bsid.
+    SECTION("bsid > 8 (E-AC-3): split_access_units finds no valid access unit") {
+        const auto path = scratch_dir() / "play_bad_eac3.ec3";
+        write_bytes(path, {std::byte{0x0B}, std::byte{0x77}, std::byte{0x00}, std::byte{0x00},
+                           std::byte{0x00}, std::byte{0x50}});
+        const auto log = scratch_dir() / "play_bad_eac3.log";
+        const auto rc = run_cli("play \"" + path.string() + "\"", log);
+        const auto out = read_log(log);
+        INFO(out);
+        CHECK(rc != 0);
+        // See the "too short to hold a syncframe" test above for why both
+        // branches are accepted: a no-passthrough-capability build refuses
+        // at main.cpp's gate before run_play's own split check ever runs.
+        if (out.find("is unavailable on this platform") != std::string::npos) {
+            CHECK(out.find("ac3cli spdif") != std::string::npos);
+        } else {
+            CHECK(out.find("is not a valid E-AC-3 stream") != std::string::npos);
+        }
+    }
+
+    SECTION("bsid <= 8 (AC-3): split_frames finds no valid frame") {
+        const auto path = scratch_dir() / "play_bad_ac3.ac3";
+        // byte 4's top two bits (fscod) are 0b11, A/52's own reserved value -
+        // syncframe_bytes() refuses it outright rather than looking up a
+        // frame size.
+        write_bytes(path, {std::byte{0x0B}, std::byte{0x77}, std::byte{0x00}, std::byte{0x00},
+                           std::byte{0xFF}, std::byte{0x08}});
+        const auto log = scratch_dir() / "play_bad_ac3.log";
+        const auto rc = run_cli("play \"" + path.string() + "\"", log);
+        const auto out = read_log(log);
+        INFO(out);
+        CHECK(rc != 0);
+        if (out.find("is unavailable on this platform") != std::string::npos) {
+            CHECK(out.find("ac3cli spdif") != std::string::npos);
+        } else {
+            CHECK(out.find("is not a valid AC-3 stream") != std::string::npos);
+        }
+    }
+}
+
+TEST_CASE("monitor reports a decode failure by name, distinct from a device refusal",
+          "[cli][audio-io]") {
+    // A semantically invalid but framing-correct, CRC-correct E-AC-3 access
+    // unit - spxbegf placed past spxendf, collapsing the spectral extension
+    // region to nothing (see ac3::describe(DecodeError::kInvalidStream)) -
+    // the exact vector tests/decoder/test_eac3_decoder.cpp's "the E-AC-3
+    // decoder rejects malformed spectral extension streams" test already
+    // validates bit-for-bit at the library level, reused here through the
+    // CLI. run_monitor decodes its first access unit before ever calling
+    // MonitorSink::start() (that only happens once a decode actually
+    // succeeds), so unlike every other 'monitor' case in this file, this one
+    // never depends on what render hardware is present.
+    ac3::eac3::AccessUnitEncoder encoder{{.independent = {.bitrate_kbps = 448,
+                                                          .acmod = ac3::Acmod::k3_2,
+                                                          .lfe = true,
+                                                          .spx = true,
+                                                          .spx_atten = false}}};
+    REQUIRE(encoder.channel_count() == 6);
+    std::vector<std::vector<float>> pcm(
+        6, std::vector<float>(static_cast<std::size_t>(ac3::kSamplesPerFrame)));
+    const double tones[6] = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
+    for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            pcm[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                0.3 * std::sin(2.0 * std::numbers::pi * tones[ch] * static_cast<double>(i) /
+                              48000.0));
+        }
+    }
+    const std::vector<std::span<const float>> views{pcm[0], pcm[1], pcm[2], pcm[3], pcm[4], pcm[5]};
+    const auto unit = encoder.encode_access_unit(views);
+    REQUIRE(unit.has_value());
+    auto broken = unit->bytes;
+    // Bit offsets straight from test_eac3_decoder.cpp's own comment: bsi (54
+    // bits) + audfrm (85 bits, spx on / attenuation off / nothing else
+    // coupled) + block 0's dithflag(5)/dynrnge(1) prefix (6 bits) puts
+    // spxinu at bit 145, followed by chinspx[0..4] (5), spxstrtf (2),
+    // spxbegf (3), spxendf (3).
+    constexpr std::size_t kSpxinuBit = 145;
+    constexpr std::size_t kSpxbegfBit = kSpxinuBit + 1 + 5 + 2;
+    constexpr std::size_t kSpxendfBit = kSpxbegfBit + 3;
+    patch_bits(broken, kSpxbegfBit, 3, 7);  // begin_subbnd = 11
+    patch_bits(broken, kSpxendfBit, 3, 0);  // end_subbnd = 5
+
+    const auto path = scratch_dir() / "monitor_decode_fail.ec3";
+    write_bytes(path, broken);
+    const auto log = scratch_dir() / "monitor_decode_fail.log";
+    const auto rc = run_cli("monitor \"" + path.string() + "\"", log);
+    const auto out = read_log(log);
+    INFO(out);
+    CHECK(rc != 0);
+    // Same caveat as 'play' above: a build with no monitor capability at all
+    // (Needs::kMonitor) refuses at main.cpp's gate before run_monitor's own
+    // decode ever runs, rather than reaching the decode-failure path this
+    // test is really after.
+    if (out.find("is unavailable on this platform") == std::string::npos) {
+        CHECK(out.find("error: decode failed:") != std::string::npos);
+    }
 }

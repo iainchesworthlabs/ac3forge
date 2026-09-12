@@ -145,6 +145,7 @@ jobs:
       linux_runner_4: ${{ steps.decide.outputs.linux_runner_4 }}
       linux_runner_5: ${{ steps.decide.outputs.linux_runner_5 }}
       linux_runner_6: ${{ steps.decide.outputs.linux_runner_6 }}
+      linux_runner_7: ${{ steps.decide.outputs.linux_runner_7 }}
       windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
       windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
@@ -167,12 +168,20 @@ jobs:
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
           # One check-runners call covers every plain Linux/Windows leg in
           # the build matrix below - four Linux (GCC, LLVM, LLVM ASan+UBSan,
-          # LLVM TSan) and two Windows (MSVC, LLVM) today - plus, as leg 5,
-          # the standalone containerised build-footprint job below the
-          # matrix. Bump these, and add a matching numbered output above and
-          # matrix.runner (or job runs-on) reference below, if a leg is
-          # added or removed.
-          LINUX_LEGS=6
+          # LLVM TSan) and two Windows (MSVC, LLVM) today - plus, as legs 5-7,
+          # the standalone containerised build-footprint, build-esp32s3 and
+          # build-esp32c3 jobs below the matrix. Bump these, and add a
+          # matching numbered output above and matrix.runner (or job runs-on)
+          # reference below, if a leg is added or removed.
+          #
+          # Legs 6 and 7 (S3 and C3) used to be one job, combined specifically
+          # to avoid spending a queued runner on the C3 leg's few extra
+          # minutes when the self-hosted fleet was a fixed-size pool - see
+          # build-esp32s3's own comment. That constraint no longer holds: the
+          # fleet now launches self-hosted runners dynamically rather than
+          # running a fixed-size pool, so the two run as separate legs and
+          # finish in parallel instead of back-to-back on one runner.
+          LINUX_LEGS=7
           WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
@@ -3687,19 +3696,18 @@ jobs:
   # real portability faults that no LP64 leg could have (see the profile's own
   # commit). A leg that only ran before releases would have found them then.
   build-esp32s3:
-    name: Minimum-footprint codec (ESP32-S3 and C3, QEMU)
+    name: Minimum-footprint codec (ESP32-S3, QEMU)
     # Leg 6 of check-runners' Linux fan-out. The sibling of build-footprint
-    # below: same profile, same probe, same fixtures, different bare-metal
-    # targets - an Xtensa LX7 with a single-precision FPU and a RISC-V C3 with
-    # none, where the arm-none-eabi leg is a Cortex-M3 with none either.
-    # Between them they cover both answers to "does this build have hardware
-    # floating point", which is the axis decode_scalar_t turns on, and all
-    # three of its values.
+    # below and of build-esp32c3 further down: same profile, same probe, same
+    # fixtures, different bare-metal targets - an Xtensa LX7 with a
+    # single-precision FPU here, a RISC-V C3 with none in build-esp32c3, and
+    # the arm-none-eabi leg's Cortex-M3 with none either. Between them they
+    # cover both answers to "does this build have hardware floating point",
+    # which is the axis decode_scalar_t turns on, and all three of its values.
     #
-    # Both parts in one job rather than two, because the cost of a leg here is
-    # a queued runner rather than the minutes it spends: the container already
-    # carries both toolchains and both emulators, and the C3's build and run
-    # add about five minutes to a job that was already doing four of them.
+    # This and build-esp32c3 used to be one job: see check-runners' comment
+    # beside LINUX_LEGS for why they were combined and why that stopped
+    # applying.
     #
     # espressif/idf is Espressif's own image and carries ESP-IDF, its toolchain
     # AND qemu-xtensa, so this needs no composite action and no multi-gigabyte
@@ -3785,41 +3793,6 @@ jobs:
           . "$IDF_PATH/export.sh"
           ./tools/checks/run_esp32s3_probe.sh --encoder
 
-      # The fixed-point tier's own part and its third architecture
-      # (planning/arithmetic-tiers.md, Phase D). The C3 is a single-core
-      # RV32IMC with no floating-point unit, and its project defaults to
-      # -DAC3FORGE_DECODE_SCALAR=fixed for that reason.
-      #
-      # What this step is FOR is the hash check inside the runner. The tier
-      # promises PCM that is identical on every machine, integer arithmetic
-      # having no rounding mode or library last bit to differ by; the x86 host
-      # and the Cortex-M3 leg already agree, and two architectures agreeing is
-      # a coincidence a third can break. The runner holds this leg's
-      # <codec>.pcm_hash lines to the same pinned values
-      # (tests/golden/fixed-probe-pcm-hashes.json).
-      - name: Ensure QEMU for RISC-V is present
-        shell: bash
-        run: |
-          set -eu
-          . "$IDF_PATH/export.sh"
-          python "$IDF_PATH/tools/idf_tools.py" install qemu-riscv32
-          # And enable the target, which is a separate thing. idf_tools.py
-          # exports only the tools whose supported targets intersect the ones
-          # recorded in $IDF_TOOLS_PATH/idf-env.json, so on an installation
-          # that was set up for esp32s3 alone the line above downloads
-          # qemu-system-riscv32 and export.sh still does not put it on PATH -
-          # `idf.py qemu` then reports it as not installed, several steps
-          # later and pointing at the install that just succeeded. Idempotent
-          # where the image already enables every target.
-          python "$IDF_PATH/tools/idf_tools.py" install --targets=esp32c3
-
-      - name: Build and run the FIXED-POINT probe on ESP32-C3 under QEMU
-        shell: bash
-        run: |
-          set -eu
-          . "$IDF_PATH/export.sh"
-          ./tools/checks/run_esp32c3_probe.sh
-
       # BUILD ONLY, and the reason is the peripheral rather than the code:
       # qemu-system-xtensa has no I2S, so there is nothing for the DMA to drain
       # into and the first i2s_channel_write would block until the job timed
@@ -3866,10 +3839,39 @@ jobs:
           idf.py set-target esp32s3
           idf.py build
           idf.py size | tee -a "$GITHUB_STEP_SUMMARY"
-          # Same shape as the probe legs: QEMU is killed on a timeout and the
-          # verdict is read from what it printed, because an ESP-IDF app that
-          # returns from app_main goes on idling rather than exiting.
-          timeout 300 idf.py qemu 2>&1 | tee qemu-stream.txt || true
+          # QEMU has to be ended from outside: an ESP-IDF app that returns from
+          # app_main goes on idling rather than exiting. TIMEOUT_SECS is still
+          # the ultimate ceiling if nothing ever shows up.
+          #
+          # This step used to just wait out the full 300s every time - the
+          # HTTP and web-page steps below already end early on their own
+          # verdict, and tools/checks/run_esp32s3_probe.sh's copy of this
+          # comment has the CI measurements and the fault-injection numbers
+          # behind SETTLE_SECS. No shell: bash on this step (this container
+          # runs steps without one under sh), so this is POSIX rather than
+          # bash arithmetic.
+          : > qemu-stream.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-stream.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-stream.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
           if ! grep -q '^result=pass' qemu-stream.txt; then
             echo "::error title=ESP32-S3 streaming player failed::the example did not report result=pass" >&2
             grep -E 'result=|error|Guru Meditation|assert failed' qemu-stream.txt >&2 || true
@@ -3953,7 +3955,32 @@ jobs:
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
-          timeout 300 idf.py qemu 2>&1 | tee qemu-capture.txt || true
+          # Poll for a verdict instead of waiting out the fixed window - see
+          # the streaming step above for the full reasoning and
+          # tools/checks/run_esp32s3_probe.sh for the CI measurements and the
+          # fault-injection numbers behind SETTLE_SECS.
+          : > qemu-capture.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-capture.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-capture.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
 
           if ! grep -q '^result=pass' qemu-capture.txt; then
             echo "::error title=ESP32-S3 capture run::did not report result=pass" >&2
@@ -4017,7 +4044,32 @@ jobs:
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
-          timeout 300 idf.py qemu 2>&1 | tee qemu-render.txt || true
+          # Poll for a verdict instead of waiting out the fixed window - see
+          # the streaming step above for the full reasoning and
+          # tools/checks/run_esp32s3_probe.sh for the CI measurements and the
+          # fault-injection numbers behind SETTLE_SECS.
+          : > qemu-render.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-render.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-render.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
 
           fail() { echo "::error title=ESP32-S3 render run::$1" >&2; grep -E 'result=|error|player:|stream:|Guru Meditation|assert failed' qemu-render.txt >&2 || true; exit 1; }
           grep -q '^result=pass' qemu-render.txt || fail "did not report result=pass"
@@ -4413,6 +4465,70 @@ jobs:
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.
           if-no-files-found: error
+
+  build-esp32c3:
+    name: Minimum-footprint codec (ESP32-C3, QEMU)
+    # Leg 7 of check-runners' Linux fan-out - split out of build-esp32s3 (leg
+    # 6) into its own job; see check-runners' comment beside LINUX_LEGS for
+    # why they were one job and why that stopped applying. Same profile, same
+    # probe, same fixtures as build-esp32s3 and build-footprint, on the third
+    # of decode_scalar_t's three targets: a RISC-V C3 with no floating-point
+    # unit, where build-esp32s3 is an Xtensa LX7 with one and build-footprint
+    # is a Cortex-M3 with neither.
+    #
+    # The fixed-point tier's own leg (planning/arithmetic-tiers.md, Phase D).
+    # What it's FOR is the hash check inside the runner: the tier promises PCM
+    # that is identical on every machine, integer arithmetic having no
+    # rounding mode or library last bit to differ by; the x86 host and the
+    # Cortex-M3 leg already agree, and two architectures agreeing is a
+    # coincidence a third can break. The runner holds this leg's
+    # <codec>.pcm_hash lines to the same pinned values
+    # (tests/golden/fixed-probe-pcm-hashes.json).
+    #
+    # espressif/idf is Espressif's own image and carries ESP-IDF, its
+    # toolchains AND both emulators, so this needs no composite action and no
+    # multi-gigabyte download step, the same reason build-esp32s3 uses it.
+    needs: check-runners
+    runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_7) }}
+    container: espressif/idf:v6.1
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Ensure QEMU for RISC-V is present
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python "$IDF_PATH/tools/idf_tools.py" install qemu-riscv32
+          # And enable the target, which is a separate thing. idf_tools.py
+          # exports only the tools whose supported targets intersect the ones
+          # recorded in $IDF_TOOLS_PATH/idf-env.json, so on an installation
+          # that was set up for other targets alone the line above downloads
+          # qemu-system-riscv32 and export.sh still does not put it on PATH -
+          # `idf.py qemu` then reports it as not installed, several steps
+          # later and pointing at the install that just succeeded. Idempotent
+          # where the image already enables every target.
+          python "$IDF_PATH/tools/idf_tools.py" install --targets=esp32c3
+
+      - name: Report toolchain versions
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          idf.py --version
+          riscv32-esp-elf-g++ --version | head -1
+
+      - name: Build and run the FIXED-POINT probe on ESP32-C3 under QEMU
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          ./tools/checks/run_esp32c3_probe.sh
 
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)

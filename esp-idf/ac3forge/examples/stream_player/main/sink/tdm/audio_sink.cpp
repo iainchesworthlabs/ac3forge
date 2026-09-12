@@ -1,12 +1,17 @@
 // Multi-channel out of one data line: I2S in TDM mode.
 //
-// Standard I2S carries two slots, so anything wider needs this. The ESP32-S3's
-// I2S packs up to 16 slots onto a single data line, which means a whole 7.1.4
-// needs THREE pins - BCLK, WS and DATA - rather than six data lines. Eight
-// slots of 32 bits at 48 kHz is a 12.3 MHz bit clock and sixteen is 24.6 MHz,
-// both inside what the peripheral will do; whether the DAC follows is the
-// DAC's datasheet. It has to speak TDM: a PCM3168A does, an ADAU1452 or
-// ADAU1467 does on its serial inputs (TDM2/4/8/16), the common stereo breakouts
+// Standard I2S carries two slots, so anything wider needs this. An ESP32-S3
+// TDM frame holds at most 128 bits: the peripheral's half-frame length is a
+// 6-bit register field (tx_half_sample_bits), so one data line carries four
+// slots of 32 bits - the width this sink sends, 24-bit samples left-justified -
+// or eight of 16, and sixteen only at 8 bits. ESP-IDF v6.1 refuses anything
+// larger at i2s_channel_init_tdm_mode, and so does sink_open below, first and
+// with the reason. A 7.1.4 layout's twelve slots of 24-bit audio therefore do
+// not fit on one line of this part: that needs two I2S controllers at 16 bits,
+// or a TDM device fed by several lines (planning/esp32-714-realtime.md). Four
+// slots of 32 bits at 48 kHz is a 6.1 MHz bit clock; whether the DAC follows is
+// its datasheet. It has to speak TDM: a PCM3168A does, an ADAU1452 or ADAU1467
+// does on its serial inputs (TDM2/4/8/16), the common stereo breakouts
 // (MAX98357A, PCM5102) do not.
 //
 // Master by default; CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE hands the clocks to the
@@ -47,9 +52,16 @@ i2s_chan_handle_t g_tx = nullptr;
 ac3forge::DacQueueModel g_model;
 std::size_t g_slots = 0;
 
-// One block of interleaved TDM: 256 sample frames of kMaxSlots 32-bit slots,
-// 16 KB. At namespace scope because that is more than a FreeRTOS task stack
-// has spare, and static because the sink is the only thing that needs it.
+// At most 128 bits a frame, so four of these 32-bit slots - see the top of
+// this file. sink_open refuses more, with what to do instead, rather than
+// leaving it to the driver, whose own line names the limit and nothing else.
+constexpr std::size_t kFrameBitsMax = 128;
+constexpr std::size_t kSlotBits = 32;
+constexpr std::size_t kMaxSlots = kFrameBitsMax / kSlotBits;
+
+// One block of interleaved TDM: 256 sample frames of up to kMaxSlots 32-bit
+// slots, 4 KB. At namespace scope rather than on the decode task's stack, and
+// static because the sink is the only thing that needs it.
 //
 // It is .bss, which on this part is internal SRAM - so it is already where DMA
 // can reach, and i2s_channel_write copies into the driver's own descriptors
@@ -57,7 +69,6 @@ std::size_t g_slots = 0;
 // profile whose whole subject is not having any; that requirement belongs to
 // the zero-copy paths (i2s_channel_preload_data and friends), which this does
 // not use.
-constexpr std::size_t kMaxSlots = 16;
 std::array<std::int32_t, ac3::kSamplesPerBlock * kMaxSlots> g_interleaved{};
 
 constexpr int kDmaDescriptors = CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS;
@@ -77,17 +88,20 @@ i2s_tdm_slot_mask_t slot_mask(std::size_t slots) {
 }  // namespace
 
 bool sink_open(std::uint32_t sample_rate, int channels) {
-    if (channels <= 0 || static_cast<std::size_t>(channels) > kMaxSlots) {
-        std::printf("error: the tdm sink carries 1 to %u channels, asked for %d\n",
-                    static_cast<unsigned>(kMaxSlots), channels);
-        return false;
-    }
     // The BUS width, from configuration, not from the programme. A DAC is wired
     // for a fixed number of slots and does not renegotiate because this stream
     // happens to be 5.1 - so the slot count is a property of the board and the
     // channel count is a property of the layout, and they are allowed to differ.
     g_slots = static_cast<std::size_t>(CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS);
-    if (g_slots > kMaxSlots || static_cast<std::size_t>(channels) > g_slots) {
+    if (g_slots > kMaxSlots) {
+        std::printf("error: an ESP32-S3 I2S TDM frame holds at most %u bits, so %u slots of %u "
+                    "bits, and CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS is %u - more channels need a "
+                    "second I2S controller or a TDM device fed by several lines\n",
+                    static_cast<unsigned>(kFrameBitsMax), static_cast<unsigned>(kMaxSlots),
+                    static_cast<unsigned>(kSlotBits), static_cast<unsigned>(g_slots));
+        return false;
+    }
+    if (channels <= 0 || static_cast<std::size_t>(channels) > g_slots) {
         std::printf("error: %d channels do not fit %u TDM slots\n", channels,
                     static_cast<unsigned>(g_slots));
         return false;

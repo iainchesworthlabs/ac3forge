@@ -61,7 +61,7 @@ cores are under *ac3forge stream player* in `idf.py menuconfig`.
 | Source | Sink |
 | --- | --- |
 | `partition` — flash (default) | `i2s` — stereo DAC (default); 32-bit slots, master or slave |
-| `sd` — SD card over SDMMC | `tdm` — up to sixteen channels on one data line |
+| `sd` — SD card over SDMMC | `tdm` — TDM on one data line, at most four 32-bit slots on an ESP32-S3 |
 | `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
 | `http` — an HTTP body over WiFi | `null` — counts blocks |
 
@@ -149,10 +149,32 @@ makes one long pass and would otherwise be silent for minutes.
 `render_us_per_frame` and `sink_us_per_frame` are the parts of `us_per_frame`
 spent placing each block onto the layout and inside the sink's write, the level
 meter included; the rest is the decoder's own. On a paced sink the sink's part
-is mostly the wait for the DAC. `heap:` is the internal RAM free once the source
-has opened and before the decoder has allocated anything - with a network stack
-up, the room the decoder has. If an allocation fails later, a `heap:` line says
-what was asked for and what was left, before the abort that follows.
+is mostly the wait for the DAC.
+
+**A play's start.** With `CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT` set, the
+player holds a play's first access unit until the second has decoded, so the
+sink starts with two frames queued rather than one. A play's first frames
+decode more slowly than the rest, and without the hold a 7.1.4 stream played
+over WiFi ran the DAC dry in them. It costs 32 ms before a play is heard, and a
+copy of that one unit while it waits. `sdkconfig.psram` turns it on for the
+network shapes, together with a 32 KB instruction cache, and `sdkconfig.ci`
+runs CI through it; `planning/esp32-714-realtime.md` in the repository has the
+measurements.
+
+**A local 7.1.4 stream folded to 2.0** fits without PSRAM once the output stage
+folds a block at a time, and it needs a DMA queue that holds a whole frame:
+twelve descriptors of 256 frames, 64 ms, as `sdkconfig.psram` sets them
+(`CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12`,
+`CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES=256`), for 16 KB more of internal SRAM
+than the default. A frame's six blocks arrive together, and the default queue
+cannot hold them and cover the next frame's decode as well: on a DevKitC-1 with
+no PSRAM, `714-tones.ec3` played from the partition had 251 of its 1,512
+blocks reach an empty queue with the default, and none with twelve.
+
+`heap:` is the internal RAM free once the source has opened and before the
+decoder has allocated anything - with a network stack up, the room the decoder
+has. If an allocation fails later, a `heap:` line says what was asked for and
+what was left, before the abort that follows.
 
 `ring_low` (and `stream.ring_low` at the end) is the least the ring between
 the fetch and decode tasks ever held when the decoder came for more, in bytes,
@@ -261,12 +283,13 @@ and PSRAM holding the ring alone. Per frame, in microseconds:
 The twelve levels are the same in all three, to the digit. The decode and the
 render together take 26 ms of the frame's 32, the same work as the probe's
 `eac3_atmos_render` row at 25.1 ms. What is left over is the `capture` sink,
-which checks every sample it converts; a `tdm` sink driving a DAC converts and
-does not check. The table found two things. The component had never compiled
-the decoder's hot sources at `-O2` as the probe does; it does now, for 48.6 KB
-of flash and no SRAM. And the level meter that makes `result=pass` mean
-something squared every sample in double - a soft-float call on this part -
-which cost twice the decode it was measuring.
+which checks every sample it converts. The `tdm` sink converts without
+checking, but on this part one I2S line carries at most four 32-bit slots, so
+twelve slots cannot leave through it. The table found two things. The component
+had never compiled the decoder's hot sources at `-O2` as the probe does; it
+does now, for 48.6 KB of flash and no SRAM. And the level meter that makes
+`result=pass` mean something squared every sample in double - a soft-float call
+on this part - which cost twice the decode it was measuring.
 
 **The network shape needs PSRAM for the decoder, and a deeper queue.** `http`
 to `i2s` at `2.0` over WiFi (`sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram`,
@@ -526,13 +549,21 @@ reason the QEMU shape runs an 8 KB ring.
 
 ### The TDM sink
 
-`tdm` puts up to sixteen channels on one data line: three pins (BCLK, WS, DATA)
-instead of eight data lines, at a 12.3 MHz bit clock for 8 slots × 32 bits ×
-48 kHz and 24.6 MHz for 16. It needs a DAC that speaks TDM — a PCM3168A does, a
-SigmaDSP does on its serial inputs, the common MAX98357A and PCM5102 breakouts
-do not. `CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS` is the bus width, a property of the
-board; the layout must have no more slots than that, and the slots it leaves
-are written as zeros.
+`tdm` puts several channels on one data line: three pins (BCLK, WS, DATA)
+rather than a data line per pair. On an ESP32-S3 a TDM frame holds at most 128
+bits, because the peripheral's half-frame length is a 6-bit register field, so
+this sink's 32-bit slots stop at four - a 6.1 MHz bit clock at 48 kHz - and it
+refuses more when it opens. ESP-IDF v6.1 refuses them as well, and its I2S
+guide gives the same limits: four slots at 32 bits, eight at 16. A 7.1.4
+layout's twelve slots of 24-bit audio need both I2S controllers at 16 bits, or
+a TDM device fed by several lines (`planning/esp32-714-realtime.md` in the
+repository, "Twelve slots on this part"). It needs a DAC that speaks TDM — a
+PCM3168A does, a SigmaDSP does on its serial inputs, the common MAX98357A and
+PCM5102 breakouts do not. `CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS` is the bus width,
+a property of the board; the layout must have no more slots than that, and the
+slots it leaves are written as zeros. The `capture` sink converts up to
+sixteen with no peripheral behind it, which is how CI checks a twelve-slot
+conversion.
 
 Both sinks with a peripheral take `CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE`, which
 hands BCLK and WS to the other end — how an ADAU1452 or ADAU1467 that is the
@@ -548,10 +579,11 @@ partly written buffer whenever two or more sent ones are waiting, and the rest
 of it goes out as silence. [`i2s_player`](../i2s_player/README.md) measured
 what that costs a player that writes across descriptors: 3 ms in every 35.
 
-**Neither TDM nor the slave role has run on hardware.** There is no TDM DAC or
-DSP here and QEMU has no I2S, so what CI establishes is that they compile and
-link. The exceptions are the two parts worth testing, both free of ESP-IDF and
-unit-tested on the host:
+**Neither TDM into a DAC nor the slave role has run on hardware.** There is no
+TDM DAC or DSP here and QEMU has no I2S, so what CI establishes is that they
+compile and link. On a board, the one TDM shape tried - twelve slots - was
+refused by the frame limit above. The exceptions are the two parts worth
+testing, both free of ESP-IDF and unit-tested on the host:
 [`ac3forge/interleave.hpp`](../../include/ac3forge/interleave.hpp)
 (`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing with
 slot padding is where the bugs are, and the queue model behind the `sink.*`

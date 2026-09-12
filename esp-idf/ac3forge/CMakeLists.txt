@@ -149,6 +149,15 @@ set(AC3FORGE_BUILD_AC4 OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
     "Decode-critical sources at -O2; see src/forge/minimal.cmake")
 
+# The player's own source with them, under the same switch: the render onto the
+# layout and the calls into the sink run there, six times a frame, and the
+# header-only renderer compiles into it. Measured on a board with the example's sinks
+# alongside it: 1.5 ms a frame less at twelve slots, for 4,400 bytes of flash
+# (planning/esp32-714-realtime.md, decision 11).
+if(AC3FORGE_MINIMAL_HOT_O2)
+    set_source_files_properties(src/player.cpp PROPERTIES COMPILE_OPTIONS "-O2")
+endif()
+
 # Tells apps/baremetal/CMakeLists.txt that an external build system owns the
 # application. Without it that file would see CMAKE_SYSTEM_NAME "Generic" -
 # which ESP-IDF's own toolchain.cmake sets, exactly as the arm-none-eabi one

@@ -113,6 +113,21 @@ release packaging.
   holds each slot to the host's level within 1% + 20, the silent ones at exactly zero. Playing it found two faults in the player,
   fixed: a stream with two programmes had both played, a frame of each, and now plays its first;
   and a stream at 44.1 or 32 kHz played at the wrong speed, and is now refused.
+- **The ESP32 player can hold a play's first unit** (`planning/esp32-714-realtime.md`, which also
+  has a stage-by-stage profile of a 7.1.4 frame on the board and what each change measured
+  there). With `PlayerConfig::hold_first_unit` set, the first access unit waits until the second
+  has decoded, so the sink starts with two frames queued rather than one
+  (`ac3forge/unit_hold.hpp`, and the `ac3forge/block_ring.hpp` it keeps the unit in, both tested
+  on the host). A play's first frames decode more slowly than the rest, and on an ESP32-S3
+  playing 7.1.4 over WiFi they ran the DAC dry. The streaming example's
+  `CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT` selects it, and `sdkconfig.psram` turns it on together
+  with a 32 KB instruction cache, which takes 3.1 ms off the decode of a 7.1.4 frame at 2.0 and
+  3.8 ms off a twelve-slot frame for 16 KB of internal SRAM. With the output stage folding a block
+  at a time, `714-walk.ec3` and `714-tones.ec3` then play at 2.0 over WiFi with no block reaching
+  an empty queue. CI's `sdkconfig.ci` plays through the hold. The component's `player.cpp` joins
+  the `-O2` sources under `AC3FORGE_MINIMAL_HOT_O2`, and the example compiles the bare-metal
+  probe's stage-timer backend where the repository has it, so
+  `idf.py -DAC3FORGE_STAGE_TIMERS=ON build` gives each play a line per decoder stage.
 - **The ESP32 output layout takes speaker size and height realization**
   (`esp-idf/ac3forge/include/ac3forge/layout.hpp`, `render.hpp`). A speaker in the list form can
   be marked `:small` - a full-bandwidth speaker too small for the bottom two octaves -
@@ -758,6 +773,15 @@ release packaging.
 
 **ESP32 / bare-metal**
 
+- **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data line; an
+  ESP32-S3 carries four** (`esp-idf/ac3forge/examples/stream_player/main/sink/tdm/`). An S3 TDM
+  frame holds at most 128 bits, because the peripheral's half-frame length is a 6-bit register
+  field, and ESP-IDF v6.1 refuses more. The sink had never run on hardware, and CI's eight- and
+  twelve-slot shapes use the `capture` sink, which configures no peripheral, so a board run on
+  2026-09-11 was the first to try one. The sink now refuses a frame over 128 bits and says why,
+  and the Kconfig help, both READMEs, `docs/platforms/esp32.md` and the ESP32 planning pages say
+  what the part carries: four slots of 32 bits or eight of 16 on a line, twice that across the
+  two I2S controllers.
 - **A panic or a reset after `result=pass` passed every ESP32 leg CI runs under QEMU**
   (`tools/checks/check_esp_console.py`). The two probe runners, `run_esp32s3_probe.sh` and
   `run_esp32c3_probe.sh`, and the streaming player's streaming, capture, render and HTTP steps in
@@ -847,6 +871,44 @@ release packaging.
   `Eac3AccessUnitTrace` overload — one that folds an access unit's substreams together by stream
   index — from the start. Both paths now write at the same point in the sequence. Covered by a CLI
   test over single- and multi-substream E-AC-3, with the AC-3 case alongside as a control.
+- **`quiet` crashed `decode` on a stream with more than one programme or whose report has
+  Annex D, infomdat, mixing metadata or a concealed frame, and crashed `transcode`, `metadata`,
+  `normalize`, `cut` and `cat` on every stream** (`apps/cli/commands/decode.cpp`,
+  `apps/cli/commands/stream_tools.cpp`). `quiet` makes the status stream a null `FILE*`, which
+  `status_println` skips; those report lines called `fmt::println` on it directly. On Windows the
+  C runtime's parameter check ended the process with 0xC0000409, in most cases after the output
+  had been written in full. It was seen first on
+  `fuzz/seeds/fuzz_eac3_decode/external-eac3-51-256-dee.ec3`, whose report carries copyright and
+  a `dsurexmod`; FFmpeg's encode of the same programme carries neither and decoded quietly. Every
+  status line in the two files now goes through `status_println`, and `tests/cli` runs each of
+  these paths under `quiet` and compares the output with a run without it.
+
+- **`quiet` left three of `monitor`'s status lines on stdout, and `decode` wrote its object
+  signature summary into a `-` output** (`apps/cli/commands/live_audio.cpp`,
+  `apps/cli/support.cpp`). `monitor` printed the §7.8 fold note, the object-count line and the
+  `verify-objects` summary with plain `fmt::println`, which `quiet` does not reach. The summary is
+  shared with `decode`, where it also went to stdout when a `-` output put the WAV there, ahead of
+  the RIFF header. `live` printed the blank line that ends its level meter the same way before
+  refusing an IEC 61937 capture. All four now go to the command's status stream: nowhere under
+  `quiet`, and stderr when a `-` output owns stdout. `tests/cli` plays a signed object stream
+  through `monitor` with and without `quiet` and checks that stdout stays empty under it - on a
+  machine with no render endpoint only the summary is reached - and decodes one under `quiet`
+  and to `-`.
+
+- **`monitor` misdescribed the object layer of every bed program, and claimed an LFE object for
+  streams that carry none** (`apps/cli/commands/live_audio.cpp`, `apps/cli/support.cpp`). It
+  printed its own copy of `decode`'s object-count line, and that copy had kept only the shape this
+  project's own encoder writes - "N dynamic objects + the bed's LFE = M objects" - whatever the
+  program was. `decode` counts the bed's LFE only when the program has one, and names a bed
+  program's channels instead: "bed [L R C LFE Ls Rs Tfl Tfr Tbl Tbr] + 2 dynamic objects = 12
+  objects", followed by a line each for a trim element, for elements skipped by size, and for more
+  than one metadata update block per frame. Channel-based immersive content from other encoders is
+  a bed program, so `monitor` described all of it wrongly. Both commands now report through one
+  function on the status stream, `print_object_summary`, and cannot drift apart again; `monitor`
+  keeps its own note about the JOC audio, which it reconstructs and does not play. `tests/cli`
+  builds streams for the two shapes this project's encoder does not write - a 5.1.4 bed program,
+  and dynamic objects with no LFE object - and requires `monitor` to print what `decode` prints
+  for each.
 
 **Crucible desktop application**
 

@@ -25,6 +25,7 @@
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/oba/joc.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
@@ -541,7 +542,9 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
 // fmt::println with a "nowhere" destination: a no-op when `out` is nullptr
 // (see status_stream above), an ordinary println otherwise. Every status line
 // in this CLI goes through this, so `quiet` is honoured in one place rather
-// than at each site.
+// than at each site. A status stream must never reach plain fmt::println:
+// under quiet it is nullptr, which fmt passes on to the C runtime, and MSVC's
+// runtime ends the process on it (0xC0000409).
 template <typename... Args>
 void status_println(FILE* out, fmt::format_string<Args...> format, Args&&... args) {
     if (out != nullptr) {
@@ -900,8 +903,22 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 // nothing checked, stream untouched either way: this only reads bytes, it
 // never signs. A signed stream is either fully verified or the command
 // refuses - matching this project's own "graceful 5.1 fallback is
-// either/or" stance - never a silent partial pass.
+// either/or" stance - never a silent partial pass. The summary line goes to
+// `status`, the caller's status stream: nowhere under quiet, and stderr when
+// a "-" output owns stdout (see status_stream above).
 std::optional<ac3::signing::VerifySummary> apply_object_verification(
-    std::span<const std::byte> stream, const Options& meta);
+    std::span<const std::byte> stream, const Options& meta, FILE* status);
+
+// The object layer (TS 103 420's OAMD) an E-AC-3 decode found, reported the
+// same way by 'decode' and 'monitor'; nothing when `metadata` is empty. The
+// first line is the program's shape - "N dynamic objects[ + the bed's LFE] =
+// M objects" for a dynamic-object-only program, the only kind AtmosEncoder
+// writes, and "bed [L R C LFE ...] + N dynamic objects = M objects" for a bed
+// program, which is what channel-based immersive third-party content is -
+// ended by `joc_note`, the caller's word on what became of the JOC audio. A
+// trim element, skipped elements and more than one update block per frame
+// each add a line. Every line goes to `status` (see status_stream above).
+void print_object_summary(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
+                          std::string_view joc_note);
 
 }  // namespace ac3cli

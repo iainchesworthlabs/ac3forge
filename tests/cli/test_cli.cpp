@@ -1247,6 +1247,31 @@ TEST_CASE("verify-objects checks a decode against the signer's own tag",
         CHECK(text.find("needs a key") != std::string::npos);
     }
 
+    SECTION("the summary is a status line: quiet silences it and a '-' output keeps it off stdout") {
+        // It went to stdout through plain fmt::println, so quiet left it in
+        // place, and with the WAV going to stdout it landed ahead of the
+        // RIFF header.
+        const auto file_wav = dir / "verify_objects_quiet.wav";
+        const auto log = dir / "verify_objects_quiet.log";
+        CHECK(run_cli("decode \"" + signed_ec3.string() + "\" \"" + file_wav.string() +
+                          "\" verify-objects signing-key=\"" + key_path.string() + "\" quiet",
+                      log) == 0);
+        CHECK(read_log(log).empty());
+
+        const auto piped_wav = dir / "verify_objects_piped.wav";
+        const auto piped_log = dir / "verify_objects_piped.log";
+        CHECK(run_cli_stdout("decode \"" + signed_ec3.string() +
+                                 "\" - verify-objects signing-key=\"" + key_path.string() + "\"",
+                             piped_wav, piped_log) == 0);
+        CHECK(read_log(piped_log).find("object signature") != std::string::npos);
+        // Compared as a bool: on a mismatch Catch2 would otherwise print both
+        // WAVs, a megabyte each, and take minutes over it.
+        const auto piped = read_log(piped_wav);
+        CHECK(piped.substr(0, 4) == "RIFF");
+        const bool same_wav = piped == read_log(file_wav);
+        CHECK(same_wav);
+    }
+
     SECTION("decoding the same signed stream WITHOUT verify-objects still succeeds - the "
            "bypass") {
         const auto out_wav = dir / "verify_objects_bypass.wav";
@@ -3090,6 +3115,117 @@ TEST_CASE("quiet silences status output without touching the payload", "[cli][qu
     }
 }
 
+// The report lines a stream has to earn - a second programme, Annex D and the
+// informational fields, a mixing metadata group, a concealed frame - were
+// printed with plain fmt::println on the status stream instead of through
+// status_println, and `quiet` makes that stream nullptr. The test above never
+// reaches one: a sine carries none of them. On Windows the runtime's
+// parameter check then ended the process with 0xC0000409 - for every line but
+// the programme one, which comes first, after the WAV had been written in full.
+TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][quiet]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "quiet_earned.log";
+
+    // Decodes `stream` without quiet, then with it. The first run has to
+    // report `marker`, which shows the stream still reaches the lines under
+    // test - a decoder change that stopped printing them would otherwise
+    // leave this checking nothing. The second has to print nothing and write
+    // the same WAV (read_log reads in binary mode).
+    const auto decode_both = [&](const fs::path& stream, const std::string& options,
+                                 const std::string& marker, const std::string& tag) {
+        const auto loud = dir / (tag + "_loud.wav");
+        const auto quiet = dir / (tag + ".wav");
+        const std::string decode = "decode \"" + stream.string() + "\" \"";
+        REQUIRE(run_cli(decode + loud.string() + "\" " + options, log) == 0);
+        const auto report = read_log(log);
+        INFO(report);
+        REQUIRE(report.find(marker) != std::string::npos);
+        fs::remove(quiet);
+        CHECK(run_cli(decode + quiet.string() + "\" " + options + " quiet", log) == 0);
+        CHECK(read_log(log).empty());
+        CHECK(read_log(quiet) == read_log(loud));
+    };
+
+    SECTION("E-AC-3: the infomdat of the DEE-encoded seed it was found on") {
+        // Copyright asserted, and a dsurexmod saying the programme is not
+        // Surround EX or Pro Logic IIx/IIz encoded. FFmpeg's encode of the
+        // same programme, external-eac3-51-256-ffmpeg.ec3 in the same
+        // directory, carries neither and decoded quietly throughout.
+        const auto seed = fs::path{AC3FORGE_FUZZ_SEED_DIR} / "fuzz_eac3_decode" /
+                          "external-eac3-51-256-dee.ec3";
+        REQUIRE(fs::exists(seed));
+        decode_both(seed, "", "copyright asserted", "quiet_dee");
+    }
+
+    SECTION("AC-3: Annex D, both xbsi words and the informational fields") {
+        // The token set the bit stream information test above encodes with.
+        const auto wav_path = dir / "quiet_annexd_in.wav";
+        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
+                                       48000)
+                    .has_value());
+        const auto stream = dir / "quiet_annexd.ac3";
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + stream.string() +
+                            "\" 384 51 dmixmod=ltrt ltrtcmixlev=-1.5 lorosurmixlev=off "
+                            "dsurexmod=ex adconvtyp=hdcd bsmod=vi mixlevel=105 roomtyp=large "
+                            "copyright origbs=off langcod",
+                        log) == 0);
+        decode_both(stream, "", "bsid 6", "quiet_annexd");
+    }
+
+    SECTION("E-AC-3: a mixing metadata group and nothing else") {
+        // pgmscl alone, so the mixing summary is the only line in the report
+        // that a plain stream would not also print.
+        const auto wav_path = dir / "quiet_mixmeta_in.wav";
+        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
+                                       48000)
+                    .has_value());
+        const auto stream = dir / "quiet_mixmeta.ec3";
+        REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + stream.string() +
+                            "\" 448 none 51 mixmeta pgmscl=-6",
+                        log) == 0);
+        decode_both(stream, "", "programme scale", "quiet_mixmeta");
+    }
+
+    SECTION("AC-3: a frame concealed under conceal=") {
+        const auto clean = dir / "quiet_conceal.ac3";
+        REQUIRE(run_cli("sine \"" + clean.string() + "\" 2 192 440 70 stereo", log) == 0);
+        // One payload byte flipped in the middle of the fourth frame, sync
+        // word and frame size left alone - the damage
+        // tests/decoder/test_concealment.cpp uses. 192 kbps at 48 kHz is a
+        // 768-byte syncframe.
+        constexpr std::size_t kFrameBytes = 768;
+        auto bytes = read_log(clean);
+        REQUIRE(bytes.size() > 4 * kFrameBytes);
+        auto& hit = bytes[(3 * kFrameBytes) + (kFrameBytes / 2)];
+        hit = static_cast<char>(static_cast<unsigned char>(hit) ^ 0xFFU);
+        const auto damaged = dir / "quiet_conceal_damaged.ac3";
+        {
+            std::ofstream out{damaged, std::ios::binary};
+            out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        }
+        decode_both(damaged, "conceal=repeat", "concealed 1 of", "quiet_conceal");
+    }
+
+    SECTION("E-AC-3: a second programme, named before the decode starts") {
+        // The programme2= tokens test_cli_containers.cpp's multi-programme
+        // mkv test builds with.
+        const auto primary = dir / "quiet_programme0.wav";
+        const auto second = dir / "quiet_programme1.wav";
+        REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 48000, 48000),
+                                       48000)
+                    .has_value());
+        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 48000, 48000),
+                                       48000)
+                    .has_value());
+        const auto stream = dir / "quiet_programmes.ec3";
+        REQUIRE(run_cli("eac3-encode \"" + primary.string() + "\" \"" + stream.string() +
+                            "\" 448 none 51 off programme2=\"" + second.string() +
+                            "\" programme2-layout=mono programme2-bitrate=96",
+                        log) == 0);
+        decode_both(stream, "", "programme 0 of 2", "quiet_programmes");
+    }
+}
+
 TEST_CASE("verbose puts a progress line on stderr, never on stdout", "[cli][verbose]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "verbose_in.wav";
@@ -3997,5 +4133,179 @@ TEST_CASE("bap-census= is refused by commands that cannot produce one",
         INFO(read_log(log));
         CHECK(rc == 0);
         CHECK(fs::exists(census));
+    }
+}
+
+// apps/cli/commands/encode.cpp's own layout_for_source() call sites - the
+// single-file eac3-encode path, its src= multi-source counterpart, the AC-3
+// multi-source path, and programme2='s own second source - each report the
+// same "no standard speaker layout" refusal independently rather than through
+// one shared call, so each is exercised on its own rather than assuming one
+// covers the others.
+TEST_CASE("a channel count no standard layout covers is refused, not silently forced onto one",
+          "[cli][encode][layout]") {
+    const auto dir = scratch_dir();
+    // 7 channels: legal audio, but plan::layout_for_source's own gap between
+    // 6 (5.1) and 8 (7.1) - no A/52 or Annex E acmod maps that many.
+    const auto odd = dir / "layout_gap_7ch.wav";
+    REQUIRE(ac3::io::write_wav_f32(odd.string(), make_tone_channels(7, 2000, 48000), 48000)
+                .has_value());
+
+    SECTION("eac3-encode, single file, no layout token") {
+        const auto out_path = dir / "layout_gap_eac3.ec3";
+        const auto log = dir / "layout_gap_eac3.log";
+        fs::remove(out_path);
+        const auto rc = run_cli(
+            "eac3-encode \"" + odd.string() + "\" \"" + out_path.string() + "\" 192 none", log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("7 channels") != std::string::npos);
+        CHECK(text.find("no standard speaker layout has that many channels") != std::string::npos);
+    }
+
+    SECTION("eac3-encode, src= combines two files into the same gap") {
+        const auto second = dir / "layout_gap_second.wav";
+        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
+                    .has_value());
+        const auto six = dir / "layout_gap_6ch.wav";
+        REQUIRE(ac3::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
+                    .has_value());
+        const auto out_path = dir / "layout_gap_eac3_multi.ec3";
+        const auto log = dir / "layout_gap_eac3_multi.log";
+        fs::remove(out_path);
+        // The layout check runs before routing_for_sources ever asks for
+        // map=, so a combined channel count with no layout still refuses here
+        // even though nothing routes these two files anywhere yet.
+        const auto rc = run_cli("eac3-encode \"" + six.string() + "\" \"" + out_path.string() +
+                                    "\" 192 none src=\"" + second.string() + "\"",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("7 channels") != std::string::npos);
+        CHECK(text.find("no standard speaker layout has that many channels") != std::string::npos);
+    }
+
+    SECTION("encode (AC-3), src= combines two files into the same gap") {
+        const auto second = dir / "layout_gap_second_ac3.wav";
+        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
+                    .has_value());
+        const auto six = dir / "layout_gap_6ch_ac3.wav";
+        REQUIRE(ac3::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
+                    .has_value());
+        const auto out_path = dir / "layout_gap_ac3_multi.ac3";
+        const auto log = dir / "layout_gap_ac3_multi.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("encode \"" + six.string() + "\" \"" + out_path.string() +
+                                    "\" 192 src=\"" + second.string() + "\"",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        // AC-3's own layout_for_source() call site additionally gates on
+        // plan::carries(), so it names the codec's own ceiling rather than
+        // the generic "no standard layout" text the two E-AC-3 cases above
+        // give - both a bare gap (7) and a layout that exists but is too wide
+        // for AC-3 (8, 7.1) take the same branch and print the same text.
+        CHECK(text.find("no AC-3 coding mode is wider than 3/2 + LFE") != std::string::npos);
+    }
+}
+
+TEST_CASE("multi-source AC-3 encode infers a layout from the combined channel count and measures "
+          "dialnorm across every routed source",
+          "[cli][encode][multi][dialnorm]") {
+    const auto dir = scratch_dir();
+    // 4 + 2 = 6 channels, a legal 5.1 total nothing here names explicitly -
+    // the same inference layout_for_source gives a single 6-channel file,
+    // applied to two files' combined channel count instead.
+    const auto first = dir / "multi_dialnorm_first.wav";
+    const auto second = dir / "multi_dialnorm_second.wav";
+    // 2 s: BS.1770's own gating needs whole 400 ms blocks to integrate over -
+    // the layout-gap vectors above never reach a measurement at all, but this
+    // one has to actually pass the -70 LKFS absolute gate, so it needs the
+    // same real duration tests/cli/test_cli.cpp's other dialnorm=auto cases
+    // use rather than the handful of samples a layout check alone needs.
+    constexpr std::size_t kDialnormFrames = 96000;
+    REQUIRE(ac3::io::write_wav_f32(first.string(), make_tone_channels(4, kDialnormFrames, 48000),
+                                   48000)
+                .has_value());
+    REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(2, kDialnormFrames, 48000),
+                                   48000)
+                .has_value());
+
+    const auto out_path = dir / "multi_dialnorm.ac3";
+    const auto log = dir / "multi_dialnorm.log";
+    fs::remove(out_path);
+    // map= fills every 5.1 position across the two sources - more than one
+    // source needs one (routing_for_sources refuses otherwise), and every
+    // position has to land somewhere or the dialnorm=auto pass below would
+    // be measuring a programme with silent channels the operator never
+    // asked to leave out.
+    const auto rc = run_cli(
+        "encode \"" + first.string() + "\" \"" + out_path.string() +
+            "\" 384 src=\"" + second.string() +
+            "\" map=0.0:L,0.1:R,0.2:C,0.3:LFE,1.0:Ls,1.1:Rs dialnorm=auto",
+        log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc == 0);
+    REQUIRE(fs::exists(out_path));
+    // No layout= token was given, so this is layout_for_source(6)'s
+    // inference, reached from the multi-source path rather than the
+    // single-file one - and the measured dialnorm is a real BS.1770 pass
+    // over the routed programme, not left at its default.
+    const auto measured = reported_value(text, "dialnorm");
+    REQUIRE(measured.has_value());
+    CHECK(*measured >= 1);
+    CHECK(*measured <= 31);
+}
+
+TEST_CASE("programme2= reports why its own source could not be used", "[cli][encode][programme2]") {
+    const auto dir = scratch_dir();
+    const auto primary = dir / "programme2_primary.wav";
+    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(2, 4000, 48000), 48000)
+                .has_value());
+
+    SECTION("a programme2= path that does not exist") {
+        const auto out_path = dir / "programme2_missing.ec3";
+        const auto log = dir / "programme2_missing.log";
+        fs::remove(out_path);
+        const auto missing = dir / "programme2_does_not_exist.wav";
+        const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
+                                    out_path.string() + "\" 192 none stereo programme2=\"" +
+                                    missing.string() + "\"",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        // ProgrammeSource::open falls through its own streaming attempt to
+        // read_wav_arg, and it is read_wav_arg's error this prints - naming
+        // the path rather than the word "programme2", so that is what is
+        // checked for.
+        CHECK(text.find(missing.string()) != std::string::npos);
+    }
+
+    SECTION("a programme2= channel count no standard layout covers") {
+        const auto out_path = dir / "programme2_gap.ec3";
+        const auto log = dir / "programme2_gap.log";
+        fs::remove(out_path);
+        const auto second = dir / "programme2_gap_7ch.wav";
+        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(7, 2000, 48000), 48000)
+                    .has_value());
+        const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
+                                    out_path.string() + "\" 192 none stereo programme2=\"" +
+                                    second.string() + "\"",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("7 channels") != std::string::npos);
+        CHECK(text.find("no standard speaker layout has that many channels") != std::string::npos);
     }
 }
