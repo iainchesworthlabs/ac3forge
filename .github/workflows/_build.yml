@@ -4388,23 +4388,28 @@ jobs:
           python3 "$console" --title "ESP32-S3 stream set" qemu-set.txt
           kill "$qemu" 2>/dev/null || true
 
-      # BUILD ONLY, for the five combinations no step above runs: tdm, i2s,
-      # sd, http and null. Each entry sets one choice over sdkconfig.defaults
-      # and leaves the others at their Kconfig defaults: the I2S sink, the
+      # BUILD ONLY, for the four combinations no step above runs: i2s, sd,
+      # http and null. Each entry sets one choice over sdkconfig.defaults and
+      # leaves the others at their Kconfig defaults: the I2S sink, the
       # partition source, WiFi under the HTTP source.
       #
-      # Four of them drive hardware QEMU does not emulate. The code they share
-      # with the runnable configurations already runs in the QEMU steps above:
+      # Three of them drive hardware QEMU does not emulate. The code they
+      # share with the runnable configurations already runs in the QEMU steps
+      # above:
       #
-      #   * tdm and i2s drive the I2S peripheral, in TDM and in standard mode.
-      #     The conversion both sinks call (ac3forge/interleave.hpp) runs
+      #   * i2s drives the I2S peripheral - standard mode or TDM, decided at
+      #     RUNTIME by the layout it is asked to carry
+      #     (ac3forge/sink_plan.hpp), so one build here compiles both, not one
+      #     each. The conversion it calls (ac3forge/interleave.hpp) runs
       #     through the capture sink - stereo in the streaming and HTTP steps,
       #     8 and 12 TDM slots in the capture and render steps - and is
       #     unit-tested on the host (tests/io/test_interleave.cpp). The model
-      #     of the DMA queue both keep for their sink.* line
+      #     of the DMA queue it keeps for its sink.* line
       #     (ac3forge/dac_queue_model.hpp) runs in no QEMU step, since the
       #     capture sink has no DMA, and is unit-tested on the host as well
-      #     (tests/io/test_dac_queue_model.cpp).
+      #     (tests/io/test_dac_queue_model.cpp). The mode/slot-count
+      #     arithmetic itself (ac3forge/sink_plan.hpp) is unit-tested on the
+      #     host too (tests/io/test_sink_plan.cpp).
       #   * sd drives the SDMMC host. The file layer it shares with the
       #     flash-backed FAT source (main/source/file_common.hpp) runs in the
       #     capture and render steps.
@@ -4412,7 +4417,7 @@ jobs:
       #     decode run over QEMU's OpenCores Ethernet MAC (net/openeth/) in
       #     the HTTP step.
       #
-      # The fifth, null, drives no hardware. It is built here because the
+      # The fourth, null, drives no hardware. It is built here because the
       # QEMU runs above all use the capture sink in its place.
       #
       # What can go wrong in a build nothing runs is that it stops compiling -
@@ -4428,7 +4433,6 @@ jobs:
           . "$IDF_PATH/export.sh"
           cd esp-idf/ac3forge/examples/stream_player
           for combo in \
-            "tdm:CONFIG_AC3FORGE_EXAMPLE_SINK_TDM=y" \
             "i2s:CONFIG_AC3FORGE_EXAMPLE_SINK_I2S=y" \
             "sd:CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD=y" \
             "http:CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP=y" \
