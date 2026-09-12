@@ -220,11 +220,21 @@
 
   // One request per action. No retry: a play sent again could restart it.
   // `why` explains a 409 better than the firmware's words can, when given.
+  // `done` runs after the poll it triggers, not before: `render`'s own
+  // state-change announcement and this one write the same live region, and
+  // a state change landing in that poll must not be left standing over what
+  // the user just did (found investigating a CI flake in `layouts.spec.js`:
+  // a play ending and a layout Apply in the same tick raced, and the
+  // automatic "Finished." silently overwrote the deliberate confirmation).
   async function act(label, method, path, body, done, why) {
     try {
       const r = await call(method, path, body);
-      if (r.status >= 200 && r.status < 300) done();
-      else say(label + ' refused (' + r.status + '): ' + (r.status === 409 && why ? why : r.text), true);
+      if (r.status >= 200 && r.status < 300) {
+        await poll();
+        done();
+        return;
+      }
+      say(label + ' refused (' + r.status + '): ' + (r.status === 409 && why ? why : r.text), true);
     } catch (e) {
       say(label + ': ' + e.message + '.', true);
     }
