@@ -257,6 +257,14 @@ struct EncodedExponents {
 [[nodiscard]] AC3FORGE_EXPORT EncodedExponents encode_exponents(std::span<const std::uint8_t> raw,
                                                                 ExpStrategy strategy);
 
+// Same computation, writing into `out` in place: `out.groups` is resized
+// rather than replaced, so a caller that reuses `out` across calls (an
+// exponent run reused frame to frame, say) reuses its capacity instead of
+// allocating fresh every time. Mirrors decode_exponents' out-span shape;
+// encode_exponents above is now a thin wrapper over this.
+AC3FORGE_EXPORT void encode_exponents_into(std::span<const std::uint8_t> raw, ExpStrategy strategy,
+                                           EncodedExponents& out);
+
 // §7.1.3 normative decode: absolute + grouped values -> per-bin exponents.
 // out.size() is endmant (group padding beyond endmant is discarded).
 AC3FORGE_EXPORT void decode_exponents(std::uint8_t absolute, std::span<const std::uint8_t> groups,
@@ -275,6 +283,12 @@ struct EncodedCouplingExponents {
 
 [[nodiscard]] AC3FORGE_EXPORT EncodedCouplingExponents
 encode_coupling_exponents(std::span<const std::uint8_t> raw, ExpStrategy strategy);
+
+// Same computation as encode_exponents_into, for the coupling channel's
+// shape: `out.groups` is resized in place rather than replaced.
+AC3FORGE_EXPORT void encode_coupling_exponents_into(std::span<const std::uint8_t> raw,
+                                                     ExpStrategy strategy,
+                                                     EncodedCouplingExponents& out);
 
 // The matching normative decode: fills one exponent per coupling bin.
 AC3FORGE_EXPORT void decode_coupling_exponents(std::uint8_t cplabsexp,
