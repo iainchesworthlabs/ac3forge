@@ -838,12 +838,21 @@ jobs:
       contents: write
       actions: read
     with:
+      # PR CI is the portable library gate. The wider OS, CPU and embedded
+      # surface runs in platform-validation.yml after main changes, nightly,
+      # or when a PR changes platform-facing code. Keeping those lanes apart
+      # prevents scarce macOS/ARM/hosted capacity from delaying a library-only
+      # merge decision for unrelated changes.
+      validation_scope: library
       # Computed here, not inside _build.yml: github.event_name/github.ref
       # reflect the reusable workflow's own call context once inside it, and
       # this caller site is the unambiguous place to ask "is this a direct
       # push to main" - see persist_quality_trend's own
       # description in _build.yml.
-      persist_quality_trend: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      # A partial library lane must not append an incomplete cross-platform
+      # quality sample. platform-validation.yml publishes the complete weekly
+      # baseline after its all-lanes scheduled run.
+      persist_quality_trend: false
       quality_trend_branch: ${{ github.ref_name }}
     secrets:
       # Forward the Atmos object-signing key so build-android bundles it and the

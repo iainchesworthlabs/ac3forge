@@ -4,24 +4,18 @@
 # does npm/pip/github-actions (see .github/dependabot.yml).
 #
 # Visible-only by design (fail-on-vuln: false): findings land in the
-# Security > Code scanning tab for both the PR and scheduled scans, but don't
-# block merges. dependency-review.yml is this repo's one blocking dependency
-# check - see .github/branch-protection.md. Modelled on CountdownSolver's
+# Security > Code scanning tab, but don't block merges. dependency-review.yml
+# is this repo's one blocking dependency check - see
+# .github/branch-protection.md. Modelled on CountdownSolver's
 # .github/workflows/osv-scanner.yml.
 name: OSV-Scanner
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   schedule:
-    # Weekly, offset from the other Monday weeklies (zizmor 03:50, scorecard
-    # 04:00) so no two land on the runner queue in the same minute. The
-    # nightly analysis crons sit earlier, at 02:17 (codeql.yml) and 02:23
-    # (msvc-analysis.yml) - see docs/ci-self-hosted-runners.md "Nightly
-    # analysis window".
-    - cron: "45 3 * * 1"
+    # Daily full-dependency baseline. Dependency Review remains the small,
+    # required PR-time gate; this visible-only scan should not consume a
+    # hosted slot for every source-only PR.
+    - cron: "45 3 * * *"
   workflow_dispatch:
 
 # Deliberately minimal: every job below declares its own full permissions set
@@ -31,25 +25,12 @@ on:
 permissions:
   contents: read
 
-jobs:
-  scan-pr:
-    # vars.PAUSE_NONESSENTIAL_CI: a temporary, reversible-by-variable pause on
-    # non-required PR-time checks during a merge-queue drain, freeing hosted
-    # runner concurrency for the checks that actually gate merging (see
-    # .github/branch-protection.md's required list, which this is not on).
-    # scan-scheduled below is untouched, so main still gets this weekly
-    # regardless. Clear/remove the variable to revert - no code change needed.
-    if: github.event_name == 'pull_request' && vars.PAUSE_NONESSENTIAL_CI != 'true'
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
-    with:
-      fail-on-vuln: false
+concurrency:
+  group: osv-scanner-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
-  scan-scheduled:
-    if: github.event_name != 'pull_request'
+jobs:
+  scan:
     permissions:
       actions: read
       contents: read
