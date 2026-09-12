@@ -113,6 +113,21 @@ release packaging.
   holds each slot to the host's level within 1% + 20, the silent ones at exactly zero. Playing it found two faults in the player,
   fixed: a stream with two programmes had both played, a frame of each, and now plays its first;
   and a stream at 44.1 or 32 kHz played at the wrong speed, and is now refused.
+- **The ESP32 player can hold a play's first unit** (`planning/esp32-714-realtime.md`, which also
+  has a stage-by-stage profile of a 7.1.4 frame on the board and what each change measured
+  there). With `PlayerConfig::hold_first_unit` set, the first access unit waits until the second
+  has decoded, so the sink starts with two frames queued rather than one
+  (`ac3forge/unit_hold.hpp`, and the `ac3forge/block_ring.hpp` it keeps the unit in, both tested
+  on the host). A play's first frames decode more slowly than the rest, and on an ESP32-S3
+  playing 7.1.4 over WiFi they ran the DAC dry. The streaming example's
+  `CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT` selects it, and `sdkconfig.psram` turns it on together
+  with a 32 KB instruction cache, which takes 3.1 ms off the decode of a 7.1.4 frame at 2.0 and
+  3.8 ms off a twelve-slot frame for 16 KB of internal SRAM. With the output stage folding a block
+  at a time, `714-walk.ec3` and `714-tones.ec3` then play at 2.0 over WiFi with no block reaching
+  an empty queue. CI's `sdkconfig.ci` plays through the hold. The component's `player.cpp` joins
+  the `-O2` sources under `AC3FORGE_MINIMAL_HOT_O2`, and the example compiles the bare-metal
+  probe's stage-timer backend where the repository has it, so
+  `idf.py -DAC3FORGE_STAGE_TIMERS=ON build` gives each play a line per decoder stage.
 
 **Crucible desktop application**
 
@@ -738,6 +753,15 @@ release packaging.
 
 **ESP32 / bare-metal**
 
+- **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data line; an
+  ESP32-S3 carries four** (`esp-idf/ac3forge/examples/stream_player/main/sink/tdm/`). An S3 TDM
+  frame holds at most 128 bits, because the peripheral's half-frame length is a 6-bit register
+  field, and ESP-IDF v6.1 refuses more. The sink had never run on hardware, and CI's eight- and
+  twelve-slot shapes use the `capture` sink, which configures no peripheral, so a board run on
+  2026-09-11 was the first to try one. The sink now refuses a frame over 128 bits and says why,
+  and the Kconfig help, both READMEs, `docs/platforms/esp32.md` and the ESP32 planning pages say
+  what the part carries: four slots of 32 bits or eight of 16 on a line, twice that across the
+  two I2S controllers.
 - **A panic or a reset after `result=pass` passed every ESP32 leg CI runs under QEMU**
   (`tools/checks/check_esp_console.py`). The two probe runners, `run_esp32s3_probe.sh` and
   `run_esp32c3_probe.sh`, and the streaming player's streaming, capture, render and HTTP steps in

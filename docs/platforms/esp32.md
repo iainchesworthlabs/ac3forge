@@ -150,7 +150,7 @@ neither a partition nor I2S:
 | Source | Sink |
 |---|---|
 | `partition` — flash (default) | `i2s` — stereo DAC (default), 32-bit slots, master or slave |
-| `sd` — SD card over SDMMC | `tdm` — up to sixteen channels on one data line |
+| `sd` — SD card over SDMMC | `tdm` — TDM on one data line, at most four 32-bit slots on an ESP32-S3 |
 | `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
 | `http` — an HTTP body over WiFi | `null` — counts blocks |
 
@@ -293,6 +293,13 @@ scaling says the decode is compute-bound, not stalled on the flash cache, so
 configuration had nothing further to give; anything more had to come out of the
 code. (The `ac3` row is from the stage-timed run described next, whose markers
 cost it about 0.2 ms; the other seven are from a plain build.)
+
+The instruction cache stayed at its default 16 KB for all of this, and in the
+probe that held. In the streaming player's network shape, where WiFi and the
+rest of the player run beside the decoder, it did not: at 32 KB a 7.1.4 frame
+decoded 3.1 ms faster folded to 2.0 and 3.8 ms faster onto twelve slots
+([7.1.4 in real time](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md)).
+The probe has not been measured at 32 KB.
 
 ### Where the time went
 
@@ -971,9 +978,12 @@ run, under QEMU.
   still structural: a dependent's channels go through the access unit's
   own vectors, 73 KB at the peak, where writing them straight into their
   output slots would remove them; PSRAM for the staging remains the blunt
-  alternative. A TDM16 sink's DMA ring is 16 KB a block and WiFi wants
-  50 KB, and at 0.90x the second core stops being optional for anything
-  that decodes 7.1.4 and does something else.
+  alternative. One S3 I2S line carries at most four 32-bit TDM slots, because a
+  frame holds 128 bits, so twelve need both controllers at 16 bits or a TDM
+  device fed by several lines; a twelve-slot DMA queue competes with WiFi for
+  internal RAM; and at 0.90x the second core stops being optional for anything
+  that decodes 7.1.4 and does something else
+  (`planning/esp32-714-realtime.md` in the repository).
 - **The second core** was the lever the earlier estimates ranked first. It was
   not needed for stereo or 5.1, and the breakdown says why it would have
   disappointed: the stages that dominated were serial software floating point,

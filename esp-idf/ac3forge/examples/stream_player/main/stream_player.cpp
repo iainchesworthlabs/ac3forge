@@ -62,6 +62,19 @@
 #include "audio_sink.hpp"
 #include "byte_source.hpp"
 
+// The example's half of the stage timers. main/CMakeLists.txt links the
+// bare-metal probe's backend (apps/baremetal/stage_timers.cpp) when the
+// repository is there to provide it; it reads this clock, and its report
+// replaces the stand-ins below, which are what links in a component archive
+// that carries no apps/. Built with AC3FORGE_STAGE_TIMERS, each play ends with a
+// play.stage[<zone>] line per decoder stage; built without, the library enters
+// no zones and the report prints nothing.
+namespace ac3probe {
+std::uint64_t now_us() { return static_cast<std::uint64_t>(esp_timer_get_time()); }
+[[gnu::weak]] void reset_stages() {}
+[[gnu::weak]] void report_stages(const char* /*codec*/, int /*frames*/) {}
+}  // namespace ac3probe
+
 namespace {
 
 constexpr std::uint32_t kSampleRate = 48000;
@@ -303,6 +316,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
                 static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
     g_sink.reset();
     session = Session{};
+    ac3probe::reset_stages();
 
     ac3forge::PlayerConfig config;
     xSemaphoreTake(g_player_mutex, portMAX_DELAY);
@@ -317,6 +331,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     config.fetch_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_FETCH_CORE);
     config.decode_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE);
     config.decode_stack_bytes = CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES;
+    config.hold_first_unit = CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT != 0;
     config.max_passes = kMaxLaps;
     config.volume = g_volume.load();
     config.sample_rate_hz = kSampleRate;
@@ -378,6 +393,9 @@ void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
                 static_cast<unsigned long>(stats.decode_stack_free),
                 static_cast<unsigned long>((stats.frames_played * kFrameDurationUs) / 1000),
                 static_cast<unsigned long>(wall_us / 1000));
+    // Where the play's frames went, stage by stage, when the library was built
+    // with AC3FORGE_STAGE_TIMERS; nothing otherwise.
+    ac3probe::report_stages("play", static_cast<int>(stats.frames_played));
     std::printf("result=%s\n", (stats.frames_played > 0 && !stats.failed) ? "pass" : "fail");
 }
 

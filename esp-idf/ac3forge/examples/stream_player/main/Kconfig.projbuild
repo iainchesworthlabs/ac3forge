@@ -57,6 +57,15 @@ config AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS
     int "I2S DMA descriptors"
     default 4
     range 2 64
+    help
+        With AC3FORGE_EXAMPLE_I2S_DMA_FRAMES, how much audio the DMA queue
+        holds: the default is about 21 ms. The player hands the sink a frame's
+        six blocks together, 32 ms, and a 7.1.4 stream folded to 2.0 from a
+        local source needs the queue to hold them and cover the next frame's
+        decode too: twelve descriptors of 256 frames, 64 ms, for 16 KB more of
+        internal SRAM. On a DevKitC-1 with no PSRAM, 714-tones.ec3 from the
+        partition had 251 of 1,512 blocks reach an empty queue at the default,
+        and none at twelve.
 
 config AC3FORGE_EXAMPLE_I2S_DMA_FRAMES
     int "Sample frames per I2S DMA descriptor"
@@ -120,9 +129,12 @@ config AC3FORGE_EXAMPLE_TDM_SLOTS
         How many slots the TDM frame carries - a property of the BOARD, not of
         the audio. A DAC is wired for a fixed number and does not renegotiate
         because a layout happens to be 5.1, so slots the layout does not fill
-        are written as zeros rather than skipped. Eight slots of 32 bits at
-        48 kHz is a 12.3 MHz bit clock and sixteen is 24.6 MHz; the S3's
-        peripheral does both, the DAC's datasheet says whether it follows. The
+        are written as zeros rather than skipped. The tdm sink sends 32-bit
+        slots, and an ESP32-S3 TDM frame holds at most 128 bits, so the tdm
+        sink takes at most 4 and refuses more when it opens. The capture sink,
+        which converts without a peripheral, takes up to 16, which is how CI
+        checks a twelve-slot conversion. Four slots of 32 bits at 48 kHz is a
+        6.1 MHz bit clock; the DAC's datasheet says whether it follows. The
         layout (AC3FORGE_EXAMPLE_LAYOUT) must have no more slots than this.
 
 # WHERE THE BYTES COME FROM. A directory CMake picks, the mirror of the sink
@@ -346,6 +358,20 @@ config AC3FORGE_EXAMPLE_DECODE_STACK_BYTES
         under QEMU on 2026-09-10, an AC-3 5.1 decode left 20,604 of 32,768
         spare. The default keeps the probe's margin; a shape that is short of
         heap can spend some of it, knowing the number.
+
+# A PLAY'S START - PlayerConfig::hold_first_unit. The first access unit held
+# until the second has decoded, so the sink starts with two frames queued;
+# planning/esp32-714-realtime.md, decision 14, has why 7.1.4 over WiFi wants it.
+config AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT
+    int "Hold a play's first unit until its second has decoded (1) or not (0)"
+    default 0
+    range 0 1
+    help
+        A play's first frames decode more slowly than the rest, and with only
+        the first frame queued a 7.1.4 stream played over WiFi ran the DAC dry
+        in them. Holding the first unit costs 32 ms before a play is heard, and
+        a copy of the unit while it is held: 1 KB a channel for each of its six
+        blocks, in PSRAM when the part has it.
 
 # THE CONTROL SURFACE - ac3forge::Control, esp-idf/ac3forge/include/ac3forge/
 # control.hpp: GET /status, POST /play with a location, POST /stop, POST /volume.

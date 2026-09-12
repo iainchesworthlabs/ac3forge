@@ -133,6 +133,16 @@ struct PlayerConfig {
     std::uint32_t decode_stack_bytes = 32768;
     std::uint32_t fetch_stack_bytes = 8192;
 
+    // Holds each play's first access unit until the second has decoded, so
+    // the sink starts with two frames queued rather than one. A play's first
+    // frames decode more slowly than the rest, and with one frame queued an
+    // ESP32-S3 playing 7.1.4 over WiFi ran its DAC dry in each play's first
+    // ten frames and never after (planning/esp32-714-realtime.md, decision
+    // 14). Costs a frame more before a play is heard - 32 ms at 48 kHz - and
+    // a copy of the unit while it is held, 1 KB a channel for each of its six
+    // blocks, in PSRAM where the part has it and freed once the unit plays.
+    bool hold_first_unit = false;
+
     // Passes through the stream before stopping. 0 plays until the source
     // cannot rewind. A source that cannot rewind ends the run after one pass
     // whatever this says.
