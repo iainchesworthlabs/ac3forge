@@ -205,7 +205,11 @@
     if (!filled) {
       filled = true;
       if (str(s.location) && !$('location-input').value) $('location-input').value = s.location;
-      if (str(s.layout) && !$('layout-input').value) $('layout-input').value = s.layout;
+      // The device keeps 95 characters of a layout's text and cuts the rest, so a text
+      // that long may be part of one. Show it, but leave it out of the field, where
+      // Apply would send the part as the whole layout.
+      if (str(s.layout) && s.layout.length < 95 && !$('layout-input').value)
+        $('layout-input').value = s.layout;
     }
     if (watch && s.location === watch.location) watch = null;
     if (watch && Date.now() >= watch.until) {
