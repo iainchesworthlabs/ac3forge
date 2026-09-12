@@ -64,30 +64,70 @@ const ROUTES = [
     'PUT /layout',
 ];
 
-// The two streams the model plays. The E-AC-3 one is the WASM page's demo,
-// as CI's HTTP step plays it; the AC-3 one is the example's own sample.
+// The streams the model plays, with the channels each codes. The E-AC-3 one is
+// the WASM page's demo, as CI's HTTP step plays it; the AC-3 one is the
+// example's own sample; the 7.1.4 one is the stream set's walk
+// (esp-idf/ac3forge/examples/stream_player/www/).
 const STREAMS = {
-    eac3: { codec: 'E-AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31, objects: true },
-    ac3: { codec: 'AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31, objects: false },
+    eac3: { codec: 'E-AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31, objects: true, coded: 'L,C,R,Ls,Rs,LFE' },
+    ac3: { codec: 'AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31, objects: false, coded: 'L,C,R,Ls,Rs,LFE' },
+    eac3_714: {
+        codec: 'E-AC-3', acmod: 7, channels: 12, substreams: 3, dialnorm: -31, objects: false,
+        coded: 'L,C,R,Ls,Rs,Lrs,Rrs,Vhl,Vhr,Lts,Rts,LFE',
+    },
 };
 
-// Table E2.5's location names, and the other tokens OutputLayout's list
-// takes (esp-idf/ac3forge/include/ac3forge/layout.hpp).
-const TOKENS = new Set(
-    'l c r ls rs lc rc lrs rrs cs ts lsd rsd lw rw vhl vhr vhc lts rts lfe lfe2 -'.split(' '),
-);
+// Table E2.5's location names as the firmware writes them, and the other
+// tokens OutputLayout's list takes (esp-idf/ac3forge/include/ac3forge/layout.hpp).
+const LOCATIONS = 'L C R Ls Rs Lc Rc Lrs Rrs Cs Ts Lsd Rsd Lw Rw Vhl Vhr Vhc Lts Rts LFE LFE2'.split(' ');
+const TOKENS = new Set([...LOCATIONS.map((n) => n.toLowerCase()), '-']);
+
+// OutputLayout's names: F.L.H, the slots ring, heights, LFE.
+const RING = { 1: 'C', 2: 'L R', 3: 'L C R', 4: 'L R Ls Rs', 5: 'L C R Ls Rs', 7: 'L C R Ls Rs Lrs Rrs', 9: 'L C R Ls Rs Lrs Rrs Lw Rw' };
+const HEIGHTS = { 0: '', 2: 'Vhl Vhr', 4: 'Vhl Vhr Lts Rts', 6: 'Vhl Vhr Vhc Lts Rts Ts' };
+const FEEDS = { 0: '', 1: 'LFE', 2: 'LFE LFE2' };
+
+// A layout's slots by the names the firmware gives them ("-" for an empty
+// one), or null if OutputLayout would not parse it.
+function speakersOf(text) {
+    const name = /^(\d)\.(\d)(?:\.(\d))?$/.exec(text);
+    if (name) {
+        const parts = [RING[name[1]], HEIGHTS[name[3] || 0], FEEDS[name[2]]];
+        return parts.includes(undefined) ? null : parts.join(' ').split(' ').filter(Boolean);
+    }
+    const tokens = text.split(',').map((t) => t.trim());
+    const known = (t) => TOKENS.has(t.toLowerCase()) || /^-?\d+(\.\d+)?\/-?\d+(\.\d+)?$/.test(t);
+    if (tokens.length > 16 || !tokens.every(known)) {
+        return null;
+    }
+    return tokens.map((t) => LOCATIONS.find((n) => n.toLowerCase() === t.toLowerCase()) || t);
+}
 
 // How many slots a layout needs, or 0 if OutputLayout would not parse it.
 function slotsOf(text) {
-    const name = /^(\d)\.(\d)(?:\.(\d))?$/.exec(text);
-    if (name) {
-        const [ring, lfe, height] = [Number(name[1]), Number(name[2]), Number(name[3] || 0)];
-        const ok = [1, 2, 3, 4, 5, 7, 9].includes(ring) && lfe <= 2 && [0, 2, 4, 6].includes(height);
-        return ok ? ring + lfe + height : 0;
+    const speakers = speakersOf(text);
+    return speakers ? speakers.length : 0;
+}
+
+// How the player serves a layout (planning/esp32-device-ui.md, "The output
+// layout"): the decoder's fold for two full-range speakers or one and nothing
+// else; objects placed when the layout has heights and the stream objects;
+// the coded channels placed otherwise, with the speakers they do not reach
+// left silent. A channel with no slot of its own is spread, which the model
+// does not work out: it then reports nothing silent.
+function served(kind, layout) {
+    const speakers = (speakersOf(layout) || []).filter((n) => n !== '-');
+    const lfe = speakers.filter((n) => n.startsWith('LFE'));
+    const height = speakers.some((n) => /^(Vh|Lts|Rts|Ts)/.test(n) || /\/[1-9]/.test(n));
+    if (lfe.length === 0 && !height && speakers.length <= 2) {
+        return { render: speakers.length === 1 ? 'mono' : 'loro', silent: '' };
     }
-    const tokens = text.split(',').map((t) => t.trim().toLowerCase());
-    const known = (t) => TOKENS.has(t) || /^-?\d+(\.\d+)?\/-?\d+(\.\d+)?$/.test(t);
-    return tokens.length <= 16 && tokens.every(known) ? tokens.length : 0;
+    if (kind.objects && height) {
+        return { render: 'objects', silent: '' };
+    }
+    const coded = kind.coded.split(',');
+    const spread = coded.some((n) => !speakers.includes(n) && !n.startsWith('LFE'));
+    return { render: 'channels', silent: spread ? '' : speakers.filter((n) => !coded.includes(n)).join(',') };
 }
 
 function idleStats() {
@@ -121,6 +161,7 @@ function statusJson(d) {
         ['location', JSON.stringify(d.location)],
         ['source', JSON.stringify(d.source)],
         ['sink', JSON.stringify(d.sink)],
+        ['sink_slots', String(d.sinkSlots)],
         ['layout', JSON.stringify(d.layout)],
         ['volume', d.volume.toFixed(3)],
         ['stream', stream ? JSON.stringify(stream) : 'null'],
@@ -184,7 +225,12 @@ async function startStub() {
             fetched_bytes: s.frames * 1792,
             ring_low: 6144,
         });
-        p.stream = { ...p.kind, objects_rendered: p.kind.objects && slotsOf(device.layout) > 8, slots: p.slots };
+        const k = p.kind;
+        p.stream = {
+            codec: k.codec, acmod: k.acmod, channels: k.channels, substreams: k.substreams, dialnorm: k.dialnorm,
+            objects: k.objects, objects_rendered: p.served.render === 'objects', slots: p.slots,
+            layout: p.layout, render: p.served.render, coded: k.coded, silent: p.served.silent,
+        };
         if (p.fails && s.frames >= p.total / 2) {
             Object.assign(s, { finished: true, failed: true, why: 'decode', error: 5 });
         } else if (s.frames >= p.total) {
@@ -216,8 +262,11 @@ async function startStub() {
             device.state = 'failed';
             return;
         }
+        const kind = location.endsWith('.ac3') ? STREAMS.ac3 : location.includes('714') ? STREAMS.eac3_714 : STREAMS.eac3;
         device.player = {
-            kind: location.endsWith('.ac3') ? STREAMS.ac3 : STREAMS.eac3,
+            kind,
+            layout: device.layout,
+            served: served(kind, device.layout),
             slots: slotsOf(device.layout),
             stream: null,
             stats: idleStats(),
@@ -358,4 +407,4 @@ async function startStub() {
     };
 }
 
-module.exports = { startStub, REPLIES, ROUTES, POLICY, UI_DIR, slotsOf };
+module.exports = { startStub, statusJson, REPLIES, ROUTES, POLICY, UI_DIR, slotsOf, speakersOf, served };

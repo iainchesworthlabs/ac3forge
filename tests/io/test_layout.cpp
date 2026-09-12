@@ -11,6 +11,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <optional>
 #include <span>
@@ -455,4 +456,68 @@ TEST_CASE("a folded block goes to the speakers by name, then by order", "[io][la
     REQUIRE(three.at(0) == Approx(0.1F));
     REQUIRE(three.at(1) == 0.0F);
     REQUIRE(three.at(2) == Approx(0.2F));
+}
+
+TEST_CASE("a slot's name, and the names of a set of slots", "[io][layout]") {
+    const auto named = *OutputLayout::parse("7.1.4");
+    REQUIRE(named.connected_slots() == 0x0FFF);
+    std::array<char, 32> name{};
+    REQUIRE(named.slot_name(5, name) == 3);
+    REQUIRE(std::string_view{name.data()} == "Lrs");
+
+    // A list names each slot as it was written: a location, an angle, an
+    // empty slot. "lfe" is Table E2.5's LFE, and is named so.
+    const auto listed = *OutputLayout::parse("L,-110/0,-,lfe");
+    REQUIRE(listed.connected_slots() == 0b1011);
+    REQUIRE(listed.slot_name(0, name) == 1);
+    REQUIRE(std::string_view{name.data()} == "L");
+    (void)listed.slot_name(1, name);
+    REQUIRE(std::string_view{name.data()} == "-110/0");
+    (void)listed.slot_name(2, name);
+    REQUIRE(std::string_view{name.data()} == "-");
+    (void)listed.slot_name(3, name);
+    REQUIRE(std::string_view{name.data()} == "LFE");
+
+    std::array<char, 64> names{};
+    named.names_of(static_cast<std::uint16_t>((1U << 5) | (1U << 6) | (1U << 11)), names);
+    REQUIRE(std::string_view{names.data()} == "Lrs,Rrs,LFE");
+    named.names_of(0, names);
+    REQUIRE(std::string_view{names.data()}.empty());
+    // A name that would not fit whole is left out, with every one after it.
+    std::array<char, 8> small{};
+    named.names_of(0x0FFF, small);
+    REQUIRE(std::string_view{small.data()} == "L,C,R");
+}
+
+TEST_CASE("the slots a bed reaches, and the speakers it leaves silent", "[io][layout][render]") {
+    // 5.1 onto 7.1.4: each channel to its own slot, and the rears and the
+    // heights reached by nothing - the renderer does not upmix.
+    const auto layout = *OutputLayout::parse("7.1.4");
+    LayoutRenderer renderer{layout};
+    renderer.set_bed(coded(k51));
+    // Slots: L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE.
+    const std::uint16_t reached = renderer.bed_slots();
+    REQUIRE(reached == 0b1000'0001'1111);
+    REQUIRE(renderer.bed_slots(true) == 0b1000'0000'0000);  // the LFE alone
+    std::array<char, 64> names{};
+    layout.names_of(static_cast<std::uint16_t>(layout.connected_slots() & ~reached), names);
+    REQUIRE(std::string_view{names.data()} == "Lrs,Rrs,Vhl,Vhr,Lts,Rts");
+
+    // 7.1 onto 5.1: the rears spread over the surrounds, so every speaker the
+    // room has is reached.
+    const auto room = *OutputLayout::parse("5.1");
+    LayoutRenderer spread{room};
+    spread.set_bed(coded(k71));
+    REQUIRE(spread.bed_slots() == room.connected_slots());
+}
+
+TEST_CASE("the slots objects reach", "[io][layout][render]") {
+    LayoutRenderer renderer{*OutputLayout::parse("5.1.4")};
+    // Slots: L C R Ls Rs Vhl Vhr Lts Rts LFE.
+    const std::array<ac3::oba::DisplayObject, 2> objects = {
+        object_at(0.5, 0.0, 0.0),              // the front wall's centre: C alone
+        object_at(0.5, 0.5, 1.0, 0.0, false),  // inactive, so nowhere
+    };
+    renderer.set_objects(objects);
+    REQUIRE(renderer.object_slots() == 0b10);
 }

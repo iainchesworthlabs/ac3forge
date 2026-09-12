@@ -4264,6 +4264,78 @@ jobs:
           python3 "$console" --title "ESP32-S3 web page" qemu-ui.txt
           kill "$qemu" 2>/dev/null || true
 
+      # The stream set (esp-idf/ac3forge/examples/stream_player/www/,
+      # planning/esp32-stream-set.md) over the HTTP source, rendered onto
+      # 7.1.4: sdkconfig.ci-http714 is the HTTP shape with the capture sink's
+      # twelve-slot TDM conversion, levels as coded and objects as their bed,
+      # booting on the set's walk. tools/checks/check_stream_set.py holds the
+      # boot play, and then every stream the shape can carry played one POST
+      # /play at a time, to www/streams.json: each slot's level within 1% + 20
+      # of the host's decode and the silent ones at exactly 0, the access units,
+      # no bytes skipped for sync, and what GET /status says about the play; a
+      # stream the manifest marks refused must fail for the reason it names.
+      # Then the web page on this twelve-slot board, and the console.
+      - name: Play the stream set onto 7.1.4 over QEMU's Ethernet
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-http714"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          www="$GITHUB_WORKSPACE/esp-idf/ac3forge/examples/stream_player/www"
+          python3 -m http.server 8000 --bind 0.0.0.0 --directory "$www" >/dev/null 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          cd esp-idf/ac3forge/examples/stream_player
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          (cd build && esptool --chip esp32s3 merge-bin --output qemu_flash.bin --pad-to-size 16MB @flash_args >/dev/null)
+          PYTHONPATH="$IDF_PATH/tools" python3 -c "from idf_py_actions.qemu_ext import QEMU_TARGETS; open('build/qemu_efuse.bin','wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+          qemu_bin=$(find "${IDF_TOOLS_PATH:-$HOME/.espressif}/tools/qemu-xtensa" -name qemu-system-xtensa -type f | head -1)
+          : > qemu-set.txt
+          "$qemu_bin" -M esp32s3 -m 32M \
+            -drive file=build/qemu_flash.bin,if=mtd,format=raw \
+            -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
+            -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
+            -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
+            -nic user,model=open_eth,hostfwd=tcp::8080-:80 \
+            -nographic -monitor none -serial file:qemu-set.txt &
+          qemu=$!
+          trap 'kill "$qemu" 2>/dev/null || true; kill "$server" 2>/dev/null || true' EXIT
+
+          # fail() checks the console first, as the HTTP step's does, so a check
+          # that trips because the part panicked is reported as the panic.
+          console="$GITHUB_WORKSPACE/tools/checks/check_esp_console.py"
+          checker="$GITHUB_WORKSPACE/tools/checks/check_stream_set.py"
+          fail() { python3 "$console" --title "ESP32-S3 stream set" qemu-set.txt || true; echo "::error title=ESP32-S3 stream set::$1" >&2; grep -E 'result=|error|source:|player:|stream:' qemu-set.txt >&2 || true; exit 1; }
+
+          # The boot play: the walk, one speaker at a time.
+          for _ in $(seq 1 60); do
+            if grep -q '^result=' qemu-set.txt; then break; fi
+            sleep 5
+          done
+          grep -q '^result=pass' qemu-set.txt || fail "the boot play did not report result=pass"
+          python3 "$checker" check "$www/streams.json" qemu-set.txt || fail "the boot play's levels were not the host's"
+
+          # The rest of the set, one play at a time.
+          python3 "$checker" play "$www/streams.json" qemu-set.txt \
+            --device http://127.0.0.1:8080 --base http://10.0.2.2:8000 \
+            || fail "a play of the stream set was not the host's (the lines above say which)"
+
+          # What the page says each output layout does with each stream, on
+          # this board: device-ui/board/layouts.spec.js.
+          (cd "$GITHUB_WORKSPACE/apps/wasm/tests" && AC3FORGE_DEVICE_URL=http://127.0.0.1:8080/ AC3FORGE_STREAM_BASE=http://10.0.2.2:8000 CI=1 npm run test:board-layouts) || fail "the page did not report the layouts (Playwright's output is above)"
+
+          # Then the console, once the page's last play has ended.
+          settled=
+          for _ in $(seq 1 30); do
+            if curl -s -m 10 http://127.0.0.1:8080/status | grep -qE '"state":"(finished|failed|stopped)"'; then settled=1; break; fi
+            sleep 1
+          done
+          [ -n "$settled" ] || fail "/status did not report the play as ended"
+          python3 "$console" --title "ESP32-S3 stream set" qemu-set.txt
+          kill "$qemu" 2>/dev/null || true
+
       # BUILD ONLY, for the five combinations no step above runs: tdm, i2s,
       # sd, http and null. Each entry sets one choice over sdkconfig.defaults
       # and leaves the others at their Kconfig defaults: the I2S sink, the
@@ -4289,7 +4361,7 @@ jobs:
       #     the HTTP step.
       #
       # The fifth, null, drives no hardware. It is built here because the
-      # four QEMU runs above all use the capture sink in its place.
+      # QEMU runs above all use the capture sink in its place.
       #
       # What can go wrong in a build nothing runs is that it stops compiling -
       # an IDF component is renamed, a driver API changes shape - and CI should
@@ -4336,6 +4408,7 @@ jobs:
             esp-idf/ac3forge/examples/stream_player/qemu-capture.txt
             esp-idf/ac3forge/examples/stream_player/qemu-render.txt
             esp-idf/ac3forge/examples/stream_player/qemu-http.txt
+            esp-idf/ac3forge/examples/stream_player/qemu-set.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.

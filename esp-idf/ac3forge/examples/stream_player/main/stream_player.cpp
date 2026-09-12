@@ -319,6 +319,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     config.decode_stack_bytes = CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES;
     config.max_passes = kMaxLaps;
     config.volume = g_volume.load();
+    config.sample_rate_hz = kSampleRate;
 
     auto player = std::make_unique<ac3forge::Player>(config, g_source, g_sink);
     if (!player->start()) {
@@ -427,6 +428,7 @@ ac3forge::ControlHandlers control_handlers() {
     h.location = []() { return std::string{player::source_location()}; };
     h.source_name = []() { return player::source_name(); };
     h.sink_name = []() { return player::sink_name(); };
+    h.sink_slots = []() { return player::sink_slots(); };
     h.state = []() { return g_state.load(); };
     return h;
 }

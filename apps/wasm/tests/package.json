@@ -9,7 +9,8 @@
     "test": "playwright test",
     "test:device-ui": "playwright test --config device-ui.config.js --project host",
     "coverage:device-ui": "c8 report --temp-directory test-results/device-ui-coverage/tmp --reports-dir test-results/device-ui-coverage --reporter text --reporter lcov --allowExternal --src ../../../esp-idf/ac3forge/ui --all --check-coverage --statements 98 --lines 98 --functions 98 --branches 90",
-    "test:board": "playwright test --config device-ui.config.js --project board"
+    "test:board": "playwright test --config device-ui.config.js --project=board board/smoke.spec.js",
+    "test:board-layouts": "playwright test --config device-ui.config.js --project=board board/layouts.spec.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
