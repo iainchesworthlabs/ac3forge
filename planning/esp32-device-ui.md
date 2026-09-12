@@ -229,6 +229,14 @@ mutex onto the server task's stack for each poll: the `/status` handler's deepes
 flash, and a mask the decode task updates once per access unit. Nothing is allocated during a
 play that was not allocated before. The heap at the peak of a poll was not measured again.
 
+(A later change adds ":small"/height-realization suffixes to `OutputLayout`'s list grammar. It
+does not raise `OutputLayout::kTextBytes` past 96: a QEMU remeasurement on 2026-09-12 found that
+224 boot-loops the example on a stack overflow in the main task, where `app_main` holds a
+`PlayerConfig` - and with it an `OutputLayout` by value - on a stack already tight enough that the
+extra 128 bytes was enough by itself. The figures above stand unchanged; a fully decorated list
+longer than 96 characters loses its tail in `text()`'s echo rather than the configuration itself,
+which is parsed from the caller's full string before any truncation happens.)
+
 ## How the page updates
 
 By polling `GET /status`:
@@ -593,7 +601,9 @@ run as root, so Playwright can install Chromium's system libraries).
     what "can it upmix?" asks. Cost of (a), as built: 115 bytes more JSON per poll
     for a 7.1.4 stream and at most 420; 356 bytes more in `StreamInfo`, copied onto the server
     task's stack per poll, which took the `/status` handler's deepest use from 2,020 to 2,288
-    bytes of 6,144; and a mask the decode task updates once per access unit.
+    bytes of 6,144; and a mask the decode task updates once per access unit. (A later change adds
+    bass-management and height-realization suffixes to the list grammar without raising
+    `OutputLayout::kTextBytes` past 96 - see the "What it costs" paragraph above.)
 
 15. **How the page explains a layout.** (a) **rows in Now for this play's output, the speakers
     it leaves silent and the next play's layout; a description on the field; and a closed "What
