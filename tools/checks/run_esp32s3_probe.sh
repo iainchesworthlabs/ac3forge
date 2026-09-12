@@ -225,11 +225,51 @@ echo
 echo "== running ac3probe on qemu-system-xtensa (esp32s3) =="
 # Unlike the arm-none-eabi leg, there is no semihosting exit: an ESP-IDF
 # application returns from app_main into a FreeRTOS task that is then deleted,
-# and the system goes on idling forever. So QEMU is killed on a timeout and the
-# verdict is read from what it printed - which means a timeout here is the
-# EXPECTED outcome, not a failure, and the gate below is on the captured output
-# rather than on an exit code.
-timeout 300 idf.py qemu 2>&1 | tee -a "$OUTPUT" || true
+# and the system goes on idling forever. So QEMU has to be ended from outside,
+# and TIMEOUT_SECS below is still the ultimate ceiling if nothing ever shows up
+# - a real hang gets exactly the outcome it always has.
+#
+# But CI measurements (2026-09-11, three runs) showed this step spending
+# ~300s of ~380-400s doing nothing: the probe prints its result within the
+# first 15-20s of boot, and the remaining ~280s was pure idle wait built into
+# the old `timeout 300 idf.py qemu`, which never ends on its own. Two other
+# steps in this job's workflow (.github/workflows/_build.yml's "Fetch and
+# decode an E-AC-3 stream over QEMU's Ethernet" and "Drive the web page on the
+# emulated board") already prove the alternative: they hand-launch
+# qemu-system-xtensa and kill it as soon as their own verdict lands, and both
+# finish in under two minutes, build included.
+#
+# This does the same thing without giving up the timeout as a safety net: a
+# background watcher tails $OUTPUT and pkills the qemu binary once it has seen
+# a verdict AND then kept watching for SETTLE_SECS more - long enough to give
+# the "second boot" the comment above check_esp_console.py describes a chance
+# to show up, but nowhere near the rest of a five-minute window. Killing qemu
+# makes `idf.py qemu` exit on its own, which lets `timeout` return early; if
+# the watcher never fires for any reason, the foreground command still blocks
+# for exactly the TIMEOUT_SECS it always did.
+TIMEOUT_SECS=300
+SETTLE_SECS=20
+(
+    elapsed=0
+    settled=
+    while (( elapsed < TIMEOUT_SECS )); do
+        sleep 2
+        elapsed=$(( elapsed + 2 ))
+        if grep -qE '^result=|Guru Meditation|assert failed' "$OUTPUT" 2>/dev/null; then
+            settled=${settled:-$elapsed}
+            if (( elapsed - settled >= SETTLE_SECS )); then
+                pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                break
+            fi
+        fi
+    done
+) &
+watcher=$!
+
+timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee -a "$OUTPUT" || true
+
+kill "$watcher" 2>/dev/null || true
+wait "$watcher" 2>/dev/null || true
 
 # A relative path is taken against the REPO ROOT rather than the project
 # directory this script cd'd into, because that is what a caller writing one in
