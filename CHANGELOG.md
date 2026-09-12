@@ -128,6 +128,26 @@ release packaging.
   the `-O2` sources under `AC3FORGE_MINIMAL_HOT_O2`, and the example compiles the bare-metal
   probe's stage-timer backend where the repository has it, so
   `idf.py -DAC3FORGE_STAGE_TIMERS=ON build` gives each play a line per decoder stage.
+- **The ESP32 output layout takes speaker size and height realization**
+  (`esp-idf/ac3forge/include/ac3forge/layout.hpp`, `render.hpp`). A speaker in the list form can
+  be marked `:small` - a full-bandwidth speaker too small for the bottom two octaves -
+  validated to require an LFE feed in the layout; `LayoutRenderer` redirects its bass there with
+  a matched 80 Hz Butterworth high-pass/low-pass pair, float throughout rather than the double
+  state a shared biquad class carries, since every double operation is a software call on the
+  S3's Xtensa core. `:height`, `:top` and `:upfiring` name which physical thing realizes one of
+  the five Dolby height positions (Vhl, Vhr, Vhc, Lts, Rts): `:top` moves that slot to ITU-R
+  BS.2051's Top tier, 90 degrees elevation, for a true in-ceiling speaker; the other two are
+  numerically identical to today's default - BS.2051 has one Upper tier, not a separate angle
+  per way of reaching it - and exist so a configuration and `/status` can say what is actually
+  installed. The named form takes the same three as a modifier applied to every height slot at
+  once (`"7.1.4:top"`). `OutputLayout::kTextBytes` stays at 96, not raised for the longer
+  decorated strings the new suffixes allow: a QEMU boot check found that growing it 128 bytes
+  boot-loops the example on a FreeRTOS stack overflow, since `PlayerConfig` holds an
+  `OutputLayout` by value on a tight main-task stack; parsing and validation read the caller's
+  string directly and never touch the buffer, so only a pathologically long decorated list loses
+  its tail in the `text()`/status echo. `Speaker::small`/`Speaker::Realization` are placed to
+  land in alignment padding guaranteed on any ABI rather than one compiler's, and MSVC-guarded
+  `static_assert`s pin `sizeof(Speaker)`/`sizeof(OutputLayout)` against a future regression.
 
 **Crucible desktop application**
 
