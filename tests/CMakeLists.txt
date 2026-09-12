@@ -77,6 +77,7 @@ add_executable(ac3tests
     io/test_elementary.cpp
     io/test_stream_accumulator.cpp
     io/test_interleave.cpp
+    io/test_sink_plan.cpp
     io/test_block_ring.cpp
     io/test_unit_hold.cpp
     io/test_layout.cpp

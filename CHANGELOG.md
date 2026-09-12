@@ -128,6 +128,31 @@ release packaging.
   the `-O2` sources under `AC3FORGE_MINIMAL_HOT_O2`, and the example compiles the bare-metal
   probe's stage-timer backend where the repository has it, so
   `idf.py -DAC3FORGE_STAGE_TIMERS=ON build` gives each play a line per decoder stage.
+- **The ESP32 streaming example's I2S sink reconfigures itself instead of needing a rebuild**
+  (`ac3forge/sink_plan.hpp`, `main/sink/i2s/audio_sink.cpp`). `sink_open` is callable more than
+  once now: `PUT /layout` takes effect at the very next play by calling
+  `i2s_channel_reconfig_std_slot`/`_tdm_slot` when the new layout stays within one mode, or by
+  deleting and recreating the channel when it crosses standard I2S and TDM, rather than a slot
+  count fixed at boot. The old build-time choice between a stereo `i2s` sink and a separate `tdm`
+  one is gone - one sink now opens standard mode for one or two channels and TDM for three or
+  more - and `AC3FORGE_EXAMPLE_SINK_TDM`, with `sink/tdm/`, is removed;
+  `AC3FORGE_EXAMPLE_TDM_SLOTS` now sizes only the `capture` sink's emulated width.
+  `AC3FORGE_EXAMPLE_I2S_SECOND_LINE` brings up a second, independent I2S peripheral, sharing the
+  first line's BCLK/WS as inputs through the GPIO matrix rather than a new wire, doubling the
+  ceiling to eight 32-bit slots. `sink_slots()` now reports that ceiling rather than whatever
+  happens to be open, which is what `PUT /layout` and `/status`'s `sink_slots` validate and
+  report against. The mode/slot-count arithmetic behind all of it - one line's own ceiling, when
+  a second line is usable, which of a layout's channels each line carries - is host-tested
+  independent of ESP-IDF (`tests/io/test_sink_plan.cpp`), the convention `interleave.hpp` and
+  `dac_queue_model.hpp` beside it already follow. On an ESP32-S3-DevKitC-1-N16R8 over WiFi,
+  reconfiguring standard I2S to TDM and back, in both directions, plays at the host's RMS with no
+  reflash between them; bringing up a second line reconfigures both correctly - the right mode,
+  the right GPIO sharing, `sink_slots` reporting 8 - but its own DMA buffers on top of WiFi's
+  footprint left too little contiguous internal RAM for the decode task's stack on a six-channel
+  unfolded layout, and the play failed to start rather than hang or run wrong. Whether the two
+  lines' samples stay aligned with something actually wired to both, and whether holding one DMA
+  depth across a reconfigure keeps the driver from reallocating its buffers rather than just
+  saving the channel recreation around them, remain unconfirmed.
 
 **Crucible desktop application**
 
