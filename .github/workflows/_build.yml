@@ -3866,10 +3866,39 @@ jobs:
           idf.py set-target esp32s3
           idf.py build
           idf.py size | tee -a "$GITHUB_STEP_SUMMARY"
-          # Same shape as the probe legs: QEMU is killed on a timeout and the
-          # verdict is read from what it printed, because an ESP-IDF app that
-          # returns from app_main goes on idling rather than exiting.
-          timeout 300 idf.py qemu 2>&1 | tee qemu-stream.txt || true
+          # QEMU has to be ended from outside: an ESP-IDF app that returns from
+          # app_main goes on idling rather than exiting. TIMEOUT_SECS is still
+          # the ultimate ceiling if nothing ever shows up.
+          #
+          # This step used to just wait out the full 300s every time - the
+          # HTTP and web-page steps below already end early on their own
+          # verdict, and tools/checks/run_esp32s3_probe.sh's copy of this
+          # comment has the CI measurements and the fault-injection numbers
+          # behind SETTLE_SECS. No shell: bash on this step (this container
+          # runs steps without one under sh), so this is POSIX rather than
+          # bash arithmetic.
+          : > qemu-stream.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-stream.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-stream.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
           if ! grep -q '^result=pass' qemu-stream.txt; then
             echo "::error title=ESP32-S3 streaming player failed::the example did not report result=pass" >&2
             grep -E 'result=|error|Guru Meditation|assert failed' qemu-stream.txt >&2 || true
@@ -3953,7 +3982,32 @@ jobs:
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
-          timeout 300 idf.py qemu 2>&1 | tee qemu-capture.txt || true
+          # Poll for a verdict instead of waiting out the fixed window - see
+          # the streaming step above for the full reasoning and
+          # tools/checks/run_esp32s3_probe.sh for the CI measurements and the
+          # fault-injection numbers behind SETTLE_SECS.
+          : > qemu-capture.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-capture.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-capture.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
 
           if ! grep -q '^result=pass' qemu-capture.txt; then
             echo "::error title=ESP32-S3 capture run::did not report result=pass" >&2
@@ -4017,7 +4071,32 @@ jobs:
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
-          timeout 300 idf.py qemu 2>&1 | tee qemu-render.txt || true
+          # Poll for a verdict instead of waiting out the fixed window - see
+          # the streaming step above for the full reasoning and
+          # tools/checks/run_esp32s3_probe.sh for the CI measurements and the
+          # fault-injection numbers behind SETTLE_SECS.
+          : > qemu-render.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-render.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-render.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
 
           fail() { echo "::error title=ESP32-S3 render run::$1" >&2; grep -E 'result=|error|player:|stream:|Guru Meditation|assert failed' qemu-render.txt >&2 || true; exit 1; }
           grep -q '^result=pass' qemu-render.txt || fail "did not report result=pass"

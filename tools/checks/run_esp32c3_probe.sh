@@ -91,10 +91,42 @@ mkdir -p build && printf '%s' "$SCALAR" > "$STAMP"
 echo
 echo "== running ac3probe on qemu-system-riscv32 (esp32c3) =="
 # No semihosting exit, as on the S3 leg: an ESP-IDF application returns from
-# app_main into a FreeRTOS task that is then deleted, and QEMU keeps running.
-# The timeout ending the run is the EXPECTED outcome and the gate below is on
-# the captured output rather than on an exit code.
-timeout 900 idf.py qemu 2>&1 | tee -a "$OUTPUT" || true
+# app_main into a FreeRTOS task that is then deleted, and QEMU keeps running,
+# so something else has to end it. TIMEOUT_SECS is still the ultimate ceiling
+# if nothing ever shows up.
+#
+# This used to be a flat `timeout 900 idf.py qemu` with nothing to end the run
+# early, on the theory that hitting the timeout was the expected outcome - but
+# CI measurements (PR #659) show the probe itself needing ~130-150s including
+# the build, the same ballpark as the S3 legs, with no evidence this leg ever
+# needed 3x their ceiling. It was never explained beyond mirroring the S3
+# pattern with a bigger number. Same poll-and-settle idea as
+# run_esp32s3_probe.sh (see its copy of this comment for the full reasoning
+# and the fault-injection numbers behind SETTLE_SECS), same 300s ceiling now
+# that this leg isn't just waiting the whole thing out by design.
+TIMEOUT_SECS=300
+SETTLE_SECS=20
+(
+    elapsed=0
+    settled=
+    while (( elapsed < TIMEOUT_SECS )); do
+        sleep 2
+        elapsed=$(( elapsed + 2 ))
+        if grep -qE '^result=|Guru Meditation|assert failed' "$OUTPUT" 2>/dev/null; then
+            settled=${settled:-$elapsed}
+            if (( elapsed - settled >= SETTLE_SECS )); then
+                pkill -f 'qemu-system-riscv32' 2>/dev/null || true
+                break
+            fi
+        fi
+    done
+) &
+watcher=$!
+
+timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee -a "$OUTPUT" || true
+
+kill "$watcher" 2>/dev/null || true
+wait "$watcher" 2>/dev/null || true
 
 if ! grep -q '^result=pass' "$OUTPUT"; then
     echo "::error title=ESP32-C3 probe failed::the probe did not report result=pass" >&2
