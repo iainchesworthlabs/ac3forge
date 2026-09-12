@@ -28,8 +28,8 @@
 //   source/sd/         an SD card over SDMMC.
 //   source/http/       an HTTP body, over WiFi or QEMU's Ethernet.
 //
-//   sink/i2s/          a stereo DAC.
-//   sink/tdm/          multi-channel on one data line.
+//   sink/i2s/          an I2S DAC, standard or TDM, reconfigured to whatever
+//                      the layout needs.
 //   sink/capture/      converts and checks; what CI runs.
 //   sink/null/         counts blocks.
 
@@ -209,6 +209,10 @@ std::atomic<float> g_volume{1.0F};
 // The layout the next play uses, and its text for /layout and /status. Written
 // by app_main, read under the mutex by the control surface.
 ac3forge::OutputLayout g_layout;
+// How many channels the sink is presently open for - 0 before the first
+// begin_play, which is always a reconfigure since a real layout needs at
+// least one. Written only from begin_play, on the task that owns the player.
+int g_sink_channels_open = 0;
 
 // --- reporting -------------------------------------------------------------------
 
@@ -314,14 +318,32 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
                 static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
                 static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
                 static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+
+    xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+    const ac3forge::OutputLayout layout = g_layout;
+    xSemaphoreGive(g_player_mutex);
+
+    // A layout that needs a different slot count or mode than the sink is
+    // presently open for reconfigures it here, between plays and before the
+    // new Player exists - never mid-play, per audio_sink.hpp - so a layout
+    // sent to the control surface never needs a rebuild or a reboot to take
+    // effect. accept_layout already refused anything past the sink's
+    // ceiling, so a failure here is the sink itself refusing, not that.
+    const int needed_slots = static_cast<int>(layout.slots());
+    if (needed_slots != g_sink_channels_open) {
+        if (!player::sink_open(kSampleRate, needed_slots)) {
+            g_state.store("failed");
+            return false;
+        }
+        g_sink_channels_open = needed_slots;
+    }
+
     g_sink.reset();
     session = Session{};
     ac3probe::reset_stages();
 
     ac3forge::PlayerConfig config;
-    xSemaphoreTake(g_player_mutex, portMAX_DELAY);
-    config.layout = g_layout;
-    xSemaphoreGive(g_player_mutex);
+    config.layout = layout;
     config.stereo_fold = kStereoFold;
     config.objects = kObjects;
     config.decoder.joc_domain = kJocDomain;
@@ -480,13 +502,6 @@ extern "C" void app_main() {
     g_layout = *layout;
     std::printf("ac3forge stream_player: AC-3 or E-AC-3 onto %s\n", g_layout.text().data());
 
-    // The layout's slots, not the coded count: the player renders onto the
-    // layout whatever arrives. A layout too wide for the sink stops here and
-    // says so; the sink's own message names its limit.
-    if (!player::sink_open(kSampleRate, static_cast<int>(g_layout.slots()))) {
-        std::printf("result=fail\n");
-        return;
-    }
     g_commands = xQueueCreate(4, sizeof(Command));
     g_player_mutex = xSemaphoreCreateMutex();
 

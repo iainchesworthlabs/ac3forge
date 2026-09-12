@@ -60,10 +60,10 @@ cores are under *ac3forge stream player* in `idf.py menuconfig`.
 
 | Source | Sink |
 | --- | --- |
-| `partition` — flash (default) | `i2s` — stereo DAC (default); 32-bit slots, master or slave |
-| `sd` — SD card over SDMMC | `tdm` — TDM on one data line, at most four 32-bit slots on an ESP32-S3 |
-| `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
-| `http` — an HTTP body over WiFi | `null` — counts blocks |
+| `partition` — flash (default) | `i2s` — an I2S DAC (default); standard mode or TDM, reconfigured to whatever the layout needs |
+| `sd` — SD card over SDMMC | `capture` — converts and checks; what CI runs |
+| `fatfs` — a FAT volume in flash | `null` — counts blocks |
+| `http` — an HTTP body over WiFi | |
 
 Chosen in `idf.py menuconfig` under *ac3forge stream player*, with the output
 layout the stream is rendered onto.
@@ -205,8 +205,7 @@ arrives. `min_headroom_ms` is the least that was left as a block arrived;
 long it had been empty, summed. The model is out by up to one DMA descriptor
 (5 ms at the default depth), which is enough to read a stall and not enough to
 mistake one for a smooth run. `sink.dma_ms` is the queue's depth, from
-`CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS` and `_DMA_FRAMES`. The `tdm`
-sink prints the same line.
+`CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS` and `_DMA_FRAMES`.
 
 Every figure on that line is the play's own. `begin_play` tells the sink a play
 is starting (`sink_begin_play()` in [`main/audio_sink.hpp`](main/audio_sink.hpp)),
@@ -266,7 +265,7 @@ queue. Of the 31 ms each frame took, 20 ms was the sink waiting for the DAC and
 about 10 ms the decode. The same run took 51.6 ms a frame before two fixes made
 that day: each pass ended in a 100 ms wait on a ring nothing would refill, and
 blocks that ended part-way through a DMA descriptor let silence out (see
-[the TDM sink](#the-tdm-sink)).
+[the I2S sink](#the-i2s-sink)).
 
 **What a 7.1.4 render costs.** The probe's height-object fixture
 (`stream/height.ec3`) from the FAT volume onto `7.1.4`, objects reconstructed
@@ -283,9 +282,9 @@ and PSRAM holding the ring alone. Per frame, in microseconds:
 The twelve levels are the same in all three, to the digit. The decode and the
 render together take 26 ms of the frame's 32, the same work as the probe's
 `eac3_atmos_render` row at 25.1 ms. What is left over is the `capture` sink,
-which checks every sample it converts. The `tdm` sink converts without
-checking, but on this part one I2S line carries at most four 32-bit slots, so
-twelve slots cannot leave through it. The table found two things. The component
+which checks every sample it converts. The real `i2s` sink converts without
+checking, but on this part one I2S line carries at most four 32-bit slots (two
+lines, eight), so twelve slots cannot leave through it either way. The table found two things. The component
 had never compiled the decoder's hot sources at `-O2` as the probe does; it
 does now, for 48.6 KB of flash and no SRAM. And the level meter that makes
 `result=pass` mean something squared every sample in double - a soft-float call
@@ -359,7 +358,7 @@ configurations set 80; the default is 0, none), the component's
 | `POST /stop` | |
 | `POST /volume` | body: `0.0` to `1.0`, a linear gain the decode task applies before the sink |
 | `GET /layout` | the output layout, as text |
-| `PUT /layout` | body: a name (`5.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`), the same grammar as `CONFIG_AC3FORGE_EXAMPLE_LAYOUT`. Takes effect at the next play. `400` for text that is not a layout, `409` for one with more slots than the sink's bus. |
+| `PUT /layout` | body: a name (`5.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`), the same grammar as `CONFIG_AC3FORGE_EXAMPLE_LAYOUT`. Takes effect at the next play - the `i2s` sink reconfigures its mode and slot count to match, so this never needs a rebuild. `400` for text that is not a layout, `409` for one with more slots than the sink's ceiling. |
 
 The configured location plays at boot as before; the surface can stop it and
 play something else. `state` is `opening` while a play's source opens - by
@@ -377,7 +376,8 @@ played:
 ```
 
 Since 2026-09-11 `/status` also says how a play serves its layout. `sink_slots`,
-after `sink`, is the slots on the sink's bus and so the widest layout
+after `sink`, is the sink's ceiling - the most it could ever be asked to carry,
+not whatever it happens to be open for right now - and so the widest layout
 `PUT /layout` takes. In `stream`, `layout` is the layout this play renders onto
 (the top-level `layout` is the next play's), `render` is how - `loro`, `ltrt` or
 `mono` for the decoder's fold, `channels` for the coded channels placed,
@@ -547,57 +547,116 @@ encoded in and about 233 KB in the QMF domain a real stream needs
 (`CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN`) — PSRAM territory on a board, and the
 reason the QEMU shape runs an 8 KB ring.
 
-### The TDM sink
+### The I2S sink
 
-`tdm` puts several channels on one data line: three pins (BCLK, WS, DATA)
-rather than a data line per pair. On an ESP32-S3 a TDM frame holds at most 128
-bits, because the peripheral's half-frame length is a 6-bit register field, so
-this sink's 32-bit slots stop at four - a 6.1 MHz bit clock at 48 kHz - and it
-refuses more when it opens. ESP-IDF v6.1 refuses them as well, and its I2S
-guide gives the same limits: four slots at 32 bits, eight at 16. A 7.1.4
-layout's twelve slots of 24-bit audio need both I2S controllers at 16 bits, or
-a TDM device fed by several lines (`planning/esp32-714-realtime.md` in the
-repository, "Twelve slots on this part"). It needs a DAC that speaks TDM — a
-PCM3168A does, a SigmaDSP does on its serial inputs, the common MAX98357A and
-PCM5102 breakouts do not. `CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS` is the bus width,
-a property of the board; the layout must have no more slots than that, and the
-slots it leaves are written as zeros. The `capture` sink converts up to
-sixteen with no peripheral behind it, which is how CI checks a twelve-slot
-conversion.
+`i2s` is one sink, not a choice between a stereo one and a TDM one: it opens
+standard I2S for one or two channels and TDM for three or more, reconfiguring
+between them - and between slot counts within a mode - as the layout in force
+changes, rather than a build fixing one shape and staying there
+([`ac3forge/sink_plan.hpp`](../../include/ac3forge/sink_plan.hpp) decides
+which). `PUT /layout` takes effect this way at the very next play: no rebuild,
+no reflash, just whatever the new layout needs.
 
-Both sinks with a peripheral take `CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE`, which
-hands BCLK and WS to the other end — how an ADAU1452 or ADAU1467 that is the
-house's clock wants it — and the stereo sink takes
-`CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS`, 32 by default, 16 for a DAC that
-insists. Both size their DMA descriptors from the bus width
+**The hardware ceiling this cannot get past.** On an ESP32-S3 one I2S line's
+TDM frame holds at most 128 bits, because the peripheral's half-frame length
+is a 6-bit register field: four slots at 32 bits - a 6.1 MHz bit clock at 48
+kHz - or eight at 16, and ESP-IDF v6.1 refuses more, as does this sink before
+it ever asks the driver. 16-bit slots stay standard-mode-only here regardless
+(`CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS`, 32 by default, 16 for a DAC that
+insists): a padding-capable TDM interleave at that width does not exist in
+this codebase, so a layout past two slots at 16 bits is refused rather than
+attempted. `CONFIG_AC3FORGE_EXAMPLE_I2S_SECOND_LINE` brings up a second,
+independent I2S peripheral at 32 bits to double the ceiling to eight, sharing
+line 0's BCLK and WS as inputs - through the GPIO matrix, which routes a pad's
+input side to a peripheral independently of whichever end drives it as an
+output, so this needs no external wire, only the second line's own DATA pin
+(`CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT2_GPIO`) - to keep both lines' frames sample
+aligned. A 7.1.4 layout's twelve slots of 24-bit audio still do not fit
+either way; the `capture` sink stands in for that (below). Whichever DAC or
+DSP is on the wire has to speak whatever mode a channel count lands it in - a
+PCM3168A speaks TDM, a SigmaDSP does on its serial inputs, the common
+MAX98357A and PCM5102 breakouts do not, and neither speaks a second,
+independent TDM line at all. `CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE` hands BCLK
+and WS to line 0's other end instead of generating them - how an ADAU1452 or
+ADAU1467 that is the house's clock wants it; a second line is always a slave,
+since its only job is reading those same two pins.
+
+**Reconfiguring, not rebuilding.** A slot-count change that stays within one
+mode (say 2 channels to 4, both TDM) uses
+`i2s_channel_reconfig_std_slot`/`_tdm_slot` rather than tearing the channel
+down; crossing standard/TDM, or a line coming up or going down entirely, does
+tear it down and recreate it. Every channel this sink ever creates asks for
+the same DMA depth regardless of how many slots it is carrying at the time -
+sized once, from that line's own ceiling rather than from the layout in hand,
+the way both sinks used to size their descriptors from the bus width
 ([`main/sink/sink_common.hpp`](main/sink/sink_common.hpp)): the driver caps a
-descriptor at 4,092 bytes and quietly shortens one that asks for more, which
-would have given the 8-slot bus a queue a quarter as deep as configured. And
+descriptor at 4,092 bytes and quietly shortens one that asks for more, and
 each descriptor divides the player's 256-frame block - 128 frames for stereo,
-64 for twelve slots - because ESP-IDF v6.1's `i2s_channel_write` abandons a
-partly written buffer whenever two or more sent ones are waiting, and the rest
-of it goes out as silence. [`i2s_player`](../i2s_player/README.md) measured
-what that costs a player that writes across descriptors: 3 ms in every 35.
+64 for a twelve-slot layout at capture - because ESP-IDF v6.1's
+`i2s_channel_write` abandons a partly written buffer whenever two or more sent
+ones are waiting, and the rest of it goes out as silence. [`i2s_player`](../i2s_player/README.md)
+measured what that costs a player that writes across descriptors: 3 ms in
+every 35. Whether keeping the DMA depth constant across a reconfigure also
+keeps ESP-IDF from reallocating the buffers under it, rather than just saving
+the channel recreation around them, has not been confirmed on a board.
 
-**Neither TDM into a DAC nor the slave role has run on hardware.** There is no
-TDM DAC or DSP here and QEMU has no I2S, so what CI establishes is that they
-compile and link. On a board, the one TDM shape tried - twelve slots - was
-refused by the frame limit above. The exceptions are the two parts worth
-testing, both free of ESP-IDF and unit-tested on the host:
+**Reconfiguring between standard and TDM mode, in both directions, has run on
+hardware.** On the same ESP32-S3-DevKitC-1-N16R8 as [On the board](#on-the-board),
+over WiFi, no DAC wired: a play at `2.0` (standard mode, the decoder's own
+fold), then `PUT /layout 4.0` and a new play with no reflash in between,
+reconfigures line 0 to TDM and plays the same six-channel stream spread onto
+four slots at 970 per mille of real time; `PUT /layout 2.0` and a further play
+reconfigures it back to standard mode and plays that too, at the host's RMS to
+the digit. Neither crossing left the control surface any less responsive than
+before it.
+
+**The second line reconfigures correctly and has not proven itself past
+that.** Bringing one up (`AC3FORGE_EXAMPLE_I2S_SECOND_LINE=1`) for a
+six-channel, unfolded `5.1` layout did the right thing in every way this can
+check without a second DAC on the wire: both lines came up in TDM mode, line 1
+shared line 0's BCLK/WS as the design intends, and `sink_slots` read 8. What
+it did not do was leave enough contiguous internal RAM for the decode task's
+own stack to start, on top of WiFi's footprint and two lines' worth of DMA
+buffers rather than one - `heap_caps_malloc could not allocate 32768 bytes`,
+`player: could not start the decode task`, and the play failed cleanly rather
+than hanging or crashing. A real memory budget this project has now measured,
+not a wrong answer; whether the two lines' samples stay aligned once
+something is actually wired to both remains to be seen, and
+`AC3FORGE_EXAMPLE_I2S_SECOND_LINE`'s own help text has the numbers behind
+both findings. The slave role (`AC3FORGE_EXAMPLE_I2S_SLAVE`) is untested
+either way: there is no DAC or DSP here that drives the clocks.
+
+**What CI establishes about the real `i2s` sink itself, without a board, is
+that it compiles and links.** qemu-system-xtensa has no I2S, so every CI run
+that decodes and checks samples plays them through `capture` instead: eight
+slots for the padding check (`sdkconfig.ci-tdm`), twelve for a rendered 7.1.4
+(`sdkconfig.ci-render`, `sdkconfig.ci-http714`) - both wider than the real
+sink's own ceiling on any board this project has, one line or two. The build
+matrix (`main/CMakeLists.txt`'s sink choice) compiles `i2s` as well, so an IDF
+component rename or a driver API change is caught there, but nothing under
+QEMU runs it. The exceptions are the parts worth testing without a board at
+all, free of
+ESP-IDF and unit-tested on the host:
 [`ac3forge/interleave.hpp`](../../include/ac3forge/interleave.hpp)
 (`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing with
-slot padding is where the bugs are, and the queue model behind the `sink.*`
-line, [`ac3forge/dac_queue_model.hpp`](../../include/ac3forge/dac_queue_model.hpp)
-(`tests/io/test_dac_queue_model.cpp`), which runs there against a simulated DMA.
-The rest of that sink is peripheral setup that either works on a board or does
-not.
+slot padding is where the bugs are; the mode/slot-count arithmetic itself,
+[`ac3forge/sink_plan.hpp`](../../include/ac3forge/sink_plan.hpp)
+(`tests/io/test_sink_plan.cpp`); and the queue model behind the `sink.*` line,
+[`ac3forge/dac_queue_model.hpp`](../../include/ac3forge/dac_queue_model.hpp)
+(`tests/io/test_dac_queue_model.cpp`), which runs there against a simulated
+DMA. The rest of this sink is peripheral setup that either works on a board or
+does not.
 
 The padding is the part that bites. A TDM frame is a fixed shape, so a 5.1
 layout on an 8-slot bus leaves two slots with nothing to carry — and they must
 be **written as zeros, not skipped**. The DMA buffer is reused, so whatever the
 previous block left there is what the DAC clocks out: two channels of stale
 audio nobody is listening for and everybody can hear. There is a test for
-exactly that, and the `capture` sink checks it on the target.
+exactly that, and the `capture` sink checks it on the target. `capture`
+converts up to sixteen slots with no peripheral behind it and no hardware
+ceiling to refuse against, which is how CI checks a twelve-slot conversion
+that no real line here could carry at all; `CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS`
+sets its emulated width, unrelated to the real sink's own ceiling.
 
 ## What it costs
 

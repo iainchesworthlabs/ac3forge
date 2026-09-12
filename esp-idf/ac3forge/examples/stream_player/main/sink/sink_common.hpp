@@ -2,10 +2,13 @@
 
 #include <cstddef>
 
-// What the two I2S sinks (sink/i2s/, sink/tdm/) share and the others do not
-// need: the shape of the DMA queue. The model of what the DAC heard, which they
-// share as well, is in the component - ac3forge/dac_queue_model.hpp - free of
-// ESP-IDF, so that the host tests can run it.
+// What the I2S sink needs and does not share with anything else: the shape
+// of the DMA queue. The mode/slot-count planning it also needs is
+// ac3forge/sink_plan.hpp, in the component rather than here, because that
+// part is pure enough to host-test the same way interleave.hpp and
+// dac_queue_model.hpp already are - this file has no path into tests/
+// CMakeLists.txt's include list, and gaining one for a single function
+// would be more infrastructure than moving the function.
 
 namespace player {
 

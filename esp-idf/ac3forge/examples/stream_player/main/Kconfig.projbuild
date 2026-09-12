@@ -16,18 +16,62 @@ config AC3FORGE_EXAMPLE_I2S_DOUT_GPIO
     int "I2S data out (DOUT/SDIN) GPIO"
     default 7
 
-# THE SLOT WIDTH AND THE CLOCK ROLE, for the two sinks with a peripheral
-# (sink/i2s/ and sink/tdm/).
+# A SECOND I2S LINE. Off by default: nothing about a normal build needs it.
+# Line 0 above stays the clock master; line 1, when enabled, is a slave whose
+# BCLK/WS inputs are routed - through the GPIO matrix, not an external wire -
+# to the SAME pin numbers line 0 already drives as outputs, so the two lines'
+# frames stay sample-aligned. Only its DATA pin is new; see sink/i2s/
+# audio_sink.cpp for why a second line has to run the exact same frame shape
+# as the first rather than whatever a narrower layout would need on its own.
+config AC3FORGE_EXAMPLE_I2S_SECOND_LINE
+    int "A second I2S line is wired (1) or not (0), for layouts wider than one line reaches"
+    default 0
+    range 0 1
+    help
+        An int rather than a bool so it reaches C++ as a plain constant even
+        when it is off - see AC3FORGE_EXAMPLE_I2S_SLAVE's own note on the same
+        choice; a bool Kconfig option that is "n" emits no macro at all, only
+        one that is "y" does. One ESP32-S3 I2S line carries at most 128 bits a
+        frame - 4 slots at 32 bits (see AC3FORGE_EXAMPLE_I2S_SLOT_BITS). A
+        second, independent I2S peripheral doubles that ceiling, sharing line
+        0's bit clock and word select so both stay aligned to the same frame.
+        Needs a DAC or DSP that actually accepts two separate TDM lines - most
+        simple stereo breakouts do not. Reconfiguring to bring up both lines'
+        TDM mode has run on a DevKitC-1-N16R8 (GPIO matrix routing, mode
+        switch, no crash) but not with anything on the wire to confirm the
+        two lines stay sample-aligned - confirm that before trusting audio
+        that depends on it. It is also two DMA buffers instead of one, each
+        sized from AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS x _DMA_FRAMES at this
+        line's own ceiling width, in internal RAM: on the same board, over
+        WiFi (AC3FORGE_EXAMPLE_SOURCE_HTTP), reconfiguring to a six-channel
+        unfolded layout with this on left too little contiguous internal RAM
+        for the decode task's own stack, which failed to start - a real
+        budget limit this project has hit, not a hang or a wrong answer, and
+        worth sizing AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS down before relying
+        on this over a network source.
+
+config AC3FORGE_EXAMPLE_I2S_DOUT2_GPIO
+    int "Second I2S line's data out GPIO"
+    default 8
+    help
+        Only read when AC3FORGE_EXAMPLE_I2S_SECOND_LINE is 1 - left visible
+        otherwise for the same reason AC3FORGE_EXAMPLE_I2S_BCLK_GPIO and
+        friends are, regardless of which sink is even selected: one fewer
+        Kconfig symbol that disappears from sdkconfig depending on another.
+
+# THE SLOT WIDTH AND THE CLOCK ROLE.
 config AC3FORGE_EXAMPLE_I2S_SLOT_BITS
-    int "Stereo I2S slot width in bits (16 or 32)"
+    int "I2S slot width in bits (16 or 32)"
     default 32
     range 16 32
     help
         32-bit slots carry the decoder's 24-bit samples left-justified, which
         every DAC tried here accepts and a SigmaDSP requires, at twice the bit
-        clock of 16 (3.07 MHz against 1.54 for stereo at 48 kHz). Only 16 and
-        32 are valid; the sink refuses anything else when it compiles. The TDM
-        sink is always 32.
+        clock of 16 (3.07 MHz against 1.54 for stereo at 48 kHz); they are
+        also the only width this sink can carry more than two slots in - a
+        TDM mode at 16 bits would need a padding-capable interleave this
+        codebase does not have, so a layout past two slots at 16 bits is
+        refused rather than attempted. Only 16 and 32 are valid.
 
 config AC3FORGE_EXAMPLE_I2S_SLAVE
     int "The DAC supplies the clocks (1) or the ESP32-S3 does (0)"
@@ -90,19 +134,20 @@ choice AC3FORGE_EXAMPLE_SINK
     prompt "Audio sink"
     default AC3FORGE_EXAMPLE_SINK_I2S
     help
-        Where decoded audio goes. The capture sink is what CI runs:
-        qemu-system-xtensa has no I2S peripheral, so the I2S and TDM sinks'
-        first write blocks on a DMA that never drains. The capture sink
-        converts with the code those two share (ac3forge/interleave.hpp) and
-        checks the result, with no peripheral behind it, so the source, the
-        access-unit framing and the decode run as they do on a board. CI
-        builds the other three and runs none of them.
+        Where decoded audio goes. The I2S sink reconfigures its own mode and
+        slot count to whatever a layout needs, standard I2S for one or two
+        speakers or TDM beyond that (ac3forge/sink_plan.hpp), so a layout
+        change over the control surface never needs a rebuild. The capture
+        sink is what CI runs: qemu-system-xtensa has no I2S peripheral, so a
+        real write blocks on a DMA that never drains. It converts with the
+        same code (ac3forge/interleave.hpp) and checks the result, with no
+        peripheral behind it and no hardware ceiling to refuse against, so
+        the source, the access-unit framing and the decode run as they do on
+        a board for layouts a real line could never carry (a rendered
+        7.1.4's twelve slots, say). CI builds the other two and runs neither.
 
 config AC3FORGE_EXAMPLE_SINK_I2S
-    bool "I2S DAC"
-
-config AC3FORGE_EXAMPLE_SINK_TDM
-    bool "TDM DAC (multi-channel on one data line)"
+    bool "I2S DAC (standard or TDM, reconfigured dynamically)"
 
 config AC3FORGE_EXAMPLE_SINK_CAPTURE
     bool "Capture (convert and check, no peripheral)"
@@ -121,21 +166,22 @@ config AC3FORGE_EXAMPLE_CAPTURE_TDM
     default 0
 
 config AC3FORGE_EXAMPLE_TDM_SLOTS
-    int "TDM slots on the bus"
-    depends on AC3FORGE_EXAMPLE_SINK_TDM || AC3FORGE_EXAMPLE_SINK_CAPTURE
+    int "TDM slots the capture sink emulates"
+    depends on AC3FORGE_EXAMPLE_SINK_CAPTURE
     default 8
     range 2 16
     help
-        How many slots the TDM frame carries - a property of the BOARD, not of
-        the audio. A DAC is wired for a fixed number and does not renegotiate
-        because a layout happens to be 5.1, so slots the layout does not fill
-        are written as zeros rather than skipped. The tdm sink sends 32-bit
-        slots, and an ESP32-S3 TDM frame holds at most 128 bits, so the tdm
-        sink takes at most 4 and refuses more when it opens. The capture sink,
-        which converts without a peripheral, takes up to 16, which is how CI
-        checks a twelve-slot conversion. Four slots of 32 bits at 48 kHz is a
-        6.1 MHz bit clock; the DAC's datasheet says whether it follows. The
-        layout (AC3FORGE_EXAMPLE_LAYOUT) must have no more slots than this.
+        How many slots the capture sink's emulated TDM frame carries. It has
+        no peripheral behind it and so no hardware ceiling, which is exactly
+        why CI uses it to check layouts wider than any real line here could
+        carry - a rendered 7.1.4's twelve slots, say - rather than the real
+        I2S sink, whose own ceiling now comes from AC3FORGE_EXAMPLE_I2S_
+        SLOT_BITS and AC3FORGE_EXAMPLE_I2S_SECOND_LINE (ac3forge/sink_plan.hpp)
+        and reconfigures itself to whatever a layout needs rather than
+        holding to a number fixed here. Slots the layout does not fill are
+        still written as zeros rather than skipped, the same rule the real
+        sink follows. The layout (AC3FORGE_EXAMPLE_LAYOUT) must have no more
+        slots than this when the capture sink is what's built.
 
 # WHERE THE BYTES COME FROM. A directory CMake picks, the mirror of the sink
 # choice above; see main/byte_source.hpp.
@@ -264,9 +310,11 @@ config AC3FORGE_EXAMPLE_LAYOUT
         order: a location name (L C R Ls Rs Lrs Rrs Lw Rw Vhl Vhr Vhc Lts Rts
         Ts Cs LFE LFE2), azimuth/elevation in degrees ("30/0"; left is
         positive), or "-" for a slot nothing is on. "L,R,C,LFE,Ls,Rs" is a 5.1
-        DAC wired in WAV order. The slot count must fit the sink: 1 or 2 for
-        i2s, AC3FORGE_EXAMPLE_TDM_SLOTS for tdm. PUT /layout on the control
-        surface changes it for the next play.
+        DAC wired in WAV order. The slot count must fit the sink: the real
+        I2S sink reconfigures itself to whatever a layout needs, up to its
+        ceiling from AC3FORGE_EXAMPLE_I2S_SLOT_BITS and AC3FORGE_EXAMPLE_I2S_
+        SECOND_LINE; the capture sink is capped at AC3FORGE_EXAMPLE_TDM_SLOTS.
+        PUT /layout on the control surface changes it for the next play.
 
 config AC3FORGE_EXAMPLE_DRC_MODE
     int "Operating mode: line (0), RF (1), or as coded with no normalisation and no DRC (2)"

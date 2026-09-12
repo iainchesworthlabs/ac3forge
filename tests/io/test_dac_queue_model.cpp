@@ -104,9 +104,9 @@ class SimulatedDma {
     std::int64_t at_us_ = 0;  // when level_ was
 };
 
-// A sink over that DMA, doing with the model what sink/i2s/ and sink/tdm/ do
-// around each write: arriving() as the block arrives, the write, and queued()
-// once the write has returned. `slots` 32-bit slots at 48 kHz, 960 frames deep.
+// A sink over that DMA, doing with the model what sink/i2s/ does around each
+// write: arriving() as the block arrives, the write, and queued() once the
+// write has returned. `slots` 32-bit slots at 48 kHz, 960 frames deep.
 struct Sink {
     explicit Sink(std::int64_t slots)
         : frame_bytes(slots * kSlotBytes),

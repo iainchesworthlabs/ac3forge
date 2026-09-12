@@ -2,11 +2,12 @@
 # same rule the library follows for its own platform choices. See
 # main/audio_sink.hpp.
 #
-#   i2s      stereo on the I2S peripheral, and the default
-#   tdm      the I2S peripheral in TDM mode, up to sixteen slots
-#   capture  the conversion code the i2s and tdm sinks share, checked, with no
+#   i2s      the I2S peripheral, standard mode or TDM depending on what the
+#            active layout needs (ac3forge/sink_plan.hpp) - reconfigures
+#            itself, not a build-time width; the default
+#   capture  the conversion code the i2s sink uses, checked, with no
 #            peripheral behind it: what CI runs, because qemu-system-xtensa has
-#            no I2S and the other two sinks' first write would never return
+#            no I2S and the real sink's first write would never return
 #   null     counts blocks and returns; CI builds it and does not run it
 # From Kconfig, not a -D cache variable: this file is evaluated in IDF's
 # separate requirements-expansion process, which does not inherit cache
@@ -15,8 +16,6 @@ if(CONFIG_AC3FORGE_EXAMPLE_SINK_NULL)
     set(AC3FORGE_SINK_DIR "sink/null")
 elseif(CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE)
     set(AC3FORGE_SINK_DIR "sink/capture")
-elseif(CONFIG_AC3FORGE_EXAMPLE_SINK_TDM)
-    set(AC3FORGE_SINK_DIR "sink/tdm")
 else()
     set(AC3FORGE_SINK_DIR "sink/i2s")
 endif()

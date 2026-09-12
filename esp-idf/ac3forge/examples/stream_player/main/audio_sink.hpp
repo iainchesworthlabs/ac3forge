@@ -8,12 +8,14 @@
 // choices (tools/checks/check_platform_macros.ps1, and the arch/ and profile/
 // directories under src/internal/).
 //
-// Four implementations, one chosen per build:
+// Three implementations, one chosen per build:
 //
-//   sink/i2s/      the real one. Standard I2S, two slots, 32-bit by default.
-//   sink/tdm/      multi-channel on one data line, up to sixteen slots.
-//   sink/capture/  converts exactly as the two above do and checks the result;
-//                  what CI runs.
+//   sink/i2s/      the real one. Standard I2S or TDM, reconfiguring its own
+//                  mode and slot count to whatever a layout needs (up to a
+//                  hardware ceiling - ac3forge/sink_plan.hpp), across one or
+//                  two of the S3's I2S lines.
+//   sink/capture/  converts exactly as the real one does and checks the
+//                  result; what CI runs.
 //   sink/null/     counts what it is given and returns.
 //
 // The last two stand in for a peripheral qemu-system-xtensa does not have:
@@ -31,20 +33,21 @@
 // Because interleaving and sample format are the SINK's business, and the sinks
 // do both differently.
 //
-// Standard I2S carries two slots. Anything wider out of an ESP32-S3 means TDM
-// (driver/i2s_tdm.h): the S3's I2S packs up to 16 slots onto one data line, so
-// 8 channels needs three pins - BCLK, WS and DATA - rather than four data lines,
-// and 8 slots of 32 bits at 48 kHz is a 12.3 MHz bit clock, well inside what it
-// will do. The DAC has to speak TDM; a PCM3168A does, a SigmaDSP does, the
-// common stereo breakouts (MAX98357A, PCM5102) do not.
+// Standard I2S carries one or two slots. Anything wider out of an ESP32-S3
+// means TDM (driver/i2s_tdm.h): one data line packs at most 128 bits a frame -
+// 4 slots at 32 bits - and the real sink reconfigures between the two modes
+// itself as the layout asks for more or fewer channels (ac3forge/sink_plan.hpp),
+// rather than a build picking one mode and staying there. The DAC has to
+// speak whichever it gets; a PCM3168A speaks TDM, a SigmaDSP does on its
+// serial inputs, the common stereo breakouts (MAX98357A, PCM5102) do not.
 //
-// That sink wants 24-bit samples in 32-bit slots, as many as the bus has. The
-// stereo one wants two slots of 16 or 32 bits. If this interface carried
-// interleaved int16_t - as it did for about an hour - adding the TDM sink would
-// have meant changing the seam, and changing a seam is how the implementations
-// behind it drift apart. Handing over planar float and letting each sink
-// convert costs one pass over the samples (ac3forge/interleave.hpp, shared by
-// all of them) and settles the question.
+// TDM mode wants 24-bit samples in 32-bit slots, as many as the bus has.
+// Standard mode wants one or two slots of 16 or 32 bits. If this interface
+// carried interleaved int16_t - as it did for about an hour - reconfiguring
+// between them would have meant changing the seam, and changing a seam is how
+// the implementations behind it drift apart. Handing over planar float and
+// letting the sink convert costs one pass over the samples
+// (ac3forge/interleave.hpp) and settles the question.
 //
 // --- WHAT A WRITE IS ---------------------------------------------------------
 //
@@ -54,7 +57,7 @@
 // over and what keeps a sixteen-slot layout's storage at 16 KB rather than
 // 96 KB - see esp-idf/ac3forge/include/ac3forge/player.hpp.
 //
-// --- NOTES THE TDM SINK WAS WRITTEN FROM ------------------------------------
+// --- NOTES THE REAL SINK'S TDM MODE WAS WRITTEN FROM -------------------------
 //
 // Still untested against a TDM DAC, so still worth keeping in one place.
 //
@@ -94,11 +97,17 @@ namespace player {
 // player's layout. Returns false if it cannot do that many - which is not a
 // failure of the caller, just a limit of this sink, and the caller should stop
 // and say so.
+//
+// Callable more than once: the real sink reconfigures its mode and slot count
+// to whatever `channels` needs (ac3forge/sink_plan.hpp), between plays, so a
+// layout change over the control surface never needs a rebuild. Not safe to
+// call while a play is in progress - see stream_player.cpp's begin_play.
 [[nodiscard]] bool sink_open(std::uint32_t sample_rate, int channels);
 
-// How many slots the bus has, once open: a layout with no more than this many
-// can replace the one the sink was opened with (the TDM sink pads what a
-// narrower layout leaves), a wider one cannot.
+// The most slots this sink could ever be asked to carry - its hardware
+// ceiling, not whatever it happens to be open for right now. A layout with no
+// more than this many is accepted and reconfigures the sink at the next play
+// if it differs from today's; a wider one is refused up front.
 [[nodiscard]] int sink_slots();
 
 // A play is beginning, and the next write is its first block. Called with no
