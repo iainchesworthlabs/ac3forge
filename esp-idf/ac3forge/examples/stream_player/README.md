@@ -171,10 +171,10 @@ cannot hold them and cover the next frame's decode as well: on a DevKitC-1 with
 no PSRAM, `714-tones.ec3` played from the partition had 251 of its 1,512
 blocks reach an empty queue with the default, and none with twelve.
 
-`heap:` is the internal RAM free once the source
-has opened and before the decoder has allocated anything - with a network stack
-up, the room the decoder has. If an allocation fails later, a `heap:` line says
-what was asked for and what was left, before the abort that follows.
+`heap:` is the internal RAM free once the source has opened and before the
+decoder has allocated anything - with a network stack up, the room the decoder
+has. If an allocation fails later, a `heap:` line says what was asked for and
+what was left, before the abort that follows.
 
 `ring_low` (and `stream.ring_low` at the end) is the least the ring between
 the fetch and decode tasks ever held when the decoder came for more, in bytes,
@@ -285,11 +285,11 @@ render together take 26 ms of the frame's 32, the same work as the probe's
 `eac3_atmos_render` row at 25.1 ms. What is left over is the `capture` sink,
 which checks every sample it converts. The `tdm` sink converts without
 checking, but on this part one I2S line carries at most four 32-bit slots, so
-twelve slots cannot leave through it. The table found two things. The component had never compiled
-the decoder's hot sources at `-O2` as the probe does; it does now, for 48.6 KB
-of flash and no SRAM. And the level meter that makes `result=pass` mean
-something squared every sample in double - a soft-float call on this part -
-which cost twice the decode it was measuring.
+twelve slots cannot leave through it. The table found two things. The component
+had never compiled the decoder's hot sources at `-O2` as the probe does; it
+does now, for 48.6 KB of flash and no SRAM. And the level meter that makes
+`result=pass` mean something squared every sample in double - a soft-float call
+on this part - which cost twice the decode it was measuring.
 
 **The network shape needs PSRAM for the decoder, and a deeper queue.** `http`
 to `i2s` at `2.0` over WiFi (`sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram`,
@@ -582,11 +582,15 @@ what that costs a player that writes across descriptors: 3 ms in every 35.
 **Neither TDM into a DAC nor the slave role has run on hardware.** There is no
 TDM DAC or DSP here and QEMU has no I2S, so what CI establishes is that they
 compile and link. On a board, the one TDM shape tried - twelve slots - was
-refused by the frame limit above. The exception is the part worth testing:
-[`ac3forge/interleave.hpp`](../../include/ac3forge/interleave.hpp) is free of
-ESP-IDF and is unit-tested on the host (`tests/io/test_interleave.cpp`), because
-planar-to-interleaved indexing with slot padding is where the bugs are and the
-rest of that sink is peripheral setup that either works on a board or does not.
+refused by the frame limit above. The exceptions are the two parts worth
+testing, both free of ESP-IDF and unit-tested on the host:
+[`ac3forge/interleave.hpp`](../../include/ac3forge/interleave.hpp)
+(`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing with
+slot padding is where the bugs are, and the queue model behind the `sink.*`
+line, [`ac3forge/dac_queue_model.hpp`](../../include/ac3forge/dac_queue_model.hpp)
+(`tests/io/test_dac_queue_model.cpp`), which runs there against a simulated DMA.
+The rest of that sink is peripheral setup that either works on a board or does
+not.
 
 The padding is the part that bites. A TDM frame is a fixed shape, so a 5.1
 layout on an 8-slot bus leaves two slots with nothing to carry — and they must

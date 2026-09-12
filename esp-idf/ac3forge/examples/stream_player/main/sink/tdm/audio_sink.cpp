@@ -19,11 +19,13 @@
 //
 // NOT TESTED ON HARDWARE. There is no TDM DAC here, and QEMU has no I2S at all,
 // so what CI establishes about this file is that it compiles and links. The
-// interleave is the exception and it is deliberately elsewhere:
-// ac3forge/interleave.hpp is free of ESP-IDF and is unit-tested on the host
-// (tests/io/test_interleave.cpp), because indexing a planar-to-interleaved
-// transform with slot padding is where the bugs are, and the rest of this file
-// is peripheral setup that either works on a board or does not.
+// interleave and the queue model are the exceptions, and they are deliberately
+// elsewhere: ac3forge/interleave.hpp and ac3forge/dac_queue_model.hpp are free
+// of ESP-IDF and unit-tested on the host (tests/io/test_interleave.cpp and
+// test_dac_queue_model.cpp), because indexing a planar-to-interleaved transform
+// with slot padding, and keeping count of a queue the driver says nothing
+// about, are where the bugs are. The rest of this file is peripheral setup that
+// either works on a board or does not.
 
 #include "audio_sink.hpp"
 
@@ -32,9 +34,11 @@
 
 #include "ac3/core/tables.hpp"
 #include "driver/i2s_tdm.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "ac3forge/dac_queue_model.hpp"
 #include "ac3forge/interleave.hpp"
 
 #include "../sink_common.hpp"
@@ -45,7 +49,7 @@ namespace {
 constexpr bool kSlave = CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE != 0;
 
 i2s_chan_handle_t g_tx = nullptr;
-DacQueueModel g_model;
+ac3forge::DacQueueModel g_model;
 std::size_t g_slots = 0;
 
 // At most 128 bits a frame, so four of these 32-bit slots - see the top of
@@ -160,12 +164,12 @@ void sink_write(std::span<const std::span<const float>> channels) {
                                 std::span<std::int32_t>{g_interleaved.data(), frames * g_slots});
     const std::size_t bytes = frames * g_slots * sizeof(std::int32_t);
 
-    g_model.arriving();
+    g_model.arriving(esp_timer_get_time());
     std::size_t written = 0;
     // portMAX_DELAY: block until the DMA has room. This is what paces the
     // player at real time - the DAC's clock, not a delay.
     (void)i2s_channel_write(g_tx, g_interleaved.data(), bytes, &written, portMAX_DELAY);
-    g_model.queued(bytes);
+    g_model.queued(bytes, esp_timer_get_time());
 }
 
 const char* sink_name() { return "tdm"; }
@@ -180,7 +184,7 @@ void sink_begin_play() { g_model.restart(); }
 
 // The DAC's side of the wire is not observable here; sink/capture/ with
 // CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM checks this sink's conversion. Whether
-// the samples arrived in time is - see sink_common.hpp.
+// the samples arrived in time is - see ac3forge/dac_queue_model.hpp.
 void sink_report() { g_model.report(); }
 
 }  // namespace player

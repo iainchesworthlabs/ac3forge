@@ -194,7 +194,9 @@ emulates none of the three. `tdm` has not run on hardware either. Its conversion
 unit-tested on the host (`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing
 with slot padding is where the bugs are. A 5.1 programme on an 8-slot bus leaves two slots that
 must be written as zeros rather than skipped: the DMA buffer is reused, so whatever the previous
-block left is what the DAC clocks out.
+block left is what the DAC clocks out. The queue model both sinks keep for their `sink.*` line
+(`esp-idf/ac3forge/include/ac3forge/dac_queue_model.hpp`) is unit-tested on the host as well
+(`tests/io/test_dac_queue_model.cpp`), against a simulated DMA.
 
 CI compares the sink's per-channel RMS against the host's answer for the same file through the
 same configuration (`ac3cli decode … downmix=loro drcmode=line`). A `result=pass` alone would be

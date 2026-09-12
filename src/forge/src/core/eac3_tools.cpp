@@ -13,7 +13,6 @@
 #include <span>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 #include "ac3/core/aht_tables.hpp"
 #include "ac3/core/exponents.hpp"

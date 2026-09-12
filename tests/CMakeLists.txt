@@ -80,6 +80,7 @@ add_executable(ac3tests
     io/test_block_ring.cpp
     io/test_unit_hold.cpp
     io/test_layout.cpp
+    io/test_dac_queue_model.cpp
     io/test_metadata_edit.cpp
     io/test_probe.cpp
     emdf/test_emdf.cpp
@@ -191,12 +192,16 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/d
 # backend's internal header below.
 target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 
-# The interleave from the ESP-IDF component (ac3forge/interleave.hpp). Reaching
-# into the component is deliberate: that header is the only part of an I2S or
-# TDM sink that can be checked without a DAC on the other end - the rest is
-# peripheral setup and a blocking write - and it is the part with the indexing
-# in it. The header includes nothing from ESP-IDF, which is what makes building
-# it here possible and is worth keeping true.
+# The interleave and the DMA queue model from the ESP-IDF component
+# (ac3forge/interleave.hpp, ac3forge/dac_queue_model.hpp). Reaching into the
+# component is deliberate: they are the parts of an I2S or TDM sink that can be
+# checked without a DAC on the other end - the rest is peripheral setup and a
+# blocking write - and they are the parts with the indexing and the arithmetic
+# in them. test_layout.cpp builds the component's layout.hpp and render.hpp
+# through the same path, and test_block_ring.cpp and test_unit_hold.cpp its
+# block_ring.hpp and unit_hold.hpp. None of these headers includes anything
+# from ESP-IDF, which is what makes building them here possible and is worth
+# keeping true.
 target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/include")
 

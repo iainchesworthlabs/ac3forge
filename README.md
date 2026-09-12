@@ -27,23 +27,15 @@
 AC3Forge is a clean-room AC-3, E-AC-3 and Dolby Atmos codec, written from the published
 standards in C++23, and the two applications built on it.
 
-| Component | What it is | How to get it | Docs |
-|---|---|---|---|
-| **The library** — `ac3::forge` | The codec: encodes and decodes AC-3 and E-AC-3, every coding mode and layout the standards define, every Annex E tool, and Atmos objects via JOC, with loudness metering and the QC gates inside it — and MKV/MP4/MPEG-TS muxing, IAB and ADM/BW64 reading, IAMF writing, an AC-4 inspector, live capture and passthrough, and object signing beside it. C, Python, Rust and WebAssembly bindings. | `ac3forge-dev-*` archives, and `libac3forge0` plus `libac3forge-dev` (DEB) or `ac3forge-devel` (RPM), from each [release](https://github.com/iainchesworthlabs/ac3forge/releases); `pip install ac3forge`; or build from source | [docs/library/](docs/library/index.md), with the full [capability tables](docs/library/capabilities.md) |
-| **Forge** — `ac3cli` + `ac3gui` | The tooling over the library: a forty-one-command CLI, and a Qt Quick workbench with a plan view for placing objects and channel-level metering. One release download carries both. | A release `.zip`/`.tar.gz`/`.dmg`, or the Windows `.exe` installer from the next release tag on; on macOS `brew install iainchesworthlabs/ac3forge/ac3forge` for the CLI and `brew install --cask iainchesworthlabs/ac3forge/ac3gui` for the GUI; the winget submission is blocked on the Microsoft CLA | [docs/forge/](docs/forge/index.md), then the [CLI](docs/cli/index.md) and [GUI](docs/gui/index.md) guides |
-| **Crucible** — `ac3crucible` | A desktop application that makes every application playing sound an Atmos object the listener places in a room, streamed live over HDMI or decoded to whatever the endpoint takes. It runs on Windows, where it ships its own silent virtual output device, and on Linux, where it taps PipeWire. A macOS platform half compiles on the two macOS CI legs, where the window's test suites run over it; nobody has launched it on a Mac, and its Core Audio tap has never captured anything. | Build from source with `-DAC3FORGE_BUILD_CRUCIBLE=ON`; from the next release tag, the `ac3forge-crucible-*` archive — a `.zip` on Windows x64, and a `.tar.gz` with a `.deb` beside it on Linux x86_64 and aarch64. CPack carries `.rpm` settings for the component, but no CI leg builds one: an `.rpm` comes from a local `cpack` on a machine with `rpmbuild`. There is no macOS package. | [docs/crucible/](docs/crucible/index.md) |
+| Component | What it is | Docs |
+|---|---|---|
+| **The library** — `ac3::forge` | The codec: encodes and decodes AC-3 and E-AC-3 — every coding mode, layout and Annex E tool, plus Atmos objects via JOC — with loudness metering and QC gates built in, MKV/MP4/MPEG-TS muxing, IAB and ADM/BW64 reading, IAMF writing, an AC-4 inspector, live capture/passthrough and object signing. C, Python, Rust and WebAssembly bindings. | [docs/library/](docs/library/index.md), with the full [capability tables](docs/library/capabilities.md) — packages, source builds and `pip install ac3forge` covered there |
+| **Forge** — `ac3cli` + `ac3gui` | The tooling over the library: a forty-one-command CLI and a Qt Quick workbench with a plan view for placing objects and channel-level metering. One release download carries both. | [docs/forge/](docs/forge/index.md) for installing it, then the [CLI](docs/cli/index.md) and [GUI](docs/gui/index.md) guides |
+| **Crucible** — `ac3crucible` | A desktop application that makes every application playing sound an Atmos object the listener places in a room, streamed live over HDMI or decoded to whatever the endpoint takes. Ships its own silent virtual output device on Windows and taps PipeWire on Linux. A macOS platform half builds and is tested in CI; nobody has launched it on a Mac, and its Core Audio tap has never captured anything. | [docs/crucible/](docs/crucible/index.md), [install and first run](docs/crucible/install.md) |
 
 Nothing here links FFmpeg or any other codec library. The FFmpeg command-line tools are used
 during development as an independent decoder to check output against; the build does not
 depend on them.
-
-**Documentation:** [iainchesworthlabs.github.io/ac3forge](https://iainchesworthlabs.github.io/ac3forge/)
-— a beginner's guide to the formats, a developer quick start, the full library reference, and
-step-by-step guides to Forge and Crucible with screenshots. This file is a short pointer into it,
-not a copy of it. [CONTRIBUTING.md](CONTRIBUTING.md#documentation) settles which page wins when
-two disagree: [docs/library/capabilities.md](docs/library/capabilities.md) and
-[docs/verification.md](docs/verification.md) are the authority on what the project can and cannot
-do, and everything here — and in [docs/history.md](docs/history.md) — summarises them.
 
 **Standards and trademarks.** "Dolby", "Dolby Digital" and "Dolby Atmos" are trademarks of
 Dolby Laboratories. This project implements the openly published standards — ATSC A/52:2018
@@ -55,72 +47,71 @@ your use is your problem to assess, not something this project resolves.
 **Status.** The API is not stable — releases so far are 0.x betas; the Latest release badge
 above shows the current one, and [CHANGELOG.md](CHANGELOG.md) records what each contains.
 
-CI requires Windows (MSVC, clang-cl), Linux (GCC and Clang, x64 and arm64) and macOS (Homebrew
-LLVM, arm64 and Intel), covering the library and Forge's CLI and GUI on every one of them.
-Crucible's CI is narrower and uneven across the three: built and tested on both Windows legs,
-both Linux Clang legs against PipeWire and both macOS legs, and packaged from the Windows MSVC
-leg and both Linux Clang legs. The macOS legs joined on 2026-09-06; every test passed on the
-Intel leg, and three of Crucible's eleven Qt Quick suites timed out on the Apple Silicon one. No
-hosted runner has an audio device, a desktop session, or any way to grant the process tap's
-consent prompt, so no macOS code has captured or played anything and the application has never
-been launched on a Mac.
+**CI.** Required checks cover the library and Forge's CLI and GUI on Windows, Linux (x64 and
+arm64) and macOS; Crucible's CI is narrower — see [Where it runs](#where-it-runs). Sanitizers,
+coverage, a gold-reference quality gate and a required Android build leg run beside the matrix.
+Toolchain versions and exactly what each leg covers:
+[Verified configuration](docs/building.md#verified-configuration).
 
-Crucible's Windows null-sink driver has a CI job of its own, which builds and test-signs the
-driver package and fails on any defect the WDK's driver rule set reports. Beside all that sit an
-ASan+UBSan leg, a coverage gate over the library, a per-platform gold-reference quality gate,
-dedicated Linux FFmpeg- and ADM-validation legs, and a required Android build leg for the Shield
-TV demo app. See [docs/building.md](docs/building.md#verified-configuration) for exact toolchain
-versions and what each CI leg covers.
-
-**Also in the tree:** **Shield Atmos Demo** (`apps/android/`), an Android TV app streaming live,
-controller-driven Atmos object motion out an NVIDIA Shield's HDMI passthrough to a real AV
-receiver, sideload-only — see [docs/platforms/android.md](docs/platforms/android.md); and the
-browser demos (`apps/wasm/`) that decode and encode in a page over the library compiled to
-WebAssembly. Both demonstrate the library rather than being products of their own.
+**Also in the tree:** **Shield Atmos Demo** (`apps/android/`) streams live, controller-driven
+Atmos object motion out an NVIDIA Shield's HDMI passthrough to a real AV receiver, sideload-only
+— see [docs/platforms/android.md](docs/platforms/android.md) — and the **browser demos**
+(`apps/wasm/`) decode and encode in a page over the library compiled to WebAssembly. Both
+demonstrate the library rather than being products of their own.
 
 ## Limits
 
-**What the codec will not do.** Object streams from here are spec-correct but will not decode as
-*objects* in Dolby's own decoder: that decoder gates object decoding on a keyed authenticity tag,
-and this project ships no key. An operator who has one can sign with it — see
-[docs/library/signing.md](docs/library/signing.md) — and without one the stream plays as its 5.1
-bed. That is a licensing gate, not a conformance failure. AC-3 has no VBR: its frame size indexes
-a fixed table rather than stating a word count, so it stays CBR. E-AC-3 supports both.
+**What the codec will not do.** Object streams from here are spec-correct but won't decode as
+*objects* in Dolby's own decoder, which gates that on a keyed authenticity tag this project ships
+no key for — an operator with one can [sign](docs/library/signing.md) a stream; without one it
+plays as its 5.1 bed. A licensing gate, not a conformance failure. AC-3 has no VBR — its frame
+size indexes a fixed table rather than stating a word count — so it stays CBR; E-AC-3 supports
+both.
 
-**Where independent checking runs out.** Enhanced coupling and transient pre-noise processing have
-no external decode oracle, so they are scored through the in-repo decoder rather than FFmpeg. No
-listening test has been run anywhere — every quality number published here is a waveform metric.
+**Where independent checking runs out.** Enhanced coupling, transient pre-noise processing and
+JOC object decode have no external decode oracle, so they're scored through the in-repo decoder
+rather than FFmpeg — see
+[where the oracles don't reach](docs/verification.md#where-the-oracles-dont-reach). No listening
+test has been run anywhere; every quality number published here is a waveform metric.
 
-**What has met real audio hardware.** Linux output has reached a receiver on one machine, a
-Raspberry Pi 4B: over ALSA on 2026-08-20, and over PipeWire on 2026-09-05, where the receiver's
-front panel read "5.1 DD+" from a pre-encoded fixture and "Atmos/DD+" at 7.1 from Crucible's live
-path. On Windows, live capture, decoded monitor playback and `spatial` rendering are confirmed
-on a workstation, but no AV receiver has been cabled to a Windows machine and no real device has
-ever accepted an exclusive-mode IEC 61937 format. macOS has not been confirmed against hardware
-at all, and its Core Audio process tap has never captured anything.
-
-[Validation](docs/verification.md) covers all three in full: what object reconstruction means in
-practice, which streams FFmpeg can check independently and which only the in-repo decoder can,
-and what has and has not been confirmed against hardware.
+[Validation](docs/verification.md) covers both in full: what object reconstruction means in
+practice, and which streams FFmpeg can check independently versus only the in-repo decoder.
+Real-hardware confirmation by platform is in [Where it runs](#where-it-runs), below.
 
 ## Where it runs
 
-| Target | What runs there | Strongest evidence |
-|---|---|---|
-| Windows x64 | Library, `ac3cli`, `ac3gui`, Crucible | Capture, monitor playback and `spatial` on real hardware |
-| Linux x64 / arm64 | Library, `ac3cli`, `ac3gui`, Crucible | Bitstream out to a real receiver, on one machine |
-| Raspberry Pi 4B | Everything Linux arm64 runs | Atmos over HDMI to a powered AVR, on the board |
-| macOS arm64 / Intel | Library, `ac3cli`, `ac3gui`; Crucible compiles | Green CI; nothing has captured or played a sound |
-| Android (NVIDIA Shield) | Shield Atmos Demo only | Live objects out HDMI to a receiver, on the device |
-| WebAssembly | Decode and encode in a browser page | Demos published and running |
-| ESP32-S3 | Decode (every layout to 7.1.4, every coding tool, the output stage's folds, Atmos objects reconstructed and placed on loudspeakers) or encode (2/0 and 5.1); reusable ESP-IDF component | Correct under QEMU; real time on the board for every decode fixture (E-AC-3 5.1 in 11.0 ms of its 32, 7.1.4 in 28.5, objects onto 7.1.4 in 25.1, at 240 MHz); AC-3 2/0 and E-AC-3 2/0 encode in real time there (0.35x, 0.73x), AC-3 5.1 sits at the line (1.01x) and the other encode rows run 1.3x to 1.7x over; two example players drive I2S — [the capability table](docs/platforms/esp32.md#what-the-part-can-and-cannot-do) |
-| ESP32-C3 | Decode only, in the fixed-point tier - the part has no floating-point unit - through the same ESP-IDF component | Correct under `qemu-riscv32`: twelve of fourteen fixtures, each producing PCM identical to the x86 host's and the Cortex-M3 leg's. The two 7.1.4 rows do not fit in its SRAM; speed on a board is unmeasured |
-| Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal` | Correct under QEMU; no real silicon |
+Every target builds and tests green in CI. Beyond that:
+
+| Target | What runs there | Under emulation | Real hardware |
+|---|---|:---:|:---:|
+| Windows x64 | Library, `ac3cli`, `ac3gui`, Crucible | — | ✅¹ |
+| Linux x64 / arm64 | Library, `ac3cli`, `ac3gui`, Crucible | — | ✅² |
+| Raspberry Pi 4B | Everything Linux arm64 runs | — | ✅³ |
+| macOS arm64 / Intel | Library, `ac3cli`, `ac3gui`; Crucible compiles | — | ✗⁴ |
+| Android (NVIDIA Shield) | Shield Atmos Demo only, sideload-only | — | ✅⁵ |
+| WebAssembly | Decode and encode in a browser page | — | ✅⁶ |
+| ESP32-S3 | Decode (every layout/tool, Atmos objects) or encode (2/0, 5.1); reusable ESP-IDF component | ✅ correct | ✅⁷ |
+| ESP32-C3 | Decode only, fixed-point tier (no FPU), same component | ✅ correct | —⁸ |
+| Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal` | ✅ correct | —⁹ |
+
+1. Capture, monitor playback and `spatial` rendering; exclusive-mode IEC 61937 passthrough has
+   never been accepted by a real device.
+2. Bitstream output to a real receiver, on one machine.
+3. Full test suite on the board plus Atmos over HDMI to a powered AVR.
+4. Nothing has captured or played a sound; the Core Audio process tap has never been created.
+5. Live objects out HDMI to a receiver, on real 2017 Shield hardware.
+6. Demo pages built and published live.
+7. Real time on the board for every decode fixture; AC-3 5.1 encode sits at the real-time line,
+   the other encode rows run 1.3x to 1.7x over — see
+   [the capability table](docs/platforms/esp32.md#what-the-part-can-and-cannot-do).
+8. Correct under `qemu-riscv32`: twelve of fourteen fixtures, byte-identical to the x86 host and
+   Cortex-M3 leg; no board has run it, and the two 7.1.4 rows don't fit in its SRAM.
+9. Correct under QEMU's `mps2-an385`; no real silicon.
 
 What each can encode and decode is the same everywhere — see
 [docs/library/capabilities.md](docs/library/capabilities.md). Which page applies to what you
-have, and how much weight each evidence level carries, is in
-[docs/platforms/](docs/platforms/index.md).
+have, and the full detail and caveats behind each tick above, is in
+[docs/platforms/](docs/platforms/index.md#reading-the-last-column).
 
 ## Building
 
@@ -153,41 +144,20 @@ ac3cli decode out.ec3 out.wav
 `ac3cli`'s commands cover encoding, decoding, muxing, inspection, QC and live capture; run it
 with no arguments for the full listing.
 `ac3gui` is a Qt Quick front end over the same library: file and live-capture encoding, a plan
-view for placing objects, and channel-level metering. The pair is Forge, and
-[docs/forge/](docs/forge/index.md) says how to get it. For the C++ API — two headers and about a
-dozen lines to encode a frame — see [Quick start](docs/quickstart.md) or
-[Library conventions](docs/library/index.md).
+view for placing objects, and channel-level metering. The pair is [Forge](docs/forge/index.md).
+For the C++ API — two headers and about a dozen lines to encode a frame — see
+[Quick start](docs/quickstart.md) or [Library conventions](docs/library/index.md).
 
 ## Validation
 
-These are the library's numbers; Forge and Crucible inherit them, since every coding decision
-either of them makes is a call into `ac3::forge`. Quality is measured rather than asserted:
-`tools/ci/quality_race.py` synthesizes stereo programme material, encodes it with both ac3forge
-and FFmpeg at matched bit rates, decodes both with FFmpeg as a neutral referee, aligns by
-cross-correlation, and reports SNR against the original:
-
-| Bit rate | ac3forge | FFmpeg | Difference |
-|---|---|---|---|
-| 192 kbps | 41.23 dB | 40.98 dB | +0.25 |
-| 256 kbps | 44.00 dB | 42.85 dB | +1.15 |
-| 320 kbps | 45.09 dB | 44.15 dB | +0.94 |
-| 448 kbps | 51.05 dB | 47.60 dB | +3.46 |
-
-Measured with FFmpeg 8.0.1 on 2026-08-09; reproduce with `python tools/ci/quality_race.py ac3`.
-Unlike the trend pages beside it, this table is a point measurement rather than a gated series:
-nothing on the `quality-history` branch carries an ac3forge-against-FFmpeg comparison, so no CI
-run reproduces these four numbers or would notice them drifting.
-SNR on synthetic material is a narrow metric — it says the waveform is closer, not that it
-sounds better, and no listening test has been run. Alongside it, every published comparison
-also carries a ViSQOL MOS-LQO prediction, and the fixture corpus includes 30 s CC0 recordings
-of real speech and music beside the synthesized material — `--material speech|music` swaps
-them in. Both matter more than they sound like they should: on one leg FFmpeg leads on SNR by
-2.35 dB and trails on MOS by 1.28, and tuning the encoder's bandwidth against the synthesized
-fixtures once produced a 2.1 dB "win" that was an artefact of the fixture.
-
-That's one number from a larger picture — which streams FFmpeg can check independently and
-which only the in-repo decoder can, what Dolby's own tooling did and didn't confirm, and the
-full test-suite counts — all in [Validation](docs/verification.md).
+Quality is measured, not asserted, and checked six independent ways — a normative in-repo
+decoder, FFmpeg as an external oracle, independent Python transcriptions of the spec, Dolby's own
+tooling, fuzzing in both directions, and an encoder/decoder mirror self-check — all
+platform-independent, since every coding decision Forge or Crucible makes is a call into
+`ac3::forge`. What each check reaches and where it runs out: [Validation](docs/verification.md).
+The quality numbers themselves — gated SNR and ViSQOL MOS-LQO trends, and a release-by-release
+comparison against FFmpeg and Dolby DEE — live on [Quality trend](docs/quality-trend.md) and
+[Landscape](docs/landscape.md) instead of as a snapshot here that could drift stale.
 
 Validation runs both ways. Every release also publishes a
 [conformance vector set](docs/conformance-vectors.md): 60 streams covering each coding tool,
@@ -269,8 +239,12 @@ generators in `tools/`.
 
 ## Documentation
 
-[iainchesworthlabs.github.io/ac3forge](https://iainchesworthlabs.github.io/ac3forge/) is built from
-`docs/` with mkdocs. Locally, the same pages:
+[iainchesworthlabs.github.io/ac3forge](https://iainchesworthlabs.github.io/ac3forge/) is built
+from `docs/` with mkdocs. Locally, the same pages —
+[CONTRIBUTING.md](CONTRIBUTING.md#documentation) settles which page wins when two disagree, and
+[docs/library/capabilities.md](docs/library/capabilities.md) and
+[docs/verification.md](docs/verification.md) are the authority on what the project can and
+cannot do:
 
 | Document | Contents |
 |---|---|
