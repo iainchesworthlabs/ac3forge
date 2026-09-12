@@ -814,6 +814,12 @@ struct Eac3Decoder::Impl {
     // ecplinu_now and only read under the same guard - both flags ARE
     // re-assigned every block - so a reused entry's stale conditional
     // fields are never visible.
+    //
+    // Field order groups them by what fills them (pass one's per-band
+    // arrays first, then the per-block scalar flags pass two reads), not by
+    // size - reordering for the analyzer's 0-padding layout would scatter
+    // that grouping across the struct for no reader benefit.
+    // NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
     struct BlockTail {
         // per stream; decoupled where standard. The single largest heap item
         // in an E-AC-3 decode: seven streams x 2,048 bytes x one entry per
@@ -3117,7 +3123,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             const int shared_norm = norm[static_cast<std::size_t>(kCplStream)];
             // The shared channel's smallest exponent over a band - its exact
             // ones when it is an AHT stream (block_norm.hpp).
-            const auto shared_min = [&](int low, int high) {
+            [[maybe_unused]] const auto shared_min = [&](int low, int high) {
                 return frm->ahtinu[static_cast<std::size_t>(kCplStream)]
                            ? internal::min_exponent(
                                  impl_->aht_eff_exps_[static_cast<std::size_t>(kCplStream)], low,
