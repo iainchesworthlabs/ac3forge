@@ -797,17 +797,6 @@ release packaging.
   `Eac3AccessUnitTrace` overload — one that folds an access unit's substreams together by stream
   index — from the start. Both paths now write at the same point in the sequence. Covered by a CLI
   test over single- and multi-substream E-AC-3, with the AC-3 case alongside as a control.
-- **`quiet` left three of `monitor`'s status lines on stdout, and `decode` wrote its object
-  signature summary into a `-` output** (`apps/cli/commands/live_audio.cpp`,
-  `apps/cli/support.cpp`). `monitor` printed the §7.8 fold note, the object-count line and the
-  `verify-objects` summary with plain `fmt::println`, which `quiet` does not reach. The summary is
-  shared with `decode`, where it also went to stdout when a `-` output put the WAV there, ahead of
-  the RIFF header. `live` printed the blank line that ends its level meter the same way before
-  refusing an IEC 61937 capture. All four now go to the command's status stream: nowhere under
-  `quiet`, and stderr when a `-` output owns stdout. `tests/cli` plays a signed object stream
-  through `monitor` with and without `quiet` and checks that stdout stays empty under it - on a
-  machine with no render endpoint only the summary is reached - and decodes one under `quiet`
-  and to `-`.
 - **`monitor` misdescribed the object layer of every bed program, and claimed an LFE object for
   streams that carry none** (`apps/cli/commands/live_audio.cpp`, `apps/cli/support.cpp`). It
   printed its own copy of `decode`'s object-count line, and that copy had kept only the shape this
