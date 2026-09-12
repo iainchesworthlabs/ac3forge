@@ -220,21 +220,31 @@
 
   // One request per action. No retry: a play sent again could restart it.
   // `why` explains a 409 better than the firmware's words can, when given.
-  // `done` runs after the poll it triggers, not before: `render`'s own
-  // state-change announcement and this one write the same live region, and
-  // a state change landing in that poll must not be left standing over what
-  // the user just did (found investigating a CI flake in `layouts.spec.js`:
-  // a play ending and a layout Apply in the same tick raced, and the
-  // automatic "Finished." silently overwrote the deliberate confirmation).
-  async function act(label, method, path, body, done, why) {
+  // `after` (default false) runs `done` after the poll this triggers rather
+  // than before it. Play and Stop want the original order: their own
+  // message is a transient "asked to X" that render()'s next state
+  // announcement is meant to supersede (Playing., Stopped.), and awaiting
+  // the poll first would let that announcement land before the transient
+  // message ever showed, then nothing ever re-announces the state again
+  // since it has not changed since. Layout's confirmation has no such
+  // handoff - nothing else ever re-announces it - so a state change landing
+  // in that same poll must not be left standing over the deliberate
+  // confirmation instead (found investigating a CI flake in
+  // `layouts.spec.js`: a play ending and a layout Apply landed in the same
+  // tick, and the automatic "Finished." silently overwrote it).
+  async function act(label, method, path, body, done, why, after) {
     try {
       const r = await call(method, path, body);
       if (r.status >= 200 && r.status < 300) {
-        await poll();
+        if (after) {
+          await poll();
+          done();
+          return;
+        }
         done();
-        return;
+      } else {
+        say(label + ' refused (' + r.status + '): ' + (r.status === 409 && why ? why : r.text), true);
       }
-      say(label + ' refused (' + r.status + '): ' + (r.status === 409 && why ? why : r.text), true);
     } catch (e) {
       say(label + ': ' + e.message + '.', true);
     }
@@ -261,7 +271,7 @@
     const n = need(layout);
     const room = status.sink_slots;
     act('Output layout ' + layout, 'PUT', 'layout', layout, () => say('Output layout ' + layout + ' from the next play.'),
-      num(room) && n > room ? 'it needs ' + n + ' slots and this sink has ' + room + '.' : '');
+      num(room) && n > room ? 'it needs ' + n + ' slots and this sink has ' + room + '.' : '', true);
   });
 
   // One volume request in flight at most; /status leaves the slider alone.
