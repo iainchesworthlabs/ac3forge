@@ -319,8 +319,15 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
                 static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
                 static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
 
+    // Read directly into config.layout rather than a separate local: a
+    // second stack-resident OutputLayout here is exactly what once
+    // boot-looped this example on a main-task stack overflow before
+    // kTextBytes was held back (see its own comment in layout.hpp) - the
+    // struct is copied by value onto a tight FreeRTOS stack either way, so
+    // one copy is what the budget allows.
+    ac3forge::PlayerConfig config;
     xSemaphoreTake(g_player_mutex, portMAX_DELAY);
-    const ac3forge::OutputLayout layout = g_layout;
+    config.layout = g_layout;
     xSemaphoreGive(g_player_mutex);
 
     // A layout that needs a different slot count or mode than the sink is
@@ -329,7 +336,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     // sent to the control surface never needs a rebuild or a reboot to take
     // effect. accept_layout already refused anything past the sink's
     // ceiling, so a failure here is the sink itself refusing, not that.
-    const int needed_slots = static_cast<int>(layout.slots());
+    const int needed_slots = static_cast<int>(config.layout.slots());
     if (needed_slots != g_sink_channels_open) {
         if (!player::sink_open(kSampleRate, needed_slots)) {
             g_state.store("failed");
@@ -342,8 +349,6 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     session = Session{};
     ac3probe::reset_stages();
 
-    ac3forge::PlayerConfig config;
-    config.layout = layout;
     config.stereo_fold = kStereoFold;
     config.objects = kObjects;
     config.decoder.joc_domain = kJocDomain;
