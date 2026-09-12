@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -13,7 +15,9 @@
 
 #include "ac3/core/crc16.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/emdf/emdf.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/oba/oamd.hpp"
 
 // The device-facing half of ac3cli: devices/outputs/record/live/monitor.
 //
@@ -80,6 +84,33 @@ int run_cli_split(const std::string& args, const fs::path& out, const fs::path& 
 std::string read_log(const fs::path& log) {
     std::ifstream in{log, std::ios::binary};
     return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+}
+
+// Half a second of silent 5.1 E-AC-3 whose every frame carries `program` as an
+// OAMD payload (TS 103 420 §5.5) in an EMDF container, with no JOC payload
+// beside it: a decoder reads the object layer and reconstructs no object
+// audio. This is for the program shapes this project's own encoder never
+// writes - AtmosEncoder's programs are always dynamic objects plus the bed's
+// LFE.
+void write_oamd_stream(const fs::path& path, const ac3::oba::Program& program,
+                       std::span<const ac3::oba::DynamicObject> objects) {
+    const auto payload = ac3::oba::build_payload(program, objects);
+    const std::vector<ac3::emdf::Payload> payloads = {
+        {.id = ac3::emdf::kPayloadIdOamd, .bytes = payload}};
+    const auto container = ac3::emdf::build_container(payloads);
+
+    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    const std::vector<float> silence(static_cast<std::size_t>(encoder.samples_per_frame()), 0.0F);
+    const std::vector<std::span<const float>> channels(
+        static_cast<std::size_t>(encoder.channel_count()), silence);
+    std::ofstream out{path, std::ios::binary};
+    REQUIRE(out.is_open());
+    for (int frame_index = 0; frame_index < 16; ++frame_index) {
+        const auto frame = encoder.encode_frame(channels, container);
+        REQUIRE(frame.has_value());
+        out.write(reinterpret_cast<const char*>(frame->data()),
+                  static_cast<std::streamsize>(frame->size()));
+    }
 }
 
 // A device command has two legitimate outcomes and no third one: it did the
@@ -268,6 +299,62 @@ TEST_CASE("live mode=atmos positions=osc either runs a live-driven session or re
         CHECK(fs::exists(out_path));
     } else {
         CHECK_FALSE(fs::exists(out_path));
+    }
+}
+
+TEST_CASE("monitor describes a stream's object layer the way decode does",
+          "[cli][audio-io][atmos][concurrency]") {
+    // monitor printed its own copy of decode's object-count line, and the copy
+    // kept only the form this project's own streams need - "N dynamic objects
+    // + the bed's LFE = M objects" - whatever the program was. decode names a
+    // bed program's channels instead, and counts the LFE only when there is
+    // one, so monitor misdescribed both programs below. Each stream is built
+    // here because AtmosEncoder writes neither, and each is silent, like the
+    // cases below, because on a machine with speakers monitor plays it.
+    //
+    // decode's report is checked on every machine. monitor prints its own only
+    // once a render endpoint opens; without one, the check is that it spoke.
+    const auto dir = scratch_dir();
+    const auto check_both = [&dir](const std::string& name, const ac3::oba::Program& program,
+                                   std::span<const ac3::oba::DynamicObject> objects,
+                                   const std::string& line) {
+        const auto stream = dir / (name + ".ec3");
+        write_oamd_stream(stream, program, objects);
+
+        const auto decode_log = dir / (name + "_decode.log");
+        REQUIRE(run_cli("decode \"" + stream.string() + "\" \"" +
+                            (dir / (name + ".wav")).string() + "\"",
+                        decode_log) == 0);
+        const auto decoded = read_log(decode_log);
+        INFO("decode:\n" + decoded);
+        CHECK(decoded.find(line) != std::string::npos);
+
+        const auto monitor_log = dir / (name + "_monitor.log");
+        const auto rc = run_cli("monitor \"" + stream.string() + "\"", monitor_log);
+        const auto monitored = read_log(monitor_log);
+        INFO("monitor:\n" + monitored);
+        check_spoke_either_way(rc, monitored);
+        if (rc == 0) {
+            CHECK(monitored.find(line) != std::string::npos);
+        }
+    };
+    const std::array<ac3::oba::DynamicObject, 2> objects{{
+        {.position = {.x = 0.25, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
+        {.position = {.x = 0.75, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
+    }};
+
+    SECTION("a bed program, as channel-based immersive content is, names its bed") {
+        constexpr auto k514 = static_cast<std::uint16_t>(
+            ac3::oba::bed::k51 | ac3::oba::bed::kTflTfr | ac3::oba::bed::kTblTbr);
+        check_both("monitor_bed_program",
+                   {.dynamic_only = false, .bed = k514, .dynamic_objects = 2}, objects,
+                   "  bed [L R C LFE Ls Rs Tfl Tfr Tbl Tbr] + 2 dynamic objects = 12 objects, "
+                   "OAMD present (JOC audio not reconstructed)");
+    }
+    SECTION("a dynamic-object-only program with no LFE object does not claim one") {
+        check_both("monitor_no_lfe", {.dynamic_only = true, .lfe = false, .dynamic_objects = 2},
+                   objects,
+                   "  2 dynamic objects = 2 objects, OAMD present (JOC audio not reconstructed)");
     }
 }
 

@@ -875,6 +875,21 @@ release packaging.
   machine with no render endpoint only the summary is reached - and decodes one under `quiet`
   and to `-`.
 
+- **`monitor` misdescribed the object layer of every bed program, and claimed an LFE object for
+  streams that carry none** (`apps/cli/commands/live_audio.cpp`, `apps/cli/support.cpp`). It
+  printed its own copy of `decode`'s object-count line, and that copy had kept only the shape this
+  project's own encoder writes - "N dynamic objects + the bed's LFE = M objects" - whatever the
+  program was. `decode` counts the bed's LFE only when the program has one, and names a bed
+  program's channels instead: "bed [L R C LFE Ls Rs Tfl Tfr Tbl Tbr] + 2 dynamic objects = 12
+  objects", followed by a line each for a trim element, for elements skipped by size, and for more
+  than one metadata update block per frame. Channel-based immersive content from other encoders is
+  a bed program, so `monitor` described all of it wrongly. Both commands now report through one
+  function on the status stream, `print_object_summary`, and cannot drift apart again; `monitor`
+  keeps its own note about the JOC audio, which it reconstructs and does not play. `tests/cli`
+  builds streams for the two shapes this project's encoder does not write - a 5.1.4 bed program,
+  and dynamic objects with no LFE object - and requires `monitor` to print what `decode` prints
+  for each.
+
 **Crucible desktop application**
 
 - **A Crucible re-probe asked for while one was already running was dropped**

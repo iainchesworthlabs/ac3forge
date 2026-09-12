@@ -132,62 +132,21 @@ void print_concealment_summary(FILE* status, std::size_t concealed, std::size_t 
     status_println(status, "  concealed {} of {} {} (§7.10)", concealed, total, unit);
 }
 
-// Reports the object layer (if any) an E-AC-3 decode found - the decode-side
-// mirror of run_atmos_encode's own "{N} dynamic objects + the bed's LFE = {M}
-// objects" line. Shared between run_decode_eac3's dual-mono and ordinary
-// return paths, even though this project's own AtmosEncoder never emits dual
-// mono alongside an object container. The object WAVs themselves are
-// streamed out by per-object sinks as the decode runs (run_decode_eac3's
-// append_objects) - by the time this prints, the files are already closed;
-// this only says what happened.
+// Reports the object layer (if any) an E-AC-3 decode found, then what
+// objects_dir exported. The object layer's lines are print_object_summary's,
+// which 'monitor' prints too - the decode-side mirror of run_atmos_encode's
+// own "{N} dynamic objects + the bed's LFE = {M} objects" line. Shared
+// between run_decode_eac3's dual-mono and ordinary return paths, even though
+// this project's own AtmosEncoder never emits dual mono alongside an object
+// container. The object WAVs themselves are streamed out by per-object sinks
+// as the decode runs (run_decode_eac3's append_objects) - by the time this
+// prints, the files are already closed; this only says what happened.
 int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
                            bool have_object_audio, std::size_t objects_written,
                            std::string_view objects_dir) {
-    if (metadata.has_value()) {
-        const auto& program = metadata->program;
-        const char* joc = have_object_audio ? ", JOC audio reconstructed"
-                                            : " (JOC audio not reconstructed)";
-        if (program.dynamic_only) {
-            status_println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
-                           metadata->objects.size(), program.lfe ? " + the bed's LFE" : "",
-                           ac3::oba::object_count(program), joc);
-        } else {
-            // A bed program - what channel-based-immersive third-party
-            // content is. Naming the bed's channels is the useful half here:
-            // "12 objects" says nothing, "L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl
-            // Tbr" says what the stream actually carries.
-            std::string labels;
-            for (const auto label : ac3::oba::bed_labels(program.bed)) {
-                if (!labels.empty()) {
-                    labels += ' ';
-                }
-                labels += ac3::oba::describe(label);
-            }
-            if (labels.empty()) {
-                labels = fmt::format("{} channels", ac3::oba::bed_channel_count(program));
-            }
-            status_println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
-                           labels, program.dynamic_objects, ac3::oba::object_count(program), joc);
-        }
-        if (metadata->trim.has_value()) {
-            status_println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
-                           metadata->trim->warp_mode, metadata->trim->global_trim_mode);
-        }
-        if (!metadata->skipped_elements.empty()) {
-            std::string ids;
-            for (const int id : metadata->skipped_elements) {
-                if (!ids.empty()) {
-                    ids += ", ";
-                }
-                ids += std::to_string(id);
-            }
-            status_println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
-        }
-        if (metadata->blocks.size() > 1) {
-            status_println(status, "  {} metadata update blocks per frame",
-                           metadata->blocks.size());
-        }
-    }
+    print_object_summary(status, metadata,
+                         have_object_audio ? ", JOC audio reconstructed"
+                                           : " (JOC audio not reconstructed)");
     if (objects_dir.empty()) {
         return 0;
     }

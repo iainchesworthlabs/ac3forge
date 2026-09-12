@@ -25,6 +25,7 @@
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/oba/joc.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
@@ -907,5 +908,17 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 // a "-" output owns stdout (see status_stream above).
 std::optional<ac3::signing::VerifySummary> apply_object_verification(
     std::span<const std::byte> stream, const Options& meta, FILE* status);
+
+// The object layer (TS 103 420's OAMD) an E-AC-3 decode found, reported the
+// same way by 'decode' and 'monitor'; nothing when `metadata` is empty. The
+// first line is the program's shape - "N dynamic objects[ + the bed's LFE] =
+// M objects" for a dynamic-object-only program, the only kind AtmosEncoder
+// writes, and "bed [L R C LFE ...] + N dynamic objects = M objects" for a bed
+// program, which is what channel-based immersive third-party content is -
+// ended by `joc_note`, the caller's word on what became of the JOC audio. A
+// trim element, skipped elements and more than one update block per frame
+// each add a line. Every line goes to `status` (see status_stream above).
+void print_object_summary(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
+                          std::string_view joc_note);
 
 }  // namespace ac3cli

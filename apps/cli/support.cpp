@@ -40,6 +40,7 @@
 #include "ac3/meta/mixing.hpp"
 #include "ac3/meta/qc.hpp"
 #include "ac3/oba/joc.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
@@ -2465,6 +2466,56 @@ std::optional<ac3::signing::VerifySummary> apply_object_verification(
         return std::nullopt;
     }
     return summary;
+}
+
+void print_object_summary(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
+                          std::string_view joc_note) {
+    if (!metadata.has_value()) {
+        return;
+    }
+    const auto& decoded = *metadata;
+    const auto& program = decoded.program;
+    if (program.dynamic_only) {
+        status_println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
+                       decoded.objects.size(), program.lfe ? " + the bed's LFE" : "",
+                       ac3::oba::object_count(program), joc_note);
+    } else {
+        // A bed program - what channel-based-immersive third-party content
+        // is. Naming the bed's channels is the useful half here: "12 objects"
+        // says nothing, "L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl Tbr" says what the
+        // stream actually carries.
+        std::string labels;
+        for (const auto label : ac3::oba::bed_labels(program.bed)) {
+            if (!labels.empty()) {
+                labels += ' ';
+            }
+            labels += ac3::oba::describe(label);
+        }
+        if (labels.empty()) {
+            labels = fmt::format("{} channels", ac3::oba::bed_channel_count(program));
+        }
+        status_println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
+                       labels, program.dynamic_objects, ac3::oba::object_count(program),
+                       joc_note);
+    }
+    if (decoded.trim.has_value()) {
+        const auto& trim = *decoded.trim;
+        status_println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
+                       trim.warp_mode, trim.global_trim_mode);
+    }
+    if (!decoded.skipped_elements.empty()) {
+        std::string ids;
+        for (const int id : decoded.skipped_elements) {
+            if (!ids.empty()) {
+                ids += ", ";
+            }
+            ids += std::to_string(id);
+        }
+        status_println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
+    }
+    if (decoded.blocks.size() > 1) {
+        status_println(status, "  {} metadata update blocks per frame", decoded.blocks.size());
+    }
 }
 
 }  // namespace ac3cli
