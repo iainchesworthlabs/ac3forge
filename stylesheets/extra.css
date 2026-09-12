@@ -1,0 +1,80 @@
+/* AC3Forge docs theme — typography and palette only.
+   Big Shoulders Display for headings (industrial/signage face, on-theme for
+   "Forge"); IBM Plex Sans/Mono are loaded through mkdocs.yml's theme.font.
+   Copper (Forge) + teal (signal) accent pair, designed against this
+   project's own subject matter rather than a generic SaaS default. */
+
+@import url("https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&display=swap");
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  font-family: "Big Shoulders Display", "IBM Plex Sans", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* Light (default) palette */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #a8531a;
+  --md-primary-fg-color--light: #c26a2c;
+  --md-primary-fg-color--dark: #7a3d12;
+  --md-primary-bg-color: #ffffff;
+  --md-accent-fg-color: #0f7d73;
+  --md-accent-fg-color--transparent: #0f7d731a;
+  --md-typeset-a-color: #0f7d73;
+}
+
+/* Dark palette */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #2a1c12;
+  --md-primary-fg-color--light: #e2914a;
+  --md-primary-fg-color--dark: #1a1109;
+  --md-primary-bg-color: #f4ede4;
+  --md-accent-fg-color: #4bd0c2;
+  --md-accent-fg-color--transparent: #4bd0c21a;
+  --md-typeset-a-color: #4bd0c2;
+}
+
+/* Capabilities filter box (docs/javascripts/enhancements.js injects the
+   markup; this styles it consistently with the rest of the typeset). */
+.ac3f-cap-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin: 0 0 1em;
+}
+.ac3f-cap-filter input {
+  flex: 1;
+  max-width: 22em;
+  padding: 0.45em 0.7em;
+  border-radius: 0.3em;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.75em;
+}
+.ac3f-cap-filter input:focus {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 1px;
+}
+.ac3f-cap-filter-count {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7em;
+  color: var(--md-default-fg-color--light);
+}
+
+/* "This is you" platform marker on the Forge install page */
+.ac3f-platform-marker {
+  display: inline-block;
+  margin-left: 0.5em;
+  padding: 0.1em 0.55em;
+  border-radius: 1em;
+  background: var(--md-accent-fg-color--transparent);
+  color: var(--md-accent-fg-color);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7em;
+  font-weight: 600;
+  white-space: nowrap;
+}

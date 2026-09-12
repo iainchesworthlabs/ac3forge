@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ac3forge - WASM Atmos authoring demo</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" href="favicon-32.png">
+<style>
+  /* Same palette as ../index.html (the encode demo), duplicated for the same
+     reason that page duplicates the decode demo's: each page stays a flat,
+     self-contained set of files. */
+  :root {
+    color-scheme: dark;
+    --bg: #0b1220;
+    --panel: #131c2e;
+    --border: #263248;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #60a5fa;
+    --good: #34d399;
+    --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 24px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  p.lede { color: var(--muted); margin-top: 0; line-height: 1.5; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  label { font-size: 0.85rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+  label.inline { flex-direction: row; align-items: center; gap: 6px; }
+  select, input[type="number"] {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  button {
+    background: var(--accent);
+    color: #0b1220;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #status { margin-top: 10px; color: var(--muted); font-size: 0.9rem; min-height: 1.2em; }
+  #status.error { color: var(--bad); }
+  #room {
+    display: block;
+    width: 100%;
+    max-width: 480px;
+    aspect-ratio: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .objectRows { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .objectRow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 0.85rem; }
+  .objectRow .swatch { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+  .objectRow input[type="range"] { width: 110px; }
+  .hint { color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
+  code { background: rgba(148,163,184,0.15); padding: 1px 5px; border-radius: 4px; }
+  footer { color: var(--muted); font-size: 0.8rem; margin-top: 24px; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ac3forge - WASM Atmos authoring demo</h1>
+  <p class="lede">
+    Author a real Dolby Atmos (E-AC-3 + JOC) stream in this tab: drag audio objects around a
+    top-down room while the page encodes, and every drag becomes OAMD position metadata in the
+    stream - one placement per frame, so the motion you draw <em>is</em> the pan a decoder
+    renders. Objects are synthesised tones (this is an authoring demo for the metadata path, not
+    a mixing console); the encoder underneath is <code>ac3::oba::AtmosEncoder</code>, the same
+    class <code>ac3cli atmos-encode</code> uses.
+  </p>
+
+  <div class="panel">
+    <div class="controls">
+      <label>Objects
+        <select id="objectCount">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </label>
+      <label>Bitrate (kbps)
+        <select id="bitrate">
+          <option value="448">448</option>
+          <option value="640" selected>640</option>
+          <option value="768">768</option>
+        </select>
+      </label>
+      <label class="inline"><input type="checkbox" id="orbit" checked> Orbit object 1 automatically</label>
+      <button id="startBtn">Start encoding</button>
+    </div>
+    <div id="status">Loading WASM modules...</div>
+  </div>
+
+  <div class="panel">
+    <h2>Room (top-down - front of the room at the top)</h2>
+    <canvas id="room" width="480" height="480"></canvas>
+    <div class="objectRows" id="objectRows"></div>
+    <p class="hint">
+      Positions are TS 103 420 §4.2.1 room-anchored coordinates: x left→right, y front→back,
+      z floor→ceiling (the height slider). Drag a dot to pan its object; the placement each
+      1536-sample frame is encoded with is whatever the room shows at that instant.
+    </p>
+  </div>
+
+  <div id="resultPanel" class="panel" style="display:none;">
+    <h2>Result</h2>
+    <div class="controls">
+      <button id="downloadBtn">Download .ec3</button>
+      <button id="previewBtn">Play round-trip preview</button>
+    </div>
+    <p class="hint">
+      The preview decodes the stream this page just authored through the same WASM decode module
+      the decode demo uses - the objects you panned, reconstructed from the E-AC-3 + JOC bytes.
+      The downloaded <code>.ec3</code> also plays in the
+      <a href="../../wasm-demo/">decode demo</a> and in <code>ac3cli decode</code>.
+    </p>
+  </div>
+
+  <footer>
+    Part of <a href="https://github.com/iainchesworthlabs/ac3forge">ac3forge</a>, roadmap item UX6.
+    Source: <code>apps/wasm/atmos/</code>. Sibling to the
+    <a href="../">encode demo</a>.
+    Licensed under <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE">GPLv3</a>.
+  </footer>
+</div>
+
+<!-- Parent-relative on purpose: this page ships as a subdirectory of
+     wasm_encode_demo/, so ../ac3forge_encode.js always resolves inside the
+     demo directory wherever that directory is mounted (the Emscripten glue
+     then loads each .wasm from its own script's directory). -->
+<script src="../ac3forge_encode.js"></script>
+<script src="../ac3forge_decode.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
