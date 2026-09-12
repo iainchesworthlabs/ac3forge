@@ -33,8 +33,13 @@ public:
             refill(bits);
         }
         // The cache holds cached_bits_ valid bits in its low bits, the
-        // oldest highest; the field is its top `bits` of them.
+        // oldest highest; the field is its top `bits` of them. refill()
+        // guarantees cached_bits_ is in [bits, 64] here, so shift is in
+        // [0, 63] - spelled out for the analyzer, which otherwise explores
+        // an infeasible cached_bits_ >= 64 + bits == 0 path and flags the
+        // shift below as unbounded.
         const int shift = cached_bits_ - bits;
+        assert(shift >= 0 && shift < 64);
         const auto value = static_cast<std::uint32_t>((cache_ >> shift) & mask(bits));
         cached_bits_ = shift;
         cache_ &= (std::uint64_t{1} << shift) - 1;

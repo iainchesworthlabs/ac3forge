@@ -15,6 +15,9 @@ const recorded = (name) => fs.readFileSync(path.join(__dirname, 'payloads', name
 const parsed = (name) => JSON.parse(recorded(name));
 const ms = (us) => (us / 1000).toFixed(1) + ' ms';
 const TIMING = ['#t-decoder', '#t-render', '#t-sink', '#t-frame', '#t-worst', '#t-load'];
+// The layouts the field suggests - the ones not disabled for the sink's size.
+const enabled = (page) =>
+    page.locator('#layouts option').evaluateAll((options) => options.filter((o) => !o.disabled).map((o) => o.value));
 
 // Load the page with the stand-in answering GET /status with `body`, and wait
 // for the first answer to be on screen.
@@ -35,8 +38,12 @@ test('a play in progress', async ({ page, stub }) => {
     await expect(page.locator('#codec')).toHaveText('E-AC-3, 1 substream, dialnorm -31');
     await expect(page.locator('#channels')).toHaveText('6 (3/2)');
     await expect(page.locator('#objects')).toHaveText('Carried, not placed');
-    await expect(page.locator('#layout')).toHaveText('2.0');
-    await expect(page.locator('#slots')).toHaveText('2');
+    // Recorded before the firmware reported how a play serves its layout: the
+    // slots, and `layout` as the next play's, since the payload cannot say
+    // this play's.
+    await expect(page.locator('#output')).toHaveText('2 slots');
+    await expect(page.locator('#next')).toHaveText('2.0');
+    await expect(page.locator('#silent')).toBeHidden();
     const seconds = Math.floor((s.frames * 32) / 1000);
     await expect(page.locator('#played')).toHaveText(
         `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} (${s.frames.toLocaleString('en-US')} frames)`,
@@ -112,15 +119,19 @@ test('a stopped player, and one that did not take a location', async ({ page, st
 });
 
 test('objects placed onto a height layout (a recorded payload, changed)', async ({ page, stub }) => {
-    // QEMU has no PSRAM for the object reconstruction a height layout needs,
-    // so this is finished-eac3.json with the three fields such a play changes.
-    const s = parsed('finished-eac3.json');
-    Object.assign(s, { layout: '7.1.4' });
-    Object.assign(s.stream, { objects_rendered: true, slots: 12 });
+    // The emulated network shape has no PSRAM for the object reconstruction a
+    // height layout needs, so this is finished-714.json with the fields such a
+    // play changes: the stream's, and what the player did with it.
+    const s = parsed('finished-714.json');
+    Object.assign(s.stream, {
+        channels: 6, substreams: 1, objects: true, objects_rendered: true, render: 'objects',
+        coded: 'L,C,R,Ls,Rs,LFE', silent: 'Lrs,Rrs',
+    });
     await show(page, stub, s);
     await expect(page.locator('#objects')).toHaveText('Carried, placed onto the layout');
-    await expect(page.locator('#layout')).toHaveText('7.1.4');
-    await expect(page.locator('#slots')).toHaveText('12');
+    await expect(page.locator('#output')).toHaveText('7.1.4, 12 slots: objects placed by their positions');
+    await expect(page.locator('#silent')).toHaveText('Lrs, Rrs: no object has reached these yet');
+    await expect(page.locator('#next')).toBeHidden();
 });
 
 test('a source still opening, before the play has figures of its own', async ({ page, stub }) => {
@@ -139,9 +150,10 @@ test('a source still opening, before the play has figures of its own', async ({ 
 test('a stream not known yet', async ({ page, stub }) => {
     await show(page, stub, { ...parsed('playing-eac3.json'), stream: null });
     await expect(page.locator('#codec')).toHaveText('Not known yet');
-    for (const id of ['#channels', '#objects', '#slots']) {
+    for (const id of ['#channels', '#objects', '#output', '#silent']) {
         await expect(page.locator(id)).toBeHidden();
     }
+    await expect(page.locator('#next')).toHaveText('2.0');
 });
 
 test('a firmware that reports only the state and the figures', async ({ page, stub }) => {
@@ -151,9 +163,12 @@ test('a firmware that reports only the state and the figures', async ({ page, st
     }
     await show(page, stub, s);
     await expect(page.locator('#state')).toHaveText('Playing');
-    for (const id of ['#location', '#source', '#sink', '#codec', '#channels', '#objects', '#layout', '#slots']) {
+    for (const id of ['#location', '#source', '#sink', '#codec', '#channels', '#objects', '#output', '#silent', '#next']) {
         await expect(page.locator(id)).toBeHidden();
     }
+    // No sink size: every suggestion offered, and none claimed for the sink.
+    await expect(page.locator('#layout-fit')).toHaveText('');
+    expect(await enabled(page)).toEqual(['1.0', '2.0', '5.1', '7.1', '5.1.2', '5.1.4', '7.1.4', '9.1.6']);
     await expect(page.locator('#played')).toBeVisible();
     await expect(page.locator('#t-frame')).toBeVisible();
     await expect(page.getByLabel('Location to play')).toHaveValue('');
@@ -229,9 +244,97 @@ test('the volume the device reports moves the slider', async ({ page, stub }) =>
 
 test('text from the device goes into the page as text', async ({ page, stub }) => {
     const markup = '<img src=x onerror="document.title=1">';
-    await show(page, stub, { ...parsed('failed-decode.json'), location: `http://h/${markup}`, why: markup });
+    const s = parsed('failed-decode.json');
+    Object.assign(s.stream, { layout: markup, render: 'channels', coded: markup, silent: markup });
+    await show(page, stub, { ...s, location: `http://h/${markup}`, why: markup });
+    await expect(page.locator('#output')).toHaveText(`${markup}, 2 slots: each channel on the speaker at its location`);
     await expect(page.locator('#location')).toHaveText(`http://h/${markup}`);
     await expect(page.locator('#reason')).toHaveText(`Stopped by a ${markup} error (${parsed('failed-decode.json').error}).`);
     await expect(page.locator('img')).toHaveCount(0);
     await expect(page).toHaveTitle('ac3forge player');
+});
+
+// Bodies the firmware sent once it reported how a play serves its layout,
+// recorded under QEMU from sdkconfig.ci-http714's twelve-slot shape and
+// sdkconfig.ci-http's two-slot one (payloads/README.md).
+
+test('a 7.1.4 stream on a twelve-slot sink at 7.1.4', async ({ page, stub }) => {
+    await show(page, stub, recorded('finished-714.json'));
+    await expect(page.locator('#sink')).toHaveText('capture-tdm, 12 slots');
+    await expect(page.locator('#channels')).toHaveText('12: L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE');
+    await expect(page.locator('#output')).toHaveText('7.1.4, 12 slots: each channel on the speaker at its location');
+    await expect(page.locator('#silent')).toBeHidden();
+    await expect(page.locator('#next')).toBeHidden();
+    await expect(page.getByRole('combobox', { name: 'Output layout' })).toHaveAccessibleDescription(/This sink has 12 slots\.$/);
+    expect(await enabled(page)).toEqual(['1.0', '2.0', '5.1', '7.1', '5.1.2', '5.1.4', '7.1.4']);
+});
+
+test('the same stream, still playing', async ({ page, stub }) => {
+    await show(page, stub, recorded('playing-714.json'));
+    await expect(page.locator('#state')).toHaveText('Playing');
+    await expect(page.locator('#output')).toHaveText('7.1.4, 12 slots: each channel on the speaker at its location');
+});
+
+test('a 5.1 stream on 7.1.4 leaves the rear surrounds and the heights silent', async ({ page, stub }) => {
+    await show(page, stub, recorded('finished-51-on-714.json'));
+    await expect(page.locator('#channels')).toHaveText('6: L C R Ls Rs LFE');
+    await expect(page.locator('#output')).toHaveText('7.1.4, 12 slots: each channel on the speaker at its location');
+    await expect(page.locator('#silent')).toHaveText('Lrs, Rrs, Vhl, Vhr, Lts, Rts: nothing in the stream for these');
+});
+
+test("the next play's layout beside this play's own", async ({ page, stub }) => {
+    await show(page, stub, recorded('next-51.json'));
+    await expect(page.locator('#output')).toHaveText(/^7\.1\.4, 12 slots: /);
+    await expect(page.locator('#next')).toHaveText('5.1');
+});
+
+test('a 7.1.4 stream on 5.1 spreads its rears and heights over the room', async ({ page, stub }) => {
+    await show(page, stub, recorded('finished-714-on-51.json'));
+    await expect(page.locator('#channels')).toHaveText('12: L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE');
+    await expect(page.locator('#output')).toHaveText('5.1, 6 slots: each channel on the speaker at its location');
+    await expect(page.locator('#silent')).toBeHidden();
+});
+
+test('a 5.1 stream folded to 2.0 on a twelve-slot sink', async ({ page, stub }) => {
+    await show(page, stub, recorded('finished-51-on-20.json'));
+    await expect(page.locator('#sink')).toHaveText('capture-tdm, 12 slots');
+    await expect(page.locator('#output')).toHaveText('2.0, 2 slots: folded to two channels by the decoder (Lo/Ro)');
+    await expect(page.locator('#silent')).toBeHidden();
+});
+
+test('dual mono: two programmes on the left and the right', async ({ page, stub }) => {
+    await show(page, stub, recorded('finished-dualmono-on-714.json'));
+    await expect(page.locator('#channels')).toHaveText('2: Ch1 Ch2');
+    await expect(page.locator('#silent')).toHaveText('C, Ls, Rs, Lrs, Rrs, Vhl, Vhr, Lts, Rts, LFE: nothing in the stream for these');
+});
+
+test('objects played as their bed', async ({ page, stub }) => {
+    await show(page, stub, recorded('finished-objects-as-bed.json'));
+    await expect(page.locator('#objects')).toHaveText('Carried, not placed');
+    await expect(page.locator('#output')).toHaveText('7.1.4, 12 slots: each channel on the speaker at its location');
+});
+
+test('a stream at a sample rate the sink does not run at', async ({ page, stub }) => {
+    await show(page, stub, recorded('failed-sample-rate.json'));
+    await expect(page.locator('#state')).toHaveText('Failed');
+    await expect(page.locator('#reason')).toHaveText("Stopped: the stream's sample rate, 44,100 Hz, is not the sink's.");
+});
+
+test('the WASM demo folded onto a two-slot sink', async ({ page, stub }) => {
+    await show(page, stub, recorded('finished-20.json'));
+    await expect(page.locator('#sink')).toHaveText('capture-i2s, 2 slots');
+    await expect(page.locator('#channels')).toHaveText('6: L C R Ls Rs LFE');
+    await expect(page.locator('#output')).toHaveText('2.0, 2 slots: folded to two channels by the decoder (Lo/Ro)');
+    expect(await enabled(page)).toEqual(['1.0', '2.0']);
+});
+
+test('a render the page has no words for, and a fold to one channel', async ({ page, stub }) => {
+    const s = parsed('finished-714.json');
+    s.stream.render = 'binaural';
+    await show(page, stub, s);
+    await expect(page.locator('#output')).toHaveText('7.1.4, 12 slots');
+    Object.assign(s.stream, { layout: '1.0', slots: 1, render: 'mono' });
+    stub.setStatus(s);
+    await page.reload();
+    await expect(page.locator('#output')).toHaveText('1.0, 1 slot: folded to one channel by the decoder');
 });

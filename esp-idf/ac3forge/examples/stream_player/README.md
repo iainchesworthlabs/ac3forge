@@ -353,6 +353,26 @@ played:
  "resync_bytes":0,"fetched_bytes":448000,"ring_low":6144,"passes":1,"layout_mismatches":0,"finished":true,"failed":false,"why":"end of stream","error":0}
 ```
 
+Since 2026-09-11 `/status` also says how a play serves its layout. `sink_slots`,
+after `sink`, is the slots on the sink's bus and so the widest layout
+`PUT /layout` takes. In `stream`, `layout` is the layout this play renders onto
+(the top-level `layout` is the next play's), `render` is how - `loro`, `ltrt` or
+`mono` for the decoder's fold, `channels` for the coded channels placed,
+`objects` for the objects placed - `coded` is the stream's channels by location,
+and `silent` is the layout's speakers the play has sent nothing:
+
+```
+"sink":"capture-tdm","sink_slots":12, ...
+"stream":{..."slots":12,"layout":"7.1.4","render":"channels","coded":"L,C,R,Ls,Rs,LFE","silent":"Lrs,Rrs,Vhl,Vhr,Lts,Rts"}
+```
+
+Two things the player does before it decodes a unit. A stream carrying more
+than one programme (§E2.3.1.2's independent substreams) plays its first; the
+others' access units are skipped, as `ac3cli decode` skips them. And a stream
+whose sample rate is not the sink's 48 kHz is refused rather than played at the
+wrong speed: the play fails, the console says `error: sample rate failed (44100)`
+and `/status` has `why` `sample rate` with the rate in `error`.
+
 The HTTP server's task never touches the player: `/play`, `/stop`, `/volume`
 and `PUT /layout` go through a queue to `app_main`, which owns the player, and
 `/status` reads a snapshot under a mutex. `stream.sink_frames` in the end-of-run
@@ -419,6 +439,18 @@ lines about multicast filters print at start-up: the emulated MAC has no
 filter, IDF says so, and nothing depends on one. What QEMU cannot say is
 anything about WiFi, or about time: its `realtime_permille` is shape only.
 
+**Streams to point it at.** [`www/`](www/README.md) is a set of them to serve:
+7.1.4 streams that reach all twelve slots of a 7.1.4 output, and beside them
+E-AC-3 at the seven layouts from 1.0 to 7.1.4, AC-3 at 2.0 and 5.1, dependent
+substreams, two programmes, dual mono, each Annex E coding tool, short frames,
+VBR, DRC words, other encoders' streams and objects. `www/streams.json` says
+what each one is and the level each slot of a 7.1.4 output should get from it,
+and CI plays the set under QEMU onto 7.1.4 (`sdkconfig.ci-http714`) and holds
+every slot to it.
+[`planning/esp32-stream-set.md`](../../../../planning/esp32-stream-set.md) has
+what was measured - which streams a network shape without PSRAM can play, and
+which need a board with it.
+
 Two things differ between the sources and are worth knowing before writing a
 third:
 
@@ -451,6 +483,30 @@ What happens to a stream depends on the layout, not the stream:
 | `2.0`, `1.0` | The decoder's own §7.8 fold (`CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD` picks Lo/Ro or Lt/Rt). What every player before 2026-09-10 did, unchanged. |
 | anything wider, no heights | As coded. Each coded channel goes to the slot of its own location exactly, or, where the room has no such speaker (a 7.1 stream's rears in a 5.1 room), is spread over its neighbours by `ac3::spatial::pan_direction` at constant power. The LFE goes to the LFE slots and nowhere else. |
 | with heights | As above for a stream without objects. For a stream with an object layer the objects are reconstructed and placed by their own positions, the bed's LFE passes through, and the bed's other channels are **not** added — an Atmos bed is the objects' own 5.1 fold, and adding it would play everything twice. `CONFIG_AC3FORGE_EXAMPLE_OBJECTS` widens or narrows when that happens. |
+
+**Nothing is upmixed.** The renderer never makes a signal for a speaker out of
+other channels: a slot gets a coded channel at its location, a coded channel
+with no slot of its own spread onto it, an object placed near it, or, for an
+LFE slot, the LFE. A 5.1 stream on `7.1.4` leaves the rear surrounds and the
+four heights at exactly zero. At `2.0` and `1.0` the fold takes in every channel
+but the LFE, heights and rear surrounds included - the decoder first puts each
+location in one of §7.8's seats, a height in L or R and a rear or top surround
+in Ls or Rs, each at -3 dB - and leaves the LFE out, as §7.8 does by default.
+`GET /status` says which of these a play is doing and which of the layout's
+speakers it has sent nothing, and the web page puts both into words
+([Controlling it](#controlling-it)).
+
+Until 2026-09-11 the fold cost memory and time the as-coded render does not.
+Under QEMU's network shape, which has no PSRAM, a stream with a four-channel
+dependent substream - 7.1, 5.1.4, 7.1.4 - aborted at `2.0` for want of 6 KB in
+the fold's scratch; on the board over WiFi, where the fold fitted, a 7.1.4
+stream at `2.0` took 36 ms to decode each 32 ms frame and fell behind. The
+output stage now folds 256 samples at a time: its scratch fits a shape without
+PSRAM, and on the board the same 7.1.4 play decodes in 30 ms a frame, level
+with real time. The same stream decodes and renders onto twelve slots in about
+30 ms. See
+[`planning/esp32-stream-set.md`](../../../../planning/esp32-stream-set.md#on-a-board)
+and [Folded to stereo](../../../../docs/platforms/esp32.md#folded-to-stereo).
 
 All of it is [`ac3forge/render.hpp`](../../include/ac3forge/render.hpp), one
 256-sample block at a time, which is why a 7.1.4 layout costs the player 16 KB
@@ -494,11 +550,15 @@ what that costs a player that writes across descriptors: 3 ms in every 35.
 
 **Neither TDM nor the slave role has run on hardware.** There is no TDM DAC or
 DSP here and QEMU has no I2S, so what CI establishes is that they compile and
-link. The exception is the part worth testing:
-[`ac3forge/interleave.hpp`](../../include/ac3forge/interleave.hpp) is free of
-ESP-IDF and is unit-tested on the host (`tests/io/test_interleave.cpp`), because
-planar-to-interleaved indexing with slot padding is where the bugs are and the
-rest of that sink is peripheral setup that either works on a board or does not.
+link. The exceptions are the two parts worth testing, both free of ESP-IDF and
+unit-tested on the host:
+[`ac3forge/interleave.hpp`](../../include/ac3forge/interleave.hpp)
+(`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing with
+slot padding is where the bugs are, and the queue model behind the `sink.*`
+line, [`ac3forge/dac_queue_model.hpp`](../../include/ac3forge/dac_queue_model.hpp)
+(`tests/io/test_dac_queue_model.cpp`), which runs there against a simulated DMA.
+The rest of that sink is peripheral setup that either works on a board or does
+not.
 
 The padding is the part that bites. A TDM frame is a fixed shape, so a 5.1
 layout on an 8-slot bus leaves two slots with nothing to carry — and they must

@@ -20,6 +20,16 @@
 cmake_minimum_required(VERSION 3.28...4.3)
 project(ac3forge_shield_jni LANGUAGES CXX)
 
+# CMake 3.28+ defaults CXX_SCAN_FOR_MODULES to ON for every C++20+ target
+# built with Ninja (AGP's external-native-build generator) when the compiler
+# claims scanning support - true of NDK r26's Clang 17 - regardless of
+# whether anything actually uses C++ modules (nothing here does). That default
+# needs a clang-scan-deps binary, which the NDK's prebuilt toolchain does not
+# ship on any host platform, so every source (including add_subdirectory()'s
+# ac3::forge/ac3::audio below) fails to scan before it even compiles. Off
+# explicitly, scoped to this Android wrapper project only.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 # Pre-seed the repo root's option()s before pulling it in: option() only sets
 # a cache variable if one is not already present, so FORCE-ing these first
 # means the root CMakeLists.txt's own `option(AC3FORGE_BUILD_CLI ... ON)`

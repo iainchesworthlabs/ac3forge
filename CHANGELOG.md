@@ -96,6 +96,23 @@ release packaging.
   design's budget of 16,384, and the two routes hold 76 bytes of internal heap under QEMU. Tested
   in Chromium against a stand-in for the routes, with the script's coverage gated by c8, and on
   the emulated board in the ESP32 job.
+- **The ESP32 web page says what the output layout does, and a stream set shows it**
+  (`planning/esp32-device-ui.md`, `planning/esp32-stream-set.md`). The field is Output layout,
+  described as the speakers the player drives, with the sink's slot count and suggestions that
+  fit it; a closed section says what 2.0, wider layouts and height layouts do, and that nothing
+  is upmixed. Now shows this play's output and how it is served - the decoder's fold, each
+  channel on the speaker at its location, or objects placed - the speakers it leaves silent, and
+  the next play's layout while it differs. `GET /status` gains, additively, `sink_slots` and the
+  play's `stream.layout`, `render`, `coded` and `silent`. The page's flash budget is 20,480 bytes.
+  `esp-idf/ac3forge/examples/stream_player/www/` is 38 streams for the `http` source, made by
+  `tools/generators/gen_device_streams.py` or copied from the tree: 7.1.4 streams that reach all
+  twelve slots of a 7.1.4 output; E-AC-3 at the seven layouts from 1.0 to 7.1.4 and AC-3 at 2.0
+  and 5.1; dependent substreams, two programmes, dual mono, each Annex E coding tool, short
+  frames, VBR, DRC words, other encoders' streams and objects, with the host's level for every
+  slot in `streams.json`. CI plays the set under QEMU onto 7.1.4 (`sdkconfig.ci-http714`) and
+  holds each slot to the host's level within 1% + 20, the silent ones at exactly zero. Playing it found two faults in the player,
+  fixed: a stream with two programmes had both played, a frame of each, and now plays its first;
+  and a stream at 44.1 or 32 kHz played at the wrong speed, and is now refused.
 
 **Crucible desktop application**
 
@@ -705,6 +722,19 @@ release packaging.
   unchanged; the new `git_commits_since_tag` constant carries the count (0 on a tag).
 
 ### Fixed
+
+**Command line and GUI**
+
+- **The GUI offered E-AC-3 bitrates a source's sample rate could not frame**
+  (`apps/gui/encoder_controller.cpp`). `bitrates()` branched on the codec but not on the loaded
+  source's rate, so a 16 kHz file (reachable in the GUI via the three Annex E `fscod2` half rates)
+  offered every rung above 320 kbit/s though none of them fit an 11-bit `frmsiz`'s `kMaxFrameWords`
+  ceiling — even a 32 kHz source couldn't take the 768 the list always added. Picking one of those
+  rungs and encoding was refused at the encode button with a correct but avoidable error. The list
+  is now filtered per-rate with the same `ac3::eac3::frame_words()`/`kMaxFrameWords` rule
+  `plan::validate()` already applies to the independent substream, and loading a lower-rate source
+  clamps a selection that no longer fits down to the top rung still offered, the same way switching
+  to AC-3 already clamped 768 back to 640.
 
 **ESP32 / bare-metal**
 

@@ -8,12 +8,28 @@
   const REFUSAL_MS = 6000; // an accepted location not in /status by then was refused
   const FRAME_US = 32000; // 1,536 samples at 48 kHz
   const ACMOD = ['1+1', '1/0', '2/0', '3/0', '2/1', '3/1', '2/2', '3/2']; // A/52 Table 5.8
+  const HOW = {
+    loro: 'folded to two channels by the decoder (Lo/Ro)',
+    ltrt: 'folded to two channels by the decoder (Lt/Rt)',
+    mono: 'folded to one channel by the decoder',
+    channels: 'each channel on the speaker at its location',
+    objects: 'objects placed by their positions',
+  };
 
   const $ = (id) => document.getElementById(id);
   const num = (v) => typeof v === 'number' && Number.isFinite(v);
   const str = (v) => (typeof v === 'string' ? v : undefined);
   const count = (v) => (num(v) ? v.toLocaleString('en-US') : undefined);
   const bytes = (v) => (num(v) ? count(v) + ' bytes' : undefined);
+  const slots = (n) => count(n) + (n === 1 ? ' slot' : ' slots');
+  const names = (v) => v.split(',').join(' ');
+  // The slots a layout needs, where the page can count them: a name's three
+  // figures added, as OutputLayout reads F.L.H, or a list's tokens. The
+  // firmware decides; this only explains a refusal and filters suggestions.
+  const need = (text) => {
+    const m = /^([1234579])\.([012])(?:\.([0246]))?$/.exec(text);
+    return m ? +m[1] + +m[2] + +(m[3] || 0) : text.includes(',') ? text.split(',').length : undefined;
+  };
   const ms = (us) => (us / 1000).toFixed(1) + ' ms';
   const clock = (t) => new Date(t).toTimeString().slice(0, 8);
   const put = (id, text, bad) => {
@@ -97,7 +113,9 @@
   // "failed" with no failed run behind it: the source did not open.
   const reason = (state, s) =>
     s.failed === true
-      ? 'Stopped by a ' + (str(s.why) || 'player') + ' error' + (num(s.error) ? ' (' + s.error + ')' : '') + '.'
+      ? s.why === 'sample rate' && num(s.error)
+        ? "Stopped: the stream's sample rate, " + count(s.error) + " Hz, is not the sink's."
+        : 'Stopped by a ' + (str(s.why) || 'player') + ' error' + (num(s.error) ? ' (' + s.error + ')' : '') + '.'
       : state === 'failed'
         ? 'The location may not have opened.'
         : '';
@@ -113,9 +131,12 @@
     ].filter(Boolean);
     return {
       codec: codec.length ? codec.join(', ') : undefined,
-      channels: num(t.channels) ? t.channels + (ACMOD[t.acmod] ? ' (' + ACMOD[t.acmod] + ')' : '') : undefined,
+      channels: num(t.channels) ? t.channels + (str(t.coded) ? ': ' + names(t.coded) : ACMOD[t.acmod] ? ' (' + ACMOD[t.acmod] + ')' : '') : undefined,
       objects: t.objects === true ? (t.objects_rendered === true ? 'Carried, placed onto the layout' : 'Carried, not placed') : t.objects === false ? 'None' : undefined,
-      slots: count(t.slots),
+      // This play's layout, and how it is served; `layout` is the next play's.
+      layout: str(t.layout),
+      output: num(t.slots) ? (str(t.layout) ? t.layout + ', ' : '') + slots(t.slots) + (HOW[t.render] ? ': ' + HOW[t.render] : '') : undefined,
+      silent: str(t.silent) ? names(t.silent).replace(/ /g, ', ') + (t.render === 'objects' ? ': no object has reached these yet' : ': nothing in the stream for these') : undefined,
     };
   }
 
@@ -163,13 +184,17 @@
     const t = stream(s);
     row('location', s.location === '' ? 'None' : str(s.location));
     row('source', str(s.source));
-    row('sink', str(s.sink));
+    row('sink', str(s.sink) && s.sink + (num(s.sink_slots) ? ', ' + slots(s.sink_slots) : ''));
     row('codec', t.codec);
     row('channels', t.channels);
     row('objects', t.objects);
-    row('layout', str(s.layout));
-    row('slots', t.slots);
+    row('output', t.output);
+    row('silent', t.silent);
+    row('next', str(s.layout) !== t.layout ? str(s.layout) : undefined);
     row('played', played(s.frames));
+    // The suggestions the sink can carry, and its size beside the field.
+    $('layout-fit').textContent = num(s.sink_slots) ? ' This sink has ' + slots(s.sink_slots) + '.' : '';
+    for (const option of $('layouts').options) option.disabled = num(s.sink_slots) && need(option.value) > s.sink_slots;
     timing(s);
     row('c-held', count(s.held));
     row('c-passes', count(s.passes));
@@ -190,11 +215,12 @@
   }
 
   // One request per action. No retry: a play sent again could restart it.
-  async function act(label, method, path, body, done) {
+  // `why` explains a 409 better than the firmware's words can, when given.
+  async function act(label, method, path, body, done, why) {
     try {
       const r = await call(method, path, body);
       if (r.status >= 200 && r.status < 300) done();
-      else say(label + ' refused (' + r.status + '): ' + r.text, true);
+      else say(label + ' refused (' + r.status + '): ' + (r.status === 409 && why ? why : r.text), true);
     } catch (e) {
       say(label + ': ' + e.message + '.', true);
     }
@@ -217,8 +243,11 @@
   $('layout-form').addEventListener('submit', (event) => {
     event.preventDefault();
     const layout = $('layout-input').value.trim();
-    if (!layout) return say('Enter a layout.', true);
-    act('Layout ' + layout, 'PUT', 'layout', layout, () => say('Layout ' + layout + ' from the next play.'));
+    if (!layout) return say('Enter an output layout.', true);
+    const n = need(layout);
+    const room = status.sink_slots;
+    act('Output layout ' + layout, 'PUT', 'layout', layout, () => say('Output layout ' + layout + ' from the next play.'),
+      num(room) && n > room ? 'it needs ' + n + ' slots and this sink has ' + room + '.' : '');
   });
 
   // One volume request in flight at most; /status leaves the slider alone.

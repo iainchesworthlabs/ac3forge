@@ -63,6 +63,9 @@ struct ControlHandlers {
     std::function<std::string()> location;  // what is, or was last, playing
     std::function<const char*()> source_name;
     std::function<const char*()> sink_name;
+    // The slots the sink's bus has, and so the widest layout set_layout can
+    // accept; reported beside the sink's name.
+    std::function<int()> sink_slots;
     // "playing", "stopped", "finished", "failed" - the owner knows.
     std::function<const char*()> state;
 };

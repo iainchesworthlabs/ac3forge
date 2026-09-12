@@ -133,6 +133,12 @@ struct VbrConfig {
 
 inline constexpr std::uint32_t kVbrDefaultNominalKbps = 192;
 
+// Fields are grouped and ordered by bitstream section (Table E1.2, E1.3,
+// E1.4...) with per-field spec commentary that reads as a narrative in that
+// order: the analyzer's byte-packed reordering would scatter substream-
+// identity fields among rate-control ones and break that. Not a hot
+// allocation - one FrameConfig per encode call, not per frame.
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
 struct FrameConfig {
     SampleRate sample_rate = SampleRate::k48000;
     std::uint32_t bitrate_kbps = 192;

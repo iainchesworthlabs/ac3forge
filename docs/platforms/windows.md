@@ -236,7 +236,7 @@ to end is still a manual, unautomated check.
 
 ## ARM64
 
-A third Windows leg, `windows-msvc-arm64`, targets GitHub's hosted `windows-11-arm` runner — real
+A third Windows leg, `windows-msvc-arm64`, targets GitHub's hosted `windows-11-vs2026-arm` runner — real
 ARM64 hardware, not x64 emulation. It shares every file the two x64 legs above use; only the
 vcpkg triplet and the resolved MSVC tools directory differ.
 
@@ -270,7 +270,10 @@ ARM64 runner in the same run that surfaced this. `_build.yml`'s "Report and asse
 versions" step accordingly does not hard-assert the shared pin for `windows-msvc-arm64` the way it
 does for `windows-msvc`; it reports whatever toolset this runner actually has instead, the same
 report-only shape already used for `macos-llvm`'s unpinnable Homebrew LLVM, with the reasoning
-recorded in that step's own case arm.
+recorded in that step's own case arm. This finding predates the 2026-09 switch to the
+`windows-11-vs2026-arm` preview label (see "Status" below) and needs reconfirming on the new image
+— the report-only handling stays either way, but the actual toolset generation it reports may now
+differ, since VS2026 is exactly what the older `windows-11-arm` image was missing.
 
 **CLI-only, for now.** Unlike every other packageable Windows/Linux/macOS leg, `windows-msvc-arm64`
 does not build `ac3gui` — `AC3FORGE_BUILD_GUI` is off in `CMakePresets.json`'s
@@ -291,11 +294,21 @@ ships a native-hosted ARM64 Windows kit.
 
 **Status.** New and `experimental: true` (`continue-on-error`) in `_build.yml` until it has proven
 green over real runs, the same promotion path `macos-llvm` and the Android leg both went through —
-see that file's own header comment for the mechanics. The `windows-11-arm` runner label is
+see that file's own header comment for the mechanics. The `windows-11-arm` runner label was
 confirmed enabled for this repository/org: the leg's first real run picked up a runner immediately
 and passed checkout, "Setup MSVC environment" (`vswhere`/`vcvarsall` resolution) and the Ninja
 install, failing only at the toolset-version assertion described above (since relaxed to
-report-only for this leg). Iteration continues from there.
+report-only for this leg). As of 2026-09, `_build.yml` targets `windows-11-vs2026-arm` instead:
+GitHub is running a Windows 11 ARM64 image built on Visual Studio 2026 in public preview under that
+label, in parallel with the existing `windows-11-arm` image, and has said `windows-11-arm` itself
+will be repointed at that VS2026 image once the preview ends (early September 2026). Targeting
+`windows-11-vs2026-arm` now, ahead of that cutover, validates the new image on our own schedule
+instead of having `windows-11-arm`'s meaning change under this leg unannounced on some later run.
+The label-enabled and toolset findings above are from `windows-11-arm` runs on the older image;
+this leg's `experimental: true` stays on until a real run on `windows-11-vs2026-arm` reconfirms
+them - the toolset generation in particular may now read differently, since VS2026 is exactly what
+was missing before. Once `windows-11-arm` itself moves to the VS2026 image, this leg should switch
+back to plain `windows-11-arm` and drop the preview label. Iteration continues from there.
 
 **Unsigned binaries.** Like every other Windows binary this project ships today, this leg's output
 is unsigned — Authenticode signing is blocked project-wide on acquiring a

@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <vector>
 
@@ -176,6 +177,38 @@ class LayoutRenderer {
     }
     [[nodiscard]] float object_gain(std::size_t object, std::size_t slot) const {
         return object_gains_[object][slot];
+    }
+
+    // The slots the bed reaches, bit n for slot n: every slot a coded channel
+    // has a gain into, or with `lfe_only` the ones the bed's LFE reaches -
+    // which is all of the bed render() plays while it places objects.
+    [[nodiscard]] std::uint16_t bed_slots(bool lfe_only = false) const {
+        std::uint16_t mask = 0;
+        for (std::size_t c = 0; c < bed_channels_; ++c) {
+            const Location location = coded_[static_cast<int>(c)];
+            if (lfe_only && location != Location::kLfe && location != Location::kLfe2) {
+                continue;
+            }
+            for (std::size_t slot = 0; slot < layout_.slots(); ++slot) {
+                if (bed_gains_[c][slot] != 0.0F) {
+                    mask = static_cast<std::uint16_t>(mask | (1U << slot));
+                }
+            }
+        }
+        return mask;
+    }
+
+    // The slots the current objects reach (set_objects), the same way.
+    [[nodiscard]] std::uint16_t object_slots() const {
+        std::uint16_t mask = 0;
+        for (std::size_t i = 0; i < object_count_; ++i) {
+            for (std::size_t slot = 0; slot < layout_.slots(); ++slot) {
+                if (object_gains_[i][slot] > 0.0F) {
+                    mask = static_cast<std::uint16_t>(mask | (1U << slot));
+                }
+            }
+        }
+        return mask;
     }
 
     // One block. `out` is one span per slot of the layout (out.size() ==

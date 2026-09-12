@@ -5,8 +5,9 @@
 #include <cstdint>
 #include <span>
 
-#include "ac3/core/tables.hpp"
 #include "ac3/core/eac3_tables.hpp"
+#include "ac3/core/tables.hpp"
+#include "ac3/io/elementary.hpp"
 
 namespace ac3::io {
 
