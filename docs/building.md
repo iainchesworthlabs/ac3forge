@@ -1021,7 +1021,7 @@ summary, using the same soft/hard tiers `tools/ci/append_performance_history.py`
 merge. It is informational and never fails a build — the blocking performance checks remain
 `ac3perf`'s absolute real-time budget on every leg and the trend job's hard tier on push.
 
-An `abi-gate` job (`ci.yml`) runs on the same advisory footing: on a code-touching change it
+An `abi-gate` job (`_ci-core.yml`, called from `ci.yml`) runs on the same advisory footing: on a code-touching change it
 builds `config-linux-llvm-shared` at a comparison point in a git worktree beside HEAD, then
 runs `abidiff` between the two and checks the actual exported dynamic-symbol set
 (`tools/ci/check_abi_symbols.py`, `nm -D --defined-only`) against the checked-in allowlist.

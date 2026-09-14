@@ -558,9 +558,10 @@ Four metrics, and only SNR is regression-checked:
 
 Same `quality-history` branch mechanism as
 [Quality trend](quality-trend.md#where-the-data-lives) and its siblings —
-`object-quality-<branch>.jsonl` this time, written by a job in `ci.yml`
-(`persist-object-quality-trend`) downstream of `ffmpeg-validate`'s
-compute-only `objects` step, on direct pushes to `main` only.
+`object-quality-<branch>.jsonl` this time, written by a job in `_ci-core.yml`
+(`persist-object-quality-trend`, called from `ci.yml`) downstream of
+`ffmpeg-validate`'s compute-only `objects` step, on direct pushes to `main`
+only.
 
 Unlike its siblings, this page's history has no `develop` era to show yet:
 neither `object-quality-develop.jsonl` nor `object-quality-main.jsonl` had

@@ -9,16 +9,21 @@ Windows) that means every leg, and the per-leg fan-out only reappears as gracefu
 degradation when most of the fleet is gone (one surviving runner takes one leg,
 the rest overflow to GitHub-hosted). macOS and the arm64 legs always stay on GitHub-hosted
 runners; there's no self-hosted equivalent for either. `ci.yml`'s own single-leg jobs
-(Detect changes, FFmpeg Validate, ADM Module, ABI diff, Performance vs
-merge base, and the cheap gate jobs) route the same way through its
-`check-runner` job, the Windows wheel leg routes through a decider of its own in
+(Detect changes and the cheap gate jobs) route the same way through its
+`check-runner` job; FFmpeg Validate, ADM Module, ABI gate and Performance vs
+merge base moved into `_ci-core.yml` with the CI lane partitions split
+(docs/ci-lanes.md) but still route through that same decision - `ci.yml`'s
+`core` job forwards `check-runner`'s output in as a plain input, since
+`_ci-core.yml`'s jobs cannot reach across the `workflow_call` boundary to
+`needs: check-runner` directly. The Windows wheel leg routes through a
+decider of its own in
 `wheels.yml`, and `_build.yml`'s standalone containerised build-footprint job rides the
 matrix fan-out as leg 5 - so one queue entry can put up to three Windows consumers (two
 build legs, the wheel leg) onto the 7-runner Windows fleet at once. The nightly analysis
 workflows (`codeql.yml`, `msvc-analysis.yml`, `static-analysis.yml`) have deciders of their
 own too, but run against `main` once a night rather than per queue entry - see
 [Nightly analysis window](#nightly-analysis-window). Several jobs stay on GitHub-hosted deliberately: Coverage (see its
-own comment in `ci.yml` for the undiagnosed shutdown-signal failure); build-wasm /
+own comment in `_ci-core.yml` for the undiagnosed shutdown-signal failure); build-wasm /
 build-android / build-rust (they run bare and lean on toolchains the hosted image
 pre-bakes - emsdk, Android SDK/NDK, rustup - that the fleet image does not; route them
 only if/when `ci-runners` bakes those in); Platform Macros (`check_platform_macros.ps1`

@@ -6,26 +6,28 @@
 # actual Emscripten output and exercises the whole demo end-to-end in a browser; this workflow
 # only needs to know that the package itself builds and its own unit tests pass.
 #
-# The build job runs continuously (every push/PR touching js/**) and always packs the tarball as
-# an artifact - "buildable and testable" is checked the same way wheels.yml's own build job
-# checks the Python side continuously. Publishing to npm is a second job, gated on a v* tag push -
-# see docs/releasing.md's "Publishing to npm" for how it's provisioned (not yet - unlike PyPI,
-# this needs a one-time manual npmjs.com/GitHub setup that has not happened).
+# The build job runs continuously (every push/PR touching js/**, called from ci.yml's `npm` lane
+# since the CI lane partitions split - docs/ci-lanes.md) and always packs the tarball as an
+# artifact - "buildable and testable" is checked the same way wheels.yml's own build job checks
+# the Python side continuously. Publishing to npm is a second job, gated on a v* tag push - see
+# docs/releasing.md's "Publishing to npm" for how it's provisioned (not yet - unlike PyPI, this
+# needs a one-time manual npmjs.com/GitHub setup that has not happened).
 name: npm Package
 
 on:
-  pull_request:
-    paths:
-      - "js/**"
-      - ".github/workflows/npm.yml"
+  # CI lane partitions (docs/ci-lanes.md): PR/main-push validation now comes
+  # from ci.yml's own `npm` job-call, gated on the `npm` lane, not from this
+  # workflow's own trigger - see wheels.yml's identical comment for why the
+  # release-publish path (tags, no branches, unchanged paths behaviour) is
+  # the only direct trigger left and why it cannot overlap with ci.yml's call.
   push:
-    branches: [main]
     paths:
       - "js/**"
       - ".github/workflows/npm.yml"
     tags:
       - "v*"
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: npm-${{ github.workflow }}-${{ github.ref }}

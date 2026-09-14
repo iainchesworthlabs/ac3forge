@@ -15,17 +15,13 @@
 name: ESP-IDF Component
 
 on:
-  pull_request:
-    paths:
-      - "esp-idf/**"
-      - "src/forge/**"
-      - "cmake/**"
-      - "CMakeLists.txt"
-      - "tools/packaging/pack_esp_component.py"
-      - "esphome/**"
-      - ".github/workflows/esp-component.yml"
+  # CI lane partitions (docs/ci-lanes.md): PR/main-push validation now comes
+  # from ci.yml's own `esp-component` job-call, gated on the `esp` lane, not
+  # from this workflow's own trigger - see wheels.yml's identical comment for
+  # why the release-publish path (tags, no branches, unchanged paths
+  # behaviour) is the only direct trigger left and why it cannot overlap
+  # with ci.yml's call.
   push:
-    branches: [main]
     paths:
       - "esp-idf/**"
       - "src/forge/**"
@@ -37,6 +33,7 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: esp-component-${{ github.workflow }}-${{ github.ref }}
