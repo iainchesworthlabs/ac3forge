@@ -731,6 +731,15 @@ struct Eac3Decoder::Impl {
     // vector - unlike some deques - allocates nothing, so 32 idle slots
     // cost nothing.
     std::array<std::vector<DecodedSubstream>, kSubstreamSlots> pending_au_parts_;
+    // decode_substream_core's PCM buffers: one channel set per substream
+    // identity that has decoded, keyed as the slots above are. The set an
+    // access unit is finished with comes back here (see the PcmReturn guard in
+    // decode_access_unit_core) and that identity's next frame decodes into
+    // it, so a stream's buffers are allocated at its first frames rather than
+    // every frame, each wherever a fragmented heap had room at that moment. A
+    // short list rather than a slot per possible identity: a 32-slot array
+    // cost every decoder 384 bytes, and a stream has one to three identities.
+    std::vector<std::pair<int, std::vector<std::vector<float>>>> pcm_pool_;
 
     // decode_substream's own per-block IMDCT/enhanced-coupling scratch
     // (PREfast's C6262, alert #63): reused across every (block, channel)
@@ -784,8 +793,15 @@ struct Eac3Decoder::Impl {
     // (bins past its endmant must read zero), and enhanced-coupling reads
     // are whole-array assignments from this call or gated by this call's
     // ecpl_active flags, so a previous frame's contents are never visible.
-    std::vector<std::array<std::array<internal::decode_scalar_t, 256>, kBlocksPerFrame>>
-        aht_coeffs_;
+    // One buffer per stream, each sized on that stream's first AHT use: all
+    // seven streams' six blocks in one vector made a single 43,008-byte
+    // allocation in the float build (86,016 in double) whether one stream
+    // used the AHT or all seven, and on a regioned heap the largest free
+    // block is what limits an allocation, not the total. The outer vector is
+    // still sized on the decoder's first AHT use rather than held as a
+    // fixed array, which keeps this object the size it was: a decoder that
+    // never meets the AHT carries one empty vector, as before.
+    std::vector<std::vector<std::array<internal::decode_scalar_t, 256>>> aht_coeffs_;
     std::vector<std::array<internal::decode_scalar_t, 256>> ecpl_all_coeffs_;
     // §7.1.3's packed exponent groups, for one stream of one block.
     //
@@ -814,6 +830,12 @@ struct Eac3Decoder::Impl {
     // ecplinu_now and only read under the same guard - both flags ARE
     // re-assigned every block - so a reused entry's stale conditional
     // fields are never visible.
+    //
+    // Field order groups them by what fills them (pass one's per-band
+    // arrays first, then the per-block scalar flags pass two reads), not by
+    // size - reordering for the analyzer's 0-padding layout would scatter
+    // that grouping across the struct for no reader benefit.
+    // NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
     struct BlockTail {
         // per stream; decoupled where standard. The single largest heap item
         // in an E-AC-3 decode: seven streams x 2,048 bytes x one entry per
@@ -1498,9 +1520,23 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // impl_->config_.skip_reconstruction stops before the second pass below, so
     // nothing ever writes these - see that option's own comment.
     if (!impl_->config_.skip_reconstruction) {
-        out.channels.assign(
-            static_cast<std::size_t>(nchans),
-            std::vector<float>(static_cast<std::size_t>(nblks * kSamplesPerBlock), 0.0f));
+        // Into the identity's pooled set when it has one (pcm_pool_; the key
+        // is delay_index's, below), zero-filled exactly as a fresh set was:
+        // every sample the block loop does not write must read silence. The
+        // identity's entry is made here and never in the return, so the
+        // return - which runs in a destructor - never allocates.
+        const int identity = static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid;
+        auto& pool = impl_->pcm_pool_;
+        auto entry = std::find_if(pool.begin(), pool.end(),
+                                  [identity](const auto& e) { return e.first == identity; });
+        if (entry == pool.end()) {
+            entry = pool.emplace(pool.end(), identity, std::vector<std::vector<float>>{});
+        }
+        out.channels = std::exchange(entry->second, {});
+        out.channels.resize(static_cast<std::size_t>(nchans));
+        for (auto& channel : out.channels) {
+            channel.assign(static_cast<std::size_t>(nblks * kSamplesPerBlock), 0.0f);
+        }
     }
 
     // §7.10: whether the block loop below has to keep its last block for a
@@ -2898,14 +2934,17 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // because its BitAllocRegion was built with high_efficiency=true.
         const auto decode_aht_stream = [&](int s, int begin) -> std::expected<void, DecodeError> {
             const auto us = static_cast<std::size_t>(s);
-            // First AHT use on this decoder sizes the frame-lifetime buffer;
-            // the slot clear keeps the read side's invariant that bins this
-            // decode does not write - past endmant, below `begin` - read
-            // zero, which the freshly-allocated buffer used to provide.
+            // The decoder's first AHT use sizes the outer vector and the
+            // stream's first use its own frame-lifetime buffer; every later
+            // use reuses it, assign() zero-filling without reallocating once
+            // the capacity is there. The zero fill keeps the read side's
+            // invariant that bins this decode does not write - past endmant,
+            // below `begin` - read zero. (`= {}` would EMPTY the stream's
+            // vector, and the writes below would run past its end.)
             if (aht_coeffs.size() < static_cast<std::size_t>(kMaxSubstreamStreams)) {
                 aht_coeffs.resize(static_cast<std::size_t>(kMaxSubstreamStreams));
             }
-            aht_coeffs[us] = {};
+            aht_coeffs[us].assign(static_cast<std::size_t>(kBlocksPerFrame), {});
             const int end = endmant[us];
             // The stream's frame exponent (block_norm.hpp): its six blocks
             // are dequantised here at once, and their reconstructed peaks
@@ -3117,7 +3156,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             const int shared_norm = norm[static_cast<std::size_t>(kCplStream)];
             // The shared channel's smallest exponent over a band - its exact
             // ones when it is an AHT stream (block_norm.hpp).
-            const auto shared_min = [&](int low, int high) {
+            [[maybe_unused]] const auto shared_min = [&](int low, int high) {
                 return frm->ahtinu[static_cast<std::size_t>(kCplStream)]
                            ? internal::min_exponent(
                                  impl_->aht_eff_exps_[static_cast<std::size_t>(kCplStream)], low,
@@ -3498,33 +3537,51 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // channels are independent programmes, so Ch2 gets its own gain
         // from its own words (out.dynrng2/out.compr2) rather than sharing
         // Ch1's.
-        for (int ch = 0; ch < nchans; ++ch) {
-            const bool second_programme = bsi->acmod == Acmod::kDualMono && ch == 1;
-            const double drc =
-                second_programme
-                    ? internal::block_gain(impl_->config_,
-                                           out.dynrng2[static_cast<std::size_t>(blk)], out.compr2)
-                    : internal::block_gain(impl_->config_,
-                                           out.dynrng[static_cast<std::size_t>(blk)], out.compr);
+        AC3_ZONE_BEGIN(drc_zone, "eac3_drc_gain");
+        // Resolved once per programme per block rather than once per channel:
+        // every channel of a programme takes the same gain, and resolving it
+        // is double arithmetic - a run of software floating-point calls on a
+        // part whose FPU has no double.
+        const auto resolve = [&](double drc) {
+            internal::BlockScale scale;
             if (drc != 1.0) {
+                scale.apply = true;
                 double gain = drc;
                 if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
                     // The gain's power of two goes into the block exponent
                     // and only its mantissa, in [0.5, 1), into the
                     // coefficients (block_norm.hpp).
-                    int power = 0;
-                    gain = std::frexp(drc, &power);
-                    tail.norm[static_cast<std::size_t>(ch)] -= power;
+                    gain = std::frexp(drc, &scale.power);
                 }
                 // Narrowed once, not per coefficient: the gain is one number
                 // for the whole block, and rounding it here costs a single
                 // rounding step instead of 256 round trips through double.
-                const auto block_scale = static_cast<internal::decode_scalar_t>(gain);
-                for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
-                    value *= block_scale;
-                }
+                scale.scale = static_cast<internal::decode_scalar_t>(gain);
+            }
+            return scale;
+        };
+        const internal::BlockScale first_programme = resolve(internal::block_gain(
+            impl_->config_, out.dynrng[static_cast<std::size_t>(blk)], out.compr));
+        const internal::BlockScale second_programme =
+            bsi->acmod == Acmod::kDualMono
+                ? resolve(internal::block_gain(impl_->config_,
+                                               out.dynrng2[static_cast<std::size_t>(blk)],
+                                               out.compr2))
+                : internal::BlockScale{};
+        for (int ch = 0; ch < nchans; ++ch) {
+            const auto& scale =
+                bsi->acmod == Acmod::kDualMono && ch == 1 ? second_programme : first_programme;
+            if (!scale.apply) {
+                continue;
+            }
+            if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                tail.norm[static_cast<std::size_t>(ch)] -= scale.power;
+            }
+            for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
+                value *= scale.scale;
             }
         }
+        AC3_ZONE_END(drc_zone);
 
         // The transform pair plus the overlap-add that reconstructs PCM from it -
         // where a decode frame spends most of its time, and the stage
@@ -3998,6 +4055,40 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         substreams.push_back(std::move(queue.front()));
         queue.erase(queue.begin());
     }
+    // Every return below is the end of these substreams. Their PCM has been
+    // emitted or written into the unit by then - the block form emits views
+    // of it and the value forms copy it with write_slot; neither moves it
+    // out - so each identity's channel set goes back to its pcm_pool_ for
+    // the next frame to decode into. A guard rather than a line at every
+    // return, so no exit, the refusals included, misses one. It only moves a
+    // set into an entry decode_substream_core made, so it never allocates; a
+    // set with no empty entry to go to (concealment's, the legacy AC-3
+    // core's, a second one for the same identity) is freed as before.
+    struct PcmReturn {
+        Impl& impl;
+        std::vector<DecodedSubstream>& parts;
+        const std::vector<int>& part_keys;
+        PcmReturn(Impl& decoder_impl, std::vector<DecodedSubstream>& unit_parts,
+                  const std::vector<int>& unit_keys)
+            : impl(decoder_impl), parts(unit_parts), part_keys(unit_keys) {}
+        PcmReturn(const PcmReturn&) = delete;
+        PcmReturn& operator=(const PcmReturn&) = delete;
+        ~PcmReturn() {
+            for (std::size_t i = 0; i < parts.size() && i < part_keys.size(); ++i) {
+                auto& channels = parts[i].channels;
+                if (channels.empty()) {
+                    continue;
+                }
+                for (auto& [pooled_key, pooled] : impl.pcm_pool_) {
+                    if (pooled_key == part_keys[i] && pooled.empty()) {
+                        pooled = std::move(channels);
+                        break;
+                    }
+                }
+            }
+        }
+    };
+    const PcmReturn pcm_return{*impl_, substreams, keys};
     const auto& lead = substreams.front();
     if (lead.strmtyp == StreamType::kDependent) {
         return std::unexpected(DecodeError::kInvalidStream);

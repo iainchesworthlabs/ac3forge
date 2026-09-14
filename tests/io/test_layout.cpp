@@ -11,6 +11,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <optional>
 #include <span>
@@ -31,6 +32,23 @@ using ac3forge::OutputLayout;
 using ac3forge::Speaker;
 using Location = ac3::eac3::chanmap::Location;
 using Catch::Approx;
+
+// A host-only regression guard for a fault a QEMU boot check found but a
+// host build cannot see directly: Speaker::small/Speaker::realization were
+// added deliberately placed to land in Speaker's existing alignment padding
+// rather than grow it (see the fields' own comment in layout.hpp) - kMaxSlots
+// copies of a bigger Speaker, inside an OutputLayout PlayerConfig holds by
+// value, is what boot-looped the ESP32 example on a FreeRTOS stack overflow
+// when kTextBytes grew instead. This can't prove the same holds on the
+// Xtensa/GCC target this component actually ships on, only on whichever ABI
+// compiles this test - MSVC here, where the sizes are known. That is still
+// worth having: it turns "someone reorders a field and the board boot-loops"
+// into "MSVC fails the build", the same trade the kTextBytes comment records.
+#if defined(_MSC_VER)
+static_assert(sizeof(Speaker) == 32, "Speaker grew - see its field ordering comment in layout.hpp");
+static_assert(sizeof(OutputLayout) == 616,
+              "OutputLayout grew - kMaxSlots copies of this live on tight ESP32 stacks");
+#endif
 
 std::vector<Location> locations_of(const OutputLayout& layout) {
     std::vector<Location> out;
@@ -455,4 +473,213 @@ TEST_CASE("a folded block goes to the speakers by name, then by order", "[io][la
     REQUIRE(three.at(0) == Approx(0.1F));
     REQUIRE(three.at(1) == 0.0F);
     REQUIRE(three.at(2) == Approx(0.2F));
+}
+
+TEST_CASE("a slot's name, and the names of a set of slots", "[io][layout]") {
+    const auto named = *OutputLayout::parse("7.1.4");
+    REQUIRE(named.connected_slots() == 0x0FFF);
+    std::array<char, 32> name{};
+    REQUIRE(named.slot_name(5, name) == 3);
+    REQUIRE(std::string_view{name.data()} == "Lrs");
+
+    // A list names each slot as it was written: a location, an angle, an
+    // empty slot. "lfe" is Table E2.5's LFE, and is named so.
+    const auto listed = *OutputLayout::parse("L,-110/0,-,lfe");
+    REQUIRE(listed.connected_slots() == 0b1011);
+    REQUIRE(listed.slot_name(0, name) == 1);
+    REQUIRE(std::string_view{name.data()} == "L");
+    (void)listed.slot_name(1, name);
+    REQUIRE(std::string_view{name.data()} == "-110/0");
+    (void)listed.slot_name(2, name);
+    REQUIRE(std::string_view{name.data()} == "-");
+    (void)listed.slot_name(3, name);
+    REQUIRE(std::string_view{name.data()} == "LFE");
+
+    std::array<char, 64> names{};
+    named.names_of(static_cast<std::uint16_t>((1U << 5) | (1U << 6) | (1U << 11)), names);
+    REQUIRE(std::string_view{names.data()} == "Lrs,Rrs,LFE");
+    named.names_of(0, names);
+    REQUIRE(std::string_view{names.data()}.empty());
+    // A name that would not fit whole is left out, with every one after it.
+    std::array<char, 8> small{};
+    named.names_of(0x0FFF, small);
+    REQUIRE(std::string_view{small.data()} == "L,C,R");
+}
+
+TEST_CASE("the slots a bed reaches, and the speakers it leaves silent", "[io][layout][render]") {
+    // 5.1 onto 7.1.4: each channel to its own slot, and the rears and the
+    // heights reached by nothing - the renderer does not upmix.
+    const auto layout = *OutputLayout::parse("7.1.4");
+    LayoutRenderer renderer{layout};
+    renderer.set_bed(coded(k51));
+    // Slots: L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE.
+    const std::uint16_t reached = renderer.bed_slots();
+    REQUIRE(reached == 0b1000'0001'1111);
+    REQUIRE(renderer.bed_slots(true) == 0b1000'0000'0000);  // the LFE alone
+    std::array<char, 64> names{};
+    layout.names_of(static_cast<std::uint16_t>(layout.connected_slots() & ~reached), names);
+    REQUIRE(std::string_view{names.data()} == "Lrs,Rrs,Vhl,Vhr,Lts,Rts");
+
+    // 7.1 onto 5.1: the rears spread over the surrounds, so every speaker the
+    // room has is reached.
+    const auto room = *OutputLayout::parse("5.1");
+    LayoutRenderer spread{room};
+    spread.set_bed(coded(k71));
+    REQUIRE(spread.bed_slots() == room.connected_slots());
+}
+
+TEST_CASE("the slots objects reach", "[io][layout][render]") {
+    LayoutRenderer renderer{*OutputLayout::parse("5.1.4")};
+    // Slots: L C R Ls Rs Vhl Vhr Lts Rts LFE.
+    const std::array<ac3::oba::DisplayObject, 2> objects = {
+        object_at(0.5, 0.0, 0.0),              // the front wall's centre: C alone
+        object_at(0.5, 0.5, 1.0, 0.0, false),  // inactive, so nowhere
+    };
+    renderer.set_objects(objects);
+    REQUIRE(renderer.object_slots() == 0b10);
+}
+
+TEST_CASE("a speaker's size is declared in the list form only", "[io][layout]") {
+    const auto small_fronts = OutputLayout::parse("L:small,R:small,C,LFE,Ls,Rs");
+    REQUIRE(small_fronts.has_value());
+    REQUIRE(small_fronts->slot(0).small);
+    REQUIRE(small_fronts->slot(1).small);
+    REQUIRE_FALSE(small_fronts->slot(2).small);   // C
+    REQUIRE_FALSE(small_fronts->slot(3).small);   // LFE
+    REQUIRE_FALSE(small_fronts->slot(4).small);   // Ls
+    REQUIRE(small_fronts->has_small());
+    REQUIRE(small_fronts->text() == "L:small,R:small,C,LFE,Ls,Rs");
+
+    // No LFE feed at all: nowhere to send the redirected bass.
+    REQUIRE_FALSE(OutputLayout::parse("L:small,R:small").has_value());
+    REQUIRE_FALSE(OutputLayout::parse("L:small,R").has_value());
+
+    // ":small" means nothing on an empty slot or an LFE feed.
+    REQUIRE_FALSE(OutputLayout::parse("L,R,-:small,LFE").has_value());
+    REQUIRE_FALSE(OutputLayout::parse("L,R,LFE:small").has_value());
+    REQUIRE_FALSE(OutputLayout::parse("L:small:small,R,C,LFE,Ls,Rs").has_value());  // twice
+
+    // An angle token may be small too.
+    const auto angled = OutputLayout::parse("30/0:small,-30/0,lfe");
+    REQUIRE(angled.has_value());
+    REQUIRE(angled->slot(0).small);
+
+    // A name has no per-speaker detail to carry this on: "5.1" alone still
+    // parses, "5.1:small" is not a recognised trailing modifier.
+    REQUIRE(OutputLayout::named("5.1").has_value());
+    REQUIRE_FALSE(OutputLayout::parse("5.1:small").has_value());
+}
+
+TEST_CASE("a height slot's realization: wall-mounted, in-ceiling or up-firing", "[io][layout]") {
+    const auto mixed = OutputLayout::parse("Vhl:top,Vhr:top,Lts,Rts,L,C,R,Ls,Rs,LFE");
+    REQUIRE(mixed.has_value());
+    REQUIRE(mixed->slot(0).direction.elevation_deg == Approx(90.0));   // Vhl:top
+    REQUIRE(mixed->slot(1).direction.elevation_deg == Approx(90.0));   // Vhr:top
+    REQUIRE(mixed->slot(2).direction.elevation_deg ==
+            Approx(ac3::spatial::kHeightElevationDeg));  // Lts, untouched
+    REQUIRE(mixed->slot(3).direction.elevation_deg ==
+            Approx(ac3::spatial::kHeightElevationDeg));  // Rts, untouched
+    REQUIRE(mixed->text() == "Vhl:top,Vhr:top,Lts,Rts,L,C,R,Ls,Rs,LFE");
+
+    // ":height" and ":upfiring" are accepted and labelled, but change nothing
+    // numerically - see layout.hpp's header comment on why.
+    const auto height = OutputLayout::parse("Vhl:height,Vhr:upfiring,Lts,Rts,L,C,R,Ls,Rs,LFE");
+    REQUIRE(height.has_value());
+    REQUIRE(height->slot(0).realization == Speaker::Realization::kHeight);
+    REQUIRE(height->slot(1).realization == Speaker::Realization::kUpFiring);
+    REQUIRE(height->slot(0).direction.elevation_deg == Approx(ac3::spatial::kHeightElevationDeg));
+    REQUIRE(height->slot(1).direction.elevation_deg == Approx(ac3::spatial::kHeightElevationDeg));
+
+    // Only the five Dolby height locations can be re-tiered.
+    REQUIRE_FALSE(OutputLayout::parse("L:top,R,C,LFE,Ls,Rs").has_value());
+    REQUIRE_FALSE(OutputLayout::parse("L,R,C,LFE,Ls,Rs,Ts:top").has_value());
+    REQUIRE_FALSE(OutputLayout::parse("Vhl:top:height,Vhr,Lts,Rts,L,C,R,Ls,Rs,LFE")
+                      .has_value());  // two realizations on one token
+
+    // An angle token's realization suffix is a label only.
+    const auto angled = OutputLayout::parse("45/45:top,-45/45");
+    REQUIRE(angled.has_value());
+    REQUIRE(angled->slot(0).realization == Speaker::Realization::kTop);
+    REQUIRE(angled->slot(0).direction.elevation_deg == Approx(45.0));  // the typed degrees win
+}
+
+TEST_CASE("the named form's realization modifier applies to every height slot", "[io][layout]") {
+    const auto ceiling = OutputLayout::named("7.1.4:top");
+    REQUIRE(ceiling.has_value());
+    REQUIRE(ceiling->text() == "7.1.4:top");
+    for (const Location height_location :
+         {Location::kVhl, Location::kVhr, Location::kLts, Location::kRts}) {
+        const int slot = ceiling->index_of(height_location);
+        REQUIRE(slot >= 0);
+        CAPTURE(height_location);
+        REQUIRE(ceiling->slot(static_cast<std::size_t>(slot)).direction.elevation_deg ==
+                Approx(90.0));
+    }
+    // The ring and LFE are unaffected.
+    REQUIRE(ceiling->slot(static_cast<std::size_t>(ceiling->index_of(Location::kLeft)))
+                .direction.elevation_deg == Approx(0.0));
+
+    // Numerically identical to plain "5.1.4" - only the label differs.
+    const auto plain = OutputLayout::named("5.1.4");
+    const auto up_firing = OutputLayout::named("5.1.4:upfiring");
+    REQUIRE(plain.has_value());
+    REQUIRE(up_firing.has_value());
+    REQUIRE(plain->slots() == up_firing->slots());
+    for (std::size_t i = 0; i < plain->slots(); ++i) {
+        CAPTURE(i);
+        REQUIRE(plain->slot(i).direction.azimuth_deg == Approx(up_firing->slot(i).direction.azimuth_deg));
+        REQUIRE(plain->slot(i).direction.elevation_deg ==
+                Approx(up_firing->slot(i).direction.elevation_deg));
+    }
+    REQUIRE(up_firing->slot(static_cast<std::size_t>(up_firing->index_of(Location::kVhl)))
+                .realization == Speaker::Realization::kUpFiring);
+
+    // A modifier with no height slot to apply to is refused.
+    REQUIRE_FALSE(OutputLayout::named("5.1:top").has_value());
+    REQUIRE_FALSE(OutputLayout::named("7.1.4:sideways").has_value());
+}
+
+TEST_CASE("bass management: a small speaker's bass moves to the LFE feed",
+          "[io][layout][render]") {
+    const auto layout = OutputLayout::parse("L:small,C,R,Ls,Rs,LFE");
+    REQUIRE(layout.has_value());
+
+    LayoutRenderer renderer{*layout};
+    renderer.set_bed(coded(k51));
+
+    // bed_slots() reflects the redirect too, distinctly from a coded LFE
+    // channel's own contribution: a bed with NO coded LFE at all (3/2, no
+    // LFE) still lights the LFE slot's bit, because the small L slot it
+    // reaches has its bass sent there regardless.
+    const std::uint16_t no_lfe_acmod =
+        ac3::eac3::chanmap::acmod_map(ac3::Acmod::k3_2, false);
+    LayoutRenderer no_lfe{*layout};
+    no_lfe.set_bed(coded(no_lfe_acmod));
+    REQUIRE((no_lfe.bed_slots() & (1U << 5)) != 0);
+    REQUIRE(no_lfe.bed_slots(true) == (1U << 5));
+
+    // A sustained low-frequency (DC) signal on L alone, driven over enough
+    // 256-sample blocks for the crossover's 80 Hz IIR state to settle - its
+    // time constant is on the order of 100 samples at 48 kHz, so 50 blocks
+    // of 256 is a wide margin.
+    constexpr std::size_t kBlockSamples = 256;
+    Out out(6, kBlockSamples);
+    for (int i = 0; i < 50; ++i) {
+        const Block source({1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F}, {}, kBlockSamples);
+        renderer.render(source.block(), false, 1.0F, out.spans);
+    }
+    REQUIRE(out.at(0) == Approx(0.0F).margin(1e-3));  // L: the low end was removed
+    REQUIRE(out.at(5) == Approx(1.0F).margin(1e-3));  // LFE: the same energy arrived instead
+    REQUIRE(out.at(1) == Approx(0.0F));               // C: untouched
+    REQUIRE(out.at(2) == Approx(0.0F));               // R: untouched
+
+    // Nothing small: the crossover code path never runs, and the output is
+    // exactly what render() has always produced.
+    LayoutRenderer plain{*OutputLayout::parse("5.1")};
+    plain.set_bed(coded(k51));
+    Out plain_out(6, kBlockSamples);
+    const Block plain_source({1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F}, {}, kBlockSamples);
+    plain.render(plain_source.block(), false, 1.0F, plain_out.spans);
+    REQUIRE(plain_out.at(0) == Approx(1.0F));
+    REQUIRE(plain_out.at(5) == 0.0F);
 }

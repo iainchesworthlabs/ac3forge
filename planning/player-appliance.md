@@ -334,7 +334,7 @@ The evidence, unchanged:
   ([Raspberry Pi](../docs/platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)).
 - **PipeWire on real HDMI hardware: confirmed 2026-09-05.** The receiver's own front panel read
   "5.1 DD+" and "Atmos/DD+" at 7.1 ([DR9](../docs/roadmap.md)).
-- **Windows/WASAPI exclusive passthrough: confirmed 2026-09-14.** An Onkyo TX-RZ740 locked
+- **Windows/WASAPI exclusive passthrough: confirmed.** An Onkyo TX-RZ740 locked
   AC-3, E-AC-3 and a signed Atmos stream through `PassthroughSink` itself, at zero-to-near-zero
   underruns each run ([DR9](../docs/roadmap.md)). The evidentiary objection to including Windows
   no longer applies; the paragraph below gives the separate reason the headless scoping still

@@ -96,6 +96,13 @@ void extract_exponents(std::span<const std::int32_t> fixed, std::span<std::uint8
 }
 
 EncodedExponents encode_exponents(std::span<const std::uint8_t> raw, ExpStrategy strategy) {
+    EncodedExponents encoded;
+    encode_exponents_into(raw, strategy, encoded);
+    return encoded;
+}
+
+void encode_exponents_into(std::span<const std::uint8_t> raw, ExpStrategy strategy,
+                           EncodedExponents& out) {
     AC3_ZONE_SCOPED_N("encode_exponents");
     const int endmant = static_cast<int>(raw.size());
     const int group_size = exponent_group_size(strategy);
@@ -158,9 +165,11 @@ EncodedExponents encode_exponents(std::span<const std::uint8_t> raw, ExpStrategy
         pre[static_cast<std::size_t>(i) + 1] = pre[static_cast<std::size_t>(i)];
     }
 
-    EncodedExponents encoded;
-    encoded.absolute = static_cast<std::uint8_t>(pre[0]);
-    encoded.groups.reserve(static_cast<std::size_t>(group_count));
+    out.absolute = static_cast<std::uint8_t>(pre[0]);
+    // Resized rather than cleared-then-push_back'd: a caller reusing `out`
+    // across calls (an exponent run reused frame to frame) keeps its
+    // existing heap block as long as it is already at least this big.
+    out.groups.resize(static_cast<std::size_t>(group_count));
     for (int g = 0; g < group_count; ++g) {
         int mapped[3];
         for (int j = 0; j < 3; ++j) {
@@ -169,14 +178,20 @@ EncodedExponents encode_exponents(std::span<const std::uint8_t> raw, ExpStrategy
             assert(diff >= -2 && diff <= 2);
             mapped[j] = diff + 2;  // Table 7.1 mapping
         }
-        encoded.groups.push_back(
-            static_cast<std::uint8_t>(25 * mapped[0] + 5 * mapped[1] + mapped[2]));
+        out.groups[static_cast<std::size_t>(g)] =
+            static_cast<std::uint8_t>(25 * mapped[0] + 5 * mapped[1] + mapped[2]);
     }
-    return encoded;
 }
 
 EncodedCouplingExponents encode_coupling_exponents(std::span<const std::uint8_t> raw,
                                                    ExpStrategy strategy) {
+    EncodedCouplingExponents encoded;
+    encode_coupling_exponents_into(raw, strategy, encoded);
+    return encoded;
+}
+
+void encode_coupling_exponents_into(std::span<const std::uint8_t> raw, ExpStrategy strategy,
+                                    EncodedCouplingExponents& out) {
     const int group_size = exponent_group_size(strategy);
     const int count = static_cast<int>(raw.size());
     assert(group_size > 0 && count > 0);
@@ -190,7 +205,9 @@ EncodedCouplingExponents encode_coupling_exponents(std::span<const std::uint8_t>
     // out under NDEBUG, and a zero group count sizes pre at one element - which
     // the pre[1] read below is already past the end of.
     if (ngrps <= 0) {
-        return {};
+        out.cplabsexp = 0;
+        out.groups.clear();  // keeps capacity; only the by-value form starts empty
+        return;
     }
     const int diff_count = ngrps * 3;
 
@@ -227,9 +244,8 @@ EncodedCouplingExponents encode_coupling_exponents(std::span<const std::uint8_t>
         }
     }
 
-    EncodedCouplingExponents encoded;
-    encoded.cplabsexp = static_cast<std::uint8_t>(pre[0] >> 1);
-    encoded.groups.reserve(static_cast<std::size_t>(ngrps));
+    out.cplabsexp = static_cast<std::uint8_t>(pre[0] >> 1);
+    out.groups.resize(static_cast<std::size_t>(ngrps));
     for (int g = 0; g < ngrps; ++g) {
         int mapped[3];
         for (int j = 0; j < 3; ++j) {
@@ -238,10 +254,9 @@ EncodedCouplingExponents encode_coupling_exponents(std::span<const std::uint8_t>
             assert(diff >= -2 && diff <= 2);
             mapped[j] = diff + 2;
         }
-        encoded.groups.push_back(
-            static_cast<std::uint8_t>(25 * mapped[0] + 5 * mapped[1] + mapped[2]));
+        out.groups[static_cast<std::size_t>(g)] =
+            static_cast<std::uint8_t>(25 * mapped[0] + 5 * mapped[1] + mapped[2]);
     }
-    return encoded;
 }
 
 void decode_coupling_exponents(std::uint8_t cplabsexp, std::span<const std::uint8_t> groups,

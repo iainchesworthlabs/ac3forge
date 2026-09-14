@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -448,4 +449,313 @@ TEST_CASE("probe refuses a file that is not an elementary stream", "[cli][probe]
     const auto text = read_log(log);
     INFO(text);
     CHECK(text.find("error:") != std::string::npos);
+}
+
+// --- AC-4 --------------------------------------------------------------
+//
+// probe's AC-4 path (run_probe_ac4, summarize_ac4, print_ac4_table,
+// write_ac4_stream and friends) is a completely separate walk from the
+// AC-3/E-AC-3 one above (see probe.cpp's own top comment on why), dispatched
+// by peeking the stream's first byte - 0x0B for AC-3/E-AC-3, 0xAC for AC-4 -
+// so nothing above exercises a line of it. The real DEE fixture below (the
+// same one tests/ac4/test_ac4.cpp and test_cli_containers.cpp already use)
+// covers the "chan" substream shape; the two hand-built streams after it
+// cover the "ajoc" and "obj" shapes and a substream group's own OAMD flag,
+// none of which any committed fixture reaches - see tests/ac4/test_ac4.cpp's
+// own "Synthetic object/A-JOC/OAMD vectors" section for the reasoning and the
+// BitWriter this is a trimmed copy of, duplicated per this project's own
+// per-file test-helper convention rather than shared across the two test
+// binaries' worth of test files.
+
+namespace {
+
+class Ac4BitWriter {
+   public:
+    void put(std::uint32_t value, int n) {
+        for (int i = n - 1; i >= 0; --i) {
+            bits_.push_back(((value >> i) & 1u) != 0);
+        }
+    }
+
+    [[nodiscard]] std::vector<std::byte> bytes() const {
+        std::vector<bool> padded = bits_;
+        while (padded.size() % 8 != 0) {
+            padded.push_back(false);
+        }
+        std::vector<std::byte> out(padded.size() / 8, std::byte{0});
+        for (std::size_t i = 0; i < padded.size(); ++i) {
+            if (padded[i]) {
+                out[i / 8] |= static_cast<std::byte>(0x80U >> (i % 8));
+            }
+        }
+        return out;
+    }
+
+   private:
+    std::vector<bool> bits_;
+};
+
+// tests/ac4/test_ac4.cpp's write_ac4_object_coded_preamble() and
+// write_ac4_object_coded_group_preamble() concatenated - see that file for
+// the field-by-field trace against parse_toc()/parse_presentation_v1_info()/
+// parse_substream_group_info(): bitstream_version 2, a single presentation
+// referencing a single, object-coded substream group (group_index 0),
+// fs_index/frame_rate_index chosen so nothing downstream reads an extra bit
+// for either.
+void write_ac4_preamble(Ac4BitWriter& w) {
+    w.put(2, 2);   // bitstream_version = 2
+    w.put(0, 10);  // sequence_counter
+    w.put(0, 1);   // b_wait_frames
+    w.put(0, 1);   // fs_index = 0 (44100 Hz)
+    w.put(5, 4);   // frame_rate_index = 5
+    w.put(0, 1);   // b_iframe_global
+    w.put(1, 1);   // b_single_presentation -> n_presentations = 1
+    w.put(0, 1);   // b_payload_base = 0
+    w.put(0, 1);   // b_program_id = 0
+    // ac4_presentation_v1_info():
+    w.put(1, 1);  // b_single_substream_group = 1
+    w.put(0, 1);  // presentation_version terminator (unary 0 -> version 0)
+    w.put(0, 3);  // md_compat
+    w.put(0, 1);  // b_presentation_id = 0
+    // frame_rate_multiply_info(frame_rate_index=5): reads 0 bits.
+    w.put(0, 1);  // frame_rate_fractions_info: frame_rate_factor==1 branch reads 1 bit
+    // emdf_info(): version(2)=0, key_id(3)=0, b_payloads_substream_info(1)=0,
+    // emdf_reserved: primary(2)=0, secondary(2)=0.
+    w.put(0, 2);
+    w.put(0, 3);
+    w.put(0, 1);
+    w.put(0, 2);
+    w.put(0, 2);
+    w.put(0, 1);  // b_presentation_filter = 0
+    w.put(0, 3);  // ac4_sgi_specifier(): group_index = 0
+    w.put(0, 1);  // b_pre_virtualized
+    w.put(0, 1);  // b_add_emdf_substreams = 0
+    w.put(0, 1);  // b_alternative
+    w.put(0, 1);  // b_pres_ndot
+    w.put(0, 2);  // ac4_presentation_substream_info()'s substream_index_ref
+    // ac4_substream_group_info()'s own preamble for a single-substream,
+    // object-coded group: b_substreams_present=1, b_hsf_ext=0,
+    // b_single_substream=1 (n_lf_substreams=1, no count field),
+    // b_channel_coded=0.
+    w.put(1, 1);  // b_substreams_present
+    w.put(0, 1);  // b_hsf_ext
+    w.put(1, 1);  // b_single_substream
+    w.put(0, 1);  // b_channel_coded
+}
+
+// tests/ac4/test_ac4.cpp's write_ac4_single_empty_substream_index_table():
+// n_substreams=1, one zero-length substream_size entry. probe never reads a
+// substream's own audio bytes, so a zero-length entry round-trips fine.
+void write_ac4_single_empty_substream_index_table(Ac4BitWriter& w) {
+    w.put(1, 2);   // n_substreams = 1
+    w.put(1, 1);   // b_size_present
+    w.put(0, 1);   // b_more_bits
+    w.put(0, 10);  // substream_size = 0
+}
+
+// Wraps a TOC's raw bytes (preamble + payload + trailer - exactly the span
+// ac4::parse_raw_frame() itself expects, and what tests/ac4/test_ac4.cpp
+// hands straight to it) into one Annex G.3.1 syncframe: sync_word 0xAC40 (no
+// crc_word - summarize_ac4() only counts a transmitted, failing CRC as a
+// failure, so omitting it costs this vector nothing) plus a plain 2-byte
+// frame_size, matching ac4::scan()'s own reading of both fields.
+std::vector<std::byte> wrap_ac4_syncframe(const std::vector<std::byte>& raw_frame) {
+    std::vector<std::byte> out;
+    out.push_back(std::byte{0xAC});
+    out.push_back(std::byte{0x40});
+    const auto size = static_cast<std::uint16_t>(raw_frame.size());
+    out.push_back(static_cast<std::byte>(size >> 8));
+    out.push_back(static_cast<std::byte>(size & 0xFFU));
+    out.insert(out.end(), raw_frame.begin(), raw_frame.end());
+    return out;
+}
+
+void write_bytes(const fs::path& path, const std::vector<std::byte>& data) {
+    std::ofstream out{path, std::ios::binary};
+    REQUIRE(out.is_open());
+    out.write(reinterpret_cast<const char*>(data.data()),
+             static_cast<std::streamsize>(data.size()));
+}
+
+}  // namespace
+
+TEST_CASE("probe reads a real AC-4 stream, in table and JSON form", "[cli][probe][ac4]") {
+    const auto input = baseline("ac4-stereo-64", "dee.ac4");
+    REQUIRE(fs::exists(input));
+
+    const auto json_log = scratch_dir() / "ac4_real.json";
+    REQUIRE(run_cli("probe \"" + input.string() + "\" json=1", json_log) == 0);
+    const auto document = read_log(json_log);
+    INFO(document);
+    CHECK(json_field(document, "schema") == "\"ac3forge.probe/1\"");
+    const auto stream = json_section(document, "stream");
+    CHECK(json_field(stream, "codec") == "\"ac4\"");
+    // Cross-checked against tests/ac4/test_ac4.cpp's own scan() of this same
+    // fixture: 73 sync frames, every one CRC-clean.
+    CHECK(json_field(stream, "access_units") == "73");
+    CHECK(json_field(stream, "syncframes") == "73");
+    const auto integrity = json_section(stream, "integrity");
+    // Unlike the AC-3/E-AC-3 schema above, whose "integrity.crc_valid" is a
+    // syncframe COUNT, the AC-4 walk's is a bool (write_ac4_stream's own
+    // `crc_failures == 0 && sync_frames > 0`) - the two schemas share a key
+    // name but not its type, which is exactly why this file's AC-4 section
+    // checks its own document rather than assuming the AC-3/E-AC-3 tests
+    // above generalise.
+    CHECK(json_field(integrity, "crc_valid") == "true");
+    CHECK(json_field(integrity, "crc_failures") == "0");
+    CHECK(json_field(integrity, "parse_failures") == "0");
+    CHECK(json_field(integrity, "first_parse_error") == "null");
+    const auto ac4 = json_section(stream, "ac4");
+    CHECK(json_field(ac4, "bitstream_version") == "2");
+    CHECK(json_field(ac4, "sample_rate_hz") == "48000");
+    CHECK(json_field(ac4, "n_presentations") == "1");
+    // The real fixture's one presentation is v1 (test_ac4.cpp's own frame-0
+    // check: presentations_v1.size() == 1), so the older presentations_v0
+    // array this schema also always carries stays empty rather than absent.
+    CHECK(json_array(ac4, "presentations_v0").empty());
+    CHECK(document.find("\"kind\": \"chan\"") != std::string::npos);
+    CHECK(document.find("\"channel_mode_name\": \"Stereo\"") != std::string::npos);
+
+    const auto table_log = scratch_dir() / "ac4_real.txt";
+    REQUIRE(run_cli("probe \"" + input.string() + "\"", table_log) == 0);
+    const auto table = read_log(table_log);
+    INFO(table);
+    CHECK(table.find("AC-4") != std::string::npos);
+    CHECK(table.find("bs version") != std::string::npos);
+    CHECK(table.find("48000 Hz") != std::string::npos);
+    CHECK(table.find("Stereo") != std::string::npos);
+    CHECK(table.find("73 of 73 valid") != std::string::npos);
+}
+
+TEST_CASE("probe reports a hand-built AC-4 stream's A-JOC substream", "[cli][probe][ac4]") {
+    // The exact vector tests/ac4/test_ac4.cpp's "parse_substream_info_ajoc:
+    // static_dmx, minimal upmix" test already validated field by field -
+    // reused verbatim rather than combined with another vector: an earlier
+    // draft of this file spliced this payload onto the OAMD vector below's
+    // own fields to cover both in one frame, and that combination came out
+    // one field short of what ac4_substream_group_info()/
+    // ac4_substream_info_ajoc() actually read together, so parse_raw_frame()
+    // read past the end of it (probe's own "truncated" refusal, confirmed
+    // against this exact build) - two independently-validated vectors, not
+    // one hand-spliced guess.
+    Ac4BitWriter w;
+    write_ac4_preamble(w);
+    w.put(0, 1);  // b_oamd_substream = 0
+    w.put(1, 1);  // b_ajoc = 1
+    w.put(1, 1);  // b_lfe
+    w.put(1, 1);  // b_static_dmx (skips dmx assignment; n_fullband_dmx_signals defaults to 5)
+    w.put(0, 1);  // b_oamd_common_data_present
+    w.put(0, 4);  // n_fullband_upmix_signals_minus1 = 0 -> 1 signal
+    w.put(1, 1);  // bed_dyn_obj_assignment(1): b_dyn_objects_only = 1
+    w.put(0, 1);  // b_bitrate_info
+    w.put(0, 1);  // b_audio_ndot
+    w.put(1, 2);  // substream_index = 1
+    w.put(0, 1);  // b_content_type = 0
+    write_ac4_single_empty_substream_index_table(w);
+
+    const auto path = scratch_dir() / "ac4_ajoc.ac4";
+    write_bytes(path, wrap_ac4_syncframe(w.bytes()));
+
+    const auto json_log = scratch_dir() / "ac4_ajoc.json";
+    REQUIRE(run_cli("probe \"" + path.string() + "\" json=1", json_log) == 0);
+    const auto document = read_log(json_log);
+    INFO(document);
+    CHECK(document.find("\"kind\": \"ajoc\"") != std::string::npos);
+    CHECK(document.find("\"b_lfe\": true") != std::string::npos);
+    CHECK(document.find("\"b_static_dmx\": true") != std::string::npos);
+    CHECK(document.find("\"n_fullband_dmx_signals\": 5") != std::string::npos);
+    CHECK(document.find("\"n_fullband_upmix_signals\": 1") != std::string::npos);
+    CHECK(document.find("\"substream_index\": 1") != std::string::npos);
+    // No group carries b_oamd_substream here, so the group's own OAMD field
+    // stays null - the companion test below covers the flag itself.
+    CHECK(document.find("\"oamd\": null") != std::string::npos);
+
+    const auto table_log = scratch_dir() / "ac4_ajoc.txt";
+    REQUIRE(run_cli("probe \"" + path.string() + "\"", table_log) == 0);
+    const auto table = read_log(table_log);
+    INFO(table);
+    CHECK(table.find("A-JOC, 5 dmx + 1 upmix signal(s)") != std::string::npos);
+}
+
+TEST_CASE("probe reports a hand-built AC-4 stream's group-level OAMD flag", "[cli][probe][ac4]") {
+    // ac4_substream_group_info()'s own OAMD flag (b_oamd_substream) is
+    // independent of any one substream's kind - the exact vector
+    // tests/ac4/test_ac4.cpp's "parse_oamd_substream_info via
+    // ac4_substream_group_info's b_oamd_substream" test already validated,
+    // reused verbatim (see the A-JOC test above for why this is its own
+    // frame rather than spliced onto that one).
+    Ac4BitWriter w;
+    write_ac4_preamble(w);
+    w.put(1, 1);  // b_oamd_substream = 1
+    w.put(1, 1);  // b_oamd_ndot
+    w.put(2, 2);  // oamd substream_index = 2
+    // The group's one substream still has to be parsed - simplest
+    // ac4_substream_info_obj() shape: reserved-bytes branch, 0 bytes.
+    w.put(0, 1);  // b_ajoc = 0
+    w.put(0, 3);  // n_objects_code (unused)
+    w.put(0, 1);  // b_dynamic_objects
+    w.put(0, 1);  // b_bed_objects
+    w.put(0, 1);  // b_isf
+    w.put(0, 4);  // res_bytes = 0
+    w.put(0, 1);  // b_bitrate_info
+    w.put(0, 1);  // b_audio_ndot
+    w.put(0, 2);  // substream_index = 0
+    w.put(0, 1);  // b_content_type = 0
+    write_ac4_single_empty_substream_index_table(w);
+
+    const auto path = scratch_dir() / "ac4_oamd.ac4";
+    write_bytes(path, wrap_ac4_syncframe(w.bytes()));
+
+    const auto json_log = scratch_dir() / "ac4_oamd.json";
+    REQUIRE(run_cli("probe \"" + path.string() + "\" json=1", json_log) == 0);
+    const auto document = read_log(json_log);
+    INFO(document);
+    const auto oamd = json_section(document, "oamd");
+    INFO(oamd);
+    CHECK(json_field(oamd, "b_oamd_ndot") == "true");
+    CHECK(json_field(oamd, "substream_index") == "2");
+}
+
+TEST_CASE("probe reports a hand-built AC-4 stream's Obj substream and its bed/dynamic objects",
+          "[cli][probe][ac4]") {
+    // Section 6.3.2.10's dynamic-objects-plus-LFE-bed shape - the exact
+    // vector tests/ac4/test_ac4.cpp's "parse_substream_info_obj: dynamic
+    // objects with an LFE bed object" test already validated field by field.
+    Ac4BitWriter w;
+    write_ac4_preamble(w);
+    w.put(0, 1);  // b_oamd_substream = 0
+    w.put(0, 1);  // b_ajoc = 0 -> ac4_substream_info_obj()
+    w.put(2, 3);  // n_objects_code = 2 -> num_objects = 2
+    w.put(1, 1);  // b_dynamic_objects
+    w.put(1, 1);  // b_lfe
+    w.put(0, 1);  // b_bitrate_info
+    w.put(0, 1);  // b_audio_ndot
+    w.put(1, 2);  // substream_index = 1
+    w.put(0, 1);  // b_content_type = 0
+    write_ac4_single_empty_substream_index_table(w);
+
+    const auto path = scratch_dir() / "ac4_obj.ac4";
+    write_bytes(path, wrap_ac4_syncframe(w.bytes()));
+
+    const auto json_log = scratch_dir() / "ac4_obj.json";
+    REQUIRE(run_cli("probe \"" + path.string() + "\" json=1", json_log) == 0);
+    const auto document = read_log(json_log);
+    INFO(document);
+    CHECK(document.find("\"kind\": \"obj\"") != std::string::npos);
+    CHECK(document.find("\"b_dynamic_objects\": true") != std::string::npos);
+    CHECK(document.find("\"substream_index\": 1") != std::string::npos);
+    const auto bed_at = document.find("\"kind\": \"bed\"");
+    const auto dyn_at = document.find("\"kind\": \"dyn\"");
+    REQUIRE(bed_at != std::string::npos);
+    REQUIRE(dyn_at != std::string::npos);
+    // objects[0] is the LFE bed object, objects[1] the dynamic one - the
+    // order ac4_substream_info_obj() emits them in.
+    CHECK(bed_at < dyn_at);
+    CHECK(document.find("\"lfe\": true", bed_at) < dyn_at);
+
+    const auto table_log = scratch_dir() / "ac4_obj.txt";
+    REQUIRE(run_cli("probe \"" + path.string() + "\"", table_log) == 0);
+    const auto table = read_log(table_log);
+    INFO(table);
+    CHECK(table.find("object, 2 object(s) (dynamic)") != std::string::npos);
 }

@@ -86,6 +86,8 @@ declare -A ICOUNT_CEILING=(
     [eac3_714]=42000000
     [ac3_fold]=13500000
     [eac3_fold]=17000000
+    [eac3_714_fold]=45000000
+    [eac3_line]=17000000
     [eac3_atmos_render]=36000000
 )
 # The fixed-point tier's (--scalar=fixed --icount), measured 2026-09-10 on the
@@ -104,6 +106,8 @@ declare -A ICOUNT_CEILING_FIXED=(
     [ac3_fold]=7000000
     [eac3]=6500000
     [eac3_fold]=10500000
+    [eac3_714_fold]=21500000
+    [eac3_line]=7000000
     [eac3_atmos_objects]=31500000
     [eac3_atmos_render]=32000000
     [eac3_ecpl]=13000000
@@ -363,7 +367,11 @@ done <<< "$CHURN"
 # churn gate; a fixture with no ceiling in the table is an error rather than
 # a pass, for the same reason a forgotten fixture must not pass the churn gate.
 if [[ "$ICOUNT" == "1" ]]; then
-    INSTR=$(grep -o '[a-z0-9_]*\.us_per_frame=[0-9]*' "$OUTPUT" | sed 's/\.us_per_frame=/ /')
+    # The stage lines are left out: `<codec>.stage[<zone>].us_per_frame=` ends
+    # in the same key, and the `]` before it would leave the pattern below an
+    # empty fixture name and the zone's figure in its place.
+    INSTR=$(grep -v '\.stage\[' "$OUTPUT" | grep -o '[a-z0-9_]*\.us_per_frame=[0-9]*' |
+        sed 's/\.us_per_frame=/ /')
     if [[ -z "$INSTR" ]]; then
         echo "error: the probe reported no <fixture>.us_per_frame line" >&2
         exit 1

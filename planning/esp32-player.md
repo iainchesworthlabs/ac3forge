@@ -7,7 +7,7 @@
     component, and its exit criterion met - the E-AC-3 demo over WiFi for ten minutes with no
     underruns, started by `POST /play` and read back by `GET /status`. Phase 2:
     `ac3forge::OutputLayout` and `LayoutRenderer` in the component, the player on the block form,
-    32-bit slots, the slave role, sixteen TDM slots and `PUT /layout`, four QEMU shapes in CI, and
+    32-bit slots, the slave role, a TDM sink and `PUT /layout`, four QEMU shapes in CI, and
     a 7.1.4 render from objects measured through the player on the board at 26 ms of every 32.
     What Phase 2 still owes needs the SigmaDSP board: the slave role against a real master, and
     TDM into a DAC. The board also found five things QEMU could not: the component did not
@@ -101,8 +101,8 @@ to use both.
 **The library, `src/forge`.** Layers 4 and 5. `ac3::io::interleave` is a move of code that already
 has host tests. A `StreamDecoder` over the accumulator, the E-AC-3 decoder and the output stage,
 with `feed()` and `next()` into caller-owned spans, is the loop written three times, written once.
-Both are hand-over items: the decoder core is owned by another session, so this page describes
-them and does not touch `src/forge`. Until they land, the component carries copies, marked as
+Both are hand-over items for whoever owns `src/forge`, so this page describes them and does not
+touch that tree. Until they land, the component carries copies, marked as
 such, and the day they land is the day the copies are deleted.
 
 **The component, `esp-idf/ac3forge/`.** Layer 6, and the seams for 7. The component today registers
@@ -231,14 +231,15 @@ layout, in increasing cost, and the configuration names one of them:
 |---|---|---|
 | **2.0** | The §7.8 fold of the bed, in the decoder (`DownmixTarget::kLoRo` or `kLtRt`). | Exists; what both examples play today. |
 | **As coded: 5.1, 7.1** | The bed's channels as decoded, one TDM slot each. An Atmos bed is the complete mix, so objects need not be reconstructed. | The `tdm` sink exists and has never run on hardware. |
-| **With height: 5.0.4, 5.1.4, 7.1.4, 9.2.4, …** | Objects reconstructed from the bed (`skip_object_reconstruction = false`), then each object panned onto the configured speaker set by `ac3::spatial::pan_direction` over two rings, horizontal and upper, with the bed's own channels placed at their nominal positions and the LFE sends summed. | **Exists on the target as of main's #611, in the probe**: the `eac3_atmos_render` row places a height-object stream onto 7.1.4 through the block form (`decode_access_unit_by_block`, one 256-sample block at a time), every level the host's, the render 5% of the row's instructions, 210,573 bytes of peak heap. `spatial.cpp` is in the profile. **Wired the same day** (Phase 2): a layout in `PlayerConfig`, the block-form decode, `LayoutRenderer`, and a TDM sink of sixteen slots; the QEMU shape `sdkconfig.ci-render` plays this row's stream through the player onto 7.1.4 at the row's own levels. |
+| **With height: 5.0.4, 5.1.4, 7.1.4, 9.2.4, …** | Objects reconstructed from the bed (`skip_object_reconstruction = false`), then each object panned onto the configured speaker set by `ac3::spatial::pan_direction` over two rings, horizontal and upper, with the bed's own channels placed at their nominal positions and the LFE sends summed. | **Exists on the target as of main's #611, in the probe**: the `eac3_atmos_render` row places a height-object stream onto 7.1.4 through the block form (`decode_access_unit_by_block`, one 256-sample block at a time), every level the host's, the render 5% of the row's instructions, 210,573 bytes of peak heap. `spatial.cpp` is in the profile. **Wired the same day** (Phase 2): a layout in `PlayerConfig`, the block-form decode, `LayoutRenderer`, and a TDM sink (at most four 32-bit slots on one S3 line, a board found on 2026-09-11); the QEMU shape `sdkconfig.ci-render` plays this row's stream through the player onto 7.1.4 at the row's own levels. |
 
 The configuration takes a named layout (`5.1.4`) or a speaker list, each with an azimuth, an
 elevation and a slot number, which is what `pan_ring` wants anyway; named layouts are the ITU-R
-BS.2051 positions written out. The channel count decides the sink: two slots on standard I2S, up
-to eight on one TDM line, up to sixteen across the S3's two I2S peripherals at 12.3 MHz each, or
-a DSP's TDM inputs. Rendering block by block, 256 samples at a time, keeps the output storage at
-15 channels × 256 × 4 bytes rather than a frame's 92 KB, which matters on a part with 280 KB.
+BS.2051 positions written out. The channel count decides the sink: two slots on standard I2S; on
+one TDM line four of 32 bits or eight of 16, because an ESP32-S3 TDM frame holds 128 bits; twice
+that across the S3's two I2S peripherals; or a DSP's TDM inputs. Rendering block by block, 256
+samples at a time, keeps the output storage at 15 channels × 256 × 4 bytes rather than a frame's
+92 KB, which matters on a part with 280 KB.
 
 What is measured and what is not: the bed-only decode and the object reconstruction both have
 figures from silicon, and so does a 7.1.4 programme carried as a bed with two dependent
@@ -526,8 +527,8 @@ component's I2S `PcmSink`. The as-coded layouts on the TDM sink. The height layo
 the player onto the block form and the render the probe's `eac3_atmos_render` row already
 performs on this target - `decode_access_unit_by_block` into a 256-sample block per channel,
 the objects panned by `ac3::spatial::pan_direction` onto the configured speaker set - with a
-layout in `PlayerConfig` and a sink of up to sixteen slots across the S3's two I2S peripherals
-or a DSP's TDM inputs.
+layout in `PlayerConfig` and a sink of up to sixteen 16-bit slots across the S3's two I2S
+peripherals (one line holds four 32-bit slots) or a DSP's TDM inputs.
 
 **Exit:** the slot layout checked by the `capture` sink on the host, as the TDM layout is today;
 the slave role played against a SigmaDSP as master; a 7.1.4 stream decoded and rendered through
@@ -550,7 +551,8 @@ renderer places is read from the unit's headers before the decode (the block for
 samples before it reports the layout) and confirmed against the decoded layout after; a
 disagreement is counted in `layout_mismatches`, and none has been seen. The example's I2S sink
 runs 32-bit slots by default and takes the slave role from Kconfig, the TDM sink carries up to
-sixteen slots with its DMA descriptors sized from the bus width, and `PUT /layout` changes the
+four 32-bit slots (an S3 TDM frame holds 128 bits) with its DMA descriptors sized from the bus
+width, and `PUT /layout` changes the
 layout for the next play. Host tests: `tests/io/test_layout.cpp`, eleven cases. QEMU: the
 stereo, TDM and HTTP shapes unchanged to the digit, and a fourth, `sdkconfig.ci-render`, that
 plays the probe's height-object fixture onto 7.1.4 through the twelve-slot TDM conversion with
@@ -625,7 +627,7 @@ passthrough path in Music Assistant. Not schedulable here; the exit is the answe
 
 ### Hand-over to the decoder core
 
-Three items for the session that owns `src/forge`; this page describes them and does not touch
+Six items for whoever owns `src/forge`; this page describes them and does not touch
 that tree.
 
 1. **A defect, found by the streaming example's CI shape on 2026-09-10.**
@@ -643,6 +645,40 @@ that tree.
 3. `ac3::io::StreamDecoder` over the accumulator, both decoders and the output stage, with
    `feed()` and `next()` into caller-owned spans, tested over both generations. The component's
    copy goes when it lands.
+4. **A flush in the block form, found by [the stream set](esp32-stream-set.md#what-the-set-found)
+   on 2026-09-11.** A stream using §3.7's transient pre-noise processing ends with its last
+   access unit held back, and `Eac3Decoder::flush()` releases it only as raw per-substream
+   results, not assembled and not through a `BlockSink`. The player decodes through
+   `decode_access_unit_by_block`, so it cannot release that unit: a TPN stream's play ends one
+   access unit short (15 of 16 for the set's `51-tpn.ec3`). A `flush_by_block(BlockSink)` that
+   assembles what is held and delivers it as the unit's blocks would close it; a test is a TPN
+   stream decoded block by block, whose samples then match `decode_access_unit` followed by
+   `flush()`.
+5. **The fold of a wide programme, found the same day.** Played to `2.0` in the emulated
+   network shape, which has no PSRAM, a stream with a four-channel dependent substream - 7.1,
+   5.1.4, 7.1.4 - runs out of internal RAM: `OutputStage::apply` (`output.cpp`, the fold's
+   scratch) asks for 6,144 bytes with about 8 KB left and no block that large, where the same
+   streams play as coded onto twelve slots with 147 KB to spare. 5.1 and 5.1.2 fold. On the
+   board, with PSRAM, the fold fits - each play started with 169 KB of internal RAM free and a
+   94 KB block - and what it costs is time. The 2.0 image's decode, which runs the output stage
+   with the example's line-mode DRC and dialnorm, takes 4.5 ms more of a 32 ms frame than the
+   as-coded image's for 5.1 and 8.6 ms more for 7.1.4, where the player's renderer places the
+   same channels on twelve slots in 1.4 to 2.2 ms. So a 7.1.4 stream at `2.0` over WiFi decodes
+   in 36 ms a frame and falls behind ([the stream set on a board](esp32-stream-set.md#on-a-board)).
+   Both halves changed on 2026-09-11: the output stage folds 256 samples at a time, its largest
+   allocation 1,024 bytes where it was 6,144, and `714-walk.ec3` at `2.0` on the board went from
+   35.3 to 30.0 ms of decode a frame, 1.00x real time, with 18 of 900 blocks still reaching an
+   empty queue ([Folded to stereo](../docs/platforms/esp32.md#folded-to-stereo)). Under QEMU on
+   2026-09-12 the network shapes then folded 7.1, 5.1.4 and 7.1.4 at `2.0`; one play, the fuzz
+   seed's 7.1.4 as the fifth after boot, still aborted on the decoder's frame-long channel
+   buffers (`Eac3Decoder::decode_substream_core`, 6,144 bytes with no block that large). What is
+   left is that, and the time of the 7.1.4 decode itself.
+6. **The Annex E tools at 7.1.4, found the same day.** Decoded and rendered onto twelve slots
+   over WiFi, a 32 ms frame of 7.1.4 takes 26.7 ms with no coding tools, 30.4 with TPN, 30.7
+   with coupling, 31.1 with spectral extension, 35.2 with AHT, 39.1 with all of them and 59.2 with
+   enhanced coupling. So a 7.1.4 stream from an encoder that uses AHT or enhanced coupling cannot
+   play in real time on this part as the decoder stands, and the rest leave a sink 1 to 2 ms. The
+   figures are the board run in [the stream set](esp32-stream-set.md#on-a-board).
 
 ## What cannot be verified, and why
 

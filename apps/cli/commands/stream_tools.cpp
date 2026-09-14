@@ -592,10 +592,10 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
             // using the mix levels carried across just above. Said out loud
             // rather than done quietly - it is a real change to what the
             // listener hears.
-            fmt::println(status,
-                         "note: {} channels have no AC-3 coding mode; folding down to 5.1 "
-                         "(§7.8, using the stream's own mix levels)",
-                         source_channels);
+            status_println(status,
+                           "note: {} channels have no AC-3 coding mode; folding down to 5.1 "
+                           "(§7.8, using the stream's own mix levels)",
+                           source_channels);
             id = plan::LayoutId::k51;
         }
         if (!id.has_value()) {
@@ -640,30 +640,31 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
         return 1;
     }
 
-    fmt::println(status, "transcoded {} {} access units -> {} {} frames ({} kbps, {} Hz) in {}",
-                 stats->units_in, codec_label(loaded->scan.kind), encoder.frames(),
-                 *target_codec == plan::Codec::kAc3 ? "AC-3" : "E-AC-3", bitrate, source_rate,
-                 out_path);
-    fmt::println(status, "  layout {} <- {} source channels", label, source_channels);
-    fmt::println(status, "  dialnorm {}{}", p.meta.dialnorm,
-                 meta.dialnorm_given ? " (from dialnorm=)" : " (carried from the source)");
+    status_println(status, "transcoded {} {} access units -> {} {} frames ({} kbps, {} Hz) in {}",
+                   stats->units_in, codec_label(loaded->scan.kind), encoder.frames(),
+                   *target_codec == plan::Codec::kAc3 ? "AC-3" : "E-AC-3", bitrate, source_rate,
+                   out_path);
+    status_println(status, "  layout {} <- {} source channels", label, source_channels);
+    status_println(status, "  dialnorm {}{}", p.meta.dialnorm,
+                   meta.dialnorm_given ? " (from dialnorm=)" : " (carried from the source)");
     if (compr_passthrough.has_value()) {
-        fmt::println(status, "  compr    {:+.2f} dB carried across verbatim",
-                     ac3::meta::to_db(ac3::meta::compr_gain(*compr_passthrough)));
+        status_println(status, "  compr    {:+.2f} dB carried across verbatim",
+                       ac3::meta::to_db(ac3::meta::compr_gain(*compr_passthrough)));
     } else if (p.meta.heavy.has_value()) {
-        fmt::println(status, "  compr    re-derived (heavy given on the command line)");
+        status_println(status, "  compr    re-derived (heavy given on the command line)");
     } else {
-        fmt::println(status, "  compr    absent in the source");
+        status_println(status, "  compr    absent in the source");
     }
     // dynrng is a per-BLOCK word derived from the signal, so a re-encode has
     // to produce its own rather than copy the source's - there is no bsi
     // field to stamp it into the way compr has. Reported so the difference is
     // visible rather than discovered.
     if (stats->dynrng_words > 0 && (stats->dynrng_min_db != 0.0 || stats->dynrng_max_db != 0.0)) {
-        fmt::println(status,
-                     "  dynrng   source carried {:+.2f} .. {:+.2f} dB; the re-encode {}",
-                     stats->dynrng_min_db, stats->dynrng_max_db,
-                     p.meta.drc ? "derives its own from drc=" : "writes none (pass drc=<profile>)");
+        status_println(status,
+                       "  dynrng   source carried {:+.2f} .. {:+.2f} dB; the re-encode {}",
+                       stats->dynrng_min_db, stats->dynrng_max_db,
+                       p.meta.drc ? "derives its own from drc="
+                                  : "writes none (pass drc=<profile>)");
     }
     print_channel_summary(meter, status);
     return 0;
@@ -737,20 +738,20 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
 
     const auto status = status_stream(out_path);
     const auto after = ac3::io::read_frame_metadata(loaded->bytes);
-    fmt::println(status, "rewrote {} of {} {} syncframes -> {} (audio untouched)",
-                 summary->changed, summary->syncframes, codec_label(loaded->scan.kind), out_path);
+    status_println(status, "rewrote {} of {} {} syncframes -> {} (audio untouched)",
+                   summary->changed, summary->syncframes, codec_label(loaded->scan.kind), out_path);
     if (after.has_value()) {
-        fmt::println(status, "  dialnorm {} -> {}", before->dialnorm, after->dialnorm);
+        status_println(status, "  dialnorm {} -> {}", before->dialnorm, after->dialnorm);
         if (before->compr.has_value() && after->compr.has_value()) {
-            fmt::println(status, "  compr    {:+.2f} -> {:+.2f} dB",
-                         ac3::meta::to_db(ac3::meta::compr_gain(*before->compr)),
-                         ac3::meta::to_db(ac3::meta::compr_gain(*after->compr)));
+            status_println(status, "  compr    {:+.2f} -> {:+.2f} dB",
+                           ac3::meta::to_db(ac3::meta::compr_gain(*before->compr)),
+                           ac3::meta::to_db(ac3::meta::compr_gain(*after->compr)));
         }
         if (before->bsmod.has_value() && after->bsmod.has_value()) {
-            fmt::println(status, "  bsmod    {} -> {}", *before->bsmod, *after->bsmod);
+            status_println(status, "  bsmod    {} -> {}", *before->bsmod, *after->bsmod);
         }
         if (before->dsurmod.has_value() && after->dsurmod.has_value()) {
-            fmt::println(status, "  dsurmod  {} -> {}", *before->dsurmod, *after->dsurmod);
+            status_println(status, "  dsurmod  {} -> {}", *before->dsurmod, *after->dsurmod);
         }
     }
     return 0;
@@ -807,16 +808,18 @@ int run_normalize(std::string_view in_path, std::string_view out_path, const Opt
     }
 
     const auto status = status_stream(out_path);
-    fmt::println(status, "normalised {} ({} syncframes, audio untouched) -> {}", in_path,
-                 summary->syncframes, out_path);
-    fmt::println(status, "  measured   {:+.2f} LKFS (BS.1770-4 gated)", *measured->integrated_lkfs);
-    fmt::println(status, "  dialnorm   {} -> {} (ATSC A/85 §8)", before->dialnorm, *edit.dialnorm);
+    status_println(status, "normalised {} ({} syncframes, audio untouched) -> {}", in_path,
+                   summary->syncframes, out_path);
+    status_println(status, "  measured   {:+.2f} LKFS (BS.1770-4 gated)",
+                   *measured->integrated_lkfs);
+    status_println(status, "  dialnorm   {} -> {} (ATSC A/85 §8)", before->dialnorm,
+                   *edit.dialnorm);
     // All three re-checked together: the block above sets dialnorm2 only when
     // the other two hold, but that is two screens away and nothing local
     // says so.
     if (edit.dialnorm2.has_value() && before->dialnorm2.has_value() && measured->ch2_lkfs.has_value()) {
-        fmt::println(status, "  dialnorm2  {} -> {} (Ch2 measured {:+.2f} LKFS)",
-                     *before->dialnorm2, *edit.dialnorm2, *measured->ch2_lkfs);
+        status_println(status, "  dialnorm2  {} -> {} (Ch2 measured {:+.2f} LKFS)",
+                       *before->dialnorm2, *edit.dialnorm2, *measured->ch2_lkfs);
     }
     return 0;
 }
@@ -888,15 +891,15 @@ int run_cut(std::string_view in_path, std::string_view out_path, std::string_vie
         kept_samples += scan.access_unit_samples[i];
     }
     const auto rate = ac3::sample_rate_hz(scan.sample_rate);
-    fmt::println(status, "cut {} access units of {} from {} -> {}", units.size(), total_units,
-                 in_path, out_path);
-    fmt::println(status, "  {}{}, {:.3f} s from {:.3f} s (access-unit aligned)",
-                 codec_label(scan.kind),
-                 scan.substreams_per_unit > 1
-                     ? fmt::format(", {} substreams per unit", scan.substreams_per_unit)
-                     : std::string{},
-                 rate == 0 ? 0.0 : static_cast<double>(kept_samples) / rate,
-                 from ? from->start_seconds() : 0.0);
+    status_println(status, "cut {} access units of {} from {} -> {}", units.size(), total_units,
+                   in_path, out_path);
+    status_println(status, "  {}{}, {:.3f} s from {:.3f} s (access-unit aligned)",
+                   codec_label(scan.kind),
+                   scan.substreams_per_unit > 1
+                       ? fmt::format(", {} substreams per unit", scan.substreams_per_unit)
+                       : std::string{},
+                   rate == 0 ? 0.0 : static_cast<double>(kept_samples) / rate,
+                   from ? from->start_seconds() : 0.0);
     return 0;
 }
 
@@ -1004,11 +1007,11 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
     }
     const auto status = status_stream(out_path);
     const auto rate = ac3::sample_rate_hz(reference->sample_rate);
-    fmt::println(status, "joined {} files, {} {} access units -> {}", in_paths.size(), units,
-                 codec_label(reference->kind), out_path);
-    fmt::println(status, "  {:.3f} s, {} Hz, {} channels",
-                 rate == 0 ? 0.0 : static_cast<double>(samples) / rate, rate,
-                 reference->channels);
+    status_println(status, "joined {} files, {} {} access units -> {}", in_paths.size(), units,
+                   codec_label(reference->kind), out_path);
+    status_println(status, "  {:.3f} s, {} Hz, {} channels",
+                   rate == 0 ? 0.0 : static_cast<double>(samples) / rate, rate,
+                   reference->channels);
     return 0;
 }
 

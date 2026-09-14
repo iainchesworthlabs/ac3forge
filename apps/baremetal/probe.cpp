@@ -850,7 +850,7 @@ constexpr std::array<Ac3Fixture, 4> kAc3Fixtures{{
     // way to a stereo DAC, and the output stage's first row on any target.
     // Levels are ac3cli's for the same options (tools/generators/
     // gen_baremetal_fixture.py's decode-variant rows), two channels.
-    {"ac3_fold", ac3probe::kAc3Stream, ac3probe::kAc3FoldRms, 68973,
+    {"ac3_fold", ac3probe::kAc3Stream, ac3probe::kAc3FoldRms, 58733,
      {.target = ac3::DownmixTarget::kLoRo, .mode = ac3::OperatingMode::kLine}},
     // 2/0. §7.5.4 rematrixing lives in this layout alone, and it is a different
     // code path from the eac3_stereo row's - Annex E carries its own
@@ -890,7 +890,7 @@ struct Eac3Fixture {
     bool render = false;
 };
 
-constexpr std::array<Eac3Fixture, 8> kEac3Fixtures{{
+constexpr std::array<Eac3Fixture, 10> kEac3Fixtures{{
     {"eac3", ac3probe::kEac3Stream, ac3probe::kEac3Rms, 175674},
     // §E3.5's alternate coupling mode. `tools=all` does not select it
     // (plan::parse_tools maps "all" to cpl+spx+aht), so without this row
@@ -941,9 +941,24 @@ constexpr std::array<Eac3Fixture, 8> kEac3Fixtures{{
     {"eac3_714", ac3probe::kEac3714Stream, ac3probe::kEac3714Rms, 238094},
     // The 5.1 stream folded to Lo/Ro in line mode - the E-AC-3 half of the
     // ac3_fold row, through the access-unit form's own output path.
-    {"eac3_fold", ac3probe::kEac3Stream, ac3probe::kEac3FoldRms, 225038, false,
+    {"eac3_fold", ac3probe::kEac3Stream, ac3probe::kEac3FoldRms, 182030, false,
      ac3::oba::joc::Domain::kQmf,
      {.target = ac3::DownmixTarget::kLoRo, .mode = ac3::OperatingMode::kLine}},
+    // The 7.1.4 stream folded the same way: a stereo player's frame at the
+    // widest programme the encoder makes, and the output stage's layout form
+    // at its widest - twelve locations seated into §7.8's six before the fold
+    // runs. The stream carries no dynrng words and dialnorm -31, so line mode
+    // adds no per-sample work here and the row times the fold itself.
+    {"eac3_714_fold", ac3probe::kEac3714Stream, ac3probe::kEac3714FoldRms, 244502, false,
+     ac3::oba::joc::Domain::kQmf,
+     {.target = ac3::DownmixTarget::kLoRo, .mode = ac3::OperatingMode::kLine}},
+    // Line mode's own work, apart from any fold: a 5.1 stream encoded with
+    // dynrng words and dialnorm 24, decoded as coded in line mode - §7.7.1's
+    // gain on every channel's coefficients each block and §5.4.2.8's
+    // normalisation on every sample, the two things the fold rows' streams
+    // give line mode no reason to do.
+    {"eac3_line", ac3probe::kEac3DrcStream, ac3probe::kEac3LineRms, 175750, false,
+     ac3::oba::joc::Domain::kQmf, {.mode = ac3::OperatingMode::kLine}},
     // Objects reconstructed (kMdctBand, as the objects row) and then PLACED
     // onto 7.1.4 by their own positions - see render_eac3, and
     // render_fixture.hpp for what the levels are worth. Its own stream: the

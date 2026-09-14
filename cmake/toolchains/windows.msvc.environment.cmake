@@ -111,7 +111,7 @@ if(NOT (DEFINED ENV{VCToolsInstallDir} AND DEFINED ENV{INCLUDE}))
     # new and, at authoring time, genuinely unconfirmed against real hardware:
     # try the native host_target form first (host tools running natively, no
     # emulation - only possible when the runner itself is ARM64, which
-    # GitHub's windows-11-arm is), then the amd64_arm64 cross form vcvarsall
+    # GitHub's windows-11-vs2026-arm is), then the amd64_arm64 cross form vcvarsall
     # has supported for longer, in case this runner's VS Build Tools install
     # has no native ARM64 host toolset at all. Each candidate is actually
     # tried in order (not just the first one assumed to work) and the loop

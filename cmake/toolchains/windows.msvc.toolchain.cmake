@@ -20,7 +20,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/windows.msvc.environment.cmake")
 # than one target: Hostx64/x64 must resolve exactly as it did previously, so
 # the other three Windows CI legs (windows-msvc[-debug], windows-llvm) don't
 # regress. arm64 is new and, at authoring time, genuinely unconfirmed against
-# real hardware: it is unknown whether GitHub's hosted windows-11-arm runner's
+# real hardware: it is unknown whether GitHub's hosted windows-11-vs2026-arm runner's
 # VS Build Tools install ships a native Hostarm64/arm64 toolset, only the
 # cross Hostx64/arm64 one, or both - see docs/platforms/windows.md's ARM64
 # section for what a real CI run found. find_program tries each PATHS entry

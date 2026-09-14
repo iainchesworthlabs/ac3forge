@@ -116,6 +116,9 @@ test('a poll asked for while one is out runs as soon as that one ends', async ({
     await page.getByRole('button', { name: 'Stop' }).click();
     await expect.poll(() => stub.sent('POST /stop').length).toBe(1);
     release();
+    // The held answer handled - and with it the next poll scheduled - before
+    // the clock moves, or the move can come first and the poll never fires.
+    await expect(page.locator('#link')).toHaveText('Status read at 12:00:01.');
     await page.clock.runFor(1);
     await expect.poll(() => polls(stub)).toBe(3);
 });

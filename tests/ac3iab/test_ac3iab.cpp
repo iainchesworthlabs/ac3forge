@@ -479,6 +479,266 @@ TEST_CASE("ignores a Child element type not allowed in its Parent context", "[ac
     CHECK(frame->beds.front().remaps.empty());
 }
 
+TEST_CASE("propagates a nested BedDefinition Child's own parse failure", "[ac3iab]") {
+    // parse_bed_children (iab_reader.cpp): unlike the misplaced-ObjectDefinition case above,
+    // which is simply ignored, a CORRECTLY-typed nested BedDefinition whose own payload cannot
+    // be parsed has to fail the whole parse rather than silently dropping the malformed child.
+    BitWriter bw;
+    bw.push_plex(1, 8);  // MetaID
+    bw.push_bits(0, 1);  // ConditionalBed = 0
+    bw.push_plex(0, 4);  // ChannelCount = 0
+    bw.push_bits(0x180, 10);
+    bw.align_to_byte();
+    bw.push_bits(0x01, 8);
+    bw.push_plex(1, 8);  // SubElementCount = 1
+    auto bed_bytes = bw.bytes();
+    // A well-formed ElementID/ElementSize header for a nested BedDefinition (0x10) whose
+    // declared payload is empty: the recursive parse_bed_definition() call cannot even read its
+    // own MetaID from it, and parse_bed_children() must return THAT failure rather than
+    // swallowing it.
+    append(bed_bytes, wrap_element(0x10, std::vector<std::byte>{}));
+
+    auto bed = wrap_element(0x10, bed_bytes);
+    auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {bed});
+
+    auto frame = ac3iab::parse_iaframe(payload);
+    REQUIRE_FALSE(frame.has_value());
+    CHECK(frame.error() == ac3iab::IabError::kTruncated);
+}
+
+TEST_CASE("propagates a nested ObjectDefinition Child's own parse failure", "[ac3iab]") {
+    // parse_object_children (iab_reader.cpp): the ObjectDefinition counterpart of the
+    // BedDefinition-child case above, exercising Table 8's OTHER Child type (ObjectDefinition
+    // itself, not the differently-shaped ObjectZoneDefinition19 build_object_payload() already
+    // exercises for the ignored/misplaced-child test).
+    //
+    // Same sub-block encoding as build_object_payload(4) (kFrameRate48Fps -> 4 sub blocks) up
+    // through SubElementCount, but the one Child is a nested ObjectDefinition (0x40) with an
+    // empty declared payload instead of build_object_payload()'s own ObjectZoneDefinition19.
+    BitWriter bw;
+    bw.push_plex(5, 8);  // MetaID
+    bw.push_plex(3, 8);  // AudioDataID
+    bw.push_bits(0, 1);  // ConditionalObject = 0
+    bw.push_bits(0, 1);  // Reserved, set to 0
+
+    for (unsigned sb = 0; sb < 4; ++sb) {
+        if (sb != 0) {
+            bw.push_bits(0, 1);  // PanInfoExists = 0
+            continue;
+        }
+        bw.push_bits(0, 2);        // ObjectGainPrefix = unity
+        bw.push_bits(0b001, 3);    // Reserved
+        bw.push_bits(65535, 16);   // ObjectPosX = max -> DistanceXY = 1.0
+        bw.push_bits(32767, 16);   // ObjectPosY = min valid domain -> DistanceXY = 0.0
+        bw.push_bits(65535, 16);   // ObjectPosZ = max -> DistanceZ = 1.0
+        bw.push_bits(1, 1);        // ObjectSnap = 1
+        bw.push_bits(1, 1);        // ObjectSnapTolExists = 1
+        bw.push_bits(4095, 12);    // ObjectSnapTolerance = max -> DistanceZ(12) = 1.0
+        bw.push_bits(0, 1);        // Res2
+        bw.push_bits(1, 1);        // ObjectZoneControl = 1
+        for (int n = 0; n < 9; ++n) {
+            bw.push_bits(2, 2);     // ZoneGainPrefix = code follows
+            bw.push_bits(511, 10);  // ZoneGain -> linear 511/1023
+        }
+        bw.push_bits(0x3, 2);      // ObjectSpreadMode = 3D
+        bw.push_bits(4095, 12);    // SpreadX = max -> 1.0
+        bw.push_bits(0, 12);       // SpreadY = 0.0
+        bw.push_bits(2047, 12);    // SpreadZ -> ~0.5
+        bw.push_bits(0, 4);        // Reserved
+        bw.push_bits(1, 2);        // ObjectDecorCoefPrefix = maximum
+    }
+    bw.align_to_byte();
+    bw.push_bits(0x82, 8);  // AudioDescription = Dialog (0x02) | text follows (0x80)
+    for (char c : std::string_view("obj")) {
+        bw.push_raw_byte(static_cast<unsigned char>(c));
+    }
+    bw.push_raw_byte(0x00);
+
+    bw.push_plex(1, 8);  // SubElementCount = 1
+    auto object_bytes = bw.bytes();
+    // A well-formed ElementID/ElementSize header for a nested ObjectDefinition (0x40) whose
+    // declared payload is empty: the recursive parse_object_definition() call cannot even read
+    // its own MetaID from it, and parse_object_children() must return THAT failure rather than
+    // swallowing it.
+    append(object_bytes, wrap_element(0x40, std::vector<std::byte>{}));
+
+    auto object = wrap_element(0x40, object_bytes);
+    auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
+
+    auto frame = ac3iab::parse_iaframe(payload);
+    REQUIRE_FALSE(frame.has_value());
+    CHECK(frame.error() == ac3iab::IabError::kTruncated);
+}
+
+TEST_CASE("BedDefinition/ObjectDefinition Conditional activation carries its UseCaseCode",
+          "[ac3iab]") {
+    // §9.2/§9.4's Activation: ConditionalBed/ConditionalObject == 1 gates an 8-bit UseCaseCode
+    // (§10.5.1-2). build_bed_payload()/build_object_payload() both leave it clear, and no other
+    // test in this suite sets it - the conditional branch has never been decoded at all.
+    SECTION("BedDefinition") {
+        BitWriter bw;
+        bw.push_plex(1, 8);  // MetaID
+        bw.push_bits(1, 1);  // ConditionalBed = 1
+        bw.push_bits(ac3iab::kUseCaseAlwaysUse, 8);
+        bw.push_plex(0, 4);  // ChannelCount = 0
+        bw.push_bits(0x180, 10);
+        bw.align_to_byte();
+        bw.push_bits(0x01, 8);
+        bw.push_plex(0, 8);  // SubElementCount = 0
+        auto bed = wrap_element(0x10, bw.bytes());
+        auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {bed});
+
+        auto frame = ac3iab::parse_iaframe(payload);
+        REQUIRE(frame.has_value());
+        REQUIRE(frame->beds.size() == 1);
+        CHECK(frame->beds.front().activation.conditional);
+        CHECK(frame->beds.front().activation.use_case == ac3iab::kUseCaseAlwaysUse);
+    }
+    SECTION("ObjectDefinition") {
+        BitWriter bw;
+        bw.push_plex(5, 8);  // MetaID
+        bw.push_plex(3, 8);  // AudioDataID
+        bw.push_bits(1, 1);  // ConditionalObject = 1
+        bw.push_bits(1, 1);  // Reserved, set to 1
+        bw.push_bits(ac3iab::kUseCaseAlwaysUse, 8);
+        bw.push_bits(0, 1);  // Reserved, set to 0
+        // sb == 0, minimal: Snap/ZoneControl cleared, spread = kNone (no value follows) - this
+        // test is about Conditional/UseCaseCode, not the sub-block body.
+        bw.push_bits(0, 2);      // ObjectGainPrefix = unity
+        bw.push_bits(0b001, 3);  // Reserved
+        bw.push_bits(0, 16);     // ObjectPosX
+        bw.push_bits(0, 16);     // ObjectPosY
+        bw.push_bits(0, 16);     // ObjectPosZ
+        bw.push_bits(0, 1);      // ObjectSnap = 0
+        bw.push_bits(0, 1);      // ObjectZoneControl = 0
+        bw.push_bits(0x1, 2);    // ObjectSpreadMode = kNone
+        bw.push_bits(0, 4);      // Reserved
+        bw.push_bits(0, 2);      // ObjectDecorCoefPrefix = none
+        for (unsigned sb = 1; sb < 4; ++sb) {
+            bw.push_bits(0, 1);  // PanInfoExists = 0 (kFrameRate48Fps -> 4 sub blocks)
+        }
+        bw.align_to_byte();
+        bw.push_bits(0x00, 8);  // AudioDescription = not_indicated, no text
+        bw.push_plex(0, 8);     // SubElementCount = 0
+        auto object = wrap_element(0x40, bw.bytes());
+        auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
+
+        auto frame = ac3iab::parse_iaframe(payload);
+        REQUIRE(frame.has_value());
+        REQUIRE(frame->objects.size() == 1);
+        CHECK(frame->objects.front().activation.conditional);
+        CHECK(frame->objects.front().activation.use_case == ac3iab::kUseCaseAlwaysUse);
+    }
+}
+
+TEST_CASE("ObjectSpreadMode LowRez/None/OneD resolve via DistanceZ at their own bit widths",
+          "[ac3iab]") {
+    // build_object_payload() above only ever exercises ObjectSpreadMode::kThreeD (§9.4 Table 8,
+    // 0x3) - the other three spread encodings (kLowRez's single 8-bit code, kNone's "no value
+    // follows", kOneD's single 12-bit code) have never been decoded by any test. Snap and
+    // ZoneControl are cleared here to isolate the spread field alone.
+    const auto build = [](unsigned mode, std::uint32_t value, unsigned value_bits) {
+        BitWriter bw;
+        bw.push_plex(5, 8);  // MetaID
+        bw.push_plex(3, 8);  // AudioDataID
+        bw.push_bits(0, 1);  // ConditionalObject = 0
+        bw.push_bits(0, 1);  // Reserved
+        bw.push_bits(0, 2);      // ObjectGainPrefix = unity
+        bw.push_bits(0b001, 3);  // Reserved
+        bw.push_bits(0, 16);     // ObjectPosX
+        bw.push_bits(0, 16);     // ObjectPosY
+        bw.push_bits(0, 16);     // ObjectPosZ
+        bw.push_bits(0, 1);      // ObjectSnap = 0
+        bw.push_bits(0, 1);      // ObjectZoneControl = 0
+        bw.push_bits(mode, 2);   // ObjectSpreadMode
+        if (value_bits > 0) {
+            bw.push_bits(value, value_bits);
+        }
+        bw.push_bits(0, 4);  // Reserved
+        bw.push_bits(0, 2);  // ObjectDecorCoefPrefix = none
+        for (unsigned sb = 1; sb < 4; ++sb) {
+            bw.push_bits(0, 1);  // PanInfoExists = 0 (kFrameRate48Fps -> 4 sub blocks)
+        }
+        bw.align_to_byte();
+        bw.push_bits(0x00, 8);  // AudioDescription = not_indicated, no text
+        bw.push_plex(0, 8);     // SubElementCount = 0
+        return wrap_element(0x40, bw.bytes());
+    };
+
+    {
+        // kLowRez: one 8-bit code, applied isotropically to all three axes.
+        auto object = build(0x0, 128, 8);
+        auto payload =
+                build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
+        auto frame = ac3iab::parse_iaframe(payload);
+        REQUIRE(frame.has_value());
+        REQUIRE(frame->objects.size() == 1);
+        const auto& sb0 = frame->objects.front().sub_blocks.front();
+        CHECK(sb0.spread.mode == ac3iab::ObjectSpreadMode::kLowRez);
+        const double expected = 128.0 / 255.0;
+        CHECK(sb0.spread.x == Approx(expected));
+        CHECK(sb0.spread.y == Approx(expected));
+        CHECK(sb0.spread.z == Approx(expected));
+    }
+    {
+        // kNone: a point source, no value at all in the bitstream.
+        auto object = build(0x1, 0, 0);
+        auto payload =
+                build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
+        auto frame = ac3iab::parse_iaframe(payload);
+        REQUIRE(frame.has_value());
+        REQUIRE(frame->objects.size() == 1);
+        const auto& sb0 = frame->objects.front().sub_blocks.front();
+        CHECK(sb0.spread.mode == ac3iab::ObjectSpreadMode::kNone);
+    }
+    {
+        // kOneD: one 12-bit code, applied isotropically.
+        auto object = build(0x2, 2048, 12);
+        auto payload =
+                build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {object});
+        auto frame = ac3iab::parse_iaframe(payload);
+        REQUIRE(frame.has_value());
+        REQUIRE(frame->objects.size() == 1);
+        const auto& sb0 = frame->objects.front().sub_blocks.front();
+        CHECK(sb0.spread.mode == ac3iab::ObjectSpreadMode::kOneD);
+        const double expected = 2048.0 / 4095.0;
+        CHECK(sb0.spread.x == Approx(expected));
+        CHECK(sb0.spread.y == Approx(expected));
+        CHECK(sb0.spread.z == Approx(expected));
+    }
+}
+
+TEST_CASE("ChannelDecorCoefPrefix/ObjectDecorCoefPrefix's shared 8-bit escape code decodes",
+          "[ac3iab]") {
+    // read_decor() (iab_reader.cpp): prefix 0x0/0x1 shortcut to 0.0/1.0 without ever reading a
+    // code, which is all build_bed_payload()/build_object_payload() above ever exercise
+    // (ChannelDecorCoefPrefix/ObjectDecorCoefPrefix are both left at "maximum" = 0x1). Nothing
+    // in this suite decodes the ELSE branch - an explicit 8-bit code - before this.
+    BitWriter bw;
+    bw.push_plex(1, 8);    // MetaID
+    bw.push_bits(0, 1);    // ConditionalBed = 0
+    bw.push_plex(1, 4);    // ChannelCount = 1
+    bw.push_plex(0x0, 4);  // ChannelID = Left
+    bw.push_plex(1, 8);    // AudioDataID
+    bw.push_bits(0, 2);    // ChannelGainPrefix = unity
+    bw.push_bits(1, 1);    // ChannelDecorInfoExists = 1
+    bw.push_bits(0, 4);    // Reserved
+    bw.push_bits(2, 2);    // ChannelDecorCoefPrefix = code follows
+    bw.push_bits(128, 8);  // ChannelDecorCoef = 128/255
+    bw.push_bits(0x180, 10);
+    bw.align_to_byte();
+    bw.push_bits(0x01, 8);
+    bw.push_plex(0, 8);  // SubElementCount = 0
+    auto bed = wrap_element(0x10, bw.bytes());
+    auto payload = build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {bed});
+
+    auto frame = ac3iab::parse_iaframe(payload);
+    REQUIRE(frame.has_value());
+    REQUIRE(frame->beds.size() == 1);
+    REQUIRE(frame->beds.front().channels.size() == 1);
+    CHECK(frame->beds.front().channels.front().decorrelation == Approx(128.0 / 255.0));
+}
+
 TEST_CASE("rejects a bad PreambleTag/IAFrameTag and a truncated stream", "[ac3iab]") {
     auto good = build_iabitstream(build_iaframe_payload(kSampleRate48k, kBitDepth24, kFrameRate48Fps, {}));
 

@@ -129,65 +129,24 @@ void print_concealment_summary(FILE* status, std::size_t concealed, std::size_t 
     if (concealed == 0) {
         return;
     }
-    fmt::println(status, "  concealed {} of {} {} (§7.10)", concealed, total, unit);
+    status_println(status, "  concealed {} of {} {} (§7.10)", concealed, total, unit);
 }
 
-// Reports the object layer (if any) an E-AC-3 decode found - the decode-side
-// mirror of run_atmos_encode's own "{N} dynamic objects + the bed's LFE = {M}
-// objects" line. Shared between run_decode_eac3's dual-mono and ordinary
-// return paths, even though this project's own AtmosEncoder never emits dual
-// mono alongside an object container. The object WAVs themselves are
-// streamed out by per-object sinks as the decode runs (run_decode_eac3's
-// append_objects) - by the time this prints, the files are already closed;
-// this only says what happened.
+// Reports the object layer (if any) an E-AC-3 decode found, then what
+// objects_dir exported. The object layer's lines are print_object_summary's,
+// which 'monitor' prints too - the decode-side mirror of run_atmos_encode's
+// own "{N} dynamic objects + the bed's LFE = {M} objects" line. Shared
+// between run_decode_eac3's dual-mono and ordinary return paths, even though
+// this project's own AtmosEncoder never emits dual mono alongside an object
+// container. The object WAVs themselves are streamed out by per-object sinks
+// as the decode runs (run_decode_eac3's append_objects) - by the time this
+// prints, the files are already closed; this only says what happened.
 int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
                            bool have_object_audio, std::size_t objects_written,
                            std::string_view objects_dir) {
-    if (metadata.has_value()) {
-        const auto& program = metadata->program;
-        const char* joc = have_object_audio ? ", JOC audio reconstructed"
-                                            : " (JOC audio not reconstructed)";
-        if (program.dynamic_only) {
-            status_println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
-                           metadata->objects.size(), program.lfe ? " + the bed's LFE" : "",
-                           ac3::oba::object_count(program), joc);
-        } else {
-            // A bed program - what channel-based-immersive third-party
-            // content is. Naming the bed's channels is the useful half here:
-            // "12 objects" says nothing, "L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl
-            // Tbr" says what the stream actually carries.
-            std::string labels;
-            for (const auto label : ac3::oba::bed_labels(program.bed)) {
-                if (!labels.empty()) {
-                    labels += ' ';
-                }
-                labels += ac3::oba::describe(label);
-            }
-            if (labels.empty()) {
-                labels = fmt::format("{} channels", ac3::oba::bed_channel_count(program));
-            }
-            status_println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
-                           labels, program.dynamic_objects, ac3::oba::object_count(program), joc);
-        }
-        if (metadata->trim.has_value()) {
-            status_println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
-                           metadata->trim->warp_mode, metadata->trim->global_trim_mode);
-        }
-        if (!metadata->skipped_elements.empty()) {
-            std::string ids;
-            for (const int id : metadata->skipped_elements) {
-                if (!ids.empty()) {
-                    ids += ", ";
-                }
-                ids += std::to_string(id);
-            }
-            status_println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
-        }
-        if (metadata->blocks.size() > 1) {
-            status_println(status, "  {} metadata update blocks per frame",
-                           metadata->blocks.size());
-        }
-    }
+    print_object_summary(status, metadata,
+                         have_object_audio ? ", JOC audio reconstructed"
+                                           : " (JOC audio not reconstructed)");
     if (objects_dir.empty()) {
         return 0;
     }
@@ -230,16 +189,16 @@ void print_drc_summary(FILE* status, double dynrng_min_db, double dynrng_max_db,
 // does appear below is a claim the encoder deliberately made.
 void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod acmod) {
     if (info.bsmod != ac3::meta::BitstreamMode::kCompleteMain) {
-        fmt::println(status, "  service: {}", ac3::meta::describe(info.bsmod, acmod));
+        status_println(status, "  service: {}", ac3::meta::describe(info.bsmod, acmod));
     }
     if (info.dsurmod != ac3::meta::SurroundMode::kNotIndicated) {
-        fmt::println(status, "  dsurmod: {}", ac3::meta::describe(info.dsurmod));
+        status_println(status, "  dsurmod: {}", ac3::meta::describe(info.dsurmod));
     }
     if (info.dsurexmod != ac3::meta::SurroundExMode::kNotIndicated) {
-        fmt::println(status, "  dsurexmod: {}", ac3::meta::describe(info.dsurexmod));
+        status_println(status, "  dsurexmod: {}", ac3::meta::describe(info.dsurexmod));
     }
     if (info.dheadphonmod != ac3::meta::HeadphoneMode::kNotIndicated) {
-        fmt::println(status, "  dheadphonmod: {}", ac3::meta::describe(info.dheadphonmod));
+        status_println(status, "  dheadphonmod: {}", ac3::meta::describe(info.dheadphonmod));
     }
     // The A/D converter clause is only ever appended for HDCD: "standard" is
     // what §D2.3.1.10 tells an encoder to send when it does not know, so it
@@ -248,10 +207,10 @@ void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod 
     // printing it would suggest a bit that was never read.
     const auto production = [&](std::string_view prefix,
                                 const ac3::meta::AudioProduction& value) {
-        fmt::println(status, "  {}mixed at {} dB SPL, {}{}", prefix,
-                     ac3::meta::mix_level_db_spl(value.mixlevel),
-                     ac3::meta::describe(value.roomtyp),
-                     value.adconvtyp == ac3::meta::AdConverterType::kHdcd ? ", A/D HDCD" : "");
+        status_println(status, "  {}mixed at {} dB SPL, {}{}", prefix,
+                       ac3::meta::mix_level_db_spl(value.mixlevel),
+                       ac3::meta::describe(value.roomtyp),
+                       value.adconvtyp == ac3::meta::AdConverterType::kHdcd ? ", A/D HDCD" : "");
     };
     if (info.audprod.has_value()) {
         production("", *info.audprod);
@@ -261,17 +220,18 @@ void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod 
     }
     // origbs defaults set, so only a stream declaring itself a COPY is news.
     if (info.copyrightb || !info.origbs) {
-        fmt::println(status, "  {}{}{}", info.copyrightb ? "copyright asserted" : "",
-                     info.copyrightb && !info.origbs ? ", " : "",
-                     info.origbs ? "" : "a copy, not the original bit stream");
+        status_println(status, "  {}{}{}", info.copyrightb ? "copyright asserted" : "",
+                       info.copyrightb && !info.origbs ? ", " : "",
+                       info.origbs ? "" : "a copy, not the original bit stream");
     }
     if (info.sourcefscod) {
-        fmt::println(status, "  source sampled at twice the coded rate (§E2.3.1.63)");
+        status_println(status, "  source sampled at twice the coded rate (§E2.3.1.63)");
     }
     if (info.timecod1.has_value() || info.timecod2.has_value()) {
-        fmt::println(status, "  timecode: {}",
-                     ac3::meta::format_timecode(info.timecod1.value_or(ac3::meta::TimeCodeCoarse{}),
-                                                info.timecod2.value_or(ac3::meta::TimeCodeFine{})));
+        status_println(status, "  timecode: {}",
+                       ac3::meta::format_timecode(
+                           info.timecod1.value_or(ac3::meta::TimeCodeCoarse{}),
+                           info.timecod2.value_or(ac3::meta::TimeCodeFine{})));
     }
 }
 
@@ -281,31 +241,31 @@ void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod 
 // whether this stream is an associated service.
 void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
     if (mix.pgmscl.has_value()) {
-        fmt::println(status, "  programme scale: {}",
-                     *mix.pgmscl == ac3::meta::kPgmScaleMute
-                         ? std::string{"mute"}
-                         : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.pgmscl)));
+        status_println(status, "  programme scale: {}",
+                       *mix.pgmscl == ac3::meta::kPgmScaleMute
+                           ? std::string{"mute"}
+                           : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.pgmscl)));
     }
     if (mix.extpgmscl.has_value()) {
-        fmt::println(status, "  external programme scale: {}",
-                     *mix.extpgmscl == ac3::meta::kPgmScaleMute
-                         ? std::string{"mute"}
-                         : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.extpgmscl)));
+        status_println(status, "  external programme scale: {}",
+                       *mix.extpgmscl == ac3::meta::kPgmScaleMute
+                           ? std::string{"mute"}
+                           : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.extpgmscl)));
     }
     if (mix.mixing.mixdef != ac3::meta::MixDefinition::kNone) {
-        fmt::println(status, "  mixdef {} ({}{}{})",
-                     static_cast<int>(mix.mixing.mixdef),
-                     mix.mixing.external ? "external channel scales" : "",
-                     mix.mixing.external && mix.mixing.speech ? ", " : "",
-                     mix.mixing.speech ? "speech enhancement data"
-                                       : (mix.mixing.external ? "" : "no sub-fields"));
+        status_println(status, "  mixdef {} ({}{}{})",
+                       static_cast<int>(mix.mixing.mixdef),
+                       mix.mixing.external ? "external channel scales" : "",
+                       mix.mixing.external && mix.mixing.speech ? ", " : "",
+                       mix.mixing.speech ? "speech enhancement data"
+                                         : (mix.mixing.external ? "" : "no sub-fields"));
     }
     if (mix.pan.has_value()) {
-        fmt::println(status, "  pan: {:.1f} degrees clockwise from centre",
-                     static_cast<double>(mix.pan->panmean) * ac3::meta::kPanMeanDegreesPerStep);
+        status_println(status, "  pan: {:.1f} degrees clockwise from centre",
+                       static_cast<double>(mix.pan->panmean) * ac3::meta::kPanMeanDegreesPerStep);
     }
     if (mix.blkmixcfginfo.has_value()) {
-        fmt::println(status, "  per-block mixing configuration present");
+        status_println(status, "  per-block mixing configuration present");
     }
 }
 
@@ -343,8 +303,8 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         return kExitInput;
     }
     if (ids->size() > 1) {
-        fmt::println(status_stream(out_path), "  programme {} of {} ({})", *programme,
-                     ids->size(), format_programme_ids(*ids));
+        status_println(status_stream(out_path), "  programme {} of {} ({})", *programme,
+                       ids->size(), format_programme_ids(*ids));
     }
     // Same convention as the AC-3 path below: null unless bap-census= asked
     // for it, so an ordinary decode pays nothing.
@@ -844,7 +804,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     if (stream.empty()) {
         return kExitInput;
     }
-    if (!apply_object_verification(stream, meta)) {
+    if (!apply_object_verification(stream, meta, status_stream(out_path))) {
         return kExitInput;
     }
     // bsid at bit 40 says which syntax this is, before either is assumed.
@@ -1017,7 +977,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     // bsid 6 is worth a line of its own: it changes how a decoder reads the
     // last 28 bits of bsi, so "this stream is Annex D" is not an aside.
     if (first.bsid != 8) {
-        fmt::println(status, "          bsid {} (Annex D alternate syntax)", first.bsid);
+        status_println(status, "          bsid {} (Annex D alternate syntax)", first.bsid);
     }
     print_bsi_summary(status, first.info, first.acmod);
     // xbsi2's three flags are AC-3's only home for what E-AC-3 puts in
@@ -1026,27 +986,27 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     if (first.alternate_bsi.has_value() && first.alternate_bsi->extended.has_value()) {
         const auto& extended = *first.alternate_bsi->extended;
         if (extended.dsurexmod != ac3::meta::SurroundExMode::kNotIndicated) {
-            fmt::println(status, "  dsurexmod: {}", ac3::meta::describe(extended.dsurexmod));
+            status_println(status, "  dsurexmod: {}", ac3::meta::describe(extended.dsurexmod));
         }
         if (extended.dheadphonmod != ac3::meta::HeadphoneMode::kNotIndicated) {
-            fmt::println(status, "  dheadphonmod: {}",
-                         ac3::meta::describe(extended.dheadphonmod));
+            status_println(status, "  dheadphonmod: {}",
+                           ac3::meta::describe(extended.dheadphonmod));
         }
         if (extended.adconvtyp != ac3::meta::AdConverterType::kStandard) {
-            fmt::println(status, "  A/D converter: {}", ac3::meta::describe(extended.adconvtyp));
+            status_println(status, "  A/D converter: {}", ac3::meta::describe(extended.adconvtyp));
         }
     }
     if (first.alternate_bsi.has_value() && first.alternate_bsi->mix.has_value()) {
         const auto& mix = *first.alternate_bsi->mix;
-        fmt::println(status, "  xbsi1: preferred downmix {}, Lt/Rt {:+.1f}/{:+.1f} dB, "
-                             "Lo/Ro {:+.1f}/{:+.1f} dB (centre/surround)",
-                     mix.dmixmod == ac3::meta::DownmixMode::kLtRt   ? "Lt/Rt"
-                     : mix.dmixmod == ac3::meta::DownmixMode::kLoRo ? "Lo/Ro"
-                                                                   : "not indicated",
-                     ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtcmixlev)),
-                     ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtsurmixlev)),
-                     ac3::meta::to_db(ac3::meta::coefficient(mix.lorocmixlev)),
-                     ac3::meta::to_db(ac3::meta::coefficient(mix.lorosurmixlev)));
+        status_println(status, "  xbsi1: preferred downmix {}, Lt/Rt {:+.1f}/{:+.1f} dB, "
+                               "Lo/Ro {:+.1f}/{:+.1f} dB (centre/surround)",
+                       mix.dmixmod == ac3::meta::DownmixMode::kLtRt   ? "Lt/Rt"
+                       : mix.dmixmod == ac3::meta::DownmixMode::kLoRo ? "Lo/Ro"
+                                                                     : "not indicated",
+                       ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtcmixlev)),
+                       ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtsurmixlev)),
+                       ac3::meta::to_db(ac3::meta::coefficient(mix.lorocmixlev)),
+                       ac3::meta::to_db(ac3::meta::coefficient(mix.lorosurmixlev)));
     }
     print_concealment_summary(status, concealed_frames, frames->size(), "frames");
     // The have_first check above already returned if the frame loop never

@@ -38,4 +38,7 @@ esp-idf/ac3forge/ui/** text eol=lf
 # bytes - see the fixture-hash note above for the same failure caught once
 # already on a text fixture.
 *.ac3 -text
+# And E-AC-3, for the same reason: the streaming example's stream set
+# (esp-idf/ac3forge/examples/stream_player/www/) is several dozen of them.
+*.ec3 -text
 *.ec3 -text

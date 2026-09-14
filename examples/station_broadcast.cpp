@@ -226,7 +226,9 @@ struct ScoreBuilder {
     }
     // A timpani roll: strokes every 55 ms, velocity ramped v0 -> v1.
     void roll(double t, double dur, int midi, double v0, double v1) {
-        for (double s = 0.0; s < dur; s += 0.055) {
+        const int strokes = static_cast<int>(dur / 0.055);
+        for (int i = 0; i < strokes; ++i) {
+            const double s = i * 0.055;
             note(t + s, 0.09, midi, v0 + (v1 - v0) * (s / dur), Voice::kTimpani);
         }
     }

@@ -350,7 +350,8 @@ struct PcmBlock {
 class BlockSink {
    public:
     template <typename F>
-        requires std::invocable<F&, const PcmBlock&>
+        requires std::invocable<F&, const PcmBlock&> &&
+                 (!std::same_as<std::remove_cvref_t<F>, BlockSink>)
     // NOLINTNEXTLINE(google-explicit-constructor): the call site is the point
     BlockSink(F&& f) noexcept
         : object_(const_cast<void*>(static_cast<const void*>(std::addressof(f)))),

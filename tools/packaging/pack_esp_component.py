@@ -89,6 +89,10 @@ def stage(destination: pathlib.Path) -> None:
     shutil.copytree(COMPONENT, destination, dirs_exist_ok=True)
     # A previous run's output, if the component directory was packed in place.
     shutil.rmtree(destination / "dist", ignore_errors=True)
+    # The streaming example's stream set - the repository's streams for a
+    # device to fetch, some 2.7 MB (planning/esp32-stream-set.md) - is not part
+    # of the component. The example's own stream/ stays.
+    shutil.rmtree(destination / "examples" / "stream_player" / "www", ignore_errors=True)
 
     library = destination / "lib"
     for tree in STAGED_TREES:

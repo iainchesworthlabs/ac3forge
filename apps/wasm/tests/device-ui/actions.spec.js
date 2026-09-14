@@ -123,36 +123,79 @@ test.describe('with the clock running', () => {
         await expect(page.getByRole('status')).toHaveText('Volume 30%: no connection.');
     });
 
-    test('Apply sends the layout to PUT /layout, for the next play', async ({ page, stub }) => {
-        const layout = page.getByLabel('Layout');
+    test('Apply sends the output layout to PUT /layout, for the next play', async ({ page, stub }) => {
+        const layout = page.getByLabel('Output layout');
         await expect(layout).toHaveValue('2.0');
         await layout.fill('1.0');
         await page.getByRole('button', { name: 'Apply' }).click();
         await expect.poll(() => stub.sent('PUT /layout').map((r) => r.body)).toEqual(['1.0']);
-        await expect(page.getByRole('status')).toHaveText('Layout 1.0 from the next play.');
-        await expect(page.locator('#layout')).toHaveText('1.0');
+        await expect(page.getByRole('status')).toHaveText('Output layout 1.0 from the next play.');
+        await expect(page.locator('#next')).toHaveText('1.0');
     });
 
     test('a speaker list is a layout too', async ({ page, stub }) => {
-        await page.getByLabel('Layout').fill('L,R');
-        await page.getByLabel('Layout').press('Enter');
+        await page.getByLabel('Output layout').fill('L,R');
+        await page.getByLabel('Output layout').press('Enter');
         await expect.poll(() => stub.sent('PUT /layout').map((r) => r.body)).toEqual(['L,R']);
-        await expect(page.getByRole('status')).toHaveText('Layout L,R from the next play.');
+        await expect(page.getByRole('status')).toHaveText('Output layout L,R from the next play.');
     });
 
-    test("a layout the sink cannot carry is refused with the device's reply", async ({ page, stub }) => {
-        await page.getByLabel('Layout').fill('5.1');
+    test('a layout the sink cannot carry is refused, and the page says why', async ({ page, stub }) => {
+        await page.getByLabel('Output layout').fill('5.1');
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await expect.poll(() => stub.sent('PUT /layout').map((r) => r.body)).toEqual(['5.1']);
+        await expect(page.getByRole('status')).toHaveText('Output layout 5.1 refused (409): it needs 6 slots and this sink has 2.');
+        await expect(page.locator('#next')).toHaveText('2.0');
+    });
+
+    test("a layout refused for what it says is refused in the device's words", async ({ page, stub }) => {
+        // Not a name OutputLayout has, so the page has no count to give.
+        await page.getByLabel('Output layout').fill('6.1');
         await page.getByRole('button', { name: 'Apply' }).click();
         await expect(page.getByRole('status')).toHaveText(
-            'Layout 5.1 refused (409): not a layout this player can play: check the name or the list, and that it has no more slots than the sink',
+            'Output layout 6.1 refused (409): not a layout this player can play: check the name or the list, and that it has no more slots than the sink',
         );
-        await expect(page.locator('#layout')).toHaveText('2.0');
+    });
+
+    test('the field suggests the layouts the sink can carry', async ({ page, stub }) => {
+        const enabled = () =>
+            page.locator('#layouts option').evaluateAll((options) => options.filter((o) => !o.disabled).map((o) => o.value));
+        await expect.poll(enabled).toEqual(['1.0', '2.0']);
+        await expect(page.getByLabel('Output layout')).toHaveAccessibleDescription(/This sink has 2 slots\.$/);
+        stub.device.sinkSlots = 16;
+        await page.reload();
+        await expect.poll(enabled).toEqual(['1.0', '2.0', '5.1', '7.1', '5.1.2', '5.1.4', '7.1.4', '9.1.6']);
+        await expect(page.getByLabel('Output layout')).toHaveAccessibleDescription(/This sink has 16 slots\.$/);
+    });
+
+    test("a play's own output, the speakers it leaves silent, and the next play's layout", async ({ page, stub }) => {
+        Object.assign(stub.device, { sinkSlots: 12, layout: '7.1.4', framesPerPoll: 1 });
+        await page.reload();
+        // AC-3 5.1 in a 7.1.4 room: the rear surrounds and the heights have nothing.
+        await page.getByLabel('Location to play').fill('http://10.0.2.2:8000/sample.ac3');
+        await page.getByRole('button', { name: 'Play' }).click();
+        await expect(page.locator('#output')).toHaveText('7.1.4, 12 slots: each channel on the speaker at its location');
+        await expect(page.locator('#silent')).toHaveText('Lrs, Rrs, Vhl, Vhr, Lts, Rts: nothing in the stream for these');
+        await expect(page.locator('#next')).toBeHidden();
+        // A new layout is the next play's; this play keeps its own.
+        await page.getByLabel('Output layout').fill('5.1');
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await expect(page.getByRole('status')).toHaveText('Output layout 5.1 from the next play.');
+        await expect(page.locator('#next')).toHaveText('5.1');
+        await expect(page.locator('#output')).toHaveText(/^7\.1\.4, 12 slots/);
+        // The 7.1.4 walk at 5.1: its rears and heights are spread over the room.
+        await page.getByLabel('Location to play').fill('http://10.0.2.2:8000/714-walk.ec3');
+        await page.getByRole('button', { name: 'Play' }).click();
+        await expect(page.locator('#output')).toHaveText('5.1, 6 slots: each channel on the speaker at its location');
+        await expect(page.locator('#channels')).toHaveText('12: L C R Ls Rs Lrs Rrs Vhl Vhr Lts Rts LFE');
+        await expect(page.locator('#silent')).toBeHidden();
+        await expect(page.locator('#next')).toBeHidden();
     });
 
     test('a layout of only spaces is not sent', async ({ page, stub }) => {
-        await page.getByLabel('Layout').fill('  ');
+        await page.getByLabel('Output layout').fill('  ');
         await page.getByRole('button', { name: 'Apply' }).click();
-        await expect(page.getByRole('status')).toHaveText('Enter a layout.');
+        await expect(page.getByRole('status')).toHaveText('Enter an output layout.');
         expect(stub.sent('PUT /layout')).toHaveLength(0);
     });
 });

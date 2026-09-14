@@ -455,6 +455,56 @@ TEST_CASE("decoder rejects corrupted streams", "[decoder]") {
     }
 }
 
+TEST_CASE("a corrupted delta-segment offset that would push the band cursor out of [0,50] is "
+          "rejected",
+          "[decoder]") {
+    // deltbaie's segment parser (decoder.cpp, §5.4.3.48-57) accumulates a band cursor across
+    // (deltoffst, deltlen) pairs and has to reject anything that pushes it outside the 50-band
+    // mask[] compute_bit_allocation() indexes into - deltoffst/deltlen are attacker-controlled,
+    // and nothing in this suite has ever supplied a deltbaie segment at all.
+    ac3::FrameEncoder encoder{{.bitrate_kbps = 192}};  // default acmod k2_0, no LFE, no coupling
+    const std::vector<float> silence(ac3::kSamplesPerFrame, 0.0f);
+    const std::vector<std::span<const float>> views(2, silence);
+    auto frame = encoder.encode_frame(views);
+    REQUIRE(frame.has_value());
+
+    // Bit offsets within block 0, cross-checked against test_encoder.cpp's own
+    // parse_block_zero() the same way the dithflag test above does: syncinfo(40) + bsi for 2/0
+    // without LFE(27) puts block 0 at bit 67. From there: blksw(2) + dithflag(2) + dynrnge(1,
+    // never sent by this encoder) + cplstre(1) + cplinu(1, = 0) + rematstr(1) + rematflg(4) +
+    // expstr x2(4) + chbwcod x2(12) - a silent frame's chbwcod is 0 (endmant 73), so each
+    // channel's D15 exponent run is exps[0](4) + 24 groups x 7 bits + gainrng(2) = 174 bits,
+    // x2 channels = 348 - + baie(1) and its 11-bit codes(11) + snroffste(1) + csnroffst(6) +
+    // fsnroffst/fgaincod x2(14) lands deltbaie at bit 476.
+    constexpr std::size_t kDeltbaieBit = 476;
+    constexpr std::size_t kChCode0Bit = kDeltbaieBit + 1;    // 477
+    constexpr std::size_t kChCode1Bit = kChCode0Bit + 2;     // 479
+    constexpr std::size_t kDeltnseg0Bit = kChCode1Bit + 2;   // 481
+    constexpr std::size_t kSeg0Bit = kDeltnseg0Bit + 3;      // 484: deltoffst(5)+deltlen(4)+deltba(3)
+    constexpr std::size_t kSeg1Bit = kSeg0Bit + 12;          // 496
+
+    auto patched = *frame;
+    patch_bits(patched, kDeltbaieBit, 1, 1);          // deltbaie = 1
+    patch_bits(patched, kChCode0Bit, 2, 0b01);        // channel 0: new delta info follows
+    patch_bits(patched, kChCode1Bit, 2, 0b10);        // channel 1: no delta - nothing further
+    patch_bits(patched, kDeltnseg0Bit, 3, 0b001);     // deltnseg raw = 1 -> 2 segments
+    // Segment 0: offset 31, length 15 - band goes from 0 to 31, then to 46 (legal, right at the
+    // edge: 31 + 15 == 46 <= 50).
+    patch_bits(patched, kSeg0Bit, 5, 0b11111);        // deltoffst = 31
+    patch_bits(patched, kSeg0Bit + 5, 4, 0b1111);     // deltlen = 15
+    patch_bits(patched, kSeg0Bit + 9, 3, 0);          // deltba
+    // Segment 1: offset 31 again - band jumps from 46 to 77 before length is even added, well
+    // past 50 whatever deltlen/deltba say.
+    patch_bits(patched, kSeg1Bit, 5, 0b11111);        // deltoffst = 31
+    patch_bits(patched, kSeg1Bit + 5, 4, 0);          // deltlen
+    patch_bits(patched, kSeg1Bit + 9, 3, 0);          // deltba
+
+    ac3::FrameDecoder decoder;
+    const auto result = decoder.decode_frame(patched);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == ac3::DecodeError::kInvalidStream);
+}
+
 TEST_CASE("every decode error describes itself", "[decoder]") {
     // A switch that has fallen behind its enum still compiles — no warning
     // level here flags a missing case — and quietly answers "unknown decode

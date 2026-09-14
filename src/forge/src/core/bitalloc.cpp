@@ -520,8 +520,16 @@ DeltaSegments choose_delta_segments_over(std::span<const Scalar> coefficients,
     const int bndend = kMaskTab[static_cast<std::size_t>(end - 1)] + 1;
 
     // Merge bands whose correction rounds to the same code into runs, so
-    // adjacent agreement costs one segment instead of one per band.
-    std::vector<DeltaRun> runs;
+    // adjacent agreement costs one segment instead of one per band. A local
+    // vector here was a fresh heap allocation every call - this runs once
+    // per exponent run per stream per frame, for every E-AC-3 (and AC-3)
+    // encode with delta_allocation on, which is the default - with nothing
+    // to amortize against since it never survived past this function. A
+    // thread_local reused buffer fixes that the same way
+    // eac3_tools.cpp's ecpl_spectrum_scratch does for its own per-call
+    // scratch.
+    thread_local std::vector<DeltaRun> runs;
+    runs.clear();
     for (int band = bndstrt; band < bndend; ++band) {
         const auto b = static_cast<std::size_t>(band);
         const auto code = delta_code_for(real_bndpsd[b] - bndpsd[b]);

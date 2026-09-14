@@ -2,11 +2,12 @@
 # same rule the library follows for its own platform choices. See
 # main/audio_sink.hpp.
 #
-#   i2s      stereo on the I2S peripheral, and the default
-#   tdm      the I2S peripheral in TDM mode, up to sixteen slots
-#   capture  the conversion code the i2s and tdm sinks share, checked, with no
+#   i2s      the I2S peripheral, standard mode or TDM depending on what the
+#            active layout needs (ac3forge/sink_plan.hpp) - reconfigures
+#            itself, not a build-time width; the default
+#   capture  the conversion code the i2s sink uses, checked, with no
 #            peripheral behind it: what CI runs, because qemu-system-xtensa has
-#            no I2S and the other two sinks' first write would never return
+#            no I2S and the real sink's first write would never return
 #   null     counts blocks and returns; CI builds it and does not run it
 # From Kconfig, not a -D cache variable: this file is evaluated in IDF's
 # separate requirements-expansion process, which does not inherit cache
@@ -15,8 +16,6 @@ if(CONFIG_AC3FORGE_EXAMPLE_SINK_NULL)
     set(AC3FORGE_SINK_DIR "sink/null")
 elseif(CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE)
     set(AC3FORGE_SINK_DIR "sink/capture")
-elseif(CONFIG_AC3FORGE_EXAMPLE_SINK_TDM)
-    set(AC3FORGE_SINK_DIR "sink/tdm")
 else()
     set(AC3FORGE_SINK_DIR "sink/i2s")
 endif()
@@ -68,11 +67,25 @@ endif()
 # sdmmc_host.h in the latter. fatfs carries esp_vfs_fat.h. esp_eth for the
 # QEMU network under the HTTP source, listed for every build for the reason
 # above.
+# The stage-timer backend the bare-metal probe links (apps/baremetal/
+# stage_timers.cpp), when the repository is here to provide it. With the
+# library built with AC3FORGE_STAGE_TIMERS it gives each play a
+# play.stage[<zone>] line per decoder stage - `idf.py -DAC3FORGE_STAGE_TIMERS=ON
+# build` - and without that option nothing calls it and the linker drops it, so
+# a plain build is unchanged. A component archive carries no apps/, and there
+# stream_player.cpp's own no-op stand-ins are what links.
+set(AC3FORGE_STAGE_TIMER_SRCS "")
+set(AC3FORGE_STAGE_TIMER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../apps/baremetal")
+if(EXISTS "${AC3FORGE_STAGE_TIMER_DIR}/stage_timers.cpp")
+    set(AC3FORGE_STAGE_TIMER_SRCS "${AC3FORGE_STAGE_TIMER_DIR}/stage_timers.cpp")
+endif()
+
 idf_component_register(
     SRCS "stream_player.cpp"
          "${AC3FORGE_SINK_DIR}/audio_sink.cpp"
          "${AC3FORGE_SOURCE_DIR}/byte_source.cpp"
          ${AC3FORGE_NETWORK_SRCS}
+         ${AC3FORGE_STAGE_TIMER_SRCS}
     INCLUDE_DIRS "." "source/http"
     REQUIRES ac3forge esp_driver_i2s esp_timer freertos
              esp_partition

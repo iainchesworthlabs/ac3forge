@@ -14,13 +14,13 @@ target and the first with hardware floating point.
 | | |
 |---|---|
 | AC-3 decode | Correct. Mono, stereo and 5.1, and 5.1 folded to Lo/Ro stereo in line mode by the §7.8 output stage, every channel level exact against `apps/baremetal/fixture.hpp` |
-| E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing, and 5.1 folded to Lo/Ro stereo in line mode |
+| E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing; 5.1 and 7.1.4 folded to Lo/Ro stereo in line mode; and 5.1 in line mode from a stream carrying dynrng words and dialnorm 24 |
 | E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture |
 | Atmos bed and objects | Correct. Objects reconstruct here, and are placed onto 7.1.4 by their positions (`eac3_atmos_render`, through the block form's object views); the flat newlib heap makes it easier than on the [ESP32-S3](esp32.md#objects) |
 | Fixed-point decode | `-DAC3FORGE_DECODE_SCALAR=fixed` builds every decode row above in Q7.24 integers under a per-block exponent, for a part with no FPU at all - the plan is [arithmetic-tiers.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md). CI runs the probe twice on this leg, and the fixed build's PCM is identical to the x86 host's and to an ESP32-C3's under `qemu-riscv32` - three architectures, one pinned set of hashes (`tests/golden/fixed-probe-pcm-hashes.json`). It costs 0.37x the instructions the default build spends on the same frame: `eac3.instructions_per_frame=4827000` against 12,948,000, integer arithmetic where that one's is software floating point |
 | Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`: six rows (5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, 2/0 §E3.5), each hashed against `encode_fixture.hpp` with its peak and its time per frame; 242,589-byte image, 202,760 peak, 10.3 M to 80.7 M instructions a frame under `--encoder --icount` - see [Building](../building.md#what-the-encode-direction-costs) |
 | Image size | 338,793 bytes — 276,188 `.text`, 400 `.data`, 62,205 `.bss` |
-| Peak heap | 229,630 bytes, the 7.1.4 fixture (210,203 with Atmos objects) |
+| Peak heap | 237,206 bytes, the 7.1.4 fixture folded to stereo (230,798 as coded, 211,371 with Atmos objects) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
 | Allocations per frame | 1 to 35, by fixture — see [the footprint table](../performance-trend.md#minimum-footprint-decoder) |
 | Audio output | None. The probe decodes built-in fixtures and prints levels |
@@ -73,7 +73,7 @@ list if any component needing the full library is still switched on.
 
 ## The probe
 
-`apps/baremetal/probe.cpp` links the archive, decodes six frames each of twelve fixtures, compares
+`apps/baremetal/probe.cpp` links the archive, decodes six frames each of fourteen fixtures, compares
 every channel's level against `apps/baremetal/fixture.hpp`, and prints `key=value` lines the
 runner gates on: the levels, image size, peak heap, retained bytes and allocations per frame.
 `encode_probe.cpp` is its counterpart, checking a byte count and FNV-1a hash against

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fmt/base.h>
 #include <fstream>
+#include <ios>
 #include <memory>
 #include <optional>
 #include <random>

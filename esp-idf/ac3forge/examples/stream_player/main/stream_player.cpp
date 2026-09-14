@@ -28,8 +28,8 @@
 //   source/sd/         an SD card over SDMMC.
 //   source/http/       an HTTP body, over WiFi or QEMU's Ethernet.
 //
-//   sink/i2s/          a stereo DAC.
-//   sink/tdm/          multi-channel on one data line.
+//   sink/i2s/          an I2S DAC, standard or TDM, reconfigured to whatever
+//                      the layout needs.
 //   sink/capture/      converts and checks; what CI runs.
 //   sink/null/         counts blocks.
 
@@ -61,6 +61,19 @@
 
 #include "audio_sink.hpp"
 #include "byte_source.hpp"
+
+// The example's half of the stage timers. main/CMakeLists.txt links the
+// bare-metal probe's backend (apps/baremetal/stage_timers.cpp) when the
+// repository is there to provide it; it reads this clock, and its report
+// replaces the stand-ins below, which are what links in a component archive
+// that carries no apps/. Built with AC3FORGE_STAGE_TIMERS, each play ends with a
+// play.stage[<zone>] line per decoder stage; built without, the library enters
+// no zones and the report prints nothing.
+namespace ac3probe {
+std::uint64_t now_us() { return static_cast<std::uint64_t>(esp_timer_get_time()); }
+[[gnu::weak]] void reset_stages() {}
+[[gnu::weak]] void report_stages(const char* /*codec*/, int /*frames*/) {}
+}  // namespace ac3probe
 
 namespace {
 
@@ -196,6 +209,10 @@ std::atomic<float> g_volume{1.0F};
 // The layout the next play uses, and its text for /layout and /status. Written
 // by app_main, read under the mutex by the control surface.
 ac3forge::OutputLayout g_layout;
+// How many channels the sink is presently open for - 0 before the first
+// begin_play, which is always a reconfigure since a real layout needs at
+// least one. Written only from begin_play, on the task that owns the player.
+int g_sink_channels_open = 0;
 
 // --- reporting -------------------------------------------------------------------
 
@@ -301,13 +318,37 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
                 static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
                 static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
                 static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
-    g_sink.reset();
-    session = Session{};
 
+    // Read directly into config.layout rather than a separate local: a
+    // second stack-resident OutputLayout here is exactly what once
+    // boot-looped this example on a main-task stack overflow before
+    // kTextBytes was held back (see its own comment in layout.hpp) - the
+    // struct is copied by value onto a tight FreeRTOS stack either way, so
+    // one copy is what the budget allows.
     ac3forge::PlayerConfig config;
     xSemaphoreTake(g_player_mutex, portMAX_DELAY);
     config.layout = g_layout;
     xSemaphoreGive(g_player_mutex);
+
+    // A layout that needs a different slot count or mode than the sink is
+    // presently open for reconfigures it here, between plays and before the
+    // new Player exists - never mid-play, per audio_sink.hpp - so a layout
+    // sent to the control surface never needs a rebuild or a reboot to take
+    // effect. accept_layout already refused anything past the sink's
+    // ceiling, so a failure here is the sink itself refusing, not that.
+    const int needed_slots = static_cast<int>(config.layout.slots());
+    if (needed_slots != g_sink_channels_open) {
+        if (!player::sink_open(kSampleRate, needed_slots)) {
+            g_state.store("failed");
+            return false;
+        }
+        g_sink_channels_open = needed_slots;
+    }
+
+    g_sink.reset();
+    session = Session{};
+    ac3probe::reset_stages();
+
     config.stereo_fold = kStereoFold;
     config.objects = kObjects;
     config.decoder.joc_domain = kJocDomain;
@@ -317,8 +358,10 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     config.fetch_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_FETCH_CORE);
     config.decode_core = core_from_kconfig(CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE);
     config.decode_stack_bytes = CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES;
+    config.hold_first_unit = CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT != 0;
     config.max_passes = kMaxLaps;
     config.volume = g_volume.load();
+    config.sample_rate_hz = kSampleRate;
 
     auto player = std::make_unique<ac3forge::Player>(config, g_source, g_sink);
     if (!player->start()) {
@@ -377,6 +420,9 @@ void report_end(const Session& session, const ac3forge::PlayerStats& stats) {
                 static_cast<unsigned long>(stats.decode_stack_free),
                 static_cast<unsigned long>((stats.frames_played * kFrameDurationUs) / 1000),
                 static_cast<unsigned long>(wall_us / 1000));
+    // Where the play's frames went, stage by stage, when the library was built
+    // with AC3FORGE_STAGE_TIMERS; nothing otherwise.
+    ac3probe::report_stages("play", static_cast<int>(stats.frames_played));
     std::printf("result=%s\n", (stats.frames_played > 0 && !stats.failed) ? "pass" : "fail");
 }
 
@@ -427,6 +473,7 @@ ac3forge::ControlHandlers control_handlers() {
     h.location = []() { return std::string{player::source_location()}; };
     h.source_name = []() { return player::source_name(); };
     h.sink_name = []() { return player::sink_name(); };
+    h.sink_slots = []() { return player::sink_slots(); };
     h.state = []() { return g_state.load(); };
     return h;
 }
@@ -460,13 +507,6 @@ extern "C" void app_main() {
     g_layout = *layout;
     std::printf("ac3forge stream_player: AC-3 or E-AC-3 onto %s\n", g_layout.text().data());
 
-    // The layout's slots, not the coded count: the player renders onto the
-    // layout whatever arrives. A layout too wide for the sink stops here and
-    // says so; the sink's own message names its limit.
-    if (!player::sink_open(kSampleRate, static_cast<int>(g_layout.slots()))) {
-        std::printf("result=fail\n");
-        return;
-    }
     g_commands = xQueueCreate(4, sizeof(Command));
     g_player_mutex = xSemaphoreCreateMutex();
 

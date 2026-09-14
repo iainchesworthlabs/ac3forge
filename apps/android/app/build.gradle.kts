@@ -207,3 +207,47 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:core:1.7.0")
 }
+
+// SonarCloud text:S8569 - pin resolved dependency versions (including
+// transitives) so a build is reproducible from the committed lockfile
+// rather than whatever Google/Maven Central happen to resolve to on a
+// given day. Regenerate with `./gradlew --write-locks` after changing a
+// dependency above; a normal build fails if the resolution then drifts
+// from the committed gradle.lockfile without a matching lockfile update.
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+// This app has no direct dependency on netty/protobuf-java/commons-io -
+// they arrive only as transitives of AGP's Unified Test Platform (the
+// com.google.testing.platform:* / _internal-unified-test-platform-*
+// tooling that runs connectedDebugAndroidTest), which was still pinned to
+// versions with disclosed CVEs (Netty HTTP/2 Rapid Reset and several SNI-
+// handling issues through 4.1.93.Final; protobuf-java stack overflow
+// GHSA-735f-pc8j-v9w8; commons-io XmlStreamReader DoS GHSA-78wr-2p64-hpwj).
+// AGP 8.7.3 doesn't offer a newer UTP version to pick these up, so force
+// every configuration - including the UTP-internal ones, which don't
+// extend implementation/androidTestImplementation and so aren't reachable
+// via a `constraints` block - to patched releases. All netty artifacts are
+// forced to the same version because Netty only supports matched versions
+// across its modules. Re-run `./gradlew --write-locks` after bumping any
+// of these.
+configurations.all {
+    resolutionStrategy {
+        force(
+            "io.netty:netty-buffer:4.1.138.Final",
+            "io.netty:netty-codec:4.1.138.Final",
+            "io.netty:netty-codec-http:4.1.138.Final",
+            "io.netty:netty-codec-http2:4.1.138.Final",
+            "io.netty:netty-codec-socks:4.1.138.Final",
+            "io.netty:netty-common:4.1.138.Final",
+            "io.netty:netty-handler:4.1.138.Final",
+            "io.netty:netty-handler-proxy:4.1.138.Final",
+            "io.netty:netty-resolver:4.1.138.Final",
+            "io.netty:netty-transport:4.1.138.Final",
+            "io.netty:netty-transport-native-unix-common:4.1.138.Final",
+            "com.google.protobuf:protobuf-java:3.25.8",
+            "commons-io:commons-io:2.22.0"
+        )
+    }
+}

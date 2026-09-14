@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <numbers>
 #include "ac3/core/tables.hpp"
+#include "ac3/export.hpp"
 #include <span>
 
 namespace ac3 {

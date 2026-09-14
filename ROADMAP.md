@@ -2939,7 +2939,7 @@ hardware, the one backend left.
   locked and was identified correctly, including signed Atmos with four height channels, at
   zero underruns. `docs/verification.md`, `docs/platforms/linux.md`, the 0.9.0 Known gaps and
   `docs/platforms/windows.md` all carried stale text contradicting this — fixed with DR5.
-- **Windows/WASAPI exclusive: confirmed 2026-09-14** — an Onkyo TX-RZ740 cabled over an Nvidia
+- **Windows/WASAPI exclusive: confirmed** — an Onkyo TX-RZ740 cabled over an Nvidia
   GPU's HDMI audio endpoint locked AC-3 (Dolby Digital 5.1), E-AC-3 (Dolby Digital Plus 5.1) and
   a signed Atmos stream (Atmos/DD+, decoded to 5.0.4, audible object motion) through
   `PassthroughSink` itself, at zero-to-near-zero underruns each run — see

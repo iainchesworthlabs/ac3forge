@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -615,6 +616,135 @@ TEST_CASE("parse_raw_frame refuses bitstream_version above 2", "[ac4]") {
     const auto result = ac4::parse_raw_frame(raw);
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error() == ac4::Error::kUnsupportedBitstreamVersion);
+}
+
+TEST_CASE("parse_raw_frame: a v0 presentation's runaway EMDF-substream count stops at truncation",
+          "[ac4]") {
+    // Regression vector for parse_presentation_info_v0()'s b_add_emdf_substreams
+    // loop (ac4.cpp): n escapes through variable_bits() with no upper bound,
+    // and the comment beside the loop's `if (r.error()) break;` describes what
+    // used to happen without it - "a 200-byte frame spends six seconds walking
+    // a count no data backs". This is also the only test in this suite that
+    // exercises bitstream_version 0/1 at all - every other frame here is
+    // version 2, so parse_presentation_info_v0() itself was otherwise dead
+    // from ac3tests' point of view.
+    BitWriter w;
+    w.put(0, 2);   // bitstream_version = 0 (the v0 TOC path, <= 1)
+    w.put(0, 10);  // sequence_counter
+    w.put(0, 1);   // b_wait_frames
+    w.put(0, 1);   // fs_index = 0 (44100 Hz)
+    w.put(5, 4);   // frame_rate_index = 5 (frame_rate_multiply_info reads 0 bits)
+    w.put(0, 1);   // b_iframe_global
+    w.put(1, 1);   // b_single_presentation -> n_presentations = 1
+    w.put(0, 1);   // b_payload_base = 0
+    // parse_presentation_info_v0(), b_single_substream branch:
+    w.put(1, 1);  // b_single_substream = 1
+    w.put(0, 1);  // presentation_version terminator (unary 0 -> version 0)
+    w.put(0, 3);  // md_compat
+    w.put(0, 1);  // b_belongs_to_presentation_id = 0
+    // frame_rate_multiply_info(frame_rate_index=5): 0 bits (default case).
+    // emdf_info(): version(2)=0, key_id(3)=0, b_payloads_substream_info(1)=0,
+    // emdf_reserved: primary(2)=0, secondary(2)=0.
+    w.put(0, 2);
+    w.put(0, 3);
+    w.put(0, 1);
+    w.put(0, 2);
+    w.put(0, 2);
+    // parse_substream_info_v0(): channel_mode=0 (mono, 1 bit; fs_index != 1
+    // so b_sf_multiplier is never read), b_bitrate_info=0, b_content_type=0,
+    // one b_iframe bit (frame_rate_factor == 1), substream_index=0.
+    w.put(0, 1);  // channel_mode = 0
+    w.put(0, 1);  // b_bitrate_info
+    w.put(0, 1);  // b_content_type
+    w.put(0, 1);  // b_iframe
+    w.put(0, 2);  // substream_index
+    w.put(0, 1);  // b_pre_virtualized
+    w.put(1, 1);  // b_add_emdf_substreams = 1
+    w.put(0, 2);  // n = 0 -> escapes via variable_bits(2)
+    // Escape n to a real (not phantom-zero) 89,478,487 via 12 rounds of
+    // variable_bits(2): 11 continuations of the maximal 2-bit chunk (3), then
+    // one terminating round - value = ((((...(3*4+4)...)*4+4)+3), landing on
+    // 89,478,483 (+4 -> n). Large enough that actually walking it - each
+    // iteration a full emdf_info() - takes many seconds; the escape itself is
+    // 36 bits.
+    for (int round = 0; round < 11; ++round) {
+        w.put(0b11, 2);  // value chunk = 3
+        w.put(1, 1);     // continuation
+    }
+    w.put(0b11, 2);  // final chunk = 3
+    w.put(0, 1);     // terminate: n = 89,478,483 + 4 = 89,478,487
+    // No further data at all: the loop's first parse_emdf_info() call runs
+    // off the end immediately, and the guard has to notice on THIS iteration,
+    // not the 89-millionth.
+
+    const auto data = w.bytes();
+    const auto start = std::chrono::steady_clock::now();
+    const auto result = ac4::parse_raw_frame(data);
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == ac4::Error::kTruncated);
+    // The guard's whole job is to notice on the first iteration rather than
+    // the 89-millionth - generous even against a loaded shared runner, since
+    // the guarded path is a handful of reads, not a loop bound by the
+    // escaped count.
+    CHECK(elapsed < std::chrono::seconds(2));
+}
+
+TEST_CASE("parse_raw_frame: a v1 presentation's runaway EMDF-substream count stops at truncation",
+          "[ac4]") {
+    // The v1 counterpart of the v0 case above: parse_presentation_v1_info()
+    // has its own b_add_emdf_substreams loop, guarded the same way. Follows
+    // write_ac4_object_coded_preamble()'s own field values up to
+    // b_add_emdf_substreams (not reused directly - that helper hard-codes the
+    // bit clear, and every other test relies on that), then sets it instead
+    // of clearing it and appends the same escape as the v0 test.
+    BitWriter w;
+    w.put(2, 2);   // bitstream_version = 2
+    w.put(0, 10);  // sequence_counter
+    w.put(0, 1);   // b_wait_frames
+    w.put(0, 1);   // fs_index = 0
+    w.put(5, 4);   // frame_rate_index = 5
+    w.put(0, 1);   // b_iframe_global
+    w.put(1, 1);   // b_single_presentation -> n_presentations = 1
+    w.put(0, 1);   // b_payload_base = 0
+    w.put(0, 1);   // b_program_id = 0
+    // ac4_presentation_v1_info():
+    w.put(1, 1);  // b_single_substream_group = 1
+    w.put(0, 1);  // presentation_version terminator (unary 0 -> version 0)
+    w.put(0, 3);  // md_compat
+    w.put(0, 1);  // b_presentation_id = 0
+    w.put(0, 1);  // frame_rate_fractions_info: frame_rate_factor==1 branch
+    w.put(0, 2);  // emdf_info: version
+    w.put(0, 3);  // emdf_info: key_id
+    w.put(0, 1);  // emdf_info: b_payloads_substream_info
+    w.put(0, 2);  // emdf_reserved: primary
+    w.put(0, 2);  // emdf_reserved: secondary
+    w.put(0, 1);  // b_presentation_filter = 0
+    w.put(0, 3);  // ac4_sgi_specifier(): group_index = 0
+    w.put(0, 1);  // b_pre_virtualized
+    w.put(1, 1);  // b_add_emdf_substreams = 1 (the preamble helper leaves this 0)
+    w.put(0, 1);  // b_alternative
+    w.put(0, 1);  // b_pres_ndot
+    w.put(0, 2);  // ac4_presentation_substream_info()'s substream_index_ref
+    // Same escape as the v0 test: n = 0 -> variable_bits(2), 12 rounds
+    // landing on 89,478,487, then no further data.
+    w.put(0, 2);  // n = 0
+    for (int round = 0; round < 11; ++round) {
+        w.put(0b11, 2);
+        w.put(1, 1);
+    }
+    w.put(0b11, 2);
+    w.put(0, 1);
+
+    const auto data = w.bytes();
+    const auto start = std::chrono::steady_clock::now();
+    const auto result = ac4::parse_raw_frame(data);
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == ac4::Error::kTruncated);
+    CHECK(elapsed < std::chrono::seconds(2));
 }
 
 TEST_CASE("describe returns a distinct, non-empty string for every Error", "[ac4]") {

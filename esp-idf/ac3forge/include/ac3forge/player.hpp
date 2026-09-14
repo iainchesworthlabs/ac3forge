@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -132,6 +133,16 @@ struct PlayerConfig {
     std::uint32_t decode_stack_bytes = 32768;
     std::uint32_t fetch_stack_bytes = 8192;
 
+    // Holds each play's first access unit until the second has decoded, so
+    // the sink starts with two frames queued rather than one. A play's first
+    // frames decode more slowly than the rest, and with one frame queued an
+    // ESP32-S3 playing 7.1.4 over WiFi ran its DAC dry in each play's first
+    // ten frames and never after (planning/esp32-714-realtime.md, decision
+    // 14). Costs a frame more before a play is heard - 32 ms at 48 kHz - and
+    // a copy of the unit while it is held, 1 KB a channel for each of its six
+    // blocks, in PSRAM where the part has it and freed once the unit plays.
+    bool hold_first_unit = false;
+
     // Passes through the stream before stopping. 0 plays until the source
     // cannot rewind. A source that cannot rewind ends the run after one pass
     // whatever this says.
@@ -140,6 +151,11 @@ struct PlayerConfig {
     // A linear gain applied to every slot before it reaches the sink, 0.0 to
     // 1.0. Changeable while playing through Player::set_volume().
     float volume = 1.0F;
+
+    // The rate the sink runs at. A stream at any other is refused - the play
+    // fails with the reason "sample rate" and the stream's rate, in Hz, as its
+    // error - rather than played at the wrong speed.
+    std::uint32_t sample_rate_hz = 48000;
 };
 
 // What the first decoded access unit said the stream is, and what the player
@@ -153,6 +169,19 @@ struct StreamInfo {
     bool objects = false;           // the stream carries an object layer
     bool objects_rendered = false;  // and this player is placing them
     int slots = 0;                  // what the sink is handed: the layout's
+
+    // How this play serves its layout, for a report such as the web page's
+    // (planning/esp32-device-ui.md, "The output layout"). `layout` is the
+    // layout's text; `render` is "loro", "ltrt" or "mono" for the decoder's
+    // fold, "channels" for the coded channels placed, "objects" for the
+    // objects placed; `coded` names the stream's channels by Table E2.5
+    // location, comma-separated in the decoder's order ("Ch1,Ch2" for dual
+    // mono); `silent` names the layout's speakers this play has sent nothing
+    // to so far, and is empty when every one has had something.
+    std::array<char, OutputLayout::kTextBytes> layout{};
+    const char* render = "";
+    std::array<char, 96> coded{};
+    std::array<char, 160> silent{};
 };
 
 struct PlayerStats {
@@ -191,7 +220,8 @@ struct PlayerStats {
     bool failed = false;
     // Why the run ended, once `finished`: "passes" (max_passes reached), "end
     // of stream" (the source could not rewind), or with `failed` set,
-    // "framing" or "decode" with the library's own error code in `error`.
+    // "framing" or "decode" with the library's own error code in `error`,
+    // or "sample rate" with the stream's rate in Hz (PlayerConfig::sample_rate_hz).
     const char* failure = "";
     int error = 0;
 };

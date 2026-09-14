@@ -536,6 +536,60 @@ TEST_CASE("the AHT synthesis basis is orthogonal with equal norms",
     }
 }
 
+TEST_CASE("the float AHT inverse agrees with the double one", "[eac3][aht]") {
+    using ac3::eac3::aht_inverse;
+    // The decoder's minimum-footprint profile carries AHT coefficients in
+    // float and calls exactly this overload (eac3_decoder.cpp); every AHT
+    // test above exercises the double form only (test_fixed32.cpp compares
+    // the double and Fixed32 ones), so nothing proved the float inverse was
+    // even the same transform before this.
+    std::mt19937 rng(0x41687401);
+    std::uniform_real_distribution<double> dist(-1.0, 1.0);
+    double worst = 0.0;
+    for (int trial = 0; trial < 500; ++trial) {
+        std::array<double, 6> wide{};
+        std::array<float, 6> narrow{};
+        for (std::size_t j = 0; j < 6; ++j) {
+            wide[j] = dist(rng);
+            narrow[j] = static_cast<float>(wide[j]);
+        }
+        std::array<double, 6> wide_out{};
+        std::array<float, 6> narrow_out{};
+        aht_inverse(wide, wide_out);
+        aht_inverse(narrow, narrow_out);
+        for (std::size_t m = 0; m < 6; ++m) {
+            worst = std::max(worst, std::abs(static_cast<double>(narrow_out[m]) - wide_out[m]));
+        }
+    }
+    INFO("worst float/double inverse error " << worst);
+    // Six products at most sqrt(2) plus the sum's own rounding - the same
+    // shape of bound test_fixed32.cpp's Fixed32-vs-double comparison uses,
+    // just at float's much coarser 2^-23 instead of the fixed tier's 2^-24.
+    CHECK(worst < 16.0 * (1.0 / 8388608.0));
+
+    // And the basis property itself, at float: the orthogonal, equal-norm
+    // synthesis basis the double test above pins is what makes the AHT
+    // weights (sqrt(2), 1/sqrt(2)) the right reading of the standard's
+    // radicals - see that test's own comment. Worth pinning again here since
+    // the float overload narrows the weights and the kernel table
+    // independently rather than reusing the double ones bit for bit.
+    std::array<std::array<float, 6>, 6> basis{};
+    for (std::size_t j = 0; j < 6; ++j) {
+        std::array<float, 6> unit{};
+        unit[j] = 1.0F;
+        aht_inverse(unit, basis[j]);
+    }
+    for (std::size_t j = 0; j < 6; ++j) {
+        double norm = 0.0;
+        for (const float value : basis[j]) {
+            const double d = static_cast<double>(value);
+            norm += d * d;
+        }
+        CAPTURE(j, norm);
+        CHECK(std::abs(norm - 6.0) < 1e-4);
+    }
+}
+
 TEST_CASE("the GAQ quantizers match Table E3.5's shape", "[eac3][aht][gaq]") {
     using ac3::eac3::aht_mantissa_bits;
     using ac3::eac3::aht_quantize_mantissa;
@@ -666,6 +720,37 @@ TEST_CASE("GAQ bit accounting matches what it emits", "[eac3][aht][gaq]") {
         }
     }
     CHECK(mismatches == 0);
+}
+
+TEST_CASE("aht_dequantize_mantissa inverts aht_quantize_mantissa exactly",
+          "[eac3][aht][gaq]") {
+    using ac3::eac3::aht_dequantize_mantissa;
+    using ac3::eac3::aht_mantissa_bits;
+    using ac3::eac3::aht_quantize_mantissa;
+    // "GAQ bit accounting matches what it emits" above cross-checks the
+    // WIDTH aht_quantize_mantissa's codewords cost against the packer; this
+    // is the decoder's own half of the same pair. aht_dequantize_mantissa
+    // (eac3_tools.hpp) has to read back exactly the `recon` value the
+    // encoder already computed from the same code/escape it wrote, or a
+    // stream this encoder produces decodes to something else than what it
+    // encoded. Nothing called aht_dequantize_mantissa at all before this -
+    // the decoder's own AHT path uses AhtGaqDequantizer, a separate
+    // precomputed-constants form of the same arithmetic.
+    const auto near = [](double a, double b) { return std::abs(a - b) < 1e-12; };
+    for (int hebap = 8; hebap <= 19; ++hebap) {
+        const int m = aht_mantissa_bits(hebap);
+        for (const int gain : {1, 2, 4}) {
+            CAPTURE(hebap, m, gain);
+            for (int i = -200; i <= 200; ++i) {
+                const double value = i / 201.0;
+                const auto code = aht_quantize_mantissa(value, m, gain);
+                const double back = aht_dequantize_mantissa(code.code, code.escape,
+                                                             code.escape_bits > 0, m, gain);
+                CAPTURE(value, code.recon, back);
+                CHECK(near(back, code.recon));
+            }
+        }
+    }
 }
 
 TEST_CASE("GAQ gain words are counted the way they are packed",
@@ -839,6 +924,37 @@ TEST_CASE("the SPX notch lands on every seam and nowhere else", "[eac3][spx]") {
     std::vector<double> untouched(static_cast<std::size_t>(6 * 12), 1.0);
     spx_apply_notch(untouched, kStart, bands, std::span{wrapflag}, -1);
     CHECK(std::ranges::all_of(untouched, [](double v) { return v == 1.0; }));
+}
+
+TEST_CASE("spx_noise_ratio follows Annex E's own nratio pseudocode", "[eac3][spx]") {
+    using ac3::eac3::spx_noise_ratio;
+    // §E3.6.4.2.1's nratio: the fraction of a synthesized band's content that
+    // is noise rather than the translated low-band copy, from the band's
+    // centre relative to the extension region's end and the transmitted
+    // blend, clamped to [0, 1]. Nothing calls spx_noise_ratio at all before
+    // this - every other spx test above exercises the notch and the
+    // attenuation table, not the blend fraction itself. SpxNoise (tested in
+    // test_fixed32.cpp) is the unrelated noise generator this ratio blends
+    // against, not this function.
+    const auto near = [](double a, double b) { return std::abs(a - b) < 1e-12; };
+    constexpr int kEndmant = 32;  // a power of two lines the fractions up with blend/32
+    // centre = band_start + band_size/2; ratio = centre/endmant - blend/32.
+    CHECK(near(spx_noise_ratio(0, 2, kEndmant, 0), 1.0 / 32.0));
+    CHECK(near(spx_noise_ratio(8, 8, kEndmant, 8), 4.0 / 32.0));
+    // A band whose centre sits past the extension region's end clamps at the
+    // formula's upper edge rather than reporting a ratio above 1.
+    CHECK(near(spx_noise_ratio(34, 4, kEndmant, 0), 1.0));
+    // Blend large enough to push a low band negative clamps at 0 instead.
+    CHECK(near(spx_noise_ratio(0, 2, kEndmant, 31), 0.0));
+    // Monotonic in blend: more blend can only ever raise the low-band copy's
+    // share, i.e. lower (or hold, once clamped) the noise ratio.
+    double previous = spx_noise_ratio(16, 8, kEndmant, 0);
+    for (int blend = 1; blend <= 31; ++blend) {
+        const double ratio = spx_noise_ratio(16, 8, kEndmant, blend);
+        CAPTURE(blend, ratio, previous);
+        CHECK(ratio <= previous);
+        previous = ratio;
+    }
 }
 
 TEST_CASE("E-AC-3 spectral extension places its fields where Annex E puts them",

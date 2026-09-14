@@ -209,6 +209,132 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
     }
 }
 
+TEST_CASE("an object's overlap tail drains while absent instead of staying stale for its return",
+          "[oba][joc]") {
+    // reconstruct_mdct_band's own comment: an object with shape.present == false still has to
+    // drain whatever overlap tail its LAST present frame left behind, immediately - or the next
+    // frame it reappears in starts its overlap-add from a stale one instead of a clean state. No
+    // existing test ever sets ObjectShape::present = false at all.
+    ac3::oba::joc::FrameParameters present_params{.objects = 1, .num_bands_idx = 4};
+    present_params.matrix.assign(present_params.coefficient_count(), 0.0);
+    for (int band = 0; band < present_params.bands(); ++band) {
+        present_params.at(0, 0, band) = 1.0;  // pass bed channel 0 straight through into object 0
+    }
+
+    ac3::oba::joc::FrameParameters absent_params{.objects = 1, .num_bands_idx = 4};
+    absent_params.shapes = {ac3::oba::joc::ObjectShape{.present = false}};
+    absent_params.matrix.clear();  // the one object is absent, so coefficient_count() == 0
+
+    ac3::oba::joc::FrameParameters silent_present_params{.objects = 1, .num_bands_idx = 4};
+    silent_present_params.matrix.assign(silent_present_params.coefficient_count(), 0.0);
+
+    std::vector<std::vector<float>> loud_bed(5, std::vector<float>(ac3::kSamplesPerFrame, 0.0f));
+    for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+        loud_bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
+            0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
+    }
+    const std::vector<float> silence(ac3::kSamplesPerFrame, 0.0f);
+    std::vector<std::vector<float>> silent_bed(5, silence);
+    const std::vector<std::span<const float>> loud_views(loud_bed.begin(), loud_bed.end());
+    const std::vector<std::span<const float>> silent_views(silent_bed.begin(), silent_bed.end());
+
+    ac3::oba::joc::ReconstructionState state;
+
+    // Frame 1: object present, real signal - builds a real, nonzero overlap tail.
+    const auto out1 = ac3::oba::joc::reconstruct(loud_views, present_params, state, false, false,
+                                                 ac3::oba::joc::Domain::kMdctBand);
+    double energy1 = 0.0;
+    for (const float v : out1[0]) {
+        const double d = static_cast<double>(v);
+        energy1 += d * d;
+    }
+    REQUIRE(energy1 > 0.0);
+
+    // Frame 2: object absent - its tail must drain now, not carry forward.
+    (void)ac3::oba::joc::reconstruct(silent_views, absent_params, state, false, false,
+                                     ac3::oba::joc::Domain::kMdctBand);
+
+    // Frames 3-4: object present again, but with silent input and a zero matrix. If frame 2
+    // failed to drain the tail, frame 1's energy leaks back in here via a stale overlap-add.
+    std::vector<std::vector<float>> out;
+    for (int f = 0; f < 2; ++f) {
+        out = ac3::oba::joc::reconstruct(silent_views, silent_present_params, state, false, false,
+                                         ac3::oba::joc::Domain::kMdctBand);
+    }
+    double energy_after = 0.0;
+    for (const float v : out[0]) {
+        const double d = static_cast<double>(v);
+        energy_after += d * d;
+    }
+    CAPTURE(energy1, energy_after);
+    CHECK(energy_after < 1e-12);
+}
+
+TEST_CASE("a smooth two-data-point object ramps from the first coefficient toward the second",
+          "[oba][joc]") {
+    // interpolate()'s own non-steep, data_points == 2 branch (joc.cpp's MDCT-band reference
+    // path, taken whenever the reconstruction runs in double): no existing test ever sets
+    // ObjectShape::data_points to anything but the default 1 - every FrameParameters elsewhere
+    // in this suite either leaves `shapes` empty (always one smooth data point) or does not
+    // touch JOC's interpolation math at all. Object band coefficients are an all-ones
+    // passthrough of bed channel 0 at the first data point and all-zero (silence) at the second,
+    // so the object's own output energy should ramp from "the tone, unattenuated" down toward
+    // "silence" - a strong, sample-independent property rather than a formula this test would
+    // just be restating.
+    //
+    // Domain::kQmf is deliberately not exercised here too: its 24-timeslot ramp is sliced across
+    // frame boundaries by the QMF pair's own kQmfDelaySlots (only ts 0..14 of each frame's 24
+    // are visible in the call that "owns" them, the rest surfacing in the NEXT call's plain
+    // tail-blend rather than through this same interpolation), so a single-frame energy-ramp
+    // assertion like this one does not carry over cleanly to it.
+    ac3::oba::joc::FrameParameters warmup{.objects = 1, .num_bands_idx = 4};
+    warmup.matrix.assign(warmup.coefficient_count(), 0.0);
+    for (int band = 0; band < warmup.bands(); ++band) {
+        warmup.at(0, 0, band) = 1.0;
+    }
+
+    ac3::oba::joc::FrameParameters ramp{.objects = 1, .num_bands_idx = 4, .seq_count = 1};
+    ramp.shapes = {
+        ac3::oba::joc::ObjectShape{.num_bands_idx = 4, .steep = false, .data_points = 2}};
+    ramp.matrix.assign(static_cast<std::size_t>(2 * ramp.channels * ramp.bands()), 0.0);
+    for (int band = 0; band < ramp.bands(); ++band) {
+        ramp.at(0, 0, 0, band) = 1.0;  // data point 0: unity, matching the warmup frame
+        ramp.at(0, 1, 0, band) = 0.0;  // data point 1: silence
+    }
+
+    std::vector<std::vector<float>> bed(5, std::vector<float>(ac3::kSamplesPerFrame, 0.0f));
+    for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+        bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
+            0.4 * std::sin(2.0 * std::numbers::pi * 600.0 * static_cast<double>(n) / 48000.0));
+    }
+    const std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
+
+    ac3::oba::joc::ReconstructionState state;
+    (void)ac3::oba::joc::reconstruct(bed_views, warmup, state, false, false,
+                                      ac3::oba::joc::Domain::kMdctBand);
+    const auto out = ac3::oba::joc::reconstruct(bed_views, ramp, state, false, false,
+                                                 ac3::oba::joc::Domain::kMdctBand);
+    REQUIRE(out.size() == 1);
+
+    const int delay = ac3::oba::joc::reconstruction_delay(ac3::oba::joc::Domain::kMdctBand);
+    const int usable = ac3::kSamplesPerFrame - delay;
+    const int quarter = usable / 4;
+    double first_quarter = 0.0;
+    double last_quarter = 0.0;
+    for (int i = 0; i < quarter; ++i) {
+        const double first = static_cast<double>(out[0][static_cast<std::size_t>(delay + i)]);
+        const double last = static_cast<double>(
+            out[0][static_cast<std::size_t>(delay + usable - quarter + i)]);
+        first_quarter += first * first;
+        last_quarter += last * last;
+    }
+    CAPTURE(first_quarter, last_quarter);
+    // The first quarter still tracks the (near-)unattenuated tone; the last quarter has ramped
+    // most of the way to silence. Not an exact ratio - the frame-to-block alignment is an
+    // implementation detail - just a decisive, unmistakable downward slope.
+    CHECK(first_quarter > 10.0 * last_quarter);
+}
+
 TEST_CASE("JOC parse_payload decodes back to the matrix it was given", "[oba][joc]") {
     for (const bool fine : {false, true}) {
         CAPTURE(fine);
