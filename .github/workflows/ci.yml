@@ -332,13 +332,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          # zizmor (template-injection): github.ref, like every other
+          # attacker-reachable-shaped context value in this script, goes
+          # through env: rather than straight into the run: text - same
+          # reasoning as VERSION_TAG_INPUT in
+          # .github/actions/build-leg/action.yml's Configure step.
+          REF: ${{ github.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
           docs_re='^(docs/|LICENSE$|mkdocs\.yml$|requirements/requirements-docs\.(in|txt)$|\.github/workflows/docs\.yml$|.*\.md$)'
 
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            files=$(gh api --paginate "repos/$REPO/pulls/${{ github.event.pull_request.number }}/files" --jq '.[].filename')
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            files=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')
           else
             before='${{ github.event.before }}'
             if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
@@ -371,8 +379,8 @@ jobs:
           # from, and the merge queue exists to catch what one PR's own lane
           # subset could not see - so both force every lane on, same as an
           # empty file list above. See classify_changes.py's own header.
-          if [ "${{ github.event_name }}" = "merge_group" ] || \
-             { [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; }; then
+          if [ "$EVENT_NAME" = "merge_group" ] || \
+             { [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ]; }; then
             force_lanes=true
           fi
 

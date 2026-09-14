@@ -183,14 +183,14 @@ Two composite actions pulled out of the `build` job's step list, ahead of the
 plan's reusable-workflow split (its next phase) so that split does not
 duplicate them into each new per-platform file:
 
-- [`./.github/actions/build-leg`](../.github/actions/build-leg/action.yml) -
-  the toolchain assert, `./.github/actions/setup-vcpkg`, Configure, Build and
-  Test steps every matrix leg runs. Called once per leg, unconditionally.
-- [`./.github/actions/gold-reference-gate`](../.github/actions/gold-reference-gate/action.yml) -
-  the single canonical `tools/checks/verify_gold_reference.sh` invocation.
-  Still called under the leg's own `if: matrix.gold_reference` in `_build.yml`
-  - the action itself has no notion of the matrix, so whether to call it at
-  all stays the caller's decision, same as `setup-msvc-env`'s `if: matrix.msvc`.
+- `.github/actions/build-leg` - the toolchain assert,
+  `./.github/actions/setup-vcpkg`, Configure, Build and Test steps every
+  matrix leg runs. Called once per leg, unconditionally.
+- `.github/actions/gold-reference-gate` - the single canonical
+  `tools/checks/verify_gold_reference.sh` invocation. Still called under the
+  leg's own `if: matrix.gold_reference` in `_build.yml` - the action itself
+  has no notion of the matrix, so whether to call it at all stays the
+  caller's decision, same as `setup-msvc-env`'s `if: matrix.msvc`.
 
 Composite action steps run in the calling job's own runner and workspace, not
 a sandboxed one, so this is a pure move: `build/config-<preset>` lands on
