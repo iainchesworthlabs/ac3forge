@@ -11,16 +11,18 @@ master device alone, the same as a single-device session. The rail keeps nothing
 session — one with a take on disk or a receiver leg — starts on the **Live session** tab's own
 **Live session** Card.
 
-The Card has two states. Idle, it is the pre-flight: a **Receiver** combo (`No passthrough` plus
-every enumerated output device), a **Monitor** checkbox (checked by default), an **Also write the
-take to disk** checkbox, a **Raw-WAV safety copy** checkbox — enabled only once write-to-disk is
-checked, see [Take durability](#take-durability) below — and a highlighted **Start session**
-button, enabled whenever capture is available and nothing else is running. Checking write-to-disk
-makes Start session ask for a save path first, and the session starts once the dialog closes;
-unchecked, the session starts immediately and writes nothing. Running, the Card becomes the
-transport: a **Stop session** button, zero-padded RUNNING / FRAMES / DROPPED counters, and a
-disabled **Also writing the take to disk** readout, since that choice is made pre-flight and
-cannot change mid-session.
+The Card has two states:
+
+- **Idle — the pre-flight.** A **Receiver** combo (`No passthrough` plus every enumerated output
+  device), a **Monitor** checkbox (checked by default), an **Also write the take to disk**
+  checkbox, a **Raw-WAV safety copy** checkbox (enabled only once write-to-disk is checked — see
+  [Take durability](#take-durability) below), and a highlighted **Start session** button, enabled
+  whenever capture is available and nothing else is running. Checking write-to-disk makes Start
+  session ask for a save path first, and the session starts once the dialog closes; unchecked, the
+  session starts immediately and writes nothing.
+- **Running — the transport.** A **Stop session** button, zero-padded RUNNING / FRAMES / DROPPED
+  counters, and a disabled **Also writing the take to disk** readout, since that choice is made
+  pre-flight and can't change mid-session.
 
 ![The idle Live session card — receiver, monitor, write-to-disk and the highlighted Start session
 button](screenshots/live-session-idle.png)
@@ -137,36 +139,44 @@ already underway. It carries:
   its `2 ch · 48 000 Hz` sub-line) → **Live encode** (follows the picker — what the meters and
   soundfield show, printed without a file suffix a session may never write) → **Receiver leg —
   IEC 61937** (with the burst data type it is actually sending).
-- A gap banner when the receiver leg carries less than the encode — three reasons reach it:
-  object mode against an E-AC-3-capable receiver (the leg is always just the 5.1 bed — a consumer
-  decoder gates object decoding regardless of what the receiver itself can bitstream), object mode
-  against an AC-3-only receiver (the leg is the [parallel downmix](#parallel-downmix-receiver-leg)
-  of that same bed), and a wide channel layout against an AC-3-only receiver (the leg is a 5.1
-  downmix of the full layout). The banner text names whichever applies. A passthrough that was
-  asked for and did *not open* gets its own banner instead, carrying the reason — "everything past
-  what the leg carries" would be a lie when the leg carries nothing.
+- A gap banner when the receiver leg carries less than the encode, naming whichever of three
+  reasons applies:
+    - object mode against an E-AC-3-capable receiver — the leg is always just the 5.1 bed, since a
+      consumer decoder gates object decoding regardless of what the receiver can bitstream;
+    - object mode against an AC-3-only receiver — the leg is the [parallel
+      downmix](#parallel-downmix-receiver-leg) of that same bed;
+    - a wide channel layout against an AC-3-only receiver — the leg is a 5.1 downmix of the full
+      layout.
+
+  A passthrough that was asked for and did *not open* gets its own banner instead, carrying the
+  reason — "everything past what the leg carries" would be a lie when the leg carries nothing.
 - A draggable **Live room** plan — the same object-placement view as
   [Objects & motion](objects-and-motion.md) with its crosshair and wall names, active only in
   Atmos mode, applying each drag to the running encode immediately — plus a read-only **Objects
-  in this session** chip list. A live Atmos session pre-allocates a fixed *budget* of object
-  slots at start — the combined capture channel count of both selected devices, held to at least
-  8 and at most 15 — baked into the encoder's construction and unable to change mid-session (that
-  is how JOC's own object count works), rather than the channel count exactly: a two-channel
-  device still gets eight slots to grow into, and past eight combined channels every slot starts
-  bound identity-wise (slot *i* fed by capture channel *i*). Which capture channel feeds which
-  slot is otherwise live and mutable: a channel-picker ComboBox naming every capture channel
-  (`Ch 1`…`Ch N` for the master, `Dev2 Ch 1`… for a selected slave — see
-  [Two-device capture](#two-device-capture-clock-master-model)), plus **Add** (binds the next
-  free slot), **Reassign selected** (acts on whichever object the room has selected) and
-  **Silence selected** (detaches the selected object's capture channel) sit on the Card, visible
-  only while live. The **OBJECTS IN THIS SESSION** counter reads `N of M slots live` (bound slots
-  over the budget) while a session is running, and plain `N objects live` in the non-live,
-  file-loaded object-mode case. Beside the room, an x/y/z/latency readout grid tracks whichever
-  object is selected; latency starts as a two-frame estimate (one period to fill the capture
-  buffer, one to encode and hand off) and, once monitoring has run for about a second and the
-  pipeline's startup transients have passed, is replaced by the real measured capture-to-monitor
-  round trip — the label reads `~N ms measured` once that lands, and `~N ms est.` until then or
-  whenever monitoring is off, since there is nothing to time a round trip against.
+  in this session** chip list.
+    - **The slot budget.** A live Atmos session pre-allocates a fixed *budget* of object slots at
+      start — the combined capture channel count of both selected devices, held to at least 8 and
+      at most 15 — baked into the encoder's construction and unable to change mid-session (that's
+      how JOC's own object count works). A two-channel device still gets eight slots to grow into;
+      past eight combined channels, every slot starts bound identity-wise (slot *i* fed by capture
+      channel *i*).
+    - **Binding.** Which capture channel feeds which slot is otherwise live and mutable: a
+      channel-picker ComboBox names every capture channel (`Ch 1`…`Ch N` for the master, `Dev2 Ch
+      1`… for a selected slave — see
+      [Two-device capture](#two-device-capture-clock-master-model)), and **Add** (binds the next
+      free slot), **Reassign selected** (acts on whichever object the room has selected) and
+      **Silence selected** (detaches the selected object's capture channel) sit on the Card,
+      visible only while live.
+    - **The counter.** **OBJECTS IN THIS SESSION** reads `N of M slots live` (bound slots over the
+      budget) while a session is running, and plain `N objects live` in the non-live, file-loaded
+      object-mode case.
+    - **Latency.** Beside the room, an x/y/z/latency readout grid tracks whichever object is
+      selected. Latency starts as a two-frame estimate (one period to fill the capture buffer, one
+      to encode and hand off), then — once monitoring has run for about a second and the
+      pipeline's startup transients have passed — is replaced by the real measured
+      capture-to-monitor round trip: the label reads `~N ms measured` once that lands, and `~N ms
+      est.` until then or whenever monitoring is off, since there's nothing to time a round trip
+      against.
 - A **Layout** switcher and a receiver-reports card (see below). The same **Receiver** combo above
   the Card serves both phases of a session: before Start it is the pre-flight pick; once live, an
   explicit choice hot-swaps the passthrough leg instead of restarting anything — see

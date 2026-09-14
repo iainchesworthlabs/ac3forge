@@ -264,17 +264,14 @@ their own arm64 legs — generically, not hardcoded — and, for the arm64 case 
 more than one candidate directory: `bin/Hostarm64/arm64` (a native ARM64-hosted toolset) first,
 falling back to `bin/Hostx64/arm64` (the older x64-hosted cross toolset, which still produces
 ARM64 binaries, just via x64 tools running under Windows' x64 emulation). Which one this runner's
-VS Build Tools install actually ships was unconfirmed when this leg was written — it
-needed a real CI run to answer, the same "confirmed empirically, not assumed" standard the rest of
-this codebase holds itself to (see e.g. `cmake/vcpkg/triplets/arm64-linux-gcc.cmake`'s own
-`VCPKG_FORCE_SYSTEM_BINARIES` comment). `cmake/toolchains/windows.msvc.environment.cmake`'s
-`vcvarsall.bat` bootstrap and `.github/actions/setup-msvc-env`'s CI-side environment loader probe
-the equivalent pair of `vcvarsall.bat` arguments (`arm64` native, then `amd64_arm64` cross) for the
-same reason — the target architecture's CRT/Windows SDK library directories have to match whichever
-compiler actually got picked, or linking fails outright with a machine-type mismatch. Which of the
-two candidates actually wins is still open as of this writing (the leg's first real run failed one
-step earlier than Configure — see "Toolset generation" below); this section gets a follow-up update
-once that is resolved.
+VS Build Tools install actually ships was unconfirmed when this leg was written and needed a real
+CI run to answer. `cmake/toolchains/windows.msvc.environment.cmake`'s `vcvarsall.bat` bootstrap
+and `.github/actions/setup-msvc-env`'s CI-side environment loader probe the same pair of
+`vcvarsall.bat` arguments (`arm64` native, then `amd64_arm64` cross), since the target
+architecture's CRT/Windows SDK library directories have to match whichever compiler actually got
+picked, or linking fails outright with a machine-type mismatch. Which of the two candidates wins
+is still open as of this writing — the leg's first real run failed one step earlier than Configure
+(see "Toolset generation" below) — and this section gets a follow-up update once that's resolved.
 
 **Toolset generation is older than the x64 images, confirmed empirically.** The `windows-11-arm`
 hosted runner's VS Build Tools install carries MSVC 14.44.35207 (VS2022, roughly the 17.14
@@ -298,10 +295,8 @@ with official Windows ARM64 support at all) is `win64_msvc2022_arm64_cross_compi
 cross-compile kit that expects a paired `win64_msvc2022_64` install to supply its host build
 tools (`moc`/`uic`/`rcc`), and `aqtinstall`/`jurplel/install-qt-action` have a documented CI bug
 against exactly that combination (`qtpaths.bat` pointing at the wrong x64 setup). That is real
-complexity a *native*-ARM64-host build does not actually need to take on for a first pass, so this
-leg stays CLI-only, the same deliberately-scoped shape `linux-llvm-asan-ubsan` already uses
-elsewhere in the matrix for a different reason. Revisiting this is a natural fast-follow once Qt
-ships a native-hosted ARM64 Windows kit.
+complexity a *native*-ARM64-host build doesn't need for a first pass, so this leg stays CLI-only.
+Revisiting this is a natural fast-follow once Qt ships a native-hosted ARM64 Windows kit.
 
 **Gold-reference gate.** `choco`'s `ffmpeg` package is x64-only, so this leg installs a static
 `win-arm64` FFmpeg build from

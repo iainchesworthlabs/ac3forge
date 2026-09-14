@@ -39,17 +39,14 @@ the 5.1 bed.
 
 ## The four things it needs from a system
 
-Worth setting out, because it is what makes one platform easy and another impossible, and it
-explains the shape of every page that follows.
-
 1. **Enumerate** which applications are playing.
 2. **Tap** each one separately, without the others.
 3. **Silence** their direct output, so the only thing you hear is what Crucible sends.
 4. **Bitstream** the encoded result to a receiver.
 
-Step 3 is the one that surprises people. Tapping an application does not stop it also playing out
-of your speakers, so without it you would hear everything twice. Each platform solves it
-differently, and [Install and first run](install.md) is mostly about that difference.
+Step 3 is the one that surprises people: tapping an application doesn't stop it playing out of
+your speakers too, so without it you'd hear everything twice. Each platform solves it
+differently — [Install and first run](install.md) is mostly about that difference.
 
 ## Where each platform stands
 
@@ -60,37 +57,31 @@ differently, and [Install and first run](install.md) is mostly about that differ
 | Bitstream to a receiver | the underlying `PassthroughSink` is, via `ac3cli` — [see Windows](../platforms/windows.md#audio-backend-wasapi); Crucible itself hasn't been run against a receiver yet | yes, read off the receiver: 5.1 DD+, and Atmos/DD+ with objects | nothing has been played |
 | The window | yes | yes, run on the Pi | builds in CI and its suites run there; never launched on a Mac |
 
-**Windows** is the platform the application was built on and the one with the longest record:
-the room, the tray, the driver. Its silent device is a kernel driver that is **test-signed only** today: it
-loads on a machine with test signing turned on, and refuses on a normal one. That closes when an
-EV certificate and attestation submission are in place.
+**Windows** has the longest record: the room, the tray, the driver. Its silent device is a kernel
+driver that is **test-signed only** today — it loads on a machine with test signing turned on,
+and refuses on a normal one. That closes when an EV certificate and attestation submission are in
+place.
 
 **Linux** has the engine, the console runner, the window, and all four platform services over
-PipeWire. Its per-application tap, session list, default-device control and silent device are
-confirmed against a live session on real hardware, and the window runs on a desktop there. The
-receiver's own display has been read: a pre-encoded 5.1 fixture showed **5.1 DD+**, and the live
-path with a key loaded and an application placed showed **Atmos/DD+**, rendered at 7.1 from a 5.1
-bed plus objects. That reading matters more than it sounds, because Crucible **cannot** use the
-ALSA backend
-(no per-application tap), so it is forced onto the one passthrough path this project had not
-confirmed before. [The plan](design/promotion.md#alsa-or-pipewire) is blunt about that. Application
-icons come from the icon theme and the `.desktop` entries. One thing the Linux window does not
-have: the full-screen rule under Wayland, which cannot be answered there, though under X11 the
-rule is on. It publishes a tray icon wherever the desktop has a StatusNotifier host for it, and
-says so where there is none
+PipeWire, confirmed on real hardware. The receiver's own display has read **5.1 DD+** from a
+pre-encoded fixture and **Atmos/DD+** (7.1, a 5.1 bed plus objects) from the live path with a key
+loaded. That matters because Crucible **cannot** use the ALSA backend (no per-application tap) —
+PipeWire is the only passthrough path, and this is its first hardware confirmation
+([the plan](design/promotion.md#alsa-or-pipewire) has the detail). Application icons come from the
+icon theme and `.desktop` entries. The full-screen rule is on under X11 and unanswerable under
+Wayland (no client can ask which window is full-screen); the tray icon publishes wherever the
+desktop has a StatusNotifier host, and says so where there is none
 ([Troubleshooting](troubleshooting.md#there-is-no-tray-icon)).
 
-**macOS** needs no driver — its process taps can mute an application where they tap it, which is
-the job the Windows driver exists to do. The code for it is written: a Core Audio process tap and
-device watcher in the library, and Crucible's five platform seams and two window files beside
-them. What is established about it is that it builds. On 2026-09-06 both macOS CI legs configured,
-compiled and linked it and ran the test suites over it: every test passed on the Intel leg, and on
-the Apple Silicon leg three of the window's eleven Qt Quick suites timed out. That is the whole
-record. A hosted runner has no audio device, no desktop session and no way to grant the tap's
-consent prompt, so no tap has been created, nothing has been captured or played, and the
-application itself has never been launched. What stays blocked is what was blocked before: a Mac
-with a desktop and an audio device to run it on, and a Developer ID certificate to sign it, since
-the tap's consent prompt does not fire for an unsigned binary.
+**macOS** needs no driver — its process taps mute an application where they tap it, the job the
+Windows driver exists to do. The code is written (a Core Audio process tap and device watcher in
+the library, five platform seams and two window files in Crucible) and builds: on 2026-09-06 both
+macOS CI legs compiled, linked and ran the test suites — every test passed on Intel, and three of
+the window's eleven Qt Quick suites timed out on Apple Silicon. That's the whole record. A hosted
+runner has no audio device, no desktop session, and no way to grant the tap's consent prompt, so
+nothing has been captured, played, or launched. What's still needed: a Mac with a desktop and an
+audio device, and a Developer ID certificate — the consent prompt doesn't fire for an unsigned
+binary.
 
 ## The silent device
 

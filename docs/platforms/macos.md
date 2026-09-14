@@ -196,16 +196,14 @@ report nobody on this project can check. That constant's comment records the oth
 it was not taken.
 
 The second is not a version test, and it is off by default. **On 2026-09-06 the tap path ran for
-the first time anywhere and did not return.** On the Apple Silicon CI leg (macOS 26.6.2)
+the first time anywhere and did not return.** On the Apple Silicon CI leg (macOS 26.6.2),
 `AudioDeviceCreateIOProcID` on the tap's private aggregate device parked in `mach_msg2_trap`
-inside `HALC_ProxyIOContext::_TellServerAboutStreamUsage`, waiting on a reply from `coreaudiod`
-that had not come 300 seconds later. `sample` caught it in three separate processes. While that
-request was outstanding the whole process's HAL client was unusable, so an ordinary
-`AudioObjectGetPropertyData` on another thread blocked behind it and the application froze rather
-than reporting a failed tap. So `Capture::start_process_loopback()` now refuses before it reaches
-that call, and the capability says so.
-`AC3FORGE_MACOS_PROCESS_TAP` in the environment turns the path back on for whoever has a Mac to
-settle it on; it is read once, at first use.
+inside `HALC_ProxyIOContext::_TellServerAboutStreamUsage`, waiting on a `coreaudiod` reply that
+hadn't come 300 seconds later (`sample` caught it in three separate processes). With that request
+outstanding the whole process's HAL client was unusable, so the application froze rather than
+reporting a failed tap. `Capture::start_process_loopback()` now refuses before it reaches that
+call; `AC3FORGE_MACOS_PROCESS_TAP` in the environment turns the path back on for whoever has a Mac
+to settle it on, read once at first use.
 
 The macOS 15.7.9 Intel leg ran the same code without hanging on the same day, which is why this
 is not written as "macOS cannot do this". Two variables separate those legs — the OS version and

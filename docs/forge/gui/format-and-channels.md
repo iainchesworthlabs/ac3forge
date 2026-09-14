@@ -46,42 +46,20 @@ harder line enforced only at encode time. Object mode's own 384 kbps warning (be
 instead of this one whenever objects are in play, so the two are never shown together. Guided's
 Quality step shows the same idea in plain language when a wide room still has "Good" selected.
 
-**Container**'s third option, **S/PDIF (.wav)**, wraps the encoded stream's IEC 61937 bursts —
-exactly what `ac3cli spdif` produces from a finished file — as a 2-channel 16-bit PCM WAV, playable
-bit-exactly (100% volume, no mixing) into an S/PDIF or HDMI output so a receiver locks onto it and
-lights up its Dolby Digital indicator. Works for both codecs: an E-AC-3 stream's carrier runs at
-four times the content sample rate (Dolby Digital Plus over IEC 60958/61937), which is legal and
-expected, if unusual for a plain PCM16 file. Like Matroska, this container is not something the
-encoder itself writes in one step — the copyable command line is two commands
-(`ac3cli encode … out.ac3 && ac3cli spdif out.ac3 out.wav`), because pasting one command would
-otherwise write a raw elementary stream into a file the receiver expects to be a WAV.
+**Container**'s remaining four options all work for both codecs and are all, like Matroska, a
+*second* command over the finished elementary stream — pasting one command would otherwise write
+a raw elementary stream into a file the receiver or player expects a different format for:
 
-**Container**'s fourth option, **MP4 (.mp4)**, wraps the stream in a spec-correct ISOBMFF file —
-exactly what `ac3cli mp4` produces from a finished file — with a `dac3`/`dec3` sample-entry box
-built straight off the bitstream (ETSI TS 102 366 Annex F): fscod, bsid, bsmod, acmod and lfeon,
-plus, for a stream carrying Dolby Atmos objects, the `flag_ec3_extension_type_a` extension TS
-103 420 §8.3.2.2 defines. Works for both codecs. Like Matroska and S/PDIF, this is two
-commands (`ac3cli encode … out.ac3 && ac3cli mp4 out.ac3 out.mp4`).
+| Container | Produces (exactly what its `ac3cli` subcommand does) | Command | Atmos signaling |
+|---|---|---|---|
+| **S/PDIF (.wav)** | The stream's IEC 61937 bursts as a 2-channel 16-bit PCM WAV, playable bit-exactly (100% volume, no mixing) into an S/PDIF or HDMI output so a receiver locks onto it | `ac3cli encode … out.ac3 && ac3cli spdif out.ac3 out.wav` | none |
+| **MP4 (.mp4)** | A spec-correct ISOBMFF file with a `dac3`/`dec3` sample-entry box built off the bitstream (fscod, bsid, bsmod, acmod, lfeon — ETSI TS 102 366 Annex F) | `ac3cli encode … out.ac3 && ac3cli mp4 out.ac3 out.mp4` | `flag_ec3_extension_type_a` (TS 103 420 §8.3.2.2) |
+| **fragmented MP4/CMAF** | A *folder*, not a file — the save dialog switches to a folder picker for this one choice: an init segment (`init.mp4`), one CMAF media segment per fragment (1.536 s each at 48 kHz), an HLS media/master playlist pair (RFC 8216), and a DASH MPD (ISO/IEC 23009-1), ready for a packager or CDN origin | `ac3cli encode … out.ac3 && ac3cli fmp4 out.ac3 out_dir` | `CHANNELS="<N>/JOC"` on the HLS rendition, the `EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` descriptors in the MPD (clause D.2), and the `ceao` compatibility brand on the segments |
+| **MPEG-TS (.ts)** | A DVB-profile MPEG-2 Transport Stream: stream_type 0x06 plus the AC3_descriptor/Enhanced_AC3_descriptor (ETSI EN 300 468 Annex D.3/D.5) | `ac3cli encode … out.ac3 && ac3cli ts out.ac3 out.ts` | none — DVB's descriptors carry no JOC marker |
 
-**Container**'s fifth option, **fragmented MP4/CMAF**, is different in kind from the other five:
-it writes a *folder*, not a file, so the save dialog switches to a folder picker for this one
-choice. Exactly what `ac3cli fmp4` produces — an initialization segment (`init.mp4`), one CMAF
-media segment per fragment (`segment1.m4s`, `segment2.m4s`, …, 1.536 s each at 48 kHz), an HLS
-media and master playlist pair (`audio.m3u8`/`master.m3u8`, RFC 8216), and a DASH MPD
-(`manifest.mpd`, ISO/IEC 23009-1) — ready for a packager or CDN origin to point at directly. An
-Atmos stream signals itself throughout automatically, from the same object count TS 103 420
-already gives the dec3 box above: `CHANNELS="<N>/JOC"` on the HLS rendition, the
-`EC3_ExtensionType`/`EC3_ExtensionComplexityIndex` supplemental descriptors that spec's clause
-D.2 defines in the MPD, and the `ceao` compatibility brand its Annex E requires on the segments
-themselves. Still two commands (`ac3cli encode … out.ac3 && ac3cli fmp4 out.ac3
-out_dir`), for the same reason as every other container here.
-
-**Container**'s sixth option, **MPEG-TS (.ts)**, wraps the stream as a DVB-profile MPEG-2
-Transport Stream — exactly what `ac3cli ts` produces — stream_type 0x06 plus the
-AC3_descriptor/Enhanced_AC3_descriptor ETSI EN 300 468 Annex D.3/D.5 defines. Works for both
-codecs; there is no Atmos-specific signaling on this path — DVB's descriptors carry no JOC
-marker, unlike MP4's dec3 box or fMP4's HLS playlist above. Two commands here too
-(`ac3cli encode … out.ac3 && ac3cli ts out.ac3 out.ts`).
+S/PDIF is the one exception on codec support in practice, not in principle: an E-AC-3 stream's
+carrier runs at four times the content sample rate (Dolby Digital Plus over IEC 60958/61937),
+which is legal and expected, if unusual for a plain PCM16 file.
 
 Of the four containers above, only **fragmented MP4/CMAF** carries over to a **live session** the
 way Matroska does: `EncoderController::openLiveOutputWriters` wires exactly two incremental
