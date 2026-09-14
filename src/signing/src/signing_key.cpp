@@ -74,13 +74,82 @@ std::optional<std::vector<std::byte>> try_base64_decode(std::string_view s) {
     return out;
 }
 
-// A key source's contents -> key bytes. Base64 first (the CI/secret transport
-// form - a GitHub secret is text and cannot hold a raw binary key), raw bytes
-// otherwise. base64's alphabet is narrow enough that a genuinely random binary
-// key effectively never validates as base64 (it would have to be all-base64
-// characters AND a multiple of 4 bytes long), so the two are unambiguous in
-// practice; hex is deliberately NOT accepted, since a hex string is itself
-// valid base64 and the two could not be told apart. See
+// A common export shape from disassemblers/decompilers/RE notes: a comma
+// and/or whitespace separated C array of "0xHH" byte literals, e.g.
+// "0x56, 0x6c, 0xef, 0x66, ...". Unambiguous with base64 - the '0x' prefix
+// and the comma separators are not in the base64 alphabet - so it is tried
+// after base64 and before falling back to raw bytes.
+std::optional<std::vector<std::byte>> try_hex_array_decode(std::string_view s) {
+    auto hex_digit = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    std::vector<std::byte> out;
+    std::size_t i = 0;
+    while (i < s.size()) {
+        while (i < s.size() &&
+               (std::isspace(static_cast<unsigned char>(s[i])) || s[i] == ',')) {
+            ++i;
+        }
+        if (i >= s.size()) {
+            break;
+        }
+        if (s[i] != '0' || i + 1 >= s.size() || (s[i + 1] != 'x' && s[i + 1] != 'X')) {
+            return std::nullopt;
+        }
+        i += 2;
+        if (i + 2 > s.size()) {
+            return std::nullopt;
+        }
+        const int hi = hex_digit(s[i]);
+        const int lo = hex_digit(s[i + 1]);
+        if (hi < 0 || lo < 0) {
+            return std::nullopt;
+        }
+        out.push_back(static_cast<std::byte>((hi << 4) | lo));
+        i += 2;
+    }
+    if (out.empty()) {
+        return std::nullopt;
+    }
+    return out;
+}
+
+// True when `s` (already whitespace-stripped) is made up entirely of
+// characters a hex/byte-array export would use - hex digits, 'x'/'X', comma,
+// brace/bracket punctuation. A genuinely random binary key essentially never
+// lands entirely inside this narrow set, so content that does, yet still
+// fails both try_base64_decode and try_hex_array_decode above, is almost
+// certainly a mis-copied or truncated hex export (a missing "0x" prefix
+// here, a stray character there) rather than a real raw binary key.
+bool looks_like_botched_hex_export(std::string_view s) {
+    if (s.empty()) {
+        return false;
+    }
+    for (const char c : s) {
+        const bool ok = static_cast<bool>(std::isxdigit(static_cast<unsigned char>(c))) ||
+                        c == 'x' || c == 'X' || c == ',' || c == '{' || c == '}' || c == '[' ||
+                        c == ']' || c == ';' || c == '_';
+        if (!ok) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// A key source's contents -> key bytes, tried in order: base64 (the CI/secret
+// transport form - a GitHub secret is text and cannot hold a raw binary key),
+// a comma/whitespace-separated "0xHH" byte array (a common export shape from
+// disassemblers/decompilers, and how this project's own reverse-engineered
+// test key has shown up in the wild), then raw bytes verbatim. base64's
+// alphabet is narrow enough that a genuinely random binary key effectively
+// never validates as base64 (it would have to be all-base64 characters AND a
+// multiple of 4 bytes long) or as a hex array (needs '0'/'x' at every other
+// byte), so all three are unambiguous in practice; plain hex with no "0x"
+// prefix is deliberately NOT accepted as its own format, since such a string
+// is itself valid base64 and the two could not be told apart. See
 // docs/concepts/object-signing.md.
 std::optional<std::vector<std::byte>> decode_key_content(std::string_view raw) {
     std::string stripped;
@@ -93,12 +162,23 @@ std::optional<std::vector<std::byte>> decode_key_content(std::string_view raw) {
     if (auto decoded = try_base64_decode(stripped)) {
         return decoded;
     }
-    // Not base64: the content is the raw key, taken verbatim (a raw binary key
-    // is byte-exact, so it is NOT whitespace-stripped the way the base64 test
-    // above is).
+    if (auto decoded = try_hex_array_decode(raw)) {
+        return decoded;
+    }
     if (raw.empty()) {
         return std::nullopt;
     }
+    if (looks_like_botched_hex_export(stripped)) {
+        // Refuse rather than fall through to "raw bytes": signing with this
+        // text's literal ASCII bytes as the key would produce a
+        // self-consistent-looking but wrong secret with no error at all -
+        // exactly what this check exists to catch.
+        return std::nullopt;
+    }
+    // Not base64, not a hex array, and not hex-export-shaped text either: the
+    // content is the raw key, taken verbatim (a raw binary key is byte-exact,
+    // so it is NOT whitespace-stripped the way the base64/hex-array tests
+    // above are).
     std::vector<std::byte> out;
     out.reserve(raw.size());
     for (const char c : raw) {
@@ -120,9 +200,16 @@ std::expected<SigningKey, KeyLoadError> key_from_content(std::string_view conten
     auto key = decode_signing_key(std::span{reinterpret_cast<const std::byte*>(content.data()),
                                             content.size()});
     if (!key) {
+        if (content.empty()) {
+            return std::unexpected(KeyLoadError{
+                KeyErrorKind::kEmpty,
+                std::string{"signing key from "} + std::string{source} + " is empty"});
+        }
         return std::unexpected(KeyLoadError{
-            KeyErrorKind::kEmpty,
-            std::string{"signing key from "} + std::string{source} + " is empty"});
+            KeyErrorKind::kMalformed,
+            std::string{"signing key from "} + std::string{source} +
+                " looks like a botched hex/byte-array export ac3forge could not parse - "
+                "provide raw binary bytes, base64, or a comma-separated 0xHH byte list"});
     }
     return std::move(*key);
 }
