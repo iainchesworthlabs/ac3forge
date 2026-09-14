@@ -116,6 +116,16 @@ is deliberately explicit about the difference.
     documented public API was found that hands the source data back. `play` falls back to the
     same `IsFormatSupported` probe here, exactly as it always has.
 
+    The one real avenue checked and ruled out: WMI's `root\wmi` monitor provider
+    (`WmiMonitorID`/`WmiMonitorDescriptor`) does expose raw EDID bytes on Windows, but it is a
+    *display* API keyed to the desktop/monitor topology, not an audio one. Tried against the
+    Onkyo TX-RZ740 used for the passthrough confirmation above:
+    `Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorID` sees only the two actual
+    desktop monitors on this machine (an Acer and a Samsung, both on DisplayPort); the receiver,
+    despite having a live HDMI audio endpoint WASAPI opens and plays through, is not registered
+    as a display Windows extends onto at all, so there is no WMI monitor entry to read its SADs
+    from even if this project wired one up.
+
 ### Per-process loopback and device notifications
 
 Two more WASAPI paths, added to the shared audio layer for [Crucible](../crucible/index.md)

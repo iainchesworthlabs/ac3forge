@@ -95,9 +95,11 @@ listening test has been run anywhere — every quality number published here is 
 Raspberry Pi 4B: over ALSA on 2026-08-20, and over PipeWire on 2026-09-05, where the receiver's
 front panel read "5.1 DD+" from a pre-encoded fixture and "Atmos/DD+" at 7.1 from Crucible's live
 path. On Windows, live capture, decoded monitor playback and `spatial` rendering are confirmed
-on a workstation, but no AV receiver has been cabled to a Windows machine and no real device has
-ever accepted an exclusive-mode IEC 61937 format. macOS has not been confirmed against hardware
-at all, and its Core Audio process tap has never captured anything.
+on a workstation, and an Onkyo TX-RZ740 cabled over an Nvidia GPU's HDMI output confirmed the
+exclusive-mode IEC 61937 passthrough path itself: AC-3, E-AC-3 and signed Atmos all lock and play
+correctly, the receiver decoding a signed object stream as Atmos/DD+ at 5.0.4 with audible object
+motion. macOS has not been confirmed against hardware at all, and its Core Audio process tap has
+never captured anything.
 
 [Validation](docs/verification.md) covers all three in full: what object reconstruction means in
 practice, which streams FFmpeg can check independently and which only the in-repo decoder can,

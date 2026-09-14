@@ -321,10 +321,11 @@ consequences follow and the plan carries them rather than arguing:
   notarisation for macOS, exactly as they gate Crucible — see
   [Signing and install](#signing-and-install), where the "ships without DR6" claim is now true of
   the Linux package alone.
-- **DR9's two open rows become shipping caveats.** Windows/WASAPI exclusive passthrough and
-  CoreAudio are unverified against a receiver, so they are rows in
+- **DR9's one remaining open row becomes a shipping caveat.** Windows/WASAPI exclusive
+  passthrough is confirmed now (see the evidence below); CoreAudio is still unverified against a
+  receiver, so it stays a row in
   [What cannot be verified](#what-cannot-be-verified-and-why) and a Known-gap sentence in the
-  release notes, rather than reasons to withhold the platform.
+  release notes, rather than a reason to withhold the platform.
 
 The evidence, unchanged:
 
@@ -333,10 +334,11 @@ The evidence, unchanged:
   ([Raspberry Pi](../docs/platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)).
 - **PipeWire on real HDMI hardware: confirmed 2026-09-05.** The receiver's own front panel read
   "5.1 DD+" and "Atmos/DD+" at 7.1 ([DR9](../docs/roadmap.md)).
-- **Windows/WASAPI exclusive passthrough: unconfirmed.** DR9 says only a Realtek analogue
-  endpoint has ever been tried. An appliance is a passthrough product; shipping one on a backend
-  whose passthrough has never locked a receiver would be shipping the unverified part as the
-  whole product.
+- **Windows/WASAPI exclusive passthrough: confirmed 2026-09-14.** An Onkyo TX-RZ740 locked
+  AC-3, E-AC-3 and a signed Atmos stream through `PassthroughSink` itself, at zero-to-near-zero
+  underruns each run ([DR9](../docs/roadmap.md)). The evidentiary objection to including Windows
+  no longer applies; the paragraph below gives the separate reason the headless scoping still
+  holds.
 - **CoreAudio: blocked.** No Mac has run any of it.
 
 The original argument for Linux-only had a second half worth keeping visible, because taking all
@@ -1082,7 +1084,6 @@ non-free-firmware statement.
 |---|---|---|
 | The name is free as a winget `Moniker` | **no** | `Moniker` is a soft alias, neither namespaced nor enforced, and there is no public index of monikers to query. The *identifier* `iainchesworthlabs.ac3forge-hearth` cannot collide, and was confirmed by checking that no publisher directory of that name exists in `microsoft/winget-pkgs` |
 | The name does not infringe an existing mark | **no**, not from here | Registry searches find registrations, not risk. Hearth Display, Inc.'s Class 9 mark for a wall-mounted household display is recorded above as the closest adjacency found; whether it matters is a question for someone qualified, and only if the project ever files |
-| Windows/WASAPI exclusive passthrough works to a receiver | yes, by cabling the workstation's HDMI | DR9's own open item (S, hardware). Until then the appliance is Linux-only on evidence, not preference |
 | CoreAudio passthrough works | **no** | DR9: no Mac has run any of it |
 | The transcode leg keeps metadata across a *streaming* transcode | yes, once written | Today's leg goes through a temp file, where `transcode` carries dialnorm/compr/mix; whether a streaming version preserves the same fields is a property of code that does not exist |
 | A receiver other than the one on the bench behaves the same | **no** | One machine, one receiver — the same caveat `docs/crucible/install.md` already states about its own reading. Every receiver's EDID and every manufacturer's fallback behaviour differs; the Pi record already shows one receiver falling back *gracefully* on an unsigned object container where another might refuse |
