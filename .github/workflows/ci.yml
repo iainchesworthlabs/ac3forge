@@ -285,6 +285,11 @@ jobs:
   # workflow never runs, so the required "CI Status" check below would sit
   # pending forever and block the PR. Gating the heavy job instead keeps the
   # gate reporting. Conservative - anything not clearly docs counts as code.
+  #
+  # Also runs tools/ci/classify_changes.py and exposes its per-lane outputs
+  # (core, windows, linux, ...) alongside `code` - see docs/ci-lanes.md.
+  # Nothing reads them yet; this is the classifier-only phase of the CI lane
+  # partitions plan, wiring the outputs before any job's `if:` uses them.
   changes:
     name: Detect changes
     # Routed through check-runner like the other cheap gate jobs. This job
@@ -302,7 +307,26 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.detect.outputs.code }}
+      # Lane booleans from tools/ci/classify_changes.py (roadmap: CI lane
+      # partitions, docs/ci-lanes.md). Wired through but unconsumed for now -
+      # every job below still gates on `code` alone, so this adds outputs
+      # without changing any job's skip behaviour.
+      core: ${{ steps.detect.outputs.core }}
+      windows: ${{ steps.detect.outputs.windows }}
+      linux: ${{ steps.detect.outputs.linux }}
+      macos: ${{ steps.detect.outputs.macos }}
+      android: ${{ steps.detect.outputs.android }}
+      wasm: ${{ steps.detect.outputs.wasm }}
+      esp: ${{ steps.detect.outputs.esp }}
+      rust: ${{ steps.detect.outputs.rust }}
+      python: ${{ steps.detect.outputs.python }}
+      npm: ${{ steps.detect.outputs.npm }}
+      ci_self: ${{ steps.detect.outputs.ci_self }}
+      docs: ${{ steps.detect.outputs.docs }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Classify changed files
         id: detect
         env:
@@ -325,22 +349,38 @@ jobs:
           fi
 
           # No file list (a manual dispatch, an API hiccup) means build, not skip.
+          force_lanes=false
           if [ -z "$files" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "No file list available; assuming code changed."
-            exit 0
+            force_lanes=true
+          else
+            code=false
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              if ! echo "$f" | grep -qE "$docs_re"; then
+                echo "  code: $f"
+                code=true
+              fi
+            done <<< "$files"
+            echo "code=$code" >> "$GITHUB_OUTPUT"
+            echo "code=$code"
           fi
 
-          code=false
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            if ! echo "$f" | grep -qE "$docs_re"; then
-              echo "  code: $f"
-              code=true
-            fi
-          done <<< "$files"
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "code=$code"
+          # A queued or direct-to-main run has no single PR diff to read lanes
+          # from, and the merge queue exists to catch what one PR's own lane
+          # subset could not see - so both force every lane on, same as an
+          # empty file list above. See classify_changes.py's own header.
+          if [ "${{ github.event_name }}" = "merge_group" ] || \
+             { [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; }; then
+            force_lanes=true
+          fi
+
+          classify_args=()
+          if [ "$force_lanes" = true ]; then
+            classify_args+=(--force-all)
+          fi
+          echo "$files" | python3 tools/ci/classify_changes.py "${classify_args[@]}" >> "$GITHUB_OUTPUT"
 
   # The no-#ifdef rule. Cheap, fast, and deliberately ungated by `changes` so a
   # violation is reported even while the porting legs are still red.
@@ -845,6 +885,21 @@ jobs:
       # description in _build.yml.
       persist_quality_trend: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       quality_trend_branch: ${{ github.ref_name }}
+      # CI lane partitions (docs/ci-lanes.md): the `changes` job's own
+      # per-lane outputs, `== 'true'` the same way every other job in this
+      # file compares one of its string outputs (see `code` above it). Only
+      # windows/linux/macos/android/wasm/esp/rust actually gate anything in
+      # _build.yml today - see that workflow's own `run_windows`/etc. input
+      # comments for exactly which job each one reaches, and why the `build`
+      # matrix's own per-OS legs are not among them yet.
+      run_core: ${{ needs.changes.outputs.core == 'true' }}
+      run_windows: ${{ needs.changes.outputs.windows == 'true' }}
+      run_linux: ${{ needs.changes.outputs.linux == 'true' }}
+      run_macos: ${{ needs.changes.outputs.macos == 'true' }}
+      run_android: ${{ needs.changes.outputs.android == 'true' }}
+      run_wasm: ${{ needs.changes.outputs.wasm == 'true' }}
+      run_esp: ${{ needs.changes.outputs.esp == 'true' }}
+      run_rust: ${{ needs.changes.outputs.rust == 'true' }}
     secrets:
       # Forward the Atmos object-signing key so build-android bundles it and the
       # Shield app signs whenever the secret is set - on ordinary CI builds too,

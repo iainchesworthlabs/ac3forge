@@ -168,5 +168,6 @@ nav:
       - Contributing: contributing.md
       - Releasing: releasing.md
       - Self-hosted CI runners: ci-self-hosted-runners.md
+      - CI lane partitions: ci-lanes.md
       - History: history.md
       - Roadmap: roadmap.md

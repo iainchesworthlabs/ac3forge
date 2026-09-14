@@ -1,0 +1,37 @@
+name: Gold reference gate
+description: >-
+  Run tools/checks/verify_gold_reference.sh against one leg's ac3cli, the
+  single canonical invocation every gold_reference leg makes - extracted
+  alongside ./.github/actions/build-leg (docs/ci-lanes.md) so a future
+  per-platform workflow calls this instead of copying the step. The
+  linux-gcc-only mode=reference/float32/fixed-point variants in _build.yml's
+  `build` job are NOT covered here: they only ever run on that one leg, so
+  splitting the file cannot duplicate them regardless.
+
+inputs:
+  preset:
+    description: "matrix.preset - locates build/config-<preset>/bin/ac3cli[.exe]."
+    required: true
+  persist-quality-trend:
+    description: "The reusable workflow's own persist_quality_trend input. 'true' asks compare_wav.py to also write a structured per-codec result for the quality-trend job to pick up; anything else runs the gate exactly as an ordinary PR does - no extra files, no extra step."
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
+    # lightweight L4 SNR check from the project's original validation-
+    # pyramid design, now docs/verification.md; see
+    # tools/checks/verify_gold_reference.sh's own header).
+    - name: Gold reference gate
+      shell: bash
+      env:
+        LEG_PRESET: ${{ inputs.preset }}
+        RESULTS_JSON_DIR: ${{ inputs.persist-quality-trend == 'true' && format('{0}/gold-reference-results', runner.temp) || '' }}
+      run: |
+        set -euo pipefail
+        bin="build/config-$LEG_PRESET/bin/ac3cli"
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          bin="${bin}.exe"
+        fi
+        bash tools/checks/verify_gold_reference.sh "$bin"

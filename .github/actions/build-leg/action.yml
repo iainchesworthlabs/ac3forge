@@ -1,0 +1,220 @@
+name: Build leg
+description: >-
+  Toolchain assert, vcpkg setup, and the configure/build/test sequence every
+  _build.yml matrix leg runs - extracted ahead of the CI lane partitions plan
+  (docs/ci-lanes.md) so splitting _build.yml into one reusable workflow per
+  platform does not duplicate this ~170-line sequence into each of them.
+  Composite action steps execute in the calling job's own runner and
+  workspace, not a sandboxed one, so build/config-<preset> lands on disk
+  exactly as it did as inline steps and every step _build.yml still runs
+  after this one - the Crucible checks, the gold-reference gate, the GUI
+  smoke test - keeps reading it the same way.
+
+inputs:
+  preset:
+    description: "matrix.preset - the toolchain-preset suffix (config-/build-/test-<preset>)."
+    required: true
+  gui:
+    description: "matrix.gui, as GitHub Actions renders an unset matrix field ('' or 'true'). Adds -DAC3FORGE_BUILD_GUI=ON to Configure."
+    default: ""
+  crucible:
+    description: "matrix.crucible, same shape as gui. Adds -DAC3FORGE_BUILD_CRUCIBLE=ON to Configure, on Windows/macOS only."
+    default: ""
+  version-tag:
+    description: "The reusable workflow's own version_tag input, threaded into Configure as DERIVED_VERSION_OVERRIDE."
+    default: ""
+  gcc-version:
+    description: "needs.toolchain-versions.outputs.gcc_version, for the toolchain assert."
+    required: true
+  llvm-version:
+    description: "needs.toolchain-versions.outputs.llvm_version, for the toolchain assert."
+    required: true
+  msvc-toolset:
+    description: "needs.toolchain-versions.outputs.msvc_toolset, for the toolchain assert."
+    required: true
+  cmake-min:
+    description: "needs.toolchain-versions.outputs.cmake_min, for the toolchain assert."
+    required: true
+  vcpkg-commit:
+    description: "needs.toolchain-versions.outputs.vcpkg_commit, forwarded to ./.github/actions/setup-vcpkg."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # CMakePresets.json declares the project's real minimum (cmakeMinimumRequired);
+    # this asserts the RUNNER actually meets it rather than letting a stale image
+    # fail later with a confusing "unknown preset field" error. gcc/llvm/msvc are
+    # asserted the same way, all against the pins toolchain-versions resolved -
+    # see docs/ci-self-hosted-runners.md.
+    - name: Report and assert toolchain versions
+      shell: bash
+      env:
+        GCC_VERSION: ${{ inputs.gcc-version }}
+        LLVM_VERSION: ${{ inputs.llvm-version }}
+        MSVC_TOOLSET: ${{ inputs.msvc-toolset }}
+        CMAKE_MIN: ${{ inputs.cmake-min }}
+        LEG_PRESET: ${{ inputs.preset }}
+      run: |
+        set -euo pipefail
+        cmake --version
+        ninja --version
+        # Let CMake do its own version comparison rather than parsing it in sh.
+        # Unquoted heredoc so $CMAKE_MIN expands - \$CMAKE_VERSION stays escaped
+        # so it's still CMake's own variable, not a (unset) shell one.
+        cat > "${RUNNER_TEMP}/assert-cmake-version.cmake" <<EOF
+        if(CMAKE_VERSION VERSION_LESS ${CMAKE_MIN})
+          message(FATAL_ERROR "CMake \${CMAKE_VERSION} is too old; ac3forge needs >= ${CMAKE_MIN}")
+        endif()
+        EOF
+        cmake -P "${RUNNER_TEMP}/assert-cmake-version.cmake"
+        case "$LEG_PRESET" in
+          linux-gcc|linux-gcc-arm64)
+                        g++ --version | head -1
+                        g++ --version | head -1 | grep -q " ${GCC_VERSION}\." || { echo "::error::expected g++ ${GCC_VERSION}"; exit 1; } ;;
+          linux-llvm|linux-llvm-arm64|linux-llvm-asan-ubsan)
+                        clang++ --version | head -1
+                        clang++ --version | head -1 | grep -qE "version ${LLVM_VERSION}\." || { echo "::error::expected clang ${LLVM_VERSION}"; exit 1; } ;;
+          windows-llvm) clang-cl --version | head -1
+                        clang-cl --version | head -1 | grep -qE "version ${LLVM_VERSION}\." || { echo "::error::expected clang-cl ${LLVM_VERSION}"; exit 1; } ;;
+          windows-msvc)
+                        echo "MSVC toolset: ${VCToolsVersion:-unknown}"
+                        case "${VCToolsVersion:-}" in
+                          ${MSVC_TOOLSET}*) ;;
+                          *) echo "::error::expected an MSVC ${MSVC_TOOLSET}x toolset, got '${VCToolsVersion:-unset}'"; exit 1 ;;
+                        esac ;;
+          # Report-only, unlike windows-msvc above - confirmed empirically on
+          # a real windows-11-arm run (2026-08-26): the hosted ARM64 image
+          # ships an older VS Build Tools generation (14.44.35207, VS2022
+          # ~17.14) than windows-latest's x64 image (14.5x, "VS 2026"/18.x),
+          # so the ${MSVC_TOOLSET} pin - resolved against the x64 image - does
+          # not hold here. The two runner images are maintained on separate
+          # GitHub-side update cadences; asserting they stay in lockstep
+          # isn't realistic yet. Same shape as macos-llvm's own case arm
+          # below, and the same reasoning: report whatever toolset this
+          # runner actually has rather than failing a leg still proving out
+          # its own baseline. Revisit once GitHub's ARM64 image catches up -
+          # or drops far enough behind to need its own pin.
+          windows-msvc-arm64)
+                        echo "MSVC toolset: ${VCToolsVersion:-unknown}" ;;
+          # No hard version assert here unlike the other LLVM legs: Homebrew's
+          # llvm formula has no versioned pin to check against (see the
+          # install step's own comment), so this reports whatever it finds
+          # rather than failing a leg that's still proving out its baseline.
+          # Same for macos-llvm-x64 - identical toolchain install step, just
+          # a different CPU architecture underneath.
+          macos-llvm|macos-llvm-x64) c++ --version | head -1 ;;
+        esac
+
+    - uses: ./.github/actions/setup-vcpkg
+      with:
+        vcpkg-commit: ${{ inputs.vcpkg-commit }}
+
+    # The presets carry everything: generator, compiler, Release, and
+    # AC3FORGE_BUILD_GUI=OFF. The toolchain-preset system splits each leg into
+    # config-/build-/test-<leg> (the bare <leg> is a hidden fragment), so the
+    # matrix value is the suffix and each step names its own prefix. Running
+    # `cmake --preset config-<leg>` locally reproduces CI exactly - EXCEPT
+    # for two overrides bolted on here:
+    #   - -DCMAKE_PREFIX_PATH on Windows: install-qt-action installs into a
+    #     runner-specific path (QT_ROOT_DIR) that cmake/FindQt6.cmake's
+    #     local search roots do not cover, so it has to be passed in
+    #     explicitly rather than relying on auto-detection the way a local
+    #     build does.
+    #   - -DAC3FORGE_BUILD_GUI=ON on the `gui: true` Linux and macOS legs,
+    #     which default the GUI off (see CMakePresets.json) so a machine
+    #     that hasn't installed Qt still builds everything else.
+    - name: Configure
+      shell: bash
+      # VERSION_TAG_INPUT goes through env:, not straight into the script
+      # text, for the same reason release.yml's resolve-version job does -
+      # a caller's version-tag is attacker-reachable via workflow_dispatch and
+      # substituted directly it would be shell CODE, not data (zizmor:
+      # template-injection). Empty by default (ordinary CI): GitVersionDerivation.cmake
+      # then falls through to `git describe`, which finds nothing on this
+      # leg's shallow checkout and stamps 0.0.0-dev - expected, see
+      # _build.yml's `fetch_depth` input description.
+      env:
+        VERSION_TAG_INPUT: ${{ inputs.version-tag }}
+        LEG_PRESET: ${{ inputs.preset }}
+        LEG_GUI: ${{ inputs.gui }}
+        LEG_CRUCIBLE: ${{ inputs.crucible }}
+      run: |
+        set -euo pipefail
+        extra_args=()
+        # QT_ROOT_DIR is only set when the caller's "Install Qt (prebuilt)" step
+        # ran (every Windows leg except windows-msvc-arm64, which has no Qt kit
+        # to point at) - guarded rather than unconditional on "$RUNNER_OS" =
+        # "Windows" alone, because referencing an unset variable under this
+        # script's `set -u` would otherwise fail the Configure step outright on
+        # that leg.
+        if [ "$RUNNER_OS" = "Windows" ] && [ -n "${QT_ROOT_DIR:-}" ]; then
+          extra_args+=(-DCMAKE_PREFIX_PATH="$QT_ROOT_DIR")
+        fi
+        if [ "$LEG_GUI" = "true" ]; then
+          extra_args+=(-DAC3FORGE_BUILD_GUI=ON)
+        fi
+        # OFF by default in CMakeLists.txt, so the legs that want it ask
+        # here - on Windows and macOS, and not on Linux. On Linux this tree
+        # selects the ALSA backend, which has no per-application concept at
+        # all, and apps/crucible/CMakeLists.txt refuses that combination by
+        # design rather than building a window that can list applications
+        # and never capture one. Crucible's Linux build is the dedicated
+        # pass further down in _build.yml, which installs the PipeWire
+        # headers and configures its own tree with -DAC3FORGE_WITH_ALSA=OFF.
+        #
+        # macOS joins on 2026-09-06, and building is the whole point of it
+        # there. The macOS platform half exists and has never been
+        # compiled: no Mac took part in writing it, and these two legs are
+        # the first compiler to see the Objective-C++, the Core Audio
+        # selectors and the OBJCXX CMake. Nothing about it can be RUN in
+        # CI - a hosted runner has no audio device, no desktop session and
+        # no way to grant the tap's consent prompt - so what these legs
+        # establish is that it compiles and links, which is exactly what
+        # docs/crucible/promotion.md's Phase 5 sets as the exit condition
+        # and exactly as far as its "What cannot be verified" table lets
+        # anyone claim.
+        if [ "$LEG_CRUCIBLE" = "true" ] && { [ "$RUNNER_OS" = "Windows" ] || [ "$RUNNER_OS" = "macOS" ]; }; then
+          extra_args+=(-DAC3FORGE_BUILD_CRUCIBLE=ON)
+        fi
+        if [ -n "$VERSION_TAG_INPUT" ]; then
+          extra_args+=(-DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT")
+        fi
+        # Not "${extra_args[@]}" unguarded: macOS's /bin/bash is stuck on
+        # 3.2 (GPLv2 was the last version Apple could ship), and 3.2's
+        # `set -u` treats expanding a zero-element array as an unbound
+        # variable - fixed upstream in bash 4.4, but not on this runner.
+        # ${#extra_args[@]} (a length, not an element expansion) does not
+        # trip the same bug on either version.
+        if [ ${#extra_args[@]} -eq 0 ]; then
+          cmake --preset "config-$LEG_PRESET"
+        else
+          cmake --preset "config-$LEG_PRESET" "${extra_args[@]}"
+        fi
+
+    # -k 0 so a first-time port sees every diagnostic in one run rather than
+    # one-per-push. Warnings are errors on every compiler
+    # (cmake/CompilerWarnings.cmake) and CI does not relax that.
+    - name: Build
+      shell: bash
+      env:
+        LEG_PRESET: ${{ inputs.preset }}
+      run: cmake --build --preset "build-$LEG_PRESET" -- -k 0
+
+    # AC3FORGE_REQUIRE_AVX2 turns tests/core/test_simd_kernels.cpp's [avx2]
+    # probe case from a loud skip into a hard failure - only safe to set on
+    # a leg pinned to `runner: '["ubuntu-latest"]'` in _build.yml's matrix
+    # rather than the dynamic self-hosted/GitHub-hosted `matrix.runner` most
+    # legs use, since self-hosted CPU features aren't documented anywhere in
+    # this repo (see src/forge/src/internal/cpu/cpu_features.hpp) but
+    # GitHub's own hosted Linux runners are AVX2-capable. This guarantees at
+    # least one leg per PR where "the AVX2 path actually ran and passed" is
+    # asserted, not just possible.
+    - name: Test
+      shell: bash
+      env:
+        LEG_PRESET: ${{ inputs.preset }}
+        AC3FORGE_REQUIRE_AVX2: ${{ inputs.preset == 'linux-llvm-asan-ubsan' && '1' || '' }}
+      run: |
+        set -euo pipefail
+        ctest --preset "test-$LEG_PRESET"

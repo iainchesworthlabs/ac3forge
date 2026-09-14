@@ -78,6 +78,59 @@ on:
           this input only adds the second, verifying pass and the upload. Set by release.yml.
         type: boolean
         default: false
+      # CI lane partitions (docs/ci-lanes.md). Every default is true so a
+      # caller that does not pass one of these - release.yml's call, today -
+      # still builds and tests everything, unchanged.
+      #
+      # windows/linux/macos gate only their single-purpose satellite job
+      # below (windows-driver, linux-appimage, package-macos-universal), NOT
+      # the `build` matrix's own Windows/Linux/macOS legs: a job's `if:`
+      # cannot see `matrix.*` (confirmed against actionlint - the `matrix`
+      # context is only available inside that job's own steps/strategy), so
+      # gating individual legs of the one `build` job by OS needs either a
+      # dynamically-computed `strategy.matrix.include` or threading a
+      # condition through dozens of already-conditional steps - both bigger,
+      # riskier changes than this phase. The `build` job always runs every
+      # leg until the CI lane partitions plan's split (phase 5) gives each
+      # OS its own job, where `if: inputs.run_<lane>` works directly. See
+      # docs/ci-lanes.md's "Known simplifications".
+      run_core:
+        description: "Reserved for the sanitizer/coverage legs the CI lane partitions plan moves out of this workflow's `linux` OS grouping and into their own lane; no matrix leg is split out yet, so nothing here reads this input."
+        type: boolean
+        default: true
+      run_windows:
+        description: "Gates windows-driver. Does NOT yet gate the `build` matrix's windows-msvc/windows-llvm/windows-msvc-arm64 legs - see the group comment above."
+        type: boolean
+        default: true
+      run_linux:
+        description: "Gates linux-appimage. Does NOT yet gate the `build` matrix's linux-gcc/linux-llvm/linux-llvm-asan-ubsan/linux-llvm-tsan legs - see the group comment above."
+        type: boolean
+        default: true
+      run_macos:
+        description: "Gates package-macos-universal (together with do_package, which it already required). Does NOT yet gate the `build` matrix's macos-llvm/macos-llvm-x64 legs - see the group comment above."
+        type: boolean
+        default: true
+      run_android:
+        description: "Build/test build-android."
+        type: boolean
+        default: true
+      run_wasm:
+        description: "Build/test build-wasm and device-ui (apps/wasm/tests, the device web page harness)."
+        type: boolean
+        default: true
+      run_esp:
+        description: >-
+          Build/test build-esp32s3, build-esp32c3 and build-footprint. The last one runs on a
+          Linux-fleet runner and cross-compiles arm-none-eabi rather than ESP-IDF, but it shares
+          apps/baremetal/'s probe and fixtures with the other two (see its own "sibling" comment)
+          and classify_changes.py's LANE_PREFIXES puts apps/baremetal/ in `esp`, not `linux` - the
+          lane a source path maps to, not the runner OS a job happens to execute on.
+        type: boolean
+        default: true
+      run_rust:
+        description: "Build/test build-rust."
+        type: boolean
+        default: true
     secrets:
       ATMOS_SIGNING_KEY:
         description: "EMDF object-signing key, base64-encoded. When set (passed by BOTH ci.yml and release.yml), build-android decodes it into the app's bundled signing.key asset so the DEBUG APK - which is a never-uploaded smoke test - signs Atmos objects at runtime. The asset is deleted again before any release step, and the staged release APK is asserted key-free, so a published .apk is always the safe unsigned bed51 app. Unset -> no asset is written at all. An APK that does carry the asset IS the key and must never be distributed."
@@ -1002,173 +1055,31 @@ jobs:
       # fail later with a confusing "unknown preset field" error. gcc/llvm/msvc are
       # asserted the same way, all against the pins toolchain-versions resolved
       # above - see docs/ci-self-hosted-runners.md.
-      - name: Report and assert toolchain versions
-        shell: bash
-        env:
-          GCC_VERSION: ${{ needs.toolchain-versions.outputs.gcc_version }}
-          LLVM_VERSION: ${{ needs.toolchain-versions.outputs.llvm_version }}
-          MSVC_TOOLSET: ${{ needs.toolchain-versions.outputs.msvc_toolset }}
-          CMAKE_MIN: ${{ needs.toolchain-versions.outputs.cmake_min }}
-        run: |
-          set -euo pipefail
-          cmake --version
-          ninja --version
-          # Let CMake do its own version comparison rather than parsing it in sh.
-          # Unquoted heredoc so $CMAKE_MIN expands - \$CMAKE_VERSION stays escaped
-          # so it's still CMake's own variable, not a (unset) shell one.
-          cat > "${RUNNER_TEMP}/assert-cmake-version.cmake" <<EOF
-          if(CMAKE_VERSION VERSION_LESS ${CMAKE_MIN})
-            message(FATAL_ERROR "CMake \${CMAKE_VERSION} is too old; ac3forge needs >= ${CMAKE_MIN}")
-          endif()
-          EOF
-          cmake -P "${RUNNER_TEMP}/assert-cmake-version.cmake"
-          case "${{ matrix.preset }}" in
-            linux-gcc|linux-gcc-arm64)
-                          g++ --version | head -1
-                          g++ --version | head -1 | grep -q " ${GCC_VERSION}\." || { echo "::error::expected g++ ${GCC_VERSION}"; exit 1; } ;;
-            linux-llvm|linux-llvm-arm64|linux-llvm-asan-ubsan)
-                          clang++ --version | head -1
-                          clang++ --version | head -1 | grep -qE "version ${LLVM_VERSION}\." || { echo "::error::expected clang ${LLVM_VERSION}"; exit 1; } ;;
-            windows-llvm) clang-cl --version | head -1
-                          clang-cl --version | head -1 | grep -qE "version ${LLVM_VERSION}\." || { echo "::error::expected clang-cl ${LLVM_VERSION}"; exit 1; } ;;
-            windows-msvc)
-                          echo "MSVC toolset: ${VCToolsVersion:-unknown}"
-                          case "${VCToolsVersion:-}" in
-                            ${MSVC_TOOLSET}*) ;;
-                            *) echo "::error::expected an MSVC ${MSVC_TOOLSET}x toolset, got '${VCToolsVersion:-unset}'"; exit 1 ;;
-                          esac ;;
-            # Report-only, unlike windows-msvc above - confirmed empirically on
-            # a real windows-11-arm run (2026-08-26): the hosted ARM64 image
-            # ships an older VS Build Tools generation (14.44.35207, VS2022
-            # ~17.14) than windows-latest's x64 image (14.5x, "VS 2026"/18.x),
-            # so the ${MSVC_TOOLSET} pin - resolved against the x64 image - does
-            # not hold here. The two runner images are maintained on separate
-            # GitHub-side update cadences; asserting they stay in lockstep
-            # isn't realistic yet. Same shape as macos-llvm's own case arm
-            # below, and the same reasoning: report whatever toolset this
-            # runner actually has rather than failing a leg still proving out
-            # its own baseline. Revisit once GitHub's ARM64 image catches up -
-            # or drops far enough behind to need its own pin.
-            windows-msvc-arm64)
-                          echo "MSVC toolset: ${VCToolsVersion:-unknown}" ;;
-            # No hard version assert here unlike the other LLVM legs: Homebrew's
-            # llvm formula has no versioned pin to check against (see the
-            # install step's own comment), so this reports whatever it finds
-            # rather than failing a leg that's still proving out its baseline.
-            # Same for macos-llvm-x64 - identical toolchain install step, just
-            # a different CPU architecture underneath.
-            macos-llvm|macos-llvm-x64) c++ --version | head -1 ;;
-          esac
-
-      - uses: ./.github/actions/setup-vcpkg
-        with:
-          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
-
       # ---------------------------------------------------------------------
       # Configure / build / test
       # ---------------------------------------------------------------------
-      # The presets carry everything: generator, compiler, Release, and
-      # AC3FORGE_BUILD_GUI=OFF. The toolchain-preset system splits each leg into
-      # config-/build-/test-<leg> (the bare <leg> is a hidden fragment), so the
-      # matrix value is the suffix and each step names its own prefix. Running
-      # `cmake --preset config-<leg>` locally reproduces CI exactly - EXCEPT
-      # for two overrides bolted on here:
-      #   - -DCMAKE_PREFIX_PATH on Windows: install-qt-action installs into a
-      #     runner-specific path (QT_ROOT_DIR) that cmake/FindQt6.cmake's
-      #     local search roots do not cover, so it has to be passed in
-      #     explicitly rather than relying on auto-detection the way a local
-      #     build does.
-      #   - -DAC3FORGE_BUILD_GUI=ON on the `gui: true` Linux and macOS legs,
-      #     which default the GUI off (see CMakePresets.json) so a machine
-      #     that hasn't installed Qt still builds everything else.
-      - name: Configure
-        shell: bash
-        # VERSION_TAG_INPUT goes through env:, not straight into the script
-        # text, for the same reason release.yml's resolve-version job does -
-        # inputs.version_tag is attacker-reachable via workflow_dispatch and
-        # substituted directly it would be shell CODE, not data (zizmor:
-        # template-injection). Empty by default (ordinary CI): GitVersionDerivation.cmake
-        # then falls through to `git describe`, which finds nothing on this
-        # leg's shallow checkout and stamps 0.0.0-dev - expected, see the
-        # `fetch_depth` input's description above.
-        env:
-          VERSION_TAG_INPUT: ${{ inputs.version_tag }}
-        run: |
-          set -euo pipefail
-          extra_args=()
-          # QT_ROOT_DIR is only set when the "Install Qt (prebuilt)" step ran
-          # (every Windows leg except windows-msvc-arm64, which has no Qt kit
-          # to point at - see that step's own comment) - guarded rather than
-          # unconditional on "$RUNNER_OS" = "Windows" alone, because
-          # referencing an unset variable under this script's `set -u` would
-          # otherwise fail the Configure step outright on that leg.
-          if [ "$RUNNER_OS" = "Windows" ] && [ -n "${QT_ROOT_DIR:-}" ]; then
-            extra_args+=(-DCMAKE_PREFIX_PATH="$QT_ROOT_DIR")
-          fi
-          if [ "${{ matrix.gui }}" = "true" ]; then
-            extra_args+=(-DAC3FORGE_BUILD_GUI=ON)
-          fi
-          # OFF by default in CMakeLists.txt, so the legs that want it ask
-          # here - on Windows and macOS, and not on Linux. On Linux this tree
-          # selects the ALSA backend, which has no per-application concept at
-          # all, and apps/crucible/CMakeLists.txt refuses that combination by
-          # design rather than building a window that can list applications
-          # and never capture one. Crucible's Linux build is the dedicated
-          # pass further down, which installs the PipeWire headers and
-          # configures its own tree with -DAC3FORGE_WITH_ALSA=OFF.
-          #
-          # macOS joins on 2026-09-06, and building is the whole point of it
-          # there. The macOS platform half exists and has never been
-          # compiled: no Mac took part in writing it, and these two legs are
-          # the first compiler to see the Objective-C++, the Core Audio
-          # selectors and the OBJCXX CMake. Nothing about it can be RUN in
-          # CI - a hosted runner has no audio device, no desktop session and
-          # no way to grant the tap's consent prompt - so what these legs
-          # establish is that it compiles and links, which is exactly what
-          # docs/crucible/promotion.md's Phase 5 sets as the exit condition
-          # and exactly as far as its "What cannot be verified" table lets
-          # anyone claim.
-          if [ "${{ matrix.crucible }}" = "true" ]              && { [ "$RUNNER_OS" = "Windows" ] || [ "$RUNNER_OS" = "macOS" ]; }; then
-            extra_args+=(-DAC3FORGE_BUILD_CRUCIBLE=ON)
-          fi
-          if [ -n "$VERSION_TAG_INPUT" ]; then
-            extra_args+=(-DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT")
-          fi
-          # Not "${extra_args[@]}" unguarded: macOS's /bin/bash is stuck on
-          # 3.2 (GPLv2 was the last version Apple could ship), and 3.2's
-          # `set -u` treats expanding a zero-element array as an unbound
-          # variable - fixed upstream in bash 4.4, but not on this runner.
-          # ${#extra_args[@]} (a length, not an element expansion) does not
-          # trip the same bug on either version.
-          if [ ${#extra_args[@]} -eq 0 ]; then
-            cmake --preset config-${{ matrix.preset }}
-          else
-            cmake --preset config-${{ matrix.preset }} "${extra_args[@]}"
-          fi
-
-      # -k 0 so a first-time port sees every diagnostic in one run rather than
-      # one-per-push. Warnings are errors on every compiler
-      # (cmake/CompilerWarnings.cmake) and CI does not relax that.
-      - name: Build
-        shell: bash
-        run: cmake --build --preset build-${{ matrix.preset }} -- -k 0
-
-      # AC3FORGE_REQUIRE_AVX2 turns tests/core/test_simd_kernels.cpp's [avx2]
-      # probe case from a loud skip into a hard failure - only safe to set on
-      # a leg pinned to `runner: '["ubuntu-latest"]'` above rather than the
-      # dynamic self-hosted/GitHub-hosted `matrix.runner` most legs use,
-      # since self-hosted CPU features aren't documented anywhere in this
-      # repo (see src/forge/src/internal/cpu/cpu_features.hpp) but GitHub's
-      # own hosted Linux runners are AVX2-capable. This guarantees at least
-      # one leg per PR where "the AVX2 path actually ran and passed" is
-      # asserted, not just possible.
-      - name: Test
-        shell: bash
-        env:
-          AC3FORGE_REQUIRE_AVX2: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '' }}
-        run: |
-          set -euo pipefail
-          ctest --preset test-${{ matrix.preset }}
+      # Toolchain assert, vcpkg setup, Configure (presets carry generator,
+      # compiler, Release, AC3FORGE_BUILD_GUI=OFF - `cmake --preset
+      # config-<leg>` locally reproduces this exactly except for the
+      # QT_ROOT_DIR/-DAC3FORGE_BUILD_GUI overrides the action bolts on),
+      # Build (-k 0, warnings-as-errors) and Test - extracted into
+      # ./.github/actions/build-leg (docs/ci-lanes.md, CI lane partitions
+      # plan) so splitting this file into one reusable workflow per platform
+      # does not duplicate the sequence into each of them. See that action's
+      # own header and step comments for what each piece does and why;
+      # nothing about what runs or in what order changed by moving it there -
+      # composite action steps execute in this same job/workspace.
+      - uses: ./.github/actions/build-leg
+        with:
+          preset: ${{ matrix.preset }}
+          gui: ${{ matrix.gui }}
+          crucible: ${{ matrix.crucible }}
+          version-tag: ${{ inputs.version_tag }}
+          gcc-version: ${{ needs.toolchain-versions.outputs.gcc_version }}
+          llvm-version: ${{ needs.toolchain-versions.outputs.llvm_version }}
+          msvc-toolset: ${{ needs.toolchain-versions.outputs.msvc_toolset }}
+          cmake-min: ${{ needs.toolchain-versions.outputs.cmake_min }}
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
       # The window is optional in CMake (Qt6 QUIET, and Quick3D optional
       # inside that), which is right for a source build on a machine with no
@@ -1314,31 +1225,24 @@ jobs:
 
       # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
       # lightweight L4 SNR check from the project's original validation-
-      # pyramid design, now docs/verification.md - wired into CI for the
-      # first time here; see tools/checks/verify_gold_reference.sh's own header).
-      # Proven on
-      # macOS alone first; now every leg has it except linux-llvm-asan-ubsan,
-      # which stays diagnostic-only (same reasoning as its `packageable`
-      # exclusion below - a sanitizer build's job is catching memory/UB
-      # errors, not re-proving codec correctness a plain build already did).
+      # pyramid design, now docs/verification.md). Proven on macOS alone
+      # first; now every leg has it except linux-llvm-asan-ubsan, which
+      # stays diagnostic-only (same reasoning as its `packageable` exclusion
+      # below - a sanitizer build's job is catching memory/UB errors, not
+      # re-proving codec correctness a plain build already did).
+      #
+      # Extracted into ./.github/actions/gold-reference-gate alongside
+      # build-leg above, for the same reason (docs/ci-lanes.md). Unlike
+      # build-leg this call still carries its own `if:` here - the action
+      # has no notion of matrix.gold_reference, so the caller still decides
+      # whether to run it at all, the same way the setup-msvc-env call above
+      # stays gated on `matrix.msvc`.
       - name: Gold reference gate
         if: matrix.gold_reference
-        shell: bash
-        env:
-          # See tools/checks/verify_gold_reference.sh's own comment: set, this asks
-          # compare_wav.py to also write a structured per-codec result here,
-          # which the "Upload gold-reference results" step below picks up.
-          # Unset (persist_quality_trend false, e.g. every PR run) the gate
-          # behaves exactly as it did before this existed - no extra files,
-          # no extra step running.
-          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
-        run: |
-          set -euo pipefail
-          bin="build/config-${{ matrix.preset }}/bin/ac3cli"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            bin="${bin}.exe"
-          fi
-          bash tools/checks/verify_gold_reference.sh "$bin"
+        uses: ./.github/actions/gold-reference-gate
+        with:
+          preset: ${{ matrix.preset }}
+          persist-quality-trend: ${{ inputs.persist_quality_trend }}
 
       # The same gate a second time, on the spec's own direct transform
       # evaluations instead of the fast paths (roadmap VX10). 0.9.0 flipped
@@ -2269,7 +2173,7 @@ jobs:
   package-macos-universal:
     name: Package macOS universal (arm64 + x86_64)
     needs: build
-    if: inputs.do_package
+    if: inputs.do_package && inputs.run_macos
     runs-on: macos-latest
     timeout-minutes: 30
     permissions:
@@ -2594,6 +2498,7 @@ jobs:
   linux-appimage:
     name: Linux AppImage (ac3gui)
     needs: [toolchain-versions]
+    if: inputs.run_linux
     runs-on: ubuntu-latest
     # See the `build` matrix's own container comment for why this is pinned
     # at all; unlike that matrix, this is the one Linux leg that pins an
@@ -3120,6 +3025,7 @@ jobs:
   # pushes after it) before this line came off - see this file's header.
   build-android:
     name: Android (Shield)
+    if: inputs.run_android
     runs-on: ubuntu-latest
     # Unset elsewhere in this file's `build` matrix (which sets 90 for the
     # slowest desktop legs, see its own header) - this job had no bound at
@@ -3368,6 +3274,7 @@ jobs:
   # shipped from here (see that workflow and docs/platforms/wasm.md).
   build-wasm:
     name: WASM (browser demos)
+    if: inputs.run_wasm
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -3488,6 +3395,7 @@ jobs:
   # build-esp32s3 runs the same page against the emulated board.
   device-ui:
     name: Device web page (Chromium)
+    if: inputs.run_wasm
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -3548,6 +3456,7 @@ jobs:
   # _toolchain-versions.yml's own header states for the C/C++ toolchains.
   build-rust:
     name: Rust bindings (${{ matrix.os }})
+    if: inputs.run_rust
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -3605,6 +3514,7 @@ jobs:
   # signing on, and shipping it waits on the EV certificate (Phase 6).
   windows-driver:
     name: Windows null-sink driver (WDK NuGet)
+    if: inputs.run_windows
     runs-on: windows-latest
     permissions:
       contents: read
@@ -3722,6 +3632,7 @@ jobs:
     # printed here for shape, and the real-time number has to come from
     # hardware - see docs/platforms/esp32.md.
     needs: check-runners
+    if: inputs.run_esp
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}
     container: espressif/idf:v6.1
     permissions:
@@ -4493,6 +4404,7 @@ jobs:
     # toolchains AND both emulators, so this needs no composite action and no
     # multi-gigabyte download step, the same reason build-esp32s3 uses it.
     needs: check-runners
+    if: inputs.run_esp
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_7) }}
     container: espressif/idf:v6.1
     permissions:
@@ -4545,6 +4457,7 @@ jobs:
     # that the self-hosted image does not - route them only if/when
     # ci-runners bakes those toolchains into the fleet image.
     needs: check-runners
+    if: inputs.run_esp
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_5) }}
     container: ubuntu:26.04
     permissions:
