@@ -197,13 +197,25 @@ jobs:
       # its llvm package tracks whatever is newest and would drift off the pin.
       #
       # Checks the installed version before downloading anything: GitHub-hosted
-      # windows-latest is always a fresh VM (never a match, always installs),
-      # but a self-hosted runner's own Packer template now bakes this exact
-      # pinned version in (see ci-runners' scripts/windows/03-llvm-toolchain.ps1)
-      # and a prior job on that same long-lived box may already have installed
-      # it too - either way, a match means this step can skip the ~10+ minute
-      # download+install outright. A mismatch (wrong version, or nothing
-      # installed) renames any existing C:\Program Files\LLVM out of the way
+      # windows-latest ships an older LLVM major (currently 20.x against our
+      # pinned 22.x - see actions/runner-images' Windows software list) so it
+      # never matches and always installs, but a self-hosted runner's own
+      # Packer template now bakes this exact major in (see ci-runners'
+      # scripts/windows/03-llvm-toolchain.ps1) and a prior job on that same
+      # long-lived box may already have installed it too - either way, a
+      # match means this step can skip the ~10+ minute download+install
+      # outright. The comparison is MAJOR-ONLY, not the full
+      # llvm_windows_version point release: the point release exists solely
+      # to pin a concrete llvm-project GitHub Release asset to download (see
+      # toolchain-versions.json's own comment), not to police an
+      # already-installed toolchain down to the patch - clang 22.1.1 and
+      # 22.1.3 are the same ABI/language surface this project builds against,
+      # so treating a patch-level difference as "wrong" just forces a
+      # pointless reinstall on self-hosted boxes every time the pin ticks a
+      # point release (the build-time assert down in build-leg/action.yml
+      # already only checks the major, for the same reason). A mismatched
+      # major (wrong major, or nothing installed) renames any existing
+      # C:\Program Files\LLVM out of the way
       # first (see the run block's own comment for why a rename, not a
       # delete), so the installer always writes into a fresh directory -
       # NSIS `/S` overwrites same-named files but never uninstalls first, so
@@ -224,7 +236,16 @@ jobs:
           LLVM_WINDOWS_VERSION: ${{ inputs.llvm_windows_version }}
         run: |
           $ErrorActionPreference = 'Stop'
+          # Invoke-WebRequest renders a progress bar by default, and updating
+          # it in a non-interactive CI console (no real terminal to redraw
+          # in-place) turns into the dominant cost of the download - observed
+          # turning this step's ~10 minute download+install into 36+ minutes
+          # on a run that otherwise had nothing else wrong with it. This is
+          # the well-known PowerShell fix, not a workaround for anything
+          # ac3forge-specific.
+          $ProgressPreference = 'SilentlyContinue'
           $version = $env:LLVM_WINDOWS_VERSION
+          $pinnedMajor = $version.Split('.')[0]
           $llvmDir = "$env:ProgramFiles\LLVM"
           $clangCl = "$llvmDir\bin\clang-cl.exe"
 
@@ -241,13 +262,15 @@ jobs:
             # Select-Object wins it. Confirmed on PR #445's clang-cl leg.
             $verOutput = & $clangCl --version 2>&1
             $verLine = $verOutput | Select-Object -First 1
-            if ($verLine -match 'version (\S+)' -and $matches[1] -eq $version) {
+            # Major only - see this step's leading comment for why the exact
+            # point release isn't the right bar for "is this close enough".
+            if ($verLine -match 'version (\d+)\.' -and $matches[1] -eq $pinnedMajor) {
               $alreadyCurrent = $true
             }
           }
 
           if ($alreadyCurrent) {
-            Write-Host "LLVM $version already installed at $clangCl - skipping download/install"
+            Write-Host "LLVM $($matches[1]).x already installed at $clangCl (pinned major $pinnedMajor) - skipping download/install"
           } else {
             if (Test-Path $llvmDir) {
               # NOT a delete. GitHub-hosted windows-latest images ship their
@@ -269,7 +292,7 @@ jobs:
               # to be rare on self-hosted post ci-runners#10 (only happens
               # between an ac3forge pin bump and the next template rebuild).
               $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
-              Write-Host "Existing LLVM install does not match $version - renaming out of the way ($staleName) before reinstalling"
+              Write-Host "Existing LLVM install is not major $pinnedMajor - renaming out of the way ($staleName) before installing $version"
               Rename-Item -Path $llvmDir -NewName $staleName
             }
             $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
@@ -308,6 +331,10 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          # See the LLVM (Windows) step's leading comment - default progress-bar
+          # rendering can dominate an Invoke-WebRequest download's wall time in
+          # a non-interactive CI console.
+          $ProgressPreference = 'SilentlyContinue'
           $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64.zip'
           $dest = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64'
           Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-winarm64-gpl-8.1.zip' -OutFile $zip
