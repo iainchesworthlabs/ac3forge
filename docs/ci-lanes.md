@@ -3,12 +3,11 @@
 *Maintainer notes - CI structure; not a build or contribution guide.*
 
 `ci.yml`'s `changes` job already tells a docs-only PR from a code one, so a
-docs-only edit skips the five-platform `build` matrix entirely (`code` in
-that job's outputs, computed by a `docs_re` regex). Every other PR used to pay
-the full matrix regardless of what it actually touched; a change confined to
-`apps/android/` now skips WASM, ESP-IDF and Rust (see "What's gated today"
-below), though it still builds the `build` matrix's own Windows, Linux and
-macOS legs - that part is not split by lane yet. This page describes the
+docs-only edit skips the whole build side entirely (`code` in that job's
+outputs, computed by a `docs_re` regex). Every other PR used to pay for
+Windows, Linux, macOS, Android, WASM, ESP-IDF and Rust regardless of what it
+actually touched; a change confined to `apps/android/` now skips every one of
+the other six - see "What's gated today" below. This page describes the
 finer-grained classification, what it currently gates, and what it does not
 gate yet.
 
@@ -19,47 +18,55 @@ it, exposing one boolean output per lane (`core`, `windows`, `linux`, `macos`,
 `android`, `wasm`, `esp`, `rust`, `python`, `npm`, `ci_self`, `docs`)
 alongside the existing `code` output. `ci.yml` forwards seven of them
 (`core`, `windows`, `linux`, `macos`, `android`, `wasm`, `esp`, `rust`) to
-`_build.yml` as `run_<lane>` inputs, and several of `_build.yml`'s
-single-purpose jobs now gate on theirs - see "What's gated today". `python`
-and `npm` are computed but not yet forwarded anywhere: nothing in `_build.yml`
-builds Python bindings or the npm package (those live in `wheels.yml` and
-`npm.yml`, folded into the aggregator only in a later phase). This is still
-short of the full plan; see the CI lane partitions plan for what's left
-(splitting `_build.yml` into one reusable workflow per lane so the `build`
-matrix's own Windows/Linux/macOS legs can be gated too, folding
-`wheels.yml`/`npm.yml`/`esp-component.yml` into the aggregator).
+`_build.yml` as `run_<lane>` inputs, and every one of them except `core` now
+gates real work - see "What's gated today". `python` and `npm` are computed
+but not yet forwarded anywhere: nothing in `_build.yml` builds Python
+bindings or the npm package (those live in `wheels.yml` and `npm.yml`, folded
+into the aggregator only in a later phase). This is still short of the full
+plan; see the CI lane partitions plan for what's left (moving `ci.yml`'s
+coverage/sanitizer/ABI/perf/memory jobs into a `_ci-core.yml` so `core`
+finally gates something, folding `wheels.yml`/`npm.yml`/`esp-component.yml`
+into the aggregator).
 
 ## What's gated today
 
-| Lane | Job(s) in `_build.yml` gated by `run_<lane>` |
+`_build.yml`'s old single cross-OS `build` job - one GitHub Actions job with
+an 11-entry `strategy.matrix` spanning Windows, Linux and macOS - is gone,
+replaced by three reusable-workflow calls: `build-windows`
+(`_ci-windows.yml`, 3 legs), `build-linux` (`_ci-linux.yml`, 6 legs) and
+`build-macos` (`_ci-macos.yml`, 2 legs). Each is an ordinary job (not a
+matrix job) at the `_build.yml` level, so `if: inputs.run_<lane>` gates it
+cleanly - the job-level-`if`-cannot-see-`matrix` limitation that blocked this
+in the previous phase no longer applies, because the matrix now lives one
+level down, inside each platform's own file, invisible to `_build.yml`'s own
+job-level conditions.
+
+| Lane | Job(s) gated by `run_<lane>` |
 |---|---|
 | `android` | `build-android` |
 | `wasm` | `build-wasm`, `device-ui` |
 | `esp` | `build-esp32s3`, `build-esp32c3`, `build-footprint` |
 | `rust` | `build-rust` |
-| `windows` | `windows-driver` |
-| `linux` | `linux-appimage` |
-| `macos` | `package-macos-universal` (alongside `do_package`, which it already required) |
-| `core` | nothing yet - see below |
+| `windows` | `build-windows` (windows-msvc, windows-llvm, windows-msvc-arm64), `windows-driver` |
+| `linux` | `build-linux` (linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan), `linux-appimage` |
+| `macos` | `build-macos` (macos-llvm, macos-llvm-x64), `package-macos-universal` (alongside `do_package`, which it already required) |
+| `core` | nothing yet - `_ci-core.yml` (coverage, sanitizers, ABI, FFmpeg/ADM validate, perf/memory gates) is a later phase, still living in `ci.yml`/inside `_ci-linux.yml`'s sanitizer legs, not gated by any lane |
 
-**Not gated: the `build` job's own matrix legs** (`windows-msvc`,
-`windows-llvm`, `windows-msvc-arm64`, `linux-gcc`, `linux-llvm`,
-`linux-gcc-arm64`, `linux-llvm-arm64`, `linux-llvm-asan-ubsan`,
-`linux-llvm-tsan`, `macos-llvm`, `macos-llvm-x64`).
-It is one GitHub Actions job with an 11-entry `strategy.matrix`, and a job's
-`if:` cannot see the `matrix` context - confirmed against `actionlint`, which
-rejects `matrix.*` in a job-level `if:` with "context 'matrix' is not allowed
-here". Skipping only that job's macOS entries, say, would need either a
-dynamically-computed `strategy.matrix.include` (duplicating this ~300-line
-matrix's definition into filtering logic) or threading a lane condition
-through dozens of already-conditional steps across a ~2000-line job - both
-larger and riskier than this phase, and exactly the kind of rewrite the CI
-lane partitions plan's "What we will not do" section rules out ahead of the
-reusable-workflow split. That split (the plan's next-but-one phase) gives
-each OS its own job, where `if: inputs.run_windows` works directly with no
-matrix-context problem at all. Until then, an Android-only PR skips
-`build-wasm`, `build-esp32s3`/`c3`/`build-footprint` and `build-rust`, but the
-full 11-leg desktop matrix still runs.
+An Android-only PR today skips `build-wasm`, `build-esp32s3`/`c3`,
+`build-footprint`, `build-rust`, `build-windows`, `windows-driver`,
+`build-linux`, `linux-appimage`, `build-macos` and `package-macos-universal`
+- the full win the plan's phase 3 example described, not just the subset the
+previous phase could deliver.
+
+`package-macos-universal` and `quality-trend` used to `needs: build` (the one
+cross-OS job); they now `needs: build-macos` and
+`needs: [build-windows, build-linux, build-macos]` respectively. The latter
+still behaves exactly as before in practice: `quality-trend` only ever runs
+when `persist_quality_trend` is true, which is only true for a direct push to
+`main`, and that same trigger forces every `run_<lane>` true in
+`classify_changes.py`'s `--force-all` path - so on the one trigger this job
+actually fires on, none of its three `needs:` is ever skipped for a lane
+reason. See that job's own comment in `_build.yml`.
 
 ## Why a job, not a workflow-level path filter
 
@@ -177,34 +184,85 @@ gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename' \
 Its own unit tests run in `ci.yml`'s `script-lint` job alongside every other
 script under `tools/ci` - see that job's "Oracle unit tests" step.
 
-## build-leg-composite: preparing `_build.yml` for the split
+## build-leg-composite: shared steps, factored out once
 
-Two composite actions pulled out of the `build` job's step list, ahead of the
-plan's reusable-workflow split (its next phase) so that split does not
-duplicate them into each new per-platform file:
+Two composite actions pulled out of the old cross-OS `build` job's step list,
+so the three-way split below (each platform now its own file) does not
+duplicate them:
 
 - `.github/actions/build-leg` - the toolchain assert,
   `./.github/actions/setup-vcpkg`, Configure, Build and Test steps every
-  matrix leg runs. Called once per leg, unconditionally.
+  matrix leg runs. Called once per leg, unconditionally, from all three of
+  `_ci-windows.yml`/`_ci-linux.yml`/`_ci-macos.yml`.
 - `.github/actions/gold-reference-gate` - the single canonical
   `tools/checks/verify_gold_reference.sh` invocation. Still called under the
-  leg's own `if: matrix.gold_reference` in `_build.yml` - the action itself
-  has no notion of the matrix, so whether to call it at all stays the
-  caller's decision, same as `setup-msvc-env`'s `if: matrix.msvc`.
+  leg's own `if: matrix.gold_reference` at each of the three call sites - the
+  action itself has no notion of the matrix, so whether to call it at all
+  stays the caller's decision, same as `setup-msvc-env`'s `if: matrix.msvc`.
 
 Composite action steps run in the calling job's own runner and workspace, not
-a sandboxed one, so this is a pure move: `build/config-<preset>` lands on
-disk exactly as before, and every step that still runs after these two in
-`_build.yml` - the Crucible checks, the linux-gcc-only scalar-tier gold-
-reference variants, the GUI smoke test - reads it the same way. Nothing about
-what runs, in what order, or under what condition changed; only where the
-step bodies live did.
+a sandboxed one, so this was a pure move: `build/config-<preset>` lands on
+disk exactly as it did when these were inline steps, and every step that
+still runs after these two - the Crucible checks, the linux-gcc-only
+scalar-tier gold-reference variants, the GUI smoke test - reads it the same
+way. Nothing about what runs, in what order, or under what condition
+changed; only where the step bodies live did.
 
 **Not extracted**, deliberately: the linux-gcc-only mode=reference/float32/
 fixed-point-decoder/float32-encoder gold-reference variants, the Crucible
 build/coverage checks, the GUI smoke test, and every toolchain-install step
-(Qt, MSVC environment, LLVM, ffmpeg, NSIS). Each of those already runs on
-only one OS (or one single leg), so a future per-platform file only ever
-needs one copy regardless of whether it is a composite - extracting them
-would be refactoring for its own sake, not preventing duplication, which is
-what this phase exists to do.
+(Qt, MSVC environment, LLVM, ffmpeg, NSIS). Each of those already ran on only
+one OS (or one single leg), so each platform's own file only ever needed one
+copy regardless of whether it was a composite - extracting them would have
+been refactoring for its own sake, not preventing duplication.
+
+## The reusable-workflow split
+
+`_build.yml`'s single `build` job (name: `${{ matrix.name }}`, an 11-entry
+`strategy.matrix` spanning three OSes) became three files, each an ordinary
+`workflow_call` reusable workflow with its own small matrix:
+
+| File | Legs | Windows/Linux/macOS-only steps it carries |
+|---|---|---|
+| `.github/workflows/_ci-windows.yml` | windows-msvc, windows-llvm, windows-msvc-arm64 | Install LLVM/ffmpeg/NSIS (Windows), Setup MSVC environment, Install Qt (prebuilt), Crucible translation check + built assert + coverage floor, Assert NSIS installer, Assert Crucible packaged |
+| `.github/workflows/_ci-linux.yml` | linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan | Bootstrap container, Install Qt6 (Linux GUI)/GCC/LLVM/ffmpeg, the linux-gcc-only scalar-tier gold-reference variants, Codec matrix (sanitizer), conformance vectors, ALSA fallback, the Linux Crucible/PipeWire pass, BUILD_SHARED_LIBS=ON pass |
+| `.github/workflows/_ci-macos.yml` | macos-llvm, macos-llvm-x64 | Install Qt6/LLVM/ffmpeg (macOS), Assert Crucible built (shared with Windows), the universal-merge install-tree uploads |
+
+Steps that applied to more than one OS in the original job (`Package`,
+`Upload package artifacts`, `Assert the AC3Forge Crucible was built`, `Assert
+the CLI man page and completions were packaged (Linux/macOS)`, `Install
+Ninja`) are reproduced verbatim in every file whose OS their own `if:`
+condition already covers, rather than pulled into a third composite - each
+one is already self-contained (branches on `runner.os`/`matrix.preset`
+internally), so copying it costs a few repeated lines, not a second place a
+future edit could drift out of step with the first.
+
+`_build.yml` itself now only orchestrates: `check-runners` and
+`toolchain-versions` stay there (a live-runner-availability check and a
+toolchain-version resolver, both used by satellite jobs `_ci-windows.yml`
+etc. don't have their own copies of), and three job-calls -
+`build-windows`/`build-linux`/`build-macos` - forward those two jobs'
+outputs as plain `workflow_call` inputs, since `needs:` cannot reach into
+another file's job the way it reaches between two jobs in the same one.
+
+Two conditions that referenced a matrix field no single-OS file's own matrix
+entries define any more had to change, both confirmed by `actionlint`
+("property ... is not defined in object type ..."), neither a behaviour
+change:
+
+- `Install Ninja`'s `if: ${{ !matrix.container }}` is unconditionally true on
+  Windows and macOS (no entry in either file ever sets `container`) and
+  unconditionally false on Linux inside a container (where `ninja-build` is
+  apt-installed in "Bootstrap container" instead) - so the Windows/macOS
+  copies dropped the `if:` entirely rather than reference a field that no
+  longer exists in scope, and the Linux file never carried this step at all.
+- `matrix.gui`/`matrix.release_package`/`matrix.experimental` referenced in
+  shared steps but never set by any Windows or macOS entry (`gui`, no
+  Windows entry needs the flag - GUI is on by default there;
+  `release_package`, no macOS entry has carried one since DR8;
+  `experimental`, no Linux or macOS entry is experimental today) - the
+  `build-leg` call passes literal `"false"`/`""` for these on the files
+  where they are always unset, and `_ci-macos.yml`'s first matrix entry
+  declares `release_package: false` explicitly, the same "declare it once so
+  the type exists" pattern `windows-msvc`'s own `experimental: false` already
+  used for the same reason in the original matrix.

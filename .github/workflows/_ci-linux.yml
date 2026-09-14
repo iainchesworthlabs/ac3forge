@@ -1,0 +1,1208 @@
+# Linux leg of the CI lane partitions plan's reusable-workflow split
+# (docs/ci-lanes.md) - the six Linux matrix.include entries _build.yml's
+# `build` job used to carry (linux-gcc, linux-llvm, linux-gcc-arm64,
+# linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan) plus every
+# Linux-only follow-on step (the linux-gcc-only scalar-tier gold-reference
+# variants, the ALSA fallback pass, the Linux Crucible/PipeWire pass, the
+# BUILD_SHARED_LIBS=ON pass, the sanitizer leg's codec-matrix run), moved
+# out so `_build.yml` can gate this whole platform on `run_linux` with a
+# plain job-level `if:` - see _ci-windows.yml's own header for why that
+# was not possible while these were matrix entries of one job spanning
+# three OSes.
+#
+# Called only from _build.yml, which still owns check-runners and
+# toolchain-versions and forwards their outputs here as plain inputs.
+# Every step below is otherwise byte-for-byte the same as it was inline in
+# _build.yml's `build` job.
+name: Reusable Build (Linux)
+
+on:
+  workflow_call:
+    inputs:
+      do_package:
+        type: boolean
+        default: false
+      version_tag:
+        type: string
+        default: ""
+      fetch_depth:
+        type: number
+        default: 1
+      persist_quality_trend:
+        type: boolean
+        default: false
+      publish_conformance_vectors:
+        description: "See _build.yml's own input of the same name - only linux-gcc's conformance-vector generator pass reads this."
+        type: boolean
+        default: false
+      gcc_version:
+        type: string
+        required: true
+      llvm_version:
+        type: string
+        required: true
+      cmake_min:
+        type: string
+        required: true
+      vcpkg_commit:
+        type: string
+        required: true
+      linux_runner_1:
+        description: "needs.check-runners.outputs.linux_runner_1, at the _build.yml call site (linux-gcc's runner-label JSON array)."
+        type: string
+        required: true
+      linux_runner_2:
+        description: "needs.check-runners.outputs.linux_runner_2 (linux-llvm)."
+        type: string
+        required: true
+      linux_runner_3:
+        description: "needs.check-runners.outputs.linux_runner_3 (linux-llvm-asan-ubsan)."
+        type: string
+        required: true
+      linux_runner_4:
+        description: "needs.check-runners.outputs.linux_runner_4 (linux-llvm-tsan)."
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    # Fork PRs never reach self-hosted (check-runners' own fork-PR branch
+    # already forces hosted labels for them) - this is belt-and-braces so a
+    # gap in that logic can't silently hand a fork PR a self-hosted runner.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    timeout-minutes: 90
+    # Ubuntu 26.04 for the Linux legs, where the distro archive carries
+    # gcc-16 (universe component - 02-gcc-toolchain.sh enables it) and LLVM 22
+    # outright. This is a pin, not a convenience: on ubuntu-latest (24.04 at
+    # the time of writing) the LLVM script has to fall back to apt.llvm.org,
+    # whose noble repo is missing clang-tidy-22, lld-22 and libc++-22-dev, so
+    # the install fails before a single file is compiled. Pinning the
+    # container also stops a runner-image bump silently changing the
+    # compiler under the matrix.
+    container: ${{ matrix.container }}
+    # A failing experimental leg would annotate the run but not fail it - the
+    # mechanism `_ci-windows.yml`'s `continue-on-error: ${{ matrix.experimental
+    # || false }}` still uses for windows-msvc-arm64. No Linux leg sets
+    # `experimental: true` today, so this is hardcoded false rather than a
+    # reference to a matrix field none of this file's entries define.
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "Linux GCC"
+            runner: ${{ inputs.linux_runner_1 }}
+            container: ubuntu:26.04
+            preset: linux-gcc
+            gcc: true
+            gui: true
+            packageable: true
+            release_package: true
+            alsa_fallback: true
+            gold_reference: true
+            conformance_vectors: true
+
+          - name: "Linux LLVM (clang)"
+            runner: ${{ inputs.linux_runner_2 }}
+            container: ubuntu:26.04
+            preset: linux-llvm
+            llvm: true
+            gui: true
+            packageable: true
+            gold_reference: true
+            # AC3Forge Crucible's Linux half (roadmap UX12). This leg and not
+            # a GCC one because the GCC legs carry alsa_fallback, which
+            # asserts that disabling ALSA falls back to posix - true only
+            # while no PipeWire headers are installed, and the Crucible pass
+            # below installs them. Keeping the two apart leaves that
+            # assertion meaning what it says.
+            crucible: true
+
+          # arm64 - Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu
+          # target (see docs/platforms/raspberry-pi.md). Real ARM hardware via
+          # GitHub's hosted ubuntu-24.04-arm runner label, not QEMU emulation -
+          # the same ubuntu:26.04 container image as the x64 legs, which pulls
+          # its arm64 variant automatically on an arm64 runner. Otherwise the
+          # same shape as linux-gcc/linux-llvm above, including which leg
+          # carries alsa_fallback (compiler and architecture both don't affect
+          # that switch - see linux-gcc's own comment).
+          - name: "Linux GCC (arm64)"
+            runner: '["ubuntu-24.04-arm"]'
+            container: ubuntu:26.04
+            preset: linux-gcc-arm64
+            gcc: true
+            gui: true
+            packageable: true
+            release_package: true
+            alsa_fallback: true
+            gold_reference: true
+
+          - name: "Linux LLVM (arm64)"
+            runner: '["ubuntu-24.04-arm"]'
+            container: ubuntu:26.04
+            preset: linux-llvm-arm64
+            llvm: true
+            gui: true
+            packageable: true
+            gold_reference: true
+            # AC3Forge Crucible's Linux half on aarch64 (roadmap UX12). The
+            # Crucible pass further down is written against matrix.preset, so
+            # this leg only has to ask for it: same apt list, same configure
+            # assertions, same tests, same package as linux-llvm, and no
+            # second copy of any of them to drift out of step.
+            #
+            # aarch64 is the only hardware the Linux half is on record as
+            # having run on: it was written and verified against a receiver
+            # on a Raspberry Pi 4B on 2026-09-05, in Phase 4 of
+            # docs/crucible/promotion.md - a run that built the window,
+            # passed all five Qt Quick suites and produced the aarch64
+            # tarball and the arm64 .deb by hand. CI meanwhile built
+            # Crucible on x86_64 alone, so the architecture the whole
+            # record rests on was the one nothing checked, and an
+            # aarch64-only compilation fault would have reached a user
+            # through the .deb before anyone saw it.
+            #
+            # This leg and not "Linux GCC (arm64)" for two reasons. The first
+            # is the one that put the pass on linux-llvm rather than
+            # linux-gcc: that leg carries alsa_fallback, whose assertion that
+            # disabling ALSA falls back to posix holds only while no PipeWire
+            # headers are installed, and the pass installs them. The second
+            # is release_package, which the GCC arm64 leg also carries: the
+            # "Assert the AC3Forge Crucible was packaged (Windows)" step keys
+            # off matrix.crucible && matrix.release_package with no runner.os
+            # guard of its own, so on a do_package run it would go looking on
+            # Linux for a packages/ac3forge-crucible-*.zip that no Linux leg
+            # ever produces.
+            crucible: true
+
+          # AddressSanitizer + UndefinedBehaviorSanitizer (cmake/Sanitizers.cmake),
+          # -fno-sanitize-recover=all so a violation fails the job outright. Shares
+          # the Linux LLVM container/toolchain; `sanitizer: true` additionally runs
+          # the codec-matrix step below, since ctest's 200+ cases alone do not
+          # reach every layout/tool/atmos code path a sanitizer needs to see
+          # execute to be worth anything.
+          #
+          # Not `packageable`: there is no pack-linux-llvm-asan-ubsan preset
+          # and there should not be one - a sanitizer-instrumented debug build
+          # is a diagnostic tool, not something to ship.
+          - name: "Linux LLVM ASan+UBSan"
+            runner: ${{ inputs.linux_runner_3 }}
+            container: ubuntu:26.04
+            preset: linux-llvm-asan-ubsan
+            llvm: true
+            sanitizer: true
+
+          # ThreadSanitizer (roadmap VX16). A DIFFERENT question from the
+          # ASan+UBSan leg above, not a duplicate of it: ASan/UBSan ask
+          # whether one thread's memory and arithmetic are sound, TSan asks
+          # whether two threads agree on who owns what - and no other gate in
+          # this repository can see a data race at all. src/audio is a
+          # lock-free SPSC ring, a silence watchdog and a clock-drift servo
+          # shared between a real-time callback thread and the encoder
+          # thread, which is exactly the shape where a missing
+          # acquire/release is both easy to write and invisible until it
+          # corrupts audio on someone else's machine.
+          #
+          # Its test preset runs `-L concurrency` rather than the whole
+          # suite (CMakePresets.json's test-linux-llvm-tsan filter): TSan's
+          # shadow memory makes every test several times slower, and the
+          # other ~600 cases are single-threaded codec maths where it has
+          # nothing to report. That keeps this leg to about the cost of a
+          # build rather than a second full matrix entry - the ctest run
+          # itself was 7 seconds over 36 tests when this landed.
+          #
+          # No `sanitizer: true`: that flag means the codec-matrix step, and
+          # driving every layout/tool combination through ac3cli is an
+          # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
+          # same reasoning as the ASan+UBSan leg's own comment above.
+          # Self-hosted-capable again (reverted to ubuntu-latest in #460).
+          # The failure was Docker's default seccomp profile rejecting the
+          # personality(ADDR_NO_RANDOMIZE) call TSan uses to disable ASLR
+          # from inside a container. The fleet image now sets
+          # kernel.randomize_va_space=0 on the VM (ci-runners#13, deployed
+          # 2026-08-28) - the sysctl is not namespaced, the container
+          # inherits it, and TSan never needs the blocked syscall. If this
+          # leg ever fails that way again, the fleet image regressed; the
+          # per-job fallback is container options --security-opt
+          # seccomp=unconfined, which is a much blunter instrument.
+          - name: "Linux LLVM TSan"
+            runner: ${{ inputs.linux_runner_4 }}
+            container: ubuntu:26.04
+            preset: linux-llvm-tsan
+            llvm: true
+    steps:
+      # Before checkout: the bare ubuntu image has no git, and actions/checkout
+      # silently degrades to a REST tarball download without it. Also installs
+      # what the toolchain scripts assume is present (lsb_release,
+      # add-apt-repository, curl+gnupg for the apt.llvm.org key path).
+      #
+      # libasound2-dev is the ALSA backend's only dependency, and the reason it
+      # is here rather than left out is that its ABSENCE is not a build
+      # failure: src/audio/CMakeLists.txt would fall back to the no-op
+      # posix/ directory and CI would go green having compiled none of
+      # src/audio/src/backend/alsa/. The alsa_fallback step at the end covers
+      # the other half of that switch on purpose.
+      - name: Bootstrap container
+        if: matrix.container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl file git gnupg libasound2-dev lsb-release \
+            ninja-build pkg-config rpm software-properties-common tar unzip wget zip
+
+      # Qt is a prebuilt dependency (cmake/FindQt6.cmake), never a vcpkg port -
+      # see that file's own header. qt6-declarative-dev-tools/qt6-base-dev-tools
+      # pull in qmlcachegen and the other build-time QML tooling
+      # qt_add_qml_module needs; without them the GUI configure step fails
+      # rather than quietly building without AOT-compiled QML. The LinguistTools
+      # component (roadmap UX3) needs BOTH of two separate Debian/Ubuntu
+      # packages, confirmed via packages.ubuntu.com's file lists after the
+      # single-package version of this line still failed on arm64 with the
+      # exact symptom below: qt6-l10n-tools ships only the lupdate/lrelease/
+      # lconvert binaries and phrasebooks (no CMake integration at all),
+      # while Qt6LinguistToolsConfig.cmake - the file that actually defines
+      # qt_add_translations()/qt6_add_lupdate()/qt6_add_lrelease() - ships in
+      # qt6-tools-dev instead, bundled there with the unrelated Designer/
+      # Assistant tools upstream's own qttools repo groups it with. Missing
+      # qt6-tools-dev doesn't fail find_package(Qt6 ... COMPONENTS ...
+      # LinguistTools) itself (Core/Gui/Qml/Quick/QuickControls2/Concurrent
+      # all resolve fine, so the REQUIRED call as a whole reports success);
+      # it instead leaves qt_add_translations undefined, surfacing much
+      # later as "Unknown CMake command" at the call site in
+      # apps/gui/CMakeLists.txt - a confusing error to trace back to a
+      # missing apt package, which is why this comment spells it out.
+      #
+      # The qml6-module-* lines are the RUNTIME modules ac3gui's own imports
+      # resolve to, read off apps/gui/qml/*.qml: QtQuick, Controls and the
+      # Templates underneath them, Dialogs and the folder model its
+      # non-native FileDialog falls back on, Layouts, Window, QtCore for
+      # Main.qml's Settings, and the two QtQml modules QtQuick's own qmldir
+      # names. Deliberately not the Crucible pass's list further down - that
+      # is a different window with different imports (Effects, Qt.labs.platform
+      # and Quick 3D there; none of them here). These are the same names
+      # cmake/Packaging.cmake declares as the runtime .deb's Depends when the
+      # GUI is in the package, and installing them by name here is what keeps
+      # the two lists in step: an apt-get that cannot resolve one of these
+      # fails this step loudly, whereas a wrong name in the Depends field
+      # would ship and make the .deb uninstallable instead. The -dev
+      # packages above already pull most of them in transitively, which is
+      # why the QML tests have passed on every leg while the .deb's own
+      # dependency list stayed missing.
+      - name: Install Qt6 (Linux GUI)
+        if: matrix.gui && runner.os == 'Linux'
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get install -y -qq --no-install-recommends \
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
+            qt6-l10n-tools qt6-tools-dev \
+            qml6-module-qtcore qml6-module-qtqml-models qml6-module-qtqml-workerscript \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
+            qml6-module-qtquick-dialogs qml6-module-qtquick-layouts \
+            qml6-module-qtquick-window qml6-module-qt-labs-folderlistmodel
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      # ---------------------------------------------------------------------
+      # Toolchains
+      # ---------------------------------------------------------------------
+      # gcc-16 and LLVM 22, from the scripts the org-shared runner fleet repo,
+      # iainchesworthlabs/ci-runners, uses to build its own images, copied
+      # verbatim. On the pinned 26.04 container both take
+      # the distribution-archive path and neither fallback runs. Each script
+      # asserts its own resulting version and exits non-zero on drift.
+      # `sudo` is absent in the container (already root) and required on the
+      # host runners, hence the probe rather than a hardcoded prefix.
+      - name: Install GCC 16
+        if: matrix.gcc
+        run: |
+          set -eu
+          if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/02-gcc-toolchain.sh
+          else bash .github/toolchain/02-gcc-toolchain.sh; fi
+
+      - name: Install LLVM ${{ inputs.llvm_version }}
+        if: matrix.llvm && runner.os == 'Linux'
+        run: |
+          set -eu
+          if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/03-llvm-toolchain.sh
+          else bash .github/toolchain/03-llvm-toolchain.sh; fi
+
+      # ffmpeg is the gold-reference gate's decode oracle (see
+      # tools/checks/verify_gold_reference.sh). Proven first on macOS alone (the
+      # newest, least-trusted leg); gold_reference now covers every packaged
+      # leg except linux-llvm-asan-ubsan, which stays a diagnostic-only build
+      # (see that matrix entry's own comment) but still needs it: the codec
+      # matrix step below (matrix.sanitizer) runs tools/ci/run_codec_matrix.sh,
+      # which also uses ffmpeg as its independent oracle regardless of the
+      # gold-reference gate being skipped on this leg.
+      - name: Install ffmpeg (Linux)
+        if: (matrix.gold_reference || matrix.sanitizer) && runner.os == 'Linux'
+        run: apt-get install -y -qq --no-install-recommends ffmpeg
+
+      # CMakePresets.json declares the project's real minimum (cmakeMinimumRequired);
+      # this asserts the RUNNER actually meets it rather than letting a stale image
+      # fail later with a confusing "unknown preset field" error. gcc/llvm/msvc are
+      # asserted the same way, all against the pins toolchain-versions resolved
+      # above - see docs/ci-self-hosted-runners.md.
+      # ---------------------------------------------------------------------
+      # Configure / build / test
+      # ---------------------------------------------------------------------
+      # Toolchain assert, vcpkg setup, Configure (presets carry generator,
+      # compiler, Release, AC3FORGE_BUILD_GUI=OFF - `cmake --preset
+      # config-<leg>` locally reproduces this exactly except for the
+      # QT_ROOT_DIR/-DAC3FORGE_BUILD_GUI overrides the action bolts on),
+      # Build (-k 0, warnings-as-errors) and Test - extracted into
+      # ./.github/actions/build-leg (docs/ci-lanes.md, CI lane partitions
+      # plan) so splitting this file into one reusable workflow per platform
+      # does not duplicate the sequence into each of them. See that action's
+      # own header and step comments for what each piece does and why;
+      # nothing about what runs or in what order changed by moving it there -
+      # composite action steps execute in this same job/workspace.
+      - uses: ./.github/actions/build-leg
+        with:
+          preset: ${{ matrix.preset }}
+          gui: ${{ matrix.gui }}
+          crucible: ${{ matrix.crucible }}
+          version-tag: ${{ inputs.version_tag }}
+          gcc-version: ${{ inputs.gcc_version }}
+          llvm-version: ${{ inputs.llvm_version }}
+          msvc-toolset: ""  # no Linux leg needs an MSVC toolset assert
+          cmake-min: ${{ inputs.cmake_min }}
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+
+      # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
+      # lightweight L4 SNR check from the project's original validation-
+      # pyramid design, now docs/verification.md). Proven on macOS alone
+      # first; now every leg has it except linux-llvm-asan-ubsan, which
+      # stays diagnostic-only (same reasoning as its `packageable` exclusion
+      # below - a sanitizer build's job is catching memory/UB errors, not
+      # re-proving codec correctness a plain build already did).
+      #
+      # Extracted into ./.github/actions/gold-reference-gate alongside
+      # build-leg above, for the same reason (docs/ci-lanes.md). Unlike
+      # build-leg this call still carries its own `if:` here - the action
+      # has no notion of matrix.gold_reference, so the caller still decides
+      # whether to run it at all, the same way the setup-msvc-env call above
+      # stays gated on `matrix.msvc`.
+      - name: Gold reference gate
+        if: matrix.gold_reference
+        uses: ./.github/actions/gold-reference-gate
+        with:
+          preset: ${{ matrix.preset }}
+          persist-quality-trend: ${{ inputs.persist_quality_trend }}
+
+      # The same gate a second time, on the spec's own direct transform
+      # evaluations instead of the fast paths (roadmap VX10). 0.9.0 flipped
+      # both transform defaults, and from then until this step existed every
+      # CI gate that touched a real stream ran in performance mode: the
+      # normative §8.2.3.2 forward MDCT and §7.9.4 step-3 inverse - the oracle
+      # every fast path is validated against - were covered only by
+      # transform-level unit tests. A change to either fast path could take
+      # its own reference with it and no end-to-end gate would notice.
+      #
+      # One leg, not all seven: mode=reference changes the arithmetic inside
+      # the transforms, not anything platform-specific, so paying for it on
+      # every leg would buy nothing. linux-gcc is the leg with the broadest
+      # coverage elsewhere (GUI, the ALSA fallback) and is a required check.
+      # Its labels are suffixed (see the script's own TRANSFORM_MODE comment),
+      # so its per-check JSON results sit beside the performance-mode run's in
+      # the same artifact rather than overwriting them.
+      - name: Gold reference gate (mode=reference)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          TRANSFORM_MODE: reference
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
+
+      # A third run of the same gate, against a decoder built float32 rather
+      # than double (roadmap PF7). Unlike mode=reference above this cannot be a
+      # token: AC3FORGE_DECODE_SCALAR is a BUILD option
+      # (src/forge/src/internal/scalar/), so it needs its own binary.
+      #
+      # Why it is worth a second build. Every fixture both bare-metal legs
+      # decode goes through the float32 path, and until this existed nothing
+      # measured whether that path is CORRECT - only
+      # tools/checks/check_decode_scalar_snr.py, which says the two builds agree
+      # with each other. Agreement is not correctness. This is the gate that
+      # compares a decode against FFmpeg's and against the source, and it had
+      # only ever been pointed at a double build.
+      #
+      # One leg, same as mode=reference and for the same reason: the scalar
+      # changes arithmetic inside the decoder, not anything platform-specific.
+      # ac3cli only - the rest of the tree is untouched by the option and
+      # building it again would buy nothing.
+      - name: Build a float32 decoder
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-${{ matrix.preset }} -B build/decode-scalar-float                 -DAC3FORGE_DECODE_SCALAR=float
+          cmake --build build/decode-scalar-float --target ac3cli
+
+      - name: Gold reference gate (float32 decode)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          # Suffixed so this run's per-check JSON lands beside the other two in
+          # the same artifact rather than overwriting them, and so the quality
+          # trend keys it as its own series - append_quality_history.py matches
+          # on (leg, codec, check), and the suffix is part of the check name.
+          EXTRA_LABEL_SUFFIX: _float32
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh build/decode-scalar-float/bin/ac3cli
+
+      # The float32 decode against the double one, which is the other question:
+      # the gate above says each is right, this says they are the same. Both
+      # binaries already exist at this point, and the streams the comparison
+      # needs are the ones the gate just encoded.
+      - name: Float32 vs double decode
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          build/config-${{ matrix.preset }}/bin/ac3cli encode               tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py               --double-cli build/config-${{ matrix.preset }}/bin/ac3cli               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
+
+      # The third scalar (planning/arithmetic-tiers.md): the fixed-point
+      # decoder, Q7.24 in an int32, for parts with no FPU. The same two
+      # questions as the float32 build's, with its own floor: 110 dB against a
+      # measured 121 on these three streams (and 110.8 on the widest of the
+      # checked-in third-party streams) - the tier's precision is that of the
+      # block exponent the store carries, not of the absolute format, and a
+      # drop to 100 would be a lost bit somewhere in that machinery.
+      - name: Build a fixed-point decoder
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-${{ matrix.preset }} -B build/decode-scalar-fixed -DAC3FORGE_DECODE_SCALAR=fixed
+          cmake --build build/decode-scalar-fixed --target ac3cli
+
+      - name: Gold reference gate (fixed-point decode)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          EXTRA_LABEL_SUFFIX: _fixed
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh build/decode-scalar-fixed/bin/ac3cli
+
+      - name: Fixed-point vs double decode
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          build/config-${{ matrix.preset }}/bin/ac3cli encode tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py --double-cli build/config-${{ matrix.preset }}/bin/ac3cli --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
+
+      # The tier's own gate, natively: the same fourteen fixtures the bare-metal
+      # leg decodes under QEMU, decoded here on x86, their PCM hashes held to
+      # the pinned ones (tests/golden/fixed-probe-pcm-hashes.json). Two
+      # architectures, two compilers, one set of hashes - integer arithmetic
+      # has nothing to differ by, and this is what says so every run.
+      - name: Fixed-point probe natively, hashes against the pinned ones
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/checks/run_baremetal_probe.sh --host --scalar=fixed | tee "$RUNNER_TEMP/fixed-host.txt"
+          python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "$RUNNER_TEMP/fixed-host.txt"
+
+      # The same two questions for the ENCODE path's scalar. AC3FORGE_ENCODE_SCALAR
+      # (src/forge/src/internal/scalar/encode/) is the axis the minimum-footprint
+      # profile encodes on for the ESP32-S3, and a float encoder is a different
+      # thing from a float decoder: it makes its own decisions at its own
+      # thresholds and rounds its own coefficients, so it produces a different,
+      # equally valid stream rather than a near-identical decode. Two checks,
+      # then: its streams through the gold-reference gate, decoded by FFmpeg and
+      # by this project's decoder against the same floors as the double
+      # encoder's, and its worst channel held to within half a dB of the double
+      # encoder's by tools/checks/check_encode_scalar_quality.py. Again ac3cli
+      # only, again one leg, for the reasons given above.
+      - name: Build a float32 encoder
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-${{ matrix.preset }} -B build/encode-scalar-float \
+                -DAC3FORGE_ENCODE_SCALAR=float
+          cmake --build build/encode-scalar-float --target ac3cli
+
+      - name: Gold reference gate (float32 encode)
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        env:
+          EXTRA_LABEL_SUFFIX: _encfloat
+          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
+        run: bash tools/checks/verify_gold_reference.sh build/encode-scalar-float/bin/ac3cli
+
+      - name: Float32 vs double encode
+        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/checks/check_encode_scalar_quality.py \
+              --double-cli build/config-${{ matrix.preset }}/bin/ac3cli \
+              --float-cli build/encode-scalar-float/bin/ac3cli \
+              --workdir "$(mktemp -d)"
+
+      # Handed off to the quality-trend job below, which runs once (not once
+      # per leg) after every gold_reference leg has passed - see that job's
+      # own header comment for why it is a separate job rather than each leg
+      # pushing its own commit.
+      - name: Upload gold-reference results
+        if: matrix.gold_reference && inputs.persist_quality_trend
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gold-reference-${{ matrix.preset }}
+          path: ${{ runner.temp }}/gold-reference-results/*.json
+          if-no-files-found: error
+
+      # ctest above already covers the codec; this covers the one thing it
+      # can't - that ac3gui actually starts, loads its QML, and drives a real
+      # encode through the Qt event loop. offscreen needs no display, so it
+      # runs the same in this container as it does on a workstation. See
+      # docs/building.md's Linux section for why the qmlshapesplugin /
+      # labsmodelsplugin / qmlfolderlistmodelplugin CMake warnings during
+      # Configure, above, don't affect this.
+      - name: Smoke test ac3gui (headless)
+        if: matrix.gui
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        # apps/gui/CMakeLists.txt sets MACOSX_BUNDLE ON unconditionally, but it
+        # is a no-op everywhere except APPLE, where it moves the built
+        # executable to bin/ac3gui.app/Contents/MacOS/ac3gui instead of plain
+        # bin/ac3gui - the property Linux never sets and Windows doesn't need
+        # (WIN32_EXECUTABLE controls the console-vs-GUI subsystem there, not
+        # where the .exe lands).
+        #
+        # QSG_RENDER_LOOP=basic and the perl-alarm wrapper are both macOS-only
+        # and both about the same hang the "Test" step hit on this leg's
+        # first-ever GUI run (see apps/gui/tests/CMakeLists.txt's identical
+        # QSG_RENDER_LOOP comment for the render-loop-deadlock hypothesis).
+        # ac3gui --smoke drives the same QQmlApplicationEngine/QQuickWindow
+        # path ac3gui_qmltests does, so it is at equal risk and had no bound
+        # of its own - a hang here would silently eat the rest of this leg's
+        # 6-hour job ceiling exactly like the Test step did. `perl` (not
+        # `timeout`, which macOS's BSD userland doesn't ship) is on every
+        # macOS runner image by default.
+        run: |
+          set -euo pipefail
+          bin="build/config-${{ matrix.preset }}/bin/ac3gui"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            bin="build/config-${{ matrix.preset }}/bin/ac3gui.app/Contents/MacOS/ac3gui"
+            export QSG_RENDER_LOOP=basic
+          fi
+          smoke_args=(--smoke
+            fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav
+            "${RUNNER_TEMP}/ac3gui-smoke.ac3"
+            "${RUNNER_TEMP}/ac3gui-smoke.png")
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            perl -e 'alarm shift; exec @ARGV' 120 "$bin" "${smoke_args[@]}"
+          else
+            "$bin" "${smoke_args[@]}"
+          fi
+
+      # Roadmap UX3's own literal ask: "newly added strings cannot silently
+      # fall out of the catalogue". Re-runs lupdate (the ac3gui_lupdate
+      # target qt_add_translations() creates - apps/gui/CMakeLists.txt)
+      # against the same QML/C++ sources it scans at release time, then
+      # fails if that changed any of the six real .ts files - a qsTr()
+      # string added or edited without re-running lupdate would otherwise
+      # rot silently until someone happened to notice. Only runs once (this
+      # leg) since extraction doesn't depend on OS/compiler - the sources it
+      # scans are identical everywhere gui: true builds ac3gui.
+      #
+      # This is the drift gate: it asks whether the catalogues match the
+      # sources, not whether every entry is translated. The stricter
+      # "zero unfinished" bar would now pass - every ac3gui catalogue was
+      # filled on 2026-09-06 and carries no unfinished entry - but it belongs
+      # in the test suite rather than here, where Crucible's equivalent
+      # already lives: tests/crucible/test_translations.cpp now asserts it
+      # over this application's seven catalogues as well as Crucible's six,
+      # runs on every platform, and names the entry that failed. A second
+      # copy in a workflow step would gate the same thing on one leg and
+      # report it worse.
+      - name: Check translations are up to date
+        if: matrix.gui && matrix.name == 'Linux GCC'
+        shell: bash
+        run: |
+          cmake --build --preset build-${{ matrix.preset }} --target ac3gui_lupdate -- -k 0
+          echo "::group::translations git diff debug"
+          pwd
+          echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git config --global --add safe.directory '*'
+          git rev-parse --show-toplevel || echo "rev-parse failed"
+          echo "::endgroup::"
+          cd "${GITHUB_WORKSPACE}"
+          git diff --exit-code -- apps/gui/translations
+
+      # Sanitizers only catch what actually executes. ctest's cases exercise
+      # encoder/decoder logic in isolation; this drives the real CLI across
+      # every layout, every Annex E tool token, both Atmos container modes and
+      # the metadata options, so the sanitizer sees code paths a unit test
+      # would not reach on its own. ASAN_OPTIONS/UBSAN_OPTIONS mirror what the
+      # ctest preset already sets for the Test step above.
+      #
+      # AC3FORGE_CROSS_TIER_CHECK runs this same matrix twice more, under
+      # AC3FORGE_SIMD_TIER=sse2 then =avx2, byte-diffing the two output
+      # trees (see run_codec_matrix.sh's own header comment) - gated the
+      # same way AC3FORGE_REQUIRE_AVX2 is above, to the one leg pinned to a
+      # GitHub-hosted (therefore AVX2-capable) runner rather than the
+      # dynamic self-hosted/GitHub-hosted labels most legs use.
+      - name: Codec matrix (sanitizer build)
+        if: matrix.sanitizer
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1
+          AC3FORGE_CROSS_TIER_CHECK: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '0' }}
+        run: bash tools/ci/run_codec_matrix.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
+
+      # Roadmap VX20: the conformance vector set - one stream per coding tool,
+      # layout and sample rate this encoder can produce, each with the PCM it
+      # was encoded from and the expected decode hashes, published as a
+      # release asset so another decoder implementer has something concrete to
+      # test against (docs/conformance-vectors.md).
+      #
+      # It runs on EVERY call, not just a release, deliberately: the generator
+      # drives real ac3cli command lines, and an option rename would otherwise
+      # rot it silently until the next tag - by which point the fix is
+      # blocking a release rather than a pull request. The release-only extra
+      # is --check-determinism, which regenerates the whole bundle a second
+      # time and fails if a single hash moved; that doubles the runtime, which
+      # is worth paying once per release and not once per push.
+      #
+      # One leg only. Encoded output is not bit-identical across compilers or
+      # architectures yet (docs/building.md; roadmap VX11/VX12), so a second
+      # leg's bundle would differ from this one's for no useful reason - the
+      # manifest records the toolchain that built it either way. linux-gcc is
+      # the leg that carries it because it is the x86-64 reference toolchain
+      # and already a release_package leg.
+      #
+      # python3 is not in the container bootstrap: nothing else in this job
+      # needs it.
+      - name: Install python3 (conformance vectors)
+        if: matrix.conformance_vectors
+        run: apt-get install -y -qq --no-install-recommends python3
+
+      - name: Generate conformance vectors
+        if: matrix.conformance_vectors
+        shell: bash
+        env:
+          PRESET: ${{ matrix.preset }}
+          PUBLISH: ${{ inputs.publish_conformance_vectors }}
+        run: |
+          set -euo pipefail
+          cli="build/config-${PRESET}/bin/ac3cli"
+          version="$("$cli" --version | head -1 | awk '{print $NF}')"
+          extra=""
+          if [ "$PUBLISH" = "true" ]; then
+            extra="--check-determinism --archive"
+          fi
+          # Word-split on purpose: $extra is either empty or two flags.
+          # shellcheck disable=SC2086
+          python3 tools/generators/gen_conformance_vectors.py --cli "$cli" --out "dist/ac3forge-conformance-vectors-${version}" $extra
+
+      - name: Upload conformance vectors
+        if: matrix.conformance_vectors && inputs.publish_conformance_vectors
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: conformance-vectors
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+      # The other side of the ALSA switch: a Linux machine without libasound's
+      # development headers must still configure, build and pass everything,
+      # falling back to src/audio/src/backend/posix/ - that is the whole point
+      # of the dependency being optional, and it is a claim that rots silently
+      # unless something checks it.
+      #
+      # CMAKE_DISABLE_FIND_PACKAGE_ALSA rather than -DAC3FORGE_WITH_ALSA=OFF,
+      # because OFF skips find_package() altogether: this way the AUTO path
+      # runs and genuinely fails to find ALSA, which is what a machine missing
+      # the package actually does. The assertion afterwards is the point of the
+      # step - without it a mistake that quietly built the ALSA backend anyway
+      # would still go green.
+      - name: Configure, build and test without ALSA
+        if: matrix.alsa_fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-${{ matrix.preset }} -B build/no-alsa \
+            -DCMAKE_DISABLE_FIND_PACKAGE_ALSA=TRUE 2>&1 | tee /tmp/no-alsa-configure.log
+          grep -q 'Audio backend  : posix' /tmp/no-alsa-configure.log || {
+            echo "::error::ALSA was disabled but the build did not fall back to the posix backend"
+            exit 1
+          }
+          cmake --build build/no-alsa -- -k 0
+          ctest --test-dir build/no-alsa
+
+      # AC3Forge Crucible on Linux (roadmap UX12, docs/crucible/promotion.md).
+      # One extra pass inside this leg rather than a matrix entry, the same
+      # shape as the ALSA fallback above, because it needs a different audio
+      # backend rather than a different compiler.
+      #
+      # Crucible cannot use the ALSA backend at all - it exists to tap each
+      # application separately and ALSA has no per-application concept - so
+      # this forces PipeWire, which apps/crucible/CMakeLists.txt also
+      # requires and refuses to build without. libpipewire-0.3-dev is
+      # installed here and not in the container bootstrap on purpose: adding
+      # it globally would change what -DCMAKE_DISABLE_FIND_PACKAGE_ALSA falls
+      # back to on the GCC legs, whose assertion expects posix.
+      #
+      # What this covers is exactly one thing: the Linux platform half -
+      # engine/platform/linux/, over the PipeWire capture and device watcher -
+      # compiling and linking. It deliberately runs no tests.
+      #
+      # Running the `crucible` ctest label here would look like more coverage
+      # and be none. Those cases drive the engine over the fakes and link
+      # tests/crucible/platform_services_stub.cpp, not the Linux platform half
+      # this leg exists to build, and every other Linux leg already runs them.
+      # (Worse, an earlier version of this step ran that label without
+      # building ac3tests. catch_discover_tests registers cases at build time,
+      # so there were none to match - and ctest exits 0 when nothing matches.
+      # It passed without running anything.)
+      #
+      # What no CI runner can reach is behaviour against a live PipeWire
+      # session: there is no session, so every path takes its "no session"
+      # arm. That is checked by hand on hardware with
+      # tools/checks/crucible_platform_probe.cpp; the plan records what the
+      # first such run found, which was five defects this step would never
+      # have caught.
+      - name: Build AC3Forge Crucible (Linux, PipeWire)
+        if: matrix.crucible && runner.os == 'Linux'
+        shell: bash
+        # This tree configures itself rather than reusing the matrix Configure
+        # step's, so it needs that step's version override too - and needs it
+        # through env: for the same template-injection reason (zizmor). Without
+        # it, the packages this step cpacks below carry whatever `git describe`
+        # finds, which on release.yml's workflow_dispatch path is the PREVIOUS
+        # release: the tag is pushed only after build/package/sign/attest all
+        # succeed, so it does not exist while this runs (see
+        # cmake/GitVersionDerivation.cmake). This step has no do_package or
+        # release_package gate and its upload below uses the packages-* name
+        # release.yml collects, so a mis-stamped ac3forge-crucible-<previous
+        # version> would be attached to the release beside correctly versioned
+        # assets.
+        env:
+          VERSION_TAG_INPUT: ${{ inputs.version_tag }}
+        run: |
+          set -euo pipefail
+          if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
+          export DEBIAN_FRONTEND=noninteractive
+          $SUDO apt-get update -qq
+          # libpipewire for the engine, libxcb for its X11 full-screen check
+          # (apps/crucible/CMakeLists.txt, AC3FORGE_CRUCIBLE_X11; asserted on
+          # below, since AUTO would quietly leave it out), dpkg-dev for the
+          # .deb's shlibdeps,
+          # and distro Qt for the window and its Qt Quick tests - the same
+          # apt Qt the GUI leg above uses (cmake/FindQt6.cmake, never vcpkg).
+          # apps/crucible/CMakeLists.txt asks for Qt 6.8; the fleet's
+          # Ubuntu 26.04 image carries 6.10, and the check below says what
+          # happens on a runner that carries less. The qml6-module-* lines
+          # are the runtime modules the window's imports resolve to
+          # (QtQuick, Layouts, Controls and the Templates underneath them,
+          # Effects, Dialogs and the folder model it uses, Qt.labs.platform
+          # for the tray, Quick 3D for the room, QtTest for the suite):
+          # without them the window builds and every test fails at import.
+          # qt6-svg-dev is the optional Qt SVG the window links for icon
+          # themes whose application icons are SVG only.
+          $SUDO apt-get install -y -qq --no-install-recommends \
+            libpipewire-0.3-dev libxcb1-dev dpkg-dev \
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
+            qt6-l10n-tools qt6-tools-dev qt6-quick3d-dev qt6-shadertools-dev \
+            qt6-svg-dev \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
+            qml6-module-qtquick-layouts qml6-module-qtquick-window qml6-module-qtquick-effects \
+            qml6-module-qtquick-dialogs qml6-module-qt-labs-folderlistmodel \
+            qml6-module-qt-labs-platform qml6-module-qtqml-workerscript qml6-module-qtqml-models \
+            qml6-module-qtquick3d qml6-module-qttest
+          # Passed unconditionally rather than through the optional-argument
+          # array the other two configure sites build up: they accumulate
+          # several optional arguments, this has exactly one, and an EMPTY
+          # override is explicitly a no-op - cmake/GitVersionDerivation.cmake
+          # tests `NOT "${DERIVED_VERSION_OVERRIDE}" STREQUAL ""` and falls
+          # through to `git describe` when it is, which is what every ordinary
+          # CI run wants.
+          cmake --preset config-${{ matrix.preset }} -B build/crucible \
+            -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_BUILD_TESTS=ON \
+            -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON \
+            -DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT" \
+            2>&1 | tee /tmp/crucible-configure.log
+          grep -q 'Audio backend  : pipewire' /tmp/crucible-configure.log || {
+            echo "::error::Crucible was configured but the PipeWire backend was not selected; \
+          apps/crucible/CMakeLists.txt should have refused this build"
+            exit 1
+          }
+          grep -q 'Crucible X11   : xcb' /tmp/crucible-configure.log || {
+            echo "::error::libxcb1-dev is installed but the X11 full-screen check was not configured"
+            exit 1
+          }
+          # The same shape for the third optional dependency: qt6-svg-dev is
+          # installed above, so the "not found" line means the window would
+          # ship with SVG-only application icons falling back to monograms.
+          ! grep -q 'Qt SVG not found' /tmp/crucible-configure.log || {
+            echo "::error::qt6-svg-dev is installed but Qt SVG was not found; SVG-only application icons would show the monogram"
+            exit 1
+          }
+          cmake --build build/crucible --target ac3crucible_engine ac3crucible-run -- -k 0
+          # Assert the runner was actually produced. CMake treats the
+          # application as optional and degrades quietly, so "the build
+          # succeeded" and "the thing got built" are different claims - the
+          # same reason the Windows legs assert on ac3crucible.exe.
+          test -x build/crucible/bin/ac3crucible-run || {
+            echo "::error::the Crucible build reported success but produced no ac3crucible-run"
+            exit 1
+          }
+
+          # The window. CMake warns and carries on when Qt is missing or too
+          # old; here that is only acceptable on a runner that cannot do
+          # better, and then loudly. This leg normally runs on the fleet
+          # (Ubuntu 26.04, Qt 6.10); when decide-runner falls back to
+          # GitHub's ubuntu-latest (24.04, Qt 6.4) the window cannot be
+          # built there, and a warning that names the reason beats a red
+          # leg for something unrelated to the change. With a new-enough Qt
+          # present, a missing window is a failure like any other.
+          QT_VER="$(qmake6 -query QT_VERSION 2>/dev/null || echo 0)"
+          if grep -q 'Qt6 not found' /tmp/crucible-configure.log; then
+            if dpkg --compare-versions "$QT_VER" lt 6.8; then
+              echo "::warning::Crucible window skipped on this runner: Qt $QT_VER is below the 6.8 apps/crucible/CMakeLists.txt needs (Accessible.announce, which the window uses to tell a screen reader what changed, is 6.8). The engine and runner were built; the window, its tests and its package were not exercised here."
+              exit 0
+            fi
+            echo "::error::the Crucible window was not configured although Qt $QT_VER is present: see the configure log above"
+            exit 1
+          fi
+          cmake --build build/crucible --target ac3crucible ac3crucible_qmltests ac3tests -- -k 0
+          test -x build/crucible/bin/ac3crucible || {
+            echo "::error::the Crucible build reported success but produced no ac3crucible"
+            exit 1
+          }
+
+          # Tests, in this tree, against this backend: the engine's own
+          # ([crucible] and [seams], on the fakes of the platform seams) and
+          # the PipeWire backend's contract ([audio-backend]), which no other
+          # leg runs on PipeWire; then the window's Qt Quick suite, headless.
+          # --no-tests=error, because a label with nothing behind it once
+          # passed a step like this having run nothing.
+          (cd build/crucible && ./bin/ac3tests "[crucible],[seams],[audio-backend]")
+          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+            ctest --test-dir build/crucible -L crucible-ui --no-tests=error --output-on-failure
+
+          # Package: the crucible component alone. The runtime component is
+          # the release legs' business and is not built here, and the
+          # component is a separate download everywhere anyway
+          # (docs/releasing.md). Then the same layout check the Windows leg
+          # runs on its zip, and the .deb's identity.
+          (cd build/crucible && cpack -B packages -D CPACK_COMPONENTS_ALL=crucible -G "TGZ;DEB")
+          shopt -s nullglob
+          tars=(build/crucible/packages/ac3forge-crucible-*.tar.gz)
+          if [ ${#tars[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-crucible-*.tar.gz - the crucible component did not reach CPACK_COMPONENTS_ALL on Linux (cmake/Packaging.cmake) or its install rules produced nothing (apps/crucible/CMakeLists.txt)."
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${tars[@]}"
+          python3 tools/ci/check_crucible_package.py "${tars[0]}"
+          debs=(build/crucible/packages/ac3forge-crucible_*.deb)
+          if [ ${#debs[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-crucible_*.deb (dpkg-deb is installed above; CPACK_DEBIAN_CRUCIBLE_FILE_NAME in cmake/Packaging.cmake names it DEB-DEFAULT style)"
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          dpkg-deb -I "${debs[0]}" | grep -E '^ (Package|Version|Section|Depends):'
+          # The field itself, not `dpkg-deb -I | grep -q`: this step runs under
+          # bash -eo pipefail, grep -q exits at its first match, and dpkg-deb,
+          # still writing the Depends line after it, dies of SIGPIPE - so the
+          # pipeline failed on a package that was named correctly.
+          if [ "$(dpkg-deb -f "${debs[0]}" Package)" != "ac3forge-crucible" ]; then
+            echo "::error::the Crucible .deb is not named ac3forge-crucible - CPACK_DEBIAN_CRUCIBLE_PACKAGE_NAME (cmake/Packaging.cmake) is not reaching the generator"
+            exit 1
+          fi
+
+      # packages-*, because that is the pattern release.yml downloads
+      # (release.yml's "pattern: packages-*"). Under the old name the Linux
+      # Crucible package was built and checked on every run and then collected
+      # by nothing, so a release could not carry it however green the leg was.
+      #
+      # With that name it IS a release asset: release.yml merges every
+      # packages-* artifact into one directory and attaches every file it
+      # finds there, so this rides along without being a release_package leg -
+      # which is why the configure above has to pass the version override like
+      # any other release-bound build. What it is not is a GUARANTEED asset:
+      # this step is skipped whole on a runner whose Qt is too old (see the
+      # step above), and if-no-files-found stays `ignore` for exactly that
+      # case, so release.yml's completeness check deliberately does not
+      # require it.
+      - name: Upload the AC3Forge Crucible Linux package
+        if: matrix.crucible && runner.os == 'Linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packages-crucible-${{ matrix.preset }}
+          # The .sha512 side-cars too, the same way the main "Upload package
+          # artifacts" step above lists one per extension: cpack writes a
+          # checksum beside every package it produces
+          # (CPACK_PACKAGE_CHECKSUM in cmake/Packaging.cmake), and
+          # docs/releasing.md says every package ships with one. Listing only
+          # the packages themselves left both checksums behind on the runner,
+          # so these two assets alone reached a release without the per-file
+          # checksum every other asset carries.
+          path: |
+            build/crucible/packages/ac3forge-crucible-*.tar.gz
+            build/crucible/packages/ac3forge-crucible-*.tar.gz.sha512
+            build/crucible/packages/ac3forge-crucible_*.deb
+            build/crucible/packages/ac3forge-crucible_*.deb.sha512
+          if-no-files-found: ignore
+
+      # The pass above is portable across Linux legs, which is why the arm64
+      # leg only had to set `crucible` to get it. Two things it cannot assert
+      # for itself, both of them about what this leg is here for.
+      #
+      # The first is its own Qt guard, which warns and exits 0 when the Qt it
+      # found is older than the 6.8 the window needs. Where that leaves this
+      # leg is worth being exact about, because the guard's own comment reads
+      # as if the runner supplied that Qt: it does not. Every Linux leg here
+      # runs inside the ubuntu:26.04 container this matrix pins, and both the
+      # bootstrap and the pass apt-install Qt into it, so the Qt on this leg
+      # is the same Qt the x86_64 leg builds against and nothing the runner
+      # fan-out picks can change it. What can still trip the guard is that
+      # image moving under both legs - and tripping it here would leave a
+      # green leg that built no window, ran no Qt Quick suite and packaged
+      # nothing, the same shape of pass over nothing the `crucible` ctest
+      # label once gave the step above. On the one leg that exists to check
+      # aarch64 there would then be nothing left checked, so this fails on it
+      # rather than forgiving it.
+      #
+      # The second is the architecture. Every name the pass globs for is
+      # computed from CMAKE_SYSTEM_PROCESSOR (cmake/Packaging.cmake, via
+      # cmake/toolchains/linux.llvm.toolchain.cmake), so its checks would pass
+      # unchanged on a package built for some other target. file(1) on the
+      # binary and the .deb's own Architecture field are what make "this is
+      # the aarch64 package" a checked claim rather than a filename - the one
+      # thing this leg exists to establish.
+      - name: Assert the Crucible package is aarch64 (Linux arm64)
+        if: matrix.crucible && matrix.preset == 'linux-llvm-arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x build/crucible/bin/ac3crucible || {
+            echo "::error::the Crucible pass produced no ac3crucible on the arm64 leg. It only skips the window when the Qt it found is below 6.8, and that Qt is apt-installed into this job's pinned ubuntu:26.04 container rather than taken from the runner - so read the warning it printed above: the container's Qt has moved, on this leg and on the x86_64 one with it."
+            exit 1
+          }
+          file build/crucible/bin/ac3crucible | tee /tmp/crucible-arch.txt
+          grep -q 'aarch64' /tmp/crucible-arch.txt || {
+            echo "::error::ac3crucible on the arm64 leg is not an aarch64 binary - see the file(1) line above"
+            exit 1
+          }
+          shopt -s nullglob
+          tars=(build/crucible/packages/ac3forge-crucible-*-Linux-aarch64.tar.gz)
+          if [ ${#tars[@]} -eq 0 ]; then
+            echo "::error::the Crucible pass packaged nothing named -Linux-aarch64.tar.gz; CPACK_SYSTEM_NAME (cmake/Packaging.cmake) takes that suffix from CMAKE_SYSTEM_PROCESSOR, which the preset's toolchain file resolves from its vcpkg triplet"
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          debs=(build/crucible/packages/ac3forge-crucible_*_arm64.deb)
+          if [ ${#debs[@]} -eq 0 ]; then
+            echo "::error::the Crucible pass packaged no ac3forge-crucible_*_arm64.deb - CPack's DEB generator takes the architecture from dpkg --print-architecture, so any other name here means this job is not running in the arm64 container its matrix entry asks for"
+            ls -1 build/crucible/packages || true
+            exit 1
+          fi
+          dpkg-deb -I "${debs[0]}" | grep -q '^ Architecture: arm64$' || {
+            echo "::error::the Crucible .deb is named for arm64 but does not declare Architecture: arm64"
+            exit 1
+          }
+          echo "aarch64 Crucible package: ${tars[0]}"
+          echo "aarch64 Crucible package: ${debs[0]}"
+
+      # Proves BUILD_SHARED_LIBS=ON actually works before it ships in a real
+      # release: ac3::forge_shared/matroska::matroska_shared existing and
+      # configuring cleanly (already exercised by every leg's normal
+      # config-<preset> build, since both variants are always built
+      # regardless of BUILD_SHARED_LIBS - see src/forge/CMakeLists.txt) is not
+      # the same claim as every in-tree consumer actually linking and
+      # running against the real .so - ac3cli/ac3tests/every example,
+      # including mux_mkv, the one that needs libmatroska.so alongside
+      # libac3forge.so. On linux-llvm only, the same "one extra pass inside
+      # an existing leg, not a new matrix entry" shape as the ALSA fallback
+      # step above - confirmed locally in WSL2 Ubuntu before landing here,
+      # not assumed: 304/304 tests passed, and `ldd bin/ac3cli` showed both
+      # .so files resolved via the build tree's own automatic RPATH, with
+      # nothing here needing to place them next to the executable the way
+      # examples/CMakeLists.txt's Windows-only DLL-copy step does.
+      #
+      # -LE Performance: this pass's own job is "does it link and run
+      # correctly as a shared library", not "is it still real-time under
+      # PIC/indirect-symbol codegen" - a materially different, never-promised
+      # performance bar the plain linux-llvm pass (same leg, run just before
+      # this one, static by default - the configuration every real consumer
+      # actually ships) already enforces. Confirmed for real on a shared
+      # GitHub Actions runner: the Atmos/JOC encoder measured a consistent
+      # ~79ms/frame here (encode_frame under PIC + hidden-visibility indirect
+      # calls) against the plain pass's real-time budget, comfortably inside
+      # the WSL2 measurement above's own margin - a genuine, repeatable
+      # characteristic of this configuration, not runner noise, and not a
+      # regression in the codec itself.
+      - name: Configure, build and test with BUILD_SHARED_LIBS=ON
+        if: matrix.preset == 'linux-llvm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-linux-llvm-shared
+          cmake --build build/config-linux-llvm-shared -- -k 0
+          ctest --preset test-linux-llvm-shared -LE Performance
+
+      # Packaging. windows-msvc always packages, on every push, as a
+      # continuous smoke test of the packaging path itself. For a real
+      # release (do_package set, from release.yml), only one leg per
+      # OS/arch actually packages as the release's own canonical artifact -
+      # `release_package: true` on windows-msvc, linux-gcc and
+      # linux-gcc-arm64 - rather than every packageable leg. A release ships
+      # one canonical build per platform for people to download, not a build
+      # per compiler-toolchain leg: windows-llvm and linux-llvm exist to
+      # catch compiler-specific bugs in CI, which they still do in full
+      # (build+test, unchanged) - packaging them too would just be two
+      # redundant, unlabelled-as-to-which-is-canonical zips per OS with
+      # nothing to tell a downloader apart. A packaging failure on a
+      # release_package leg blocks like any other leg's would, rather than
+      # being absorbed by continue-on-error. linux-llvm-asan-ubsan is never
+      # packaged at all (not `packageable` - see the matrix entry): there is
+      # no pack-linux-llvm-asan-ubsan preset, a sanitizer-instrumented debug
+      # build is a diagnostic tool, not something to ship.
+      #
+      # macOS (DR8) is neither of the two shapes above any more: macos-llvm
+      # and macos-llvm-x64 are each `packageable` but never `release_package`
+      # - a release doesn't want either leg's own single-arch .dmg as "the"
+      # macOS package now that a universal one exists. They still package on
+      # every ORDINARY push (the windows-msvc-style continuous smoke test,
+      # extended to both of them - useful as an independent per-arch check
+      # that packaging itself still works), just never on a do_package
+      # release run, where they instead run the install-tree steps below for
+      # package-macos-universal to lipo-merge, and that job uploads the
+      # actual release artifact.
+      #
+      # cpack reuses the same build/config-<leg> tree the Configure and Build
+      # steps above already produced - pack-<leg> points at the same
+      # config-<leg> configurePreset - so this proves the packaging path
+      # against the exact build that was just tested, not a separate one.
+      - name: Package
+        if: >-
+          matrix.packageable &&
+          (matrix.preset == 'windows-msvc' ||
+           (inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        shell: bash
+        run: cpack --preset pack-${{ matrix.preset }}
+
+      # The counterpart to the two Windows asserts above, for the files that
+      # had no assertion at all: ac3cli's generated man page and its four
+      # shell completions (apps/cli/CMakeLists.txt, roadmap IO8). Those are
+      # produced by running the freshly built ac3cli, so a cross build skips
+      # them - and until #527 that test was CMAKE_CROSSCOMPILING, which is
+      # TRUE on every native Linux and macOS build here (each
+      # cmake/toolchains/{linux.gcc,linux.llvm,macos.llvm}.toolchain.cmake
+      # sets CMAKE_SYSTEM_NAME unconditionally, and every Linux/macOS preset
+      # chainloads one). Both .tar.gz, both .deb, both .rpm and the universal
+      # .dmg shipped none of the five files, and no gate noticed: the only
+      # test asserting they exist is packaging/homebrew/Formula/ac3forge.rb's
+      # `test do` block, and a Homebrew build passes no toolchain file, so it
+      # went on passing throughout.
+      #
+      # The two OSes reach this at different times, which is worth knowing
+      # when reading a red run. The Package step above runs on the macOS legs
+      # on every ordinary push, so macOS is the per-PR guard; the Linux legs
+      # package only on a release run (inputs.do_package), so Linux is
+      # checked before a release ships rather than on every commit. Between
+      # them the regression cannot reach a published artifact.
+      #
+      # This asserts on the arm64 release leg too, which is correct because
+      # linux-gcc-arm64 runs on ubuntu-24.04-arm - real aarch64 hardware, so
+      # host and target match and the files are produced like anywhere else.
+      # Were that leg ever moved to an x86_64 host, the files would go missing
+      # from the arm64 release package for a reason this step should still
+      # report rather than excuse.
+      - name: Assert the CLI man page and completions were packaged (Linux/macOS)
+        if: >-
+          matrix.packageable && runner.os != 'Windows' &&
+          ((inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # The runtime component's own archive. The [0-9] is what keeps this
+          # off the sibling ac3forge-dev-* and ac3forge-crucible-* archives,
+          # which are different components with different contents and are
+          # not expected to carry these files (cmake/Packaging.cmake names
+          # all three). Linux gets a TGZ, macOS only ever a ZIP - see that
+          # file's own APPLE/UNIX generator branches.
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            archives=(packages/ac3forge-[0-9]*.tar.gz)
+          else
+            archives=(packages/ac3forge-[0-9]*.zip)
+          fi
+          if [ ${#archives[@]} -eq 0 ]; then
+            echo "::error::no runtime archive in packages/ - the runtime component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake), or CPACK_ARCHIVE_RUNTIME_FILE_NAME no longer produces the ac3forge-<version>-<system> name this looks for."
+            ls -1 packages/ || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${archives[@]}"
+          python3 tools/ci/check_cli_docs_package.py "${archives[0]}"
+
+      - name: Upload package artifacts
+        if: >-
+          matrix.packageable &&
+          (matrix.preset == 'windows-msvc' ||
+           (inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packages-${{ matrix.preset }}
+          # An explicit extension allowlist, not packages/* - CPack leaves its
+          # per-generator staging tree behind under packages/_CPack_Packages/
+          # (never cleaned up; this is normal CPack behaviour, not a bug
+          # here), and a bare packages/* glob matches that directory too.
+          # DragNDrop's staging tree in particular contains a symlink to
+          # /Applications for the drag-to-install UX - upload-artifact
+          # dereferences symlinks by default, so on a macOS runner that walks
+          # straight into the real /Applications (Xcode's framework tree is
+          # notorious for symlink cycles) and OOMs the upload step's Node
+          # process trying to archive it. See actions/upload-artifact#619 and
+          # #590. Restricting the glob to real package files and their
+          # checksums - the same extensions github-release's own glob looks
+          # for - sidesteps the staging tree entirely rather than trying to
+          # outrun it with excludes.
+          path: |
+            packages/*.zip
+            packages/*.zip.sha512
+            packages/*.tar.gz
+            packages/*.tar.gz.sha512
+            packages/*.deb
+            packages/*.deb.sha512
+            packages/*.rpm
+            packages/*.rpm.sha512
+            packages/*.exe
+            packages/*.exe.sha512
+            packages/*.dmg
+            packages/*.dmg.sha512
+          if-no-files-found: error
+
