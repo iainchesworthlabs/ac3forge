@@ -32,7 +32,7 @@ depend on them.
 
 ## What is here
 
-Four things, built on one codec — three of them shipping today.
+Four things, built on one codec.
 
 ### The library
 

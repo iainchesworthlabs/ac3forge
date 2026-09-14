@@ -1,7 +1,7 @@
 # The appliance plan
 
-This is a pointer, not a copy. Design proposals live in the repository's `planning/` directory
-and are deliberately not republished onto this site — see
+This page points to the plan rather than reproducing it. Design proposals live in the
+repository's `planning/` directory and are deliberately not republished onto this site — see
 [`planning/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/README.md)
 for why: a proposal read alongside reference documentation is too easily read as a shipped
 feature.
@@ -22,7 +22,7 @@ headless daemon and an optional kiosk window, and `cpp-httplib` for the HTTP lay
 Nothing under this name. **There is no `apps/hearth` in the tree.** What exists and is
 hardware-verified is the embedded player documented on [Hearth's own overview](../index.md) and
 the [ESP32-S3 platform page](../../platforms/bare-metal/esp32-s3.md) — a different codebase that
-shares the role, not the implementation.
+happens to share the role.
 
 ## The full record
 
@@ -34,7 +34,7 @@ and packaging identities, the CI plan, and the ten decisions with their reasonin
 
 ## Where to go next
 
-- [Hearth overview](../index.md) — what's real today.
+- [Hearth overview](../index.md) — what exists today.
 - [Crucible's own design record](../../crucible/design/promotion.md) — the closest precedent: a
   demo promoted to a product, with the same phase-by-phase shape.
 - [Roadmap](../../roadmap.md) — where this sits against everything else planned.

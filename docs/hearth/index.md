@@ -16,10 +16,10 @@ sink will take it.
 
     **A cross-platform appliance — a headless daemon for Linux, Windows and macOS with a web
     control page, a queue, and an HLS/CMAF client — is a fully decided plan
-    ([the design record](design/player-appliance.md)) and nothing more: there is no `apps/hearth`
-    in the tree.** The two share a name and a role (the sink in
-    [the project's source/transport/sink topology](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md)),
-    not yet a codebase.
+    ([the design record](design/player-appliance.md)); no code for it exists yet, and there is no
+    `apps/hearth` in the tree.** The two share a name and the sink role in
+    [the project's source/transport/sink topology](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md),
+    not a codebase.
 
 ## Where it runs
 
@@ -39,11 +39,10 @@ Hearth.
 
 ## What it does not do (yet)
 
-No install guide, no settings page, no troubleshooting page exists here, because the product
-they would document — a box you plug in next to a receiver and never touch again — has not been
-built. What's real today is the embedded player above, documented on its own platform pages
-rather than as a product guide, since it ships as example code and a component, not an
-installable application.
+No install guide, no settings page, no troubleshooting page exists here, because the appliance
+they would document has not been built. What exists today is the embedded player above,
+documented on its own platform pages rather than as a product guide, since it ships as example
+code and a component, not an installable application.
 
 ## Where to go next
 
