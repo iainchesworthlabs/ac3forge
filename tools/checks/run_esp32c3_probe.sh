@@ -33,7 +33,7 @@ PINS="$REPO/tests/golden/fixed-probe-pcm-hashes.json"
 
 # The decode arithmetic. `fixed` is the project's own default and the reason
 # this target exists; `float` builds the same part with the S3's tier, which is
-# the comparison docs/platforms/esp32.md's C3 row is made of. Passed to CMake
+# the comparison docs/platforms/bare-metal/esp32-c3.md's own row is made of. Passed to CMake
 # explicitly in both cases, for the reason the S3 runner gives about
 # AC3FORGE_STAGE_TIMERS: an option set on one run stays in the cache for the
 # next, and a run that silently inherited the other tier would report the

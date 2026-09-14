@@ -10,7 +10,7 @@ Phase 1 is the bitstream reader (`ac3iab.hpp`); phase 2 is MXF Track File
 extraction (`mxf.hpp`), both covered here. Mapping the parsed bed/object graph onto
 `ac3::oba::AtmosEncoder` (phase 3) is a separate module, `ac3::admbridge`'s `build_iab()` — see
 [ADM → Atmos bridging](adm-bridge.md#bridging-iab) — driven end to end by
-`ac3cli atmos-iab` (see [Commands](../cli/commands.md)).
+`ac3cli atmos-iab` (see [Commands](../forge/cli/commands.md)).
 
 ```cpp
 const auto frames = ac3iab::parse_iabitstream(path);   // a bare elementary .iab file

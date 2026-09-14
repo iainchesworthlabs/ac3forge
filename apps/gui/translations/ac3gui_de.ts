@@ -3346,8 +3346,8 @@
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="185"/>
-        <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too. Some panels still hold their controls at a fixed height and can clip the largest sizes — docs/gui/accessibility.md says which.</source>
-        <translation>Jede Größe im Fenster folgt diesem Wert; 100% ist die Größe, in der es gezeichnet wird. System übernimmt die Textgröße, die der Desktop meldet, und zählt 9 pt als 100%, sodass das Fenster auf einem Desktop mit größerer Grundgröße ebenfalls größer startet. Einige Bereiche halten ihre Bedienelemente noch auf fester Höhe und können die größten Größen abschneiden — docs/gui/accessibility.md sagt, welche.</translation>
+        <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too. Some panels still hold their controls at a fixed height and can clip the largest sizes — docs/forge/gui/accessibility.md says which.</source>
+        <translation>Jede Größe im Fenster folgt diesem Wert; 100% ist die Größe, in der es gezeichnet wird. System übernimmt die Textgröße, die der Desktop meldet, und zählt 9 pt als 100%, sodass das Fenster auf einem Desktop mit größerer Grundgröße ebenfalls größer startet. Einige Bereiche halten ihre Bedienelemente noch auf fester Höhe und können die größten Größen abschneiden — docs/forge/gui/accessibility.md sagt, welche.</translation>
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="190"/>

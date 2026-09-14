@@ -1,7 +1,7 @@
 # ac3forge
 
 AC3Forge is a clean-room AC-3, E-AC-3 and Dolby Atmos codec written from the published
-standards in C++23, and the two applications built on it.
+standards in C++23, and the applications built on it.
 
 Nothing here links FFmpeg or any other codec library. The FFmpeg command-line tools are used
 during development as an independent decoder to check output against; the build does not
@@ -32,7 +32,7 @@ depend on them.
 
 ## What is here
 
-Three things, built on one codec.
+Four things, built on one codec — three of them shipping today.
 
 ### The library
 
@@ -55,7 +55,7 @@ the [Python bindings](library/python-api.md). What it can and cannot do is on
 front end for encoding, decoding, muxing, inspection, QC and live capture, and `ac3gui`, the Qt
 Quick workbench with a plan view for placing objects and channel-level metering. The two ship
 together in one download in every generator and registry; the Forge page says how to get them,
-and the [CLI reference](cli/index.md) and [GUI guide](gui/index.md) cover each in full.
+and the [CLI reference](forge/cli/index.md) and [GUI guide](forge/gui/index.md) cover each in full.
 
 ### Crucible
 
@@ -68,6 +68,14 @@ window's suites run over it there; nobody has launched it on a Mac, and its Core
 never captured anything.
 [Install and first run](crucible/install.md) is the fastest way in.
 
+### Hearth
+
+[Hearth](hearth/index.md) is the project's playback member: what takes a stream and turns it into
+sound in a room. Today that's an embedded player — real and hardware-verified on an ESP32-S3, with
+an ESP32-C3 (emulation only) and an ESPHome component beside it. A cross-platform appliance daemon
+for Linux, Windows and macOS is a fully decided plan with no code behind it yet; see
+[Hearth's own overview](hearth/index.md) for exactly where that line sits.
+
 ## Where it runs
 
 | Target | What runs there | Strongest evidence |
@@ -78,8 +86,8 @@ never captured anything.
 | [macOS](platforms/macos.md) arm64 / Intel | Library, `ac3cli`, `ac3gui`; Crucible compiles | Green CI. Nothing has captured or played a sound |
 | [Android](platforms/android.md) (Shield) | Shield Atmos Demo only | Live objects out HDMI to a receiver, on the device |
 | [WebAssembly](platforms/wasm.md) | Decode and encode in a page | Demos published and running |
-| [ESP32-S3](platforms/esp32.md) | Decode or encode, incl. Atmos objects | Real time on a board at 240 MHz, every fixture. Two example players drive I2S |
-| [Bare metal](platforms/bare-metal.md) | Decode or encode, `arm-none-eabi` | Correct under QEMU. No real silicon |
+| [ESP32-S3](platforms/bare-metal/esp32-s3.md) | Hearth (two example players), decode or encode incl. Atmos objects | Real time on a board at 240 MHz, every fixture. Two example players drive I2S |
+| [Bare metal](platforms/bare-metal/cortex-m3.md) | Decode or encode, `arm-none-eabi` | Correct under QEMU. No real silicon |
 
 Picking a platform settles where the code runs, not what it can encode or decode — that is the
 same everywhere and is listed in [Capabilities](library/capabilities.md).
@@ -109,6 +117,10 @@ compiled to WebAssembly.
 - **Library** — [what it is and how to link it](library/index.md): the public C++ API, with
   [compiled examples](library/examples.md).
 - **Forge** — [what it is and how to get it](forge/index.md), then the
-  [CLI reference](cli/index.md) for `ac3cli` and the [GUI guide](gui/index.md) for `ac3gui`.
+  [CLI reference](forge/cli/index.md) for `ac3cli` and the [GUI guide](forge/gui/index.md) for `ac3gui`.
 - **Crucible** — [what it is](crucible/index.md): every application on the desk as an Atmos
   object, and [how to install it](crucible/install.md).
+- **Hearth** — [what it is today](hearth/index.md): a hardware-verified embedded player, and a
+  decided but unbuilt plan for a cross-platform appliance.
+- **Contributing** — [how to build and test it, and where the code lives](contributing.md): the
+  developer's entry point.

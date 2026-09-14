@@ -26,7 +26,7 @@ mangling one would break the very string it is meant to protect, and a real
 translation would leave them alone too.
 
 Run after regenerating the real catalog (regenerating this fixture is a
-separate, explicit step - see docs/gui/localisation.md - not part of the
+separate, explicit step - see docs/forge/gui/localisation.md - not part of the
 default build, since apps/gui/translations/ac3gui_xx.ts is committed, static
 input to ac3gui_qmltests):
 

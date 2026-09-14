@@ -6,7 +6,7 @@ changes in the window when the language reads right to left, the glossary the tr
 held to, and how the catalogues are regenerated and gated.
 
 The pipeline itself — `LanguageManager`, the `.ts` and `.qm` files, the shared canonical language
-set — belongs to [ac3gui's localisation page](../gui/localisation.md); Crucible reuses it rather
+set — belongs to [ac3gui's localisation page](../forge/gui/localisation.md); Crucible reuses it rather
 than carrying a second copy. What is below is Crucible's own half.
 
 ## What the chooser offers

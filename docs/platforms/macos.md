@@ -106,7 +106,7 @@ actual digital output, and no receiver has been asked to lock onto its output.
 
 **No EDID/ELD backend here either.** `ac3cli play` asks a chosen sink what it
 actually accepts before committing to a format (see
-[CLI → Following the sink](../cli/commands.md#following-the-sink)), and that read
+[CLI → Following the sink](../forge/cli/commands.md#following-the-sink)), and that read
 (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
 [Linux](linux.md#reading-a-sinks-own-edideld)). CoreAudio's device properties and
 IOKit's `IODisplayEDID` are both real APIs, but neither is documented to expose the CEA-861

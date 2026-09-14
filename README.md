@@ -25,13 +25,14 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 AC3Forge is a clean-room AC-3, E-AC-3 and Dolby Atmos codec, written from the published
-standards in C++23, and the two applications built on it.
+standards in C++23, and the applications built on it.
 
 | Component | What it is | Docs |
 |---|---|---|
 | **The library** — `ac3::forge` | The codec: encodes and decodes AC-3 and E-AC-3 — every coding mode, layout and Annex E tool, plus Atmos objects via JOC — with loudness metering and QC gates built in, MKV/MP4/MPEG-TS muxing, IAB and ADM/BW64 reading, IAMF writing, an AC-4 inspector, live capture/passthrough and object signing. C, Python, Rust and WebAssembly bindings. | [docs/library/](docs/library/index.md), with the full [capability tables](docs/library/capabilities.md) — packages, source builds and `pip install ac3forge` covered there |
-| **Forge** — `ac3cli` + `ac3gui` | The tooling over the library: a forty-one-command CLI and a Qt Quick workbench with a plan view for placing objects and channel-level metering. One release download carries both. | [docs/forge/](docs/forge/index.md) for installing it, then the [CLI](docs/cli/index.md) and [GUI](docs/gui/index.md) guides |
+| **Forge** — `ac3cli` + `ac3gui` | The tooling over the library: a forty-one-command CLI and a Qt Quick workbench with a plan view for placing objects and channel-level metering. One release download carries both. | [docs/forge/](docs/forge/index.md) for installing it, then the [CLI](docs/forge/cli/index.md) and [GUI](docs/forge/gui/index.md) guides |
 | **Crucible** — `ac3crucible` | A desktop application that makes every application playing sound an Atmos object the listener places in a room, streamed live over HDMI or decoded to whatever the endpoint takes. Ships its own silent virtual output device on Windows and taps PipeWire on Linux. A macOS platform half builds and is tested in CI; nobody has launched it on a Mac, and its Core Audio tap has never captured anything. | [docs/crucible/](docs/crucible/index.md), [install and first run](docs/crucible/install.md) |
+| **Hearth** | The playback member: turns a stream into sound in a room. Today that's an embedded player, real and hardware-verified on an ESP32-S3 (an ESP32-C3 and an ESPHome component beside it). A cross-platform appliance daemon for Linux, Windows and macOS is a fully decided plan with no code behind it yet. | [docs/hearth/](docs/hearth/index.md) |
 
 Nothing here links FFmpeg or any other codec library. The FFmpeg command-line tools are used
 during development as an independent decoder to check output against; the build does not
@@ -90,7 +91,7 @@ Every target builds and tests green in CI. Beyond that:
 | macOS arm64 / Intel | Library, `ac3cli`, `ac3gui`; Crucible compiles | — | ✗⁴ |
 | Android (NVIDIA Shield) | Shield Atmos Demo only, sideload-only | — | ✅⁵ |
 | WebAssembly | Decode and encode in a browser page | — | ✅⁶ |
-| ESP32-S3 | Decode (every layout/tool, Atmos objects) or encode (2/0, 5.1); reusable ESP-IDF component | ✅ correct | ✅⁷ |
+| ESP32-S3 | Hearth (two example players); decode (every layout/tool, Atmos objects) or encode (2/0, 5.1); reusable ESP-IDF component | ✅ correct | ✅⁷ |
 | ESP32-C3 | Decode only, fixed-point tier (no FPU), same component | ✅ correct | —⁸ |
 | Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal` | ✅ correct | —⁹ |
 
@@ -103,7 +104,7 @@ Every target builds and tests green in CI. Beyond that:
 6. Demo pages built and published live.
 7. Real time on the board for every decode fixture; AC-3 5.1 encode sits at the real-time line,
    the other encode rows run 1.3x to 1.7x over — see
-   [the capability table](docs/platforms/esp32.md#what-the-part-can-and-cannot-do).
+   [the capability table](docs/platforms/bare-metal/esp32-s3.md#what-the-part-can-and-cannot-do).
 8. Correct under `qemu-riscv32`: twelve of fourteen fixtures, byte-identical to the x86 host and
    Cortex-M3 leg; no board has run it, and the two 7.1.4 rows don't fit in its SRAM.
 9. Correct under QEMU's `mps2-an385`; no real silicon.
@@ -259,8 +260,10 @@ cannot do:
 | [docs/library/](docs/library/index.md) | The public API, with compiled examples |
 | [docs/library/examples.md](docs/library/examples.md) | Index of the example programs the library pages excerpt |
 | [docs/forge/](docs/forge/index.md) | Forge: what the `ac3cli` + `ac3gui` pair is, and the three ways to install it |
-| [docs/cli/](docs/cli/index.md) | The `ac3cli` reference: every command, the option grammars |
-| [docs/gui/](docs/gui/index.md) | Step-by-step `ac3gui` guide, with screenshots |
+| [docs/forge/cli/](docs/forge/cli/index.md) | The `ac3cli` reference: every command, the option grammars |
+| [docs/forge/gui/](docs/forge/gui/index.md) | Step-by-step `ac3gui` guide, with screenshots |
+| [docs/hearth/](docs/hearth/index.md) | Hearth: the embedded player today, and the planned cross-platform appliance's design record |
+| [docs/platforms/bare-metal/](docs/platforms/bare-metal/index.md) | Cortex-M3, ESP32-S3, ESP32-C3 and ESPHome: the bare-metal targets, one page each |
 | [docs/verification.md](docs/verification.md) | How output is checked, and where checking runs out |
 | [docs/threat-model.md](docs/threat-model.md) | Untrusted input: the trust boundary, memory-safety posture and resource limits |
 | [docs/conformance-vectors.md](docs/conformance-vectors.md) | The published stream set other decoders can test against |

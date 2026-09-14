@@ -27,7 +27,7 @@ audio objects around a room canvas and encode the result as E-AC-3 + JOC, live
 
 Dropping a `.wav` decodes it through the browser's own `AudioContext`, encodes it frame by
 frame through `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder`, measures the same PCM with
-`ac3::meta::LoudnessMeter`, and evaluates it against [`ac3cli qc`](cli/commands.md)'s own five
+`ac3::meta::LoudnessMeter`, and evaluates it against [`ac3cli qc`](forge/cli/commands.md)'s own five
 delivery presets (`ac3::meta::evaluate_qc_gate`): a loud file fails every preset, a
 properly-mastered one passes the presets it meets. The round-trip preview decodes the bytes
 this page just produced through the existing [decode demo](wasm-demo.md)'s own module and

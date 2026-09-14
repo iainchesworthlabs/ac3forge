@@ -380,7 +380,7 @@ struct ReconstructionState {
     // 16,384 and 32,768 bytes; the Atmos content this decoder has been pointed
     // at carries six objects, where they are 6,144 and 12,288. Two thirds of
     // this struct was provisioning for objects no stream in hand contains, on
-    // targets chosen because memory is scarce - see docs/platforms/esp32.md.
+    // targets chosen because memory is scarce - see docs/platforms/bare-metal/esp32-s3.md.
     //
     // Vectors rather than arrays for the same reason object_history above is
     // one, and resized in the same place by the same rule: a changed object

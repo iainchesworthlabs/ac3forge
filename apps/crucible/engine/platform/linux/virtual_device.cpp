@@ -11,7 +11,7 @@
 #include "platform_services.hpp"
 
 // The Linux VirtualDevice: the silent device applications play into
-// (docs/crucible/promotion.md, "The silent device, per platform").
+// (docs/crucible/design/promotion.md, "The silent device, per platform").
 //
 // Windows needs a signed kernel driver for this, because Windows gives user
 // mode no way to create a render endpoint. Linux does: a client asks the

@@ -281,7 +281,7 @@ Two of the tools are not in that automatic set, and the reasons are worth statin
 !!! example "See it in code"
     - [Encoding AC-3](../library/encoding-ac3.md)
     - [Encoding E-AC-3](../library/encoding-eac3.md)
-    - [CLI commands](../cli/commands.md)
+    - [CLI commands](../forge/cli/commands.md)
 
 ---
 

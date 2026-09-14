@@ -255,7 +255,7 @@ form pays goes as well. AC-3 has no per-substream storage to hand out views of, 
 one frame of its own (six channels, sized once); the saving there is the caller's. The §3.7
 hold-back's `std::nullopt`, a skipped programme and `skip_reconstruction` leave the sink uncalled;
 a concealed frame is delivered through it like any other. The
-[bare-metal probe](../platforms/bare-metal.md) decodes every fixture through these forms and holds
+[bare-metal probe](../platforms/bare-metal/cortex-m3.md) decodes every fixture through these forms and holds
 no PCM at all.
 
 An access unit's objects come through the same block. `PcmBlock::objects` is a view per JOC

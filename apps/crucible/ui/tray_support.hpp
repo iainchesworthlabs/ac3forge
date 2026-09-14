@@ -5,7 +5,7 @@
 // Whether this build publishes a system tray icon, and what to say when it
 // does not. A platform seam like ui/platform/<os>/app_icon_provider.cpp: one
 // file per operating system, exactly one compiled, no #ifdefs
-// (docs/crucible/promotion.md, "The platform tree").
+// (docs/crucible/design/promotion.md, "The platform tree").
 //
 // The question is whether this session has somewhere to put an icon, and Qt
 // answers it: QSystemTrayIcon::isSystemTrayAvailable(). All three platforms

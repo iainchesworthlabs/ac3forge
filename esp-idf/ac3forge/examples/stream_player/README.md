@@ -240,7 +240,7 @@ loop run at real time; the null sink runs flat out. Under QEMU it means less tha
 nothing — the emulator is not cycle-accurate and reports a CPU clock that
 disagrees with its own boot log. Real-time decode on this part is measured on a
 board, not here: an E-AC-3 5.1 frame decodes in 11.0 ms of its 32 at 240 MHz — see
-[`docs/platforms/esp32.md`](../../../../docs/platforms/esp32.md#timing). The
+[`docs/platforms/bare-metal/esp32-s3.md`](../../../../docs/platforms/bare-metal/esp32-s3.md#timing). The
 player's own figures from a board are below.
 
 ## On the board
@@ -529,7 +529,7 @@ PSRAM, and on the board the same 7.1.4 play decodes in 30 ms a frame, level
 with real time. The same stream decodes and renders onto twelve slots in about
 30 ms. See
 [`planning/esp32-stream-set.md`](../../../../planning/esp32-stream-set.md#on-a-board)
-and [Folded to stereo](../../../../docs/platforms/esp32.md#folded-to-stereo).
+and [Folded to stereo](../../../../docs/platforms/bare-metal/esp32-s3.md#folded-to-stereo).
 
 All of it is [`ac3forge/render.hpp`](../../include/ac3forge/render.hpp), one
 256-sample block at a time, which is why a 7.1.4 layout costs the player 16 KB

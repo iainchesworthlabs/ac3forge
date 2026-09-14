@@ -198,7 +198,7 @@ The twelve-slot shape does the same for 7.1.4 at `2.0` (3,212 free). Played as c
 slots those streams leave 147 KB free, so it is folding a programme with a four-channel
 dependent substream that costs the memory. The page's twelve-slot test folds a 5.1 stream for
 that reason. Since 2026-09-11 the output stage folds 256 samples at a time, and its largest
-allocation is 1,024 bytes where it was 6,144 ([Folded to stereo](../docs/platforms/esp32.md#folded-to-stereo)).
+allocation is 1,024 bytes where it was 6,144 ([Folded to stereo](../docs/platforms/bare-metal/esp32-s3.md#folded-to-stereo)).
 Run again on 2026-09-12, the two-slot shape folded 7.1, 5.1.4 and 7.1.4 to `2.0` and the
 twelve-slot shape 7.1 and 7.1.4, and one play still aborted: the fuzz seed's 7.1.4, fifth after
 boot in the two-slot shape, on the decoder's own frame-long channel buffers
@@ -287,7 +287,7 @@ the same channels on twelve slots in 1.4 to 2.2 ms. The difference is the fold: 
 streams, which carry no dynrng words and a dialnorm of -31, line-mode DRC and dialnorm do no
 per-sample work. Most of the fold's cost was two copies through the mask ROM's `memmove`, loops
 compiled at `-Os`, and frame-long buffers ([Folded to
-stereo](../docs/platforms/esp32.md#folded-to-stereo)). So a 7.1.4 stream at 2.0 fell behind:
+stereo](../docs/platforms/bare-metal/esp32-s3.md#folded-to-stereo)). So a 7.1.4 stream at 2.0 fell behind:
 `714-walk` put 149 of its 900 blocks into an empty queue, 940 ms of silence in 4.8 s. Behind, the
 decode task never waits on the sink, so core 1's idle task missed the five-second task
 watchdog, which printed a backtrace in `Eac3Decoder::decode_substream_core` and let the play go

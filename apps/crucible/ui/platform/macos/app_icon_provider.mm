@@ -23,12 +23,12 @@
 #include <utility>
 
 // The macOS AppIconProvider: an application's icon from its bundle, through
-// NSWorkspace (docs/crucible/promotion.md, Phase 5).
+// NSWorkspace (docs/crucible/design/promotion.md, Phase 5).
 //
 // **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 without a
 // Mac; since the same day tst_icons.qml creates AppIcon items on both macOS
 // legs, so requestImage() below answers for real
-// (docs/crucible/promotion.md, Phase 5). What no test can check is whether
+// (docs/crucible/design/promotion.md, Phase 5). What no test can check is whether
 // what it drew is the right icon: the suite asserts that an image came back,
 // not what is in it, and nobody has looked at one.
 //

@@ -74,7 +74,7 @@
 // software call, and Direct Form II Transposed is nine of them a sample (5
 // multiplies, 4 adds); the example's own level meter once cost twice the
 // decode it was measuring by squaring every sample in double
-// (docs/platforms/esp32.md), which is the same trap at a larger scale. A
+// (docs/platforms/bare-metal/esp32-s3.md), which is the same trap at a larger scale. A
 // small duplicated type, rather than templating the shared one onto a
 // caller with different precision needs, matches the coefficient
 // functions' own reasoning below.

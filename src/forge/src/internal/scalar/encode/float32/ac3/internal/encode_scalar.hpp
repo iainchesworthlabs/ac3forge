@@ -10,7 +10,7 @@
 // two stages 128 ms of a 352 ms E-AC-3 5.1 frame, every operation of both a
 // call into the mask ROM's software floating point on that single-precision
 // FPU. The decoder's own float conversion took its transform from that kind
-// of cost to 3.4 ms for six channels (docs/platforms/esp32.md). The
+// of cost to 3.4 ms for six channels (docs/platforms/bare-metal/esp32-s3.md). The
 // coefficients the transform produces are widened to double on their way into
 // the rest of the encoder, which is unchanged by this variant.
 

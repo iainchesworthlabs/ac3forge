@@ -86,7 +86,7 @@
 //   * The interleave is unlikely to be worth vectorising, and PIE is a trap
 //     worth naming. Roughly 12,000 stores per 32 ms frame at 8 channels is
 //     under 1% of a 240 MHz core, and the S3's PIE does no floating-point
-//     ARITHMETIC at all (docs/platforms/esp32.md) - so it could only help the
+//     ARITHMETIC at all (docs/platforms/bare-metal/esp32-s3.md) - so it could only help the
 //     integer shuffle after conversion, which is not where the time goes. The
 //     decode is the cost, and it is still unmeasured on hardware. Measure
 //     before optimising this.

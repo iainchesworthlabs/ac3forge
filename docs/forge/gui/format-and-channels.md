@@ -215,7 +215,7 @@ Advanced and Expert — a device dropdown annotated with what each endpoint can 
 already say what each accepts (`AC-3 + E-AC-3 ready`, `cannot bitstream`, …), and the button
 reads them rather than failing after the click. AC-3 rides data-type-1 bursts and E-AC-3
 data-type-21 bursts at four-times rate. See [Live capture & session](live-session.md) for the
-live equivalent, and [Platform notes](../platforms/windows.md) for which platforms have this
+live equivalent, and [Platform notes](../../platforms/windows.md) for which platforms have this
 hardware-confirmed.
 
 Every **finished run chip in the run strip** (not just the most recent one) carries this same

@@ -8,7 +8,7 @@
 # Trixie because it carries Qt 6.8.2, which is the Qt the Raspberry Pi the
 # crash was measured on carries, and because Debian publishes matching
 # -dbgsym packages for it - which is the thing a 2 GB Pi could not give
-# (docs/crucible/promotion.md, "The tray, and why Linux does not get one").
+# (docs/crucible/design/promotion.md, "The tray, and why Linux does not get one").
 #
 # Unlike the Windows guest next door this one runs no installer. The
 # published cloud image is a partition table and a root filesystem, so the

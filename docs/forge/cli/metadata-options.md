@@ -156,7 +156,7 @@ ignores them. `fast-imdct=off` and `mode=` select the inverse transform's evalua
 both codecs' decode alike. `monitor` and `spatial` take the same four: all three commands build
 one `ac3::DecoderConfig` from these options and hand it to the same decoder.
 
-See [Metadata](../library/metadata.md) for what each of these fields actually is at the library
+See [Metadata](../../library/metadata.md) for what each of these fields actually is at the library
 level (`dynrng`, `compr`, `dialnorm`, downmix levels) — the CLI tokens above map directly onto
 that page's config fields.
 
@@ -302,7 +302,7 @@ quality 0.4, capped at 320 kbps whenever the content would otherwise ask for mor
 (192 here) still drives the coupling/spx band-edge defaults the way it always has, since VBR has
 no fixed target rate to hand them. What quality 0.4 actually costs, and whether it beats CBR at
 that cost, is measured in
-[E-AC-3 rate control: what VBR and ABR are worth](../concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
+[E-AC-3 rate control: what VBR and ABR are worth](../../concepts/ac3-eac3.md#e-ac-3-rate-control-what-vbr-and-abr-are-worth).
 
 **`avg:` — average-rate (ABR).** `ac3cli eac3-encode in.wav out.ec3 192 none stereo avg:192`
 delivers a stream that averages 192 kbps over the long run while each frame's size still follows
@@ -351,7 +351,7 @@ layout: mono | stereo | 1+1 | 51 | 71 | 512 | 514 | 714
 
 `71` and `714` render fewer speakers than they code because, per §E3.8.2, a dependent
 substream's channels replace some of the bed's rather than adding to it — see
-[Wide layouts](../library/encoding-eac3.md) for the encoder-side mechanics behind that.
+[Wide layouts](../../library/encoding-eac3.md) for the encoder-side mechanics behind that.
 
 `1+1` is not a speaker layout at all — two independent, single-channel programmes sharing one
 syncframe (§5.4.2's "1+1 dual mono") — so it's never inferred from a source's channel count the
@@ -681,7 +681,7 @@ play options (play; after the positional arguments):
 
 When `play` is given a `device_index`, it asks what that sink actually accepts —
 its own EDID/ELD-carried Short Audio Descriptors where a backend can read them (real today only
-on ALSA; see [Linux](../platforms/linux.md)), the same live probe `outputs` uses everywhere
+on ALSA; see [Linux](../../platforms/linux.md)), the same live probe `outputs` uses everywhere
 else. By default (`follow=on`, the implicit default), a source format the sink rejects gets an
 automatic fallback:
 
@@ -805,7 +805,7 @@ Not yet supported, and refused rather than ignored:
 
 One thing worth knowing before shipping such a stream: **FFmpeg refuses it outright**, and not
 only the second programme — see
-[Validation → Where the oracles don't reach](../verification.md#where-the-oracles-dont-reach).
+[Validation → Where the oracles don't reach](../../verification.md#where-the-oracles-dont-reach).
 
 ## Programme options (`decode`, `qc`, `levels`): `programme=`
 
@@ -1029,7 +1029,7 @@ full report format and the exit-code convention this drives.
 ```text
 probe options (probe; any order, after the positional arguments):
   json=1            emit the JSON document instead of the human table
-                    (schema ac3forge.probe/1 - docs/cli/commands.md)
+                    (schema ac3forge.probe/1 - docs/forge/cli/commands.md)
   detail=frames     add a per-access-unit dump: offsets, sizes, CRC,
                     substream headers and each frame's object layer
   detail=blocks     the same, plus every block's coding tools and
@@ -1113,14 +1113,14 @@ Optional positional arguments, when omitted:
   `addbsi` object marker with it, so a `bed51` stream reads as ordinary 5.1 E-AC-3 all the way
   out: no `Atmos complexity` line from `scan`, no Atmos extension in the `dec3` box `fmp4`
   builds, no `CHANNELS="<N>/JOC"` in its playlists, and no "+ Dolby Atmos" from FFmpeg. See
-  [Atmos & JOC](../concepts/atmos-joc.md) for why a decoder can tell the difference at all.
+  [Atmos & JOC](../../concepts/atmos-joc.md) for why a decoder can tell the difference at all.
 - **`sign-objects`** (with **`signing-key=<path>`**): signs the object container's EMDF protection
   tag so a validating decoder reconstructs the objects instead of playing the bed. Honored by
   `atmos`, `atmos-path` and `atmos-encode`; `atmos-adm` and `atmos-iab` do not take it. Off
   unless you pass both — `sign-objects` alone with no key is an error. The key may also come from
   `AC3FORGE_SIGNING_KEY_FILE` / `AC3FORGE_SIGNING_KEY` instead of `signing-key=`. The key is never
   stored by the tool; the algorithm is in-tree but the key is yours to provision. Full details in
-  [Object signing](../concepts/object-signing.md).
+  [Object signing](../../concepts/object-signing.md).
 - **`fast-mdct=off`**: every encode runs the §7.9.4 fast forward MDCT by default (the quality
   evidence that made it the default: ~3e-12 max relative coefficient error against the direct
   form, 331 dB direct-vs-fast end-to-end SNR, 0.000 dB SNR delta against an independent oracle
@@ -1171,11 +1171,11 @@ Optional positional arguments, when omitted:
   output from before 0.9.0, not for new material. Unlike `fast-mdct=off` / `fast-imdct=off` this
   is **not** part of `mode=` in either direction: those two are the same answer computed two
   ways, agreeing to ~1e-12, while these are different answers — see
-  [Atmos & JOC](../concepts/atmos-joc.md#which-domain-the-matrix-lives-in). Note that the two
+  [Atmos & JOC](../../concepts/atmos-joc.md#which-domain-the-matrix-lives-in). Note that the two
   domains do not have the same latency, so a `decode` writing objects with `objects_dir=` gets
   them 576 samples behind the bed under `qmf` and 256 behind under `mdct`.
 - **`verify`**: `eac3-encode` only. Runs the encoder/decoder mirror self-check (`ac3::verify`,
-  see [Validation](../verification.md#six-independent-checks)) over every access unit the command
+  see [Validation](../../verification.md#six-independent-checks)) over every access unit the command
   emits: each one is decoded with this project's own decoder as soon as it is encoded, and the
   decoder's model of it — per-substream, per-block bit offsets, decoded exponents, `bap`, delta
   correction, AHT gain mode and gains, and the coupling, enhanced-coupling and
@@ -1194,7 +1194,7 @@ Optional positional arguments, when omitted:
   work. What it buys is the class of defect a round trip cannot see: the two sides differing in
   a way the audio survives. That matters most for `ecpl`, `tpn`, `fscod2` and `714`, which have
   no external decoder to check against at all — see
-  [Validation → where the oracles don't reach](../verification.md#where-the-oracles-dont-reach).
+  [Validation → where the oracles don't reach](../../verification.md#where-the-oracles-dont-reach).
   `encode` (AC-3) has no equivalent token yet; its half of the same facility is library-only
   (`ac3::verify::MirrorEncoder`).
 - **`keep-partial`**: `encode`, `eac3-encode` and `atmos-encode` refuse a frame that cannot fit the
@@ -1209,6 +1209,6 @@ Optional positional arguments, when omitted:
 
 ## Next
 
-[Concepts → Atmos & JOC](../concepts/atmos-joc.md) if any of `JOC`, `OAMD`, or the object/bed
-relationship above are unfamiliar; [Spatial & Atmos objects](../library/spatial-and-atmos.md) for
+[Concepts → Atmos & JOC](../../concepts/atmos-joc.md) if any of `JOC`, `OAMD`, or the object/bed
+relationship above are unfamiliar; [Spatial & Atmos objects](../../library/spatial-and-atmos.md) for
 the library-level API these commands are thin wrappers over.

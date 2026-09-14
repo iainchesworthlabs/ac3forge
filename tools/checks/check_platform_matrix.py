@@ -9,8 +9,9 @@ runnable the same way locally:
 
     python3 tools/checks/check_platform_matrix.py [--root <repo>]
 
-One check: every docs/platforms/*.md other than index.md itself is linked at
-least once from index.md. Links inside fenced code blocks and inline code
+One check: every docs/platforms/**/*.md other than index.md itself (recursive,
+so a subdirectory such as docs/platforms/bare-metal/ is covered too) is linked
+at least once from index.md. Links inside fenced code blocks and inline code
 spans are ignored, the same way check_doc_paths.py ignores them - they are
 examples of the syntax, not routes to a page.
 
@@ -43,7 +44,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 MATRIX = Path("docs/platforms/index.md")
-PLATFORM_GLOB = "docs/platforms/*.md"
+PLATFORM_GLOB = "docs/platforms/**/*.md"
 
 # Platform pages the matrix deliberately does not route to, each with the
 # reason. Empty today: every page under docs/platforms/ is reachable from the
@@ -103,7 +104,7 @@ def main() -> int:
     for target in links_in(matrix.read_text(encoding="utf-8")):
         linked.add((matrix.parent / target).resolve())
 
-    pages = sorted(p for p in root.glob(PLATFORM_GLOB) if p.name != "index.md")
+    pages = sorted(p for p in root.glob(PLATFORM_GLOB) if p.resolve() != matrix.resolve())
     if not pages:
         print(f"::error file={MATRIX.as_posix()}::no platform pages found under {PLATFORM_GLOB}")
         return 1

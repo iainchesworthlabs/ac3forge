@@ -88,7 +88,7 @@ $files = @($files | Where-Object { -not $_.FullName.StartsWith($driverRoot, [Sys
 
 # Build output is not source, and a build configured INSIDE the tree puts some
 # of it under apps/: apps/baremetal/platform/esp32s3 is built in place by
-# idf.py (docs/platforms/esp32.md), and CMake's generated ac3/export.hpp is a
+# idf.py (docs/platforms/bare-metal/esp32-s3.md), and CMake's generated ac3/export.hpp is a
 # conditional-compilation header by its very nature. One such build produced
 # 658 "violations", every one of them generated and none of them anybody's
 # code. src/quarantine/ was the same story waiting to happen on the src/ side.

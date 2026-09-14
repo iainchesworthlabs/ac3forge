@@ -139,12 +139,12 @@ concept at all, and building Crucible against ALSA is refused at configure time.
 
 That trade is uncomfortable and worth stating here rather than only there: forcing PipeWire gives
 up the passthrough path confirmed against a real receiver (ALSA `iec958`, on the Pi) for the one
-that is not. See [the plan](../crucible/promotion.md#alsa-or-pipewire).
+that is not. See [the plan](../crucible/design/promotion.md#alsa-or-pipewire).
 
 ## Reading a sink's own EDID/ELD
 
 `ac3cli play`, given a `device_index`, asks the sink what it actually accepts before committing
-to a format — see [CLI → Following the sink](../cli/commands.md#following-the-sink). On Linux
+to a format — see [CLI → Following the sink](../forge/cli/commands.md#following-the-sink). On Linux
 that read is real on ALSA only: the HD-audio kernel driver populates
 `/proc/asound/<card>/eld#<dev>.<port>` with the sink's own CEA-861 Short Audio Descriptors,
 already decoded into text fields, for every HDMI/DisplayPort output — a documented, stable

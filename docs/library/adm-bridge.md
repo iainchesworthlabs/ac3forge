@@ -15,7 +15,7 @@ directions live here now:
   `ac3cli decode ... adm_out`.
 
 Both directions are the same "one place `ac3adm` and `ac3::forge`/`ac3::oba` are allowed to meet"
-seam this module has always been, see [Commands](../cli/commands.md) for both commands.
+seam this module has always been, see [Commands](../forge/cli/commands.md) for both commands.
 
 **Opt-in, gated by the same flag as `ac3adm::ac3adm`.** `ac3::admbridge` depends on both
 `ac3adm::ac3adm` and `ac3::forge`, so it is meaningless without `AC3FORGE_BUILD_ADM=ON` and is
@@ -59,7 +59,7 @@ as the "mapping layer" it intended to share, and phase 3 has now landed: `build_
 (`ac3/admbridge/iab_bridge.hpp`) maps a whole parsed `ac3iab::IABitstreamFrame` sequence — from
 either of `ac3iab::ac3iab`'s two readers (`src/ac3iab`, phases 1-2: a bare elementary `.iab` file
 or a real MXF Track File) — onto this same `ObjectPath` layer, driven end to end by `ac3cli
-atmos-iab` (see [Commands](../cli/commands.md)). `ac3adm::AdmDocument` and `ac3iab::
+atmos-iab` (see [Commands](../forge/cli/commands.md)). `ac3adm::AdmDocument` and `ac3iab::
 IABitstreamFrame` are therefore both input shapes here, sharing the coordinate-conversion and
 `ObjectPath`-construction logic this module exists to keep independent of either container's own
 parsing — see "Bridging IAB" below for exactly what differs between the two.

@@ -430,5 +430,5 @@ session start, including whether the downmix leg runs.
 
 ## Next
 
-That's the whole app. Back to [Concepts](../concepts/index.md) for the standards this all
-implements, or [Library](../library/index.md) to build something with `ac3::forge` directly.
+That's the whole app. Back to [Concepts](../../concepts/index.md) for the standards this all
+implements, or [Library](../../library/index.md) to build something with `ac3::forge` directly.

@@ -397,7 +397,7 @@ and the rate-control search and exponent-run planner made cheaper the same day. 
 the gap is the search - exponent-run planning, the allocation probes, mantissa bit counts -
 which is integer work the decoder does once a block. On an ESP32-S3 the board encodes AC-3 2/0
 at 0.35x real time, E-AC-3 2/0 at 0.73x, AC-3 5.1 at 1.01x and E-AC-3 5.1 at 1.74x - the
-[ESP32-S3 page](platforms/esp32.md#encoding) has the six rows and the stage tables, and the
+[ESP32-S3 page](platforms/bare-metal/esp32-s3.md#encoding) has the six rows and the stage tables, and the
 first platform choice on the search, `delta_allocation`.
 
 `eac3_tools` is the row that reaches the coupling, spectral-extension and AHT encoders at all:
@@ -483,7 +483,7 @@ registration record, for the pointer to the spectrum scratch — the one `thread
 still declares, and 23,552 bytes on this profile in its float form rather than the 32,768 above.
 Both runners gate it at 1,024 — deliberately tight, because nothing here grows a little: either
 the scratch is handed back or it is not, and the difference is five figures.
-[The ESP32-S3 page](platforms/esp32.md#objects) has what it unblocked.
+[The ESP32-S3 page](platforms/bare-metal/esp32-s3.md#objects) has what it unblocked.
 
 **A float32-only path — met for the decode path.** `src/forge/src/internal/scalar/`'s
 seam carries `decode_scalar_t`: `float` under this profile, `double` by default in every other
@@ -498,7 +498,7 @@ decoupling, the whole of spectral-extension synthesis, the AHT's dequantiser and
 inverse, and JOC's object mixing - stayed `double` and was narrowed at the store. On a desktop
 that costs nothing; on the ESP32-S3's single-precision FPU every one of those operations was a
 call into the ROM's software routines, and a board profile on 2026-09-09 found them to be 80% of
-a 5.1 E-AC-3 decode ([the ESP32-S3 page](platforms/esp32.md#timing) has the stage table). Those
+a 5.1 E-AC-3 decode ([the ESP32-S3 page](platforms/bare-metal/esp32-s3.md#timing) has the stage table). Those
 paths now run in `decode_scalar_t` too, through templates whose `<double>` instantiations are the
 exported functions the ordinary build always called, so its arithmetic is unchanged. What still
 runs in `double` on this profile is stated rather than hidden: the per-block DRC gain, and the
@@ -588,7 +588,7 @@ them in `float` the board encoded AC-3 2/0 in 28.3 ms of its 32 (0.88x, from 2.3
 AC-3 5.1 in 71.0 ms (2.22x, from 6.25x); E-AC-3 5.1 went from 349 ms to 220. With the rest
 converted the same day: AC-3 2/0 in 12.1 ms (0.38x), E-AC-3 2/0 in 33.8 (1.06x), AC-3 5.1 in 35.1
 (1.10x), E-AC-3 5.1 in 81.2 (2.54x), and the §E3.5 row from 426 ms to 55. The
-[ESP32-S3 page](platforms/esp32.md#encoding) has every row and the stage table; what remains
+[ESP32-S3 page](platforms/bare-metal/esp32-s3.md#encoding) has every row and the stage table; what remains
 is the integer search. CI's `linux-gcc` leg builds this scalar's full CLI beside the float
 decoder's to run its streams through the gold-reference gate and
 `tools/checks/check_encode_scalar_quality.py`, which holds the float encoder's worst channel to

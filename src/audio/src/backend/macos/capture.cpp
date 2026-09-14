@@ -51,7 +51,7 @@
 //     descendant relation for it to follow, so there is nothing here to walk.
 //     A caller that wants a browser's audio has to name the process that is
 //     playing it. PipeWire's tap has the same property for its own reason
-//     (see docs/crucible/promotion.md's Phase 4 record), so Windows is the
+//     (see docs/crucible/design/promotion.md's Phase 4 record), so Windows is the
 //     only one of the three backends with a tap where that mode name is
 //     literal.
 //

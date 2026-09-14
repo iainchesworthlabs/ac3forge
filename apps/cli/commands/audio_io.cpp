@@ -688,7 +688,7 @@ int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
 // this was "two commands and knowing why" before, run back to back with the
 // middle file held in a temp path instead of one the operator has to name
 // and clean up themselves. 448 kbps matches the project's own transcode
-// examples throughout docs/cli/commands.md; the metadata options 'play's own
+// examples throughout docs/forge/cli/commands.md; the metadata options 'play's own
 // caller gave (dialnorm=, drc=, ...) still apply, carried through `meta`
 // exactly as they would to a direct 'transcode' invocation.
 int play_via_ac3_transcode(std::string_view in_path, const std::string& device_id,

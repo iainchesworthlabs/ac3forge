@@ -7,7 +7,7 @@
     This page plans **Hearth**, the sink member: the project's decode and passthrough path as a
     product, on a machine that plays what it is given and turns it into sound in a room. It keeps
     the shape of [the recasting plan](recasting.md) and
-    [the promotion plan](../docs/crucible/promotion.md): design sections say what changes and why,
+    [the promotion plan](../docs/crucible/design/promotion.md): design sections say what changes and why,
     each phase carries an exit criterion and says how it is verified,
     [Decisions](#decisions) lists the open questions and the option taken on each, and
     [What cannot be verified, and why](#what-cannot-be-verified-and-why) says where the evidence

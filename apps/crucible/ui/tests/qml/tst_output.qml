@@ -52,7 +52,7 @@ TestCase {
     // note is asserted by `visible`: a TestCase item is invisible by design
     // and an Item's `visible` reads the effective value, so nothing under one
     // can ever be seen (tst_settings.qml's driver test says the same, and
-    // docs/crucible/promotion.md records the sitting that cost). The other
+    // docs/crucible/design/promotion.md records the sitting that cost). The other
     // tests in this file read only the model and stay where they are.
     function test_pinOffersHeadphonesOnlyWhereTheRendererIs() {
         const page = createTemporaryObject(outputPage, testCase.parent);

@@ -10,7 +10,7 @@
 #include "pipewire_support.hpp"
 #include "platform_services.hpp"
 
-// The Linux DefaultDevice (docs/crucible/promotion.md, Phase 4).
+// The Linux DefaultDevice (docs/crucible/design/promotion.md, Phase 4).
 //
 // Two of the five answers come free: the endpoint list is the library's own
 // enumerate_render_devices(), which is what the output stage already probes,

@@ -11,7 +11,7 @@
 // run at real time and what makes its us_per_frame figures mean something. Here
 // the loop runs flat out, so a run under this sink says the decode is CORRECT
 // and says nothing whatever about whether it is FAST ENOUGH. See
-// docs/platforms/esp32.md on why QEMU cannot answer that either way.
+// docs/platforms/bare-metal/esp32-s3.md on why QEMU cannot answer that either way.
 
 #include "audio_sink.hpp"
 

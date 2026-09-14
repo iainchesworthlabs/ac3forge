@@ -136,7 +136,7 @@ std::uint32_t clamp_to_framable_eac3_bitrate(std::uint32_t kbps, ac3::SampleRate
 }
 
 // Corner of the LFE low-pass bundle C's assignment table applies to an
-// explicitly LFE/LFE2-routed full-bandwidth channel - see docs/gui/
+// explicitly LFE/LFE2-routed full-bandwidth channel - see docs/forge/gui/
 // source-assignment.md's LFE note and ac3::dsp::LfeLowpass's own header
 // comment for why 120 Hz and why a 4th-order Butterworth.
 constexpr double kLfeLowpassCornerHz = 120.0;
@@ -4484,7 +4484,7 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
     const std::uint32_t downmix_bitrate_kbps = ac3::clamp_to_legal_ac3_bitrate(p.bitrate_kbps);
 
     // The master alone routes into the coded bed - see runLiveSession's own
-    // design note (docs/gui/live-session.md): route()'s panning model treats
+    // design note (docs/forge/gui/live-session.md): route()'s panning model treats
     // a source's channel COUNT as a specific named WAV layout, which has no
     // sound meaning for two independent devices concatenated together, so a
     // plain channel-mode session's bed continues to come from the master
@@ -4863,7 +4863,7 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
             // its ring buffer holds right now (the master's own blocking
             // fill loop just above already gave it roughly one frame
             // period's worth of wall-clock time to deliver into), resampled
-            // to the master's clock. See docs/gui/live-session.md for the
+            // to the master's clock. See docs/forge/gui/live-session.md for the
             // servo/resampler design; ClockDriftEstimator/DriftResampler are
             // the shared library pieces ac3cli's own `live capture2=` uses.
             if (has_device2) {

@@ -2,7 +2,7 @@
 # publishing it to the ESP Component Registry.
 #
 # The same shape as npm.yml: a validate job that runs continuously, and a
-# publish job that is deliberately not armed. See docs/platforms/esp32.md.
+# publish job that is deliberately not armed. See docs/platforms/bare-metal/esp32-s3.md.
 #
 # WHY THE PACK IS NOT TRIVIAL, since a reader will otherwise wonder why this is
 # not three lines of `compote component upload`. `compote component pack` roots

@@ -111,7 +111,7 @@ Atmos session's object slots.
 !!! note "Platform backend"
     Live capture needs the platform's audio backend (WASAPI on Windows, CoreAudio on macOS, ALSA
     on Linux). See
-    [Platform notes](../platforms/windows.md) for what's actually hardware-confirmed on each OS —
+    [Platform notes](../../platforms/windows.md) for what's actually hardware-confirmed on each OS —
     the block reports itself unavailable on a build with no backend, rather than failing to load.
 
 ## 02 · Levels

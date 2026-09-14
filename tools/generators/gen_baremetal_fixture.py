@@ -29,7 +29,7 @@ channel layout is a row in the second. What each row is for:
   - E-AC-3 Atmos at 448 kbit/s, six objects over a 5.1 bed, decoded BED ONLY
     (DecoderConfig::skip_object_reconstruction). The bed is ordinary E-AC-3 and
     fits; JOC's own reconstruction state does not, on any target this profile
-    builds for - see docs/platforms/esp32.md. The fixture is here to hold that
+    builds for - see docs/platforms/bare-metal/esp32-s3.md. The fixture is here to hold that
     distinction: an Atmos stream PLAYS on a part that cannot render its objects,
     and this is what says so on the target rather than on a host.
   - E-AC-3 2/0 at 192 kbit/s with tools=all: a non-5.1 layout, and with it

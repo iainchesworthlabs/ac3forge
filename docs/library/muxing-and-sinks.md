@@ -649,7 +649,7 @@ codecs, how many channels and which sample rates a sink accepts — rather than
 `enumerate_render_devices()`'s own live-probe answer (open the device and try). `ac3cli play`
 uses it, EDID first and the probe as the documented fallback, to decide whether a source format
 needs the automatic AC-3/PCM fallback described in
-[Commands → Following the sink](../cli/commands.md#following-the-sink).
+[Commands → Following the sink](../forge/cli/commands.md#following-the-sink).
 
 Real on exactly one backend today: ALSA, reading the HD-audio kernel driver's own
 `/proc/asound/<card>/eld#<dev>.<port>` text interface (already decoded from the raw CEA-861

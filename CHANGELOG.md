@@ -421,7 +421,7 @@ release packaging.
   supplies (the bare-metal probe does; `--stage-timers` on both probe runners), and
   `AC3FORGE_MINIMAL_HOT_O2` compiles five decode-critical files at `-O2` under the `-Os`
   profile (on in the ESP32-S3 project, off by default; flash, not SRAM). `aht_inverse` gains a
-  `float` overload. [The ESP32-S3 page](docs/platforms/esp32.md#timing) has the stage tables.
+  `float` overload. [The ESP32-S3 page](docs/platforms/bare-metal/esp32-s3.md#timing) has the stage tables.
 - **Enhanced coupling too** (§E3.5), in a second pass: 217 ms a frame to 23.8 ms on the same
   board, so every E-AC-3 configuration the profile decodes is in real time there. The §3.5.5
   routines - `ecpl_channel_spectrum`, `ecpl_amplitudes`, `ecpl_angles`,
@@ -1188,7 +1188,7 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   extension. See [Muxing and sinks](docs/library/muxing-and-sinks.md).
 - **`ac3cli probe`**: what a stream declares — layout, substream map, tools in use, metadata
   ranges, CRC validity — without decoding audio. `json=1` emits a versioned schema.
-  [Command reference](docs/cli/commands.md).
+  [Command reference](docs/forge/cli/commands.md).
 - **`ac3cli probe` reads AC-4 too**, auto-detected. A new standalone `ac4::` library parses the
   sync frame, table of contents, presentation and substream-group framing (ETSI TS 103 190-1/-2)
   — channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike, including
@@ -1251,7 +1251,7 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   over optical" case now takes one command instead of two. `follow=off` restores the old refusal.
 - **A GUI stream player** — the twin of `ac3cli monitor` — with transport, live meters, the
   soundfield view, and WAV/object export from the same decode pass. A finished run offers **QC
-  this run** and **Inspect objects** directly. See [Open stream](docs/gui/open-stream.md).
+  this run** and **Inspect objects** directly. See [Open stream](docs/forge/gui/open-stream.md).
 - **Desktop integration**: drag-and-drop, `ac3gui <file>`, and `.ac3`/`.ec3` file associations on
   Windows, macOS and Linux, so the app appears in application menus instead of being launch-only.
 - **A self-contained Linux AppImage for `ac3gui`**, bundling its own Qt 6 instead of depending on
@@ -1266,7 +1266,7 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   sibling CountdownSolver project ships), with right-to-left mirroring and bundled Noto Sans
   Arabic/Hebrew faces for the three languages that need them. Coverage is partial today (window
   chrome, tab names, the Guided wizard, all of Preferences) and tracked, not hidden — see
-  [Localisation](docs/gui/localisation.md). A pseudo-locale QA fixture proves the extraction/
+  [Localisation](docs/forge/gui/localisation.md). A pseudo-locale QA fixture proves the extraction/
   compile/load pipeline end to end independent of real-language completeness, and CI now fails if
   a `qsTr()` change isn't reflected in the committed translation catalogue.
 - **GUI accessibility.** Every custom control and every control in the main window now reports a

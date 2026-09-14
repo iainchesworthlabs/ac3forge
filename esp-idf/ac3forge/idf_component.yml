@@ -20,7 +20,7 @@ description: >-
   not.
 url: https://github.com/iainchesworthlabs/ac3forge
 repository: https://github.com/iainchesworthlabs/ac3forge.git
-documentation: https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/esp32.md
+documentation: https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-s3.md
 issues: https://github.com/iainchesworthlabs/ac3forge/issues
 license: "GPL-3.0-or-later"  # matches LICENSE at the repo root
 
@@ -45,7 +45,7 @@ license: "GPL-3.0-or-later"  # matches LICENSE at the repo root
 #     has been built.
 #   - The ESP32-P4 is CLOSED, not deferred: its PIE vector unit is integer-only,
 #     so there is no float SIMD there to port to. See
-#     docs/platforms/esp32.md and PR #551.
+#     docs/platforms/bare-metal/esp32-s3.md and PR #551.
 targets:
   - esp32s3
   - esp32c3

@@ -14,7 +14,7 @@
 #include "x11_foreground.hpp"
 
 // The Linux Foreground's X11 half, with no X server in the room
-// (docs/crucible/promotion.md, "X11 full-screen detection"). Three things
+// (docs/crucible/design/promotion.md, "X11 full-screen detection"). Three things
 // live here and none of them needs a display:
 //
 // X11Foreground's policy over its reader - a pid only while the active

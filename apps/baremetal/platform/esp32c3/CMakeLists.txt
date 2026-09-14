@@ -43,7 +43,7 @@ set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
 #
 # It is still an override, not a hard-wire - `idf.py -DAC3FORGE_DECODE_SCALAR=float
 # build` measures the float tier on the same part, which is the comparison
-# docs/platforms/esp32.md's C3 row is made of. src/forge/minimal.cmake is what
+# docs/platforms/bare-metal/esp32-c3.md's own row is made of. src/forge/minimal.cmake is what
 # honours it; every other value of the option resolves to float32 there.
 set(AC3FORGE_DECODE_SCALAR "fixed" CACHE STRING
     "Decode arithmetic: fixed (this part has no FPU), float, or double")

@@ -399,7 +399,7 @@ later programme's substreams are never it.
 
 The CLI authors a second programme with `programme2=<file>` plus `programme2-layout=`,
 `programme2-bitrate=` and `programme2-dialnorm=`; see
-[docs/cli/commands.md](../cli/commands.md).
+[docs/forge/cli/commands.md](../forge/cli/commands.md).
 
 One caveat worth knowing before you ship such a stream: **FFmpeg cannot read it at all**, and not
 just the second programme — see

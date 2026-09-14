@@ -21,7 +21,7 @@ What is on the site instead: [the documentation](../docs/index.md) describes wha
 | [esp32-714-realtime.md](esp32-714-realtime.md) | 7.1.4 E-AC-3 in real time on the player: a stage-by-stage profile of the frame on a board, the options with what each saves, and the decisions | Built and verified on a board 2026-09-11; PR #657 |
 
 Two phase records stayed on the site because the reference pages cite them as evidence rather
-than as plans: [the Crucible promotion record](../docs/crucible/promotion.md), which carries the
+than as plans: [the Crucible promotion record](../docs/crucible/design/promotion.md), which carries the
 2026-09-05 hardware verification, and
 [the Windows demo record](../docs/platforms/windows-demo.md).
 

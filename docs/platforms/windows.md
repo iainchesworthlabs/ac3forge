@@ -107,7 +107,7 @@ is deliberately explicit about the difference.
 
 !!! note "No EDID/ELD backend on Windows"
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
-    see [CLI → Following the sink](../cli/commands.md#following-the-sink) — and that read
+    see [CLI → Following the sink](../forge/cli/commands.md#following-the-sink) — and that read
     (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
     [Linux](linux.md#reading-a-sinks-own-edideld)). WASAPI answers "will this
     endpoint accept this format" (`IsFormatSupported`, what `enumerate_render_devices()` already

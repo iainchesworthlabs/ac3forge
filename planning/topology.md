@@ -11,7 +11,7 @@
     ([decision 1](#decisions)); everything else here carries a recommendation and a cost.
 
     Shape follows [the recasting plan](recasting.md) and
-    [the promotion plan](../docs/crucible/promotion.md): design sections say what changes and why,
+    [the promotion plan](../docs/crucible/design/promotion.md): design sections say what changes and why,
     phases carry exit criteria and how each is verified, [Decisions](#decisions) lists what only
     remains open, and [What cannot be verified](#what-cannot-be-verified-and-why) says
     where the evidence stops.
@@ -190,7 +190,7 @@ protocol work changes it.
 
 Measured under `idf.py qemu` and landed in
 [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). The current figures live on
-[the ESP32-S3 page](../docs/platforms/esp32.md); the summary below is what this page's argument rests
+[the ESP32-S3 page](../docs/platforms/bare-metal/esp32-s3.md); the summary below is what this page's argument rests
 on.
 
 - **AC-3 *and* E-AC-3 5.1 both decode correctly on an ESP32-S3.** Six frames each, all twelve
@@ -221,7 +221,7 @@ table](../docs/performance-trend.md#minimum-footprint-decoder) carries the curre
 `main` at `be71f454`.
 
 There is now a `build-esp32s3` CI leg (in `espressif/idf:v6.1`, leg 6 of the Linux fan-out) and a
-`docs/platforms/esp32.md`.
+`docs/platforms/bare-metal/esp32-s3.md`.
 
 What that means for this page: **the sink role reaches a microcontroller**, as a decode that ran
 and matched rather than as a projection. That is what makes the network transport worth building,
@@ -400,7 +400,7 @@ separately — it touches `tools/`, so it costs one matrix run for the PR that a
 afterwards, since Script Lint (`ci.yml:434`) has no docs-only gate and already runs on every PR.
 
 **The ESP32-S3 work is [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546)**, opened after this page was first written. Its
-`docs/platforms/esp32.md` is a fifth cross-branch link if this page ever cites it directly — it
+`docs/platforms/bare-metal/esp32-s3.md` is a fifth cross-branch link if this page ever cites it directly — it
 does not today, and should not until one of the two lands.
 
 **PF7's footprint table is being re-measured** in

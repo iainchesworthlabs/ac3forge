@@ -1166,7 +1166,7 @@ ApplicationWindow {
         }
     }
 
-    // Roadmap C3 — see docs/gui/qc.md and QcDialog.qml's own header comment
+    // Roadmap C3 — see docs/forge/gui/qc.md and QcDialog.qml's own header comment
     // for why this is a standalone dialog rather than a tab: opening and
     // verifying an already-encoded file is a different workflow shape to
     // every tab beside it, which all configure an encode still to come.
@@ -7285,8 +7285,8 @@ ApplicationWindow {
                                             }
                                         }
                                     }
-                                    // Roadmap UX1's own run-chip shortcut: docs/gui/qc.md and
-                                    // docs/gui/inspect-objects.md both used to end by saying
+                                    // Roadmap UX1's own run-chip shortcut: docs/forge/gui/qc.md and
+                                    // docs/forge/gui/inspect-objects.md both used to end by saying
                                     // there was no way to jump from a finished run straight
                                     // into either dialog - this is that way. The first Menu
                                     // in this window (every other run action above is a flat

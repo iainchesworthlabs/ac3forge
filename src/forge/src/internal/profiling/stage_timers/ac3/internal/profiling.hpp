@@ -10,7 +10,7 @@
 // Tracy client in it; a minimum-footprint decoder on a bare-metal part has
 // neither, and the question that profile eventually has to answer - "where
 // do the microseconds of one frame go on this silicon?" - cannot be answered
-// from the emulator (docs/platforms/esp32.md's Timing section). So the same
+// from the emulator (docs/platforms/bare-metal/esp32-s3.md's Timing section). So the same
 // AC3_ZONE_SCOPED_N() markers the Tracy build uses are routed here to two
 // plain functions the APPLICATION supplies: one at zone entry, one at exit.
 // The library carries no clock, no table and no output of its own, because a

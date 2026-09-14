@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import Ac3ForgeCrucible
 
 // What Crucible is about to do to the sound settings, said once, before it
-// does it (docs/crucible/promotion.md, Phase 6). Every sentence that names
+// does it (docs/crucible/design/promotion.md, Phase 6). Every sentence that names
 // the silent device, or how this platform gets one, comes from
 // CrucibleController's seams (nullSinkName, silentDeviceAdvice,
 // silentDeviceBlocker, silentDeviceFromPackage, movesDefault), so the same

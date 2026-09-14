@@ -28,7 +28,7 @@ namespace ac3 {
 // the minimum-footprint profile (ac3/internal/encode_scalar.hpp), whose
 // targets have single-precision hardware at best: on an ESP32-S3 this
 // detector in double was 57 ms of a 201 ms AC-3 5.1 frame, every biquad tap
-// a call into the ROM's software floating point (docs/platforms/esp32.md).
+// a call into the ROM's software floating point (docs/platforms/bare-metal/esp32-s3.md).
 // The recipe is the same in both; only the rounding differs, and with it,
 // now and then, a decision that sits on a threshold.
 template <typename Scalar>

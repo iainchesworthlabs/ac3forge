@@ -2964,7 +2964,7 @@ TEST_CASE("every failure path returns its own documented exit code", "[cli][exit
     // The numbers here are the contract, not an implementation detail: a
     // script distinguishes a bad command line from a bad file from a failed
     // gate by exactly these. apps/cli/exit_codes.hpp is where they are chosen
-    // and docs/cli/metadata-options.md#exit-codes is where they are published;
+    // and docs/forge/cli/metadata-options.md#exit-codes is where they are published;
     // this is what keeps all three agreeing.
     SECTION("0 - success") {
         CHECK(run_cli("silence \"" + (dir / "exit_ok.ac3").string() + "\" 1 192", log) == 0);

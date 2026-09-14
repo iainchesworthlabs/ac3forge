@@ -366,7 +366,7 @@ void apply_analysis_window(std::span<const float, 512> x, std::span<float, 512> 
     // lazily). This used to narrow kAnalysisWindow per element instead, which
     // is the same value - but on a single-precision FPU each of those 512
     // narrowings is a software routine, and JOC's bed analysis runs this
-    // thirty times a frame (docs/platforms/esp32.md).
+    // thirty times a frame (docs/platforms/bare-metal/esp32-s3.md).
     const auto& window = analysis_window<float>();
     for (std::size_t n = 0; n < static_cast<std::size_t>(kN); ++n) {
         windowed[n] = x[n] * window[n];

@@ -182,7 +182,7 @@ Dialog {
                     onSelected: (value) => root.textScaleChoice = value
                 }
                 PrefsNote {
-                    text: qsTr("Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too. Some panels still hold their controls at a fixed height and can clip the largest sizes — docs/gui/accessibility.md says which.")
+                    text: qsTr("Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too. Some panels still hold their controls at a fixed height and can clip the largest sizes — docs/forge/gui/accessibility.md says which.")
                 }
 
                 Item { Layout.preferredHeight: Theme.space2 }

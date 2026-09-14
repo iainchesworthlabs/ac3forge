@@ -4,7 +4,7 @@ The minimum-footprint codec profile on an Espressif ESP32-S3: a 240 MHz dual-cor
 a single-precision FPU, 512 KB of internal SRAM and hardware I2S. It decodes AC-3 and E-AC-3
 — including Atmos objects — and encodes both, in internal SRAM with no PSRAM.
 
-It is the second bare-metal target. The first is [`arm-none-eabi` on QEMU](bare-metal.md), a
+It is the second bare-metal target. The first is [`arm-none-eabi` on QEMU](cortex-m3.md), a
 Cortex-M3 with no FPU. The S3 has hardware single-precision floating point, which is what makes
 the float32 path worth having and real-time decode worth measuring.
 
@@ -22,7 +22,7 @@ the float32 path worth having and real-time decode worth measuring.
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record, the spectrum scratch's pointer; 23,552 bytes while §E3.5 is in use |
 | Audio output | Two examples drive real peripherals — see [Examples](#examples) |
 | Real time | **Decode, yes, on a board**, at 240 MHz, every one of the fourteen fixtures: from 0.07x for AC-3 mono to 0.92x for E-AC-3 7.1.4 folded to stereo, with objects placed onto 7.1.4 at 0.78x — see [Timing](#timing). **Encode: AC-3 2/0 and E-AC-3 2/0, yes**, 0.35x and 0.73x with the encoders in `float` end to end and the search made cheaper; AC-3 5.1 at 1.01x sits at the line, 2/0 with tools 1.3x to 1.6x and E-AC-3 5.1 1.7x over, what remains being the exponent-run planner and the allocation candidates — see [Encoding](#encoding) |
-| ESPHome | An external component, `esphome/components/ac3forge/` — the decoder and framer, not a `speaker` source. See [ESPHome](#esphome) |
+| ESPHome | An external component, `esphome/components/ac3forge/` — the decoder and framer, not a `speaker` source. See [ESPHome](esphome.md) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU; `esphome config` and the component pack in their own workflows |
 
 Decode and encode are separate builds. They are mutually exclusive, and configure fails if both
@@ -59,7 +59,7 @@ this part. The x figures are fractions of a 32 ms frame.
 
 ## Building
 
-ESP-IDF owns the top-level build, as Gradle does for [Android](android.md), so there is no
+ESP-IDF owns the top-level build, as Gradle does for [Android](../android.md), so there is no
 ac3forge preset for this target and no entry in `cmake/toolchains/`.
 
 ### The ESP-IDF component
@@ -101,23 +101,8 @@ idf.py -p <PORT> flash monitor # a real board
 `--encoder` runs the encode direction instead.
 
 `apps/baremetal/platform/esp32c3/` is the same harness for the ESP32-C3, which has no
-floating-point unit and therefore decodes in the fixed-point tier
-([the plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)):
-
-```bash
-. $IDF_PATH/export.sh
-python "$IDF_PATH/tools/idf_tools.py" install qemu-riscv32   # once
-cd apps/baremetal/platform/esp32c3
-idf.py set-target esp32c3
-idf.py build                                  # -DAC3FORGE_DECODE_SCALAR=fixed by default
-idf.py qemu
-```
-
-`tools/checks/run_esp32c3_probe.sh` drives that leg. Its distinguishing gate is not a footprint
-ceiling but the PCM itself: the tier's arithmetic is integer, so the probe's per-fixture hashes
-are the same on RISC-V as on the x86 host and the Cortex-M3 leg, and the runner holds all three
-to one pinned set (`tests/golden/fixed-probe-pcm-hashes.json`). `--scalar=float` builds the same
-part with the S3's tier, which is what the two arithmetics are compared with.
+floating-point unit and therefore decodes in the fixed-point tier instead — see
+[ESP32-C3 → Building](esp32-c3.md#building) for that leg's setup and gate.
 
 Verified against ESP-IDF v6.1.0, which ships Xtensa GCC 15.2.0 and defaults to `-std=gnu++26`.
 The library's C++23 use — `std::expected`, `std::unreachable`, `std::byteswap`, `constexpr
@@ -504,7 +489,7 @@ exact. Plain build, same board, same clock:
 | `eac3_714` | 28,815 | 0.90 | 229,630 | 35 |
 
 A 7.1.4 frame is 2.6 times a 5.1 frame, not 2 - the same ratio the
-[instruction count](../performance-trend.md#instructions-per-frame) gives on
+[instruction count](../../performance-trend.md#instructions-per-frame) gives on
 the Cortex-M3 leg (33.8 M against 12.9 M), so the extra is the dependents'
 own per-substream work rather than anything this part does badly. It is
 also the new peak: 229,630 bytes against the 257,572 the probe left free
@@ -742,7 +727,7 @@ not one hot loop.
 
 The two stages that dominated - and the block gather and analysis window in
 front of them - now run in the profile's scalar
-(`ac3/internal/encode_scalar.hpp`, `float` here; [Building](../building.md#minimum-footprint-decoder-profile)
+(`ac3/internal/encode_scalar.hpp`, `float` here; [Building](../../building.md#minimum-footprint-decoder-profile)
 has the axis), the coefficients widened to `double` for the rest of the
 encoder, which is unchanged. The same board, the same day, plain build:
 
@@ -938,7 +923,7 @@ streams and nothing on the AC-3 ones: the race was already dropping the
 segments on most of their frames. [The arithmetic-tiers plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)
 is where the axis this is the first point of is written down.
 
-What the part cannot encode, measured on the host profile ([Building](../building.md#what-the-encode-direction-costs)
+What the part cannot encode, measured on the host profile ([Building](../../building.md#what-the-encode-direction-costs)
 has the table): 5.1 with AHT (312,744 bytes) or standard coupling (289,202)
 or both with spectral extension (369,790), any layout that needs a dependent
 substream (7.1.4 peaks at 601,954 with three encoders resident), and the
@@ -972,7 +957,7 @@ run, under QEMU.
   the frame of output a player used to have to hold - 73 KB for twelve
   channels, whether the probe held it or a player did - is gone: the
   `_by_block` forms (`decode_access_unit_by_block`, see
-  [Decoding](../library/decoding.md#block-granular-output)) hand the
+  [Decoding](../../library/decoding.md#block-granular-output)) hand the
   programme over a 256-sample block at a time from the decoder's own
   storage, copying nothing, and the probe now holds no PCM at all. What is
   still structural: a dependent's channels go through the access unit's
@@ -1069,7 +1054,7 @@ Reconstructed objects are mono signals with a position each; a part driving a 7.
 pan them onto its loudspeakers, and since 2026-09-10 it can, on the target: `spatial.cpp` is in
 the profile's source list, and the block form's `PcmBlock` carries the objects beside the bed -
 a view per object onto the unit's own reconstruction, cut to the block, with the metadata that
-places them ([Decoding](../library/decoding.md#block-granular-output)). The probe's
+places them ([Decoding](../../library/decoding.md#block-granular-output)). The probe's
 `eac3_atmos_render` row is the sink a player would write: `ac3::spatial::pan_direction` for
 each object's gains onto the eleven panned targets, once per unit, the bed's LFE passed through
 as the twelfth slot, and a block of float sums per target - twelve channels of one 256-sample
@@ -1134,7 +1119,7 @@ minimum-footprint profile, `double` by default elsewhere, and selectable in any 
 `-DAC3FORGE_DECODE_SCALAR=float`. Which profile a build is and which scalar its decoder carries
 are independent CMake axes. The option's third value, `fixed`, is the tier for a part with no FPU
 at all - an ESP32-C3 or C6 - and the one value the profile honours over its own `float`
-default; [docs/building.md](../building.md#minimum-footprint-decoder-profile) and
+default; [docs/building.md](../../building.md#minimum-footprint-decoder-profile) and
 `planning/arithmetic-tiers.md` say what it is and what it measured. It is not this part's tier:
 the S3's FPU makes `float` the right arithmetic here. Since 2026-09-09 the arithmetic between the bitstream and those
 buffers — mantissa dequantisation, dither, coordinates, decoupling, spectral extension, the AHT
@@ -1167,89 +1152,11 @@ followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
   candidates rather than an arithmetic type - see [Encoding](#encoding). The adaptive hybrid
   transform's DCT and vector quantiser are the one `double` island, a quarter of the tools row.
 
-## Other ESP32 variants
+## Where to go next
 
-Whether the part has an FPU decides this; RAM does not. Espressif measure a cosine at ~2,377
-cycles on an ESP32-C3 against 121 on an ESP32-S3
-([Floating-Point Units on Espressif SoCs](https://developer.espressif.com/blog/2025/10/cores_with_fpu/)).
-
-| Part | Usable RAM | Clock | FPU | Vector unit | Viable |
-|---|---|---|---|---|---|
-| **ESP32-S3** | 341,760 DIRAM | 240 MHz | single | PIE, integer-only; 128-bit float load/store | **Yes** — the target here |
-| **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — see below |
-| ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
-| ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
-| **ESP32-C3**/C6 | 400/512 KB | 160 MHz | **none** | none | **Yes**, in the fixed-point tier (`planning/arithmetic-tiers.md`): `apps/baremetal/platform/esp32c3/` is a probe target and CI runs it under `qemu-riscv32`, where 12 of the fourteen fixtures decode to PCM identical to the x86 host's and the Cortex-M3 leg's, peaking at 212,221 bytes of heap. The two 7.1.4 rows do not fit: they need 238,094 and 244,502 where the part reports 249,180 free in a heap whose largest block is 114,688. Speed is unmeasured - on the [Cortex-M3 leg](../performance-trend.md#instructions-per-frame-fixed-point-tier) an E-AC-3 5.1 frame is 4.8 M integer instructions against 12.9 M soft-float, AC-3 5.1 3.8 M, AC-3 2/0 1.2 M and mono 0.61 M, against 5.12 M cycles per frame at 160 MHz, but instructions are not cycles and no leg models this part's 16 KB flash cache. A board measures it |
-
-Every part with an FPU has a single-precision one, so `double` is soft-float across the family and
-`decode_scalar_t` earns its keep on all of them.
-
-### Why not the ESP32-P4
-
-Assessed and declined on 2026-09-08. It is dual-core RISC-V at 400 MHz with 768 KB of SRAM, and
-holds the peak heap without the float32 work — so it reads as the answer if the S3 misses real
-time. Three things were checked and two settle it.
-
-**Its vector extension has no floating point.** The P4 is `RV32IMAFC` plus `Xhwlp` and `Xesppie`,
-vendor extensions no other implementation carries — not the ratified RISC-V Vector extension.
-Across the 360 instructions in ESP-IDF's own decoder test for it, the only data types are `s8`,
-`s16`, `s32`, `u8`, `u16`, `u32`. No `f32` anywhere. Espressif's own code agrees: in `esp-dsp`
-every `_arp4` file using a PIE instruction sits under `fixed/`, and the float32 kernels contain
-exactly one `esp.` instruction each — `esp.lp.setup`, the hardware loop — with scalar `fmadd.s`
-arithmetic. So an `f32x4` has nothing to compile to there either.
-
-**It has no radio, and the plan it would serve is a Wi-Fi plan.** No Wi-Fi and no Bluetooth; it
-needs a companion ESP32-C6 or -H2, making any networked build a two-chip design. That was a
-product-shape question and it is disqualifying on its own, whatever the S3 measures.
-
-What the P4 would buy is clock — 12.8 M cycles per frame against the S3's 7.68 M, **1.67×**,
-per-core in both cases. The memory advantage is already spent, since this port fits internal SRAM.
-
-## ESPHome
-
-`esphome/components/ac3forge/` is an ESPHome external component. It is the plumbing:
-`Ac3ForgeComponent` owns an `ac3::FrameDecoder` and an `ac3::io::AccessUnitAccumulator`, takes
-bytes and hands back planar float PCM. It is **not** a `media_player` or a `speaker` source —
-ESPHome's `speaker` platform is ESP-IDF-only, so that is the obvious next step rather than a
-blocked one.
-
-```yaml
-external_components:
-  - source:
-      type: git
-      url: https://github.com/iainchesworthlabs/ac3forge
-      ref: main
-      path: esphome/components
-    components: [ac3forge]
-
-esp32:
-  board: esp32-s3-devkitc-1
-  framework:
-    type: esp-idf
-
-ac3forge:
-  version: v0.10.0-beta.1   # a git ref of ac3forge itself
-  buffer_size: 16384
-```
-
-Two refs are in play: `external_components`' `ref` picks the version of the ESPHome component,
-and `ac3forge:`'s `version:` picks the version of the library it fetches. Pin both for anything
-meant to keep working.
-
-`buffer_size` is the framer's working buffer, floored at 4,160 bytes — one syncframe plus the
-next header, which is what deciding where an access unit ends requires. 16 KB holds an independent
-substream plus three dependents, which covers Atmos.
-
-The component reaches the library by git reference rather than the registry:
-`add_idf_component` writes `git:`, `version:` and `path:` into the generated
-`idf_component.yml`, which is the form the IDF component manager wants for a component in a
-subdirectory. Nothing here is blocked on [publishing](#the-esp-idf-component).
-
-CI runs `esphome config` over `esphome/tests/ac3forge-test.yaml` against a local source pointing
-at the working tree, which exercises the schema and `to_code` including the `add_idf_component`
-call, and asserts that a `buffer_size` no access unit fits in is rejected. It does **not** compile
-the firmware: that would clone ac3forge at the configured ref and build the whole IDF project,
-which says nothing about the code under review, since the ref it fetched is not that code.
-
-[`esphome/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esphome/README.md)
-has the rest, including why PSRAM is worth having on a board that also runs WiFi.
+- [ESP32-C3](esp32-c3.md) — the same component, decoding in the fixed-point tier on a part with
+  no FPU at all.
+- [ESPHome](esphome.md) — the external component wrapping this decoder for ESPHome projects.
+- [Cortex-M3 (QEMU reference)](cortex-m3.md) — the first bare-metal target, with no hardware
+  floating point.
+- [Bare metal overview](index.md) — how the four pages in this section relate.

@@ -116,7 +116,7 @@ before `project()`.
 
 Less than the footprint probe's 134,676 bytes, because this reaches only the
 AC-3 path: no Annex E decoder, no QMF bank, no object reconstruction. An
-E-AC-3 or Atmos player is a bigger build — `docs/platforms/esp32.md` has those
+E-AC-3 or Atmos player is a bigger build — `docs/platforms/bare-metal/esp32-s3.md` has those
 numbers.
 
 ## Using the component in your own project

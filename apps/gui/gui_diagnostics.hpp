@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-// ac3gui's diagnostics file (docs/gui/accessibility.md, "Saving a diagnostics
+// ac3gui's diagnostics file (docs/forge/gui/accessibility.md, "Saving a diagnostics
 // file"): a bounded ring of one-line notes the controller writes to, and a
 // renderer that turns named facts and that ring into plain text.
 //

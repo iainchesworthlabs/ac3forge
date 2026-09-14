@@ -20,7 +20,7 @@
 //
 // **NOTHING IN THIS FILE HAS BEEN RUN.** Written 2026-09-06; the only compiler
 // that will read it is the macOS CI leg, and no Mac has ever executed any part
-// of this application (docs/crucible/promotion.md, "What cannot be verified,
+// of this application (docs/crucible/design/promotion.md, "What cannot be verified,
 // and why"). Everything below is written against Apple's documented behaviour
 // for proc_pidpath(2), not against behaviour anybody has watched.
 //

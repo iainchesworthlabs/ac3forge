@@ -1,4 +1,4 @@
-# ac3gui — localisation
+# Localisation
 
 The app's own text is translated via Qt Linguist, the same mechanism and the same canonical
 language set as the sibling CountdownSolver project. This page covers what is in the catalogues
@@ -47,7 +47,7 @@ want of a catalogue entry.
 
 Complete is not the same as reviewed. The renderings are machine-made and no speaker of any of the
 six languages has read them, so a term can be filled in and still be the wrong word, or two words
-for one thing. [Crucible's languages page](../crucible/localisation.md) carries the glossary the
+for one thing. [Crucible's languages page](../../crucible/localisation.md) carries the glossary the
 shared six are held to and what an audit of the mechanical output found; the review that confirms
 or replaces each rendering has not run for either app.
 
@@ -65,8 +65,8 @@ lapsing.
 
 ## Crucible shares this pipeline
 
-Everything above is `ac3gui`, half of [Forge](../forge/index.md).
-[Crucible](../crucible/index.md) (`apps/crucible/`) is the family's other Qt
+Everything above is `ac3gui`, half of [Forge](../index.md).
+[Crucible](../../crucible/index.md) (`apps/crucible/`) is the family's other Qt
 application, and reuses `LanguageManager` rather than copying it: the class takes a translation
 basename (`"ac3gui"` by default, `"ac3crucible"` for Crucible) that names the `.qm` files it
 loads from `:/i18n/`, and `useSystemLanguage()` forgets a saved override so the app follows the
@@ -74,7 +74,7 @@ system locale again. Crucible ships the same six languages (`apps/crucible/trans
 its own `ac3crucible_lupdate` target, and honours the same `AC3GUI_LOCALE` override for smoke
 checks. What is Crucible's own — the glossary its six languages are held to, the window's
 right-to-left half, and the gate over its catalogues — is on
-[Crucible's languages page](../crucible/localisation.md).
+[Crucible's languages page](../../crucible/localisation.md).
 
 ## Updating an existing translation
 

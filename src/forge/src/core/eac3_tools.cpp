@@ -704,7 +704,7 @@ EcplSpectrumScratch<Scalar>& ecpl_spectrum_scratch() {
 // this exists because on the single-precision FPU the minimum-footprint
 // profile targets a double sine is a software routine of a thousand cycles
 // or so, and the reconstruction ran two of them per bin of every coupled
-// channel of every block (docs/platforms/esp32.md).
+// channel of every block (docs/platforms/bare-metal/esp32-s3.md).
 void sincos_pi(float a, float& sine, float& cosine) {
     const float twice = a * 2.0F;
     const int q = static_cast<int>(twice + (twice >= 0.0F ? 0.5F : -0.5F));

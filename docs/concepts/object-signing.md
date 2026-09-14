@@ -133,7 +133,7 @@ ac3cli atmos out.ec3 8 448 4 6 objects sign-objects signing-key=/path/to/atmos.k
 `sign-objects` leaves the container unsigned, and — because an unsigned-but-present container is a
 hard refusal on a validating decoder rather than a graceful fallback — you'll usually want
 `mode bed51` there so the stream omits the container and plays as 5.1 everywhere. See
-[CLI metadata options](../cli/metadata-options.md).
+[CLI metadata options](../forge/cli/metadata-options.md).
 
 `decode`/`monitor` have the mirror-image option, `verify-objects`, to check a stream's tag instead
 of writing one:

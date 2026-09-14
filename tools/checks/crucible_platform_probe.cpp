@@ -1,5 +1,5 @@
 // A standing probe for the platform seams, on a machine that has a real
-// audio session (docs/crucible/promotion.md, Phase 4's verification).
+// audio session (docs/crucible/design/promotion.md, Phase 4's verification).
 //
 // The engine's own tests run everywhere by using fakes, which is what makes
 // them run on a CI leg with no sound card - and is exactly why they cannot

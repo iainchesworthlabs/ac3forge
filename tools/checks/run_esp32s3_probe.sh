@@ -26,7 +26,7 @@
 # NOT speed. QEMU is not a cycle-accurate emulator and reports a CPU clock that
 # disagrees with its own boot log; the probe's us_per_frame lines are printed
 # for shape and are not evidence of anything. The real-time answer needs
-# hardware - see docs/platforms/esp32.md.
+# hardware - see docs/platforms/bare-metal/esp32-s3.md.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -81,7 +81,7 @@ fi
 # this target, which it could not before: 449,826 bytes of peak as found,
 # 233,546 after Domain::kMdctBand, a float32 ReconstructionState, per-object
 # scratches sized to the stream, and handing back the enhanced-coupling scratch
-# between decodes. docs/platforms/esp32.md has what each was worth.
+# between decodes. docs/platforms/bare-metal/esp32-s3.md has what each was worth.
 #
 # 245,000 sits below the 280,792 bytes the allocator reports free, not at it: a
 # ceiling at the hardware limit fails at the same moment the part does, which is
@@ -216,7 +216,7 @@ if [[ "$DIRAM" == "0" ]]; then
 else
     echo "esp32s3.diram_bytes=$DIRAM" | tee -a "$OUTPUT"
     if (( DIRAM > AC3FORGE_ESP32S3_MAX_DIRAM_BYTES )); then
-        echo "::error title=ESP32-S3 footprint regression::the image uses $DIRAM bytes of internal SRAM, ceiling is $AC3FORGE_ESP32S3_MAX_DIRAM_BYTES - every byte here is one the ${DIRECTION} cannot allocate (see docs/platforms/esp32.md)" >&2
+        echo "::error title=ESP32-S3 footprint regression::the image uses $DIRAM bytes of internal SRAM, ceiling is $AC3FORGE_ESP32S3_MAX_DIRAM_BYTES - every byte here is one the ${DIRECTION} cannot allocate (see docs/platforms/bare-metal/esp32-s3.md)" >&2
         exit 1
     fi
 fi

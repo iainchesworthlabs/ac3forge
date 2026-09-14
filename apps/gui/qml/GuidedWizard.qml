@@ -97,7 +97,7 @@ ColumnLayout {
     // The first output device that can bitstream ampEac3 - the same
     // "AC-3 + E-AC-3 ready" / "cannot bitstream" capability
     // outputDeviceSupportsFormat and the Format tab's own device labels
-    // already use (docs/gui/format-and-channels.md), just asked against the
+    // already use (docs/forge/gui/format-and-channels.md), just asked against the
     // PROSPECTIVE plan instead of a past encode. -1 when nothing qualifies.
     readonly property int autoAmpDeviceIndex: {
         const devices = EncoderController.outputDevices;

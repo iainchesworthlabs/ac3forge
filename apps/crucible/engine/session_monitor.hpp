@@ -9,7 +9,7 @@
 
 // Who is playing sound, as applications rather than as streams: the seam
 // between the engine and whatever the platform uses to answer that
-// (docs/crucible/promotion.md, "The seams to extract").
+// (docs/crucible/design/promotion.md, "The seams to extract").
 //
 // Every platform has some notion of it and no two agree on the shape.
 // Windows reads IAudioSessionManager2 on each render endpoint and groups the

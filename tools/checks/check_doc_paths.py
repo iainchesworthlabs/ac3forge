@@ -119,6 +119,7 @@ PLANNED_PATHS = {
     "apps/forge/cli": "proposed by the recasting plan, not created yet",
     "apps/forge/gui": "proposed by the recasting plan, not created yet",
     "apps/forge/common": "proposed by the recasting plan, not created yet",
+    "apps/hearth": "proposed by the playback-appliance plan, not created yet",
     "apps/hearth/platform/linux": "proposed by the playback-appliance plan, not created yet",
     "apps/hearth/platform/windows": "proposed by the playback-appliance plan, not created yet",
     "apps/hearth/platform/macos": "proposed by the playback-appliance plan, not created yet",
@@ -145,7 +146,7 @@ PROSE_PATHS_UNCHECKED = {
     "planning/esp32-player.md": (
         "plan; proposes component sources and an ESPHome platform that do not exist yet"
     ),
-    "docs/crucible/promotion.md": "phase record; names the pre-promotion apps/windows layout",
+    "docs/crucible/design/promotion.md": "phase record; names the pre-promotion apps/windows layout",
     "docs/platforms/windows-demo.md": "phase record; names the pre-promotion apps/windows layout",
     "CHANGELOG.md": "released entries are an immutable record of the tree as it was",
 }

@@ -7,7 +7,7 @@
 
 // The system default render endpoint - reading it, moving it to the silent
 // device, and putting it back on exit: the seam between the application and
-// the platform's audio policy (docs/crucible/promotion.md, "The seams to
+// the platform's audio policy (docs/crucible/design/promotion.md, "The seams to
 // extract").
 //
 // The three platforms differ in a way this interface has to carry rather
@@ -62,7 +62,7 @@ public:
     // because there is no silent device to send to - but SignalPath.qml's
     // station 1 is still drawn and still advises sending applications to one
     // (engine/platform/macos/default_device.cpp records the reading, and
-    // docs/crucible/promotion.md's Phase 5 carries the gap).
+    // docs/crucible/design/promotion.md's Phase 5 carries the gap).
     [[nodiscard]] virtual bool moves_default() const = 0;
 
     // The endpoint whose friendly name contains `name_substring`

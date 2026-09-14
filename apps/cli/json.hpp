@@ -19,7 +19,7 @@
 //
 // It is also not a general-purpose library. There is no reader, no value type
 // and no schema validation, because the only consumer is one command emitting
-// one documented shape - see docs/cli/commands.md for that shape, which is the
+// one documented shape - see docs/forge/cli/commands.md for that shape, which is the
 // contract, rather than anything here.
 
 namespace ac3cli {

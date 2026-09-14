@@ -8,7 +8,7 @@
 // **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 without a
 // Mac; tst_platform.qml reads CrucibleController.trayAvailable on both macOS
 // legs, which is tray_is_published() below
-// (docs/crucible/promotion.md, Phase 5). On those runners it answers false -
+// (docs/crucible/design/promotion.md, Phase 5). On those runners it answers false -
 // Qt reports no native SystemTrayIcon implementation under the offscreen
 // platform - so what has been exercised is the refusal, not the publish. No
 // tray icon has been published on a Mac by this application, and the sentence

@@ -35,7 +35,7 @@ one that comes later, the HLS client, all sit on the same code.
 | `esp-idf/ac3forge/examples/i2s_player/` | Decodes a flash-resident AC-3 fixture to an I2S DAC and prints per-lap timing. | Measured on a board 2026-09-10: 9.9 ms of every 32 for AC-3 5.1 folded to stereo, paced at exactly 32 ms a frame. |
 | `esp-idf/ac3forge/examples/stream_player/` | Bytes from a `partition`, `sd`, `fatfs` or `http` source through `ac3::io::AccessUnitAccumulator` to an `i2s`, `tdm`, `capture` or `null` sink. One loop, on the main task. | CI runs `partition` and `fatfs` under QEMU with the `capture` sink. Phase 0 runs `http` to `i2s` on a board. |
 | `esphome/components/ac3forge/` | An ESPHome external component: a decoder and the framer, fed bytes by another component. | `esphome config` in CI. Never compiled into firmware by CI. |
-| `docs/platforms/esp32.md` | The platform page. | Being restructured by PR #603; player documentation stays in the example READMEs until it lands. |
+| `docs/platforms/bare-metal/esp32-s3.md` | The platform page. | Being restructured by PR #603; player documentation stays in the example READMEs until it lands. |
 
 Two things about that table decide the shape of everything below.
 
@@ -668,7 +668,7 @@ that tree.
    Both halves changed on 2026-09-11: the output stage folds 256 samples at a time, its largest
    allocation 1,024 bytes where it was 6,144, and `714-walk.ec3` at `2.0` on the board went from
    35.3 to 30.0 ms of decode a frame, 1.00x real time, with 18 of 900 blocks still reaching an
-   empty queue ([Folded to stereo](../docs/platforms/esp32.md#folded-to-stereo)). Under QEMU on
+   empty queue ([Folded to stereo](../docs/platforms/bare-metal/esp32-s3.md#folded-to-stereo)). Under QEMU on
    2026-09-12 the network shapes then folded 7.1, 5.1.4 and 7.1.4 at `2.0`; one play, the fuzz
    seed's 7.1.4 as the fifth after boot, still aborted on the decoder's frame-long channel
    buffers (`Eac3Decoder::decode_substream_core`, 6,144 bytes with no block that large). What is

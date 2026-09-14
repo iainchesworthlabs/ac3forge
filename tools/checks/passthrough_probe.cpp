@@ -2,7 +2,7 @@
 // AC-3 or E-AC-3 bitstream, which is roadmap DR9's per-backend question and,
 // since Crucible on Linux cannot use ALSA, the question that decides whether
 // Crucible has anywhere to send its output there
-// (docs/crucible/promotion.md, "ALSA or PipeWire").
+// (docs/crucible/design/promotion.md, "ALSA or PipeWire").
 //
 // enumerate_render_devices() is the same call the output stage makes, so a
 // "yes" here is the "yes" it would get. On PipeWire that answer comes from

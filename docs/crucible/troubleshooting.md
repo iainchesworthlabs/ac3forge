@@ -102,7 +102,7 @@ cmake --preset config-linux-gcc -B build/crucible -DAC3FORGE_BUILD_CRUCIBLE=ON -
 ```
 
 Note what that trades: ALSA's `iec958` passthrough is the path confirmed against a real receiver,
-and PipeWire's is not. See [the plan](promotion.md#alsa-or-pipewire).
+and PipeWire's is not. See [the plan](design/promotion.md#alsa-or-pipewire).
 
 ## Linux: the receiver is plugged in and on, but there is no HDMI sink
 
@@ -146,7 +146,7 @@ StatusNotifier` says whether anything on your session owns the name.
 
 Builds before 2026-09-06 published no tray on Linux at all, because doing so crashed the window.
 That was a Qt bug — a menu nested inside a tray icon's menu is handed the wrong kind of handle —
-and the tray menu is flat now so it cannot happen. `docs/crucible/promotion.md` has the whole
+and the tray menu is flat now so it cannot happen. `docs/crucible/design/promotion.md` has the whole
 finding.
 
 ## Saving a diagnostics file

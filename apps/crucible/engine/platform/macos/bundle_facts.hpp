@@ -12,7 +12,7 @@
 //
 // **NOTHING IN THIS FILE HAS BEEN RUN.** Written 2026-09-06 against Apple's
 // documented bundle layout; the only compiler that will read it is the macOS
-// CI leg (docs/crucible/promotion.md, "What cannot be verified, and why").
+// CI leg (docs/crucible/design/promotion.md, "What cannot be verified, and why").
 // The paths quoted in the comments are the documented shapes, not paths
 // observed on a machine.
 //

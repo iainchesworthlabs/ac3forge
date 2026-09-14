@@ -15,7 +15,7 @@
 #include "proc_facts.hpp"
 
 // The Linux SessionMonitor: who is playing sound, from the PipeWire graph
-// (docs/crucible/promotion.md, Phase 4).
+// (docs/crucible/design/promotion.md, Phase 4).
 //
 // What is left in this file is the PipeWire half. Everything that is not -
 // the /proc readers, the per-process fact cache and its back-fill, and the

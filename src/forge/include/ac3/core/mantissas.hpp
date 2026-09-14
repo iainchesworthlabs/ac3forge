@@ -49,7 +49,7 @@ inline constexpr std::array<int, 6> kSymmetricLevels = {0, 3, 5, 7, 11, 15};
 // minimum-footprint profile), because on a single-precision FPU every double
 // operation is a software routine: measured on an ESP32-S3, the dequantise
 // below and the exponent scale after it were costing more than the inverse
-// transform (docs/platforms/esp32.md's Timing section).
+// transform (docs/platforms/bare-metal/esp32-s3.md's Timing section).
 //
 // Bit-for-bit the same value either way. The symmetric case is one division
 // of two small integers, correctly rounded in whichever type performs it;

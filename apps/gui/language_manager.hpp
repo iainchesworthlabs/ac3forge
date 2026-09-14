@@ -37,7 +37,7 @@ public:
 
     // Installs the translators for the initial language - an AC3GUI_LOCALE
     // environment override first (the pseudo-locale QA fixture and the
-    // deterministic test suites use this - see docs/gui/localisation.md),
+    // deterministic test suites use this - see docs/forge/gui/localisation.md),
     // then the persisted preference, then the system locale, then "en" - and
     // sets the initial layout direction. Called once, before the QML loads,
     // so the first frame already renders translated and RTL-mirrored where

@@ -1,11 +1,11 @@
-# ac3gui — window layout
+# Window layout
 
 `ac3gui` (window title `ac3forge — <source>` once a source is loaded, QML module `Ac3Forge`) is a
 Qt Quick front end over the same
-`ac3::forge` library documented under [Library](../library/index.md) — nothing in the GUI has
+`ac3::forge` library documented under [Library](../../library/index.md) — nothing in the GUI has
 logic the library doesn't also expose, and every setting it makes maps onto an equivalent
 [`ac3cli`](../cli/index.md) invocation shown live at the bottom of the window. See
-[Forge](../forge/index.md#installing) for how to get it — the CLI and the GUI are one
+[Forge](../index.md#installing) for how to get it — the CLI and the GUI are one
 download in every generator and registry, and every platform's release archive carries both.
 
 The screenshots in this guide are of the current two-pane "workbench" layout, drawn in the
@@ -216,5 +216,5 @@ The rest of the guide, in reading order:
 12. [Keyboard & text size](accessibility.md) — what can be done without a mouse, what a screen
     reader is told, the text-size setting, the diagnostics file, and what is still mouse-only
 
-Or start with [Concepts](../concepts/index.md) if terms like "dependent substream" or "JOC" are
+Or start with [Concepts](../../concepts/index.md) if terms like "dependent substream" or "JOC" are
 unfamiliar — the GUI uses the same vocabulary as the standards it implements.

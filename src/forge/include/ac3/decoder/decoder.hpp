@@ -293,7 +293,7 @@ struct DecoderConfig {
     // than the 116,736-byte largest contiguous block a decode leaves free, so
     // the allocation fails on contiguity before the budget is even reached, and
     // an Atmos stream that would otherwise play as ordinary 5.1 takes the whole
-    // decode down partway through. See docs/platforms/esp32.md.
+    // decode down partway through. See docs/platforms/bare-metal/esp32-s3.md.
     //
     // Default false, because on a host the objects are the point. A caller that
     // wants the bed - an embedded integrator, or anything rendering to a

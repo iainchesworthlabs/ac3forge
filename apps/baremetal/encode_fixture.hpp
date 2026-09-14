@@ -73,7 +73,7 @@ inline constexpr std::uint64_t kEac3Hash = 57777224631052106ULL;
 // amplitude/angle/chaos search, the same §E3.5 syntax - at a third of the
 // channel count, so the path is covered and the profile still fits. What is
 // NOT covered is 5.1 enhanced-coupling ENCODE on this part, because it cannot
-// be; see docs/platforms/esp32.md.
+// be; see docs/platforms/bare-metal/esp32-s3.md.
 //
 // 192 kbit/s 2/0 is 768 bytes an access unit, 4,608 for six.
 inline constexpr std::size_t kEac3EcplBytes = 4608;

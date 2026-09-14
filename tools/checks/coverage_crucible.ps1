@@ -35,7 +35,7 @@
 # nothing - the whole point of a floor.
 #
 # The measured figures and what is thin, with reasons, are in
-# docs/crucible/promotion.md beside the rest of the promotion's phase record;
+# docs/crucible/design/promotion.md beside the rest of the promotion's phase record;
 # docs/platforms/windows-demo.md keeps the history the product grew from.
 [CmdletBinding()]
 param(
