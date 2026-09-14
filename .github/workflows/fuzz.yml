@@ -65,7 +65,8 @@
 #                      against ffprobe's syncframe walk instead.
 #                      Not a libFuzzer target and not part of fuzz/run.sh - it
 #                      drives the real ac3cli, so it builds the CLI the way
-#                      ci.yml's ffmpeg-validate job does rather than the
+#                      _ci-core.yml's ffmpeg-validate job (called from
+#                      ci.yml) does rather than the
 #                      sanitizer/libFuzzer toolchain the other four need. The
 #                      short per-PR counterpart is a step in that same
 #                      ffmpeg-validate job, not a job here, because everything
@@ -426,7 +427,8 @@ jobs:
 
   # The deeper half of the encoder input-space search - see this file's header
   # for what it is and why it shares nothing with the four jobs above. Its
-  # bounded per-PR counterpart is a step in ci.yml's ffmpeg-validate job.
+  # bounded per-PR counterpart is a step in _ci-core.yml's ffmpeg-validate
+  # job (called from ci.yml).
   #
   # Toolchain-wise this is ffmpeg-validate, not a fuzzing job: LLVM plus vcpkg
   # plus a pinned ffmpeg, building the plain linux-llvm preset. No sanitizer

@@ -551,9 +551,10 @@ cannot encode: its stereo Dolby Digital Plus rate range starts at 96.
 
 Same mechanism as [Quality trend](quality-trend.md#where-the-data-lives): a
 dedicated `quality-history` branch, `external-comparison-<branch>.jsonl`
-this time, written by a job in `ci.yml` (`persist-external-comparison-trend`)
-downstream of `ffmpeg-validate`'s compute-only `trend` step, on direct
-pushes to `main` only.
+this time, written by a job in `_ci-core.yml`
+(`persist-external-comparison-trend`, called from `ci.yml`) downstream of
+`ffmpeg-validate`'s compute-only `trend` step, on direct pushes to `main`
+only.
 
 `external-comparison-develop.jsonl` stopped gaining rows on 2026-08-24, the
 same migration to trunk-based development that froze

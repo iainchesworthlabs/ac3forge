@@ -18,15 +18,15 @@ it, exposing one boolean output per lane (`core`, `windows`, `linux`, `macos`,
 `android`, `wasm`, `esp`, `rust`, `python`, `npm`, `ci_self`, `docs`)
 alongside the existing `code` output. `ci.yml` forwards seven of them
 (`core`, `windows`, `linux`, `macos`, `android`, `wasm`, `esp`, `rust`) to
-`_build.yml` as `run_<lane>` inputs, and every one of them except `core` now
-gates real work - see "What's gated today". `python` and `npm` are computed
-but not yet forwarded anywhere: nothing in `_build.yml` builds Python
-bindings or the npm package (those live in `wheels.yml` and `npm.yml`, folded
-into the aggregator only in a later phase). This is still short of the full
-plan; see the CI lane partitions plan for what's left (moving `ci.yml`'s
-coverage/sanitizer/ABI/perf/memory jobs into a `_ci-core.yml` so `core`
-finally gates something, folding `wheels.yml`/`npm.yml`/`esp-component.yml`
-into the aggregator).
+`_build.yml` as `run_<lane>` inputs, and `ci.yml`'s own `core` job-call is
+gated on `core` directly - every one of the eight now gates real work, see
+"What's gated today". `python` and `npm` are computed but not yet forwarded
+anywhere: nothing in `_build.yml`/`_ci-core.yml` builds Python bindings or
+the npm package (those live in `wheels.yml` and `npm.yml`, folded into the
+aggregator only in a later phase). This is still short of the full plan; see
+the CI lane partitions plan for what's left (folding
+`wheels.yml`/`npm.yml`/`esp-component.yml` into the aggregator, an optional
+nightly-dispatch index).
 
 ## What's gated today
 
@@ -50,7 +50,7 @@ job-level conditions.
 | `windows` | `build-windows` (windows-msvc, windows-llvm, windows-msvc-arm64), `windows-driver` |
 | `linux` | `build-linux` (linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan), `linux-appimage` |
 | `macos` | `build-macos` (macos-llvm, macos-llvm-x64), `package-macos-universal` (alongside `do_package`, which it already required) |
-| `core` | nothing yet - `_ci-core.yml` (coverage, sanitizers, ABI, FFmpeg/ADM validate, perf/memory gates) is a later phase, still living in `ci.yml`/inside `_ci-linux.yml`'s sanitizer legs, not gated by any lane |
+| `core` | the whole `core` job-call (`_ci-core.yml`: coverage, ADM module, performance/memory compare+gate, ABI gate, FFmpeg validate, both quality-trend persisters) - see "The core lane" below |
 
 An Android-only PR today skips `build-wasm`, `build-esp32s3`/`c3`,
 `build-footprint`, `build-rust`, `build-windows`, `windows-driver`,
@@ -67,6 +67,86 @@ when `persist_quality_trend` is true, which is only true for a direct push to
 `classify_changes.py`'s `--force-all` path - so on the one trigger this job
 actually fires on, none of its three `needs:` is ever skipped for a lane
 reason. See that job's own comment in `_build.yml`.
+
+## The core lane
+
+`_ci-core.yml` is `ci.yml`'s coverage, ADM module build, PR-time
+performance/memory comparisons and their gates, ABI gate, and FFmpeg-oracle
+validation together with its two quality-trend persisters - ten jobs, moved
+out of `ci.yml` wholesale and called as one `core` job, gated on
+`needs.changes.outputs.core == 'true'` instead of the `code` output each of
+them checked individually before. This is the first lane whose gate is a
+**narrowing**, not just a parallel addition: today, any non-docs change -
+including one confined entirely to `apps/android/` or
+`apps/windows/driver/` - still runs all ten. After this, only a change that
+actually touches the library (or trips a conservative-default fallback) does.
+None of the ten tests anything platform-specific, so this is the intended,
+correct behaviour, not an accident of the lane boundaries - see each job's
+own header comment in `_ci-core.yml`, unchanged from before the move, for
+why.
+
+**Not moved: `persist-performance-trend` and `performance-trend-arm64`.**
+Both `needs: build-and-test` - _build.yml's_ own call, a *different* reusable
+workflow - to know the whole matrix passed before recording a trend point.
+`needs:` cannot cross a `workflow_call` boundary the way it crosses between
+two jobs in the same file, so this dependency can only be expressed by
+gating the *entire* `core` call on `build-and-test`'s result - which would
+serialise coverage/ADM/FFmpeg-validate/performance-compare/memory-compare/
+ABI-gate behind the full build matrix on *every* PR, when they run in
+parallel with it today. Both jobs only ever fire on a direct push to `main`
+anyway, where the extra wait costs nothing, so leaving them in `ci.yml`
+(unchanged, still `needs: [build-and-test, toolchain-versions, ...]`) keeps
+today's parallelism and avoids plumbing a cross-file dependency for a
+two-job, push-only edge case.
+
+**Every job's own `if:` that checked `needs.changes.outputs.code` lost that
+check entirely**, rather than gaining an `inputs.run_core` equivalent: since
+the *whole file* only runs when `core` is already true, an internal check
+would be redundant. `performance-gate`/`memory-gate`/
+`persist-external-comparison-trend`/`persist-object-quality-trend` never
+checked `code` in the first place (see each one's own `if:` in
+`_ci-core.yml`) and are byte-for-byte unchanged - including the two gates
+running unconditionally on every `pull_request` and quietly passing when
+their upstream compare job didn't produce a verdict, exactly as before.
+
+### Keeping `CI Status`'s per-job breakdown
+
+`_ci-core.yml` threads each of the seven jobs `ci-status` needs
+(`coverage`, `adm-validate`, `ffmpeg-validate`, `performance-gate`,
+`memory-gate`, `persist-external-comparison-trend`,
+`persist-object-quality-trend`) out through its own `workflow_call.outputs`,
+rather than folding them into one aggregate result the way `build-and-test`
+already folds together ten-plus build jobs. `ci-status`'s script still
+prints `coverage: success`, `adm-validate: failure`, etc. individually -
+unchanged from before the move - by reading `needs.core.outputs.<x>` instead
+of `needs.<job>.result`.
+
+Getting there needed one more piece than expected: `${{ jobs.<job_id>.result
+}}` is **not** valid inside `workflow_call.outputs.<name>.value` -
+`actionlint` rejects it ("property 'result' is not defined in object type
+{outputs: {}}"), because that context only exposes a job's own declared
+`outputs`, not its pass/fail status. Each of the seven jobs instead ends
+with a "Record result" step - `if: always()`, so it still runs after an
+earlier step failed - that captures `job.status` (a real, documented
+context: "the current status of the job... success, failure, or cancelled")
+into its own `outputs: result: ...`, and `_ci-core.yml`'s own
+`workflow_call.outputs` reads `jobs.<job_id>.outputs.result` from there. Four
+jobs (`performance-compare`, `memory-compare`, `abi-gate`, and the `core`
+call itself needing none of this for anything not in the list above) don't
+carry the extra step - their results were never surfaced to `ci-status`
+before the move either.
+
+### What `_ci-core.yml` needs from `ci.yml`
+
+Same shape as `_build.yml`'s per-platform inputs: `check-runner` and
+`toolchain-versions` stay in `ci.yml` (five of the ten jobs share `runs-on:
+${{ fromJSON(needs.check-runner.outputs.runner) }}` - one live-runner
+decision reused by all of them, unlike `_build.yml`'s per-leg
+`check-runners` fan-out), and `ci.yml`'s `core` job-call forwards
+`check-runner.outputs.runner`, `toolchain-versions.outputs.vcpkg_commit` and
+`toolchain-versions.outputs.llvm_version` (the only two toolchain-versions
+outputs any of the ten jobs actually reads - `llvm_version` only in two step
+*names*, for display) as plain `workflow_call` inputs.
 
 ## Why a job, not a workflow-level path filter
 
