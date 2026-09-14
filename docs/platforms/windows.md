@@ -12,7 +12,7 @@ reference, options list and troubleshooting, see [Building from source](../build
 | Build | MSVC and clang-cl, both required and green in CI; the GUI is on by default |
 | Capture and monitor playback | Confirmed on real hardware — a Realtek endpoint, live microphone capture through encode to playback |
 | Windows Spatial Sound (`ac3cli spatial`) | Confirmed on real hardware, with Windows Sonic enabled; nobody has listened to check the positions |
-| IEC 61937 passthrough output | **Never accepted by a real device.** The exclusive-mode path works with PCM; no AV receiver has been cabled to a Windows machine |
+| IEC 61937 passthrough output | Confirmed on real hardware — an Onkyo TX-RZ740 over HDMI locks AC-3 (Dolby Digital 5.1), E-AC-3 (Dolby Digital Plus 5.1) and signed Atmos (JOC objects, decoded to 5.0.4) through `PassthroughSink` itself |
 | Passthrough capture | **Never confirmed** — no HDMI or S/PDIF capture card has been available |
 | Crucible's null sink | A kernel driver, **test-signed only**; a default-settings machine refuses to load it — see [the driver page](windows-driver-acx.md) |
 | ARM64 | One CI leg, still marked experimental, and it packages for release |
@@ -79,25 +79,31 @@ is deliberately explicit about the difference.
     documented shape); a third-party bed-plus-objects Annex E stream would be needed to
     exercise the rest of `oba::bed_labels()` against a verified coded-channel-order mapping.
 
-!!! warning "Exclusive-mode passthrough bitstreaming has never been confirmed against a real receiver on Windows"
-    No S/PDIF or HDMI endpoint behind an actual AV receiver has been connected to a Windows
-    machine during development. A receiver is available now — the one used for [Raspberry Pi's
-    HDMI passthrough
-    validation](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) — it just hasn't been
-    cabled to this workstation yet; that run is outstanding work.
-    `IsFormatSupported` correctly answers no everywhere it has been tried, for
-    both `KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL` and `..._DOLBY_DIGITAL_PLUS`, and neither
-    descriptor has been accepted by a real device. What *is* verified: the exclusive-mode path
-    itself works (a Realtek endpoint accepts an exclusive PCM format), the AC-3 bursts are
-    byte-exact against FFmpeg's `spdif` muxer, and the E-AC-3 burst framing (data type 0x15, the
-    24576-byte/4x-carrier-rate burst, multi-syncframe accumulation, `Pd` in bytes not bits) is
-    independently verified against both FFmpeg's `spdif_header_eac3` and Microsoft's own
-    "Representing Formats for IEC 61937 Transmissions" documentation, plus round-trip and
-    real-audio unit tests.
-    A receiver has been confirmed to lock onto AC-3, but only via a different code path (playing
-    the bursts as a PCM16 WAV through a passthrough output, not through `PassthroughSink`
-    itself); the same trick now exists for E-AC-3 (`ac3cli spdif`/`monitor`/`live`, branching on
-    bsid) but has not itself been tried against a receiver either.
+!!! note "Exclusive-mode passthrough bitstreaming is confirmed against a real receiver on Windows"
+    An Onkyo TX-RZ740 was cabled to a Windows workstation via an Nvidia GPU's HDMI audio
+    endpoint ("AV Receiver (NVIDIA High Definition Audio)"), 2026-09. `IsFormatSupported`
+    answered yes for both `KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL` and
+    `..._DOLBY_DIGITAL_PLUS` — the first real device this has ever happened on — and `ac3cli
+    play` through `PassthroughSink` itself, not the PCM16-WAV workaround, locked the receiver
+    onto AC-3 (Dolby Digital 5.1), then E-AC-3 (Dolby Digital Plus 5.1), then a signed Atmos
+    stream (`ac3cli atmos ... sign-objects`), which the receiver decoded as **Atmos/DD+, 48 kHz
+    in, 5.0.4 out**, with the object's motion confirmed audible — the same result the Shield app
+    got on this same receiver (see `docs/platforms/android.md`). Clean delivery throughout
+    (0 underruns on the confirming Atmos run).
+
+    Getting there surfaced two real defects in `PassthroughSink`, both fixed: a cross-thread
+    WASAPI crash (`Activate`/`Initialize` on the caller's thread, `Start`/`GetBuffer` on a
+    worker thread — fine for `MonitorSink`'s shared-mode path, fatal deep inside `AUDIOSES.DLL`
+    for a real exclusive-mode bitstream client) and a stats bug where the per-callback
+    "bursts rendered" counter truncated to zero almost every WASAPI callback, hanging the CLI's
+    drain-wait loop forever after real playback had already finished. See
+    `src/audio/src/backend/windows/passthrough.cpp`.
+
+    The AC-3 bursts are byte-exact against FFmpeg's `spdif` muxer, and the E-AC-3 burst framing
+    (data type 0x15, the 24576-byte/4x-carrier-rate burst, multi-syncframe accumulation, `Pd`
+    in bytes not bits) is independently verified against both FFmpeg's `spdif_header_eac3` and
+    Microsoft's own "Representing Formats for IEC 61937 Transmissions" documentation, plus
+    round-trip and real-audio unit tests — all of which held up against the real device too.
 
 !!! note "No EDID/ELD backend on Windows"
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
