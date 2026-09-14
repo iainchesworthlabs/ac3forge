@@ -226,12 +226,20 @@ jobs:
       # own status through a real output instead). job.status reflects every
       # step that already ran in this job, so reading it from the LAST step
       # - itself always() so it still runs after an earlier failure - is the
-      # job's real final status, not just this one step's.
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
       - name: Record result
         id: record-result
         if: always()
         shell: bash
-        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
   # ac3adm::ac3adm (src/ac3adm) is opt-in - AC3FORGE_BUILD_ADM defaults OFF, unlike every other
   # library component (see the root CMakeLists.txt's own option() and src/ac3adm/CMakeLists.txt's
   # header comment for why: it is the one module in this repo with a third-party dependency,
@@ -359,12 +367,20 @@ jobs:
       # own status through a real output instead). job.status reflects every
       # step that already ran in this job, so reading it from the LAST step
       # - itself always() so it still runs after an earlier failure - is the
-      # job's real final status, not just this one step's.
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
       - name: Record result
         id: record-result
         if: always()
         shell: bash
-        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
   # Encoder throughput, this PR against its own merge base, on one runner
   # (roadmap VX17).
   #
@@ -598,12 +614,20 @@ jobs:
       # own status through a real output instead). job.status reflects every
       # step that already ran in this job, so reading it from the LAST step
       # - itself always() so it still runs after an earlier failure - is the
-      # job's real final status, not just this one step's.
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
       - name: Record result
         id: record-result
         if: always()
         shell: bash
-        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
   # Heap churn, this PR against its own merge base, on one runner. The memory
   # counterpart to performance-compare above, closing the identical hole one
   # resource over.
@@ -829,12 +853,20 @@ jobs:
       # own status through a real output instead). job.status reflects every
       # step that already ran in this job, so reading it from the LAST step
       # - itself always() so it still runs after an earlier failure - is the
-      # job's real final status, not just this one step's.
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
       - name: Record result
         id: record-result
         if: always()
         shell: bash
-        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
   # Roadmap AP4: an ABI gate for the shared libraries, over the
   # linux-llvm-shared build. Two independent checks, both against
   # config-linux-llvm-shared (already Debug - has DWARF - and
@@ -1442,12 +1474,20 @@ jobs:
       # own status through a real output instead). job.status reflects every
       # step that already ran in this job, so reading it from the LAST step
       # - itself always() so it still runs after an earlier failure - is the
-      # job's real final status, not just this one step's.
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
       - name: Record result
         id: record-result
         if: always()
         shell: bash
-        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
   # Persists ffmpeg-validate's landscape-trend numbers (see that job's own
   # comment) to the quality-history branch, same mechanism as
   # persist-performance-trend beside it - one job downstream of a single
@@ -1608,12 +1648,20 @@ jobs:
       # own status through a real output instead). job.status reflects every
       # step that already ran in this job, so reading it from the LAST step
       # - itself always() so it still runs after an earlier failure - is the
-      # job's real final status, not just this one step's.
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
       - name: Record result
         id: record-result
         if: always()
         shell: bash
-        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
   # Persists ffmpeg-validate's object-reconstruction numbers to the same
   # quality-history branch, a different file again
   # (object-quality-<branch>.jsonl, read by docs/object-quality-trend.md).
@@ -1752,9 +1800,17 @@ jobs:
       # own status through a real output instead). job.status reflects every
       # step that already ran in this job, so reading it from the LAST step
       # - itself always() so it still runs after an earlier failure - is the
-      # job's real final status, not just this one step's.
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
       - name: Record result
         id: record-result
         if: always()
         shell: bash
-        run: echo "status=${{ job.status }}" >> "$GITHUB_OUTPUT"
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
