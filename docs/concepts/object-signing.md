@@ -93,13 +93,23 @@ in the library reference for the rest of the API surface.
 - `load_signing_key()` is a convenience resolver (a path argument, then `AC3FORGE_SIGNING_KEY_FILE`,
   then an inline `AC3FORGE_SIGNING_KEY`) for tools that take a key from the environment; a library
   consumer can ignore it and construct `SigningKey` directly from bytes it obtained however it likes.
-- **Key format: base64 or raw bytes.** `decode_signing_key()` (which `load_signing_key()` uses, and
-  which you can call yourself on bytes you already hold) base64-decodes its input when it is valid
-  base64 — the form a GitHub secret must use, since a secret is text and can't carry a raw binary
-  key — and otherwise takes it as raw key bytes. The two are unambiguous in practice; **hex is not a
-  supported format** (a hex string is itself valid base64, so the two can't be auto-distinguished).
-  So one base64 value works everywhere: as the CI secret, as `AC3FORGE_SIGNING_KEY`, or as a
-  `signing-key=` file — and a raw binary key file decodes to the same bytes.
+- **Key format: base64, a `0xHH` byte array, or raw bytes.** `decode_signing_key()` (which
+  `load_signing_key()` uses, and which you can call yourself on bytes you already hold)
+  base64-decodes its input when it is valid base64 — the form a GitHub secret must use, since a
+  secret is text and can't carry a raw binary key — then tries a comma/whitespace-separated
+  `0x56, 0x6c, 0xef, ...` byte array, the shape a disassembler or decompiler typically exports a
+  found secret in, and otherwise takes the content as raw key bytes. All three are unambiguous in
+  practice (the array form's `0x` prefixes and commas aren't valid base64 characters); **plain hex
+  with no `0x` prefix is not its own supported format** (a hex string is itself valid base64, so
+  the two can't be auto-distinguished). Content that is entirely hex/array-shaped characters (hex
+  digits, `x`, comma, brace/bracket punctuation) but still fails to parse as either recognized
+  format is refused outright, rather than silently taken as literal ASCII bytes: a mis-copied or
+  truncated array export looks nothing like a genuine random binary key, and signing with the
+  wrong secret this way produces a stream that verifies fine against itself while a real decoder
+  rejects it — the exact failure mode this check exists to turn into a clear error instead. So one
+  base64 value works everywhere: as the CI secret, as `AC3FORGE_SIGNING_KEY`, or as a
+  `signing-key=` file — and a raw binary key file, or a copy-pasted `0xHH` array, decodes to the
+  same bytes.
 
 Everything below is just *how the two front ends in this repository supply their own key* — worked
 examples of the rule above, not additional machinery.

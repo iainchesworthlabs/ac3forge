@@ -48,7 +48,8 @@ private:
 enum class KeyErrorKind {
     kAbsent,      // no signing-key= path, no env var: nothing to load
     kUnreadable,  // a path was given but could not be opened/read
-    kMalformed,   // reserved: contents could not be interpreted as a key
+    kMalformed,   // non-empty contents that look like a botched hex/array
+                  // export (see decode_signing_key) rather than a key
     kEmpty,       // a source resolved but held no bytes
 };
 
@@ -57,14 +58,21 @@ struct KeyLoadError {
     std::string message;  // human-facing, already names the source it tried
 };
 
-// Interprets `content` as a key: base64-decoded when it is valid base64 (the
-// CI/secret transport form - a GitHub secret is text and cannot carry a raw
-// binary key), otherwise taken as raw key bytes. Returns nullopt only when the
-// content is empty. This is the single decode every path shares, exposed so a
-// caller that already holds the bytes - the Shield app reading its bundled
-// asset - decodes identically to the CLI. Hex is deliberately not a format: a
-// hex string is itself valid base64, so the two cannot be auto-distinguished.
-// See docs/concepts/object-signing.md.
+// Interprets `content` as a key, trying in order: base64 (the CI/secret
+// transport form - a GitHub secret is text and cannot carry a raw binary
+// key), a comma/whitespace-separated "0xHH" byte array (a common
+// disassembler/decompiler export shape), then raw key bytes verbatim.
+// Returns nullopt when the content is empty, OR when it is made up entirely
+// of hex/array-shaped characters (hex digits, 'x', comma, brace/bracket
+// punctuation) but still fails to parse as either recognized format - such
+// content is almost certainly a mis-copied or truncated hex export, and
+// treating its literal ASCII bytes as the key would silently sign with the
+// wrong secret rather than fail. This is the single decode every path
+// shares, exposed so a caller that already holds the bytes - the Shield app
+// reading its bundled asset - decodes identically to the CLI. Plain hex with
+// no "0x" prefix is deliberately not its own format: such a string is itself
+// valid base64, so the two cannot be auto-distinguished. See
+// docs/concepts/object-signing.md.
 [[nodiscard]] AC3SIGNING_EXPORT std::optional<SigningKey> decode_signing_key(
     std::span<const std::byte> content);
 

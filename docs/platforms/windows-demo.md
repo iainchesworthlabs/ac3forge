@@ -70,7 +70,7 @@ inventory the plan is built on, with the header each item lives in.
 | Live per-object placement surface the UI pushes into once per frame | exists | `ac3::oba::SceneCursor`, `src/forge/include/ac3/oba/scene.hpp`; the three-call pattern is `examples/osc_object_control.cpp` |
 | 5.1 bed panner for the AC-3-only receiver case | exists | `ac3::spatial::BedRenderer`, shown in `examples/spatial_objects.cpp` |
 | IEC 61937 burst framing for AC-3 and E-AC-3 | exists | `ac3::iec61937`, `src/forge/include/ac3/iec61937/iec61937.hpp` |
-| Exclusive-mode HDMI/S/PDIF bitstream sink, with a per-device format probe | exists, unconfirmed on a real receiver on Windows | `ac3::audio::PassthroughSink`, `enumerate_render_devices()`, `src/audio/include/ac3/audio/passthrough.hpp` |
+| Exclusive-mode HDMI/S/PDIF bitstream sink, with a per-device format probe | exists, confirmed against a real receiver on Windows (via `ac3cli`, not this demo's own app yet) | `ac3::audio::PassthroughSink`, `enumerate_render_devices()`, `src/audio/include/ac3/audio/passthrough.hpp` |
 | Shared-mode multichannel PCM sink | exists | `ac3::audio::MonitorSink`, `monitor.hpp` |
 | Windows Spatial Sound object sink (headphones) | exists, confirmed against a real spatial endpoint | `ac3::audio::SpatialObjectSink`, `spatial.hpp` |
 | Whole-endpoint WASAPI loopback capture | exists | `ac3::audio::Capture` with `DeviceKind::kLoopback`, `src/audio/src/backend/windows/capture.cpp` |
@@ -476,13 +476,13 @@ leaving its answer in this page. None of it is reused as code.
 | Spike | Question | Exit |
 |---|---|---|
 | **S1 taps** | Does process loopback work against N processes at once, what format arrives, does it keep delivering when the session is muted, when the app is routed to the FxSound endpoint, and when the default endpoint is held exclusively by us? | **Done 2026-09-03**, results in `apps/windows/spikes/README.md`: 16 taps separate exactly at 48 kHz float, mute kills a tap, the FxSound null-sink model works, exclusive on another endpoint is fine, exclusive on the apps' own endpoint is refused and destructive, the probe alone is harmless |
-| **S2 bitstream** | Does `PassthroughSink` in E-AC-3 and AC-3 exclusive mode lock on a real Atmos receiver from this workstation? This is DR9's Windows row. | the receiver's front panel reads DD+ Atmos, then DD, at zero underruns for a minute |
+| **S2 bitstream** | Does `PassthroughSink` in E-AC-3 and AC-3 exclusive mode lock on a real Atmos receiver from this workstation? This is DR9's Windows row. | **Confirmed**, via `ac3cli` rather than the Crucible app itself — see [Windows](windows.md#audio-backend-wasapi): an Onkyo TX-RZ740 locked Dolby Digital, then Dolby Digital Plus, then Atmos/DD+ for a signed object stream (decoded to 5.0.4, audible object motion), at zero-to-near-zero underruns each run. Crucible's own output stage wraps the same `PassthroughSink`, but the app itself has not yet been run against a receiver directly |
 | **S3 headphones** | With Windows Sonic enabled on the Realtek endpoint, does encode then decode then `SpatialObjectSink` produce audible height and rear movement by ear? | yes or no, and the measured round-trip latency |
 | **S4 throughput** | Does a 15-object `AtmosEncoder` plus 16 taps plus the bed mix hold 32 ms cadence on this machine with margin? | **Done 2026-09-03**, results in `apps/windows/spikes/README.md`: p99 1.8 ms of the 32 ms budget in normal mode; the 1-block frame p99 0.7 ms of 5.3 ms, but needs at least about 1.5 Mb/s to carry 15 objects' metadata (640 kb/s is refused) |
 | **S5 latency** | End to end, application to output, how far behind is each mode, and how much of it is the codec? Run under Phase 5, kept here with the others (`s5_latency.cpp`, `period_probe.cpp`, `Measure-Latency.ps1`) | **Done 2026-09-03**, results in `apps/windows/spikes/README.md` and under [Low-latency mode](#low-latency-mode): normal frames about 127 ms and low-latency about 110 ms tap to tap, of which 19 ms is the measuring tap itself; `period_probe` found the Realtek endpoint offers only a 10 ms shared-mode period, so the low-latency render period has no travel there |
 
-Prerequisites: a long HDMI cable to the receiver (S2, the developer's to-do); Windows Sonic
-enabled on the headphone endpoint (S3). S3 and S4 do not wait for S2.
+Prerequisites: Windows Sonic enabled on the headphone endpoint (S3). S3 and S4 do not wait
+on S2, which is now done.
 
 ### Phase 1: library additions
 
@@ -1158,9 +1158,9 @@ each other.
     refuses below roughly 1.5 Mb/s because the object metadata no longer fits. Same file.
 
 What the phase records above claim was checked on the workstation or in the guest, as each
-record says; the bitstream modes, the spatial path and a real device-arrival switch wait on
-hardware. When S2 runs, the "Windows/WASAPI exclusive: unconfirmed" line and
-the warning in [Windows](windows.md) are the first two things to change.
+record says; the spatial path and a real device-arrival switch still wait on hardware, and so
+does the demo's own app, though S2 has now confirmed the `PassthroughSink` primitive it would
+use — see [Windows](windows.md#audio-backend-wasapi).
 
 ## Open questions this plan does not settle
 

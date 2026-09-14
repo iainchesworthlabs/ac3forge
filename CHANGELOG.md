@@ -1086,6 +1086,28 @@ release packaging.
   outright. Both now follow the effective target architecture, and a universal (multi-`-arch`)
   configure resolves `generic`, since no single compile-time choice can serve both slices. Native
   builds on every platform are unaffected.
+**Audio backend and object signing**
+
+- **`PassthroughSink` crashed the instant a real exclusive-mode bitstream endpoint was available to
+  drive it**, surfaced once an Onkyo TX-RZ740 over an Nvidia GPU's HDMI audio endpoint locked AC-3,
+  E-AC-3 and signed Atmos through the sink itself for the first time. `Activate`/`Initialize` ran
+  on the calling thread while `Start`/`GetBuffer`/`Stop` ran on a worker thread - harmless for
+  `MonitorSink`'s shared-mode path, fatal deep inside `AUDIOSES.DLL` for a real exclusive-mode
+  client. The whole WASAPI lifecycle now runs on one worker thread, with `start()` blocking on a
+  promise so it still reports the real open/format-support result synchronously. The same session
+  also found the render loop's "bursts rendered" counter dividing each callback's bytes by the
+  burst size, which truncates to zero almost every callback since the exclusive-mode buffer size
+  has no reason to align to a whole burst - hanging the CLI's drain-wait loop forever after real
+  playback had already finished. Now accumulates bytes and converts to bursts only when `stats()`
+  is read.
+- **`ac3::signing::decode_signing_key` silently signed with the wrong bytes when a key file held a
+  comma-separated `0xHH` hex-array export** - a common disassembler/decompiler shape, and how this
+  project's own reverse-engineered test key had been saved - rather than base64 or raw binary. The
+  literal ASCII text became the HMAC key: self-consistent against this project's own sign/verify
+  round-trip, but rejected by a real licensed decoder, which is how a real AV receiver locking
+  Dolby Digital Plus but refusing to unlock a signed Atmos stream's object layer surfaced it. Now
+  recognises that format, and refuses content that is made up entirely of hex/array-shaped
+  characters but still fails to parse as one, instead of silently taking it as raw key bytes.
 
 ## [0.10.0-beta.1] - 2026-09-01
 

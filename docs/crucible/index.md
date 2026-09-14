@@ -57,7 +57,7 @@ differently, and [Install and first run](install.md) is mostly about that differ
 |---|---|---|---|
 | Enumerate and tap | yes | yes, confirmed on hardware | compiles; nothing has been captured |
 | Silence | a kernel driver, test-signed only, [see below](#the-silent-device) | a PipeWire node, nothing to install | the tap mutes where it taps; no device needed — compiles; no tap has been created |
-| Bitstream to a receiver | not yet confirmed | yes, read off the receiver: 5.1 DD+, and Atmos/DD+ with objects | nothing has been played |
+| Bitstream to a receiver | the underlying `PassthroughSink` is, via `ac3cli` — [see Windows](../platforms/windows.md#audio-backend-wasapi); Crucible itself hasn't been run against a receiver yet | yes, read off the receiver: 5.1 DD+, and Atmos/DD+ with objects | nothing has been played |
 | The window | yes | yes, run on the Pi | builds in CI and its suites run there; never launched on a Mac |
 
 **Windows** is the platform the application was built on and the one with the longest record:

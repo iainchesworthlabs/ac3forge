@@ -806,8 +806,9 @@ The codec itself is platform-independent; only capture, monitor playback and IEC
 passthrough touch sound hardware, and how far each is verified differs by platform and by sink —
 covered where it's most relevant rather than repeated here:
 
-- [Windows](platforms/windows.md#audio-backend-wasapi) — `MonitorSink` is confirmed against real
-  hardware; exclusive-mode passthrough bitstreaming has not been.
+- [Windows](platforms/windows.md#audio-backend-wasapi) — `MonitorSink` and exclusive-mode
+  passthrough bitstreaming (AC-3, E-AC-3 and signed Atmos) are both confirmed against real
+  hardware, an Onkyo TX-RZ740 over HDMI.
 - [Linux](platforms/linux.md#what-has-and-has-not-been-verified) — the ALSA backend is verified
   headless only; no real S/PDIF or HDMI output has been tried.
 - [macOS](platforms/macos.md#audio-backend-coreaudio) — the CoreAudio backend is CI-verified

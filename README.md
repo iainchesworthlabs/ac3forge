@@ -94,8 +94,8 @@ Every target builds and tests green in CI. Beyond that:
 | ESP32-C3 | Decode only, fixed-point tier (no FPU), same component | ✅ correct | —⁸ |
 | Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal` | ✅ correct | —⁹ |
 
-1. Capture, monitor playback and `spatial` rendering; exclusive-mode IEC 61937 passthrough has
-   never been accepted by a real device.
+1. Capture, monitor playback, `spatial` rendering and exclusive-mode IEC 61937 passthrough
+   (AC-3, E-AC-3 and signed Atmos) are all confirmed, an Onkyo TX-RZ740 over HDMI.
 2. Bitstream output to a real receiver, on one machine.
 3. Full test suite on the board plus Atmos over HDMI to a powered AVR.
 4. Nothing has captured or played a sound; the Core Audio process tap has never been created.

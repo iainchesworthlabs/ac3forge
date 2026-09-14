@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <future>
 #include <thread>
 
 #include "ac3/audio/ring_buffer.hpp"
@@ -330,7 +331,11 @@ struct PassthroughSink::Impl {
     std::jthread worker;
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
-    std::atomic<std::uint64_t> rendered{0};
+    // Accumulated in bytes, not bursts: the exclusive-mode buffer WASAPI
+    // grants (driven by the device's own period) has no reason to align to
+    // a whole burst, so a per-callback "bytes this cycle / burst_bytes"
+    // would truncate to 0 almost every cycle. stats() converts to bursts.
+    std::atomic<std::uint64_t> rendered_bytes{0};
     std::atomic<std::uint64_t> underruns{0};
     // Set by start(); submit()/can_submit() validate against whichever burst
     // size the chosen BitstreamFormat uses.
@@ -349,7 +354,8 @@ bool PassthroughSink::running() const {
 
 PassthroughStats PassthroughSink::stats() const {
     return {.bursts_submitted = impl_->submitted.load(std::memory_order_relaxed),
-            .bursts_rendered = impl_->rendered.load(std::memory_order_relaxed),
+            .bursts_rendered =
+                impl_->rendered_bytes.load(std::memory_order_relaxed) / impl_->burst_bytes,
             .underruns = impl_->underruns.load(std::memory_order_relaxed)};
 }
 
@@ -413,89 +419,122 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         }
     }
 
-    ComPtr<IAudioClient> client;
-    if (FAILED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-
     auto format = make_format(format_kind, sample_rate, 6);
-    if (client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, &format.FormatExt.Format,
-                                  nullptr) != S_OK) {
-        return std::unexpected(PassthroughError::kFormatRejected);
-    }
-    // The carrier (link) rate, not the content rate: identical to
-    // `sample_rate` for AC-3, 4x it for E-AC-3 (make_eac3_format already
-    // applied that). GetDevicePeriod/GetBufferSize below deal in frames of
-    // this carrier, so the realignment math has to use it too.
-    const std::uint32_t carrier_rate = format.FormatExt.Format.nSamplesPerSec;
-
-    REFERENCE_TIME default_period = 0;
-    REFERENCE_TIME minimum_period = 0;
-    if (FAILED(client->GetDevicePeriod(&default_period, &minimum_period))) {
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-    REFERENCE_TIME period = default_period;
-
-    HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE,
-                                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK, period, period,
-                                    &format.FormatExt.Format, nullptr);
-    if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
-        // The documented realignment dance: ask what buffer size the driver
-        // actually wants, convert it back to a period, and re-Initialize on a
-        // fresh client (an initialised one cannot be reconfigured).
-        UINT32 aligned_frames = 0;
-        if (FAILED(client->GetBufferSize(&aligned_frames)) || aligned_frames == 0) {
-            return std::unexpected(PassthroughError::kComFailure);
-        }
-        period = static_cast<REFERENCE_TIME>(
-            10000.0 * 1000 * aligned_frames / carrier_rate + 0.5);
-        client.Reset();
-        if (FAILED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
-            return std::unexpected(PassthroughError::kComFailure);
-        }
-        hr = client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                                period, period, &format.FormatExt.Format, nullptr);
-    }
-    if (hr == AUDCLNT_E_DEVICE_IN_USE || hr == AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED) {
-        return std::unexpected(PassthroughError::kExclusiveUnavailable);
-    }
-    if (FAILED(hr)) {
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-
-    UINT32 buffer_frames = 0;
-    if (FAILED(client->GetBufferSize(&buffer_frames))) {
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-
-    HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (ready == nullptr || FAILED(client->SetEventHandle(ready))) {
-        if (ready != nullptr) {
-            CloseHandle(ready);
-        }
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-
-    ComPtr<IAudioRenderClient> render;
-    if (FAILED(client->GetService(kIidAudioRenderClient, &render))) {
-        CloseHandle(ready);
-        return std::unexpected(PassthroughError::kComFailure);
-    }
+    const std::size_t frame_bytes = format.FormatExt.Format.nBlockAlign;
 
     // Room for roughly a second of bursts, so a caller encoding slightly
     // ahead of real time never has to spin.
     impl_->burst_bytes = burst_bytes_for(format_kind);
     impl_->queue = std::make_unique<ByteRingBuffer>(impl_->burst_bytes * 40);
     impl_->submitted.store(0, std::memory_order_relaxed);
-    impl_->rendered.store(0, std::memory_order_relaxed);
+    impl_->rendered_bytes.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
-    impl_->running.store(true, std::memory_order_release);
 
-    const std::size_t frame_bytes = format.FormatExt.Format.nBlockAlign;
+    // Activate, IsFormatSupported, Initialize, GetService and Start all run
+    // on this one worker thread from here on, never on the thread that calls
+    // start(). Every real device this backend had been checked against
+    // before an actual AV receiver was cabled to a Windows machine was
+    // shared-mode/PCM, where handing the IAudioClient/IAudioRenderClient
+    // pointers to a second thread (as MonitorSink still does) works fine.
+    // The first real exclusive-mode bitstream endpoint to accept AC-3/E-AC-3
+    // crashed inside AUDIOSES.DLL the instant a different thread called
+    // Start() on a client Initialize()'d elsewhere - see
+    // docs/platforms/windows.md. start() blocks on a promise so it still
+    // reports the real open/format-support result synchronously.
+    std::promise<std::expected<void, PassthroughError>> ready_promise;
+    auto ready_future = ready_promise.get_future();
 
-    impl_->worker = std::jthread([this, client, render, ready, buffer_frames,
-                                  frame_bytes](const std::stop_token& stop) mutable {
+    impl_->worker = std::jthread([this, device, format, frame_bytes,
+                                  promise = std::move(ready_promise)](
+                                     const std::stop_token& stop) mutable {
         ComScope thread_com;
+        if (!thread_com.ok()) {
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        ComPtr<IAudioClient> client;
+        if (FAILED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        if (client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, &format.FormatExt.Format,
+                                      nullptr) != S_OK) {
+            promise.set_value(std::unexpected(PassthroughError::kFormatRejected));
+            return;
+        }
+        // The carrier (link) rate, not the content rate: identical to
+        // `sample_rate` for AC-3, 4x it for E-AC-3 (make_eac3_format already
+        // applied that). GetDevicePeriod/GetBufferSize below deal in frames
+        // of this carrier, so the realignment math has to use it too.
+        const std::uint32_t carrier_rate = format.FormatExt.Format.nSamplesPerSec;
+
+        REFERENCE_TIME default_period = 0;
+        REFERENCE_TIME minimum_period = 0;
+        if (FAILED(client->GetDevicePeriod(&default_period, &minimum_period))) {
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+        REFERENCE_TIME period = default_period;
+
+        HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE,
+                                        AUDCLNT_STREAMFLAGS_EVENTCALLBACK, period, period,
+                                        &format.FormatExt.Format, nullptr);
+        if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
+            // The documented realignment dance: ask what buffer size the
+            // driver actually wants, convert it back to a period, and
+            // re-Initialize on a fresh client (an initialised one cannot be
+            // reconfigured).
+            UINT32 aligned_frames = 0;
+            if (FAILED(client->GetBufferSize(&aligned_frames)) || aligned_frames == 0) {
+                promise.set_value(std::unexpected(PassthroughError::kComFailure));
+                return;
+            }
+            period = static_cast<REFERENCE_TIME>(
+                10000.0 * 1000 * aligned_frames / carrier_rate + 0.5);
+            client.Reset();
+            if (FAILED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
+                promise.set_value(std::unexpected(PassthroughError::kComFailure));
+                return;
+            }
+            hr = client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                                    period, period, &format.FormatExt.Format, nullptr);
+        }
+        if (hr == AUDCLNT_E_DEVICE_IN_USE || hr == AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED) {
+            promise.set_value(std::unexpected(PassthroughError::kExclusiveUnavailable));
+            return;
+        }
+        if (FAILED(hr)) {
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        UINT32 buffer_frames = 0;
+        if (FAILED(client->GetBufferSize(&buffer_frames))) {
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (ready == nullptr || FAILED(client->SetEventHandle(ready))) {
+            if (ready != nullptr) {
+                CloseHandle(ready);
+            }
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        ComPtr<IAudioRenderClient> render;
+        if (FAILED(client->GetService(kIidAudioRenderClient, &render))) {
+            CloseHandle(ready);
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        impl_->running.store(true, std::memory_order_release);
+        promise.set_value({});
+
         DWORD mmcss_index = 0;
         HANDLE mmcss = AvSetMmThreadCharacteristicsW(L"Pro Audio", &mmcss_index);
 
@@ -523,7 +562,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             }
             std::memcpy(target, chunk.data(), wanted);
             render->ReleaseBuffer(buffer_frames, 0);
-            impl_->rendered.fetch_add(got / impl_->burst_bytes, std::memory_order_relaxed);
+            impl_->rendered_bytes.fetch_add(got, std::memory_order_relaxed);
         }
 
         client->Stop();
@@ -533,6 +572,12 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         CloseHandle(ready);
     });
 
+    auto result = ready_future.get();
+    if (!result) {
+        impl_->worker.join();
+        impl_->queue.reset();
+        return std::unexpected(result.error());
+    }
     return {};
 }
 

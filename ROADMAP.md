@@ -2926,9 +2926,9 @@ Restated per sub-item now that all three have landed:
 
 ### In progress
 
-**DR9 (shared)** — Hardware confirmation, per backend. Linux/ALSA and PipeWire confirmed on
-real hardware; Windows/WASAPI exclusive remains unconfirmed; CoreAudio is blocked on real Mac
-hardware.
+**DR9 (shared)** — Hardware confirmation, per backend. Linux/ALSA, PipeWire and Windows/WASAPI
+exclusive are all confirmed on real hardware now; CoreAudio remains blocked on real Mac
+hardware, the one backend left.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2939,9 +2939,16 @@ hardware.
   locked and was identified correctly, including signed Atmos with four height channels, at
   zero underruns. `docs/verification.md`, `docs/platforms/linux.md`, the 0.9.0 Known gaps and
   `docs/platforms/windows.md` all carried stale text contradicting this — fixed with DR5.
-- **Windows/WASAPI exclusive: unconfirmed** — only a Realtek analogue endpoint has been tried.
-  The receiver exists now: cable the workstation's HDMI (or a USB S/PDIF for the AC-3 half)
-  and run the Pi page's stream matrix (S, hardware).
+- **Windows/WASAPI exclusive: confirmed** — an Onkyo TX-RZ740 cabled over an Nvidia
+  GPU's HDMI audio endpoint locked AC-3 (Dolby Digital 5.1), E-AC-3 (Dolby Digital Plus 5.1) and
+  a signed Atmos stream (Atmos/DD+, decoded to 5.0.4, audible object motion) through
+  `PassthroughSink` itself, at zero-to-near-zero underruns each run — see
+  [docs/platforms/windows.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/windows.md#audio-backend-wasapi).
+  Getting there found and fixed two real `PassthroughSink` defects only a real exclusive-mode
+  endpoint could surface (a cross-thread WASAPI crash and a burst-count stats bug that hung the
+  CLI), plus an object-signing key loader gap that silently signed with the wrong bytes when a
+  key was supplied as a `0xHH` hex-array text export instead of raw or base64 — see
+  [docs/concepts/object-signing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/concepts/object-signing.md).
 - **PipeWire: confirmed 2026-09-05** — the backend ran against a real session on the Pi (Pi OS
   13, PipeWire 1.4.2): `enumerate_render_devices()` found the receiver's HDMI sink with
   `iec958.codecs = [PCM,DTS,AC3,EAC3,TrueHD,DTS-HD]` set by WirePlumber from the ELD, and

@@ -629,20 +629,16 @@ whole session of it.
 Windows, ALSA on Linux, CoreAudio on macOS — the path an AV receiver needs to see the raw
 compressed bitstream rather than decoded PCM.
 
-Stated plainly, because this project's docs don't soften verification gaps: **no desktop
-platform's passthrough — AC-3 and E-AC-3 alike — has been confirmed against real bitstreaming
-hardware.** The one platform with that confirmation is Android, whose backend has locked a real
-AV receiver onto real Atmos output over HDMI — see [Android](../platforms/android.md), and each
-platform page for its own status. On [Windows](../platforms/windows.md#audio-backend-wasapi)
-specifically: the development machine has no S/PDIF or HDMI endpoint behind a real
-Dolby-capable AV receiver, and WASAPI's `IsFormatSupported`
-correctly rejects both Dolby IEC 61937 subtypes everywhere it has been tried. What *is* verified
-there: the exclusive-mode path itself works (a Realtek endpoint accepts an exclusive-mode PCM
-format), and the burst framing it carries is verified as described above under
-`ac3::iec61937`. But no bitstream-capable receiver has been confirmed to lock onto output
-from this sink specifically — the one receiver-locking check that has been done used a different
-code path (bursts played as a PCM16 WAV through a passthrough output), not `PassthroughSink`
-itself, and that check has only been tried for AC-3, not E-AC-3.
+Stated plainly, because this project's docs don't soften verification gaps: of the desktop
+platforms, only **Windows** has this sink confirmed against real bitstreaming hardware — an
+Onkyo TX-RZ740 over an Nvidia GPU's HDMI output locks AC-3, E-AC-3 and signed Atmos through
+`PassthroughSink` itself, not a workaround code path; see
+[Windows](../platforms/windows.md#audio-backend-wasapi) for the full account, including two real
+`PassthroughSink` defects that real hardware surfaced and this project fixed (a cross-thread
+WASAPI crash and a stats bug that hung the CLI). Android has the same confirmation independently,
+locking a real AV receiver onto real Atmos output over HDMI — see
+[Android](../platforms/android.md). Linux and macOS remain unconfirmed against real bitstreaming
+hardware; see each platform page for its own status.
 
 ### `ac3::audio::sink_capabilities` — reading what a sink says it accepts
 

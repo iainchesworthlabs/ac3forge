@@ -148,6 +148,35 @@ TEST_CASE("load_signing_key reads a key file", "[signing][key]") {
         fs::remove(p);
     }
 
+    SECTION("a C-array hex export decodes to the raw key") {
+        const fs::path p = dir / "ac3forge_test_key_hexarray.txt";
+        {
+            std::ofstream out{p};
+            out << "0x00, 0x01, 0x02, 0x03, 0xff\n";
+        }
+        const auto key = ac3::signing::load_signing_key(p.string());
+        REQUIRE(key.has_value());
+        REQUIRE(key->bytes().size() == 5);
+        CHECK(std::to_integer<int>(key->bytes()[0]) == 0x00);
+        CHECK(std::to_integer<int>(key->bytes()[4]) == 0xff);
+        fs::remove(p);
+    }
+
+    SECTION("a botched hex export is rejected rather than signed with the wrong bytes") {
+        const fs::path p = dir / "ac3forge_test_key_botched.txt";
+        {
+            // Missing every "0x" prefix - exactly the shape a hand-edited or
+            // half-converted export can end up in. All-hex-digit-and-comma,
+            // so it must not silently fall through to "raw key bytes".
+            std::ofstream out{p};
+            out << "56, 6c, ef, 66\n";
+        }
+        const auto key = ac3::signing::load_signing_key(p.string());
+        REQUIRE_FALSE(key.has_value());
+        CHECK(key.error().kind == ac3::signing::KeyErrorKind::kMalformed);
+        fs::remove(p);
+    }
+
     SECTION("a missing path is an error, not an absent key") {
         const auto key =
             ac3::signing::load_signing_key((dir / "definitely_not_here_ac3forge.key").string());
@@ -214,6 +243,30 @@ TEST_CASE("decode_signing_key accepts base64 or raw, and they agree", "[signing]
 
     SECTION("empty content yields no key") {
         CHECK_FALSE(ac3::signing::decode_signing_key({}).has_value());
+    }
+
+    SECTION("a comma-separated 0xHH byte array decodes to the key bytes") {
+        const std::string arr = "0x00, 0x01, 0x02, 0x03, 0xff";
+        const auto key = ac3::signing::decode_signing_key(as_bytes(arr));
+        REQUIRE(key.has_value());
+        REQUIRE(key->bytes().size() == expected.size());
+        CHECK(std::equal(key->bytes().begin(), key->bytes().end(), expected.begin()));
+    }
+
+    SECTION("a hex array without whitespace between tokens still decodes") {
+        const std::string arr = "0x00,0x01,0x02,0x03,0xff";
+        const auto key = ac3::signing::decode_signing_key(as_bytes(arr));
+        REQUIRE(key.has_value());
+        REQUIRE(key->bytes().size() == expected.size());
+        CHECK(std::equal(key->bytes().begin(), key->bytes().end(), expected.begin()));
+    }
+
+    SECTION("hex-shaped text that isn't a valid array is refused, not taken as raw bytes") {
+        // No "0x" prefixes: all hex digits and commas, so it must be refused
+        // rather than silently treated as five bytes of ASCII '5','6',',', etc.
+        CHECK_FALSE(ac3::signing::decode_signing_key(as_bytes("56, 6c, ef, 66")).has_value());
+        // A truncated array (odd trailing nibble) is equally refused.
+        CHECK_FALSE(ac3::signing::decode_signing_key(as_bytes("0x00, 0x01, 0x0")).has_value());
     }
 }
 
