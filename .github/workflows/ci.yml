@@ -643,6 +643,20 @@ jobs:
     needs: changes
     if: needs.changes.outputs.python == 'true'
     uses: ./.github/workflows/wheels.yml
+    # Ceiling for every job wheels.yml declares, not just the ones this call
+    # path actually reaches: GitHub validates a called workflow's nested
+    # jobs' permissions against what the caller grants here statically, at
+    # parse time, regardless of whether a job's own `if:` would skip it at
+    # runtime - confirmed the hard way (a real "is only allowed 'actions:
+    # none'"/"'id-token: none'" validation failure on this exact call).
+    # actions: read is check-runners' decide-runner call; id-token: write is
+    # publish's OIDC token request, unreachable here since `github.ref` is
+    # never a tag on this call path, but still declared inside wheels.yml and
+    # still checked against this ceiling either way.
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     secrets:
       ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
@@ -651,6 +665,13 @@ jobs:
     needs: changes
     if: needs.changes.outputs.npm == 'true'
     uses: ./.github/workflows/npm.yml
+    # Ceiling for npm.yml's publish job (id-token: write) - same reasoning as
+    # the wheels call above; publish is unreachable here (disarmed except on
+    # workflow_dispatch, see docs/releasing.md) but its declared permission
+    # still has to fit inside what this call grants.
+    permissions:
+      contents: read
+      id-token: write
 
   esp-component:
     name: ESP-IDF component
