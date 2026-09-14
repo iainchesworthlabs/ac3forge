@@ -285,9 +285,10 @@ that scratch copy, and discard it once validated - never commit that substitutio
 Roadmap **F2**: Python bindings (`python/`, see
 [docs/library/python-api.md](library/python-api.md)) as the `ac3forge` PyPI package, with wheels
 for Windows, macOS and Linux built by `.github/workflows/wheels.yml` via `cibuildwheel`. That
-workflow's `build` job runs continuously (every push/PR touching `python/**`, same "buildable is
-checked continuously" reasoning as `windows-msvc`'s packaging smoke test above) and always
-uploads the wheels it builds as a workflow artifact.
+workflow's `build` job runs continuously - every push/PR touching `python/**`, called from
+`ci.yml`'s own `wheels` job on the `python` lane since the CI lane partitions split
+(docs/ci-lanes.md), same "buildable is checked continuously" reasoning as `windows-msvc`'s
+packaging smoke test above - and always uploads the wheels it builds as a workflow artifact.
 
 **Publishing to PyPI is live**: the `pypi` GitHub environment is provisioned and
 [`ac3forge`](https://pypi.org/project/ac3forge/) is a real published package. `wheels.yml`'s

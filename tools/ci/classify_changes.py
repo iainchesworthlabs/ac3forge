@@ -60,9 +60,13 @@ LANE_PREFIXES: dict[str, tuple[str, ...]] = {
     ),
     "android": ("apps/android/",),
     "wasm": ("apps/wasm/", "js/"),
-    "esp": ("esp-idf/", "esphome/", "apps/baremetal/"),
+    # tools/packaging/ holds only pack_esp_component.py (the ESP-IDF
+    # component/ESPHome workflow's own packaging step) - see docs/ci-lanes.md.
+    "esp": ("esp-idf/", "esphome/", "apps/baremetal/", "tools/packaging/"),
     "rust": ("rust/",),
-    "python": ("python/",),
+    # examples/python/ alongside python/ itself - the rest of examples/ is
+    # plain C++, already core's concern via its own build, not this lane's.
+    "python": ("python/", "examples/python/"),
     # js/ package unit tests, not the wasm E2E demo - see wasm above. Left out
     # of CORE_FANOUT below on purpose: a core-only change does not need the
     # npm package's own tests run, only the platforms that embed core.

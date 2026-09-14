@@ -628,6 +628,36 @@ jobs:
       vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
       llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
 
+  # CI lane partitions plan (docs/ci-lanes.md), fold-satellites phase:
+  # wheels.yml/npm.yml/esp-component.yml were each triggered independently
+  # (their own pull_request/push with a paths: filter), so a Python-only or
+  # npm-only regression never touched CI Status - the workflow ran, could go
+  # red, and blocked nothing, the same silent-non-required trap
+  # branch-protection.md's own history already records for other checks.
+  # Calling them here, gated on the matching lane, makes them required
+  # through CI Status like every other lane below; each workflow's own
+  # `push: tags: v*` trigger (release publishing) is untouched and cannot
+  # overlap with this call - see wheels.yml's own comment on its `on:` block.
+  wheels:
+    name: Python wheels
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    uses: ./.github/workflows/wheels.yml
+    secrets:
+      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
+
+  npm:
+    name: npm package
+    needs: changes
+    if: needs.changes.outputs.npm == 'true'
+    uses: ./.github/workflows/npm.yml
+
+  esp-component:
+    name: ESP-IDF component
+    needs: changes
+    if: needs.changes.outputs.esp == 'true'
+    uses: ./.github/workflows/esp-component.yml
+
   build-and-test:
     name: Build & Test
     needs: changes
@@ -1073,7 +1103,7 @@ jobs:
   ci-status:
     name: CI Status
     if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, core, build-and-test, persist-performance-trend ]
+    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, core, wheels, npm, esp-component, build-and-test, persist-performance-trend ]
     # Control-plane job, same vars.CONTROL_RUNNER_JSON routing and kill
     # switch as check-runner above. This is the required check every PR
     # waits on LAST - when the hosted pool is saturated, a run whose every
@@ -1123,6 +1153,13 @@ jobs:
           R_PERF_TREND: ${{ needs.persist-performance-trend.result }}
           R_EXT_TREND: ${{ needs.core.outputs.persist_external_trend_result }}
           R_OBJ_TREND: ${{ needs.core.outputs.persist_object_trend_result }}
+          # 'skipped' on any PR/push outside their own lane (python/npm/esp),
+          # which is a pass - fold-satellites phase (docs/ci-lanes.md). Each
+          # workflow's own release-publish trigger is untouched and unrelated
+          # to this result.
+          R_WHEELS: ${{ needs.wheels.result }}
+          R_NPM: ${{ needs.npm.result }}
+          R_ESP_COMPONENT: ${{ needs.esp-component.result }}
         run: |
           set -euo pipefail
           fail=0
@@ -1138,7 +1175,9 @@ jobs:
                       "memory-gate:$R_MEM_GATE" \
                       "persist-performance-trend:$R_PERF_TREND" \
                       "persist-external-comparison-trend:$R_EXT_TREND" \
-                      "persist-object-quality-trend:$R_OBJ_TREND"; do
+                      "persist-object-quality-trend:$R_OBJ_TREND" \
+                      "wheels:$R_WHEELS" "npm:$R_NPM" \
+                      "esp-component:$R_ESP_COMPONENT"; do
             job="${pair%%:*}"; result="${pair#*:}"
             echo "  $job: $result"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then

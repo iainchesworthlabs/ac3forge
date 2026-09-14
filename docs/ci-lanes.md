@@ -18,15 +18,13 @@ it, exposing one boolean output per lane (`core`, `windows`, `linux`, `macos`,
 `android`, `wasm`, `esp`, `rust`, `python`, `npm`, `ci_self`, `docs`)
 alongside the existing `code` output. `ci.yml` forwards seven of them
 (`core`, `windows`, `linux`, `macos`, `android`, `wasm`, `esp`, `rust`) to
-`_build.yml` as `run_<lane>` inputs, and `ci.yml`'s own `core` job-call is
-gated on `core` directly - every one of the eight now gates real work, see
-"What's gated today". `python` and `npm` are computed but not yet forwarded
-anywhere: nothing in `_build.yml`/`_ci-core.yml` builds Python bindings or
-the npm package (those live in `wheels.yml` and `npm.yml`, folded into the
-aggregator only in a later phase). This is still short of the full plan; see
-the CI lane partitions plan for what's left (folding
-`wheels.yml`/`npm.yml`/`esp-component.yml` into the aggregator, an optional
-nightly-dispatch index).
+`_build.yml` as `run_<lane>` inputs, and `ci.yml`'s own `core`/`wheels`/`npm`/
+`esp-component` job-calls are each gated on their own lane directly - every
+lane except `ci_self` and `docs` (which were never meant to gate a build,
+only fan out to the ones that are) now gates real work, see "What's gated
+today". This closes out the plan's `fold-satellites` phase; what remains is
+optional and lowest priority - a nightly-dispatch index documenting the
+existing crons, no lane or gating change.
 
 ## What's gated today
 
@@ -41,16 +39,18 @@ in the previous phase no longer applies, because the matrix now lives one
 level down, inside each platform's own file, invisible to `_build.yml`'s own
 job-level conditions.
 
-| Lane | Job(s) gated by `run_<lane>` |
+| Lane | Job(s) gated by `<lane>` |
 |---|---|
 | `android` | `build-android` |
 | `wasm` | `build-wasm`, `device-ui` |
-| `esp` | `build-esp32s3`, `build-esp32c3`, `build-footprint` |
+| `esp` | `build-esp32s3`, `build-esp32c3`, `build-footprint`, `ci.yml`'s `esp-component` job-call (`.github/workflows/esp-component.yml`: `pack`, `esphome`) |
 | `rust` | `build-rust` |
 | `windows` | `build-windows` (windows-msvc, windows-llvm, windows-msvc-arm64), `windows-driver` |
 | `linux` | `build-linux` (linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan), `linux-appimage` |
 | `macos` | `build-macos` (macos-llvm, macos-llvm-x64), `package-macos-universal` (alongside `do_package`, which it already required) |
 | `core` | the whole `core` job-call (`_ci-core.yml`: coverage, ADM module, performance/memory compare+gate, ABI gate, FFmpeg validate, both quality-trend persisters) - see "The core lane" below |
+| `python` | `ci.yml`'s `wheels` job-call (`.github/workflows/wheels.yml`: `build`, `python-coverage`) - see "The fold-satellites phase" below |
+| `npm` | `ci.yml`'s `npm` job-call (`.github/workflows/npm.yml`: `build`) - see "The fold-satellites phase" below |
 
 An Android-only PR today skips `build-wasm`, `build-esp32s3`/`c3`,
 `build-footprint`, `build-rust`, `build-windows`, `windows-driver`,
@@ -346,3 +346,92 @@ change:
   declares `release_package: false` explicitly, the same "declare it once so
   the type exists" pattern `windows-msvc`'s own `experimental: false` already
   used for the same reason in the original matrix.
+
+## The fold-satellites phase
+
+`wheels.yml`, `npm.yml` and `esp-component.yml` each used to trigger
+independently of `ci.yml` - their own `pull_request`/`push` events with a
+`paths:` filter, same shape `ci.yml` itself used before `changes`/`code`
+existed. That made every check they produce (`Build wheels`, `Python
+coverage`, `Build and test`, `Pack and verify`, `ESPHome external
+component`) a **satellite**: it could go red on a genuine Python/npm/ESP
+regression and block nothing, because nothing outside that workflow ever
+looked at its result. `ci.yml` now calls all three directly - `wheels`
+(gated on the `python` lane), `npm` (the `npm` lane), `esp-component` (the
+`esp` lane) - and all three are in `CI Status`'s `needs` list, so their
+checks are required the same way `core`'s are.
+
+**Each workflow's own `push: tags: v*` trigger is untouched** - that is
+still what fires the (largely disarmed - `npm.yml`'s and
+`esp-component.yml`'s `publish` jobs need a manual dispatch, see
+docs/releasing.md) release-publish path, and it is genuinely independent of
+`ci.yml`'s call:
+
+- `ci.yml` itself never triggers on a tag push (`on.push.branches: [main]`
+  only), so its lane-gated calls and each workflow's own tag trigger can
+  never both fire for the same event - there is nothing to race or
+  double-run.
+- Removing `pull_request` and `push.branches: [main]` from each workflow's
+  own `on:` (the parts that existed purely for continuous PR/main-push
+  validation, now `ci.yml`'s job) leaves `push: { paths, tags }` with no
+  `branches:` key at all - which restricts the trigger to *only* tag pushes
+  matching `v*`, not "any push, filtered by path," the way it read with
+  `branches: [main]` still present. The `paths`/`tags` combination itself -
+  the one part of this that actually matters for a real release, and the
+  one this project has already cut real, working PyPI releases against - is
+  byte-for-byte unchanged.
+- None of the three needed a `merge_group` trigger added despite now
+  producing required checks: unlike a standalone workflow such as
+  `dependency-review.yml` (see `.github/branch-protection.md`'s "Merge
+  queue" section for why *that* one needs it), these three are
+  `workflow_call`-only for the PR/push path now - they run as nested jobs of
+  `ci.yml`'s own already-`merge_group`-aware run, the same as `_build.yml`
+  and `_ci-core.yml` already do without a `merge_group` trigger of their own.
+
+**A small classifier gap surfaced while checking each workflow's exact
+`paths:` list against the lane table**: `tools/packaging/` (holds only
+`pack_esp_component.py`, `esp-component.yml`'s own filter names it directly)
+and `examples/python/` (`wheels.yml`'s filter names it directly) were not in
+any lane's prefixes, so a change confined to either would have hit the
+conservative "unknown path" fallback - safe (still builds), but wider than
+needed. Both are now `esp`/`python` prefixes respectively; see
+`tools/ci/classify_changes.py`'s own comments.
+
+**`wheels`/`npm`/`esp-component` are each ONE required entry in `CI
+Status`**, not threaded per-sub-job the way `_ci-core.yml`'s seven are.
+Unlike coverage/ADM/ABI/FFmpeg-validate/perf-gate/memory-gate - genuinely
+independent concerns a reviewer benefits from telling apart at a glance -
+each of these three workflows is already one coherent "does this package
+still build and pass its own tests" concern, the same shape `build-and-test`
+already folds `_build.yml`'s dozen-plus jobs into. `needs.wheels.result`
+answering "success" or "failure" is exactly as informative as
+`needs.build-and-test.result` already was for the C++ matrix.
+
+## Nightly analysis is out of scope, on purpose
+
+CodeQL, MSVC Code Analysis (PREfast), clang-tidy, SonarCloud, the deeper
+fuzz sweep, `interop.yml`, and the weekly `osv-scanner.yml`/`zizmor.yml`/
+`scorecard.yml` all run on a schedule against `main` only, never on a PR or
+in the merge queue - see docs/ci-self-hosted-runners.md's "Nightly analysis
+window" for the full cron table, the fleet-sharing arrangement with
+`aqualink-automate`, and why each one is nightly rather than per-PR
+(`.github/branch-protection.md`'s "Nightly analysis and other visible-only
+scanners" section has the required-check history behind that choice). None
+of them reads a `classify_changes.py` lane, none is gated by one, and this
+plan does not propose changing that: a nightly run's whole point is
+evaluating `main` as it stands, not a diff, so "skip this scanner because
+the pushed commit didn't touch a relevant lane" is not a question that
+applies to them the way it does to a PR's own checks.
+
+The plan's own phased list names an optional `workflow_dispatch` umbrella
+that would let a maintainer re-run every nightly workflow together with one
+click, for a reason such as verifying a fleet change. It is not built here:
+every nightly workflow already has its own `workflow_dispatch:` trigger (`gh
+workflow run codeql.yml`, `... msvc-analysis.yml`, and so on, or the
+"Run workflow" button in each one's own Actions page), so the umbrella's
+only real value-add over that would be running nine dispatches instead of
+one - convenience, not a missing capability - and building it means reading
+and reasoning about nine security-sensitive scanner workflows this plan
+otherwise never touches, for a "nice to have" the plan itself marks
+optional. If a maintainer wants it later, docs/ci-self-hosted-runners.md's
+table above is already the source of truth for which workflow to add to it.

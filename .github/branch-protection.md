@@ -80,8 +80,25 @@ ruleset edit, and the list above is deliberately unchanged:
   `name:` stable - that rendered string is what the required check above is
   selected by, and renaming it leaves every PR pending until an admin edits
   the rule.
-- `Python coverage` (`wheels.yml`) is a new check on a workflow that has no
-  required checks today; leaving it that way is consistent with `Build wheels`.
+- `Python coverage` and `Build wheels` (`wheels.yml`) were not required checks
+  when `wheels.yml` was triggered independently of `ci.yml` (its own
+  `pull_request`/`push` with a `paths:` filter) - a Python-only regression
+  could go red there and block nothing, the exact non-required-satellite trap
+  this whole file exists to name elsewhere. The CI lane partitions plan's
+  fold-satellites phase (docs/ci-lanes.md) closed that gap: `ci.yml` now
+  calls `wheels.yml` (gated on the `python` lane), `npm.yml` (the `npm`
+  lane) and `esp-component.yml` (the `esp` lane) as `wheels`/`npm`/
+  `esp-component`, all three in `CI Status`'s `needs` list - so `Python
+  coverage`, `Build wheels`, `Build and test` (`npm.yml`) and `Pack and
+  verify`/`ESPHome external component` (`esp-component.yml`) are now required
+  through that one aggregate, the same way `Script Lint` and the `_build.yml`
+  matrix already were. No ruleset edit needed for the same reason as those -
+  and none of the three workflows needed a `merge_group` trigger added
+  either: they are `workflow_call`-only now for PR/push validation (their own
+  `push: tags: v*` trigger stays, for release publishing only), so they run
+  as nested jobs of `ci.yml`'s own `merge_group`-triggered run rather than as
+  independently-triggered workflows that would need to opt in themselves -
+  see the "Merge queue" section below for why a standalone workflow does.
 
 Ruleset edits are the repository admin's, not a pull request's. If any of the
 optional checks above are wanted as required ones, add them by their exact

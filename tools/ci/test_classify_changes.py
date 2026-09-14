@@ -44,6 +44,18 @@ class PlatformOnlyChangeTest(unittest.TestCase):
         hits = gate.classify(["esp-idf/ac3forge/CMakeLists.txt"])
         self.assertEqual(lit(hits, *ALL_LANES), {"esp"})
 
+    def test_esp_component_packaging_script_lights_only_esp(self):
+        # esp-component.yml's own path filter names this file directly - see
+        # docs/ci-lanes.md.
+        hits = gate.classify(["tools/packaging/pack_esp_component.py"])
+        self.assertEqual(lit(hits, *ALL_LANES), {"esp"})
+
+    def test_python_examples_light_only_python(self):
+        # wheels.yml's own path filter names examples/python/ directly - the
+        # rest of examples/ is plain C++, core's concern via its own build.
+        hits = gate.classify(["examples/python/basic_encode.py"])
+        self.assertEqual(lit(hits, *ALL_LANES), {"python"})
+
     def test_rust_only_change_lights_only_rust(self):
         hits = gate.classify(["rust/ac3forge/src/lib.rs"])
         self.assertEqual(lit(hits, *ALL_LANES), {"rust"})

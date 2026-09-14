@@ -4,23 +4,26 @@
 # `cibuildwheel python` run matches this workflow exactly rather than drifting from workflow-only
 # YAML settings.
 #
-# The build job runs continuously (every push/PR touching python/**) and always uploads wheels as
-# an artifact - "buildable and testable" is checked the same way _build.yml's continuous
-# windows-msvc packaging smoke test checks "packageable". Publishing to PyPI is a second job,
-# gated on a v* tag push - see docs/releasing.md's "Publishing to PyPI" for how it's provisioned
-# (already done; ac3forge is live on PyPI).
+# The build job runs continuously (every push/PR touching python/**, called from ci.yml's `python`
+# lane since the CI lane partitions split - docs/ci-lanes.md) and always uploads wheels as an
+# artifact - "buildable and testable" is checked the same way _build.yml's continuous windows-msvc
+# packaging smoke test checks "packageable". Publishing to PyPI is a second job, gated on a v* tag
+# push - see docs/releasing.md's "Publishing to PyPI" for how it's provisioned (already done;
+# ac3forge is live on PyPI).
 name: Python Wheels
 
 on:
-  pull_request:
-    paths:
-      - "python/**"
-      - "src/forge/**"
-      - "examples/python/**"
-      - "CMakeLists.txt"
-      - ".github/workflows/wheels.yml"
+  # CI lane partitions (docs/ci-lanes.md): PR/main-push validation now comes
+  # from ci.yml's own `wheels` job-call, gated on the `python` lane, not from
+  # this workflow's own trigger - see that job's comment in ci.yml. Only the
+  # release-publish path stays a direct trigger here: `tags` with no
+  # `branches` fires ONLY for a pushed v* tag (never a branch push), and
+  # ci.yml itself never runs on a tag push, so the two never overlap or race.
+  # `paths` on this `push` block is unchanged from before the split and
+  # applies the same way it always has to a tag push - nothing about that
+  # interaction was touched, only the now-redundant `pull_request` trigger
+  # and this `push`'s own `branches: [main]` were removed.
   push:
-    branches: [main]
     paths:
       - "python/**"
       - "src/forge/**"
@@ -30,6 +33,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      ORG_RUNNERS_TOKEN:
+        description: "Forwarded to check-runners' decide-runner call, same as ci.yml's own call to _build.yml. Optional - see that job's own description."
+        required: false
 
 concurrency:
   group: wheels-${{ github.workflow }}-${{ github.ref }}
@@ -40,9 +48,13 @@ permissions:
 
 jobs:
   # Windows-only fan-out onto self-hosted (see docs/ci-self-hosted-runners.md),
-  # via the shared decide-runner composite action - this workflow is
-  # triggered independently of ci.yml/_build.yml, so it has no access to
-  # that job's outputs. macOS stays GitHub-hosted unconditionally: there is
+  # via the shared decide-runner composite action - its own decider rather
+  # than ci.yml's check-runner or _build.yml's check-runners: this workflow
+  # has no `needs:` access to either of those (they live in a different
+  # workflow file, even on the PR-time path where ci.yml calls this one -
+  # `needs:` cannot cross a `workflow_call` boundary any more than it could
+  # before the CI lane partitions split, docs/ci-lanes.md, made that call
+  # exist at all). macOS stays GitHub-hosted unconditionally: there is
   # no self-hosted macOS capacity, and AWS's Mac instances bill in 24-hour
   # minimum blocks, a poor fit for a ~5-minute job that runs on every push.
   # Linux stays GitHub-hosted too, for now: the self-hosted Linux pool's
